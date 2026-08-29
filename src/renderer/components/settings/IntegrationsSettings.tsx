@@ -30,11 +30,15 @@ export function IntegrationsSettings({
             <SettingsListPicker
               ariaLabel="Default IDE"
               inputId="settings-default-ide"
-              value={defaultIde ?? ""}
+              // A default that isn't detected (e.g. the factory Cursor default
+              // on a machine without Cursor) shows as "Ask each time" — the
+              // effective behavior — instead of a dangling option.
+              value={defaultIde && detectedIdes.some((entry) => entry.id === defaultIde) ? defaultIde : ""}
               onChange={(next) => {
                 onDefaultIdeChange(next === "" ? null : next);
               }}
               disabled={detectedIdes.length === 0}
+              placement="above"
               options={[
                 { value: "", label: "Ask each time" },
                 ...detectedIdes.map((entry) => ({ value: entry.id, label: entry.label }))
@@ -81,7 +85,7 @@ export function IntegrationsSettings({
 }
 
 function CopyCommandButton({ command, name }: { command: string; name: string }): JSX.Element {
-  const [copied, copy] = useCopyToClipboard();
+  const [copyFlash, copy] = useCopyToClipboard();
   return (
     <button
       type="button"
@@ -89,8 +93,8 @@ function CopyCommandButton({ command, name }: { command: string; name: string })
       onClick={() => void copy(command)}
       aria-label={`Copy ${name} MCP command`}
     >
-      {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-      <span>{copied ? "Copied" : "Copy"}</span>
+      {copyFlash === "copied" ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+      <span>{copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy"}</span>
     </button>
   );
 }

@@ -113,6 +113,31 @@ pub struct WorkspacesCreateCurrentInput {
     pub task_label: TaskLabel,
 }
 
+/// 'scratch' (the default) is a visible side chat; 'popup' is the ephemeral
+/// "More details" mini-session, excluded from the sidebar and prunable.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum ScratchWorkspaceKind {
+    Scratch,
+    Popup,
+}
+
+impl ScratchWorkspaceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ScratchWorkspaceKind::Scratch => "scratch",
+            ScratchWorkspaceKind::Popup => "popup",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspacesCreateScratchInput {
+    pub task_label: TaskLabel,
+    pub kind: Option<ScratchWorkspaceKind>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspacesRefreshStatusInput {

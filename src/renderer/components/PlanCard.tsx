@@ -86,7 +86,7 @@ function PlanCardInner({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [copied, copy] = useCopyToClipboard();
+  const [copyFlash, copy] = useCopyToClipboard();
   const optionsRef = useRef<HTMLUListElement | null>(null);
 
   const options = plan.action.options;
@@ -230,7 +230,13 @@ function PlanCardInner({
               type="button"
               className="plan-card-icon-btn"
               aria-label="Copy plan"
-              title={copied ? "Copied!" : "Copy markdown"}
+              title={
+                copyFlash === "copied"
+                  ? "Copied!"
+                  : copyFlash === "failed"
+                    ? "Couldn't copy"
+                    : "Copy markdown"
+              }
               onClick={handleCopy}
             >
               <Copy size={14} />

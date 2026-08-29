@@ -12,15 +12,60 @@ The launcher composer exposes this choice per launch via the "Worktree" toggle (
 
 A project's setup command (Settings → Projects) runs once inside each freshly created isolated worktree, after `git worktree add` and before `create_isolated` returns — so the agent that launches next finds its dependencies in place. It runs through `CheckService`, which gives it the standard destructive-command gate, five-minute timeout, output capture, and a persisted check row. A failing or timed-out setup command never blocks the workspace: creation still succeeds and the failure is visible as the check row. Shared-checkout workspaces skip it (the checkout already has its dependencies). The renderer shows a toast while a launch waits on it, since a slow `npm install` would otherwise read as a hung launch.
 
+## Scratch workspaces (repo-less side chats)
+
+`workspaces:create-scratch` creates a workspace with no user repository behind
+it: a per-chat directory under the app data dir's `local-state/side-chats/`,
+initialized as a minimal git repo (one empty commit on `main`, explicit
+identity, signing off) because provider CLIs assume a checkout — Codex refuses
+to run outside one. With HEAD resolving, every git-touching subsystem (status
+watcher, review plumbing, checks) works normally instead of needing gating;
+repo-coupled UI hides itself off `workspace.kind` instead.
+
+`workspaces.kind` (migration v15) distinguishes `git` (real checkouts, both
+worktree and shared), `scratch` (visible side chats), and `popup` (ephemeral
+"More details" mini-sessions, excluded from the sidebar). All scratch rows are
+owned by a hidden singleton project with the stable id `scratch-side-chats`
+(`SCRATCH_PROJECT_ID` in Rust and `src/shared/types.ts`); its `repo_path` is
+the scratch root, which satisfies the schema without pointing at a user repo.
+The renderer must exclude that project from repo pickers and per-project
+grouping. Scratch rows persist `shared_workspace = true` deliberately: archive
+takes the state-flip-plus-teardown path, and the directory is left in place
+(it is app-owned and cheap).
+
+Side chats launch through the normal new-session launcher, not a dedicated
+surface: the launcher's context picker offers "Side chat — no repository"
+alongside the projects, which flips
+[LaunchSurface](../src/renderer/components/LaunchSurface.tsx) into chat mode —
+same composer, model picker, and agent-mode toggle, but no branch, worktree,
+review panel, or file autocomplete, and a launch calls
+`workspaces:create-scratch` instead of the worktree/checkout paths. Chat-mode
+drafts key off `SCRATCH_PROJECT_ID` so they never mix with a project's unsent
+prompt. The sidebar gives side chats their own always-bottom "Side chats"
+section (both view modes); its "+" opens the launcher pre-set to chat mode,
+while every plain new-session entry point resets it to project mode. A
+transcript selection's "Ask in side chat" action rides the same launch path
+with a seeded prompt (see [chat-cards.md](chat-cards.md)).
+
+`popup`-kind scratch workspaces back the "More details" explainer popup and
+are fully ephemeral: they never appear in the sidebar (kind gating), only one
+exists at a time, and closing the popup terminates the session and archives
+the workspace (`force: true` — its contents are discard-on-close by design).
+Archiving a popup also deletes its scratch directory (confined to the scratch
+root) once the background teardown drains its processes; visible side chats
+keep theirs. A renderer sweep archives any non-archived popup rows left
+behind by a crash, so they cannot accumulate against the dashboard row
+budget.
+
 ## Sidebar Priority section
 
 The sidebar floats attention-worthy workspaces (session `attention` of `approval-needed`, `blocked`, `failed`, or `review-ready`; `archived`/`kept` excluded) into a Priority section directly under Pinned and above the date/project groups, sorted by severity then oldest-waiting. Attention older than 24 hours — or of unknown age (pre-migration rows have no `attention_changed_at`) — is history, not triage, and stays out of the section. The selector is pure and client-side: [src/renderer/lib/priority.ts](../src/renderer/lib/priority.ts) joins `snapshot.sessions` attention onto workspaces, so it updates via normal `dashboard:delta` merges.
 
 A workspace lives in exactly one sidebar section. Pinned takes precedence over Priority: a pinned workspace stays in Pinned even when it has fresh attention or a manual add. Unpinned Priority rows leave their date/project group and drop back when resolved, dismissed, aged out, or pinned.
 
-Section order top to bottom is Pinned, Priority, then Today, Last 7 Days, Last 30 Days, and Older in sessions view (or project groups in projects view). Empty recency buckets are omitted. The sidebar has no section title bar, because the recency labels already name the list. In sessions view the newest non-empty recency bucket doubles as the list header: its label and collapse chevron sit on the left, and the "Sidebar view options" and "Add Project" actions sit on the right. Every section header keeps its chevron in the same place, tucked against the label rather than out at the row's right edge. Pinned and Priority collapse the same way and persist through the same `argmax.sidebar.collapsedDateGroups` set under the keys `pinned` and `priority`, but they never host the "…" and "+" actions. The Priority header instead carries a hover-revealed "Clear" button in that column, which dismisses every row the section holds in one go. Projects view has the same shape: a "Projects" header sits where the newest recency bucket does and hosts the same two actions, so both views start their list on the same line. It only names the grouping. Nothing collapses from it. A sessions view with no bucket to host the actions falls back to a quiet label-less strip above the groups, so view-mode switching is always reachable. Pinned stays first because a pin is a standing user choice, while Priority is transient triage. Rows outside a project group carry the owning project's name as a muted second line with no leading folder glyph, matching the sidebar's plain title-plus-subtitle density. Only a live signal earns a leading mark: running, awaiting input or approval, failed, and open or merged pull requests. Idle and completed rows are text only, though they keep the marker column reserved so every title lines up. Custom icons still render on any row that has one.
+Section order top to bottom is Pinned, Priority, then Today, Last 7 Days, Last 30 Days, and Older in sessions view (or project groups in projects view). Empty recency buckets are omitted. The sidebar has no section title bar, because the recency labels already name the list. In sessions view the newest non-empty recency bucket doubles as the list header: its label and collapse chevron sit on the left, and the "Sidebar view options" and "Add Project" actions sit on the right. Every section header keeps its chevron in the same place, tucked against the label rather than out at the row's right edge. Pinned and Priority collapse the same way and persist through the same `argmax.sidebar.collapsedDateGroups` set under the keys `pinned` and `priority`, but they never host the "…" and "+" actions. The Priority header instead carries a hover-revealed "Clear" button in that column, which dismisses every row the section holds in one go. Projects view has the same shape: a "Projects" header sits where the newest recency bucket does and hosts the same two actions, so both views start their list on the same line. It only names the grouping. Nothing collapses from it. A sessions view with no bucket to host the actions falls back to a quiet label-less strip above the groups, so view-mode switching is always reachable. Pinned stays first because a pin is a standing user choice, while Priority is transient triage. Each app launch opens with Pinned expanded and every other section collapsed, so a fresh window shows the standing pins and nothing else. Mid-session toggles persist and survive a re-mount, and the next launch collapses everything but Pinned again. A sessionStorage marker (`argmax.sidebar.bootGroupCollapseSeeded`, alongside `argmax.sidebar.bootCollapseSeeded` for project groups) makes that seed fire once per launch rather than once per mount. Rows outside a project group carry the owning project's name as a muted second line with no leading folder glyph, matching the sidebar's plain title-plus-subtitle density. Only a live signal earns a leading mark: running, awaiting input or approval, failed, and open or merged pull requests. Idle and completed rows are text only, though they keep the marker column reserved so every title lines up. Custom icons still render on any row that has one.
 
-Right-click → "Remove from priority" calls `workspaces:set-priority-dismissed`, stamping `workspaces.priority_dismissed_at` (and clearing any manual add). A dismissal only suppresses the row while it is newer than the session's `attention_changed_at` (stamped in `update_session_state` whenever the attention value changes), so fresh attention re-promotes the workspace without any server-side clearing. Right-click → "Add to priority" on an unpinned, non-priority row calls `workspaces:set-priority-added` (`workspaces.priority_added_at`): a manual add needs no attention, never ages out, and clears any standing dismissal. Pinned rows do not offer that action, because a pin already chooses their section. "Clear" on the Priority header is the bulk form of the dismissal: one `workspaces:set-priority-dismissed` per listed workspace, which empties both flavors of entry (dismissal clears a manual add) and drops the rows back into their date or project group. The section is toggleable in Settings → General (`argmax.sidebar.priority.visible`, default on).
+Right-click → "Remove from priority" calls `workspaces:set-priority-dismissed`, stamping `workspaces.priority_dismissed_at` (and clearing any manual add). Opening any attention-driven Priority session and then leaving it (another session, the launcher, Settings, or another project) stamps the same dismissal — Priority is an unread list, and opening the session is reading it. A workspace that still has a `running` session is not demoted by that navigation, because a live turn is still a priority reason, and a purely manual add (no attention) stays until explicitly removed. A dismissal only suppresses the row while it is newer than the session's `attention_changed_at` (stamped in `update_session_state` whenever the attention value changes), so a later wait after more agent work re-promotes the workspace without any server-side clearing. Right-click → "Add to priority" on an unpinned, non-priority row calls `workspaces:set-priority-added` (`workspaces.priority_added_at`): a manual add needs no attention, never ages out, and clears any standing dismissal. Pinned rows do not offer that action, because a pin already chooses their section. "Clear" on the Priority header is the bulk form of the dismissal: one `workspaces:set-priority-dismissed` per listed workspace, which empties both flavors of entry (dismissal clears a manual add) and drops the rows back into their date or project group. The section is toggleable in Settings → General (`argmax.sidebar.priority.visible`, default on).
 
 ## Custom row icons
 
@@ -51,9 +96,19 @@ having to know what was committed when.
 Committed mode phrases its base as a `<merge-base>..HEAD` range so every
 `git diff <base> -- <path>` call site works unchanged. It also skips the
 working-tree probes, because a file that is both committed and dirty would
-otherwise be read as an untracked add and diffed against the wrong side. A base
-branch that no longer resolves downgrades every scope to the working tree
-rather than failing the request.
+otherwise be read as an untracked add and diffed against the wrong side.
+
+The comparison base is the workspace's recorded `base_ref`, then the project's
+default branch, then `main` or `master`. For those integration names, review
+prefers `origin/<name>` when the remote-tracking ref exists and shares a
+merge-base with HEAD, so a stale local `main` does not count already-rebased
+upstream commits as this branch's work. Argmax does not fetch. A candidate that
+resolves to the same commit as HEAD is skipped, because that comparison is
+empty. Shared-checkout sessions (`create_current`) store the project default
+as `base_ref`. Isolated worktrees still store the fork point. After the agent
+commits there, that fork point is no longer HEAD and the review shows only this
+task's commits. A base that no longer resolves, and has no fallback, downgrades
+every scope to the working tree rather than failing the request.
 
 "Last turn" has no git equivalent because git does not know what a turn is, so it
 comes from the transcript: [lastTurnFiles.ts](../src/renderer/lib/lastTurnFiles.ts)

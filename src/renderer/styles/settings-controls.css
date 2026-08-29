@@ -207,6 +207,16 @@
   white-space: nowrap;
 }
 
+/* Opt-in upward menu for a picker that sits at the bottom edge of its section,
+   where a downward menu would cover the next section's copy. Qualified with
+   `.project-picker-popover` to outrank the downward default in
+   `chat-chrome.css`, which loads after this file. `top` must be reset: leaving
+   both edges set on an auto-height absolute box collapses it. */
+.project-picker-popover.settings-picker-popover[data-placement="above"] {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
 /* ---- Settings model picker ---- */
 
 .settings-model-picker {
@@ -553,7 +563,10 @@
   gap: 18px;
   align-items: flex-start;
   min-width: 0;
-  padding: 6px 0 10px;
+  /* Keep the card's 22px side gutter: this shorthand outranks the
+     `.settings-card > *` default by source order, so zeroing the inline
+     padding here ran the QR and copy rows edge to edge. */
+  padding: 6px 22px 10px;
 }
 
 /* White ground regardless of theme: phone cameras want dark modules on a

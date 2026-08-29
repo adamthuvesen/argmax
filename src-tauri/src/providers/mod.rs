@@ -6,6 +6,7 @@ pub mod environment;
 pub mod flush_queue;
 mod follow_up;
 pub mod normalizer;
+mod opencode_isolation;
 mod orphan_cleanup;
 pub mod pricing;
 pub mod runtime;

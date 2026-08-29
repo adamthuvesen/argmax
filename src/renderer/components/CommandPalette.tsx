@@ -199,8 +199,10 @@ export function CommandPalette({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [messageHits, setMessageHits] = useState<MessageHit[]>([]);
   const [messagesRunning, setMessagesRunning] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
   const [filePaths, setFilePaths] = useState<string[]>([]);
   const [filesRunning, setFilesRunning] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
   const [contentResult, setContentResult] =
     useState<WorkspaceContentSearchResult>(EMPTY_CONTENT_RESULT);
   const [contentsRunning, setContentsRunning] = useState(false);
@@ -258,6 +260,7 @@ export function CommandPalette({
       messageTokenRef.current += 1;
       setMessageHits([]);
       setMessagesRunning(false);
+      setMessageError(null);
       return;
     }
     const trimmed = query.trim();
@@ -265,6 +268,7 @@ export function CommandPalette({
       messageTokenRef.current += 1;
       setMessageHits([]);
       setMessagesRunning(false);
+      setMessageError(null);
       return;
     }
     const token = ++messageTokenRef.current;
@@ -274,10 +278,14 @@ export function CommandPalette({
         .then((hits) => {
           if (token !== messageTokenRef.current) return;
           setMessageHits(hits);
+          setMessageError(null);
         })
-        .catch(() => {
+        .catch((caught: unknown) => {
+          // A backend failure rendered as an empty list reads as "no matches",
+          // which is a lie in a search UI. Say it failed.
           if (token !== messageTokenRef.current) return;
           setMessageHits([]);
+          setMessageError(caught instanceof Error ? caught.message : "Message search failed.");
         })
         .finally(() => {
           if (token === messageTokenRef.current) {
@@ -337,6 +345,7 @@ export function CommandPalette({
       filesTokenRef.current += 1;
       setFilePaths([]);
       setFilesRunning(false);
+      setFilesError(null);
       return;
     }
     const cacheKey = `${fileSource.kind}:${fileSource.id}`;
@@ -346,6 +355,7 @@ export function CommandPalette({
       filesCacheKeyRef.current = null;
       setFilePaths([]);
       setFilesRunning(false);
+      setFilesError(null);
       return;
     }
     const token = ++filesTokenRef.current;
@@ -355,10 +365,15 @@ export function CommandPalette({
       .then((paths) => {
         if (token !== filesTokenRef.current) return;
         setFilePaths(paths);
+        setFilesError(null);
       })
-      .catch(() => {
+      .catch((caught: unknown) => {
         if (token !== filesTokenRef.current) return;
         setFilePaths([]);
+        setFilesError(caught instanceof Error ? caught.message : "File list failed to load.");
+        // The cache key was claimed optimistically; drop it so the next
+        // keystroke retries instead of pinning the failure for the session.
+        filesCacheKeyRef.current = null;
       })
       .finally(() => {
         if (token === filesTokenRef.current) setFilesRunning(false);
@@ -531,10 +546,13 @@ export function CommandPalette({
   // Content search answers from two characters, message search from three, so
   // the "still too short to have run" gate follows the active tab.
   const minQueryLength = scope === "contents" ? MIN_CONTENT_QUERY_LENGTH : MIN_MESSAGE_QUERY_LENGTH;
+  const searchErrors = [messageError, filesError, contentError].filter(
+    (message): message is string => message !== null
+  );
   const showingEmptyState =
     flatRows.length === 0 &&
     !anyBackgroundLoading &&
-    !contentError &&
+    searchErrors.length === 0 &&
     (trimmedQuery.length === 0 || trimmedQuery.length >= minQueryLength);
 
   const totalCount = flatRows.length;
@@ -612,12 +630,12 @@ export function CommandPalette({
           role="listbox"
           aria-label="Command results"
         >
-          {contentError ? (
-            <li className="command-palette-empty" role="alert">
+          {searchErrors.map((message) => (
+            <li key={message} className="command-palette-empty" role="alert">
               <span className="command-palette-empty-mark" aria-hidden="true">!</span>
-              <span className="command-palette-empty-text">{contentError}</span>
+              <span className="command-palette-empty-text">{message}</span>
             </li>
-          ) : null}
+          ))}
           {showingEmptyState ? (
             <li className="command-palette-empty" role="status">
               <span className="command-palette-empty-mark" aria-hidden="true">∅</span>

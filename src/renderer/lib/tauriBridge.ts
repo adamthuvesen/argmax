@@ -162,6 +162,7 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     workspaces: {
       createIsolated: (input) => invokeCommand<WorkspaceSummary>("workspaces:create-isolated", input),
       createCurrent: (input) => invokeCommand<WorkspaceSummary>("workspaces:create-current", input),
+      createScratch: (input) => invokeCommand<WorkspaceSummary>("workspaces:create-scratch", input),
       refreshStatus: (workspaceId) =>
         invokeCommand<WorkspaceSummary>("workspaces:refresh-status", { workspaceId }),
       status: (input: WorkspaceStatusInput = { workspaceIds: null }) =>

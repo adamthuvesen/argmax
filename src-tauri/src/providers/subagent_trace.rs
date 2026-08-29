@@ -1744,6 +1744,7 @@ mod tests {
                 path: "/tmp/repo".to_string(),
                 state: "running".to_string(),
                 shared_workspace: false,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },

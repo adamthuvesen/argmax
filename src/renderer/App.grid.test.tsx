@@ -54,6 +54,7 @@ describe("App grid", () => {
       path: "/tmp/worktrees/split-target",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
@@ -119,6 +120,7 @@ describe("App grid", () => {
       path: "/tmp/worktrees/below-target",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
@@ -361,6 +363,7 @@ describe("App grid", () => {
       path: "/tmp/worktrees/follow-up",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
@@ -1174,6 +1177,7 @@ describe("App grid", () => {
       path: "/tmp/worktrees/fresh-task",
       state: "running",
       sharedWorkspace: true,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:10:00.000Z",
@@ -1254,6 +1258,7 @@ describe("App grid", () => {
     expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("full");
     fireEvent.keyDown(document, { key: ",", metaKey: true });
     await screen.findByRole("group", { name: "Session panes" });
+    expect(screen.getByRole("button", { name: "Build dashboard" })).toHaveAttribute("aria-current", "true");
 
     fireEvent.keyDown(document, { key: "n", metaKey: true });
 
@@ -1261,10 +1266,12 @@ describe("App grid", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Session panes" })).toBeNull();
     expect(screen.queryByRole("region", { name: "New session for Argmax" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Build dashboard" })).not.toHaveAttribute("aria-current");
 
     // Esc dismisses the full launcher and restores the grid view.
     fireEvent.keyDown(document, { key: "Escape" });
     expect(await screen.findByRole("group", { name: "Session panes" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Build dashboard" })).toHaveAttribute("aria-current", "true");
   });
 
   it("defaults the new-session toggle to 'Open full view' on first launch", async () => {
@@ -1287,6 +1294,7 @@ describe("App grid", () => {
       path: "/tmp/worktrees/second-pane",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
@@ -1303,6 +1311,7 @@ describe("App grid", () => {
       path: "/tmp/worktrees/third-pane",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:05:00.000Z",
@@ -1376,6 +1385,7 @@ describe("App grid", () => {
       path: "/tmp/worktrees/drop-target",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
@@ -1458,6 +1468,7 @@ describe("App grid", () => {
       path: "/tmp/worktrees/resize-target",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
@@ -1525,6 +1536,7 @@ describe("App grid", () => {
       path: "/tmp/worktrees/wide-pane",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
@@ -1541,6 +1553,7 @@ describe("App grid", () => {
       path: "/tmp/worktrees/dropped-pane",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:05:00.000Z",
@@ -1624,6 +1637,7 @@ describe("App grid", () => {
       path: "/tmp/worktrees/cmd-w",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
@@ -1683,6 +1697,67 @@ describe("App grid", () => {
 
     await waitFor(() => {
       expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "true");
+    });
+  });
+
+  it("keeps an open terminal open after switching to another session and back", async () => {
+    // The Cmd+J counter lives in App and outlives every pane; a remounted
+    // pane must not replay the last press and toggle the persisted panel.
+    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-2",
+      projectId: "project-1",
+      taskLabel: "Other session",
+      branch: "argmax/other",
+      baseRef: "main",
+      path: "/tmp/worktrees/other",
+      state: "complete",
+      sharedWorkspace: false,
+      kind: "git",
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
+    };
+    const secondSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-2",
+      workspaceId: "workspace-2",
+      provider: "claude",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-2",
+      prompt: "Other session",
+      state: "complete",
+      attention: "normal",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:04:00.000Z",
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+    };
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, secondWorkspace],
+      sessions: [...snapshot.sessions, secondSession]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+    fireEvent.keyDown(document, { key: "j", metaKey: true });
+    await waitFor(() => {
+      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Other session" }));
+    await waitFor(() => {
+      expect(document.querySelector(".terminal-panel")).toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
+    await waitFor(() => {
+      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
     });
   });
 

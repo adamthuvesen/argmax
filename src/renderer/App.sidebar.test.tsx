@@ -19,6 +19,7 @@ import {
   readWorkspaceFile,
   sendProviderInput,
   sessionEventsSince,
+  setPriorityDismissed,
   setWorkspaceIcon,
   skillsList,
   setupAppTestMocks,
@@ -49,6 +50,7 @@ describe("App sidebar", () => {
       path: "/tmp/worktrees/second-chat",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
@@ -300,23 +302,6 @@ describe("App sidebar", () => {
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
     expect(sendProviderInput).not.toHaveBeenCalled();
   });
-
-  it("interrupts the running turn and sends the draft when Send now is clicked", async () => {
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    const input = await screen.findByLabelText("Session prompt");
-    fireEvent.change(input, { target: { value: "MCP" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send now" }));
-
-    await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
-    await waitFor(() =>
-      expect(sendProviderInput).toHaveBeenCalledWith(
-        expect.objectContaining({ sessionId: "session-1", input: "MCP" })
-      )
-    );
-  });
-
 
   it("switches the session model for the next follow-up prompt", async () => {
     const completeSessions = snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }));
@@ -859,7 +844,7 @@ describe("App sidebar", () => {
 
     await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
     expect(launchProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: "Implement PTY launch", provider: "codex" })
+      expect.objectContaining({ prompt: "Implement PTY launch", provider: "claude" })
     );
     expect(submitEvent.defaultPrevented).toBe(true);
   });
@@ -928,5 +913,218 @@ describe("App sidebar", () => {
     // Snapshot should reflect the second (fast) load result, not the stale first.
     expect(await screen.findByRole("button", { name: "Fresh-Project" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Stale-Project" })).not.toBeInTheDocument();
+  });
+
+  it("removes a waiting session from priority after the user reads it and leaves", async () => {
+    window.localStorage.setItem("argmax.sidebar.priority.visible", "true");
+    const attentionChangedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const waitingWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-wait",
+      projectId: "project-1",
+      taskLabel: "Waiting chat",
+      branch: "argmax/waiting-chat",
+      baseRef: "main",
+      path: "/tmp/worktrees/waiting-chat",
+      state: "waiting",
+      sharedWorkspace: false,
+      kind: "git",
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
+    };
+    const otherWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-other",
+      projectId: "project-1",
+      taskLabel: "Other chat",
+      branch: "argmax/other-chat",
+      baseRef: "main",
+      path: "/tmp/worktrees/other-chat",
+      state: "complete",
+      sharedWorkspace: false,
+      kind: "git",
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:00:00.000Z",
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
+    };
+    const waitingSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-wait",
+      workspaceId: "workspace-wait",
+      provider: "claude",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-wait",
+      prompt: "Waiting chat",
+      state: "waiting",
+      attention: "blocked",
+      attentionChangedAt,
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: null,
+      lastActivityAt: "2026-05-08T16:04:00.000Z"
+    };
+    const otherSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-other",
+      workspaceId: "workspace-other",
+      provider: "claude",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-other",
+      prompt: "Other chat",
+      state: "complete",
+      attention: "review-ready",
+      attentionChangedAt,
+      startedAt: "2026-05-08T15:50:00.000Z",
+      completedAt: "2026-05-08T16:00:00.000Z",
+      lastActivityAt: "2026-05-08T16:00:00.000Z"
+    };
+    const demotionSnapshot: DashboardSnapshot = {
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, waitingWorkspace, otherWorkspace],
+      sessions: [...snapshot.sessions, waitingSession, otherSession]
+    };
+    mockDashboardSnapshot(demotionSnapshot);
+    sessionEventsSince.mockImplementation((input) => {
+      if (input.sessionId === "session-wait" || input.sessionId === "session-other") {
+        return Promise.resolve({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0 });
+      }
+      return Promise.resolve({ events: snapshot.events, rawOutputs: [], eventCursor: 1, rawOutputCursor: 0 });
+    });
+    setPriorityDismissed.mockImplementation(({ workspaceId, dismissed }) => {
+      const current =
+        demotionSnapshot.workspaces.find((item) => item.id === workspaceId) ?? waitingWorkspace;
+      const updated = {
+        ...current,
+        priorityDismissedAt: dismissed ? new Date().toISOString() : null,
+        priorityAddedAt: null
+      };
+      const next = {
+        ...demotionSnapshot,
+        workspaces: demotionSnapshot.workspaces.map((item) =>
+          item.id === workspaceId ? updated : item
+        )
+      };
+      workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(next));
+      dashboardDeltaListener?.({ workspaces: [updated] });
+      return Promise.resolve(updated);
+    });
+
+    render(<App />);
+
+    const waitingRow = await screen.findByRole("button", { name: /Waiting chat/ });
+    expect(waitingRow).toHaveAttribute("title", expect.stringContaining("waiting for input"));
+    fireEvent.click(waitingRow);
+    expect(setPriorityDismissed).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Other chat/ }));
+
+    await waitFor(() =>
+      expect(setPriorityDismissed).toHaveBeenCalledWith({
+        workspaceId: "workspace-wait",
+        dismissed: true
+      })
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Waiting chat/ }).getAttribute("title")).not.toContain(
+        "waiting for input"
+      )
+    );
+  });
+
+  it("keeps a working session in priority after the user opens it and leaves", async () => {
+    window.localStorage.setItem("argmax.sidebar.priority.visible", "true");
+    const attentionChangedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const workingWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-working",
+      projectId: "project-1",
+      taskLabel: "Working chat",
+      branch: "argmax/working-chat",
+      baseRef: "main",
+      path: "/tmp/worktrees/working-chat",
+      state: "running",
+      sharedWorkspace: false,
+      kind: "git",
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
+    };
+    const otherWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-other",
+      projectId: "project-1",
+      taskLabel: "Other chat",
+      branch: "argmax/other-chat",
+      baseRef: "main",
+      path: "/tmp/worktrees/other-chat",
+      state: "complete",
+      sharedWorkspace: false,
+      kind: "git",
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:00:00.000Z",
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
+    };
+    const workingSnapshot: DashboardSnapshot = {
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, workingWorkspace, otherWorkspace],
+      sessions: [
+        ...snapshot.sessions,
+        {
+          id: "session-working",
+          workspaceId: "workspace-working",
+          provider: "claude",
+          modelLabel: "Sonnet 5",
+          modelId: "claude-sonnet-5",
+          permissionMode: "auto-approve",
+          providerConversationId: "session-working",
+          prompt: "Working chat",
+          state: "running",
+          attention: "approval-needed",
+          attentionChangedAt,
+          startedAt: "2026-05-08T16:00:00.000Z",
+          completedAt: null,
+          lastActivityAt: "2026-05-08T16:04:00.000Z"
+        },
+        {
+          id: "session-other",
+          workspaceId: "workspace-other",
+          provider: "claude",
+          modelLabel: "Sonnet 5",
+          modelId: "claude-sonnet-5",
+          permissionMode: "auto-approve",
+          providerConversationId: "session-other",
+          prompt: "Other chat",
+          state: "complete",
+          attention: "review-ready",
+          attentionChangedAt,
+          startedAt: "2026-05-08T15:50:00.000Z",
+          completedAt: "2026-05-08T16:00:00.000Z",
+          lastActivityAt: "2026-05-08T16:00:00.000Z"
+        }
+      ]
+    };
+    mockDashboardSnapshot(workingSnapshot);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Working chat/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Other chat/ }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Other chat/ })).toHaveAttribute("aria-current", "true"));
+    expect(setPriorityDismissed).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /Working chat/ })).toHaveAttribute(
+      "title",
+      expect.stringContaining("needs approval")
+    );
   });
 });

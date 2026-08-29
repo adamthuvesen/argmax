@@ -357,92 +357,121 @@ html:has(.mobile-shell) body {
   flex: 1;
 }
 
-.mobile-new-form {
+/* Everything anchors to the bottom, Codex-style: quiet space on top, context
+   rows above the composer, thumb-reach for all of it. */
+.mobile-new-body {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  touch-action: pan-y;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
 }
 
-.mobile-new-label {
-  font-size: var(--text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.mobile-new-context {
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-new-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mobile-new-row:last-child {
+  border-bottom: none;
+}
+
+.mobile-new-row-icon {
+  display: inline-flex;
   color: var(--muted);
-  margin-top: 8px;
+  flex-shrink: 0;
 }
 
-.mobile-new-select,
-.mobile-new-prompt {
-  width: 100%;
-  padding: 11px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
+.mobile-new-row-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text);
-  font: inherit;
+  font-size: var(--text-md);
+}
+
+.mobile-new-row-caret {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* The native select stretches invisibly over the row so a tap anywhere opens
+   the platform picker while the styled row underneath shows the value. */
+.mobile-new-row-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: none;
+  appearance: none;
   /* 16px+ keeps iOS Safari from zooming the page on focus. */
   font-size: var(--text-md-plus);
 }
 
-.mobile-new-prompt {
-  resize: none;
-  line-height: 1.5;
+.mobile-new-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
 }
 
-.mobile-new-select:focus,
+.mobile-new-composer:focus-within {
+  border-color: var(--accent);
+}
+
+.mobile-new-prompt {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  /* 16px+ keeps iOS Safari from zooming the page on focus. */
+  font-size: var(--text-md-plus);
+  line-height: 1.5;
+  resize: none;
+}
+
 .mobile-new-prompt:focus {
   outline: none;
-  border-color: var(--accent);
 }
 
-.mobile-new-mode {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.mobile-new-mode-chip {
-  flex: 1;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
-  color: var(--muted-strong);
-  font: inherit;
-  font-size: var(--text-base);
-}
-
-.mobile-new-mode-chip[aria-checked="true"] {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent-deep);
-  font-weight: 600;
-}
-
-.mobile-new-launch {
-  margin-top: 14px;
-  padding: 13px 16px;
+.mobile-new-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
   border: none;
-  border-radius: 12px;
+  border-radius: 50%;
   background: var(--accent);
   color: var(--bg);
-  font: inherit;
-  font-size: var(--text-md);
-  font-weight: 600;
 }
 
-.mobile-new-launch:disabled {
+.mobile-new-send:disabled {
   opacity: 0.45;
 }
 
-.mobile-new-launch:active:not(:disabled) {
+.mobile-new-send:active:not(:disabled) {
   filter: brightness(0.92);
 }
 

@@ -238,6 +238,7 @@ export function SettingsListPicker<T extends string>({
   inputId,
   onChange,
   options,
+  placement = "below",
   value
 }: {
   ariaLabel: string;
@@ -245,6 +246,8 @@ export function SettingsListPicker<T extends string>({
   inputId?: string;
   onChange: (value: T) => void;
   options: ReadonlyArray<SettingsListPickerOption<T>>;
+  /** Set to "above" when the menu would otherwise cover the next section's copy. */
+  placement?: "above" | "below";
   value: T;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -278,6 +281,7 @@ export function SettingsListPicker<T extends string>({
           className="project-picker-popover settings-picker-popover"
           role="listbox"
           aria-label={ariaLabel}
+          data-placement={placement}
           onClick={(event) => {
             if (!(event.target instanceof Element && event.target.closest("button.project-picker-item"))) {
               setOpen(false);

@@ -1,8 +1,10 @@
 import {
+  clampEffort,
   costOf as rendererCostOf,
   DEFAULT_REASONING_EFFORT,
   PROVIDER_MODEL_DEFAULTS,
   PROVIDER_MODELS,
+  reasoningEffortsForModel,
   type ProviderModelSelection,
   type ReasoningEffort
 } from "../../shared/providerModels.js";
@@ -65,7 +67,8 @@ export function effortLabel(reasoningEffort: ReasoningEffort): string {
 
 export function modelDefaultForProvider(provider: ProviderId): ProviderModelSelection {
   const model = PROVIDER_MODEL_DEFAULTS[provider];
-  const reasoningEffort = model.reasoningEffort ?? (model.supportsReasoningEffort ? DEFAULT_REASONING_EFFORT : undefined);
+  const seeded = model.reasoningEffort ?? (model.supportsReasoningEffort ? DEFAULT_REASONING_EFFORT : undefined);
+  const reasoningEffort = clampEffort(seeded, reasoningEffortsForModel(provider, model.modelId));
   return {
     label: model.label,
     modelId: model.modelId,
@@ -76,6 +79,20 @@ export function modelDefaultForProvider(provider: ProviderId): ProviderModelSele
 /** Fallback provider order when the seeded launch model isn't installed or
  *  authenticated: Claude first, then Codex, then Cursor, then OpenCode. */
 export const PROVIDER_LAUNCH_PRIORITY: ProviderId[] = ["claude", "codex", "cursor", "opencode"];
+
+/** Last-resort launcher pick when no provider CLI is installed. OpenCode Zen
+ *  Big Pickle, not the OpenCode Go default. */
+export const FALLBACK_LAUNCH_MODEL: ModelPickerSelection = {
+  provider: "opencode",
+  label: "Big Pickle",
+  modelId: "opencode/big-pickle"
+};
+
+/** Unpersisted factory default: highest-priority provider's catalog default. */
+export function factoryLaunchModel(): ModelPickerSelection {
+  const provider = PROVIDER_LAUNCH_PRIORITY[0];
+  return { provider, ...modelDefaultForProvider(provider) };
+}
 
 /**
  * Highest-priority provider whose CLI is installed and logged in
@@ -92,6 +109,17 @@ export function preferredLaunchProvider(providers: DiscoveredProvider[]): Provid
     if (byId.get(provider)?.installed) return provider;
   }
   return null;
+}
+
+/**
+ * Catalog default for {@link preferredLaunchProvider}, or Big Pickle when no
+ * provider is usable. Used to pre-fill the launcher when the stored global
+ * preference is missing or points at an unusable provider.
+ */
+export function preferredLaunchModel(providers: DiscoveredProvider[]): ModelPickerSelection {
+  const preferred = preferredLaunchProvider(providers);
+  if (!preferred) return FALLBACK_LAUNCH_MODEL;
+  return { provider: preferred, ...modelDefaultForProvider(preferred) };
 }
 
 export function modelSelectionFromSession(session: SessionSummary | null): ProviderModelSelection {

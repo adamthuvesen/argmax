@@ -43,6 +43,11 @@ import {
   imageAttachmentReference
 } from "../lib/composerAttachments.js";
 import {
+  annotationChipLabel,
+  prependAnnotationsToPrompt,
+  type ComposerAnnotation
+} from "../lib/composerAnnotations.js";
+import {
   AGENT_MODE_LABELS,
   toggleAgentMode
 } from "../lib/agentMode.js";
@@ -58,6 +63,16 @@ import { SkillPopover } from "./SkillPopover.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
+/**
+ * Feedback line floating above the composer. Pane-local actions surface their
+ * outcome here — a global toast can't say which pane it belongs to on a
+ * multi-pane grid. Errors persist until the next action; info auto-clears.
+ */
+export interface ComposerStatus {
+  kind: "error" | "info";
+  message: string;
+}
+
 export interface ComposerChangeSummary {
   fileCount: number;
   additions: number;
@@ -71,6 +86,7 @@ export function SessionComposer({
   canSend,
   changeSummary = null,
   fastModeEnabled = false,
+  floating = false,
   inputRef,
   isQueueing,
   onFastModeEnabledChange,
@@ -78,6 +94,9 @@ export function SessionComposer({
   onSendQueuedMessageNow,
   onSendSessionInput,
   onTerminateSession,
+  pendingAnnotations = [],
+  onRemoveAnnotation,
+  onClearAnnotations,
   pendingMessages,
   reviewPanelOpen,
   selectedModel,
@@ -93,6 +112,9 @@ export function SessionComposer({
   canSend: boolean;
   changeSummary?: ComposerChangeSummary | null;
   fastModeEnabled?: boolean;
+  /** The "More details" popup: too narrow for the workspace-context cluster
+      and file attach, so the toolbar keeps only model, mode, and send. */
+  floating?: boolean;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   isQueueing: boolean;
   onFastModeEnabledChange?: (enabled: boolean) => void;
@@ -106,15 +128,20 @@ export function SessionComposer({
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
+  /** Transcript excerpts attached via the selection toolbar; serialized into
+      the prompt at send time and cleared through `onClearAnnotations`. */
+  pendingAnnotations?: ComposerAnnotation[];
+  onRemoveAnnotation?: (id: string) => void;
+  onClearAnnotations?: () => void;
   pendingMessages: PendingMessage[];
   reviewPanelOpen: boolean;
   selectedModel: ModelPickerSelection;
   session: SessionSummary | null;
   setAgentMode: Dispatch<SetStateAction<AgentMode>>;
   setSelectedModel: Dispatch<SetStateAction<ModelPickerSelection>>;
-  setStatus: (message: string | null) => void;
+  setStatus: (status: ComposerStatus | null) => void;
   shouldRefocusInput: MutableRefObject<boolean>;
-  status: string | null;
+  status: ComposerStatus | null;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
@@ -141,7 +168,9 @@ export function SessionComposer({
     draftKey: sessionId,
     workspacePath: workspace?.path ?? null,
     setInput,
-    setStatus
+    // The attachments hook only ever reports failures (string status contract,
+    // shared with LaunchSurface); lift them into the error kind here.
+    setStatus: (message) => setStatus(message === null ? null : { kind: "error", message })
   });
 
   const slashAutocomplete = useSlashAutocomplete({
@@ -248,7 +277,8 @@ export function SessionComposer({
     }
 
     const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
-    const prompt = refs.length > 0 ? appendReferencesToPrompt(trimmedInput, refs) : trimmedInput;
+    const withRefs = refs.length > 0 ? appendReferencesToPrompt(trimmedInput, refs) : trimmedInput;
+    const prompt = prependAnnotationsToPrompt(withRefs, pendingAnnotations);
 
     setIsSending(true);
     setStatus(null);
@@ -258,8 +288,12 @@ export function SessionComposer({
       clearDraft(session.id);
       setInput("");
       clearAttachments();
+      onClearAnnotations?.();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not send input.");
+      setStatus({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Could not send input."
+      });
     } finally {
       setIsSending(false);
     }
@@ -272,17 +306,6 @@ export function SessionComposer({
     await deliverDraft((sessionId, prompt, attachments) =>
       onSendSessionInput(sessionId, prompt, selectedModel, agentMode, attachments)
     );
-  };
-
-  // The send control beside Stop skips the queue: cancel the live turn first,
-  // then deliver the draft, which relaunches the agent on the saved transcript.
-  // Same ordering the Plan/Question cards use, so the follow-up never waits
-  // behind whatever the provider is still emitting.
-  const sendNow = async (): Promise<void> => {
-    await deliverDraft(async (sessionId, prompt, attachments) => {
-      await onTerminateSession(sessionId);
-      await onSendSessionInput(sessionId, prompt, selectedModel, agentMode, attachments);
-    });
   };
 
   return (
@@ -302,6 +325,30 @@ export function SessionComposer({
         tabIndex={-1}
         onChange={onAttachmentInputChange}
       />
+      {pendingAnnotations.length > 0 ? (
+        <div className="composer-annotations" role="list" aria-label="Annotations">
+          {pendingAnnotations.map((annotation) => (
+            <div
+              key={annotation.id}
+              className="composer-annotation-chip"
+              role="listitem"
+              title={annotationChipLabel(annotation)}
+              aria-label={`Annotation: ${annotationChipLabel(annotation)}`}
+            >
+              <span className="composer-annotation-chip-label">{annotationChipLabel(annotation)}</span>
+              <button
+                type="button"
+                className="composer-annotation-remove"
+                aria-label="Remove annotation"
+                title="Remove annotation"
+                onClick={() => onRemoveAnnotation?.(annotation.id)}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {pendingAttachments.length > 0 ? (
         <div className="composer-attachments" aria-label="Attached images">
           {pendingAttachments.map((attachment) => (
@@ -342,7 +389,11 @@ export function SessionComposer({
               try {
                 await onSendQueuedMessageNow(session.id, entry.id);
               } catch (error) {
-                setStatus(error instanceof Error ? error.message : "Could not send queued follow-up.");
+                setStatus({
+                  kind: "error",
+                  message:
+                    error instanceof Error ? error.message : "Could not send queued follow-up."
+                });
               } finally {
                 setSendingQueuedMessageId(null);
               }
@@ -470,8 +521,8 @@ export function SessionComposer({
             )}
           </div>
         ) : null}
-        {session ? <ContextRing session={session} /> : null}
-        {workspace ? (
+        {session && !floating ? <ContextRing session={session} /> : null}
+        {workspace && !floating ? (
           <div className="composer-footer composer-chips-group composer-chips-context" aria-label="Workspace context">
             {workspace.sharedWorkspace ? null : (
               <button
@@ -488,15 +539,17 @@ export function SessionComposer({
                 <span className="composer-footer-chip-label">Worktree</span>
               </button>
             )}
-            <button
-              type="button"
-              className="composer-footer-chip composer-footer-chip--branch"
-              title={`Branch: ${workspace.branch}`}
-              aria-label={`Branch ${workspace.branch}`}
-            >
-              <GitBranch size={11} aria-hidden="true" />
-              <span className="composer-footer-chip-label">{workspace.branch}</span>
-            </button>
+            {workspace.kind === "git" ? (
+              <button
+                type="button"
+                className="composer-footer-chip composer-footer-chip--branch"
+                title={`Branch: ${workspace.branch}`}
+                aria-label={`Branch ${workspace.branch}`}
+              >
+                <GitBranch size={11} aria-hidden="true" />
+                <span className="composer-footer-chip-label">{workspace.branch}</span>
+              </button>
+            ) : null}
             {changeSummary ? (
               <button
                 type="button"
@@ -511,7 +564,7 @@ export function SessionComposer({
             ) : null}
           </div>
         ) : null}
-        {workspace ? (
+        {workspace && !floating ? (
           <div className="composer-compact-context" ref={workspaceDetailsRef}>
             <button
               type="button"
@@ -564,24 +617,28 @@ export function SessionComposer({
                     <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
                   </button>
                 ) : null}
-                <div className="composer-compact-context-row" title={`Branch: ${workspace.branch}`}>
-                  <GitBranch size={12} aria-hidden="true" />
-                  <span className="composer-compact-context-branch">{workspace.branch}</span>
-                </div>
+                {workspace.kind === "git" ? (
+                  <div className="composer-compact-context-row" title={`Branch: ${workspace.branch}`}>
+                    <GitBranch size={12} aria-hidden="true" />
+                    <span className="composer-compact-context-branch">{workspace.branch}</span>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
         ) : null}
-        <button
-          className="composer-tool"
-          type="button"
-          title="Attach file"
-          aria-label="Attach file"
-          disabled={!canSend || isSending}
-          onClick={openFilePicker}
-        >
-          <Plus size={14} />
-        </button>
+        {floating ? null : (
+          <button
+            className="composer-tool"
+            type="button"
+            title="Attach file"
+            aria-label="Attach file"
+            disabled={!canSend || isSending}
+            onClick={openFilePicker}
+          >
+            <Plus size={14} />
+          </button>
+        )}
         <span className="session-toolbar-spacer" />
         {session ? (
           <div className="composer-chips-group composer-chips-mode">
@@ -599,30 +656,19 @@ export function SessionComposer({
           </div>
         ) : null}
         {session && session.state === "running" ? (
-          // Stop keeps the far-right slot it has always had, so a mid-turn
-          // reach for "make it stop" never turns into an unintended send.
-          <div className="composer-send-group">
-            <button
-              className="session-send-button"
-              type="button"
-              disabled={!canSend || isSending || sendingQueuedMessageId !== null || !input.trim()}
-              title="Send now, interrupting the current turn"
-              aria-label="Send now"
-              onClick={() => void sendNow()}
-            >
-              <Send size={12} aria-hidden="true" />
-            </button>
-            <button
-              className="session-send-button session-stop-button"
-              type="button"
-              title="Stop session"
-              aria-label="Stop session"
-              disabled={sendingQueuedMessageId !== null}
-              onClick={() => void onTerminateSession(session.id)}
-            >
-              <Square size={9} fill="currentColor" strokeWidth={0} />
-            </button>
-          </div>
+          // One control while running: Stop. Enter queues the follow-up, and
+          // interrupting is the queued chip's explicit "Send now" — a second
+          // send button here made the running state read as a puzzle.
+          <button
+            className="session-send-button session-stop-button"
+            type="button"
+            title="Stop session"
+            aria-label="Stop session"
+            disabled={sendingQueuedMessageId !== null}
+            onClick={() => void onTerminateSession(session.id)}
+          >
+            <Square size={9} fill="currentColor" strokeWidth={0} />
+          </button>
         ) : (() => {
           const sendDisabled = !canSend || isSending || !input.trim();
           const sendTitle = isQueueing
@@ -642,8 +688,16 @@ export function SessionComposer({
         })()}
       </div>
       {status ? (
-        <p className="composer-status" role="status">
-          {status}
+        // Keyed on kind so a role swap remounts the live region — screen
+        // readers don't reliably notice role changing in place.
+        <p
+          key={status.kind}
+          className="composer-status"
+          data-status={status.kind}
+          role={status.kind === "error" ? "alert" : "status"}
+        >
+          {status.kind === "error" ? <span className="composer-status-dot" aria-hidden="true" /> : null}
+          {status.message}
         </p>
       ) : null}
       <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />

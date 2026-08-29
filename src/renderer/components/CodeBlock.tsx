@@ -84,7 +84,7 @@ export function CodeBlock({
 }): JSX.Element {
   const fenceTag = useMemo(() => extractFenceTag(className), [className]);
   const codeText = useMemo(() => collectText(children).replace(/\n$/, ""), [children]);
-  const [copied, copy] = useCopyToClipboard();
+  const [copyFlash, copy] = useCopyToClipboard();
   const ready = useHighlighterReady();
   const streaming = useContext(StreamingCodeContext);
   const lang = useMemo(() => (ready ? resolveFenceLang(fenceTag) : null), [ready, fenceTag]);
@@ -107,10 +107,10 @@ export function CodeBlock({
           type="button"
           className="code-block-copy"
           aria-label="Copy code"
-          title={copied ? "Copied!" : "Copy code"}
+          title={copyFlash === "copied" ? "Copied!" : copyFlash === "failed" ? "Couldn't copy" : "Copy code"}
           onClick={handleCopy}
         >
-          {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
+          {copyFlash === "copied" ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
         </button>
       </div>
       <pre className={className ?? ""}>

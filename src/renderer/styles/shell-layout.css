@@ -320,6 +320,18 @@
 .rail-actions .small-icon {
   width: var(--sidebar-action-size);
   height: var(--sidebar-action-size);
+  /* Rest hidden like the collapse chevron: header affordances appear when the
+     row is hovered or holds focus, so the rail stays quiet at rest. */
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.project-row:hover .rail-actions .small-icon,
+.project-row:focus-within .rail-actions .small-icon,
+.rail-heading:hover .rail-actions .small-icon,
+.rail-heading:focus-within .rail-actions .small-icon,
+.rail-actions .small-icon[aria-expanded="true"] {
+  opacity: 1;
 }
 
 /* Without a title bar above it, the first group owns the breathing room under
@@ -366,9 +378,8 @@
 
 /* The … / + cluster beside it is always visible, so a hover-only chevron would
    read as a gap in the header. Show it with the row. */
-.session-date-row-lead .project-visibility {
-  opacity: 1;
-}
+/* The lead row's chevron rests hidden like every other header affordance;
+   hovering the row reveals it (see the .project-row:hover rules below). */
 
 /* Pinned and Priority headers collapse exactly like a recency bucket: same
    chrome, same chevron tucked inside the label, same pointer affordance. They

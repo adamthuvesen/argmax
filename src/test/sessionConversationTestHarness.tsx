@@ -96,6 +96,7 @@ export const workspace: WorkspaceSummary = {
   path: "/tmp/worktrees/dashboard",
   state: "running",
   sharedWorkspace: false,
+  kind: "git",
   dirty: false,
   changedFiles: 0,
   lastActivityAt: "2026-05-12T15:54:00.000Z",
@@ -162,6 +163,11 @@ export function renderConversation(
     onTerminateSession?: ReturnType<typeof vi.fn>;
     onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
     onOpenAgent?: (tool: ToolCall) => void;
+    onOpenSideChat?: (seedPrompt: string) => Promise<void>;
+    onOpenDetails?: (seedPrompt: string) => Promise<void>;
+    registerAnnotationSink?: Parameters<
+      typeof SessionConversation
+    >[0]["registerAnnotationSink"];
     review?: ReviewState;
   } = {}
 ) {
@@ -180,6 +186,11 @@ export function renderConversation(
       {...(options.defaultToolCallGroupsExpanded !== undefined ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
       {...(options.onOpenAgent ? { onOpenAgent: options.onOpenAgent } : {})}
+      {...(options.onOpenSideChat ? { onOpenSideChat: options.onOpenSideChat } : {})}
+      {...(options.onOpenDetails ? { onOpenDetails: options.onOpenDetails } : {})}
+      {...(options.registerAnnotationSink
+        ? { registerAnnotationSink: options.registerAnnotationSink }
+        : {})}
       project={project}
       rawOutputs={[]}
       review={options.review ?? reviewStub()}

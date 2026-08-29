@@ -3,7 +3,6 @@ import { Fragment, useEffect, useRef, useState, type CSSProperties, type JSX } f
 import {
   clampEffort,
   DEFAULT_REASONING_EFFORT,
-  PROVIDER_MODEL_DEFAULTS,
   PROVIDER_MODELS,
   reasoningEffortsForModel,
   type ProviderModelSelection,
@@ -18,6 +17,7 @@ import { PickerFilterRow } from "./PickerFilterRow.js";
 import {
   allModelOptions,
   effortLabel,
+  factoryLaunchModel,
   modelSupportsFastMode,
   providerModelKey,
   modelKey,
@@ -643,6 +643,7 @@ export function CombinedModelSelector({
     (model) => model.provider === value.provider && model.modelId === value.modelId
   );
   const selectedReasoningEffort = value.reasoningEffort ?? matched?.reasoningEffort;
+  const fallback = factoryLaunchModel();
   const selectedValue: ModelPickerSelection = matched
     ? {
         provider: matched.provider,
@@ -650,17 +651,7 @@ export function CombinedModelSelector({
         modelId: matched.modelId,
         ...(selectedReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {})
       }
-    : {
-        provider: "codex",
-        label: PROVIDER_MODEL_DEFAULTS.codex.label,
-        modelId: PROVIDER_MODEL_DEFAULTS.codex.modelId,
-        ...(PROVIDER_MODEL_DEFAULTS.codex.supportsReasoningEffort
-          ? {
-              reasoningEffort:
-                PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort ?? DEFAULT_REASONING_EFFORT
-            }
-          : {})
-      };
+    : fallback;
 
   return (
     <LaunchModelSelector

@@ -177,6 +177,16 @@
   font-weight: 500;
 }
 
+.file-tab-close-prompt-error {
+  flex: 1;
+  min-width: 0;
+  color: var(--rose);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .file-tab-close-prompt-actions {
   display: inline-flex;
   align-items: center;
@@ -947,4 +957,126 @@
 .project-knowledge-delete:hover {
   color: #b3261e;
   border-color: #b3261e;
+}
+
+/* ---- Diff line comments (review panel) ---- */
+
+/* The hover "+" covers the sticky line-number gutter, Codex-style: the number
+   fades out and the affordance takes its cell, so nothing shifts. */
+.diff-comment-add {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--panel-sunken);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.diff-line:hover .diff-comment-add {
+  opacity: 1;
+}
+
+.diff-comment-add:hover {
+  color: var(--text);
+}
+
+/* Inline comment form under the target line. Sticky-left so it stays visible
+   while the (max-content wide) diff scrolls horizontally. */
+.diff-comment-form {
+  position: sticky;
+  left: 8px;
+  display: grid;
+  gap: 8px;
+  width: min(440px, 60vw);
+  margin: 8px;
+  padding: 10px 12px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  /* The form sits inside the diff's monospace context; the UI chrome reads
+     in the app face, only the file:line stays code. */
+  font-family: var(--font-ui);
+}
+
+.diff-comment-form-location {
+  color: var(--muted);
+  font-family: var(--font-code);
+  font-size: var(--text-2xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-comment-form textarea {
+  width: 100%;
+  min-height: 56px;
+  resize: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  transition: border-color var(--duration-fast) var(--ease);
+}
+
+.diff-comment-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.diff-comment-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.diff-comment-cancel,
+.diff-comment-submit {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs-plus);
+  padding: 5px 12px;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.diff-comment-cancel {
+  background: transparent;
+  color: var(--muted);
+}
+
+.diff-comment-cancel:hover {
+  color: var(--text);
+}
+
+.diff-comment-submit {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+
+.diff-comment-submit:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.diff-comment-submit:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

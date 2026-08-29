@@ -276,7 +276,7 @@ describe("ReviewPanel file tabs", () => {
       tabs: [{ path: "src/index.ts", isDirty: true, saveState: "idle", externalChange: false }],
       activeTabPath: "src/index.ts",
       selectedPath: "src/index.ts",
-      dirtyClosePrompt: { path: "src/index.ts" },
+      dirtyClosePrompt: { path: "src/index.ts", saveError: null },
       saveDirtyTabAndClose,
       discardDirtyTabAndClose,
       cancelDirtyTabClose

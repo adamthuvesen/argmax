@@ -409,6 +409,7 @@ fn seed_project_and_workspace(db: &Database) {
             path: "/tmp/repo".to_owned(),
             state: "idle".to_owned(),
             shared_workspace: false,
+            kind: "git".to_string(),
             dirty: false,
             changed_files: 0,
         },

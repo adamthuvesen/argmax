@@ -33,6 +33,14 @@ const PONG_TIMEOUT_MS = 8_000;
 
 const PING_FRAME = JSON.stringify({ type: "ping" });
 
+/**
+ * Rejection message for requests whose socket died before the answer arrived.
+ * Backgrounding the phone kills the socket on every app switch, so toast
+ * surfaces match on this and stay quiet — the connection banner already covers
+ * it, and the transport reconnects on its own.
+ */
+export const REMOTE_CONNECTION_LOST_MESSAGE = "Argmax remote connection lost";
+
 /** The socket handle the transport drives; the browser `WebSocket` is wrapped. */
 export interface RemoteSocket {
   send(data: string): void;
@@ -290,7 +298,7 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     // Queued requests were never sent, so they ride the reconnect. In-flight
     // ones lost their answer and have to fail.
     for (const request of inFlight.values()) {
-      request.reject(new Error("Argmax remote connection lost"));
+      request.reject(new Error(REMOTE_CONNECTION_LOST_MESSAGE));
     }
     inFlight.clear();
     publishConnection({ status: "offline", resync: false });

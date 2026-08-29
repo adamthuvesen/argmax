@@ -57,6 +57,7 @@ fn seed_project_and_workspace(
                 path: repo_path.to_owned(),
                 state: "running".to_owned(),
                 shared_workspace: false,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },
@@ -371,6 +372,185 @@ async fn branch_mode_falls_back_to_working_tree_when_base_and_default_gone() {
     .await
     .expect("review should fall back to working tree when no ref resolves");
 
+    assert_eq!(
+        files
+            .iter()
+            .map(|file| (file.status.as_str(), file.path.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("M", "src/index.ts")],
+    );
+}
+
+#[tokio::test]
+async fn branch_mode_skips_head_equivalent_base_ref() {
+    // Shared-checkout sessions used to persist the current branch as base_ref.
+    // merge-base(feature, HEAD) is empty on a clean tree. Review must skip that
+    // and compare against the project default instead.
+    let repo = seed_git_repo(&[("src/index.ts", "export const value = 1;\n")]);
+    run_git(repo.path(), &["branch", "-M", "main"]);
+    run_git(repo.path(), &["checkout", "-b", "feature"]);
+    std::fs::write(
+        repo.path().join("src/index.ts"),
+        "export const value = 2;\n",
+    )
+    .unwrap();
+    run_git(repo.path(), &["commit", "-am", "feature change"]);
+
+    let database = seed_project_and_workspace(
+        &repo.path().display().to_string(),
+        Some("main"),
+        "feature",
+        "feature",
+    );
+    let repo_path = repo.path().display().to_string();
+
+    let branch_files = list_changed_files(
+        &database,
+        WorkspaceTargetKind::Workspace,
+        "ws-review",
+        ReviewComparison::Branch,
+    )
+    .await
+    .expect("branch review should skip HEAD-equivalent base_ref");
+    assert_eq!(
+        branch_files
+            .iter()
+            .map(|file| (file.status.as_str(), file.path.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("M", "src/index.ts")],
+    );
+
+    let committed_files = list_changed_files(
+        &database,
+        WorkspaceTargetKind::Workspace,
+        "ws-review",
+        ReviewComparison::Committed,
+    )
+    .await
+    .expect("committed review should skip HEAD-equivalent base_ref");
+    assert_eq!(
+        committed_files
+            .iter()
+            .map(|file| (file.status.as_str(), file.path.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("M", "src/index.ts")],
+    );
+
+    let working_files = list_changed_files(
+        &database,
+        WorkspaceTargetKind::Workspace,
+        "ws-review",
+        ReviewComparison::WorkingTree,
+    )
+    .await
+    .expect("working-tree review");
+    assert!(working_files.is_empty(), "working tree is clean");
+
+    // Same trap on the launcher: default_branch recorded as the topic branch.
+    let project_db = seed_project_and_workspace(&repo_path, Some("feature"), "feature", "feature");
+    let project_files = list_changed_files(
+        &project_db,
+        WorkspaceTargetKind::Project,
+        "p-review",
+        ReviewComparison::Branch,
+    )
+    .await
+    .expect("project review should fall through to main");
+    assert_eq!(
+        project_files
+            .iter()
+            .map(|file| (file.status.as_str(), file.path.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("M", "src/index.ts")],
+    );
+}
+
+#[tokio::test]
+async fn branch_mode_prefers_origin_default_over_stale_local_main() {
+    // Local main stayed at the pre-rebase commit. origin/main moved on and
+    // the feature branch was rebased onto it. Review must use origin/main,
+    // not the stale local ref, or already-landed upstream files show up as
+    // this branch's work.
+    let repo = seed_git_repo(&[("src/index.ts", "export const value = 1;\n")]);
+    run_git(repo.path(), &["branch", "-M", "main"]);
+    run_git(repo.path(), &["checkout", "-b", "upstream"]);
+    std::fs::write(repo.path().join("upstream.txt"), "landed on main\n").unwrap();
+    run_git(repo.path(), &["add", "upstream.txt"]);
+    run_git(repo.path(), &["commit", "-m", "upstream change"]);
+    run_git(
+        repo.path(),
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+    run_git(repo.path(), &["checkout", "main"]);
+    run_git(repo.path(), &["checkout", "-b", "feature", "origin/main"]);
+    std::fs::write(
+        repo.path().join("src/index.ts"),
+        "export const value = 2;\n",
+    )
+    .unwrap();
+    run_git(repo.path(), &["commit", "-am", "feature change"]);
+
+    let database = seed_project_and_workspace(
+        &repo.path().display().to_string(),
+        Some("main"),
+        "feature",
+        "main",
+    );
+
+    let files = list_changed_files(
+        &database,
+        WorkspaceTargetKind::Workspace,
+        "ws-review",
+        ReviewComparison::Branch,
+    )
+    .await
+    .expect("review should compare against origin/main");
+    assert_eq!(
+        files
+            .iter()
+            .map(|file| (file.status.as_str(), file.path.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("M", "src/index.ts")],
+        "stale local main must not pull upstream.txt into the review",
+    );
+}
+
+#[tokio::test]
+async fn branch_mode_skips_origin_default_without_common_ancestor() {
+    let repo = seed_git_repo(&[("src/index.ts", "export const value = 1;\n")]);
+    run_git(repo.path(), &["branch", "-M", "main"]);
+    run_git(repo.path(), &["checkout", "-b", "feature"]);
+    std::fs::write(
+        repo.path().join("src/index.ts"),
+        "export const value = 2;\n",
+    )
+    .unwrap();
+    run_git(repo.path(), &["commit", "-am", "feature change"]);
+    run_git(repo.path(), &["checkout", "--orphan", "unrelated"]);
+    std::fs::write(repo.path().join("other.txt"), "unrelated history\n").unwrap();
+    run_git(repo.path(), &["add", "other.txt"]);
+    run_git(repo.path(), &["commit", "-m", "unrelated"]);
+    run_git(
+        repo.path(),
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+    run_git(repo.path(), &["checkout", "feature"]);
+
+    let database = seed_project_and_workspace(
+        &repo.path().display().to_string(),
+        Some("main"),
+        "feature",
+        "main",
+    );
+
+    let files = list_changed_files(
+        &database,
+        WorkspaceTargetKind::Workspace,
+        "ws-review",
+        ReviewComparison::Branch,
+    )
+    .await
+    .expect("review should fall back to local main when origin/main is unrelated");
     assert_eq!(
         files
             .iter()

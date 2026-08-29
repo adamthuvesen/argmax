@@ -82,9 +82,10 @@ export function saveExpandedProjectIds(projectIds: Set<string>): void {
   writeStorageJson(expandedProjectsStorageKey, [...projectIds]);
 }
 
-// Date-bucket collapse/overflow state for the "sessions" view. Keyed by bucket
-// key ("today", "last-7", "last-30", "older"). Date groups default to
-// *expanded* (empty collapsed set), unlike projects which boot collapsed.
+// Session-group collapse/overflow state for the "sessions" view. Keyed by
+// bucket key ("today", "last-7", "last-30", "older") plus "pinned" and
+// "priority". Like projects, every group except Pinned boots collapsed; the
+// Sidebar seeds that set once per launch.
 export function loadCollapsedDateGroupIds(): Set<string> {
   return new Set(loadStringArray(collapsedDateGroupsStorageKey));
 }

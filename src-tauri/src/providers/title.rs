@@ -20,7 +20,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 use super::{
-    adapters::get_provider_definition, environment::build_provider_environment, ProviderId,
+    adapters::get_provider_definition, environment::build_provider_environment,
+    opencode_isolation::IsolatedOpenCodeData, ProviderId,
 };
 
 /// Generous upper bound — a cold CLI start (auth refresh, model spin-up) can
@@ -152,7 +153,21 @@ fn title_command(provider: ProviderId, model_id: &str, instruction: &str) -> Tit
 
 async fn run_capture(provider: ProviderId, command: TitleCommand) -> Option<String> {
     let binary = get_provider_definition(provider).binary_name;
-    let env = build_provider_environment([("NO_COLOR".to_string(), "1".to_string())]);
+    // OpenCode helpers must not share `~/.local/share/opencode/opencode.db` with
+    // the session `opencode run` that `providers:launch` has just spawned in the
+    // background. `workspaces:autotitle` fires as soon as that IPC returns, so
+    // a shared store fails both processes with `database is locked`. Skip the
+    // title call rather than fall back to the shared file if isolation fails.
+    let isolation = if provider == ProviderId::Opencode {
+        Some(IsolatedOpenCodeData::prepare()?)
+    } else {
+        None
+    };
+    let mut overrides = vec![("NO_COLOR".to_string(), "1".to_string())];
+    if let Some(isolation) = isolation.as_ref() {
+        overrides.extend(isolation.env_overrides());
+    }
+    let env = build_provider_environment(overrides);
 
     let run = async {
         let mut child = Command::new(binary)

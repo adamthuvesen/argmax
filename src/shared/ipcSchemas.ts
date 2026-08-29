@@ -15,6 +15,7 @@ export const IPC_CHANNELS = [
   "projects:switch-branch",
   "workspaces:create-isolated",
   "workspaces:create-current",
+  "workspaces:create-scratch",
   "workspaces:refresh-status",
   "workspaces:keep",
   "workspaces:archive",

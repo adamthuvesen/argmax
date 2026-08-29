@@ -62,7 +62,7 @@ export function AgentsSettings({
           id="settings-agent-defaults-h"
           eyebrow="Session defaults"
           title="Model defaults"
-          description="Pick the model that pre-fills the launcher when you start a new session, and choose how much tool-call and thinking detail is visible by default."
+          description="Pick the model that pre-fills the launcher when you start a new session. The choice is stored for the whole app, not per project. Also choose how much tool-call and thinking detail is visible by default."
         />
         <div className="settings-card">
           <div className="settings-row">

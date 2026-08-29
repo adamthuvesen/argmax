@@ -403,6 +403,8 @@ describe("App settings", () => {
     expect(trigger.tagName).toBe("BUTTON");
     fireEvent.click(trigger);
     const listbox = await screen.findByRole("listbox", { name: "Default IDE" });
+    // Opens upward so the menu does not cover the MCP servers section below it.
+    expect(listbox).toHaveAttribute("data-placement", "above");
     fireEvent.click(within(listbox).getByRole("button", { name: "Cursor" }));
 
     await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBe("cursor"));
@@ -412,7 +414,9 @@ describe("App settings", () => {
       name: "Ask each time"
     }));
 
-    await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBeNull());
+    // "Ask each time" persists the explicit "none" sentinel — a missing key now
+    // means the factory default (Cursor), so removal would silently re-pin it.
+    await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBe("none"));
   });
 
   it("settings Permissions section persists the chosen mode and propagates it through the next launch", async () => {

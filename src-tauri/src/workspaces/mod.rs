@@ -13,7 +13,7 @@ pub mod lifecycle;
 pub mod orchestration;
 pub mod watcher;
 
-pub use orchestration::{WorkspaceService, WorkspaceServiceError};
+pub use orchestration::{WorkspaceService, WorkspaceServiceError, SCRATCH_PROJECT_ID};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]

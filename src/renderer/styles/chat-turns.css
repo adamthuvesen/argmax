@@ -280,6 +280,9 @@
   align-items: baseline;
   min-height: 0;
   padding: 4px 0 2px;
+  /* Decorative per-letter spans; selecting across them copies as one letter
+     per line, so keep the label out of text selection entirely. */
+  user-select: none;
 }
 
 .thinking-label {

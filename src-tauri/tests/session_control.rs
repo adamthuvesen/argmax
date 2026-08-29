@@ -103,6 +103,7 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
                 path: repo.path().display().to_string(),
                 state: "running".to_string(),
                 shared_workspace: true,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },

@@ -288,8 +288,7 @@ button.composer-compact-context-row:hover,
     display: none;
   }
 
-  .session-input-toolbar .session-send-button,
-  .session-input-toolbar .composer-send-group {
+  .session-input-toolbar .session-send-button {
     grid-area: send;
     justify-self: end;
   }
@@ -430,6 +429,59 @@ button.composer-compact-context-row:hover,
 
 .composer-attachment-remove:hover {
   background: rgba(31, 28, 24, 0.92);
+}
+
+/* Transcript excerpts attached via the selection toolbar. Text chips, unlike
+   the square image thumbnails above: one line of the quoted excerpt with an
+   inline remove control. */
+.composer-annotations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 6px 0;
+}
+
+.composer-annotation-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 3px 6px 3px 8px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--text-soft);
+  font-size: var(--text-xs);
+  min-width: 0;
+}
+
+.composer-annotation-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.composer-annotation-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.composer-annotation-remove:hover {
+  color: var(--text);
+  background: var(--panel-sunken);
 }
 
 /* Makes a thumbnail (composer chip or sent-message figure) a clickable
@@ -875,13 +927,4 @@ button.composer-compact-context-row:hover,
 
 .session-stop-button:hover:not(:disabled) {
   background-color: var(--stop-hover);
-}
-
-/* Mid-turn the toolbar carries both controls: Send interrupts the live turn and
-   delivers the draft, Stop only cancels. Stop keeps the far-right slot. */
-.composer-send-group {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 6px;
 }

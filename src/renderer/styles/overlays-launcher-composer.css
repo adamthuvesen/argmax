@@ -251,15 +251,15 @@
 }
 
 .toast-error {
-  color: #6f2a32;
+  color: var(--rose);
   background: var(--rose-soft);
-  border: 1px solid #e7b3b8;
+  border: 1px solid color-mix(in srgb, var(--rose) 35%, transparent);
 }
 
 .toast-info {
-  color: #2a4035;
+  color: var(--sage-deep);
   background: var(--sage-soft);
-  border: 1px solid #bcd4c2;
+  border: 1px solid color-mix(in srgb, var(--sage) 30%, transparent);
 }
 
 .toast button {

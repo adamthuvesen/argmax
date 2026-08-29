@@ -105,6 +105,20 @@ pub static WORKSPACE_CUSTOM_ICON_COLUMNS: phf::Map<&'static str, &'static [&'sta
     ] as &'static [&'static str],
 };
 
+// Post-v15 `workspaces` shape: v12 plus `kind`. 'git' is a workspace on a real
+// project checkout (worktree or shared); 'scratch' is a repo-less side chat
+// backed by an app-owned scratch directory; 'popup' is an ephemeral scratch
+// used by the "More details" popup, excluded from the sidebar and prunable.
+pub static WORKSPACE_KIND_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "icon",
+        "icon_color", "id", "kind", "last_activity_at", "path", "pinned",
+        "priority_added_at", "priority_dismissed_at", "project_id",
+        "shared_workspace", "state", "task_label", "task_label_auto",
+        "updated_at",
+    ] as &'static [&'static str],
+};
+
 // Post-v9 `approvals` shape: provider-native requests retain the opaque
 // correlation id required to make replay idempotent across terminal states.
 pub static APPROVAL_PROVIDER_REQUEST_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -298,7 +312,23 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &PROJECT_DEFAULT_MODEL_ID_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 15,
+        name: "workspace_kind",
+        up: WORKSPACE_KIND,
+        affected_tables: &["workspaces"],
+        expected_columns: &WORKSPACE_KIND_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Distinguishes real project checkouts ('git') from app-owned scratch
+// directories that back repo-less side chats ('scratch') and the ephemeral
+// "More details" popup ('popup'). Existing rows are all real checkouts.
+const WORKSPACE_KIND: &str = r#"
+ALTER TABLE workspaces ADD COLUMN kind TEXT NOT NULL DEFAULT 'git'
+  CHECK (kind IN ('git', 'scratch', 'popup'));
+"#;
 
 // The per-project default model previously stored only its display label,
 // which nothing could resolve to a launchable model id on the Rust side. The
@@ -912,7 +942,7 @@ mod tests {
             .expect("projects");
         verify_table_columns(&connection, &PRIORITY_DISMISSAL_COLUMNS, "sessions")
             .expect("sessions");
-        verify_table_columns(&connection, &WORKSPACE_CUSTOM_ICON_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
             &connection,
@@ -973,6 +1003,7 @@ mod tests {
                     compute_migration_checksum(EVENTS_RESTART_RECOVERY_INDEX)
                 ),
                 (14, compute_migration_checksum(PROJECT_DEFAULT_MODEL_ID)),
+                (15, compute_migration_checksum(WORKSPACE_KIND)),
             ]
         );
 
@@ -1069,7 +1100,7 @@ mod tests {
         run_migrations(&mut connection).expect("first migrate");
         run_migrations(&mut connection).expect("second migrate");
 
-        verify_table_columns(&connection, &WORKSPACE_CUSTOM_ICON_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
             .expect("head workspace shape");
     }
 

@@ -773,6 +773,7 @@ fn workspace_input() -> PersistWorkspaceInput {
         path: "/tmp/repo/.worktrees/w1".to_owned(),
         state: "running".to_owned(),
         shared_workspace: false,
+        kind: "git".to_string(),
         dirty: false,
         changed_files: 0,
     }

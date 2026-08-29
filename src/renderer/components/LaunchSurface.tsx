@@ -1,4 +1,4 @@
-import { ChevronDown, Folder, GitBranch, MoreHorizontal, Play, Plus, X } from "lucide-react";
+import { ChevronDown, Folder, GitBranch, MessagesSquare, MoreHorizontal, Play, Plus, X } from "lucide-react";
 import {
   Suspense,
   lazy,
@@ -12,11 +12,12 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { createPortal } from "react-dom";
-import type {
-  AgentMode,
-  ComposerAttachment,
-  DiscoveredProvider,
-  ProjectSummary
+import {
+  SCRATCH_PROJECT_ID,
+  type AgentMode,
+  type ComposerAttachment,
+  type DiscoveredProvider,
+  type ProjectSummary
 } from "../../shared/types.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import {
@@ -33,8 +34,9 @@ import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
+import { pickLauncherHeading } from "../lib/launcherHeadings.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
-import { modelDefaultForProvider, preferredLaunchProvider, type ModelPickerSelection } from "../lib/models.js";
+import { preferredLaunchModel, type ModelPickerSelection } from "../lib/models.js";
 import { AGENT_MODE_LABELS, toggleAgentMode } from "../lib/agentMode.js";
 import {
   readStoredWorkspaceMode,
@@ -75,13 +77,16 @@ export function LaunchSurface({
   onBranchSwitch,
   onFastModeEnabledChange,
   onLaunchTask,
+  onLaunchSideChat,
   onModelChange,
   onSelectProject,
+  onSideChatModeChange,
   project,
   projects,
   resetSignal,
   rightPanelToggleSignal,
-  registerPaletteFileContext
+  registerPaletteFileContext,
+  sideChatMode = false
 }: {
   fastModeEnabled?: boolean;
   pixelFieldEnabled?: boolean;
@@ -96,8 +101,15 @@ export function LaunchSurface({
     workspaceMode: WorkspaceMode,
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
+  onLaunchSideChat?: (
+    prompt: string,
+    model: ModelPickerSelection,
+    agentMode: AgentMode,
+    attachments?: ComposerAttachment[]
+  ) => Promise<void>;
   onModelChange: (model: ModelPickerSelection) => void;
   onSelectProject: (id: string) => void;
+  onSideChatModeChange?: (active: boolean) => void;
   project: ProjectSummary | null;
   projects: ProjectSummary[];
   resetSignal?: number;
@@ -105,11 +117,24 @@ export function LaunchSurface({
   registerPaletteFileContext?: (
     context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
   ) => void;
+  sideChatMode?: boolean;
 }): JSX.Element {
+  // Side chat is the repo-less flavor of this surface: same composer and
+  // model picker, but no project, branch, worktree, or review chrome. The
+  // selected project stays untouched behind the mode so switching back is
+  // instant; every repo-coupled hook below reads `activeProject` instead of
+  // `project` so chat mode disables them without unmounting the surface.
+  const chatMode = sideChatMode && onLaunchSideChat !== undefined;
+  const activeProject = chatMode ? null : project;
   // The unsent prompt and its screenshots belong to the project they will be
   // launched in, not to the mounted launcher: a grid cell that retargets its
-  // repo remounts, and the full launcher outlives an app restart.
-  const draftKey = project ? launcherDraftKey(project.id) : null;
+  // repo remounts, and the full launcher outlives an app restart. Side-chat
+  // drafts get their own stable key under the hidden scratch project.
+  const draftKey = chatMode
+    ? launcherDraftKey(SCRATCH_PROJECT_ID)
+    : project
+      ? launcherDraftKey(project.id)
+      : null;
   const [prompt, setPrompt] = useComposerDraft(draftKey);
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -125,7 +150,7 @@ export function LaunchSurface({
     clearAttachments
   } = useComposerAttachments({
     draftKey,
-    workspacePath: project?.repoPath ?? null,
+    workspacePath: activeProject?.repoPath ?? null,
     setInput: setPrompt,
     setStatus
   });
@@ -159,27 +184,32 @@ export function LaunchSurface({
 
   // If the pre-filled selection points at a provider that isn't usable — CLI
   // not installed, or installed but not logged in — steer to the highest-
-  // priority usable provider's default (Claude → Codex → Cursor → OpenCode
-  // fallback) so the composer isn't stuck on an unlaunchable pick. Runs once when discovery
-  // resolves; picks the user makes afterwards are never overridden.
+  // priority usable provider's default (Claude → Codex → Cursor → OpenCode,
+  // else Big Pickle) so the composer isn't stuck on an unlaunchable pick.
+  // Skip an empty discovery result: that is "we learned nothing", not "nothing
+  // is installed", and must not overwrite the factory seed. Runs once when
+  // discovery resolves; picks the user makes afterwards are never overridden.
   const providerSteeringDone = useRef(false);
+  const surfaceReady = chatMode || project !== null;
   useEffect(() => {
-    if (!project || !discoveredProviders || providerSteeringDone.current) return;
+    if (!surfaceReady || !discoveredProviders || discoveredProviders.length === 0 || providerSteeringDone.current) {
+      return;
+    }
     providerSteeringDone.current = true;
     const current = discoveredProviders.find((entry) => entry.provider === model.provider);
-    if (!current || (current.installed && current.authenticated !== false)) return;
-    const preferred = preferredLaunchProvider(discoveredProviders);
-    if (!preferred || preferred === model.provider) return;
-    onModelChange({ provider: preferred, ...modelDefaultForProvider(preferred) });
-  }, [project, discoveredProviders, model.provider, onModelChange]);
+    if (current?.installed && current.authenticated !== false) return;
+    const preferred = preferredLaunchModel(discoveredProviders);
+    if (preferred.provider === model.provider && preferred.modelId === model.modelId) return;
+    onModelChange(preferred);
+  }, [surfaceReady, discoveredProviders, model.provider, model.modelId, onModelChange]);
 
   // Changes + Files panel against the selected project's main checkout. Lets
   // the user inspect and edit files before starting a session. Cmd/Ctrl+B
   // toggles it (same shortcut as inside a session); no menu icon today, just
   // the keyboard shortcut.
   const reviewSource = useMemo<ReviewSource | null>(
-    () => (project ? { kind: "project", project } : null),
-    [project]
+    () => (activeProject ? { kind: "project", project: activeProject } : null),
+    [activeProject]
   );
   const reviewState = useReviewState(reviewSource);
   const reviewOpenPanelInFilesMode = reviewState.openPanelInFilesMode;
@@ -187,6 +217,9 @@ export function LaunchSurface({
   const reviewClosePanel = reviewState.closePanel;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
   const reviewMode = reviewState.mode;
+  // Drawn once per visit to the surface, so the line stays put while the user
+  // types instead of changing on every render.
+  const [heading, setHeading] = useState(pickLauncherHeading);
   const lastResetSignal = useRef(resetSignal);
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
 
@@ -195,16 +228,16 @@ export function LaunchSurface({
   // on unmount or when no project is selected.
   useEffect(() => {
     if (!registerPaletteFileContext) return undefined;
-    if (!project) {
+    if (!activeProject) {
       registerPaletteFileContext(null);
       return () => registerPaletteFileContext(null);
     }
     registerPaletteFileContext({
-      source: { kind: "project", id: project.id },
+      source: { kind: "project", id: activeProject.id },
       onPick: reviewOpenInFilesView
     });
     return () => registerPaletteFileContext(null);
-  }, [project, registerPaletteFileContext, reviewOpenInFilesView]);
+  }, [activeProject, registerPaletteFileContext, reviewOpenInFilesView]);
   const toggleReviewPanel = useCallback((): void => {
     if (reviewIsPanelOpen) {
       reviewClosePanel();
@@ -214,7 +247,7 @@ export function LaunchSurface({
   }, [reviewClosePanel, reviewIsPanelOpen, reviewOpenPanelInFilesMode]);
 
   useEffect(() => {
-    if (!project) return undefined;
+    if (!activeProject) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.shiftKey || event.altKey) return;
@@ -235,23 +268,24 @@ export function LaunchSurface({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [project, reviewClosePanel, reviewIsPanelOpen, reviewMode, reviewOpenPanelInFilesMode, toggleReviewPanel]);
+  }, [activeProject, reviewClosePanel, reviewIsPanelOpen, reviewMode, reviewOpenPanelInFilesMode, toggleReviewPanel]);
 
   useEffect(() => {
     if (resetSignal === lastResetSignal.current) return;
     lastResetSignal.current = resetSignal;
+    setHeading(pickLauncherHeading());
     reviewClosePanel();
   }, [resetSignal, reviewClosePanel]);
 
   useEffect(() => {
     if (rightPanelToggleSignal === lastRightPanelToggleSignal.current) return;
     lastRightPanelToggleSignal.current = rightPanelToggleSignal;
-    if (!project) return;
+    if (!activeProject) return;
     toggleReviewPanel();
-  }, [project, rightPanelToggleSignal, toggleReviewPanel]);
+  }, [activeProject, rightPanelToggleSignal, toggleReviewPanel]);
 
   useEffect(() => {
-    if (!project || !reviewIsPanelOpen) return undefined;
+    if (!activeProject || !reviewIsPanelOpen) return undefined;
     const handler = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
       if (isTypingTarget(event.target)) return;
@@ -260,7 +294,7 @@ export function LaunchSurface({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [project, reviewClosePanel, reviewIsPanelOpen]);
+  }, [activeProject, reviewClosePanel, reviewIsPanelOpen]);
 
   useDismissOnOutsideOrEscape(projectPickerRef, projectPickerOpen, () => setProjectPickerOpen(false));
   useDismissOnOutsideOrEscape(branchPickerRef, branchPickerOpen, () => setBranchPickerOpen(false));
@@ -293,8 +327,8 @@ export function LaunchSurface({
   // checked out. Keyed on id + branch (not the whole project) so unrelated
   // dashboard deltas don't trigger a git shellout; only pushes an update when
   // the branch actually moved.
-  const projectId = project?.id ?? null;
-  const knownBranch = project?.currentBranch ?? null;
+  const projectId = activeProject?.id ?? null;
+  const knownBranch = activeProject?.currentBranch ?? null;
   useEffect(() => {
     if (!window.argmax || !projectId) return undefined;
     let cancelled = false;
@@ -314,41 +348,47 @@ export function LaunchSurface({
   }, [projectId, knownBranch, onBranchSwitch]);
 
   const openBranchPicker = useCallback(async (): Promise<void> => {
-    if (!window.argmax || !project) return;
+    if (!window.argmax || !activeProject) return;
     try {
-      const list = await window.argmax.projects.listBranches(project.id);
-      const otherBranches = list.filter((branch) => branch !== project.currentBranch);
+      const list = await window.argmax.projects.listBranches(activeProject.id);
+      const otherBranches = list.filter((branch) => branch !== activeProject.currentBranch);
       setBranches(otherBranches);
       setBranchPickerOpen(true);
     } catch (error) {
       setBranchPickerOpen(false);
       setStatus(error instanceof Error ? error.message : "Could not load branches.");
     }
-  }, [project]);
+  }, [activeProject]);
 
   const switchBranch = useCallback(async (branch: string): Promise<void> => {
-    if (!window.argmax || !project) return;
+    if (!window.argmax || !activeProject) return;
     setBranchPickerOpen(false);
     setCompactContextOpen(false);
     try {
-      const updated = await window.argmax.projects.switchBranch(project.id, branch);
+      const updated = await window.argmax.projects.switchBranch(activeProject.id, branch);
       onBranchSwitch(updated);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not switch branch.");
     }
-  }, [project, onBranchSwitch]);
+  }, [activeProject, onBranchSwitch]);
   // Typing into an open picker filters it through useTypeToFilter. The lists take
   // focus while open, so characters land here instead of in the prompt behind.
   const projectListRef = useRef<HTMLUListElement | null>(null);
   const branchListRef = useRef<HTMLUListElement | null>(null);
   const pickProject = useCallback(
     (candidate: ProjectSummary): void => {
+      onSideChatModeChange?.(false);
       onSelectProject(candidate.id);
       setProjectPickerOpen(false);
       setCompactContextOpen(false);
     },
-    [onSelectProject]
+    [onSelectProject, onSideChatModeChange]
   );
+  const pickSideChat = useCallback((): void => {
+    onSideChatModeChange?.(true);
+    setProjectPickerOpen(false);
+    setCompactContextOpen(false);
+  }, [onSideChatModeChange]);
   const projectFilter = useTypeToFilter({
     open: projectPickerOpen,
     items: projects,
@@ -364,7 +404,9 @@ export function LaunchSurface({
     onPick: (branch: string) => void switchBranch(branch)
   });
 
-  const placeholderText = "Ask your agent to inspect, build, or fix something";
+  const placeholderText = chatMode
+    ? "Ask anything — no repository attached"
+    : "Ask your agent to inspect, build, or fix something";
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
   useAutoGrowTextArea(promptInputRef, prompt, PROMPT_MAX_HEIGHT_PX);
@@ -378,12 +420,14 @@ export function LaunchSurface({
   // first visit, on project switch, and again whenever the right-side
   // review panel closes, so the user can keep typing without clicking.
   useEffect(() => {
-    if (!project || reviewIsPanelOpen || isSubmitting) return;
+    if ((!activeProject && !chatMode) || reviewIsPanelOpen || isSubmitting) return;
     // An open picker holds focus to filter keystrokes; a re-render behind it
     // (a dashboard delta re-identifying the project) must not yank that away.
     if (contextPickerOpenRef.current) return;
     promptInputRef.current?.focus();
-  }, [project, reviewIsPanelOpen, isSubmitting]);
+    // `activeProject` (a fresh object per switch) keeps the "refocus on
+    // project switch" behavior; a collapsed boolean would only fire once.
+  }, [activeProject, chatMode, reviewIsPanelOpen, isSubmitting]);
   const slashAutocomplete = useSlashAutocomplete({
     input: prompt,
     setInput: setPrompt,
@@ -395,7 +439,7 @@ export function LaunchSurface({
     input: prompt,
     setInput: setPrompt,
     inputRef: promptInputRef,
-    source: project ? { kind: "project", id: project.id } : null
+    source: activeProject ? { kind: "project", id: activeProject.id } : null
   });
 
   const onPromptKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
@@ -427,13 +471,12 @@ export function LaunchSurface({
     setIsSubmitting(true);
     setStatus(null);
     try {
-      await onLaunchTask(
-        finalPrompt,
-        model,
-        agentMode,
-        workspaceMode,
-        pendingAttachments.length > 0 ? pendingAttachments : undefined
-      );
+      const attachments = pendingAttachments.length > 0 ? pendingAttachments : undefined;
+      if (chatMode && onLaunchSideChat) {
+        await onLaunchSideChat(finalPrompt, model, agentMode, attachments);
+      } else {
+        await onLaunchTask(finalPrompt, model, agentMode, workspaceMode, attachments);
+      }
       if (draftKey) clearDraft(draftKey);
       setPrompt("");
       clearAttachments();
@@ -444,7 +487,7 @@ export function LaunchSurface({
     }
   };
 
-  if (!project) {
+  if (!project && !chatMode) {
     // Fresh-install surface: setup checklist + provider discovery + the
     // disabled-until-a-provider-is-detected Add Project CTA. The component
     // owns its own discovery call so the cold-launch path doesn't pay for it
@@ -456,7 +499,14 @@ export function LaunchSurface({
     );
   }
 
-  const isReviewOpen = reviewState.isPanelOpen && project !== null;
+  const isReviewOpen = reviewState.isPanelOpen && activeProject !== null;
+  // After the WelcomePane early-return, `project` is only null in chat mode.
+  const contextSummary =
+    !chatMode && project
+      ? `Project and branch: ${project.name}, ${project.currentBranch}`
+      : "Context: side chat, no repository";
+  const contextChipLabel = chatMode ? "Side chat" : project?.name ?? "";
+  const sideChatPickerRow = Boolean(onLaunchSideChat && onSideChatModeChange);
 
   return (
     <div
@@ -475,9 +525,9 @@ export function LaunchSurface({
       <header className="launcher-hero">
         <div className="launcher-hero-meta">
           <span className="launcher-hero-dot" aria-hidden="true" />
-          <span className="launcher-hero-eyebrow">New session</span>
+          <span className="launcher-hero-eyebrow">{chatMode ? "New side chat" : "New session"}</span>
         </div>
-        <h1 className="launcher-hero-title">What are we building?</h1>
+        <h1 className="launcher-hero-title">{heading}</h1>
       </header>
       <form
         className="composer"
@@ -574,8 +624,8 @@ export function LaunchSurface({
             <button
               type="button"
               className="composer-compact-context-trigger"
-              title={`Project and branch: ${project.name}, ${project.currentBranch}`}
-              aria-label={`Project and branch: ${project.name}, ${project.currentBranch}`}
+              title={contextSummary}
+              aria-label={contextSummary}
               aria-haspopup="dialog"
               aria-expanded={compactContextOpen}
               onClick={() => {
@@ -601,11 +651,15 @@ export function LaunchSurface({
               aria-label="Switch project"
               aria-haspopup="listbox"
               aria-expanded={projectPickerOpen}
-              title={project.name}
+              title={contextChipLabel}
               onClick={() => setProjectPickerOpen((o) => !o)}
             >
-              <Folder size={14} aria-hidden="true" />
-              <span className="composer-context-chip-label">{project.name}</span>
+              {chatMode ? (
+                <MessagesSquare size={14} aria-hidden="true" />
+              ) : (
+                <Folder size={14} aria-hidden="true" />
+              )}
+              <span className="composer-context-chip-label">{contextChipLabel}</span>
               <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
             </button>
             {projectPickerOpen && (
@@ -631,13 +685,13 @@ export function LaunchSurface({
                   <li
                     key={p.id}
                     role="option"
-                    aria-selected={p.id === project.id}
+                    aria-selected={!chatMode && p.id === project?.id}
                     data-active={index === projectFilter.activeIndex ? "true" : undefined}
                   >
                     <button
                       type="button"
                       className="project-picker-item"
-                      aria-pressed={p.id === project.id}
+                      aria-pressed={!chatMode && p.id === project?.id}
                       onClick={() => pickProject(p)}
                     >
                       <Folder size={13} aria-hidden="true" />
@@ -651,6 +705,19 @@ export function LaunchSurface({
                   </li>
                 ) : null}
                 <li className="project-picker-divider" role="separator" />
+                {sideChatPickerRow ? (
+                  <li role="option" aria-selected={chatMode}>
+                    <button
+                      type="button"
+                      className="project-picker-item"
+                      aria-pressed={chatMode}
+                      onClick={pickSideChat}
+                    >
+                      <MessagesSquare size={13} aria-hidden="true" />
+                      Chat
+                    </button>
+                  </li>
+                ) : null}
                 <li role="option" aria-selected={false}>
                   <button
                     type="button"
@@ -668,6 +735,7 @@ export function LaunchSurface({
               </ul>
             )}
             </div>
+            {!chatMode && project ? (
             <div className="project-picker-anchor" ref={branchPickerRef}>
             <button
               className="composer-context-chip branch-chip"
@@ -730,6 +798,7 @@ export function LaunchSurface({
               </ul>
             )}
             </div>
+            ) : null}
             </div>
           </div>
           <button
@@ -756,20 +825,22 @@ export function LaunchSurface({
             >
               {AGENT_MODE_LABELS[agentMode]}
             </button>
-            <button
-              type="button"
-              className="composer-context-chip workspace-mode-toggle"
-              aria-label="Worktree"
-              aria-pressed={workspaceMode === "worktree"}
-              title={
-                workspaceMode === "worktree"
-                  ? "On — agent runs in an isolated git worktree on a new branch"
-                  : "Off — agent runs in your current checkout. Enable to isolate in a worktree."
-              }
-              onClick={toggleWorkspace}
-            >
-              Worktree
-            </button>
+            {chatMode ? null : (
+              <button
+                type="button"
+                className="composer-context-chip workspace-mode-toggle"
+                aria-label="Worktree"
+                aria-pressed={workspaceMode === "worktree"}
+                title={
+                  workspaceMode === "worktree"
+                    ? "On — agent runs in an isolated git worktree on a new branch"
+                    : "Off — agent runs in your current checkout. Enable to isolate in a worktree."
+                }
+                onClick={toggleWorkspace}
+              >
+                Worktree
+              </button>
+            )}
           </div>
         </div>
         {status ? (

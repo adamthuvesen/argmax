@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
-import { computePriorityEntries } from "./priority.js";
+import { computePriorityEntries, shouldDemoteOnLeave } from "./priority.js";
 
 const workspace = (id: string, overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary => ({
   id,
@@ -11,6 +11,7 @@ const workspace = (id: string, overrides: Partial<WorkspaceSummary> = {}): Works
   path: `/tmp/${id}`,
   state: "running",
   sharedWorkspace: false,
+  kind: "git",
   dirty: false,
   changedFiles: 0,
   lastActivityAt: "2026-05-12T15:54:00.000Z",
@@ -169,5 +170,74 @@ describe("computePriorityEntries", () => {
       NOW
     );
     expect(entries).toEqual([]);
+  });
+});
+
+describe("shouldDemoteOnLeave", () => {
+  it("demotes any attention-driven Priority session after it has been read", () => {
+    expect(
+      shouldDemoteOnLeave(
+        workspace("w-1"),
+        [session("w-1", "blocked", { state: "waiting" })],
+        NOW
+      )
+    ).toBe(true);
+    expect(
+      shouldDemoteOnLeave(
+        workspace("w-1"),
+        [session("w-1", "approval-needed", { state: "waiting" })],
+        NOW
+      )
+    ).toBe(true);
+    expect(
+      shouldDemoteOnLeave(workspace("w-1"), [session("w-1", "failed", { state: "failed" })], NOW)
+    ).toBe(true);
+    expect(
+      shouldDemoteOnLeave(
+        workspace("w-1"),
+        [session("w-1", "review-ready", { state: "complete" })],
+        NOW
+      )
+    ).toBe(true);
+  });
+
+  it("keeps a working session in Priority even when it also waits", () => {
+    expect(
+      shouldDemoteOnLeave(
+        workspace("w-1"),
+        [session("w-1", "approval-needed", { state: "running" })],
+        NOW
+      )
+    ).toBe(false);
+  });
+
+  it("does not demote a purely manual entry", () => {
+    expect(
+      shouldDemoteOnLeave(
+        workspace("w-1", { priorityAddedAt: "2026-05-12T16:00:00.000Z" }),
+        [session("w-1", "normal", { state: "complete" })],
+        NOW
+      )
+    ).toBe(false);
+  });
+
+  it("does not demote a wait that is already dismissed", () => {
+    expect(
+      shouldDemoteOnLeave(
+        workspace("w-1", { priorityDismissedAt: "2026-05-12T16:00:00.000Z" }),
+        [session("w-1", "blocked", { state: "waiting", attentionChangedAt: "2026-05-12T15:00:00.000Z" })],
+        NOW
+      )
+    ).toBe(false);
+  });
+
+  it("demotes again after a later wait (fresh attention after more work)", () => {
+    expect(
+      shouldDemoteOnLeave(
+        workspace("w-1", { priorityDismissedAt: "2026-05-12T16:00:00.000Z" }),
+        [session("w-1", "blocked", { state: "waiting", attentionChangedAt: "2026-05-12T17:00:00.000Z" })],
+        NOW
+      )
+    ).toBe(true);
   });
 });

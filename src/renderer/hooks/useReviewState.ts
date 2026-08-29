@@ -81,6 +81,8 @@ export interface WorkspaceFileTab {
 
 export interface WorkspaceFileDirtyClosePrompt {
   path: string;
+  /** Set when the prompt's own Save attempt failed; keeps the prompt honest. */
+  saveError: string | null;
 }
 
 export interface WorkspaceFilesState {
@@ -249,8 +251,11 @@ export function useReviewState(
       resetDiff();
       resetFileList();
       resetFilePreview();
-      setIsPanelOpen(false);
-      setMode("changes");
+      // An open panel survives a source switch (picking another project from
+      // the palette while browsing its files re-targets the view in place);
+      // the resets above already swap the content. A closed panel drops back
+      // to the "changes" default for its next open.
+      if (!panelRef.current.isPanelOpen) setMode("changes");
     }
 
     if (!sourceId || !sourceKind || !window.argmax) {

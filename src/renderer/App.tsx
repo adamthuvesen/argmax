@@ -17,8 +17,10 @@ import type {
   IdeId,
   MenuCommand,
   ProjectSummary,
+  SessionSummary,
   WorkspaceContentSearchResult
 } from "../shared/types.js";
+import { SCRATCH_PROJECT_ID } from "../shared/types.js";
 import { PROVIDER_TITLE_MODEL } from "../shared/providerModels.js";
 import type {
   MessageHit as PaletteMessageHit,
@@ -32,10 +34,12 @@ import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
 import { PerfOverlay } from "./components/PerfOverlay.js";
+import { DetailsPopup } from "./components/DetailsPopup.js";
 import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/SessionMultiGrid.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { EMPTY_GRID, MAX_COLS, openWorkspaceInGrid, terminalWorkspaceId } from "./lib/gridState.js";
+import { toggleTerminalPanel } from "./lib/terminalTabs.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
 // out of the production renderer bundle. Browser-preview mode (no Tauri
 // bridge) is the only consumer; packaged builds always have window.argmax.
@@ -55,7 +59,7 @@ import { animateThemeChange } from "./lib/theme.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import type { WorkspaceMode } from "./lib/workspaceMode.js";
 import { persistLaunchModel, readStoredLaunchModel } from "./lib/launchModelPreference.js";
-import { modelDefaultForProvider, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
+import { factoryLaunchModel, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
   PERMISSION_MODE_KEY,
@@ -90,6 +94,7 @@ import { randomSessionIcon } from "./lib/sessionIcons.js";
 import { loadDashboardSnapshot } from "./lib/loadDashboardSnapshot.js";
 import { buildPaletteCommands, buildSessionLabelById } from "./lib/buildPaletteCommands.js";
 import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
+import { usePriorityDemotion } from "./hooks/usePriorityDemotion.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 import { isTauriRuntime } from "./lib/tauriBridge.js";
@@ -98,6 +103,9 @@ import { withToast, type ToastMessage } from "./lib/withToast.js";
 
 const APP_MIN_HEIGHT_PX = 640;
 const STATIC_APP_MIN_WIDTH_PX = 1024;
+// Full new-session view hides the grid. Reuse this empty set so the sidebar
+// does not paint the still-focused pane as current. Esc restores the highlight.
+const EMPTY_OPEN_WORKSPACE_IDS = new Set<string>();
 
 function widestGridRowColumnCount(rows: unknown[][]): number {
   return rows.reduce((max, row) => Math.max(max, row.length), 0);
@@ -105,11 +113,7 @@ function widestGridRowColumnCount(rows: unknown[][]): number {
 
 export function App(): JSX.Element {
   const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(
-    () =>
-      readStoredLaunchModel() ?? {
-        provider: "codex",
-        ...modelDefaultForProvider("codex")
-      }
+    () => readStoredLaunchModel() ?? factoryLaunchModel()
   );
   const {
     isSettingsOpen,
@@ -179,10 +183,13 @@ export function App(): JSX.Element {
   // — it never persists; only the user's choice in Settings persists.
   const [isFullLauncherOpen, setIsFullLauncherOpen] = useState<boolean>(false);
   const [launcherResetSignal, setLauncherResetSignal] = useState(0);
+  // Launcher composes a repo-less side chat instead of a project session.
+  // Toggled from the launcher's context picker; armed by the sidebar's
+  // "New side chat", reset by every plain new-session entry point.
+  const [launcherSideChatMode, setLauncherSideChatMode] = useState(false);
   const [isWorkspaceDropPreviewVisible, setIsWorkspaceDropPreviewVisible] = useState(false);
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
   const [debugLogToggleSignal, setDebugLogToggleSignal] = useState(0);
-  const [terminalToggleSignal, setTerminalToggleSignal] = useState(0);
   const [sessionGridRequiredWorkspaceMinWidth, setSessionGridRequiredWorkspaceMinWidth] = useState(0);
   // The active surface (focused SessionPane, or the LaunchSurface when no
   // session is open) registers its file source + pick handler here so the
@@ -381,13 +388,24 @@ export function App(): JSX.Element {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const openNewSessionPane = useCallback((): void => {
-    if (newSessionMode === "full" && grid.rows.length > 0) {
-      setIsFullLauncherOpen(true);
-      return;
-    }
+  const openLauncherSurface = useCallback(
+    (sideChat: boolean): void => {
+      setLauncherSideChatMode(sideChat);
+      if (newSessionMode === "full" && grid.rows.length > 0) {
+        setIsFullLauncherOpen(true);
+        return;
+      }
+      openLauncherPaneInGrid();
+    },
+    [grid.rows.length, newSessionMode, openLauncherPaneInGrid]
+  );
+  const openNewSessionPane = useCallback((): void => openLauncherSurface(false), [openLauncherSurface]);
+  // "New session here" from a pane menu skips openLauncherSurface, so it
+  // resets chat mode itself before opening the in-grid launcher cell.
+  const openNewSessionPaneInGrid = useCallback((): void => {
+    setLauncherSideChatMode(false);
     openLauncherPaneInGrid();
-  }, [grid.rows.length, newSessionMode, openLauncherPaneInGrid]);
+  }, [openLauncherPaneInGrid]);
 
   const handleMenuCommand = useCallback(
     (command: MenuCommand): void => {
@@ -453,7 +471,11 @@ export function App(): JSX.Element {
     setIsSettingsOpen(false);
     setIsFullLauncherOpen(false);
     openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
-    setTerminalToggleSignal((signal) => signal + 1);
+    // Toggle the workspace-keyed store directly. An earlier design bumped a
+    // counter prop that SessionPane replayed in an effect — a remounted pane
+    // (every session switch) re-saw the historical count and flipped the
+    // persisted panel state on each visit.
+    toggleTerminalPanel(workspaceId);
   }, [
     grid,
     openWorkspaceChat,
@@ -735,6 +757,46 @@ export function App(): JSX.Element {
     [refreshDashboardStatus]
   );
 
+  usePriorityDemotion({
+    selectedWorkspaceId,
+    isSettingsOpen,
+    isFullLauncherOpen,
+    workspaces: snapshot.workspaces,
+    sessions: snapshot.sessions,
+    onDemote: (workspaceId) => {
+      void removeFromPriority(workspaceId);
+    }
+  });
+
+  // Random session icons for sessions this renderer did not launch: agent-
+  // driven session control and the mobile companion create workspaces
+  // backend-side, skipping the launch paths that call `setIcon`. When a
+  // workspace first appears in a delta without an icon, decorate it here. The
+  // renderer's own launches may race this effect and also assign one — both
+  // writes pick a random icon, so last-write-wins is indistinguishable. The
+  // first snapshot only seeds the known set: pre-existing sessions keep
+  // whatever they have.
+  const knownWorkspaceIdsForIcons = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    // Seed only from a successfully loaded snapshot: the pre-load empty
+    // snapshot and the error state's stale one would seed an empty set and
+    // then decorate every historical row once the real snapshot lands.
+    if (loadState !== "ready") return;
+    const known = knownWorkspaceIdsForIcons.current;
+    if (known === null) {
+      knownWorkspaceIdsForIcons.current = new Set(snapshot.workspaces.map((workspace) => workspace.id));
+      return;
+    }
+    for (const workspace of snapshot.workspaces) {
+      if (known.has(workspace.id)) continue;
+      known.add(workspace.id);
+      if (!randomSessionIconEnabled || workspace.icon != null || workspace.kind === "popup") continue;
+      void window.argmax?.workspaces
+        .setIcon({ workspaceId: workspace.id, ...randomSessionIcon() })
+        .catch(() => undefined);
+    }
+  }, [loadState, snapshot.workspaces, randomSessionIconEnabled]);
+
   const renameWorkspace = useCallback(
     async (workspaceId: string, taskLabel: string): Promise<void> => {
       if (!window.argmax) {
@@ -828,14 +890,30 @@ export function App(): JSX.Element {
     },
     [handleOpenInIde]
   );
+  // Session-pane "Open in <IDE>" menu action: same handler, no default pinning.
+  const onOpenWorkspaceInIdePane = useCallback(
+    (workspaceId: string, ide: IdeId): void => {
+      void handleOpenInIde(workspaceId, ide);
+    },
+    [handleOpenInIde]
+  );
+  // Every explicit "open this repository" gesture exits side-chat mode, or
+  // the launcher would ignore the repo the user just picked.
+  const openRepoProjectLauncher = useCallback(
+    (projectId: string): void => {
+      setLauncherSideChatMode(false);
+      openProjectLauncher(projectId);
+    },
+    [openProjectLauncher]
+  );
   const onOpenProjectRow = useCallback(
     (projectId: string): void => {
       setIsSettingsOpen(false);
       setIsFullLauncherOpen(false);
       setGrid(EMPTY_GRID);
-      openProjectLauncher(projectId);
+      openRepoProjectLauncher(projectId);
     },
-    [openProjectLauncher, setIsSettingsOpen, setIsFullLauncherOpen, setGrid]
+    [openRepoProjectLauncher, setIsSettingsOpen, setIsFullLauncherOpen, setGrid]
   );
   const onOpenSettingsRow = useCallback((): void => {
     openSettingsTarget("general");
@@ -873,6 +951,21 @@ export function App(): JSX.Element {
   const { sendSessionInput, cancelQueuedMessage, sendQueuedMessageNow, runCheck, terminateSession } =
     useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: fastModeEnabled });
 
+  // The hidden "Side chats" project owns scratch workspaces; it is not a
+  // repository, so every repo-picking surface (launcher, settings) sees only
+  // the real projects, and a scratch selection never retargets the launcher.
+  const realProjects = useMemo(
+    () => snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
+    [snapshot.projects]
+  );
+  const launcherProject = useMemo(
+    () =>
+      selectedProject && selectedProject.id !== SCRATCH_PROJECT_ID
+        ? selectedProject
+        : realProjects[0] ?? null,
+    [realProjects, selectedProject]
+  );
+
   const launchTask = useCallback(
     async (
       prompt: string,
@@ -907,36 +1000,46 @@ export function App(): JSX.Element {
           message: `Running setup command in the new worktree: ${launchingProject.settings.setupCommand}`
         });
       }
+      const api = window.argmax;
       let workspace =
         workspaceMode === "worktree"
-          ? await window.argmax.workspaces.createIsolated({
+          ? await api.workspaces.createIsolated({
               projectId,
               taskLabel,
               baseRef: launchingProject?.currentBranch ?? null
             })
-          : await window.argmax.workspaces.createCurrent({ projectId, taskLabel });
+          : await api.workspaces.createCurrent({ projectId, taskLabel });
 
-      if (randomSessionIconEnabled) {
-        workspace = await window.argmax.workspaces.setIcon({
+      let launchedSession: SessionSummary;
+      try {
+        if (randomSessionIconEnabled) {
+          workspace = await api.workspaces.setIcon({
+            workspaceId: workspace.id,
+            ...randomSessionIcon()
+          });
+        }
+        launchedSession = await api.providers.launch({
           workspaceId: workspace.id,
-          ...randomSessionIcon()
+          provider: model.provider,
+          prompt,
+          modelLabel: model.label,
+          modelId: model.modelId,
+          reasoningEffort: model.reasoningEffort ?? null,
+          fastMode: fastModeEnabled && modelSupportsFastMode(model),
+          agentMode,
+          permissionMode,
+          cols: 120,
+          rows: 32,
+          attachments: attachments?.length ? attachments : null
         });
+      } catch (error) {
+        // No session ever started, so the just-created workspace (and its
+        // worktree) would sit stranded in the sidebar with no explanation.
+        void api.workspaces
+          .archive({ workspaceId: workspace.id, force: true })
+          .catch(() => undefined);
+        throw error;
       }
-
-      const launchedSession = await window.argmax.providers.launch({
-        workspaceId: workspace.id,
-        provider: model.provider,
-        prompt,
-        modelLabel: model.label,
-        modelId: model.modelId,
-        reasoningEffort: model.reasoningEffort ?? null,
-        fastMode: fastModeEnabled && modelSupportsFastMode(model),
-        agentMode,
-        permissionMode,
-        cols: 120,
-        rows: 32,
-        attachments: attachments?.length ? attachments : null
-      });
 
       pendingSelectionRef.current = {
         sessionId: launchedSession.id,
@@ -991,6 +1094,243 @@ export function App(): JSX.Element {
     ]
   );
 
+  // Repo-less side chat: a scratch workspace instead of a project checkout,
+  // with no repository chrome. Launched from the chat-mode launcher (which
+  // passes its own picks) or from the transcript selection toolbar (which
+  // falls back to the launcher's current model and auto mode).
+  const launchSideChat = useCallback(
+    async (
+      prompt: string,
+      options?: {
+        model?: ModelPickerSelection;
+        agentMode?: AgentMode;
+        attachments?: ComposerAttachment[];
+      }
+    ): Promise<void> => {
+      if (!window.argmax) {
+        throw new Error("Open the Tauri app window to launch local agents.");
+      }
+      const api = window.argmax;
+      const model = options?.model ?? launchModel;
+      let workspace = await api.workspaces.createScratch({
+        taskLabel: titleFromPrompt(prompt),
+        kind: null
+      });
+      let launchedSession: SessionSummary;
+      try {
+        if (randomSessionIconEnabled) {
+          workspace = await api.workspaces.setIcon({
+            workspaceId: workspace.id,
+            ...randomSessionIcon()
+          });
+        }
+        launchedSession = await api.providers.launch({
+          workspaceId: workspace.id,
+          provider: model.provider,
+          prompt,
+          modelLabel: model.label,
+          modelId: model.modelId,
+          reasoningEffort: model.reasoningEffort ?? null,
+          fastMode: fastModeEnabled && modelSupportsFastMode(model),
+          agentMode: options?.agentMode ?? "auto",
+          permissionMode,
+          cols: 120,
+          rows: 32,
+          attachments: options?.attachments?.length ? options.attachments : null
+        });
+      } catch (error) {
+        // No session ever started; don't strand the scratch workspace in the
+        // Side chats section.
+        void api.workspaces
+          .archive({ workspaceId: workspace.id, force: true })
+          .catch(() => undefined);
+        throw error;
+      }
+      pendingSelectionRef.current = {
+        sessionId: launchedSession.id,
+        workspaceId: workspace.id
+      };
+      setSnapshot((current) =>
+        mergeDashboardDelta(current, {
+          workspaces: [workspace],
+          sessions: [launchedSession]
+        })
+      );
+      // Same hard context switch as launchTask: a full-launcher launch
+      // replaces the hidden grid instead of splitting into it.
+      const launchedFromFullLauncher = isFullLauncherOpen;
+      setIsFullLauncherOpen(false);
+      setGrid((current) => {
+        const cell = { sessionId: launchedSession.id, workspaceId: workspace.id };
+        if (launchedFromFullLauncher) {
+          return { rows: [[cell]], focused: { row: 0, col: 0 } };
+        }
+        return openWorkspaceInGrid(
+          current,
+          cell,
+          { ctrlOrMeta: false, alt: false },
+          { maxColumns: maxGridColumnsPerRow }
+        );
+      });
+      // The armed chat mode has served its purpose; the next plain new-session
+      // entry should open in project mode again.
+      setLauncherSideChatMode(false);
+      void window.argmax.workspaces
+        .autoTitle({
+          workspaceId: workspace.id,
+          provider: model.provider,
+          modelId: PROVIDER_TITLE_MODEL[model.provider],
+          prompt
+        })
+        .catch(() => undefined);
+    },
+    [
+      fastModeEnabled,
+      isFullLauncherOpen,
+      launchModel,
+      maxGridColumnsPerRow,
+      pendingSelectionRef,
+      permissionMode,
+      randomSessionIconEnabled,
+      setGrid,
+      setIsFullLauncherOpen,
+      setSnapshot
+    ]
+  );
+
+  // Sidebar's "New side chat": the launcher surface pre-set to chat mode.
+  const openSideChatLauncher = useCallback((): void => {
+    setIsSettingsOpen(false);
+    setLauncherResetSignal((signal) => signal + 1);
+    openLauncherSurface(true);
+  }, [openLauncherSurface, setIsSettingsOpen]);
+
+  // "More details" explainer popup: one at a time, backed by an ephemeral
+  // popup-kind scratch session that is terminated and archived when it goes
+  // away. Popup rows never reach the sidebar (kind gating), and the boot
+  // sweep below archives any strays a crash left behind.
+  // `attachToChat` is the originating conversation's "add this excerpt as a
+  // composer annotation" closure, surfaced as the popup's header button.
+  const [detailsPopup, setDetailsPopup] = useState<{
+    workspaceId: string;
+    sessionId: string;
+    attachToChat?: () => void;
+  } | null>(null);
+  // Ref mirror of the live popup: async launch/close paths read and dispose
+  // through it so two in-flight launches can't both see stale state and leak
+  // the loser's session (the state value a callback closed over may be old).
+  const detailsPopupRef = useRef<{
+    workspaceId: string;
+    sessionId: string;
+    attachToChat?: () => void;
+  } | null>(null);
+  const disposeDetailsSession = useCallback(
+    (popup: { workspaceId: string; sessionId: string }): void => {
+      const api = window.argmax;
+      if (!api) return;
+      // Direct provider terminate (not the toast-wrapped command): tearing
+      // down an already-finished session is expected, not an error.
+      void api.providers
+        .terminate(popup.sessionId)
+        .catch(() => undefined)
+        .then(() => api.workspaces.archive({ workspaceId: popup.workspaceId, force: true }))
+        .catch(() => undefined);
+    },
+    []
+  );
+  // Dispose outside the setState updater: updaters must stay pure (StrictMode
+  // double-invokes them in dev, which would tear the session down twice).
+  const closeDetailsPopup = useCallback((): void => {
+    const current = detailsPopupRef.current;
+    if (current) disposeDetailsSession(current);
+    detailsPopupRef.current = null;
+    setDetailsPopup(null);
+  }, [disposeDetailsSession]);
+  // A crash can strand popup workspaces (their lifecycle is close-to-discard,
+  // never user-managed). Archive strays as snapshots arrive — an attempted-id
+  // set (not a one-shot flag) keeps the sweep idempotent while still catching
+  // rows that only show up after the first, possibly partial, delta. Ids of
+  // popups launched this run are claimed into the set so the sweep can never
+  // race a launch in flight.
+  const sweptPopupWorkspaceIds = useRef(new Set<string>());
+  const launchDetailsPopup = useCallback(
+    async (prompt: string, context?: { attachToChat?: () => void }): Promise<void> => {
+      if (!window.argmax) {
+        throw new Error("Open the Tauri app window to launch local agents.");
+      }
+      const api = window.argmax;
+      const workspace = await api.workspaces.createScratch({
+        taskLabel: "More details",
+        kind: "popup"
+      });
+      // create_scratch publishes the row before this command returns, so a
+      // dashboard delta can land while providers.launch is still in flight.
+      // Claim the id now or the stray sweep below would archive the popup —
+      // and delete its scratch dir — out from under the launching session.
+      sweptPopupWorkspaceIds.current.add(workspace.id);
+      const launchedSession = await api.providers
+        .launch({
+          workspaceId: workspace.id,
+          provider: launchModel.provider,
+          prompt,
+          modelLabel: launchModel.label,
+          modelId: launchModel.modelId,
+          reasoningEffort: launchModel.reasoningEffort ?? null,
+          fastMode: fastModeEnabled && modelSupportsFastMode(launchModel),
+          agentMode: "auto",
+          // The popup renders no approval surface, so a gated session would
+          // stall invisibly. It runs in an app-owned scratch dir; auto-approve
+          // is safe there regardless of the app-wide permission setting.
+          permissionMode: "auto-approve",
+          cols: 120,
+          rows: 32,
+          attachments: null
+        })
+        .catch((error: unknown) => {
+          // The claimed id is now exempt from the sweep for this app run, so
+          // clean up the never-launched workspace here instead of stranding it.
+          void api.workspaces
+            .archive({ workspaceId: workspace.id, force: true })
+            .catch(() => undefined);
+          throw error;
+        });
+      const previous = detailsPopupRef.current;
+      if (previous && previous.sessionId !== launchedSession.id) {
+        disposeDetailsSession(previous);
+      }
+      detailsPopupRef.current = {
+        workspaceId: workspace.id,
+        sessionId: launchedSession.id,
+        ...(context?.attachToChat ? { attachToChat: context.attachToChat } : {})
+      };
+      setSnapshot((current) =>
+        mergeDashboardDelta(current, {
+          workspaces: [workspace],
+          sessions: [launchedSession]
+        })
+      );
+      setDetailsPopup(detailsPopupRef.current);
+    },
+    [disposeDetailsSession, fastModeEnabled, launchModel, setSnapshot]
+  );
+  useEffect(() => {
+    if (loadState === "loading" || !window.argmax) return;
+    const api = window.argmax;
+    for (const workspace of snapshot.workspaces) {
+      if (
+        workspace.kind === "popup" &&
+        workspace.state !== "archived" &&
+        workspace.id !== detailsPopupRef.current?.workspaceId &&
+        !sweptPopupWorkspaceIds.current.has(workspace.id)
+      ) {
+        sweptPopupWorkspaceIds.current.add(workspace.id);
+        void api.workspaces
+          .archive({ workspaceId: workspace.id, force: true })
+          .catch(() => undefined);
+      }
+    }
+  }, [loadState, snapshot.workspaces]);
+
   const paletteCommands = useMemo(
     () =>
       buildPaletteCommands({
@@ -1002,7 +1342,10 @@ export function App(): JSX.Element {
         onOpenSearch: openMessagePalette,
         onStopSession: (sessionId) => void terminateSession(sessionId),
         onOpenWorkspace: openWorkspaceChat,
-        onSelectProject: setSelectedProjectId,
+        onSelectProject: (projectId) => {
+          setLauncherSideChatMode(false);
+          setSelectedProjectId(projectId);
+        },
         onClearGrid: () => setGrid(EMPTY_GRID),
         onCloseOverlays: () => setIsSettingsOpen(false)
       }),
@@ -1102,14 +1445,18 @@ export function App(): JSX.Element {
         onBranchSwitch={handleProjectUpdated}
         onFastModeEnabledChange={setFastModeEnabled}
         onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments) => launchTask(prompt, model, agentMode, project?.id, workspaceMode, attachments)}
+        onLaunchSideChat={(prompt, model, agentMode, attachments) =>
+          launchSideChat(prompt, { model, agentMode, attachments })}
         model={launchModel}
         onModelChange={handleLaunchModelChange}
-        onSelectProject={options.embedded ? setLauncherPaneProject : openProjectLauncher}
-        project={project ?? selectedProject}
-        projects={snapshot.projects}
+        onSelectProject={options.embedded ? setLauncherPaneProject : openRepoProjectLauncher}
+        onSideChatModeChange={setLauncherSideChatMode}
+        project={project ?? launcherProject}
+        projects={realProjects}
         resetSignal={launcherResetSignal}
         rightPanelToggleSignal={rightPanelToggleSignal}
         registerPaletteFileContext={registerPaletteFileContext}
+        sideChatMode={launcherSideChatMode}
       />
     ),
     [
@@ -1118,16 +1465,18 @@ export function App(): JSX.Element {
       handleProjectUpdated,
       handleLaunchModelChange,
       launcherResetSignal,
+      launcherSideChatMode,
       launchModel,
+      launchSideChat,
       launchTask,
-      openProjectLauncher,
+      launcherProject,
+      openRepoProjectLauncher,
       pixelFieldEnabled,
+      realProjects,
       registerPaletteFileContext,
       rightPanelToggleSignal,
-      selectedProject,
       setFastModeEnabled,
-      setLauncherPaneProject,
-      snapshot.projects
+      setLauncherPaneProject
     ]
   );
 
@@ -1135,6 +1484,11 @@ export function App(): JSX.Element {
     (project: ProjectSummary | null): JSX.Element => renderLaunchSurface(project, { embedded: true }),
     [renderLaunchSurface]
   );
+
+  const detailsPopupWorkspace = detailsPopup
+    ? workspacesById.get(detailsPopup.workspaceId) ?? null
+    : null;
+  const detailsPopupSession = detailsPopup ? sessionsById.get(detailsPopup.sessionId) ?? null : null;
 
   const handleWorkspaceSurfaceDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
     if (!showWorkspaceDropTarget) return;
@@ -1223,6 +1577,23 @@ export function App(): JSX.Element {
         </div>
       ) : null}
       <PerfOverlay />
+      {detailsPopupWorkspace && detailsPopupSession ? (
+        <DetailsPopup
+          events={snapshot.events}
+          onAttachToChat={detailsPopup?.attachToChat}
+          onCancelQueuedMessage={cancelQueuedMessage}
+          onClose={closeDetailsPopup}
+          onLoadSessionEvents={loadSessionEvents}
+          onSendQueuedMessageNow={sendQueuedMessageNow}
+          onSendSessionInput={sendSessionInput}
+          onTerminateSession={terminateSession}
+          pendingMessages={snapshot.pendingMessages}
+          project={null}
+          rawOutputs={snapshot.rawOutputs}
+          session={detailsPopupSession}
+          workspace={detailsPopupWorkspace}
+        />
+      ) : null}
       <Sidebar
         loadState={loadState}
         onToggleWorkspacePinned={onToggleWorkspacePinnedRow}
@@ -1234,6 +1605,7 @@ export function App(): JSX.Element {
         showPriority={sidebarPriorityVisible}
         onOpenLauncher={onOpenLauncherRow}
         onAddProject={onAddProjectRow}
+        onNewSideChat={openSideChatLauncher}
         onRemoveProject={onRemoveProjectRow}
         onArchiveWorkspace={onArchiveWorkspaceRow}
         onOpenInIde={onOpenInIdeRow}
@@ -1249,8 +1621,8 @@ export function App(): JSX.Element {
         onWorkspaceDragEnd={handleWorkspaceDragEnd}
         onResizeMouseDown={onResizeMouseDown}
         selectedProjectId={selectedProject?.id ?? null}
-        selectedWorkspaceId={selectedWorkspace?.id ?? null}
-        openWorkspaceIds={openWorkspaceIds}
+        selectedWorkspaceId={isFullLauncherOpen ? null : (selectedWorkspace?.id ?? null)}
+        openWorkspaceIds={isFullLauncherOpen ? EMPTY_OPEN_WORKSPACE_IDS : openWorkspaceIds}
         canDragWorkspaceToGrid={canDragWorkspaceToGrid}
         snapshot={snapshot}
         detectedIdes={detectedIdes}
@@ -1322,13 +1694,13 @@ export function App(): JSX.Element {
                 onNewSessionModeChange={setNewSessionMode}
                 randomSessionIconEnabled={randomSessionIconEnabled}
                 onRandomSessionIconEnabledChange={setRandomSessionIconEnabled}
-                projects={snapshot.projects}
+                projects={realProjects}
                 onProjectUpdated={handleProjectUpdated}
                 navigationTarget={settingsNavigationTarget}
               />
             </Suspense>
           ) : isFullLauncherOpen ? (
-            renderLaunchSurface(selectedProject)
+            renderLaunchSurface(launcherProject)
           ) : grid.rows.length > 0 ? (
             <SessionMultiGrid
               chatFontSize={chatFontSize}
@@ -1349,7 +1721,6 @@ export function App(): JSX.Element {
               onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
               rightPanelToggleSignal={rightPanelToggleSignal}
               debugLogToggleSignal={debugLogToggleSignal}
-              terminalToggleSignal={terminalToggleSignal}
               maxColumnsPerRow={maxGridColumnsPerRow}
               renderLauncher={renderEmbeddedLaunchSurface}
               dragSourceWorkspaceId={draggingWorkspaceId}
@@ -1359,7 +1730,12 @@ export function App(): JSX.Element {
               onFastModeEnabledChange={setFastModeEnabled}
               onLoadSessionEvents={loadSessionEvents}
               onLoadAgentEvents={loadAgentEvents}
-              onNewSession={openLauncherPaneInGrid}
+              onNewSession={openNewSessionPaneInGrid}
+              onOpenSideChat={launchSideChat}
+              onOpenDetails={launchDetailsPopup}
+              defaultIde={defaultIde}
+              detectedIdes={detectedIdes}
+              onOpenWorkspaceInIde={onOpenWorkspaceInIdePane}
               onOpenAgentPane={openAgentPane}
               onActivateAgentTab={activateAgentTab}
               onCloseAgentTab={closeAgentTab}
@@ -1374,7 +1750,7 @@ export function App(): JSX.Element {
               registerPaletteFileContext={registerPaletteFileContext}
             />
           ) : (
-            renderLaunchSurface(selectedProject)
+            renderLaunchSurface(launcherProject)
           )}
         </div>
         {showWorkspaceDropTarget ? (

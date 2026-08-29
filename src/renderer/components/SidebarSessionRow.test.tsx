@@ -15,6 +15,7 @@ const workspaceBase: WorkspaceSummary = {
   path: "/tmp/workspaces/argmax-dashboard",
   state: "complete",
   sharedWorkspace: false,
+  kind: "git",
   dirty: false,
   changedFiles: 0,
   lastActivityAt: "2026-05-01T00:01:00.000Z",
@@ -942,7 +943,10 @@ describe("styles.css startup contract", () => {
     const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
     const css = readBundledCss(cssPath);
     const genericPopoverIndex = css.indexOf(".project-picker-popover {");
-    const settingsPopoverIndex = css.indexOf(".project-picker-popover.settings-picker-popover");
+    // The bare selector (with the brace) targets the base override in
+    // chat-chrome.css; settings-controls.css also carries a
+    // `[data-placement="above"]`-qualified variant that bundles earlier.
+    const settingsPopoverIndex = css.indexOf(".project-picker-popover.settings-picker-popover {");
     const settingsRule = /\.project-picker-popover\.settings-picker-popover\s*\{(?<body>[^}]+)\}/i.exec(css);
 
     expect(genericPopoverIndex, "expected generic project picker popover rule").toBeGreaterThanOrEqual(0);

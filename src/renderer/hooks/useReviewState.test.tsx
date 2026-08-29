@@ -21,6 +21,7 @@ function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSumm
     path: "/tmp/wt",
     state: "running",
     sharedWorkspace: false,
+    kind: "git",
     dirty: false,
     changedFiles: 3,
     lastActivityAt: "2026-05-12T15:54:00.000Z",
@@ -487,5 +488,44 @@ describe("useReviewState — IPC fan-out resistance", () => {
       10
     );
     expect(result.current.workspaceFiles.isDirty).toBe(false);
+  });
+
+  it("keeps an open Files panel open across a project switch", async () => {
+    // Picking another project from the palette while browsing files must
+    // re-target the view in place, not dump the user back to the launcher.
+    const { result, rerender } = renderHook(
+      ({ source }: { source: ReviewSource }) => useReviewState(source),
+      { initialProps: { source: projectSource(makeProject()) } }
+    );
+
+    act(() => {
+      result.current.openPanelInFilesMode();
+    });
+    expect(result.current.isPanelOpen).toBe(true);
+    expect(result.current.mode).toBe("files");
+
+    rerender({ source: projectSource(makeProject({ id: "project-2", name: "Other" })) });
+
+    await waitFor(() => expect(result.current.isPanelOpen).toBe(true));
+    expect(result.current.mode).toBe("files");
+  });
+
+  it("still resets a closed panel's mode when the source changes", () => {
+    const { result, rerender } = renderHook(
+      ({ source }: { source: ReviewSource }) => useReviewState(source),
+      { initialProps: { source: projectSource(makeProject()) } }
+    );
+
+    act(() => {
+      result.current.openPanelInFilesMode();
+    });
+    act(() => {
+      result.current.closePanel();
+    });
+
+    rerender({ source: projectSource(makeProject({ id: "project-2", name: "Other" })) });
+
+    expect(result.current.isPanelOpen).toBe(false);
+    expect(result.current.mode).toBe("changes");
   });
 });

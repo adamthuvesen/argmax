@@ -28,6 +28,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { DashboardSnapshot, DetectedIde, IdeId, ProjectSummary } from "../../shared/types.js";
+import { SCRATCH_PROJECT_ID } from "../../shared/types.js";
 import { APP_VERSION_LABEL } from "../../shared/appVersion.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
@@ -59,25 +60,26 @@ import { computePriorityEntries } from "../lib/priority.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
-// Marker stored in sessionStorage (cleared on app quit / window close in
-// Tauri) so the "collapse every project on launch" seed fires exactly
-// once per real app launch, not on every Sidebar mount. Tests can pre-set this
-// marker when they need to bypass boot seeding.
+// Markers stored in sessionStorage (cleared on app quit / window close in
+// Tauri) so each boot seed fires exactly once per real app launch, not on every
+// Sidebar mount. Tests can pre-set a marker when they need to bypass one seed
+// without bypassing the other.
 const BOOT_COLLAPSE_SEED_KEY = "argmax.sidebar.bootCollapseSeeded";
+const BOOT_GROUP_COLLAPSE_SEED_KEY = "argmax.sidebar.bootGroupCollapseSeeded";
 
-function readBootCollapseSeeded(): boolean {
+function readBootSeeded(key: string): boolean {
   if (typeof window === "undefined") return true;
   try {
-    return window.sessionStorage.getItem(BOOT_COLLAPSE_SEED_KEY) === "1";
+    return window.sessionStorage.getItem(key) === "1";
   } catch {
     return true;
   }
 }
 
-function markBootCollapseSeeded(): void {
+function markBootSeeded(key: string): void {
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(BOOT_COLLAPSE_SEED_KEY, "1");
+    window.sessionStorage.setItem(key, "1");
   } catch {
     // SecurityError / QuotaExceeded — fall through; worst case we collapse
     // again on the next render, which is harmless.
@@ -89,6 +91,18 @@ function markBootCollapseSeeded(): void {
 // older, so these keys can't collide with a date bucket.
 const PINNED_GROUP_KEY = "pinned";
 const PRIORITY_GROUP_KEY = "priority";
+const SIDE_CHATS_GROUP_KEY = "side-chats";
+
+// Per-launch behavior: every session group except Pinned starts collapsed, so a
+// fresh window opens on the standing pins and nothing else.
+const BOOT_COLLAPSED_GROUP_KEYS: readonly string[] = [
+  PRIORITY_GROUP_KEY,
+  SIDE_CHATS_GROUP_KEY,
+  "today",
+  "last-7",
+  "last-30",
+  "older"
+];
 
 const VIEW_MODE_OPTIONS: ReadonlyArray<{ value: SidebarViewMode; label: string; description: string }> = [
   { value: "projects", label: "Projects", description: "Group sessions under their project" },
@@ -127,6 +141,7 @@ function visibleSidebarItems<T extends { id: string }>(
 export function Sidebar({
   loadState,
   onAddProject,
+  onNewSideChat,
   onArchiveWorkspace,
   onOpenInIde,
   onOpenLauncher,
@@ -162,6 +177,8 @@ export function Sidebar({
 }: {
   loadState: "loading" | "ready" | "error";
   onAddProject: () => void;
+  /** Opens the launcher pre-set to side-chat mode. */
+  onNewSideChat?: () => void;
   onArchiveWorkspace: (workspaceId: string) => void;
   onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
   onOpenLauncher: () => void;
@@ -214,9 +231,9 @@ export function Sidebar({
   // process (e.g. hot-reload) respect the persisted state and don't
   // re-collapse projects the user has since expanded.
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() =>
-    readBootCollapseSeeded() ? loadCollapsedProjectIds() : new Set()
+    readBootSeeded(BOOT_COLLAPSE_SEED_KEY) ? loadCollapsedProjectIds() : new Set()
   );
-  const startupCollapseInitializedRef = useRef(readBootCollapseSeeded());
+  const startupCollapseInitializedRef = useRef(readBootSeeded(BOOT_COLLAPSE_SEED_KEY));
   if (!startupCollapseInitializedRef.current && snapshot.projects.length > 0) {
     startupCollapseInitializedRef.current = true;
     const allCollapsed = new Set(snapshot.projects.map((project) => project.id));
@@ -225,8 +242,8 @@ export function Sidebar({
   // Persist the boot seed and collapsed set as an effect so StrictMode's
   // double render doesn't double-write localStorage.
   useEffect(() => {
-    if (!readBootCollapseSeeded() && snapshot.projects.length > 0) {
-      markBootCollapseSeeded();
+    if (!readBootSeeded(BOOT_COLLAPSE_SEED_KEY) && snapshot.projects.length > 0) {
+      markBootSeeded(BOOT_COLLAPSE_SEED_KEY);
       saveCollapsedProjectIds(collapsedProjectIds);
     }
   }, [snapshot.projects.length, collapsedProjectIds]);
@@ -235,9 +252,20 @@ export function Sidebar({
   const [workspaceOrders, setWorkspaceOrders] = useState<Record<string, string[]>>(() => loadWorkspaceOrders());
   const [sortMode, setSortMode] = useState<ProjectSortMode>(() => loadProjectSortMode());
   const [viewMode, setViewMode] = useState<SidebarViewMode>(() => loadSidebarViewMode());
+  // Pinned is the only group that survives a launch expanded. Mid-session
+  // toggles persist as usual, and the next launch collapses everything but
+  // Pinned again.
   const [collapsedDateGroups, setCollapsedDateGroups] = useState<Set<string>>(() =>
-    loadCollapsedDateGroupIds()
+    readBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY)
+      ? loadCollapsedDateGroupIds()
+      : new Set(BOOT_COLLAPSED_GROUP_KEYS)
   );
+  useEffect(() => {
+    if (!readBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY)) {
+      markBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY);
+      saveCollapsedDateGroupIds(collapsedDateGroups);
+    }
+  }, [collapsedDateGroups]);
   const [expandedDateGroups, setExpandedDateGroups] = useState<Set<string>>(() =>
     loadExpandedDateGroupIds()
   );
@@ -297,7 +325,14 @@ export function Sidebar({
   }, [projectMenuState]);
 
   const orderedProjects = useMemo(
-    () => sortProjectsBy(snapshot.projects, sortMode, projectOrder),
+    // The hidden scratch project never renders as a project group: its
+    // side chats live in the dedicated bottom section instead.
+    () =>
+      sortProjectsBy(
+        snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
+        sortMode,
+        projectOrder
+      ),
     [snapshot.projects, sortMode, projectOrder]
   );
 
@@ -345,10 +380,25 @@ export function Sidebar({
   // `Date.now()` is read inside the memo, so the 24h staleness gate is only
   // re-evaluated when the snapshot changes — consistent with the no-polling
   // rule. An entry that crosses the age line simply drops on the next delta.
+  // Popup workspaces (the "More details" mini-sessions) never surface in the
+  // sidebar in any section.
+  const sidebarWorkspaces = useMemo(
+    () => snapshot.workspaces.filter((workspace) => workspace.kind !== "popup"),
+    [snapshot.workspaces]
+  );
+
+  // Side chats live in their own bottom section and are conversational by
+  // nature — they never escalate into the Priority triage list.
   const priorityEntries = useMemo(
     () =>
-      showPriority ? computePriorityEntries(snapshot.workspaces, snapshot.sessions, Date.now()) : [],
-    [showPriority, snapshot.workspaces, snapshot.sessions]
+      showPriority
+        ? computePriorityEntries(
+            sidebarWorkspaces.filter((workspace) => workspace.kind === "git"),
+            snapshot.sessions,
+            Date.now()
+          )
+        : [],
+    [showPriority, sidebarWorkspaces, snapshot.sessions]
   );
 
   // Project-name subtitles (screenshot-style two-line rows) for rows whose
@@ -382,7 +432,7 @@ export function Sidebar({
   // view modes.
   const pinnedWorkspaces = useMemo(
     () =>
-      snapshot.workspaces
+      sidebarWorkspaces
         .filter(
           (workspace) =>
             workspace.pinned &&
@@ -393,7 +443,7 @@ export function Sidebar({
           if (a.lastActivityAt === b.lastActivityAt) return 0;
           return a.lastActivityAt < b.lastActivityAt ? 1 : -1;
         }),
-    [snapshot.workspaces, workspaceIdsWithSessions]
+    [sidebarWorkspaces, workspaceIdsWithSessions]
   );
 
   // Flat, date-bucketed list for the "sessions" view mode — every non-archived,
@@ -402,15 +452,37 @@ export function Sidebar({
   const dateGroups = useMemo(
     () =>
       groupWorkspacesByDate(
-        snapshot.workspaces.filter(
+        sidebarWorkspaces.filter(
           (workspace) =>
+            workspace.kind === "git" &&
             !workspace.pinned &&
             workspace.state !== "archived" &&
             !priorityWorkspaceIds.has(workspace.id) &&
             workspaceIdsWithSessions.has(workspace.id)
         )
       ),
-    [snapshot.workspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
+    [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
+  );
+
+  // Side chats keep their own section at the very bottom, below the date
+  // buckets and project groups, in both view modes. Pinned and Priority still
+  // win — a row lives in exactly one section.
+  const sideChatWorkspaces = useMemo(
+    () =>
+      sidebarWorkspaces
+        .filter(
+          (workspace) =>
+            workspace.kind === "scratch" &&
+            !workspace.pinned &&
+            workspace.state !== "archived" &&
+            !priorityWorkspaceIds.has(workspace.id) &&
+            workspaceIdsWithSessions.has(workspace.id)
+        )
+        .sort((a, b) => {
+          if (a.lastActivityAt === b.lastActivityAt) return 0;
+          return a.lastActivityAt < b.lastActivityAt ? 1 : -1;
+        }),
+    [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
   );
 
   const workspaceTokenMap = useMemo(() => {
@@ -485,6 +557,45 @@ export function Sidebar({
     },
     [collapsedDateGroups]
   );
+
+  // A newly launched (or newly selected) session must not vanish into a
+  // collapsed section: expand the group that hosts the selected row. Keyed on
+  // the id *changing* — once revealed, the user may still collapse the group
+  // over a selected row without this snapping it back open.
+  const lastExpandedForWorkspaceId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedWorkspaceId || lastExpandedForWorkspaceId.current === selectedWorkspaceId) return;
+    const workspace = sidebarWorkspaces.find((candidate) => candidate.id === selectedWorkspaceId);
+    if (!workspace || workspace.state === "archived") return;
+    lastExpandedForWorkspaceId.current = selectedWorkspaceId;
+    const groupKey = workspace.pinned
+      ? PINNED_GROUP_KEY
+      : priorityWorkspaceIds.has(workspace.id)
+        ? PRIORITY_GROUP_KEY
+        : workspace.kind === "scratch"
+          ? SIDE_CHATS_GROUP_KEY
+          : viewMode === "sessions"
+            ? dateGroups.find((group) => group.items.some((item) => item.id === workspace.id))?.key ??
+              null
+            : null;
+    if (groupKey && collapsedDateGroups.has(groupKey)) {
+      const next = new Set(collapsedDateGroups);
+      next.delete(groupKey);
+      setCollapsedDateGroups(next);
+      saveCollapsedDateGroupIds(next);
+    }
+    if (viewMode === "projects" && workspace.kind === "git") {
+      expandProjectVisibility(workspace.projectId);
+    }
+  }, [
+    collapsedDateGroups,
+    dateGroups,
+    expandProjectVisibility,
+    priorityWorkspaceIds,
+    selectedWorkspaceId,
+    sidebarWorkspaces,
+    viewMode
+  ]);
 
   const toggleDateGroupExpansion = useCallback(
     (key: string): void => {
@@ -717,6 +828,86 @@ export function Sidebar({
       </button>
     </div>
   );
+  const sideChatsCollapsed = collapsedDateGroups.has(SIDE_CHATS_GROUP_KEY);
+  const sideChatsExpanded = expandedDateGroups.has(SIDE_CHATS_GROUP_KEY);
+  const visibleSideChats = visibleSidebarItems(sideChatWorkspaces, selectedWorkspaceId, sideChatsExpanded);
+  const hiddenSideChatCount = sideChatWorkspaces.length - visibleSideChats.length;
+  // Rendered below the date buckets (sessions view) and project groups
+  // (projects view): side chats are their own bottom section in both.
+  const sideChatsSection =
+    onNewSideChat || sideChatWorkspaces.length > 0 ? (
+      <div
+        className="project-group session-date-group"
+        data-collapsed={sideChatsCollapsed ? "true" : undefined}
+      >
+        <div
+          className="project-row session-date-row"
+          onClick={() => toggleDateGroupVisibility(SIDE_CHATS_GROUP_KEY)}
+        >
+          <span className="project-name session-date-label">
+            <span className="project-name-text">Side chats</span>
+            {renderCollapseButton(SIDE_CHATS_GROUP_KEY, "Side chats", sideChatsCollapsed)}
+          </span>
+          {onNewSideChat ? (
+            <span className="rail-actions" onClick={(event) => event.stopPropagation()}>
+              <button
+                className="small-icon"
+                type="button"
+                title="New side chat — a chat without a repository"
+                aria-label="New side chat"
+                onClick={onNewSideChat}
+              >
+                <Plus size={14} />
+              </button>
+            </span>
+          ) : (
+            <span aria-hidden="true" />
+          )}
+        </div>
+        {sideChatsCollapsed ? null : (
+          <>
+            {visibleSideChats.map((workspace) => (
+              <div key={workspace.id} className="session-row-wrap">
+                <SidebarSessionRow
+                  workspace={workspace}
+                  workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
+                  isSelected={selectedWorkspaceId === workspace.id}
+                  isOpenInGrid={openWorkspaceIds.has(workspace.id)}
+                  canDragToGrid={canDragWorkspaceToGrid}
+                  onOpenWorkspaceChat={onOpenWorkspaceChat}
+                  onArchiveWorkspace={onArchiveWorkspace}
+                  onOpenInIde={onOpenInIde}
+                  onTogglePin={onToggleWorkspacePinned}
+                  onRename={onRenameWorkspace}
+                  onSetIcon={onSetWorkspaceIcon}
+                  onAddToPriority={addToPriority}
+                  onWorkspaceDragStart={onWorkspaceDragStart}
+                  onWorkspaceDragEnd={onWorkspaceDragEnd}
+                  detectedIdes={detectedIdes}
+                  defaultIde={defaultIde}
+                  showTokens={showSessionTokens}
+                />
+              </div>
+            ))}
+            {sideChatWorkspaces.length > SIDEBAR_SESSION_LIMIT ? (
+              <button
+                type="button"
+                className="sidebar-show-more"
+                aria-expanded={sideChatsExpanded}
+                aria-label={
+                  sideChatsExpanded
+                    ? "Show fewer side chats"
+                    : `Show ${hiddenSideChatCount} more side chats`
+                }
+                onClick={() => toggleDateGroupExpansion(SIDE_CHATS_GROUP_KEY)}
+              >
+                {sideChatsExpanded ? "Show less" : `Show ${hiddenSideChatCount} more`}
+              </button>
+            ) : null}
+          </>
+        )}
+      </div>
+    ) : null;
 
   return (
     <aside
@@ -1118,6 +1309,7 @@ export function Sidebar({
             </div>
           );
         })}
+        {sideChatsSection}
       </div>
 
       {projectMenuState && projectMenuPos

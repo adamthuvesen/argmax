@@ -145,7 +145,7 @@ pub async fn list_changed_files(
     }
     let workspace_id = id;
     let (workspace, default_branch) = load_workspace_with_default_branch(database, workspace_id)?;
-    let base_ref = resolve_workspace_base(
+    let base_ref = pick_review_base(
         Path::new(&workspace.path),
         comparison,
         &workspace.base_ref,
@@ -171,7 +171,7 @@ pub async fn load_diff(
     }
     let workspace_id = id;
     let (workspace, default_branch) = load_workspace_with_default_branch(database, workspace_id)?;
-    let base_ref = resolve_workspace_base(
+    let base_ref = pick_review_base(
         Path::new(&workspace.path),
         comparison,
         &workspace.base_ref,
@@ -196,10 +196,17 @@ async fn list_changed_files_for_project(
         let connection = database.connection();
         require_project(&connection, project_id)?
     };
-    let project_base = project_base_ref(&project.default_branch, &project.current_branch);
+    let primary = project_base_ref(&project.default_branch, &project.current_branch);
+    let project_base = pick_review_base(
+        Path::new(&project.repo_path),
+        comparison,
+        primary,
+        project.default_branch.as_deref(),
+    )
+    .await;
     list_changed_files_at_path(
         project.repo_path,
-        baseline_for(comparison, Some(project_base)),
+        baseline_for(comparison, project_base.as_deref()),
     )
     .await
 }
@@ -214,7 +221,14 @@ async fn load_diff_for_project(
         let connection = database.connection();
         require_project(&connection, project_id)?
     };
-    let project_base = project_base_ref(&project.default_branch, &project.current_branch);
+    let primary = project_base_ref(&project.default_branch, &project.current_branch);
+    let project_base = pick_review_base(
+        Path::new(&project.repo_path),
+        comparison,
+        primary,
+        project.default_branch.as_deref(),
+    )
+    .await;
     // The WorkspaceDiff response shape still uses `workspaceId` as the key —
     // we reuse it for the project's repoPath-rooted view; renderer never
     // round-trips this id back, so keeping the type unchanged is safer than
@@ -223,7 +237,7 @@ async fn load_diff_for_project(
         project.repo_path,
         project_id.to_owned(),
         file_path,
-        baseline_for(comparison, Some(project_base)),
+        baseline_for(comparison, project_base.as_deref()),
     )
     .await
 }
@@ -260,32 +274,109 @@ fn load_workspace_with_default_branch(
     Ok((workspace, default_branch))
 }
 
-/// Resolve the effective diff base for a workspace review, tolerating a base
-/// branch that has since been deleted. Working-tree comparison stays `None`.
-/// Branch comparison prefers the workspace's recorded base_ref, falls back to
-/// the project default branch, then to working-tree mode — so a pruned base
-/// branch downgrades the diff to "vs HEAD" instead of failing it with
-/// "not a valid object name".
-async fn resolve_workspace_base(
+/// Choose a branch/committed comparison base that is not the current HEAD
+/// commit. Shared-checkout sessions used to record `base_ref` as the current
+/// branch, which made merge-base(HEAD, HEAD) empty. Prefer the recorded base,
+/// then the project default, then `main` / `master`. For those integration
+/// names, prefer `origin/<name>` when it exists, so a stale local `main`
+/// does not pull already-rebased upstream commits into the review. Skip any
+/// candidate that is HEAD or that has no merge-base with HEAD. If nothing
+/// else exists, return the first existing related ref so a pruned base does
+/// not fail the request with "not a valid object name".
+async fn pick_review_base(
     repo_path: &Path,
     comparison: ReviewComparison,
-    base_ref: &str,
-    default_branch: Option<&str>,
+    primary: &str,
+    fallback: Option<&str>,
 ) -> Option<String> {
     if comparison == ReviewComparison::WorkingTree {
         return None;
     }
-    if ref_exists(repo_path, base_ref).await {
-        return Some(base_ref.to_owned());
-    }
-    match default_branch {
-        Some(default_branch)
-            if default_branch != base_ref && ref_exists(repo_path, default_branch).await =>
-        {
-            Some(default_branch.to_owned())
+    let mut names: Vec<&str> = Vec::new();
+    for name in [Some(primary), fallback, Some("main"), Some("master")]
+        .into_iter()
+        .flatten()
+    {
+        if !names.contains(&name) {
+            names.push(name);
         }
-        _ => None,
     }
+    let mut candidates: Vec<String> = Vec::new();
+    for name in names {
+        if is_integration_branch(name, fallback) {
+            candidates.push(format!("origin/{name}"));
+        }
+        candidates.push(name.to_owned());
+    }
+    let mut seen: Vec<String> = Vec::new();
+    let mut first_existing: Option<String> = None;
+    for candidate in candidates {
+        if seen.contains(&candidate) {
+            continue;
+        }
+        seen.push(candidate.clone());
+        if !ref_exists(repo_path, &candidate).await {
+            continue;
+        }
+        if !has_common_ancestor(repo_path, &candidate).await {
+            continue;
+        }
+        if first_existing.is_none() {
+            first_existing = Some(candidate.clone());
+        }
+        if !is_same_commit_as_head(repo_path, &candidate).await {
+            return Some(candidate);
+        }
+    }
+    first_existing
+}
+
+fn is_integration_branch(name: &str, fallback: Option<&str>) -> bool {
+    matches!(name, "main" | "master") || fallback == Some(name)
+}
+
+async fn has_common_ancestor(repo_path: &Path, reference: &str) -> bool {
+    if reject_leading_dash("base ref", reference).is_err() {
+        return false;
+    }
+    run_git_text_with_allowed_exit_codes(
+        repo_path,
+        ["merge-base", reference, "HEAD"],
+        &[1],
+        GIT_TIMEOUT,
+    )
+    .await
+    .map(|exit| !exit.stdout.trim().is_empty())
+    .unwrap_or(false)
+}
+
+async fn is_same_commit_as_head(repo_path: &Path, reference: &str) -> bool {
+    let Ok(head) = rev_parse_commit(repo_path, "HEAD").await else {
+        return false;
+    };
+    rev_parse_commit(repo_path, reference)
+        .await
+        .map(|other| other == head)
+        .unwrap_or(false)
+}
+
+async fn rev_parse_commit(repo_path: &Path, spec: &str) -> ArgmaxResult<String> {
+    let rev = format!("{spec}^{{commit}}");
+    let exit = run_git_text_with_allowed_exit_codes(
+        repo_path,
+        ["rev-parse", "--verify", "--quiet", rev.as_str()],
+        &[1],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    let sha = exit.stdout.trim();
+    if sha.is_empty() {
+        return Err(ArgmaxError::service(
+            "REVIEW_REV_PARSE",
+            format!("'{spec}' is not a commit"),
+        ));
+    }
+    Ok(sha.to_owned())
 }
 
 /// True when `reference` resolves to a commit in this repo/worktree. Exit code 1

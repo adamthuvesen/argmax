@@ -393,7 +393,7 @@ export function AgentActivityPane({
         ) : null}
 
         {showLoadFailureNotice ? (
-          <div className="agent-activity-empty" role="status">
+          <div className="agent-activity-empty" role="alert">
             Agent activity could not be loaded. Showing launch/result metadata.
           </div>
         ) : showLimitedNotice ? (

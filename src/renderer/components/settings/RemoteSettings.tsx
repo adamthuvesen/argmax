@@ -14,7 +14,7 @@ export function RemoteSettings(): JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [portField, setPortField] = useState("");
   const [topicField, setTopicField] = useState("");
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<{ kind: "saved" | "error"; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const adoptStatus = useCallback((next: RemoteStatus): void => {
@@ -45,7 +45,7 @@ export function RemoteSettings(): JSX.Element {
       if (!window.argmax || !status) return;
       const port = Number.parseInt(portField, 10);
       if (!Number.isInteger(port) || port < 1024 || port > 65535) {
-        setNote("Port must be between 1024 and 65535.");
+        setNote({ kind: "error", message: "Port must be between 1024 and 65535." });
         return;
       }
       setBusy(true);
@@ -59,11 +59,14 @@ export function RemoteSettings(): JSX.Element {
         adoptStatus(next);
         setNote(
           next.enabled && !next.serving
-            ? `The bridge could not start on port ${next.port} — is something else using it?`
-            : "Saved."
+            ? {
+                kind: "error",
+                message: `The bridge could not start on port ${next.port} — is something else using it?`
+              }
+            : { kind: "saved", message: "Saved." }
         );
       } catch (error) {
-        setNote(errorMessage(error));
+        setNote({ kind: "error", message: errorMessage(error) });
       } finally {
         setBusy(false);
       }
@@ -77,9 +80,9 @@ export function RemoteSettings(): JSX.Element {
     setNote(null);
     try {
       await window.argmax.remote.testNotification();
-      setNote("Test notification sent — check your phone.");
+      setNote({ kind: "saved", message: "Test notification sent — check your phone." });
     } catch (error) {
-      setNote(`Test notification failed: ${errorMessage(error)}`);
+      setNote({ kind: "error", message: `Test notification failed: ${errorMessage(error)}` });
     } finally {
       setBusy(false);
     }
@@ -214,8 +217,12 @@ export function RemoteSettings(): JSX.Element {
             </button>
           </div>
           {note ? (
-            <p className="settings-hint" role="status">
-              {note}
+            <p
+              className="settings-hint settings-form-status"
+              data-status={note.kind}
+              role={note.kind === "error" ? "alert" : "status"}
+            >
+              {note.message}
             </p>
           ) : null}
         </div>
@@ -233,7 +240,7 @@ function CopyValueRow({
   value: string;
   code?: boolean;
 }): JSX.Element {
-  const [copied, copy] = useCopyToClipboard();
+  const [copyFlash, copy] = useCopyToClipboard();
   return (
     <div className="settings-remote-copyrow">
       <span className="settings-remote-copyrow-label">{label}</span>
@@ -244,8 +251,8 @@ function CopyValueRow({
         onClick={() => void copy(value)}
         aria-label={`Copy ${label.toLowerCase()}`}
       >
-        {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-        <span>{copied ? "Copied" : "Copy"}</span>
+        {copyFlash === "copied" ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+        <span>{copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy"}</span>
       </button>
     </div>
   );

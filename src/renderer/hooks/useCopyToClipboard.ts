@@ -2,16 +2,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const DEFAULT_FLASH_MS = 1500;
 
+/** Transient outcome of the last copy attempt, cleared back to idle. */
+export type CopyFlash = "idle" | "copied" | "failed";
+
 /**
- * Shared "copy to clipboard with brief 'Copied!' flash" helper.
+ * Shared "copy to clipboard with brief flash" helper.
  *
- * Returns `[copied, copy]`. The boolean flips to true on success and back to
- * false after `flashMs`. The callback returns a promise that resolves true on
- * success or false on permission/focus failure so callers can show failure
- * state when the paste buffer rejects the write.
+ * Returns `[flash, copy]`. `flash` flips to "copied" or "failed" for
+ * `flashMs`, then back to "idle" — a denied clipboard write (permission,
+ * focus loss) must not leave the button looking inert, or worse, claim
+ * success. The callback also resolves the boolean outcome for callers that
+ * branch on it directly.
  */
-export function useCopyToClipboard(flashMs: number = DEFAULT_FLASH_MS): [boolean, (text: string) => Promise<boolean>] {
-  const [copied, setCopied] = useState(false);
+export function useCopyToClipboard(
+  flashMs: number = DEFAULT_FLASH_MS
+): [CopyFlash, (text: string) => Promise<boolean>] {
+  const [flash, setFlash] = useState<CopyFlash>("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clear the pending flash on unmount so React doesn't warn about a state
@@ -28,23 +34,27 @@ export function useCopyToClipboard(flashMs: number = DEFAULT_FLASH_MS): [boolean
 
   const copy = useCallback(
     async (text: string): Promise<boolean> => {
+      const settle = (state: CopyFlash): void => {
+        setFlash(state);
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => setFlash("idle"), flashMs);
+      };
       if (typeof navigator === "undefined" || !navigator.clipboard) {
+        settle("failed");
         return false;
       }
       try {
         await navigator.clipboard.writeText(text);
-        setCopied(true);
-        if (timer.current) clearTimeout(timer.current);
-        timer.current = setTimeout(() => setCopied(false), flashMs);
+        settle("copied");
         return true;
       } catch {
-        // Permission denied, no document focus, secure-context mismatch — fail
-        // silently from the user's perspective but don't lie about copied:true.
+        // Permission denied, no document focus, secure-context mismatch.
+        settle("failed");
         return false;
       }
     },
     [flashMs]
   );
 
-  return [copied, copy];
+  return [flash, copy];
 }

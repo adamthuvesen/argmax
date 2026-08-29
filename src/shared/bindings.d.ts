@@ -96,6 +96,14 @@ async workspacesCreateCurrent(input: WorkspacesCreateCurrentInput) : Promise<Res
     else return { status: "error", error: e  as any };
 }
 },
+async workspacesCreateScratch(input: WorkspacesCreateScratchInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_create_scratch", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async workspacesRefreshStatus(input: WorkspacesRefreshStatusInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspaces_refresh_status", { input }) };
@@ -714,6 +722,11 @@ export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTarg
 export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; learnings: number; usageEvents: number }
 export type RuntimeDiagnostics = { rssBytes: number; openFileDescriptors: number; tokioTrackedTasks: number }
 export type SaveImageResult = { filePath: string; sizeBytes: number }
+/**
+ * 'scratch' (the default) is a visible side chat; 'popup' is the ephemeral
+ * "More details" mini-session, excluded from the sidebar and prunable.
+ */
+export type ScratchWorkspaceKind = "scratch" | "popup"
 export type SearchQuery = string
 export type SendInputResult = { ok: boolean; queued: boolean }
 export type SessionAgentEventsInput = { sessionId: SessionId; parentToolUseId: NonEmptyString }
@@ -788,7 +801,13 @@ export type WorkspaceReadFileInput = { kind: WorkspaceTargetKind; id: WorkspaceT
 export type WorkspaceStatFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath }
 export type WorkspaceStatusInput = { workspaceIds: WorkspaceId[] | null }
 export type WorkspaceStatusSnapshot = { workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[] }
-export type WorkspaceSummary = { id: string; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean; dirty: boolean; changedFiles: number; lastActivityAt: string; pinned: boolean; 
+export type WorkspaceSummary = { id: string; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean; 
+/**
+ * 'git' | 'scratch' | 'popup' — see `PersistWorkspaceInput::kind`. Every
+ * repo-coupled surface (review, gh, branch chips, sidebar grouping) gates
+ * on this rather than on which UI created the workspace.
+ */
+kind: string; dirty: boolean; changedFiles: number; lastActivityAt: string; pinned: boolean; 
 /**
  * When the user marked this workspace done in the sidebar's Priority
  * section. The dismissal is spent (ignored by the renderer) once the
@@ -829,6 +848,7 @@ export type WorkspacesArchiveInput = { workspaceId: WorkspaceId; force: boolean 
 export type WorkspacesAutotitleInput = { workspaceId: WorkspaceId; provider: ProviderId; modelId: NonEmptyString; prompt: Prompt }
 export type WorkspacesCreateCurrentInput = { projectId: ProjectId; taskLabel: TaskLabel }
 export type WorkspacesCreateIsolatedInput = { projectId: ProjectId; taskLabel: TaskLabel; baseRef: BaseRef | null }
+export type WorkspacesCreateScratchInput = { taskLabel: TaskLabel; kind: ScratchWorkspaceKind | null }
 export type WorkspacesKeepInput = { workspaceId: WorkspaceId }
 export type WorkspacesOpenInIdeInput = { workspaceId: WorkspaceId; ide: OpenIdeChoice }
 export type WorkspacesRefreshStatusInput = { workspaceId: WorkspaceId }

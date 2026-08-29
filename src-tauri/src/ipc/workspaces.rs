@@ -41,6 +41,22 @@ pub(crate) fn workspaces_create_current_impl(
     live_workspaces(state)?.create_current(input)
 }
 
+#[tauri::command(rename = "workspaces:create-scratch")]
+#[specta::specta]
+pub async fn workspaces_create_scratch(
+    state: State<'_, AppState>,
+    input: WorkspacesCreateScratchInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    workspaces_create_scratch_impl(&state, input).await
+}
+
+pub(crate) async fn workspaces_create_scratch_impl(
+    state: &AppState,
+    input: WorkspacesCreateScratchInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?.create_scratch(input).await
+}
+
 #[tauri::command(rename = "workspaces:refresh-status")]
 #[specta::specta]
 pub async fn workspaces_refresh_status(

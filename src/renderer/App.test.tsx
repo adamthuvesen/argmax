@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
+import { persistLaunchModel } from "./lib/launchModelPreference.js";
 import { attachmentProtocolUrl } from "../shared/attachmentProtocol.js";
 import type { ArgmaxApi, DashboardSnapshot } from "../shared/types.js";
 import {
@@ -57,13 +58,25 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("GPT-5.6 Sol");
+    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 5");
     expect(screen.queryByRole("button", { name: "Dashboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Board" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cockpit" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Compare" })).not.toBeInTheDocument();
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
+  });
+
+  it("restores the persisted launcher default model", async () => {
+    persistLaunchModel({
+      provider: "codex",
+      label: "GPT-5.6 Sol",
+      modelId: "gpt-5.6-sol",
+      reasoningEffort: "high"
+    });
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("GPT-5.6 Sol");
   });
 
   it("toggles project sessions in the sidebar and remembers collapsed projects", async () => {
@@ -151,6 +164,7 @@ describe("App", () => {
         ...workspace,
         state: "complete",
         sharedWorkspace: true,
+        kind: "git",
         path: "/tmp/argmax",
         dirty: true,
         changedFiles: 3
@@ -184,6 +198,7 @@ describe("App", () => {
         ...workspace,
         state: "complete",
         sharedWorkspace: false,
+        kind: "git",
         dirty: false,
         changedFiles: 0
       })),
@@ -434,7 +449,7 @@ describe("App", () => {
   it("starts the default provider from the composer", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("GPT-5.6 Sol");
+    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 5");
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Implement PTY launch" }
     });
@@ -448,10 +463,10 @@ describe("App", () => {
     );
     expect(launchProvider).toHaveBeenCalledWith({
       workspaceId: "workspace-1",
-      provider: "codex",
+      provider: "claude",
       prompt: "Implement PTY launch",
-      modelLabel: "GPT-5.6 Sol",
-      modelId: "gpt-5.6-sol",
+      modelLabel: "Opus 5",
+      modelId: "claude-opus-5",
       reasoningEffort: "medium",
       fastMode: false,
       agentMode: "auto",
@@ -463,8 +478,8 @@ describe("App", () => {
     await waitFor(() =>
       expect(autotitleWorkspace).toHaveBeenCalledWith({
         workspaceId: "workspace-1",
-        provider: "codex",
-        modelId: "gpt-5.6-luna",
+        provider: "claude",
+        modelId: "claude-haiku-4-5",
         prompt: "Implement PTY launch"
       })
     );
@@ -480,13 +495,16 @@ describe("App", () => {
 
   it("assigns a random icon and color before launching when enabled", async () => {
     window.localStorage.setItem("argmax.sessionIcon.random.enabled", "true");
+    render(<App />);
+    const promptBox = await screen.findByLabelText("Task prompt");
+    // Spy only once the launcher is on screen, so its own random draws (the
+    // rotating hero heading) don't eat the queued icon/color values.
     const random = vi.spyOn(Math, "random")
       .mockReturnValueOnce(0)
       .mockReturnValueOnce(0.999);
 
     try {
-      render(<App />);
-      fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      fireEvent.change(promptBox, {
         target: { value: "Implement PTY launch" }
       });
       fireEvent.click(screen.getByTitle("Start agent"));
@@ -618,6 +636,7 @@ describe("App", () => {
       path: "/tmp/argmax",
       state: "running",
       sharedWorkspace: true,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:10:00.000Z",
@@ -691,6 +710,7 @@ describe("App", () => {
       path: "/tmp/argmax",
       state: "running",
       sharedWorkspace: true,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:10:00.000Z",
@@ -760,7 +780,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
     const launchPopover = await screen.findByRole("listbox", { name: "Switch model" });
-    // The launcher defaults to Sol at Medium; switching to Sonnet (also
+    // The launcher defaults to Opus 5 at Medium; switching to Sonnet (also
     // effort-capable) carries that Medium over rather than resetting.
     fireEvent.click(within(launchPopover).getByText("Sonnet 5"));
     fireEvent.change(await screen.findByLabelText("Task prompt"), {

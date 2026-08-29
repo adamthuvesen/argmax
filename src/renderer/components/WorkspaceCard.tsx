@@ -12,6 +12,7 @@ import { useState, type JSX, type ReactNode } from "react";
 import { errorMessage } from "../../shared/error.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { ChangeCount } from "./ChangeCount.js";
+import type { ComposerStatus } from "./SessionComposer.js";
 
 const PR_STATE_LABELS: Record<string, string> = {
   OPEN: "open",
@@ -51,7 +52,7 @@ export function WorkspaceCard({
   onOpenCommitDialog?: () => void;
   onToggleTerminal: () => void;
   session: SessionSummary | null;
-  setStatus: (message: string | null) => void;
+  setStatus: (status: ComposerStatus | null) => void;
   workspace: WorkspaceSummary;
 }): JSX.Element {
   const [isPrPending, setIsPrPending] = useState(false);
@@ -68,13 +69,15 @@ export function WorkspaceCard({
     void window.argmax.git
       .viewOrCreatePr({ sessionId: session.id })
       .then((result) => {
-        setStatus(
-          result.action === "created"
-            ? `Created pull request. Opening ${result.url}.`
-            : `Opening pull request #${result.prNumber}.`
-        );
+        setStatus({
+          kind: "info",
+          message:
+            result.action === "created"
+              ? `Created pull request. Opening ${result.url}.`
+              : `Opening pull request #${result.prNumber}.`
+        });
       })
-      .catch((error: unknown) => setStatus(errorMessage(error)))
+      .catch((error: unknown) => setStatus({ kind: "error", message: errorMessage(error) }))
       .finally(() => setIsPrPending(false));
   };
 

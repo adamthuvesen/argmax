@@ -135,7 +135,9 @@ export function LaunchSurface({
     : project
       ? launcherDraftKey(project.id)
       : null;
-  const [prompt, setPrompt] = useComposerDraft(draftKey);
+  // Picking another project (or side chat) from the context picker is how the
+  // user aims a prompt they are still writing, so the text follows the pick.
+  const [prompt, setPrompt] = useComposerDraft(draftKey, { carryTextOnRetarget: true });
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const {

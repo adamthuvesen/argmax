@@ -21,7 +21,8 @@ pub struct NtfyMessage {
     pub body: String,
     /// ntfy priority header value ("default" or "high").
     pub priority: &'static str,
-    /// ntfy tags header value; rendered as emoji by the apps.
+    /// ntfy tags header value; rendered as emoji by the apps. Empty sends no
+    /// Tags header, so the push shows the bare title.
     pub tags: &'static str,
 }
 
@@ -43,12 +44,14 @@ impl NtfyPublisher {
                 let agent = ureq::AgentBuilder::new()
                     .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
                     .build();
-                let result = agent
+                let mut request = agent
                     .post(&topic_url)
                     .set("Title", &message.title)
-                    .set("Priority", message.priority)
-                    .set("Tags", message.tags)
-                    .send_string(&message.body);
+                    .set("Priority", message.priority);
+                if !message.tags.is_empty() {
+                    request = request.set("Tags", message.tags);
+                }
+                let result = request.send_string(&message.body);
                 if let Err(error) = result {
                     tracing::warn!(%error, "ntfy publish failed");
                 }
@@ -108,7 +111,7 @@ fn signal_for(session: &SessionSummary) -> Option<NtfyMessage> {
         ("approval-needed", _) => ("Needs approval", "high", "raised_hand"),
         ("blocked", _) => ("Waiting on you", "high", "speech_balloon"),
         (_, "failed") => ("Session failed", "default", "x"),
-        (_, "complete") => ("Session complete", "default", "white_check_mark"),
+        (_, "complete") => ("Session complete", "default", ""),
         _ => return None,
     };
     Some(NtfyMessage {
@@ -199,7 +202,11 @@ mod tests {
             ("complete", "normal"),
         ] {
             let message = signal_for(&session(state, attention)).expect("signal");
-            assert!(message.title.is_ascii(), "non-ASCII title: {}", message.title);
+            assert!(
+                message.title.is_ascii(),
+                "non-ASCII title: {}",
+                message.title
+            );
         }
     }
 

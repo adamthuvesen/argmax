@@ -187,7 +187,7 @@ fn build_session_options(session: &SessionSummary) -> NotificationOptions {
 }
 
 #[derive(Debug)]
-struct BoundedMap<K, V> {
+pub(crate) struct BoundedMap<K, V> {
     capacity: usize,
     values: HashMap<K, V>,
     order: VecDeque<K>,
@@ -197,7 +197,7 @@ impl<K, V> BoundedMap<K, V>
 where
     K: Clone + Eq + Hash,
 {
-    fn new(capacity: usize) -> Self {
+    pub(crate) fn new(capacity: usize) -> Self {
         assert!(capacity > 0, "bounded map capacity must be positive");
         Self {
             capacity,
@@ -206,11 +206,11 @@ where
         }
     }
 
-    fn get(&self, key: &K) -> Option<&V> {
+    pub(crate) fn get(&self, key: &K) -> Option<&V> {
         self.values.get(key)
     }
 
-    fn insert(&mut self, key: K, value: V) {
+    pub(crate) fn insert(&mut self, key: K, value: V) {
         if !self.values.contains_key(&key) {
             self.order.push_back(key.clone());
         }
@@ -240,7 +240,7 @@ impl<T> BoundedSet<T>
 where
     T: Clone + Eq + Hash,
 {
-    fn new(capacity: usize) -> Self {
+    pub(crate) fn new(capacity: usize) -> Self {
         Self {
             map: BoundedMap::new(capacity),
         }

@@ -506,6 +506,30 @@ async gitViewOrCreatePr(input: GitViewOrCreatePrInput) : Promise<Result<GitViewO
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async remoteGetStatus(input: RemoteGetStatusInput) : Promise<Result<RemoteStatus, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remote_get_status", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async remoteSetConfig(input: RemoteSetConfigInput) : Promise<Result<RemoteStatus, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remote_set_config", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async remoteTestNotification(input: RemoteTestNotificationInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remote_test_notification", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -649,6 +673,30 @@ export type PrsRefreshInput = { sessionId: SessionId }
 export type RawProviderOutput = { id: string; sessionId: string; stream: string; content: string; createdAt: string; rowCursor: number | null }
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
 export type RelativePath = string
+export type RemoteGetStatusInput = Record<string, never>
+export type RemoteSetConfigInput = { enabled: boolean; port: number; 
+/**
+ * Raw topic field from the Settings form: empty clears push, a full
+ * http(s) URL is kept as-is, a bare topic name maps to ntfy.sh.
+ */
+ntfyTopic: string }
+export type RemoteStatus = { enabled: boolean; 
+/**
+ * True while the bridge's server task is actually alive — stays false
+ * when enabling failed (typically a port already in use).
+ */
+serving: boolean; port: number; token: string; ntfyTopic: string | null; localUrl: string; 
+/**
+ * Reachable from the phone once `tailscale serve` proxies the port.
+ * Absent when the Tailscale CLI is not installed.
+ */
+tailnetUrl: string | null; tailscaleRunning: boolean; 
+/**
+ * The URL the QR code encodes: tailnet when known, loopback otherwise,
+ * with the token in the fragment (never sent over the wire).
+ */
+pairingUrl: string; qrSvg: string; serveCommand: string }
+export type RemoteTestNotificationInput = Record<string, never>
 export type RepoPath = string
 /**
  * Which baseline the review diff is computed against.

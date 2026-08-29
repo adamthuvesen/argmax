@@ -41,6 +41,24 @@ tokio = { version = "1", features = [
     "process",
     "fs",
     "io-util",
+    "net",
+] }
+
+# Optional remote bridge (src/remote): a loopback HTTP + WebSocket server that
+# lets a browser on the tailnet drive the same IPC channels as the webview.
+# `futures-util` is only for splitting the WebSocket into a read half and a
+# write half, which axum's own API does not cover.
+axum = { version = "0.8", features = ["ws"] }
+# Phone push via ntfy: one blocking POST per qualifying session transition,
+# fired from a throwaway thread. Small on purpose — reqwest would drag a
+# second HTTP/TLS stack onto the boot path for a fire-and-forget request.
+ureq = "2"
+# Pairing QR code in Settings → Remote access, rendered straight to SVG.
+# svg-only: the image feature would pull in an unused raster stack.
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+futures-util = { version = "0.3", default-features = false, features = [
+    "std",
+    "sink",
 ] }
 
 # `bundled-full` ships SQLite (sqlite3.c vendored) with FTS5 enabled,

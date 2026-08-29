@@ -19,6 +19,7 @@ pub mod menu;
 pub mod notifications;
 pub mod persistence;
 pub mod providers;
+pub mod remote;
 pub mod review;
 pub mod session_control;
 pub mod sessions;
@@ -218,6 +219,7 @@ pub fn run() {
                             let (delta_tx, mut delta_rx) =
                                 tokio::sync::mpsc::unbounded_channel::<providers::flush_queue::DashboardDelta>();
                             let emit_handle = app.handle().clone();
+                            let remote_events = state.remote_events.clone();
                             tauri::async_runtime::spawn(async move {
                                 while let Some(mut delta) = delta_rx.recv().await {
                                     // Conflate any deltas that piled up while the previous emit
@@ -250,6 +252,10 @@ pub fn run() {
                                     // main-thread task the loop processes promptly, so the
                                     // chat streams live. See tao#625 / winit#219 and
                                     // docs/runtime.md "Event delivery".
+                                    //
+                                    // Remote clients are fed before the hop: a WebSocket
+                                    // write needs no NSApp event loop.
+                                    remote::publish(&remote_events, "dashboard:delta", &delta);
                                     let handle = emit_handle.clone();
                                     if let Err(error) = emit_handle.run_on_main_thread(move || {
                                         if let Err(error) = handle.emit("dashboard:delta", delta) {
@@ -261,8 +267,14 @@ pub fn run() {
                                 }
                             });
                             let notifications_for_delta = Arc::clone(&notifications);
+                            let ntfy_app = app.handle().clone();
                             let provider_delta_tx = delta_tx.clone();
                             let publish_delta = move |delta: providers::flush_queue::DashboardDelta| {
+                                let ntfy = tauri::Manager::state::<state::AppState>(&ntfy_app)
+                                    .ntfy
+                                    .read()
+                                    .ok()
+                                    .and_then(|publisher| publisher.clone());
                                 for session in &delta.sessions {
                                     if let Err(error) = notifications_for_delta.notify(session) {
                                         tracing::warn!(
@@ -270,6 +282,9 @@ pub fn run() {
                                             session_id = %session.id,
                                             "failed to fire terminal-state notification"
                                         );
+                                    }
+                                    if let Some(ntfy) = ntfy.as_ref() {
+                                        ntfy.observe(session);
                                     }
                                 }
                                 tracing::trace!(
@@ -333,7 +348,9 @@ pub fn run() {
                                 tracing::warn!("provider service state was already initialized");
                             }
                             let app_handle = app.handle().clone();
+                            let remote_events = state.remote_events.clone();
                             let on_terminal_data = Arc::new(move |chunk: terminal::service::TerminalChunk| {
+                                remote::publish(&remote_events, "terminal:data", &chunk);
                                 let emit_handle = app_handle.clone();
                                 let handle = emit_handle.clone();
                                 if let Err(error) = emit_handle.run_on_main_thread(move || {
@@ -345,7 +362,9 @@ pub fn run() {
                                 }
                             });
                             let app_handle = app.handle().clone();
+                            let remote_events = state.remote_events.clone();
                             let on_terminal_exit = Arc::new(move |info: terminal::service::TerminalExitInfo| {
+                                remote::publish(&remote_events, "terminal:exit", &info);
                                 let emit_handle = app_handle.clone();
                                 let handle = emit_handle.clone();
                                 if let Err(error) = emit_handle.run_on_main_thread(move || {
@@ -490,6 +509,13 @@ pub fn run() {
                 tracing::warn!(error = ?e, "failed to install app menu");
             }
             timer.mark("ipc.register");
+            // Deferred like the discovery warm-up: reading remote.json and
+            // binding a socket must never sit on the boot path, and the bridge
+            // stays off entirely unless the config enables it.
+            let remote_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                remote::start(remote_app).await;
+            });
             if app.get_webview_window("main").is_some() {
                 timer.mark("window.create");
             }
@@ -667,7 +693,10 @@ mod tests {
         );
     }
 
-    fn follow_up_project(default_model_label: &str, default_model_id: &str) -> persistence::projects::ProjectSummary {
+    fn follow_up_project(
+        default_model_label: &str,
+        default_model_id: &str,
+    ) -> persistence::projects::ProjectSummary {
         persistence::projects::ProjectSummary {
             id: "p1".to_string(),
             name: "Argmax".to_string(),

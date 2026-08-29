@@ -563,7 +563,10 @@
   gap: 18px;
   align-items: flex-start;
   min-width: 0;
-  padding: 6px 0 10px;
+  /* Keep the card's 22px side gutter: this shorthand outranks the
+     `.settings-card > *` default by source order, so zeroing the inline
+     padding here ran the QR and copy rows edge to edge. */
+  padding: 6px 22px 10px;
 }
 
 /* White ground regardless of theme: phone cameras want dark modules on a

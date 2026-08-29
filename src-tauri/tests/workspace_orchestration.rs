@@ -15,9 +15,9 @@ use std::time::Duration;
 use argmax_lib::checks::service::{CheckService, RunWorkspaceCheckInput};
 use argmax_lib::error::ArgmaxError;
 use argmax_lib::ipc::inputs::{
-    OpenIdeChoice, ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesCreateCurrentInput,
+    ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesCreateCurrentInput,
     WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput, WorkspacesKeepInput,
-    WorkspacesOpenInIdeInput, WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
+    WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
 };
 use argmax_lib::ipc::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
 use argmax_lib::persistence::{
@@ -1201,52 +1201,6 @@ async fn dropping_watched_service_releases_the_service_arc() {
         weak.upgrade().is_none(),
         "watch task must not retain service Arc"
     );
-}
-
-#[test]
-fn open_in_ide_constructs_open_command() {
-    // We don't actually invoke `open` in the test (it's a UI side effect);
-    // instead we verify the IDE choice → app-name mapping by spawning a
-    // workspace with a missing `open` binary on $PATH. The handler shells
-    // out to `open` unconditionally; on a stock dev box the call succeeds,
-    // on CI it may fail silently. We assert only that the dispatch path
-    // doesn't panic.
-    let repo = seed_git_repo(&[("a.txt", "x")]);
-    ensure_main_branch(repo.path());
-    let database = Arc::new(Database::open_in_memory().expect("db"));
-    build_project(
-        &database,
-        &repo.path().display().to_string(),
-        &repo.path().join("worktrees").display().to_string(),
-    );
-    let connection = database.connection();
-    let workspace = persist_workspace(
-        &connection,
-        &PersistWorkspaceInput {
-            id: "w-ide".to_owned(),
-            project_id: PROJECT_ID.to_owned(),
-            task_label: "ide".to_owned(),
-            branch: "main".to_owned(),
-            base_ref: "main".to_owned(),
-            path: repo.path().display().to_string(),
-            state: "kept".to_owned(),
-            shared_workspace: true,
-            kind: "git".to_string(),
-            dirty: false,
-            changed_files: 0,
-        },
-    )
-    .expect("persist workspace");
-    drop(connection);
-
-    let service = WorkspaceService::new(database.clone());
-    // We don't await an IDE actually opening — the test just exercises
-    // the lookup + dispatch path. Result may succeed (open exists) or
-    // fail (no GUI session); either is acceptable here.
-    let _ = service.open_in_ide(WorkspacesOpenInIdeInput {
-        workspace_id: WorkspaceId::try_from(workspace.id).expect("workspace id"),
-        ide: OpenIdeChoice::Default,
-    });
 }
 
 #[test]

@@ -19,7 +19,9 @@ through the turn body in
 
 [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx)
 is the shell: it derives the timeline projections, thinking state, turn model,
-card handlers, scroll behavior, and pane chrome. Pure timeline plumbing lives in
+scroll behavior, and pane chrome. Card rendering and submission handlers live in
+[SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx).
+Pure timeline plumbing lives in
 [sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts):
 conversation-event filtering, raw transcript suppression checks, tool-call
 pairing, and last-significant-event selection. The prompt box, attachment flow,
@@ -52,10 +54,9 @@ Claude's next turn picks it up via `--resume`.
 ## Detection rules (per turn)
 
 Turn view-model prep (assistant group fold, card cutoff, hidden tool ids) lives in
-[sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts). The turn branch
-in [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx)
-consumes `buildTurnRenderState` and renders cards through
-[SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx).
+[sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts). Each turn renders
+through [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx),
+which consumes `buildTurnRenderState` and owns card rendering and submission.
 
 | Rule | Applies to | Why |
 |---|---|---|
@@ -412,14 +413,14 @@ answer gets queued in main behind whatever fallback text the model is still
 emitting, and the user waits for that to finish before the next turn starts.
 
 ```ts
-// SessionConversation.tsx, handlePlanAccept / handleQuestionAnswer
-if (session.state === "running") {
-  void onTerminateSession(sessionId).then(() =>
-    onSendSessionInput(sessionId, message, selectedModel, mode)
-  );
-} else {
-  void onSendSessionInput(sessionId, message, selectedModel, mode);
-}
+// SessionConversationTurn.tsx, handlePlanAccept / handleQuestionAnswer
+return sendAfterTerminate(
+  sessionId,
+  session.state === "running",
+  onTerminateSession,
+  () => onSendSessionInput(sessionId, message, selectedModel, mode),
+  reportSendError
+);
 ```
 
 Main's `sendInput` already relaunches the agent when no live handle exists
@@ -478,6 +479,14 @@ on the state reset, because launching a task unmounts the launcher as the app
 moves to the new session. A failed send keeps the draft, matching the retry
 behavior above.
 
+Per-target drafts have one exception, `carryTextOnRetarget`, which the launcher
+passes and `SessionComposer` does not. Picking another project — or side chat —
+from the launcher's context picker is how the user aims a prompt they are still
+writing, so the text moves to the new key instead of being left behind, and the
+old key keeps only its screenshots. A draft already waiting on the target still
+wins: restoring what the user left there beats overwriting it. Changing the
+model never touches the text.
+
 ## Selection annotations (Add to chat)
 
 Selecting text in the transcript raises a floating toolbar
@@ -507,6 +516,14 @@ conversation registers with `SessionPane`, so nothing is lifted. At send time
 comments serialize as a "Please address this review comment…" block — the
 location, the `>`-quoted line, and the note — after any excerpt blocks. The
 chat-card diffs (`FileChangeCard`) pass no handler, so they stay read-only.
+
+Files open as review-panel tabs ride along the same way
+([openFileContext.ts](../src/renderer/lib/openFileContext.ts)). While the panel
+is open with tabs, the composer shows a single dismissible "Open files: …" chip;
+at send time the paths append to the prompt as `@path` lines, active tab first,
+skipping any the user already @-mentioned. Dismissing the chip skips the
+attachment until the set of open tabs changes. Like annotations, this is
+renderer-only serialization — providers see plain text.
 
 "Ask in side chat" hands the selection to a fresh repo-less session instead of
 the composer: [sideChat.ts](../src/renderer/lib/sideChat.ts) builds the seed
@@ -600,7 +617,9 @@ Drafts are locked in by
 [src/renderer/lib/composerDrafts.test.ts](../src/renderer/lib/composerDrafts.test.ts),
 and, for the launcher, "brings an unsent launcher prompt and its screenshot
 back after a restart" and "clears the launcher draft once the agent starts" in
-[src/renderer/App.test.tsx](../src/renderer/App.test.tsx).
+[src/renderer/App.test.tsx](../src/renderer/App.test.tsx). Retargeting is locked
+in by
+[src/renderer/components/LaunchSurface.draft.test.tsx](../src/renderer/components/LaunchSurface.draft.test.tsx).
 
 Mid-turn controls are locked in by
 [src/renderer/components/SessionComposer.runningControls.test.tsx](../src/renderer/components/SessionComposer.runningControls.test.tsx):
@@ -642,5 +661,5 @@ Not card-specific, but living next to cards in the same conversation surface
   onTerminateSession, send, onError)` in
   [sessionConversationHelpers.ts](../src/renderer/components/sessionConversationHelpers.ts)
   factors out the "terminate-then-send" dance that
-  [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx)
+  [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx)
   uses for PlanCard / QuestionCard submits and other card-style flows.

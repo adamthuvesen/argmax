@@ -30,6 +30,7 @@ import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { modelPickerSelectionFromSession, type ModelPickerSelection } from "../lib/models.js";
+import { orderedOpenFilePaths } from "../lib/openFileContext.js";
 import { repoNameFromPath } from "../lib/projects.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
 import {
@@ -257,6 +258,15 @@ export function SessionConversation({
   const removeAnnotation = useCallback((id: string): void => {
     setPendingAnnotations((prev) => prev.filter((a) => a.id !== id));
   }, []);
+  // Files open as review-panel tabs ride along with sends while the panel is
+  // visible, so the agent knows what the user is looking at.
+  const openFilePaths = useMemo(
+    () =>
+      review.isPanelOpen
+        ? orderedOpenFilePaths(review.workspaceFiles.tabs, review.workspaceFiles.activeTabPath)
+        : [],
+    [review.isPanelOpen, review.workspaceFiles.tabs, review.workspaceFiles.activeTabPath]
+  );
   const clearAnnotations = useCallback((): void => {
     setPendingAnnotations([]);
   }, []);
@@ -827,6 +837,7 @@ export function SessionConversation({
           pendingAnnotations={pendingAnnotations}
           onRemoveAnnotation={removeAnnotation}
           onClearAnnotations={clearAnnotations}
+          openFilePaths={openFilePaths}
           pendingMessages={pendingMessages}
         reviewPanelOpen={review.isPanelOpen}
         selectedModel={selectedModel}

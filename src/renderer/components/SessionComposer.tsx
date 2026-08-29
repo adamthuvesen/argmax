@@ -52,6 +52,7 @@ import {
   toggleAgentMode
 } from "../lib/agentMode.js";
 import { clearDraft } from "../lib/composerDrafts.js";
+import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
 import { leadingSlashCommand } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { ChangeCount } from "./ChangeCount.js";
@@ -97,6 +98,7 @@ export function SessionComposer({
   pendingAnnotations = [],
   onRemoveAnnotation,
   onClearAnnotations,
+  openFilePaths = [],
   pendingMessages,
   reviewPanelOpen,
   selectedModel,
@@ -133,6 +135,9 @@ export function SessionComposer({
   pendingAnnotations?: ComposerAnnotation[];
   onRemoveAnnotation?: (id: string) => void;
   onClearAnnotations?: () => void;
+  /** Paths open as tabs in the review panel, active tab first; appended to the
+      prompt as `@path` references at send time unless the chip is dismissed. */
+  openFilePaths?: string[];
   pendingMessages: PendingMessage[];
   reviewPanelOpen: boolean;
   selectedModel: ModelPickerSelection;
@@ -152,6 +157,11 @@ export function SessionComposer({
   const [sendingQueuedMessageId, setSendingQueuedMessageId] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
+  // Dismissing the open-files chip skips those paths until the set of open
+  // tabs changes, at which point the new set rides along again.
+  const [dismissedOpenFilesKey, setDismissedOpenFilesKey] = useState<string | null>(null);
+  const openFilesKey = openFilePaths.join("\n");
+  const openFilesAttached = openFilePaths.length > 0 && dismissedOpenFilesKey !== openFilesKey;
   const inputFormRef = useRef<HTMLFormElement | null>(null);
   const workspaceDetailsRef = useRef<HTMLDivElement | null>(null);
   const {
@@ -278,7 +288,8 @@ export function SessionComposer({
 
     const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
     const withRefs = refs.length > 0 ? appendReferencesToPrompt(trimmedInput, refs) : trimmedInput;
-    const prompt = prependAnnotationsToPrompt(withRefs, pendingAnnotations);
+    const withAnnotations = prependAnnotationsToPrompt(withRefs, pendingAnnotations);
+    const prompt = openFilesAttached ? appendOpenFilesToPrompt(withAnnotations, openFilePaths) : withAnnotations;
 
     setIsSending(true);
     setStatus(null);
@@ -325,8 +336,27 @@ export function SessionComposer({
         tabIndex={-1}
         onChange={onAttachmentInputChange}
       />
-      {pendingAnnotations.length > 0 ? (
+      {pendingAnnotations.length > 0 || openFilesAttached ? (
         <div className="composer-annotations" role="list" aria-label="Annotations">
+          {openFilesAttached ? (
+            <div
+              className="composer-annotation-chip"
+              role="listitem"
+              title={openFilePaths.join("\n")}
+              aria-label={`Attached context: ${openFilesChipLabel(openFilePaths)}`}
+            >
+              <span className="composer-annotation-chip-label">{openFilesChipLabel(openFilePaths)}</span>
+              <button
+                type="button"
+                className="composer-annotation-remove"
+                aria-label="Don't attach open files"
+                title="Don't attach open files"
+                onClick={() => setDismissedOpenFilesKey(openFilesKey)}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ) : null}
           {pendingAnnotations.map((annotation) => (
             <div
               key={annotation.id}
@@ -623,6 +653,20 @@ export function SessionComposer({
                     <span className="composer-compact-context-branch">{workspace.branch}</span>
                   </div>
                 ) : null}
+                <button
+                  type="button"
+                  className="composer-compact-context-row composer-compact-context-row--attach"
+                  title="Attach file"
+                  aria-label="Attach file"
+                  disabled={!canSend || isSending}
+                  onClick={() => {
+                    setWorkspaceDetailsOpen(false);
+                    openFilePicker();
+                  }}
+                >
+                  <Plus size={12} aria-hidden="true" />
+                  <span>Attach file</span>
+                </button>
               </div>
             ) : null}
           </div>

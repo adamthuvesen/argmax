@@ -4,6 +4,7 @@ import { CHAT_WIDTH_HINTS, type ChatWidth } from "../../lib/chatWidth.js";
 import { FONT_OPTIONS, FONT_SIZE_HINTS, type FontFamilyId, type FontSize } from "../../lib/fonts.js";
 import { SCALE_LEVEL_CHOICES, toScaleLevel, type ScaleLevel } from "../../lib/scaleLevel.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
+import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import {
   AccentPicker,
@@ -35,6 +36,8 @@ export function GeneralSettings({
   onPixelFieldEnabledChange,
   chatWidth,
   onChatWidthChange,
+  reviewPanelSide,
+  onReviewPanelSideChange,
   newSessionMode,
   onNewSessionModeChange,
   randomSessionIconEnabled,
@@ -66,6 +69,8 @@ export function GeneralSettings({
   onPixelFieldEnabledChange: (v: boolean) => void;
   chatWidth: ChatWidth;
   onChatWidthChange: (width: ChatWidth) => void;
+  reviewPanelSide: ReviewPanelSide;
+  onReviewPanelSideChange: (side: ReviewPanelSide) => void;
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
   randomSessionIconEnabled: boolean;
@@ -244,6 +249,24 @@ export function GeneralSettings({
           <div className="settings-card-sub">
             <p className="settings-font-caption">
               How wide a conversation runs before it stops growing. {CHAT_WIDTH_HINTS[chatWidth]}
+            </p>
+          </div>
+
+          <Segmented
+            legend="Files panel side"
+            name="review-panel-side"
+            value={reviewPanelSide}
+            onChange={(v) => onReviewPanelSideChange(v === "left" ? "left" : "right")}
+            options={[
+              { value: "left", label: "Left" },
+              { value: "right", label: "Right" }
+            ]}
+          />
+          <div className="settings-card-sub">
+            <p className="settings-font-caption">
+              {reviewPanelSide === "left"
+                ? "IDE order: changes and files on the left, the conversation on the right."
+                : "Changes and files dock to the right of the conversation — how Argmax ships."}
             </p>
           </div>
 

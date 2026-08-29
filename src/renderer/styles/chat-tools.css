@@ -534,6 +534,11 @@
 
 .session-input {
   position: relative;
+  /* The composer is its own query container: its width is capped by the
+     chat-width setting and squeezed by docked panels, so the compact-toolbar
+     thresholds in chat-composer-chips.css must measure this box, not the
+     multigrid cell around it. */
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 4px;

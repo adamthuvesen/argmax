@@ -19,6 +19,13 @@
   z-index: 6;
 }
 
+/* Left-docked review panel: its grab edge is the right one. Scoped to the review
+   panel because the debug log stays right-docked and keeps the default handle. */
+.app-shell[data-review-panel-side="left"] .review-panel > .panel-col-resize-handle {
+  left: auto;
+  right: -3px;
+}
+
 .panel-col-resize-handle::after {
   content: "";
   position: absolute;

@@ -33,6 +33,7 @@ import { CHAT_PANE_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
 import { lastTurnEditedPaths } from "../lib/lastTurnFiles.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
+import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import {
@@ -61,7 +62,7 @@ const TerminalTabsPanel = lazy(async () => ({
 
 const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
 const SESSION_RIGHT_PANEL_MIN = 360;
-const SESSION_RIGHT_PANEL_MAX = 1400;
+const SESSION_RIGHT_PANEL_MAX = 2000;
 const SESSION_RIGHT_PANEL_DEFAULT = 420;
 const SESSION_LOG_PANEL_MIN = 300;
 
@@ -485,35 +486,54 @@ export function SessionPane({
     dragCleanupRef.current = cleanup;
   }, [terminalHeight]);
 
-  const onRightPanelResizeMouseDown = useCallback((event: ReactMouseEvent): void => {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = rightPanelWidth;
-    setIsPanelResizing(true);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
+  const startPanelResize = useCallback(
+    (event: ReactMouseEvent, dock: "left" | "right"): void => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = rightPanelWidth;
+      setIsPanelResizing(true);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
 
-    const onMouseMove = (e: MouseEvent): void => {
-      // Dragging left should widen the panel; dragging right should narrow it.
-      const next = Math.max(
-        SESSION_RIGHT_PANEL_MIN,
-        Math.min(SESSION_RIGHT_PANEL_MAX, startWidth - (e.clientX - startX))
-      );
-      setRightPanelWidth(next);
-    };
-    const cleanup = (): void => {
-      setIsPanelResizing(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      dragCleanupRef.current = null;
-    };
-    const onMouseUp = (): void => cleanup();
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-    dragCleanupRef.current = cleanup;
-  }, [rightPanelWidth]);
+      const onMouseMove = (e: MouseEvent): void => {
+        // The handle sits on the panel's inner edge, so dragging away from the
+        // dock side widens it: right-docked grows leftwards, left-docked grows
+        // rightwards.
+        const delta = e.clientX - startX;
+        const next = Math.max(
+          SESSION_RIGHT_PANEL_MIN,
+          Math.min(SESSION_RIGHT_PANEL_MAX, dock === "left" ? startWidth + delta : startWidth - delta)
+        );
+        setRightPanelWidth(next);
+      };
+      const cleanup = (): void => {
+        setIsPanelResizing(false);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        dragCleanupRef.current = null;
+      };
+      const onMouseUp = (): void => cleanup();
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+      dragCleanupRef.current = cleanup;
+    },
+    [rightPanelWidth]
+  );
+
+  // Read the dock side at mousedown so a setting change mid-session takes
+  // effect on the next drag without threading the value through props.
+  const onReviewPanelResizeMouseDown = useCallback(
+    (event: ReactMouseEvent): void => startPanelResize(event, readStoredReviewPanelSide()),
+    [startPanelResize]
+  );
+
+  // The debug log panel is always right-docked, whatever the review panel does.
+  const onLogPanelResizeMouseDown = useCallback(
+    (event: ReactMouseEvent): void => startPanelResize(event, "right"),
+    [startPanelResize]
+  );
 
   return (
     <div
@@ -640,7 +660,7 @@ export function SessionPane({
           <ReviewPanel
             review={reviewState}
             onAddReviewComment={session ? handleAddReviewComment : undefined}
-            onResizePanelMouseDown={onRightPanelResizeMouseDown}
+            onResizePanelMouseDown={onReviewPanelResizeMouseDown}
           />
         </Suspense>
       ) : null}
@@ -659,7 +679,7 @@ export function SessionPane({
           events={visibleEvents}
           rawOutputs={visibleRawOutputs}
           onClose={() => setIsLogOpen(false)}
-          onResizePanelMouseDown={reviewState.isPanelOpen ? undefined : onRightPanelResizeMouseDown}
+          onResizePanelMouseDown={reviewState.isPanelOpen ? undefined : onLogPanelResizeMouseDown}
         />
       ) : null}
     </div>

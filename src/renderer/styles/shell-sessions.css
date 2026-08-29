@@ -718,3 +718,10 @@
   z-index: 120;
   border-left: 0;
 }
+
+/* This overlay is full-bleed, so it stays borderless in left-dock mode too. The
+   left-dock hairline lives in overlays-review.css, which is imported after this
+   file at equal specificity, so it needs an explicitly stronger selector here. */
+.app-shell[data-review-panel-side="left"] .launcher-shell[data-review-open="true"] .review-panel {
+  border-right: 0;
+}

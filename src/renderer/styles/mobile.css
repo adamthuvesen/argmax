@@ -346,23 +346,27 @@ html:has(.mobile-shell) body {
 }
 
 /* Desktop affordances the phone loop does not need: header actions, the
-   terminal, the in-pane repo heading, the checks/changed-files cards, and
-   the approvals jump banner (approvals are always pinned on screen here). */
+   terminal, the in-pane repo heading, the checks/changed-files cards, the
+   approvals jump banner (approvals are always pinned on screen here), the
+   file-attach button, and the "…" workspace-context trigger — changed files
+   live behind the header button and the rest is desktop-only. */
 .mobile-shell .conversation-header-actions,
 .mobile-shell .terminal-panel,
 .mobile-shell .conversation-surface > .section-heading,
 .mobile-shell .session-meta-cards,
 .mobile-shell .composer-approvals-banner,
 .mobile-shell .session-input-toolbar .composer-tool,
-.mobile-shell .composer-compact-context-row--attach {
+.mobile-shell .composer-compact-context,
+.mobile-shell .composer-chips-context,
+.mobile-shell .session-input-toolbar > .context-ring-anchor {
   display: none !important;
 }
 
-/* With the attach button gone, give its toolbar column back to the model
-   picker (the compact grid reserves a 30px "attach" track). */
+/* With the attach and context columns gone, give their toolbar tracks back
+   to the model picker (the compact grid reserves "attach" and "details"). */
 .mobile-shell .session-input-toolbar {
-  grid-template-columns: minmax(0, 1fr) 30px auto auto;
-  grid-template-areas: "model details mode send";
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "model mode send";
 }
 
 /* ---- New session ---- */

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardSnapshot } from "../../shared/types.js";
 import type { RemoteConnectionState } from "../lib/wsTransport.js";
 import {
+  archiveWorkspace,
   createCurrentWorkspace,
   createIsolatedWorkspace,
   launchProvider,
@@ -236,11 +237,15 @@ describe("MobileApp", () => {
     const createInput = createCurrentWorkspace.mock.calls[0][0];
     expect(createInput.projectId).toBe(snapshot.projects[0].id);
     expect(createInput.taskLabel).toContain("Fix the flaky archive test");
+    // The launch model mirrors the desktop launcher default (factory pick:
+    // Claude Opus 5), not the project's configured provider.
     expect(launchProvider).toHaveBeenCalledWith(
       expect.objectContaining({
         workspaceId: snapshot.workspaces[0].id,
         prompt: "Fix the flaky archive test",
-        provider: snapshot.projects[0].settings.defaultProvider
+        provider: "claude",
+        modelId: "claude-opus-5",
+        fastMode: false
       })
     );
     expect(await screen.findByRole("region", { name: "Session conversation" })).toBeInTheDocument();
@@ -260,12 +265,27 @@ describe("MobileApp", () => {
     expect(screen.getByText("OpenCode · Big Pickle")).toBeInTheDocument();
   });
 
+  it("picks the project from a bottom sheet on the + screen", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Project" }));
+
+    const sheet = await screen.findByRole("dialog", { name: "Choose project" });
+    fireEvent.click(within(sheet).getByRole("button", { name: snapshot.projects[0].name }));
+    expect(screen.queryByRole("dialog", { name: "Choose project" })).not.toBeInTheDocument();
+  });
+
   it("launches into a worktree when that mode is chosen", async () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "All sessions" });
 
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
-    fireEvent.change(screen.getByLabelText("Workspace"), { target: { value: "worktree" } });
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    const sheet = await screen.findByRole("dialog", { name: "Choose workspace" });
+    fireEvent.click(within(sheet).getByRole("button", { name: "New worktree" }));
+    expect(screen.queryByRole("dialog", { name: "Choose workspace" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Try a risky refactor" } });
     fireEvent.click(screen.getByRole("button", { name: "Launch session" }));
 
@@ -275,6 +295,24 @@ describe("MobileApp", () => {
       );
     });
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("archives the open session from the header, confirming the dirty worktree", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Build dashboard/ }));
+    await screen.findByRole("region", { name: "Session conversation" });
+    fireEvent.click(screen.getByRole("button", { name: "Archive session" }));
+
+    // Workspace 0 is dirty and not shared, so the confirm runs and force goes out.
+    await waitFor(() =>
+      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: snapshot.workspaces[0].id, force: true })
+    );
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("region", { name: "All sessions" })).toBeInTheDocument();
+    confirmSpy.mockRestore();
   });
 
   it("toggles between dark and light themes and persists the choice", async () => {

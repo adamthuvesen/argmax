@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
-import { ChevronLeft, FolderGit2, Moon, Plus, Sun } from "lucide-react";
+import { Archive, ChevronLeft, FolderGit2, Moon, Plus, Sun } from "lucide-react";
 import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
 import { SessionPane } from "../components/SessionPane.js";
 import { MobileReviewScreen } from "./MobileReviewScreen.js";
@@ -250,6 +250,48 @@ export function MobileApp(): JSX.Element {
     setSelectedWorkspaceId(null);
   }, [setSelectedSessionId, setSelectedWorkspaceId]);
 
+  // Same dirty-worktree rules as the desktop sidebar: confirm before a
+  // destructive force-archive, and re-prompt once when the backend's fresh
+  // status check finds changes the cached snapshot missed ("kept" result).
+  const archiveWorkspace = useCallback(
+    async (workspace: WorkspaceSummary): Promise<void> => {
+      if (!window.argmax) return;
+      const confirmDiscard = (taskLabel: string, changedFiles: number): boolean => {
+        const fileLabel = changedFiles === 1 ? "1 uncommitted change" : `${changedFiles} uncommitted changes`;
+        return window.confirm(
+          `${taskLabel} has ${fileLabel}. Archiving will delete the worktree and discard these changes (the branch is preserved). Continue?`
+        );
+      };
+      let force = false;
+      if (workspace.dirty && !workspace.sharedWorkspace) {
+        if (!confirmDiscard(workspace.taskLabel, workspace.changedFiles)) return;
+        force = true;
+      }
+      try {
+        let result = await window.argmax.workspaces.archive({ workspaceId: workspace.id, force });
+        if (result.state === "kept" && !force && !result.sharedWorkspace) {
+          if (!confirmDiscard(result.taskLabel, result.changedFiles)) return;
+          result = await window.argmax.workspaces.archive({ workspaceId: workspace.id, force: true });
+        }
+        if (result.state !== "archived") {
+          showToast({
+            kind: "info",
+            message: "Workspace has uncommitted changes — kept. Commit or discard, then retry archive."
+          });
+        } else {
+          closeSession();
+        }
+      } catch (error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Workspace archive failed."
+        });
+      }
+      await refresh();
+    },
+    [closeSession, refresh, showToast]
+  );
+
   const [newSessionOpen, setNewSessionOpen] = useState(false);
   const handleLaunched = useCallback(
     async (workspaceId: string): Promise<void> => {
@@ -295,23 +337,33 @@ export function MobileApp(): JSX.Element {
             </button>
             <span className="mobile-session-header-title">{selectedWorkspace?.taskLabel ?? ""}</span>
             {selectedWorkspace ? (
-              <button
-                type="button"
-                className="mobile-icon-button"
-                onClick={() => setReviewOpen(true)}
-                aria-label={
-                  selectedWorkspace.changedFiles > 0
-                    ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
-                    : "Files and changes"
-                }
-              >
-                <FolderGit2 size={18} aria-hidden />
-                {selectedWorkspace.changedFiles > 0 ? (
-                  <span className="mobile-header-badge" aria-hidden>
-                    {selectedWorkspace.changedFiles}
-                  </span>
-                ) : null}
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="mobile-icon-button"
+                  onClick={() => void archiveWorkspace(selectedWorkspace)}
+                  aria-label="Archive session"
+                >
+                  <Archive size={18} aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  className="mobile-icon-button"
+                  onClick={() => setReviewOpen(true)}
+                  aria-label={
+                    selectedWorkspace.changedFiles > 0
+                      ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
+                      : "Files and changes"
+                  }
+                >
+                  <FolderGit2 size={18} aria-hidden />
+                  {selectedWorkspace.changedFiles > 0 ? (
+                    <span className="mobile-header-badge" aria-hidden>
+                      {selectedWorkspace.changedFiles}
+                    </span>
+                  ) : null}
+                </button>
+              </>
             ) : (
               <span className="mobile-header-spacer" aria-hidden />
             )}

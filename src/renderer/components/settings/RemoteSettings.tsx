@@ -40,10 +40,14 @@ export function RemoteSettings(): JSX.Element {
     void loadStatus();
   }, [loadStatus]);
 
+  // `fields` defaults to the drafts, which is what "Save changes" commits. The
+  // enable toggle passes the saved values instead: flipping the switch must not
+  // silently commit a half-typed port or an ntfy topic the user never saved.
   const saveConfig = useCallback(
-    async (enabled: boolean): Promise<void> => {
+    async (enabled: boolean, fields?: { port: string; ntfyTopic: string }): Promise<void> => {
       if (!window.argmax || !status) return;
-      const port = Number.parseInt(portField, 10);
+      const source = fields ?? { port: portField, ntfyTopic: topicField };
+      const port = Number.parseInt(source.port, 10);
       if (!Number.isInteger(port) || port < 1024 || port > 65535) {
         setNote({ kind: "error", message: "Port must be between 1024 and 65535." });
         return;
@@ -54,7 +58,7 @@ export function RemoteSettings(): JSX.Element {
         const next = await window.argmax.remote.setConfig({
           enabled,
           port,
-          ntfyTopic: topicField
+          ntfyTopic: source.ntfyTopic
         });
         adoptStatus(next);
         setNote(
@@ -111,7 +115,12 @@ export function RemoteSettings(): JSX.Element {
             label="Enable phone remote"
             description="Serves the companion app and WebSocket bridge on 127.0.0.1."
             checked={status.enabled}
-            onChange={(next) => void saveConfig(next)}
+            onChange={(next) =>
+              void saveConfig(next, {
+                port: String(status.port),
+                ntfyTopic: status.ntfyTopic ?? ""
+              })
+            }
           />
 
           {status.enabled ? (

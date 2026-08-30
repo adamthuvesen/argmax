@@ -221,6 +221,13 @@ export function CommandPalette({
   // session. Keyed by `${kind}:${id}` so switching workspace/project between
   // opens invalidates correctly.
   const filesCacheKeyRef = useRef<string | null>(null);
+  // `searchMessages` closes over the dashboard snapshot upstream, so it gets a
+  // new identity on every `dashboard:delta`. Depending on it directly would
+  // cancel the debounce timer many times a second while an agent streams and
+  // the backend would never be called. Depend on whether one exists instead.
+  const searchMessagesRef = useRef(searchMessages);
+  searchMessagesRef.current = searchMessages;
+  const hasMessageSearch = Boolean(searchMessages);
   useRestoreFocus(open);
 
   useEffect(() => {
@@ -256,7 +263,7 @@ export function CommandPalette({
 
   // Debounced message backend — only when query is long enough to be useful.
   useEffect(() => {
-    if (!open || !searchMessages || !showsGroup("Messages")) {
+    if (!open || !hasMessageSearch || !showsGroup("Messages")) {
       messageTokenRef.current += 1;
       setMessageHits([]);
       setMessagesRunning(false);
@@ -274,7 +281,9 @@ export function CommandPalette({
     const token = ++messageTokenRef.current;
     setMessagesRunning(true);
     const handle = window.setTimeout(() => {
-      void searchMessages(trimmed, MAX_PER_GROUP)
+      const run = searchMessagesRef.current;
+      if (!run) return;
+      void run(trimmed, MAX_PER_GROUP)
         .then((hits) => {
           if (token !== messageTokenRef.current) return;
           setMessageHits(hits);
@@ -294,7 +303,7 @@ export function CommandPalette({
         });
     }, MESSAGE_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [open, query, searchMessages, showsGroup]);
+  }, [open, query, hasMessageSearch, showsGroup]);
 
   // Debounced `git grep`. Unlike the file list this can't be cached: every
   // query is a fresh subprocess, so the debounce is the only thing between a
@@ -343,6 +352,7 @@ export function CommandPalette({
   useEffect(() => {
     if (!open || !fileSource || !loadFiles || !showsGroup("Files")) {
       filesTokenRef.current += 1;
+      filesCacheKeyRef.current = null;
       setFilePaths([]);
       setFilesRunning(false);
       setFilesError(null);

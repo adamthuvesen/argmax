@@ -90,7 +90,24 @@ describe("RemoteSettings", () => {
     await waitFor(() => {
       expect(testNotification).toHaveBeenCalledTimes(1);
     });
-    expect(screen.getByRole("status")).toHaveTextContent("Test notification sent");
+    expect(await screen.findByRole("status")).toHaveTextContent("Test notification sent");
+  });
+
+  it("toggles with the saved port and topic, leaving unsaved edits to Save changes", async () => {
+    const setConfig = vi.fn().mockResolvedValue(remoteStatus({ enabled: false, serving: false }));
+    installRemoteStub({ setConfig });
+    render(<RemoteSettings />);
+
+    // Half-typed port, unsaved topic: neither may ride along on the switch.
+    fireEvent.change(await screen.findByLabelText("Port"), { target: { value: "87" } });
+    fireEvent.change(screen.getByLabelText("ntfy topic"), {
+      target: { value: "https://ntfy.sh/not-saved-yet" }
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Enable phone remote" }));
+
+    await waitFor(() => {
+      expect(setConfig).toHaveBeenCalledWith({ enabled: false, port: 8790, ntfyTopic: "" });
+    });
   });
 
   it("rejects an out-of-range port before calling the backend", async () => {

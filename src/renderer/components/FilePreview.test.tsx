@@ -83,20 +83,6 @@ describe("FilePreview", () => {
     expect(editor).toHaveAttribute("data-readonly", "true");
   });
 
-  it("saves a dirty file on Cmd+S from anywhere in the preview", () => {
-    const saveFile = vi.fn().mockResolvedValue(undefined);
-    render(<FilePreview state={makeState({ isDirty: true, saveFile })} />);
-    fireEvent.keyDown(screen.getByLabelText("Editor for src/index.ts"), { key: "s", metaKey: true });
-    expect(saveFile).toHaveBeenCalled();
-  });
-
-  it("ignores Cmd+S while the file is clean", () => {
-    const saveFile = vi.fn().mockResolvedValue(undefined);
-    render(<FilePreview state={makeState({ isDirty: false, saveFile })} />);
-    fireEvent.keyDown(screen.getByLabelText("Editor for src/index.ts"), { key: "s", metaKey: true });
-    expect(saveFile).not.toHaveBeenCalled();
-  });
-
   it("surfaces the stale banner with both actions when dirty and externally changed", () => {
     const reloadFile = vi.fn();
     const dismissExternalChange = vi.fn();

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useState, type JSX, type ReactNode } from "react";
 import { errorMessage } from "../../shared/error.js";
+import type { AsyncState } from "../hooks/useReviewState.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { ChangeCount } from "./ChangeCount.js";
 import type { ComposerStatus } from "./SessionComposer.js";
@@ -33,6 +34,7 @@ const PR_STATE_LABELS: Record<string, string> = {
  */
 export function WorkspaceCard({
   changeSummary,
+  changesState,
   isTerminalOpen,
   onBrowseFiles,
   onHide,
@@ -45,6 +47,8 @@ export function WorkspaceCard({
 }: {
   /** Null until the changed-file list has loaded for this workspace. */
   changeSummary: { fileCount: number; additions: number; deletions: number } | null;
+  /** Load state behind that summary — "clean" is only true once it is ready. */
+  changesState: AsyncState;
   isTerminalOpen: boolean;
   onBrowseFiles: () => void;
   onHide: () => void;
@@ -56,6 +60,8 @@ export function WorkspaceCard({
   workspace: WorkspaceSummary;
 }): JSX.Element {
   const [isPrPending, setIsPrPending] = useState(false);
+  const hasChanges = changeSummary !== null && changeSummary.fileCount > 0;
+  const changesLabel = changesState === "ready" ? "clean" : changesState === "error" ? "unavailable" : "…";
   const hasPr = typeof workspace.prNumber === "number";
   const prState = workspace.prState ?? null;
   const prLabel = hasPr ? `PR #${workspace.prNumber}` : "Create pull request";
@@ -105,19 +111,26 @@ export function WorkspaceCard({
           icon={<FileDiff size={13} aria-hidden="true" />}
           label="Changes"
           // A clean worktree has no diff to open, so the row reports the state
-          // instead of leading to an empty panel.
+          // instead of leading to an empty panel. "clean" is a claim about the
+          // worktree, so it waits for the list: while it loads — or after it
+          // failed — the row stays neutral rather than calling a dirty branch
+          // clean.
           meta={
-            changeSummary && changeSummary.fileCount > 0 ? (
+            hasChanges ? (
               <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
             ) : (
-              <span className="workspace-card-quiet">clean</span>
+              <span className="workspace-card-quiet">{changesLabel}</span>
             )
           }
-          disabled={!changeSummary || changeSummary.fileCount === 0}
+          disabled={!hasChanges}
           title={
-            changeSummary && changeSummary.fileCount > 0
+            hasChanges
               ? `Review ${changeSummary.fileCount} changed ${changeSummary.fileCount === 1 ? "file" : "files"} (⌘B)`
-              : "No changes to review"
+              : changesState === "ready"
+                ? "No changes to review"
+                : changesState === "error"
+                  ? "Could not load the changed files"
+                  : "Loading changed files…"
           }
           onClick={onOpenChanges}
         />

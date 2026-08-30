@@ -148,6 +148,10 @@ export function App(): JSX.Element {
       ),
     []
   );
+  // Stable identity: BrowserPanel's `browser:page-command` listener depends on
+  // this handler, and a fresh arrow per App render would tear the Tauri
+  // subscription down and re-register it on every dashboard delta.
+  const closeBrowserPanel = useCallback(() => setBrowserPanelRequest(null), []);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const workspaceRef = useRef<HTMLElement | null>(null);
   const settingsNavigationRequestRef = useRef(0);
@@ -1862,7 +1866,7 @@ export function App(): JSX.Element {
         <BrowserPanel
           url={browserPanelRequest.url}
           requestSeq={browserPanelRequest.seq}
-          onClose={() => setBrowserPanelRequest(null)}
+          onClose={closeBrowserPanel}
           onResizeMouseDown={onBrowserResizeMouseDown}
         />
       ) : null}

@@ -1,12 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSummary } from "../../shared/types.js";
+import type { AsyncState } from "../hooks/useReviewState.js";
 import { baseSession, workspace } from "../../test/sessionConversationTestHarness.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
 
 function renderCard(
   overrides: {
     changeSummary?: { fileCount: number; additions: number; deletions: number } | null;
+    changesState?: AsyncState;
     isTerminalOpen?: boolean;
     onBrowseFiles?: () => void;
     onHide?: () => void;
@@ -19,7 +21,12 @@ function renderCard(
 ) {
   return render(
     <WorkspaceCard
-      changeSummary={overrides.changeSummary ?? { fileCount: 3, additions: 229, deletions: 44 }}
+      changeSummary={
+        "changeSummary" in overrides
+          ? overrides.changeSummary ?? null
+          : { fileCount: 3, additions: 229, deletions: 44 }
+      }
+      changesState={overrides.changesState ?? "ready"}
       isTerminalOpen={overrides.isTerminalOpen ?? false}
       onBrowseFiles={overrides.onBrowseFiles ?? vi.fn()}
       onHide={overrides.onHide ?? vi.fn()}
@@ -75,6 +82,7 @@ describe("WorkspaceCard", () => {
     rerender(
       <WorkspaceCard
         changeSummary={null}
+        changesState="ready"
         isTerminalOpen={false}
         onBrowseFiles={vi.fn()}
         onHide={vi.fn()}
@@ -90,6 +98,34 @@ describe("WorkspaceCard", () => {
     const clean = screen.getByRole("button", { name: "Changes" });
     expect(clean.textContent).toContain("clean");
     expect(clean).toBeDisabled();
+  });
+
+  it("withholds the clean verdict until the changed-file list is known", () => {
+    const { rerender } = renderCard({ changeSummary: null, changesState: "loading" });
+
+    const loading = screen.getByRole("button", { name: "Changes" });
+    expect(loading.textContent).not.toContain("clean");
+    expect(loading).toHaveAttribute("title", "Loading changed files…");
+
+    rerender(
+      <WorkspaceCard
+        changeSummary={null}
+        changesState="error"
+        isTerminalOpen={false}
+        onBrowseFiles={vi.fn()}
+        onHide={vi.fn()}
+        onOpenChanges={vi.fn()}
+        onOpenCommitDialog={vi.fn()}
+        onToggleTerminal={vi.fn()}
+        session={baseSession()}
+        setStatus={vi.fn()}
+        workspace={workspace}
+      />
+    );
+
+    const failed = screen.getByRole("button", { name: "Changes" });
+    expect(failed.textContent).not.toContain("clean");
+    expect(failed).toHaveAttribute("title", "Could not load the changed files");
   });
 
   it("marks the terminal row pressed while the terminal panel is open", () => {
@@ -116,6 +152,7 @@ describe("WorkspaceCard", () => {
     rerender(
       <WorkspaceCard
         changeSummary={{ fileCount: 1, additions: 1, deletions: 0 }}
+        changesState="ready"
         isTerminalOpen={false}
         onBrowseFiles={vi.fn()}
         onHide={vi.fn()}

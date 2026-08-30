@@ -245,12 +245,14 @@ export function Sidebar({
     setCollapsedProjectIds(allCollapsed);
   }
   // Persist the boot seed and collapsed set as an effect so StrictMode's
-  // double render doesn't double-write localStorage.
+  // double render doesn't double-write localStorage, and so every update to
+  // the set — including the functional ones below — is persisted exactly once.
   useEffect(() => {
-    if (!readBootSeeded(BOOT_COLLAPSE_SEED_KEY) && snapshot.projects.length > 0) {
+    if (!readBootSeeded(BOOT_COLLAPSE_SEED_KEY)) {
+      if (snapshot.projects.length === 0) return;
       markBootSeeded(BOOT_COLLAPSE_SEED_KEY);
-      saveCollapsedProjectIds(collapsedProjectIds);
     }
+    saveCollapsedProjectIds(collapsedProjectIds);
   }, [snapshot.projects.length, collapsedProjectIds]);
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => loadExpandedProjectIds());
   const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
@@ -268,8 +270,8 @@ export function Sidebar({
   useEffect(() => {
     if (!readBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY)) {
       markBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY);
-      saveCollapsedDateGroupIds(collapsedDateGroups);
     }
+    saveCollapsedDateGroupIds(collapsedDateGroups);
   }, [collapsedDateGroups]);
   const [expandedDateGroups, setExpandedDateGroups] = useState<Set<string>>(() =>
     loadExpandedDateGroupIds()
@@ -503,35 +505,30 @@ export function Sidebar({
     [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
   );
 
-  // Compute next outside the setState updater so the localStorage write fires
-  // exactly once per toggle. (React 18 StrictMode runs updater callbacks
-  // twice in dev — a side effect inside one would persist twice.)
-  const toggleProjectVisibility = useCallback(
-    (projectId: string): void => {
-      const next = new Set(collapsedProjectIds);
+  // Functional updates throughout: several of these can run in one commit (two
+  // forked workspaces landing in one delta), and a `new Set(state)` built from
+  // the render closure would drop every write but the last. Persistence lives
+  // in the effects above, keyed on the state, so no updater has a side effect.
+  const toggleProjectVisibility = useCallback((projectId: string): void => {
+    setCollapsedProjectIds((current) => {
+      const next = new Set(current);
       if (next.has(projectId)) {
         next.delete(projectId);
       } else {
         next.add(projectId);
       }
-      setCollapsedProjectIds(next);
-      saveCollapsedProjectIds(next);
-    },
-    [collapsedProjectIds]
-  );
+      return next;
+    });
+  }, []);
 
-  const expandProjectVisibility = useCallback(
-    (projectId: string): void => {
-      if (!collapsedProjectIds.has(projectId)) {
-        return;
-      }
-      const next = new Set(collapsedProjectIds);
+  const expandProjectVisibility = useCallback((projectId: string): void => {
+    setCollapsedProjectIds((current) => {
+      if (!current.has(projectId)) return current;
+      const next = new Set(current);
       next.delete(projectId);
-      setCollapsedProjectIds(next);
-      saveCollapsedProjectIds(next);
-    },
-    [collapsedProjectIds]
-  );
+      return next;
+    });
+  }, []);
 
   const toggleProjectExpansion = useCallback(
     (projectId: string): void => {
@@ -547,19 +544,17 @@ export function Sidebar({
     [expandedProjectIds]
   );
 
-  const toggleDateGroupVisibility = useCallback(
-    (key: string): void => {
-      const next = new Set(collapsedDateGroups);
+  const toggleDateGroupVisibility = useCallback((key: string): void => {
+    setCollapsedDateGroups((current) => {
+      const next = new Set(current);
       if (next.has(key)) {
         next.delete(key);
       } else {
         next.add(key);
       }
-      setCollapsedDateGroups(next);
-      saveCollapsedDateGroupIds(next);
-    },
-    [collapsedDateGroups]
-  );
+      return next;
+    });
+  }, []);
 
   // Expand whichever section hosts the given row: its recency bucket (or
   // Pinned / Priority / Side chats) in the Sessions view, its project group in
@@ -576,17 +571,19 @@ export function Sidebar({
               ? dateGroups.find((group) => group.items.some((item) => item.id === workspace.id))
                   ?.key ?? null
               : null;
-      if (groupKey && collapsedDateGroups.has(groupKey)) {
-        const next = new Set(collapsedDateGroups);
-        next.delete(groupKey);
-        setCollapsedDateGroups(next);
-        saveCollapsedDateGroupIds(next);
+      if (groupKey) {
+        setCollapsedDateGroups((current) => {
+          if (!current.has(groupKey)) return current;
+          const next = new Set(current);
+          next.delete(groupKey);
+          return next;
+        });
       }
       if (viewMode === "projects" && workspace.kind === "git") {
         expandProjectVisibility(workspace.projectId);
       }
     },
-    [collapsedDateGroups, dateGroups, expandProjectVisibility, priorityWorkspaceIds, viewMode]
+    [dateGroups, expandProjectVisibility, priorityWorkspaceIds, viewMode]
   );
 
   // A newly launched (or newly selected) session must not vanish into a

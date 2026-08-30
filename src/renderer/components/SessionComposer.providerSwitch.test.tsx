@@ -84,6 +84,27 @@ describe("SessionComposer provider switch confirmation", () => {
     expect(screen.getByRole("button", { name: "Session model" }).textContent).not.toContain("Sonnet 5");
   });
 
+  // `session.provider` stays on the old provider until the backend relaunches
+  // on the next send, so the staged selection is what says the switch was
+  // already confirmed. Without it, every later effort change re-raises the
+  // dialog — and its early return drops the effort change on the floor.
+  it("keeps the dialog closed when the effort changes after a confirmed switch", () => {
+    renderConversation(baseSession({ state: "complete", provider: "codex" }));
+
+    pickModel("Sonnet 5");
+    fireEvent.click(screen.getByRole("button", { name: "Switch anyway" }));
+
+    const effortLabelBefore = screen.getByRole("button", { name: "Session model effort" }).textContent;
+    fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Reasoning effort" }), { key: "ArrowLeft" });
+    fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
+
+    expect(screen.queryByRole("dialog", { name: "Switch this session to Claude" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Session model effort" }).textContent).not.toBe(
+      effortLabelBefore
+    );
+  });
+
   it("drops the held pick when a turn starts, since the send would only queue", () => {
     const { rerender } = renderConversation(baseSession({ state: "complete", provider: "codex" }));
 

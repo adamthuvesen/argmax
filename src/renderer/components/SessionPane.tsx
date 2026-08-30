@@ -84,6 +84,7 @@ export function SessionPane({
   onFastModeEnabledChange,
   onLoadSessionEvents,
   onNewSession,
+  onOpenFile,
   onOpenSideChat,
   onOpenDetails,
   defaultIde = null,
@@ -121,6 +122,7 @@ export function SessionPane({
   isFocused?: boolean;
   /** Close button is shown when provided. Used by the multi-pane grid; absent in single-pane mode. */
   onClose?: () => void;
+  onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   /** Called on mount and on session.id change to backfill timeline events for this pane's session. */
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
@@ -343,6 +345,12 @@ export function SessionPane({
   }, [workspaceId]);
   const handleOpenFile = useCallback(
     (path: string, opts?: { line?: number | null; preferIde?: boolean }): void => {
+      // A host that owns its own review surface (the mobile shell) routes the
+      // tap there instead of opening this pane's ReviewPanel.
+      if (onOpenFile) {
+        onOpenFile(path, opts);
+        return;
+      }
       if (opts?.preferIde && workspaceId && window.argmax) {
         void window.argmax.workspaces
           .openInIde({ workspaceId, ide: "default" })
@@ -358,7 +366,7 @@ export function SessionPane({
         if (resolved) reviewOpenInFilesView(resolved);
       });
     },
-    [reviewOpenInFilesView, workspaceId]
+    [onOpenFile, reviewOpenInFilesView, workspaceId]
   );
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
   const lastDebugLogToggleSignal = useRef(debugLogToggleSignal);
@@ -663,6 +671,7 @@ export function SessionPane({
         <Suspense fallback={null}>
           <ReviewPanel
             review={reviewState}
+            isFocused={isFocused}
             onAddReviewComment={session ? handleAddReviewComment : undefined}
             onResizePanelMouseDown={onReviewPanelResizeMouseDown}
           />

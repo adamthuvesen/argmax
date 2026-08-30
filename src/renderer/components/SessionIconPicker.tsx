@@ -98,11 +98,11 @@ export function SessionIconPicker({
             className="session-icon-swatch"
             data-icon-color={color}
             aria-label={`${sessionIconColorLabel(color)} icon color`}
-            aria-pressed={icon !== null && draftColor === color}
+            aria-pressed={draftColor === color}
             title={sessionIconColorLabel(color)}
             onClick={() => selectColor(color)}
           >
-            {icon !== null && draftColor === color ? <Check size={12} aria-hidden="true" /> : null}
+            {draftColor === color ? <Check size={12} aria-hidden="true" /> : null}
           </button>
         ))}
       </div>

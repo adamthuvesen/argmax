@@ -768,6 +768,7 @@ export function sidebarSessionRowEqual(
     pw.id !== nw.id ||
     pw.state !== nw.state ||
     pw.taskLabel !== nw.taskLabel ||
+    pw.branch !== nw.branch ||
     pw.path !== nw.path ||
     pw.lastActivityAt !== nw.lastActivityAt ||
     pw.pinned !== nw.pinned ||

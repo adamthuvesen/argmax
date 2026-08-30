@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
 } from "react";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
@@ -197,10 +198,14 @@ function readStoredLeftColumnWidth(): number {
 }
 
 export function ReviewPanel({
+  isFocused = true,
   onAddReviewComment,
   onResizePanelMouseDown,
   review
 }: {
+  /** False for a panel in an unfocused pane: its document-level ⌘W must not
+   *  close a tab in a panel the user isn't looking at. */
+  isFocused?: boolean;
   /** When provided, diff lines grow a hover "+" for line comments; submitted
    *  comments become composer annotations on the pane's session. */
   onAddReviewComment?: (input: ReviewCommentInput) => void;
@@ -235,6 +240,7 @@ export function ReviewPanel({
   }, [review.mode]);
 
   useEffect(() => {
+    if (!isFocused) return undefined;
     if (review.mode !== "files") return undefined;
     const activePath = review.workspaceFiles.activeTabPath;
     if (!activePath) return undefined;
@@ -251,7 +257,7 @@ export function ReviewPanel({
     };
     document.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => document.removeEventListener("keydown", handleKeyDown, { capture: true });
-  }, [review.mode, review.workspaceFiles]);
+  }, [isFocused, review.mode, review.workspaceFiles]);
 
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount
@@ -305,6 +311,19 @@ export function ReviewPanel({
     review.openFile(filePath);
   };
 
+  // ⌘S has no button of its own. The editor's Mod-s keymap covers a focused
+  // CodeMirror; this catches the rest of Files mode — the tab strip and the
+  // tree are siblings of the preview, so a handler on the preview alone misses
+  // them and the save silently never happens.
+  const files = review.workspaceFiles;
+  const handleSaveShortcut = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (isChanges) return;
+    if (event.key.toLowerCase() !== "s" || !(event.metaKey || event.ctrlKey)) return;
+    if (event.defaultPrevented || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (files.canEdit && files.isDirty && files.saveState !== "saving") void files.saveFile();
+  };
+
   return (
     <aside className="review-panel" aria-label="Review panel" ref={panelRef}>
       {onResizePanelMouseDown ? (
@@ -342,7 +361,10 @@ export function ReviewPanel({
           </button>
         </div>
       </div>
-      <div className={isChanges ? "review-body review-body-changes" : "review-body"}>
+      <div
+        className={isChanges ? "review-body review-body-changes" : "review-body"}
+        onKeyDown={handleSaveShortcut}
+      >
         {isChanges ? null : (
           <>
             <div className="review-list-col" style={{ width: leftColumnWidth }}>

@@ -315,6 +315,64 @@ describe("ReviewPanel file tabs", () => {
     expect(closeTab).toHaveBeenCalledWith("src/index.ts");
   });
 
+  it("ignores Cmd+W while the pane holding the panel is unfocused", () => {
+    const review = reviewStub();
+    const closeTab = vi.fn();
+    review.mode = "files";
+    review.workspaceFiles = {
+      ...review.workspaceFiles,
+      tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
+      activeTabPath: "src/index.ts",
+      selectedPath: "src/index.ts",
+      closeTab
+    };
+
+    render(<ReviewPanel review={review} isFocused={false} />);
+
+    fireEvent.keyDown(document, { key: "w", metaKey: true });
+
+    expect(closeTab).not.toHaveBeenCalled();
+  });
+
+  it("saves a dirty file on Cmd+S pressed from the file tab strip", () => {
+    const review = reviewStub();
+    const saveFile = vi.fn().mockResolvedValue(undefined);
+    review.mode = "files";
+    review.workspaceFiles = {
+      ...review.workspaceFiles,
+      tabs: [{ path: "src/index.ts", isDirty: true, saveState: "idle", externalChange: false }],
+      activeTabPath: "src/index.ts",
+      selectedPath: "src/index.ts",
+      isDirty: true,
+      saveFile
+    };
+
+    render(<ReviewPanel review={review} />);
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: /index\.ts/ }), { key: "s", metaKey: true });
+
+    expect(saveFile).toHaveBeenCalled();
+  });
+
+  it("ignores Cmd+S in Files mode while the file is clean", () => {
+    const review = reviewStub();
+    const saveFile = vi.fn().mockResolvedValue(undefined);
+    review.mode = "files";
+    review.workspaceFiles = {
+      ...review.workspaceFiles,
+      tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
+      activeTabPath: "src/index.ts",
+      selectedPath: "src/index.ts",
+      saveFile
+    };
+
+    render(<ReviewPanel review={review} />);
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: /index\.ts/ }), { key: "s", metaKey: true });
+
+    expect(saveFile).not.toHaveBeenCalled();
+  });
+
   it("leaves Cmd+W alone in Files mode when no file tab is open", () => {
     const review = reviewStub();
     const closeTab = vi.fn();

@@ -99,6 +99,7 @@ describe("SessionSyncSettings", () => {
     syncStub.setConfig.mockResolvedValue(status({ lastError: "permission denied" }));
     render(<SessionSyncSettings />);
     fireEvent.click(await screen.findByRole("checkbox", { name: "Claude Code" }));
+    await waitFor(() => expect(syncStub.setConfig).toHaveBeenCalled());
     expect(await screen.findByRole("alert")).toHaveTextContent("permission denied");
   });
 });

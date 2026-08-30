@@ -14,6 +14,7 @@ function renderPane(
     isLogOpen?: boolean;
     onToggleWorkspaceCard?: () => void;
     review?: ReviewState;
+    workspace?: typeof workspace;
     workspaceCardEnabled?: boolean;
   } = {}
 ) {
@@ -32,7 +33,7 @@ function renderPane(
       review={options.review ?? reviewStub()}
       session={baseSession()}
       workspaceCardEnabled={options.workspaceCardEnabled ?? true}
-      workspace={workspace}
+      workspace={options.workspace ?? workspace}
     />
   );
 }
@@ -77,5 +78,17 @@ describe("SessionConversation workspace card", () => {
 
     fireEvent.click(item);
     expect(onToggleWorkspaceCard).toHaveBeenCalledTimes(1);
+  });
+
+  it("explains why enabling the card changes nothing on a side chat", async () => {
+    const sideChat = { ...workspace, kind: "scratch" as const };
+    renderPane({ workspace: sideChat, workspaceCardEnabled: false });
+
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Workspace card" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Workspace card is on. It shows up on sessions that have a git worktree."
+    );
   });
 });

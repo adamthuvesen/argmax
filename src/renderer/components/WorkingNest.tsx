@@ -50,7 +50,7 @@ export function WorkingNest({
         animation.startTime = 0;
       }
     }
-  });
+  }, [active]);
 
   useEffect(() => {
     if (!isSettling) return;

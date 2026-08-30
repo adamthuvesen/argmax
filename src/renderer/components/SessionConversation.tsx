@@ -5,6 +5,7 @@ import {
   MessagesSquare,
   X
 } from "lucide-react";
+import type { NewSessionSeed } from "./SessionComposer.js";
 import {
   useCallback,
   useEffect,
@@ -52,6 +53,7 @@ import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CompactionNotice } from "./CompactionNotice.js";
+import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
 import { CostPanel } from "./CostPanel.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
 import {
@@ -155,7 +157,7 @@ export function SessionConversation({
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
   onClose?: () => void;
   /** Opens a launcher pane beside this one, for a task in any repository. */
-  onNewSession?: () => void;
+  onNewSession?: (seed?: NewSessionSeed) => void;
   /** Launches a repo-less side chat with the given first message. Enables the
       selection toolbar's "Ask in side chat" action when provided. */
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
@@ -652,7 +654,7 @@ export function SessionConversation({
               isLogOpen={isLogOpen}
               isWorkspaceCardEnabled={workspaceCardEnabled}
               onBrowseFiles={review.openPanelInFilesMode}
-              onNewSession={onNewSession}
+              onNewSession={onNewSession ? () => onNewSession() : undefined}
               onOpenCommitDialog={onOpenCommitDialog}
               onToggleLog={onToggleLog}
               onToggleWorkspaceCard={handleToggleWorkspaceCard}
@@ -727,6 +729,9 @@ export function SessionConversation({
               }
               if (item.kind === "compaction") {
                 return <CompactionNotice key={item.id} notice={item.notice} />;
+              }
+              if (item.kind === "provider-switch") {
+                return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
               }
               return (
                 <SessionConversationTurn
@@ -840,6 +845,7 @@ export function SessionConversation({
           isQueueing={isQueueing}
           onFastModeEnabledChange={onFastModeEnabledChange}
           onCancelQueuedMessage={onCancelQueuedMessage}
+          onStartNewSession={onNewSession}
           onSendQueuedMessageNow={onSendQueuedMessageNow}
           onSendSessionInput={sendSessionInput}
           onTerminateSession={onTerminateSession}

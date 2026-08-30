@@ -1,6 +1,7 @@
 import type { TimelineEvent } from "../../shared/types.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { COMPACTION_FINISHED, COMPACTION_STARTED } from "./compaction.js";
+import { PROVIDER_CHANGED } from "./providerSwitch.js";
 import {
   detectToolError,
   extractCompletionCorrelationId,
@@ -27,7 +28,8 @@ function isConversationEventType(type: string): boolean {
     type === "message.completed" ||
     type === "error" ||
     type === COMPACTION_STARTED ||
-    type === COMPACTION_FINISHED
+    type === COMPACTION_FINISHED ||
+    type === PROVIDER_CHANGED
   );
 }
 

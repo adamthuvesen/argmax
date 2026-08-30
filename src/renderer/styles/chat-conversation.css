@@ -287,6 +287,11 @@
      own end padding matches it, so at rest the fade lands on empty space and
      only bites once content is actually scrolling past the edge. */
   --conversation-edge-fade: 32px;
+  /* Containing block for the pane's own overlays (the provider-switch
+     confirmation), so they centre on this session rather than the window.
+     `.conversation-scroll` positions its edge fades against itself, so this
+     does not move them. */
+  position: relative;
   display: grid;
   height: 100%;
   min-height: 0;

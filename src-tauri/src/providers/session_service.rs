@@ -577,7 +577,14 @@ impl ProviderSessionService {
                             "Switched provider to {}.",
                             get_provider_definition(requested_provider).display_name
                         ),
-                        payload: json!({ "provider": requested_provider.as_str() }),
+                        // The chat surface renders this seam from the payload:
+                        // it names both ends of the handoff and the model the
+                        // new provider is picking up with.
+                        payload: json!({
+                            "from": current_provider.as_str(),
+                            "provider": requested_provider.as_str(),
+                            "modelLabel": model_label.as_str(),
+                        }),
                         created_at: None,
                     },
                 )?);

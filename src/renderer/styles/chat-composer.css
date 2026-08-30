@@ -434,3 +434,76 @@
     opacity: 1;
   }
 }
+
+/* ---- Provider switch confirmation ---- */
+
+/* Absolute, against `.conversation-surface`: the decision belongs to one
+   session, and a grid of panes can show several at once — a window-fixed
+   overlay would dim the whole app and land the dialog outside the pane that
+   raised it. */
+.provider-switch-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 24, 32, 0.32);
+  z-index: 120;
+}
+
+.provider-switch-dialog {
+  /* Never wider than the pane: panes get narrow in a multi-column grid. */
+  width: min(400px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px 24px 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
+}
+
+.provider-switch-dialog h2 {
+  margin: 0;
+  font-size: var(--text-md-plus);
+}
+
+.provider-switch-dialog p {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--muted-strong);
+}
+
+.provider-switch-recommendation {
+  color: var(--muted);
+}
+
+.provider-switch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* Labels set their own width and never wrap: a fixed height clipped the
+   descenders of any label that did. The row wraps instead when the pane is
+   too narrow to seat all three. */
+.provider-switch-actions button {
+  min-height: 30px;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: var(--text-sm);
+  line-height: 1.3;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.provider-switch-actions .provider-switch-primary {
+  background: var(--ink);
+  color: var(--bubble-on-ink);
+  border-color: var(--ink);
+}

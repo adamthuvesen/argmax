@@ -347,6 +347,29 @@ pane's only progress cue: `SessionConversation` suppresses the generic Thinking
 label while `isCompacting(events)` holds, rather than stacking two indicators
 that say the same thing less precisely.
 
+## Provider handoff
+
+Changing provider on an idle session is the other seam the chat shows. The new
+agent cannot resume the old one's native conversation, so `send_input` drops the
+resume id and relaunches from the capped transcript
+([follow_up.rs](../src-tauri/src/providers/follow_up.rs)); everything below the
+seam was written by an agent that only read a summary of everything above it.
+
+`session.provider-changed` carries `from`, `provider`, and `modelLabel`.
+[foldConversation.ts](../src/renderer/lib/foldConversation.ts) turns it into a
+`provider-switch` render item that ends the turn it lands in, and
+[ProviderSwitchNotice.tsx](../src/renderer/components/ProviderSwitchNotice.tsx)
+renders it with the same rule-and-caption treatment as compaction
+(`Cursor → Codex · GPT-5.6 Sol`). A row written before the payload carried both
+ends falls back to its own message text.
+
+Picking another provider in the session composer does not apply straight away:
+[ProviderSwitchDialog.tsx](../src/renderer/components/ProviderSwitchDialog.tsx)
+names what the handoff costs and offers a new session as the recommended path.
+Taking it moves the composer draft onto the launcher and aims the launcher at
+the picked model, so the recommendation costs one click instead of retyping.
+Same-provider model changes are unaffected and commit immediately.
+
 ## Subagent activity panes
 
 Agent tool rows (`Task`, Codex `spawn_agent`, Cursor `taskToolCall`) open an

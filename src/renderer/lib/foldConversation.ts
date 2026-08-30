@@ -1,5 +1,10 @@
 import type { SessionSummary, TimelineEvent } from "../../shared/types.js";
 import { compactionNoticeFor, isCompactionEvent, type CompactionNotice } from "./compaction.js";
+import {
+  isProviderSwitchEvent,
+  providerSwitchNoticeFor,
+  type ProviderSwitchNotice
+} from "./providerSwitch.js";
 import type { TurnToolItem } from "./toolCalls.js";
 import {
   buildToolCallGroup,
@@ -11,6 +16,7 @@ import {
 export type RenderItem =
   | { kind: "user-message"; event: TimelineEvent }
   | { kind: "compaction"; id: string; notice: CompactionNotice }
+  | { kind: "provider-switch"; id: string; notice: ProviderSwitchNotice }
   | {
       kind: "turn";
       id: string;
@@ -125,6 +131,17 @@ export function foldRenderItems(
     return id;
   };
   for (const item of conversationItems) {
+    // A provider handoff is the same shape of seam as a compaction: it ends the
+    // turn it lands in, and the follow-up that triggered it opens a fresh one
+    // under the new agent. Unlike compaction it is a single row, so there is no
+    // start/end pair to collapse.
+    if (item.kind === "message" && isProviderSwitchEvent(item.event)) {
+      flush();
+      const id = `provider-switch-${item.event.id}`;
+      out.push({ kind: "provider-switch", id, notice: providerSwitchNoticeFor(item.event) });
+      activeTurnId = `turn-after-${id}`;
+      continue;
+    }
     if (item.kind === "message" && isCompactionEvent(item.event)) {
       flush();
       // Re-anchor to the seam: the work after a compaction is a new turn, and

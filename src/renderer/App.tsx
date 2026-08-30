@@ -21,6 +21,8 @@ import type {
   WorkspaceContentSearchResult
 } from "../shared/types.js";
 import { SCRATCH_PROJECT_ID } from "../shared/types.js";
+import { launcherDraftKey, writeDraftText } from "./lib/composerDrafts.js";
+import type { NewSessionSeed } from "./components/SessionComposer.js";
 import { PROVIDER_TITLE_MODEL } from "../shared/providerModels.js";
 import type {
   MessageHit as PaletteMessageHit,
@@ -422,13 +424,6 @@ export function App(): JSX.Element {
     [grid.rows.length, newSessionMode, openLauncherPaneInGrid]
   );
   const openNewSessionPane = useCallback((): void => openLauncherSurface(false), [openLauncherSurface]);
-  // "New session here" from a pane menu skips openLauncherSurface, so it
-  // resets chat mode itself before opening the in-grid launcher cell.
-  const openNewSessionPaneInGrid = useCallback((): void => {
-    setLauncherSideChatMode(false);
-    openLauncherPaneInGrid();
-  }, [openLauncherPaneInGrid]);
-
   const handleMenuCommand = useCallback(
     (command: MenuCommand): void => {
       switch (command) {
@@ -1014,6 +1009,31 @@ export function App(): JSX.Element {
         ? selectedProject
         : realProjects[0] ?? null,
     [realProjects, selectedProject]
+  );
+
+  // "New session here" from a pane menu skips openLauncherSurface, so it
+  // resets chat mode itself before opening the in-grid launcher cell.
+  //
+  // The provider-switch dialog uses the same entry point with a seed: it aims
+  // the launcher at the model the user picked and moves the follow-up they had
+  // started onto the launcher's draft, so the recommended path costs one click
+  // rather than retyping. Defined below `launcherProject` because that is the
+  // project the launcher will open on, and therefore the draft's owner.
+  const openNewSessionPaneInGrid = useCallback(
+    (seed?: NewSessionSeed): void => {
+      const sideChat = selectedProject?.id === SCRATCH_PROJECT_ID;
+      if (seed) {
+        handleLaunchModelChange(seed.model);
+        const draftProjectId = sideChat ? SCRATCH_PROJECT_ID : launcherProject?.id ?? null;
+        if (draftProjectId && seed.prompt.trim() !== "") {
+          writeDraftText(launcherDraftKey(draftProjectId), seed.prompt);
+        }
+      }
+      // A side chat has no repo, so its replacement is another side chat.
+      setLauncherSideChatMode(sideChat);
+      openLauncherPaneInGrid();
+    },
+    [handleLaunchModelChange, launcherProject, openLauncherPaneInGrid, selectedProject]
   );
 
   const launchTask = useCallback(

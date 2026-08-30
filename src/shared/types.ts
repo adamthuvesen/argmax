@@ -63,6 +63,7 @@ export type AttentionState = "normal" | "approval-needed" | "blocked" | "failed"
 export type CheckStatus = "queued" | "running" | "passed" | "failed" | "cancelled";
 
 export type EventType =
+  | "session.provider-changed"
   | "session.started"
   | "session.streaming"
   | "user.message"

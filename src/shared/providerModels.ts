@@ -369,6 +369,14 @@ export function contextWindowForModel(modelId: string): number | null {
   return null;
 }
 
+/** Human-facing provider names, for handoff copy that names both ends. */
+export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
+  claude: "Claude",
+  codex: "Codex",
+  cursor: "Cursor",
+  opencode: "OpenCode"
+};
+
 /**
  * Providers whose CLI can fork a resumed conversation, which is what the turn
  * footer's Fork button rides: Claude via `--fork-session`, Codex via

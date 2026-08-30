@@ -10,6 +10,7 @@ import {
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
+import type { NewSessionSeed } from "./SessionComposer.js";
 import type { FontSize } from "../lib/fonts.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type {
@@ -95,7 +96,7 @@ interface SessionMultiGridProps {
   onLoadAgentEvents: (sessionId: string, parentToolUseId: string) => Promise<void>;
   onOpenAgentPane: (request: AgentPaneRequest) => void;
   /** Opens a launcher cell beside the focused pane. */
-  onNewSession: () => void;
+  onNewSession: (seed?: NewSessionSeed) => void;
   /** Launches a repo-less side chat seeded with the given first message. */
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
   onOpenDetails?: (

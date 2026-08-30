@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { SessionConversation } from "./SessionConversation.js";
+import { THINKING_WORDS } from "./ThinkingLabel.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import {
   baseSession,
@@ -736,14 +737,14 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
-  it("renders the pulsing Thinking label while the agent thinks", () => {
+  it("renders a curated thinking word with the shared live-work mark", () => {
     const { container } = renderConversation(
       baseSession({ provider: "codex", state: "running" }),
       [event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")]
     );
 
-    expect(screen.getByLabelText("Thinking")).toHaveTextContent("Thinking");
-    expect(screen.getByTestId("thinking-label")).toHaveTextContent("Thinking");
+    expect(THINKING_WORDS).toContain(screen.getByTestId("thinking-label").textContent);
+    expect(screen.getByTestId("thinking-label").querySelector('[data-working="true"]')).not.toBeNull();
     expect(container.querySelector(".thinking-label")).not.toBeNull();
   });
 

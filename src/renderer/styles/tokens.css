@@ -106,10 +106,9 @@
   --motion-slow: 240ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-  /* One full swell of the four-dot working nest. The sidebar's live session
-     marker and the agent-launch row are the same mark, so they run the same
-     cycle with the dots staggered an exact quarter of it apart. */
-  --working-nest-cycle: 1.8s;
+  /* One full relay around the four-dot working nest. Every live surface shares
+     the same cadence while stable entity keys offset separate jobs. */
+  --working-nest-cycle: 1.2s;
 
   /* Spacing tokens. Prefer these over raw pixel values. docs/styling.md
      documents the full scale. */

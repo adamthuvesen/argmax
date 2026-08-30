@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import { MIN_RESIZABLE_CELL_WIDTH_PX } from "./components/SessionMultiGrid.js";
+import { THINKING_WORDS } from "./components/ThinkingLabel.js";
 import type { DashboardSnapshot, SessionEventsSinceResult } from "../shared/types.js";
 import {
   createCurrentWorkspace,
@@ -983,7 +984,7 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
-    expect(within(pane).getByTestId("thinking-label")).toHaveTextContent("Thinking");
+    expect(THINKING_WORDS).toContain(within(pane).getByTestId("thinking-label").textContent);
     expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
 
     await act(async () => {
@@ -992,7 +993,7 @@ describe("App grid", () => {
     });
 
     await waitFor(() => {
-      expect(within(pane).getByTestId("thinking-label")).toHaveTextContent("Thinking");
+      expect(THINKING_WORDS).toContain(within(pane).getByTestId("thinking-label").textContent);
     });
     expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
   });

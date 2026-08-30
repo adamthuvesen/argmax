@@ -46,7 +46,12 @@ function AgentLaunchRow({
   return (
     <div className="agent-launch-row" data-status={tool.status}>
       <div className="agent-launch-row-main">
-        <WorkingNest active={tool.status === "running"} className="agent-launch-nest" size={14} />
+        <WorkingNest
+          active={tool.status === "running"}
+          className="agent-launch-nest"
+          size={14}
+          phaseKey={tool.toolUseId}
+        />
         <button
           type="button"
           className="agent-launch-row-button"

@@ -178,7 +178,7 @@ export function AgentTabsPane({
                 >
                   <span className="agent-tab-status" data-status={status} aria-hidden="true">
                     {status === "running" ? (
-                      <WorkingNest active size={11} />
+                      <WorkingNest active size={11} phaseKey={id} />
                     ) : (
                       <span className="agent-tab-status-dot" />
                     )}

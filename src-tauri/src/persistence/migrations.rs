@@ -341,6 +341,14 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SESSION_RESUME_FORK_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 17,
+        name: "reset_project_default_agent",
+        up: RESET_PROJECT_DEFAULT_AGENT,
+        affected_tables: &["projects"],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 // Distinguishes real project checkouts ('git') from app-owned scratch
@@ -357,6 +365,19 @@ ALTER TABLE workspaces ADD COLUMN kind TEXT NOT NULL DEFAULT 'git'
 // persisted for the session.
 const SESSION_RESUME_FORK: &str = r#"
 ALTER TABLE sessions ADD COLUMN resume_fork INTEGER NOT NULL DEFAULT 0;
+"#;
+
+// One-time reset: per-project default agents had accumulated stale hard-coded
+// values (models that left the catalog, per-provider drift). Every real
+// project falls back to the app default agent — Opus 5, mirroring
+// PROVIDER_MODEL_DEFAULTS.claude and the factory launch model. The scratch
+// side-chats project keeps its empty "provider default" sentinel.
+const RESET_PROJECT_DEFAULT_AGENT: &str = r#"
+UPDATE projects
+SET default_provider = 'claude',
+    default_model_label = 'Opus 5',
+    default_model_id = 'claude-opus-5'
+WHERE id <> 'scratch-side-chats';
 "#;
 
 // The per-project default model previously stored only its display label,
@@ -1034,6 +1055,7 @@ mod tests {
                 (14, compute_migration_checksum(PROJECT_DEFAULT_MODEL_ID)),
                 (15, compute_migration_checksum(WORKSPACE_KIND)),
                 (16, compute_migration_checksum(SESSION_RESUME_FORK)),
+                (17, compute_migration_checksum(RESET_PROJECT_DEFAULT_AGENT)),
             ]
         );
 

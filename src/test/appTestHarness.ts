@@ -499,7 +499,10 @@ export function setupAppTestMocks(): void {
       setBounds: () => Promise.resolve({ ok: true }),
       close: () => Promise.resolve({ ok: true }),
       fillCredentials: () => Promise.resolve({ ok: true, itemTitle: "Test Login" }),
-      onState: () => () => undefined
+      stop: () => Promise.resolve({ ok: true as const }),
+      onState: () => () => undefined,
+      onNewTab: () => () => undefined,
+      onPageCommand: () => () => undefined
     }
   };
 }

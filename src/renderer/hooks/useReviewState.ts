@@ -164,6 +164,11 @@ export function useReviewState(
      *  and with it the external-change polling that only matters for a live
      *  editor buffer. Defaults to editable. */
     editable?: boolean;
+    /** Full-screen surfaces where the panel IS the screen start open, so the
+     *  data hooks load on the first render instead of after a mount effect —
+     *  an effect-driven open races useReviewDiff's auto-select of the first
+     *  changed file. Defaults to closed. */
+    initiallyOpen?: boolean;
   }
 ): ReviewState {
   const sourceKind = source?.kind ?? null;
@@ -181,7 +186,7 @@ export function useReviewState(
     [sourceKind, sourceId]
   );
 
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(options?.initiallyOpen ?? false);
   const [mode, setMode] = useState<ReviewPanelMode>("changes");
   const [storedScope, setChangesScope] = useState<ReviewChangesScope>(readStoredScope);
   usePersistedSetting(SCOPE_KEY, storedScope);

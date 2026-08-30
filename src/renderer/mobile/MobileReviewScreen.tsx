@@ -1,5 +1,5 @@
 import { ChevronLeft } from "lucide-react";
-import { useEffect, useMemo, useState, type JSX } from "react";
+import { useMemo, useState, type JSX } from "react";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { ChangeCount } from "../components/ChangeCount.js";
 import { DiffBlocks } from "../components/DiffBlocks.js";
@@ -36,13 +36,9 @@ export function MobileReviewScreen({
   // Phones have no Cmd+S and no save affordance, so browsing stays read-only —
   // a stray tap in the editor can't strand unsaved edits, and the editor's
   // external-change polling stays off the WS bridge.
-  const review = useReviewState(source, null, { editable: false });
-  const { isPanelOpen, toggleChangesPanel } = review;
   // The data hooks only load while the panel is "open"; on this screen the
-  // panel is the screen, so it opens on mount and stays open.
-  useEffect(() => {
-    if (!isPanelOpen) toggleChangesPanel();
-  }, [isPanelOpen, toggleChangesPanel]);
+  // panel is the screen, so it starts open and stays open.
+  const review = useReviewState(source, null, { editable: false, initiallyOpen: true });
 
   const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
   // Files mode drills down: tree first, then the tapped file full-screen.

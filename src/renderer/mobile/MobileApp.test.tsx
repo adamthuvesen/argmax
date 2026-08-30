@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DashboardSnapshot } from "../../shared/types.js";
+import type { ChangedFileSummary, DashboardSnapshot } from "../../shared/types.js";
 import type { RemoteConnectionState } from "../lib/wsTransport.js";
 import {
   archiveWorkspace,
@@ -94,6 +94,14 @@ describe("MobileApp", () => {
           state: "blocked",
           attention: "approval-needed",
           attentionChangedAt: new Date().toISOString()
+        },
+        {
+          ...snapshot.sessions[0],
+          id: "session-3",
+          workspaceId: "workspace-3",
+          state: "blocked",
+          attention: "approval-needed",
+          attentionChangedAt: new Date().toISOString()
         }
       ]
     };
@@ -102,7 +110,11 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const pinned = await screen.findByRole("region", { name: "Pinned" });
-    within(pinned).getByRole("button", { name: /Keep this handy/ });
+    // A pin is a placement, not a mute: the row you cared enough to pin still
+    // says it needs you.
+    expect(within(pinned).getByRole("button", { name: /Keep this handy/ })).toHaveTextContent(
+      "needs approval"
+    );
     const sessions = screen.getByRole("region", { name: "Sessions" });
     const row = within(sessions).getByRole("button", { name: /Fix flaky tests/ });
     expect(row).toHaveTextContent("needs approval");
@@ -155,10 +167,47 @@ describe("MobileApp", () => {
     );
   });
 
+  it("forks a Claude session from the turn footer and opens the fork", async () => {
+    // The fork button is provider-gated to Claude and only renders on a
+    // finished turn's hover footer.
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) =>
+        session.workspaceId === "workspace-1"
+          ? { ...session, provider: "claude" as const, state: "complete" as const }
+          : session
+      )
+    });
+    render(<MobileApp />);
+
+    const section = await screen.findByRole("region", { name: "All sessions" });
+    fireEvent.click(within(section).getByRole("button", { name: /Build dashboard/ }));
+    await screen.findByRole("region", { name: "Session conversation" });
+
+    const fork = vi.fn().mockResolvedValue({
+      workspace: { id: "workspace-1" },
+      session: { id: "session-fork" }
+    });
+    window.argmax!.session.fork = fork;
+
+    fireEvent.click(await screen.findByRole("button", { name: "Fork session" }));
+    await waitFor(() => expect(fork).toHaveBeenCalledWith({ sessionId: "session-1" }));
+  });
+
   it("browses changed diffs and the file tree from the session screen", async () => {
-    listChangedFiles.mockResolvedValue([
-      { path: "src/foo.ts", status: "modified", additions: 1, deletions: 0 }
-    ]);
+    // The changed-file list is released by hand rather than resolved up front:
+    // the review screen opens its changes panel from a mount effect, and the
+    // first file only auto-expands when the list lands with the panel already
+    // open. A WS round trip always loses that race in the app; an instantly
+    // resolved mock wins it and leaves every file collapsed.
+    let releaseChangedFiles: (() => void) | null = null;
+    listChangedFiles.mockImplementation(
+      () =>
+        new Promise<ChangedFileSummary[]>((resolveFiles) => {
+          releaseChangedFiles = () =>
+            resolveFiles([{ path: "src/foo.ts", status: "modified", additions: 1, deletions: 0 }]);
+        })
+    );
     loadDiff.mockResolvedValue({
       workspaceId: "workspace-1",
       filePath: "src/foo.ts",
@@ -181,9 +230,21 @@ describe("MobileApp", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
 
-    // Changes view: the changed file is listed with its diff expanded.
-    expect(await screen.findByText("src/foo.ts")).toBeInTheDocument();
-    expect(await screen.findByText(/const b = 2;/)).toBeInTheDocument();
+    // Let the (lazily loaded) review screen mount and open its changes panel
+    // before the file list arrives.
+    await screen.findByRole("tablist", { name: "Review mode" });
+    await act(async () => {});
+    await act(async () => {
+      releaseChangedFiles?.();
+      await Promise.resolve();
+    });
+
+    // Changes view: the changed file is listed with its diff expanded. Asserted
+    // on the list's text content, since an added line is one text node while
+    // the diff is plain and several once the highlighter has loaded.
+    const changedFiles = await screen.findByLabelText("Changed files");
+    expect(changedFiles).toHaveTextContent("src/foo.ts");
+    await waitFor(() => expect(changedFiles).toHaveTextContent("const b = 2;"));
 
     // Files view: the tree renders; tapping a file opens the preview and back
     // returns to the tree.
@@ -313,6 +374,58 @@ describe("MobileApp", () => {
     expect(confirmSpy).toHaveBeenCalledTimes(1);
     expect(await screen.findByRole("region", { name: "All sessions" })).toBeInTheDocument();
     confirmSpy.mockRestore();
+  });
+
+  it("opens the session a push notification linked to", async () => {
+    const linked = snapshot.sessions[0];
+    window.history.replaceState(null, "", `/mobile.html?session=${linked.id}`);
+
+    render(<MobileApp />);
+
+    // Straight into the transcript that raised the push, not the list.
+    expect(await screen.findByRole("region", { name: "Session conversation" })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+    window.history.replaceState(null, "", "/mobile.html");
+  });
+
+  it("stays on the list when the linked session is not in the snapshot", async () => {
+    window.history.replaceState(null, "", "/mobile.html?session=session-gone");
+
+    render(<MobileApp />);
+
+    expect(await screen.findByRole("region", { name: "All sessions" })).toBeInTheDocument();
+    window.history.replaceState(null, "", "/mobile.html");
+  });
+
+  it("pins a session from the row actions sheet", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+    const setPinned = vi.spyOn(window.argmax!.workspaces, "setPinned");
+
+    const row = screen.getByRole("button", { name: /Build dashboard/ }).closest("li");
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Session actions" }));
+    const sheet = await screen.findByRole("dialog", { name: "Session actions" });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Pin to top" }));
+
+    expect(screen.queryByRole("dialog", { name: "Session actions" })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(setPinned).toHaveBeenCalledWith({ workspaceId: snapshot.workspaces[0].id, pinned: true })
+    );
+  });
+
+  it("closes the open session on a hardware back gesture", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Build dashboard/ }));
+    await screen.findByRole("region", { name: "Session conversation" });
+
+    // The phone's back button pops the entry the session screen pushed.
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    expect(await screen.findByRole("region", { name: "All sessions" })).toBeInTheDocument();
   });
 
   it("toggles between dark and light themes and persists the choice", async () => {

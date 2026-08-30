@@ -3,6 +3,17 @@ import { decideSmartFollow } from "../lib/smartFollow.js";
 
 const USER_SCROLL_INTENT_MS = 350;
 
+/** Keys that scroll the list a reader has focus inside. */
+export const SCROLL_INTENT_KEYS = new Set([
+  "ArrowDown",
+  "ArrowUp",
+  "End",
+  "Home",
+  "PageDown",
+  "PageUp",
+  " "
+]);
+
 export interface SmartFollowScroll {
   /** Attach to the scrollable conversation list `<div>`. */
   conversationListRef: RefObject<HTMLDivElement | null>;
@@ -42,6 +53,8 @@ export function useSmartFollowScroll(
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [newBelowCount, setNewBelowCount] = useState(0);
   const lastSeenItemCountRef = useRef(0);
+  const childResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const observedChildrenRef = useRef<Set<HTMLElement>>(new Set());
 
   const clearUserScrollIntent = useCallback((): void => {
     userScrollStartTopRef.current = null;
@@ -54,7 +67,11 @@ export function useSmartFollowScroll(
   const scrollToFollowTarget = useCallback((el: HTMLDivElement, force = false): void => {
     if (!force && !isFollowingRef.current) return;
     const top = Math.max(0, el.scrollHeight - el.clientHeight);
-    if (el.scrollTop !== top) {
+    // scrollHeight/clientHeight are rounded but iOS reports fractional
+    // scrollTop, so exact equality never settles there — each write fires a
+    // scroll event whose handler writes again, fighting the keyboard's
+    // caret-reveal pan into a visible per-keystroke bounce.
+    if (Math.abs(el.scrollTop - top) > 1) {
       el.scrollTop = top;
     }
   }, []);
@@ -186,16 +203,39 @@ export function useSmartFollowScroll(
     return () => observer.disconnect();
   }, [composerRef, reconcileScrollAffordance]);
 
+  // One observer for the list's children, kept across item changes. A stream
+  // reallocates `conversationItems` per chunk, so rebuilding the observer here
+  // would cost an `observe()` call for every rendered turn, dozens of times a
+  // second, on an unvirtualized transcript.
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const el = conversationListRef.current;
+      if (el) reconcileScrollAffordance(el);
+    });
+    childResizeObserverRef.current = observer;
+    return () => {
+      observer.disconnect();
+      childResizeObserverRef.current = null;
+      observedChildrenRef.current = new Set();
+    };
+  }, [reconcileScrollAffordance]);
+
   useEffect(() => {
     const el = conversationListRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => reconcileScrollAffordance(el));
+    const observer = childResizeObserverRef.current;
+    if (!el || !observer) return;
+    const observed = observedChildrenRef.current;
+    const present = new Set<HTMLElement>();
     for (const child of Array.from(el.children)) {
-      if (child instanceof HTMLElement) {
-        observer.observe(child);
-      }
+      if (!(child instanceof HTMLElement)) continue;
+      present.add(child);
+      if (!observed.has(child)) observer.observe(child);
     }
-    return () => observer.disconnect();
+    for (const child of observed) {
+      if (!present.has(child)) observer.unobserve(child);
+    }
+    observedChildrenRef.current = present;
   }, [conversationItems, reconcileScrollAffordance]);
 
   return {

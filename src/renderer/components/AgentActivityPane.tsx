@@ -2,7 +2,7 @@ import { ArrowDown, Bot, ChevronDown, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
-import { useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
+import { SCROLL_INTENT_KEYS, useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
 import { coalesceAssistantGroups, type AssistantGroup } from "../lib/sessionTurnView.js";
 import type { ToolCall } from "../lib/toolCalls.js";
@@ -348,6 +348,13 @@ export function AgentActivityPane({
         }}
         onPointerMove={(event) => {
           if (event.buttons !== 0) {
+            handleUserScrollIntent();
+          }
+        }}
+        onKeyDown={(event) => {
+          // Unlike pointerdown, a scroll key is intent wherever focus sits:
+          // the browser scrolls this list for any descendant control.
+          if (SCROLL_INTENT_KEYS.has(event.key)) {
             handleUserScrollIntent();
           }
         }}

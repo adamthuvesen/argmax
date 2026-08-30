@@ -435,11 +435,12 @@ async fn assert_valid_ref_name(repo_path: &Path, reference: &str) -> ArgmaxResul
 }
 
 fn default_settings(repo_path: &Path) -> ProjectSettings {
-    // Mirrors PROVIDER_MODEL_DEFAULTS.codex in src/shared/providerModels.ts.
+    // Mirrors PROVIDER_MODEL_DEFAULTS.claude in src/shared/providerModels.ts —
+    // the app default agent, same as the factory launch model.
     ProjectSettings {
-        default_provider: "codex".to_string(),
-        default_model_label: "GPT-5.6 Sol".to_string(),
-        default_model_id: "gpt-5.6-sol".to_string(),
+        default_provider: "claude".to_string(),
+        default_model_label: "Opus 5".to_string(),
+        default_model_id: "claude-opus-5".to_string(),
         worktree_location: repo_path
             .join(".argmax")
             .join("worktrees")

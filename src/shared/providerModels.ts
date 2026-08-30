@@ -368,3 +368,16 @@ export function contextWindowForModel(modelId: string): number | null {
   }
   return null;
 }
+
+/**
+ * Providers whose CLI can fork a resumed conversation, which is what the turn
+ * footer's Fork button rides: Claude via `--fork-session`, Codex via
+ * `exec fork`, OpenCode via `run --fork`. Cursor has no equivalent — resuming
+ * its chat id from two sessions would write into one conversation. Mirrors the
+ * gate in `fork_session` (src-tauri/src/workspaces/orchestration.rs).
+ */
+export const FORK_CAPABLE_PROVIDERS: ReadonlySet<string> = new Set<ProviderId>([
+  "claude",
+  "codex",
+  "opencode"
+]);

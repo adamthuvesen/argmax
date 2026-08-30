@@ -47,6 +47,13 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "browser:set-bounds",
     "browser:close",
     "browser:fill-credentials",
+    // Scheduled tasks are managed from the desktop panel; the mobile surface
+    // stays read-only on sessions for now.
+    "routines:list",
+    "routines:upsert",
+    "routines:delete",
+    "routines:set-enabled",
+    "routines:run-now",
 ];
 
 pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxResult<Value> {

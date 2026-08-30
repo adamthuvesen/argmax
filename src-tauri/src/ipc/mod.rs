@@ -22,6 +22,7 @@ pub mod providers;
 pub mod prs;
 pub mod remote;
 pub mod review;
+pub mod routines;
 pub mod session;
 pub mod skills;
 pub mod sync;
@@ -112,6 +113,11 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "browser:set-bounds",
     "browser:close",
     "browser:fill-credentials",
+    "routines:list",
+    "routines:upsert",
+    "routines:delete",
+    "routines:set-enabled",
+    "routines:run-now",
 ];
 
 /// Resolve the live `Database` Arc from `AppState`. Shared across IPC
@@ -213,6 +219,11 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         browser::browser_stop,
         browser::browser_set_bounds,
         browser::browser_close,
-        browser::browser_fill_credentials
+        browser::browser_fill_credentials,
+        routines::routines_list,
+        routines::routines_upsert,
+        routines::routines_delete,
+        routines::routines_set_enabled,
+        routines::routines_run_now
     ])
 }

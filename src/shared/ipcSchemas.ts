@@ -83,7 +83,12 @@ export const IPC_CHANNELS = [
   "browser:stop",
   "browser:set-bounds",
   "browser:close",
-  "browser:fill-credentials"
+  "browser:fill-credentials",
+  "routines:list",
+  "routines:upsert",
+  "routines:delete",
+  "routines:set-enabled",
+  "routines:run-now"
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];

@@ -315,9 +315,9 @@ struct SessionLaunchResponse {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct SessionLaunchProtocolError {
-    code: String,
-    message: String,
+pub struct SessionLaunchProtocolError {
+    pub(crate) code: String,
+    pub(crate) message: String,
 }
 
 impl SessionLaunchResponse {
@@ -443,42 +443,53 @@ fn write_json_line(writer: &mut impl Write, response: &SessionLaunchResponse) ->
     writer.flush()
 }
 
-async fn launch_session(
-    request: SessionLaunchRequest,
-    parent: ParentLaunchSettings,
+/// Everything needed to launch a top-level session. The session-launch
+/// socket derives it from a parent session's settings; the scheduled-task
+/// scheduler derives it from a stored routine row.
+pub(crate) struct LaunchSpec {
+    pub project: Option<String>,
+    pub prompt: String,
+    pub worktree: bool,
+    pub provider: crate::providers::ProviderId,
+    pub model_label: String,
+    pub model_id: String,
+    pub reasoning_effort: Option<crate::providers::ReasoningEffort>,
+    pub fast_mode: bool,
+    pub permission_mode: crate::providers::PermissionMode,
+    pub agent_mode: crate::providers::AgentMode,
+}
+
+pub(crate) struct LaunchOutcome {
+    pub session_id: String,
+    pub workspace_id: String,
+    pub project_id: String,
+    pub project_name: String,
+}
+
+/// Resolve the project, create the workspace, and launch the provider —
+/// the shared tail of every programmatic session launch.
+pub(crate) async fn launch_with_spec(
+    spec: LaunchSpec,
     database: Arc<Database>,
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
-) -> Result<SessionLaunchResponse, SessionLaunchProtocolError> {
-    if request.version != PROTOCOL_VERSION {
-        return Err(protocol_error(
-            "VERSION_UNSUPPORTED",
-            format!(
-                "Protocol version {} is not supported. Expected {PROTOCOL_VERSION}.",
-                request.version
-            ),
-        ));
-    }
-    let prompt = Prompt::try_from(request.prompt).map_err(invalid_input_error)?;
+    fallback_project_id: &str,
+) -> Result<LaunchOutcome, SessionLaunchProtocolError> {
+    let prompt = Prompt::try_from(spec.prompt).map_err(invalid_input_error)?;
     let task_label =
         TaskLabel::try_from(task_label(prompt.as_str())).map_err(invalid_input_error)?;
-    let (parent_project_id, projects) = {
+    let projects = {
         let connection = database.connection();
-        let parent_session =
-            find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
-        let parent_workspace = find_workspace_by_id(&connection, &parent_session.workspace_id)
-            .map_err(argmax_protocol_error)?;
-        let projects = list_projects(&connection).map_err(argmax_protocol_error)?;
-        (parent_workspace.project_id, projects)
+        list_projects(&connection).map_err(argmax_protocol_error)?
     };
-    let project = resolve_project(&projects, request.project.as_deref(), &parent_project_id)?;
+    let project = resolve_project(&projects, spec.project.as_deref(), fallback_project_id)?;
     let project_id = ProjectId::try_from(project.id.clone()).map_err(invalid_input_error)?;
-    let model_label = NonEmptyString::try_from(parent.model_label).map_err(invalid_input_error)?;
-    let model_id = NonEmptyString::try_from(parent.model_id).map_err(invalid_input_error)?;
+    let model_label = NonEmptyString::try_from(spec.model_label).map_err(invalid_input_error)?;
+    let model_id = NonEmptyString::try_from(spec.model_id).map_err(invalid_input_error)?;
     let cols = terminal_cols(120)?;
     let rows = terminal_rows(32)?;
 
-    let workspace = if request.worktree {
+    let workspace = if spec.worktree {
         let base_ref =
             BaseRef::try_from(project.current_branch.clone()).map_err(invalid_input_error)?;
         workspaces
@@ -500,14 +511,14 @@ async fn launch_session(
     let launch_result = providers
         .launch(ProvidersLaunchInput {
             workspace_id,
-            provider: parent.provider,
+            provider: spec.provider,
             prompt,
             model_label,
             model_id,
-            reasoning_effort: parent.reasoning_effort,
-            fast_mode: parent.fast_mode,
-            agent_mode: Some(parent.agent_mode),
-            permission_mode: Some(parent.permission_mode),
+            reasoning_effort: spec.reasoning_effort,
+            fast_mode: spec.fast_mode,
+            agent_mode: Some(spec.agent_mode),
+            permission_mode: Some(spec.permission_mode),
             cols,
             rows,
             attachments: None,
@@ -526,11 +537,62 @@ async fn launch_session(
             return Err(argmax_protocol_error(error));
         }
     };
+    Ok(LaunchOutcome {
+        session_id: session.id,
+        workspace_id: workspace.id,
+        project_id: project.id,
+        project_name: project.name,
+    })
+}
+
+async fn launch_session(
+    request: SessionLaunchRequest,
+    parent: ParentLaunchSettings,
+    database: Arc<Database>,
+    workspaces: Arc<WorkspaceService>,
+    providers: Arc<ProviderSessionService>,
+) -> Result<SessionLaunchResponse, SessionLaunchProtocolError> {
+    if request.version != PROTOCOL_VERSION {
+        return Err(protocol_error(
+            "VERSION_UNSUPPORTED",
+            format!(
+                "Protocol version {} is not supported. Expected {PROTOCOL_VERSION}.",
+                request.version
+            ),
+        ));
+    }
+    let parent_project_id = {
+        let connection = database.connection();
+        let parent_session =
+            find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
+        find_workspace_by_id(&connection, &parent_session.workspace_id)
+            .map_err(argmax_protocol_error)?
+            .project_id
+    };
+    let outcome = launch_with_spec(
+        LaunchSpec {
+            project: request.project,
+            prompt: request.prompt,
+            worktree: request.worktree,
+            provider: parent.provider,
+            model_label: parent.model_label,
+            model_id: parent.model_id,
+            reasoning_effort: parent.reasoning_effort,
+            fast_mode: parent.fast_mode,
+            permission_mode: parent.permission_mode,
+            agent_mode: parent.agent_mode,
+        },
+        database,
+        workspaces,
+        providers,
+        &parent_project_id,
+    )
+    .await?;
     Ok(SessionLaunchResponse::success(
-        session.id,
-        workspace.id,
-        project.id,
-        project.name,
+        outcome.session_id,
+        outcome.workspace_id,
+        outcome.project_id,
+        outcome.project_name,
     ))
 }
 

@@ -1,4 +1,13 @@
-import { Folder, MessageSquare, Plus, Search, Settings, SlidersHorizontal, Square } from "lucide-react";
+import {
+  Clock,
+  Folder,
+  MessageSquare,
+  Plus,
+  Search,
+  Settings,
+  SlidersHorizontal,
+  Square
+} from "lucide-react";
 import type { PaletteCommand } from "../components/CommandPalette.js";
 import { SCRATCH_PROJECT_ID, type DashboardSnapshot, type SessionSummary } from "../../shared/types.js";
 import { SETTINGS_GROUPS, type SettingsGroupId } from "../components/settings/settingsMeta.js";
@@ -10,6 +19,7 @@ export type BuildPaletteCommandsInput = {
   selectedSession: SessionSummary | null;
   onNewSession: () => void;
   onOpenSettings: () => void;
+  onOpenScheduledTasks: () => void;
   /** Jumps straight to one settings section — feeds the palette's Settings scope. */
   onOpenSettingsSection: (group: SettingsGroupId, sectionId: string) => void;
   /** Reopens the palette on its Messages tab — the mouse path to ⌘F. */
@@ -27,6 +37,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     selectedSession,
     onNewSession,
     onOpenSettings,
+    onOpenScheduledTasks,
     onOpenSettingsSection,
     onOpenSearch,
     onStopSession,
@@ -55,6 +66,14 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       group: "Actions",
       icon: Settings,
       run: onOpenSettings
+    },
+    {
+      id: "action:open-scheduled-tasks",
+      label: "Open Schedule",
+      subtitle: "Prompts Argmax runs on a schedule",
+      group: "Actions",
+      icon: Clock,
+      run: onOpenScheduledTasks
     },
     {
       id: "action:search-sessions",

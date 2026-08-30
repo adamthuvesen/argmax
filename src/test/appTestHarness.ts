@@ -325,6 +325,67 @@ export function setupAppTestMocks(): void {
         return dashboardDeltaUnsubscribe;
       }
     },
+    routines: {
+      list: () => Promise.resolve([]),
+      upsert: (input) =>
+        Promise.resolve({
+          id: input.id,
+          name: input.name,
+          projectId: input.projectId,
+          prompt: input.prompt,
+          provider: input.provider,
+          modelLabel: input.modelLabel,
+          modelId: input.modelId,
+          worktree: input.worktree,
+          cronExpr: input.cronExpr,
+          runOnceAt: input.runOnceAt,
+          enabled: input.enabled ?? true,
+          lastRunAt: null,
+          nextRunAt: null,
+          lastError: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }),
+      delete: () => Promise.resolve(null),
+      setEnabled: (id, enabled) =>
+        Promise.resolve({
+          id,
+          name: "",
+          projectId: "",
+          prompt: "",
+          provider: "claude",
+          modelLabel: "",
+          modelId: "",
+          worktree: true,
+          cronExpr: null,
+          runOnceAt: null,
+          enabled,
+          lastRunAt: null,
+          nextRunAt: null,
+          lastError: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }),
+      runNow: (id) =>
+        Promise.resolve({
+          id,
+          name: "",
+          projectId: "",
+          prompt: "",
+          provider: "claude",
+          modelLabel: "",
+          modelId: "",
+          worktree: true,
+          cronExpr: null,
+          runOnceAt: null,
+          enabled: false,
+          lastRunAt: null,
+          nextRunAt: null,
+          lastError: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        })
+    },
     projects: {
       list: () => Promise.resolve(snapshot.projects),
       pickFolder: pickProjectFolder,

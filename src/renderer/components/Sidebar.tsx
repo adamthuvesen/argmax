@@ -3,6 +3,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Clock,
   Command,
   Cpu,
   Info,
@@ -158,6 +159,7 @@ export function Sidebar({
   onOpenKeyboardShortcuts,
   onOpenProviders,
   onOpenProject,
+  onOpenScheduledTasks,
   onOpenSettings,
   onOpenWorkspaceChat,
   onRemoveProject,
@@ -194,6 +196,7 @@ export function Sidebar({
   onOpenKeyboardShortcuts: () => void;
   onOpenProviders: () => void;
   onOpenProject: (projectId: string) => void;
+  onOpenScheduledTasks: () => void;
   onOpenSettings: () => void;
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
   onRemoveProject?: (projectId: string) => void;
@@ -958,6 +961,18 @@ export function Sidebar({
           </span>
           <span className="rail-nav-label">Search</span>
           <kbd aria-hidden="true">⌘K</kbd>
+        </button>
+        <button
+          className="rail-nav-item"
+          type="button"
+          title="Schedule"
+          aria-label="Schedule"
+          onClick={onOpenScheduledTasks}
+        >
+          <span className="rail-nav-glyph" aria-hidden="true">
+            <Clock size={14} />
+          </span>
+          <span className="rail-nav-label">Schedule</span>
         </button>
         <button
           className="rail-nav-item"

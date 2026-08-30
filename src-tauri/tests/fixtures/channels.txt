@@ -79,3 +79,8 @@ browser:stop
 browser:set-bounds
 browser:close
 browser:fill-credentials
+routines:list
+routines:upsert
+routines:delete
+routines:set-enabled
+routines:run-now

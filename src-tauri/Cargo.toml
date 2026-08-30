@@ -84,6 +84,10 @@ notify = "6"
 tempfile = "3"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+# Cron expression parsing/iteration for the scheduled-task scheduler. The
+# `cron` dialect (sec min hour dom month dow [year]) is what the renderer
+# generates from its friendly schedule controls.
+cron = "0.15"
 sha2 = "0.11"
 regex = "1"
 walkdir = "2"

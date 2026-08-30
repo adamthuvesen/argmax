@@ -77,6 +77,25 @@
   color: var(--muted);
   font-size: var(--text-xs);
   line-height: 1.25;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+/* Marks a session synced from an agent's own history rather than started
+   here. Deliberately quiet: it is provenance, not status. */
+.session-imported-badge {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-ui);
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
 }
 
 /* Leading marker for rows that carry a live signal: a working ring, an

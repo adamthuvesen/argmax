@@ -24,6 +24,7 @@ pub mod remote;
 pub mod review;
 pub mod session;
 pub mod skills;
+pub mod sync;
 pub mod system;
 pub mod terminal;
 pub mod workspace_files;
@@ -99,6 +100,9 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "remote:get-status",
     "remote:set-config",
     "remote:test-notification",
+    "sync:get-status",
+    "sync:set-config",
+    "sync:run-now",
     "browser:open",
     "browser:navigate",
     "browser:back",
@@ -197,6 +201,9 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         remote::remote_get_status,
         remote::remote_set_config,
         remote::remote_test_notification,
+        sync::sync_get_status,
+        sync::sync_set_config,
+        sync::sync_run_now,
         browser::browser_open,
         browser::browser_navigate,
         browser::browser_back,

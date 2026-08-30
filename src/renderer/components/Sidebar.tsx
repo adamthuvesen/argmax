@@ -138,6 +138,13 @@ function visibleSidebarItems<T extends { id: string }>(
   return selectedItem ? [...items.slice(0, SIDEBAR_SESSION_LIMIT - 1), selectedItem] : compact;
 }
 
+const IMPORTED_PROVIDER_LABELS: Record<string, string> = {
+  claude: "Claude",
+  codex: "Codex",
+  cursor: "Cursor",
+  opencode: "OpenCode"
+};
+
 export function Sidebar({
   loadState,
   onAddProject,
@@ -367,6 +374,19 @@ export function Sidebar({
       ids.add(session.workspaceId);
     }
     return ids;
+  }, [snapshot.sessions]);
+
+  // Sessions synced from a provider CLI's own history get a small provider
+  // marker on the row, so a session that came from the terminal is never
+  // mistaken for one this app started.
+  const importedProviderByWorkspace = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const session of snapshot.sessions) {
+      if (session.imported) {
+        labels.set(session.workspaceId, IMPORTED_PROVIDER_LABELS[session.provider] ?? session.provider);
+      }
+    }
+    return labels;
   }, [snapshot.sessions]);
 
   // Workspaces that need the user right now (approval, blocked, failed,
@@ -983,6 +1003,7 @@ export function Sidebar({
                 <SidebarSessionRow
                   workspace={workspace}
                   subtitle={subtitleFor(workspace.projectId)}
+                  importedProvider={importedProviderByWorkspace.get(workspace.id)}
                   isSelected={selectedWorkspaceId === workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                   canDragToGrid={canDragWorkspaceToGrid}
@@ -1036,6 +1057,7 @@ export function Sidebar({
                 <SidebarSessionRow
                   workspace={entry.workspace}
                   subtitle={subtitleFor(entry.workspace.projectId)}
+                  importedProvider={importedProviderByWorkspace.get(entry.workspace.id)}
                   isSelected={selectedWorkspaceId === entry.workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(entry.workspace.id)}
                   canDragToGrid={canDragWorkspaceToGrid}
@@ -1109,6 +1131,7 @@ export function Sidebar({
                           <SidebarSessionRow
                             workspace={workspace}
                             subtitle={subtitleFor(workspace.projectId)}
+                            importedProvider={importedProviderByWorkspace.get(workspace.id)}
                             isSelected={selectedWorkspaceId === workspace.id}
                             isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                             canDragToGrid={canDragWorkspaceToGrid}

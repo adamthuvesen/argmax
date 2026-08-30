@@ -52,6 +52,8 @@ pub struct AppState {
     /// remote-bridge clients are connected. Always present, usually with no
     /// receivers — see `crate::remote::publish`.
     pub remote_events: broadcast::Sender<RemoteEvent>,
+    /// Outcome of the most recent session-sync sweep, for the Settings pane.
+    pub sync_report: std::sync::Mutex<Option<crate::sync::SyncReport>>,
 }
 
 // Hand-written because `broadcast::Sender` has no `Default`; every other field
@@ -74,6 +76,7 @@ impl Default for AppState {
             ntfy: std::sync::RwLock::new(None),
             remote_server: std::sync::Mutex::new(None),
             remote_events: broadcast::channel(REMOTE_EVENT_CAPACITY).0,
+            sync_report: std::sync::Mutex::new(None),
         }
     }
 }

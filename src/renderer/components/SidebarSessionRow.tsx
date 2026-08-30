@@ -69,6 +69,7 @@ type SidebarSessionRowProps = {
    * view) while the Priority section is enabled.
    */
   subtitle?: string | null;
+  importedProvider?: string | null;
   /** Provider name shown as a small marker when this session was synced from
    *  that agent's own history rather than started in Argmax. */
   /** Set when the row renders inside the Priority section: why it floated up. */
@@ -194,6 +195,7 @@ function SidebarSessionRowInner({
   detectedIdes,
   defaultIde,
   subtitle,
+  importedProvider,
   priorityAttention,
   onRemoveFromPriority,
   onAddToPriority,
@@ -500,7 +502,7 @@ function SidebarSessionRowInner({
         <>
           <button
             aria-current={isSelected ? "true" : undefined}
-            className={`session-link${isSelected ? " active" : ""}${subtitle ? " session-link-stacked" : ""}`}
+            className={`session-link${isSelected ? " active" : ""}${subtitle || importedProvider ? " session-link-stacked" : ""}`}
             data-open={isOpenInGrid ? "true" : undefined}
             data-status={workspace.state}
             type="button"
@@ -518,10 +520,17 @@ function SidebarSessionRowInner({
             onDragEnd={handleWorkspaceDragEnd}
           >
             {leadingGlyph ?? <span className="session-link-lead-spacer" aria-hidden="true" />}
-            {subtitle ? (
+            {subtitle || importedProvider ? (
               <span className="session-link-text">
                 <span>{displayLabel}</span>
-                <span className="session-link-subtitle">{subtitle}</span>
+                <span className="session-link-subtitle">
+                  {subtitle}
+                  {importedProvider ? (
+                    <span className="session-imported-badge" title={`Synced from ${importedProvider}`}>
+                      {importedProvider}
+                    </span>
+                  ) : null}
+                </span>
               </span>
             ) : (
               <span>{displayLabel}</span>
@@ -742,6 +751,7 @@ export function sidebarSessionRowEqual(
   if (prev.onWorkspaceDragStart !== next.onWorkspaceDragStart) return false;
   if (prev.onWorkspaceDragEnd !== next.onWorkspaceDragEnd) return false;
   if (prev.subtitle !== next.subtitle) return false;
+  if (prev.importedProvider !== next.importedProvider) return false;
   if (prev.priorityAttention !== next.priorityAttention) return false;
   if (prev.onRemoveFromPriority !== next.onRemoveFromPriority) return false;
   if (prev.onAddToPriority !== next.onAddToPriority) return false;

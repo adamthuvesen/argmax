@@ -88,6 +88,10 @@ pub struct SessionSummary {
     /// Input-side tokens of the latest turn — the live context-window occupancy
     /// (overwritten each turn, not cumulative like `tokens`).
     pub context_tokens: i64,
+    /// True when the session was imported from a provider CLI's own
+    /// transcript store rather than launched by Argmax. Denormalized onto the
+    /// row so dashboard reads need no join; see `synced_sessions`.
+    pub imported: bool,
     /// The model's context-window size, when the provider reports it (Codex).
     /// The renderer falls back to a per-model table when this is null.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -189,6 +193,86 @@ pub fn persist_session(
         ))
         .map_err(sqlite_error)?;
     find_session_by_id(connection, &input.id)
+}
+
+/// A session reconstructed from a provider CLI's own transcript. Unlike
+/// `persist_session` the timestamps come from the transcript (not `now`), the
+/// provider conversation id is known up front (it is what makes the session
+/// resumable), and the row is flagged `imported`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PersistImportedSessionInput {
+    pub id: String,
+    pub workspace_id: String,
+    pub provider: String,
+    pub model_label: String,
+    pub model_id: String,
+    pub provider_conversation_id: String,
+    pub prompt: String,
+    pub started_at: String,
+    pub last_activity_at: String,
+}
+
+pub fn persist_imported_session(
+    connection: &Connection,
+    input: &PersistImportedSessionInput,
+) -> ArgmaxResult<SessionSummary> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        INSERT INTO sessions (
+          id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode,
+          provider_conversation_id, prompt, state, attention, attention_changed_at,
+          started_at, completed_at, last_activity_at, imported
+        ) VALUES (
+          ?, ?, ?, ?, ?, NULL, 'auto-approve', 'auto',
+          ?, ?, 'complete', 'normal', ?,
+          ?, ?, ?, 1
+        )
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    statement
+        .execute((
+            input.id.as_str(),
+            input.workspace_id.as_str(),
+            input.provider.as_str(),
+            input.model_label.as_str(),
+            input.model_id.as_str(),
+            input.provider_conversation_id.as_str(),
+            input.prompt.as_str(),
+            input.last_activity_at.as_str(),
+            input.started_at.as_str(),
+            input.last_activity_at.as_str(),
+            input.last_activity_at.as_str(),
+        ))
+        .map_err(sqlite_error)?;
+    find_session_by_id(connection, &input.id)
+}
+
+/// Move an imported session's clock forward as later transcript lines arrive.
+pub fn touch_imported_session(
+    connection: &Connection,
+    session_id: &str,
+    last_activity_at: &str,
+) -> ArgmaxResult<SessionSummary> {
+    connection
+        .prepare_cached("UPDATE sessions SET last_activity_at = ?, completed_at = ? WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute((last_activity_at, last_activity_at, session_id))
+        .map_err(sqlite_error)?;
+    find_session_by_id(connection, session_id)
+}
+
+/// Hard-delete a session. Events, raw output, approvals, and the
+/// `synced_sessions` row cascade. Only the sync pruner calls this: sessions
+/// Argmax launched are archived through their workspace, never deleted.
+pub fn delete_session(connection: &Connection, session_id: &str) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached("DELETE FROM sessions WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute([session_id])
+        .map_err(sqlite_error)?;
+    Ok(())
 }
 
 pub fn update_session_agent_mode(
@@ -417,6 +501,7 @@ fn session_row_to_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
             cache_read: row.get("cache_read_tokens")?,
             cache_write: row.get("cache_write_tokens")?,
         },
+        imported: row.get::<_, i64>("imported")? != 0,
         context_tokens: row.get("context_tokens")?,
         context_window: row.get("context_window")?,
     })

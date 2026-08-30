@@ -374,4 +374,46 @@ describe("pruneSupersededDeltas — reference stability", () => {
     const merged = mergeDashboardDelta(base, { events: imported });
     expect(merged.events.some((e) => e.id === "u1")).toBe(true);
   });
+
+  // -------------------------------------------------------------------------
+  // Removal signal (session sync's background pruner)
+  // -------------------------------------------------------------------------
+
+  it("drops sessions, their workspaces, and their events when a delta removes them", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      workspaces: [
+        { id: "w-imported" } as DashboardSnapshot["workspaces"][number],
+        { id: "w-kept" } as DashboardSnapshot["workspaces"][number]
+      ],
+      sessions: [
+        { id: "s-imported", workspaceId: "w-imported" } as DashboardSnapshot["sessions"][number],
+        { id: "s-kept", workspaceId: "w-kept" } as DashboardSnapshot["sessions"][number]
+      ],
+      events: [event("e1", "user.message", "2026-05-12T15:00:00.000Z")]
+    };
+
+    const next = mergeDashboardDelta(base, {
+      removedSessionIds: ["s-imported"],
+      removedWorkspaceIds: ["w-imported"]
+    });
+
+    expect(next.sessions.map((session) => session.id)).toEqual(["s-kept"]);
+    expect(next.workspaces.map((workspace) => workspace.id)).toEqual(["w-kept"]);
+    // e1 belongs to session-1, which was not removed.
+    expect(next.events).toHaveLength(1);
+  });
+
+  it("drops a removed workspace's sessions even when only the workspace id is listed", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      workspaces: [{ id: "w-gone" } as DashboardSnapshot["workspaces"][number]],
+      sessions: [
+        { id: "s-orphaned", workspaceId: "w-gone" } as DashboardSnapshot["sessions"][number]
+      ]
+    };
+    const next = mergeDashboardDelta(base, { removedWorkspaceIds: ["w-gone"] });
+    expect(next.workspaces).toHaveLength(0);
+    expect(next.sessions).toHaveLength(0);
+  });
 });

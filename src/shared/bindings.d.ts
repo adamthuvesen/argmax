@@ -547,6 +547,30 @@ async remoteTestNotification(input: RemoteTestNotificationInput) : Promise<Resul
     else return { status: "error", error: e  as any };
 }
 },
+async syncGetStatus() : Promise<Result<SyncStatus, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_get_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async syncSetConfig(input: SyncSetConfigInput) : Promise<Result<SyncStatus, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_set_config", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async syncRunNow() : Promise<Result<SyncStatus, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_run_now") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async browserOpen(input: BrowserOpenInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("browser_open", { input }) };
@@ -855,6 +879,12 @@ attentionChangedAt?: string | null; startedAt: string; completedAt: string | nul
  */
 contextTokens: number; 
 /**
+ * True when the session was imported from a provider CLI's own
+ * transcript store rather than launched by Argmax. Denormalized onto the
+ * row so dashboard reads need no join; see `synced_sessions`.
+ */
+imported: boolean; 
+/**
  * The model's context-window size, when the provider reports it (Codex).
  * The renderer falls back to a per-model table when this is null.
  */
@@ -866,6 +896,26 @@ export type SkippedReason = "not-a-file" | "too-large" | "binary"
 export type SqlitePragmas = { journalMode: string; foreignKeys: number; synchronous: number; busyTimeout: number; walAutocheckpoint: number }
 export type StartupPhaseRecord = { phase: string; elapsedMs: number; deltaMs: number }
 export type StreamChunk = string
+export type SyncConfig = { 
+/**
+ * Per-provider opt-in. Only providers whose transcript format Argmax can
+ * read are honored; see `SyncStatus::supported_providers`.
+ */
+claude?: boolean; codex?: boolean; cursor?: boolean; opencode?: boolean; windowHours?: number }
+/**
+ * Settings → Agents → Session sync. Mirrors `SyncConfig`; the handler
+ * normalizes (window clamped, unreadable providers forced off).
+ */
+export type SyncSetConfigInput = { claude: boolean; codex: boolean; cursor: boolean; opencode: boolean; windowHours: number }
+/**
+ * What the Settings pane renders: the config plus what the last sweep did.
+ */
+export type SyncStatus = { config: SyncConfig; 
+/**
+ * Providers Argmax can actually read transcripts for. The rest render
+ * disabled, rather than as toggles that silently do nothing.
+ */
+supportedProviders: string[]; lastRunAt: string | null; importedCount: number; lastError: string | null }
 export type SystemDiagnosticsInput = Record<string, never>
 export type SystemListDetectedIdesInput = Record<string, never>
 export type SystemOk = { ok: boolean }

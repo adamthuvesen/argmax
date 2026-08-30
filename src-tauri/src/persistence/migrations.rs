@@ -132,6 +132,24 @@ pub static SESSION_RESUME_FORK_COLUMNS: phf::Map<&'static str, &'static [&'stati
     ] as &'static [&'static str],
 };
 
+// v18: `sessions.imported` is the denormalized display flag (the sidebar's
+// "imported" marker), kept on the row so the dashboard's `SELECT *` reads
+// need no join. `synced_sessions` holds the sync bookkeeping.
+pub static SYNCED_SESSIONS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "imported", "input_tokens", "last_activity_at",
+        "last_model_id", "model_id", "model_label", "output_tokens",
+        "permission_mode", "prompt", "provider", "provider_conversation_id",
+        "reasoning_effort", "resume_fork", "started_at", "state", "workspace_id",
+    ] as &'static [&'static str],
+    "synced_sessions" => &[
+        "adopted", "byte_cursor", "external_id", "last_synced_at", "provider",
+        "session_id", "source_mtime_ms", "source_path", "started_at",
+    ] as &'static [&'static str],
+};
+
 // Post-v9 `approvals` shape: provider-native requests retain the opaque
 // correlation id required to make replay idempotent across terminal states.
 pub static APPROVAL_PROVIDER_REQUEST_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -349,6 +367,14 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &EMPTY_EXPECTED_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 18,
+        name: "synced_sessions",
+        up: SYNCED_SESSIONS,
+        affected_tables: &["sessions", "synced_sessions"],
+        expected_columns: &SYNCED_SESSIONS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 // Distinguishes real project checkouts ('git') from app-owned scratch
@@ -378,6 +404,32 @@ SET default_provider = 'claude',
     default_model_label = 'Opus 5',
     default_model_id = 'claude-opus-5'
 WHERE id <> 'scratch-side-chats';
+"#;
+
+// Sessions imported from a provider CLI's own transcript store. `adopted`
+// flips the moment the user continues the session inside Argmax; everything
+// still un-adopted is disposable — turning sync off (or aging out of the
+// window) prunes it, and re-enabling re-imports from the provider's files,
+// which stay the source of truth. `byte_cursor` makes re-reads incremental.
+const SYNCED_SESSIONS: &str = r#"
+ALTER TABLE sessions ADD COLUMN imported INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE synced_sessions (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  source_path TEXT NOT NULL,
+  byte_cursor INTEGER NOT NULL DEFAULT 0,
+  source_mtime_ms INTEGER NOT NULL DEFAULT 0,
+  adopted INTEGER NOT NULL DEFAULT 0,
+  started_at TEXT NOT NULL,
+  last_synced_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX idx_synced_sessions_provider_external
+  ON synced_sessions(provider, external_id);
+CREATE INDEX idx_synced_sessions_provider_adopted
+  ON synced_sessions(provider, adopted);
 "#;
 
 // The per-project default model previously stored only its display label,
@@ -990,8 +1042,7 @@ mod tests {
         // v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PROJECT_DEFAULT_MODEL_ID_COLUMNS, "projects")
             .expect("projects");
-        verify_table_columns(&connection, &SESSION_RESUME_FORK_COLUMNS, "sessions")
-            .expect("sessions");
+        verify_table_columns(&connection, &SYNCED_SESSIONS_COLUMNS, "sessions").expect("sessions");
         verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
@@ -1056,6 +1107,7 @@ mod tests {
                 (15, compute_migration_checksum(WORKSPACE_KIND)),
                 (16, compute_migration_checksum(SESSION_RESUME_FORK)),
                 (17, compute_migration_checksum(RESET_PROJECT_DEFAULT_AGENT)),
+                (18, compute_migration_checksum(SYNCED_SESSIONS)),
             ]
         );
 

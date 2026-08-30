@@ -31,7 +31,8 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     sections: [
       { id: "settings-agent-defaults", label: "Model defaults" },
       { id: "settings-permissions", label: "Permissions" },
-      { id: "settings-providers", label: "Providers" }
+      { id: "settings-providers", label: "Providers" },
+      { id: "settings-session-sync", label: "Session sync" }
     ]
   },
   {

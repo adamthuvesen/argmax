@@ -112,6 +112,18 @@ pub fn list_workspaces(
     }
 }
 
+/// Hard-delete a workspace. Sessions, events, and checks cascade. Only the
+/// sync pruner calls this: workspaces Argmax created for its own sessions are
+/// archived (a state flip), never deleted.
+pub fn delete_workspace(connection: &Connection, workspace_id: &str) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached("DELETE FROM workspaces WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute([workspace_id])
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
 pub fn find_workspace_by_id(
     connection: &Connection,
     workspace_id: &str,

@@ -467,6 +467,29 @@ export function setupAppTestMocks(): void {
       onData: () => () => undefined,
       onExit: () => () => undefined
     },
+    sync: {
+      getStatus: vi.fn(() => Promise.resolve({
+          config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
+          supportedProviders: ["claude"],
+          lastRunAt: null,
+          importedCount: 0,
+          lastError: null
+        })),
+      setConfig: vi.fn(() => Promise.resolve({
+          config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
+          supportedProviders: ["claude"],
+          lastRunAt: null,
+          importedCount: 0,
+          lastError: null
+        })),
+      runNow: vi.fn(() => Promise.resolve({
+          config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
+          supportedProviders: ["claude"],
+          lastRunAt: null,
+          importedCount: 0,
+          lastError: null
+        }))
+    },
     browser: {
       open: () => Promise.resolve({ ok: true }),
       navigate: () => Promise.resolve({ ok: true }),

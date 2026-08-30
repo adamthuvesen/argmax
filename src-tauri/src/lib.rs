@@ -25,6 +25,7 @@ pub mod session_control;
 pub mod sessions;
 pub mod skills;
 pub mod state;
+pub mod sync;
 pub mod terminal;
 pub mod updater;
 pub mod util;
@@ -570,6 +571,13 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 remote::start(remote_app).await;
             });
+            // Session sync polls the provider transcript stores on a timer.
+            // Deliberately not a filesystem watcher: those stores churn on
+            // every keystroke of every running CLI.
+            let sync_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                sync_sweep_loop(sync_app).await;
+            });
             if app.get_webview_window("main").is_some() {
                 timer.mark("window.create");
             }
@@ -595,6 +603,58 @@ pub fn run() {
                 }
             }
         });
+}
+
+/// How often the provider transcript stores are re-scanned. Slow on purpose:
+/// an import is a convenience, and a sweep stats every transcript file.
+const SYNC_SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Poll for sessions started outside Argmax. The first sweep is also the
+/// catch-up for everything that happened while the app was closed.
+async fn sync_sweep_loop(app: tauri::AppHandle) {
+    use tauri::Manager;
+
+    let Ok(app_data_dir) = app.path().app_data_dir() else {
+        tracing::warn!("session sync disabled: no app data dir");
+        return;
+    };
+    let mut interval = tokio::time::interval(SYNC_SWEEP_INTERVAL);
+    loop {
+        interval.tick().await;
+        let config = crate::sync::load_or_create_config(&app_data_dir);
+        let state = app.state::<crate::state::AppState>();
+        let (Some(database), Some(workspaces)) = (state.db.get(), state.workspaces.get()) else {
+            continue;
+        };
+        let outcome = crate::sync::run_sync(
+            database,
+            workspaces,
+            &config,
+            &crate::sync::home_dir(),
+            crate::sync::now_ms(),
+        );
+        let report = match outcome {
+            Ok(outcome) => {
+                if outcome.imported > 0 || outcome.pruned > 0 || outcome.extended > 0 {
+                    tracing::info!(
+                        imported = outcome.imported,
+                        extended = outcome.extended,
+                        pruned = outcome.pruned,
+                        "session sync sweep"
+                    );
+                }
+                crate::sync::SyncReport::ok(outcome)
+            }
+            Err(error) => {
+                tracing::warn!(?error, "session sync sweep failed");
+                crate::sync::SyncReport::failed(error.to_string())
+            }
+        };
+        *state
+            .sync_report
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(report);
+    }
 }
 
 async fn handle_gh_check_failure(

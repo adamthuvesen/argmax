@@ -43,6 +43,7 @@ import type {
   RunCheckInput,
   SessionAgentEventsInput,
   SessionForkInput,
+  SyncStatus,
   SessionForkResult,
   SessionCostSummary,
   SessionCostSummaryInput,
@@ -299,6 +300,11 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       getStatus: () => invokeCommand<RemoteStatus>("remote:get-status"),
       setConfig: (input) => invokeCommand<RemoteStatus>("remote:set-config", input),
       testNotification: () => invokeCommand<{ ok: true }>("remote:test-notification")
+    },
+    sync: {
+      getStatus: () => invokeCommand<SyncStatus>("sync:get-status"),
+      setConfig: (input) => invokeCommand<SyncStatus>("sync:set-config", input),
+      runNow: () => invokeCommand<SyncStatus>("sync:run-now")
     },
     menu: {
       onCommand: (listener) => subscribe<MenuCommand>("menu:command", listener)

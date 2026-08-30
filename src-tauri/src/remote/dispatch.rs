@@ -33,6 +33,10 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "remote:get-status",
     "remote:set-config",
     "remote:test-notification",
+    // Session sync reads the desktop app's own config file and app-data dir.
+    "sync:get-status",
+    "sync:set-config",
+    "sync:run-now",
     // The browser pane manipulates the desktop app's native child webview.
     "browser:open",
     "browser:navigate",

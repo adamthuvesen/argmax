@@ -67,6 +67,9 @@ git:view-or-create-pr
 remote:get-status
 remote:set-config
 remote:test-notification
+sync:get-status
+sync:set-config
+sync:run-now
 browser:open
 browser:navigate
 browser:back

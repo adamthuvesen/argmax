@@ -19,11 +19,6 @@ macro_rules! empty_input {
 }
 
 empty_input!(HealthPingInput);
-empty_input!(BrowserBackInput);
-empty_input!(BrowserForwardInput);
-empty_input!(BrowserReloadInput);
-empty_input!(BrowserCloseInput);
-empty_input!(BrowserFillCredentialsInput);
 empty_input!(ProjectsListInput);
 empty_input!(ProjectsPickFolderInput);
 empty_input!(DashboardListInput);
@@ -84,17 +79,38 @@ pub struct ProjectsUpdateSettingsInput {
     pub settings: ProjectSettingsInput,
 }
 
+/// Every browser command addresses one tab; the tab id is renderer-assigned
+/// and maps 1:1 onto a child-webview label (`browser-<id>`).
+macro_rules! browser_tab_input {
+    ($name:ident) => {
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+        #[serde(rename_all = "camelCase", deny_unknown_fields)]
+        pub struct $name {
+            pub tab_id: String,
+        }
+    };
+}
+
+browser_tab_input!(BrowserBackInput);
+browser_tab_input!(BrowserForwardInput);
+browser_tab_input!(BrowserReloadInput);
+browser_tab_input!(BrowserStopInput);
+browser_tab_input!(BrowserCloseInput);
+browser_tab_input!(BrowserFillCredentialsInput);
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserOpenInput {
     pub url: String,
     pub bounds: BrowserBounds,
+    pub tab_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserNavigateInput {
     pub url: String,
+    pub tab_id: String,
 }
 
 /// Logical (CSS-pixel) rect of the renderer placeholder the browser webview
@@ -114,8 +130,10 @@ pub struct BrowserBounds {
 pub struct BrowserSetBoundsInput {
     pub bounds: BrowserBounds,
     /// False while a renderer overlay (dialog, palette) is open — the native
-    /// webview always paints above the DOM, so it must yield instead.
+    /// webview always paints above the DOM, so it must yield instead. Also
+    /// false for tabs behind the active one.
     pub visible: bool,
+    pub tab_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

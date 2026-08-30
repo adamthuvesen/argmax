@@ -6,6 +6,8 @@ import type {
   ArgmaxApi,
   AttachmentSaveImageInput,
   BrowserFillResult,
+  BrowserNewTabEvent,
+  BrowserPageCommandEvent,
   BrowserStateEvent,
   AttachmentSaveImageResult,
   ChangedFileSummary,
@@ -43,7 +45,6 @@ import type {
   RunCheckInput,
   SessionAgentEventsInput,
   SessionForkInput,
-  SyncStatus,
   SessionForkResult,
   SessionCostSummary,
   SessionCostSummaryInput,
@@ -51,6 +52,7 @@ import type {
   SessionEventsSinceResult,
   SessionSummary,
   SkillSummary,
+  SyncStatus,
   EventSubscription,
   TerminalDataEvent,
   TerminalExitEvent,
@@ -338,15 +340,22 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     },
     browser: {
       open: (input) => invokeCommand<{ ok: true }>("browser:open", input),
-      navigate: (url: string) => invokeCommand<{ ok: true }>("browser:navigate", { url }),
-      back: () => invokeCommand<{ ok: true }>("browser:back"),
-      forward: () => invokeCommand<{ ok: true }>("browser:forward"),
-      reload: () => invokeCommand<{ ok: true }>("browser:reload"),
+      navigate: (url: string, tabId: string) =>
+        invokeCommand<{ ok: true }>("browser:navigate", { url, tabId }),
+      back: (tabId: string) => invokeCommand<{ ok: true }>("browser:back", { tabId }),
+      forward: (tabId: string) => invokeCommand<{ ok: true }>("browser:forward", { tabId }),
+      reload: (tabId: string) => invokeCommand<{ ok: true }>("browser:reload", { tabId }),
+      stop: (tabId: string) => invokeCommand<{ ok: true }>("browser:stop", { tabId }),
       setBounds: (input) => invokeCommand<{ ok: true }>("browser:set-bounds", input),
-      close: () => invokeCommand<{ ok: true }>("browser:close"),
-      fillCredentials: () => invokeCommand<BrowserFillResult>("browser:fill-credentials"),
+      close: (tabId: string) => invokeCommand<{ ok: true }>("browser:close", { tabId }),
+      fillCredentials: (tabId: string) =>
+        invokeCommand<BrowserFillResult>("browser:fill-credentials", { tabId }),
       onState: (listener: (event: BrowserStateEvent) => void) =>
-        subscribe<BrowserStateEvent>("browser:state", listener)
+        subscribe<BrowserStateEvent>("browser:state", listener),
+      onNewTab: (listener: (event: BrowserNewTabEvent) => void) =>
+        subscribe<BrowserNewTabEvent>("browser:new-tab", listener),
+      onPageCommand: (listener: (event: BrowserPageCommandEvent) => void) =>
+        subscribe<BrowserPageCommandEvent>("browser:page-command", listener)
     }
   };
 }
@@ -370,6 +379,19 @@ function remoteBridgeRequested(): boolean {
   return window.localStorage.getItem(REMOTE_BRIDGE_KEY) === "1";
 }
 
+let remoteBridgeInstalled = false;
+
+/**
+ * True when `window.argmax` speaks to the host over the WebSocket bridge
+ * rather than Tauri. A handful of channels are desktop-only
+ * (`REMOTE_UNSUPPORTED_CHANNELS` in the Rust dispatcher) — opening a path in
+ * the host's Finder, saving a pasted image — so the affordances that call them
+ * check here instead of firing a request that can only fail.
+ */
+export function isRemoteBridge(): boolean {
+  return remoteBridgeInstalled;
+}
+
 export function installTauriBridge(): void {
   if (typeof window === "undefined" || window.argmax) {
     return;
@@ -384,6 +406,7 @@ export function installTauriBridge(): void {
   }
   window.localStorage.setItem(REMOTE_BRIDGE_KEY, "1");
   window.argmax = createArgmaxApi(createWsTransport());
+  remoteBridgeInstalled = true;
 }
 
 installTauriBridge();

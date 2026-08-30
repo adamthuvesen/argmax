@@ -163,7 +163,7 @@ impl<R: Runtime> NotificationSink for TauriNotificationSink<R> {
 
 pub fn main_window_focus_probe<R: Runtime>(app: AppHandle<R>) -> FocusProbe {
     Arc::new(move || {
-        app.get_webview_window("main")
+        app.get_window("main")
             .and_then(|window| window.is_focused().ok())
             .unwrap_or(false)
     })
@@ -463,6 +463,7 @@ mod tests {
             state: state.to_string(),
             attention: "normal".to_string(),
             attention_changed_at: None,
+            imported: false,
             started_at: "2026-05-01T00:00:00.000Z".to_string(),
             completed_at: Some("2026-05-01T00:01:00.000Z".to_string()),
             last_activity_at: "2026-05-01T00:01:00.000Z".to_string(),
@@ -474,7 +475,6 @@ mod tests {
                 cache_write: 0,
             },
             context_tokens: 0,
-            imported: false,
             context_window: None,
         }
     }

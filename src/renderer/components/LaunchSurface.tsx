@@ -532,7 +532,7 @@ export function LaunchSurface({
       <header className="launcher-hero">
         <div className="launcher-hero-meta">
           <span className="launcher-hero-dot" aria-hidden="true" />
-          <span className="launcher-hero-eyebrow">{chatMode ? "New side chat" : "New session"}</span>
+          <span className="launcher-hero-eyebrow">{chatMode ? "New side chat" : "New chat"}</span>
         </div>
         <h1 className="launcher-hero-title">{heading}</h1>
       </header>

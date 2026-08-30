@@ -1,8 +1,33 @@
-import type { CSSProperties, JSX } from "react";
+import { useState, type JSX } from "react";
+import { WorkingNest } from "./WorkingNest.js";
 
-const THINKING_LABEL = "Thinking";
+export const THINKING_WORDS = [
+  "Brainstorming",
+  "Disentangling",
+  "Sanity-checking",
+  "Theorizing",
+  "Deciphering",
+  "Synthesizing",
+  "Deconstructing",
+  "Distilling",
+  "Reconciling",
+  "Refining",
+  "Argmaxing"
+] as const;
 
-export function ThinkingLabel(): JSX.Element {
+const REGULAR_THINKING_WORDS = THINKING_WORDS.filter((word) => word !== "Argmaxing");
+const ARGMAXING_FREQUENCY = 0.06;
+
+function chooseThinkingWord(): (typeof THINKING_WORDS)[number] {
+  if (Math.random() < ARGMAXING_FREQUENCY) return "Argmaxing";
+
+  const index = Math.floor(Math.random() * REGULAR_THINKING_WORDS.length);
+  return REGULAR_THINKING_WORDS[index] ?? "Refining";
+}
+
+export function ThinkingLabel({ phaseKey }: { phaseKey?: string | undefined }): JSX.Element {
+  const [word] = useState(chooseThinkingWord);
+
   return (
     <article
       className="chat-bubble assistant thinking-indicator"
@@ -10,17 +35,8 @@ export function ThinkingLabel(): JSX.Element {
       aria-label="Thinking"
     >
       <div className="thinking-label-stream" data-testid="thinking-label" aria-hidden="true">
-        <span className="thinking-label" aria-hidden="true">
-          {THINKING_LABEL.split("").map((letter, index) => (
-            <span
-              key={`${letter}-${index}`}
-              className="thinking-label-letter"
-              style={{ "--thinking-letter-index": index } as CSSProperties}
-            >
-              {letter}
-            </span>
-          ))}
-        </span>
+        <WorkingNest active size={12} className="thinking-working-nest" phaseKey={phaseKey} />
+        <span className="thinking-label">{word}</span>
       </div>
     </article>
   );

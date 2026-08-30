@@ -286,9 +286,8 @@
   font-weight: inherit;
 }
 
-/* Thinking transcript — a single line of mono on paper.
-   The sage dot pulses as the only loading state; the command text types
-   itself in via React. No pill, no border, no scan effect — just typography. */
+/* The stable word carries personality while the shared WorkingNest carries
+   activity. Keeping motion off the text makes long labels as calm as short ones. */
 .thinking-indicator {
   width: auto;
   max-width: 100%;
@@ -300,63 +299,34 @@
   color: var(--muted-strong);
   border-radius: 0;
   overflow: visible;
-  animation: thinking-fade-in 220ms var(--ease) both;
+  animation: thinking-fade-in var(--motion-base) var(--ease-out) both;
 }
 
 @keyframes thinking-fade-in {
-  from { opacity: 0; transform: translateY(2px); }
+  from { opacity: 0; transform: translateY(1px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Simple label variant — one quiet word, pulsing while the turn is live. */
 .thinking-label-stream {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
+  gap: 6px;
   min-height: 0;
   padding: 4px 0 2px;
-  /* Decorative per-letter spans; selecting across them copies as one letter
-     per line, so keep the label out of text selection entirely. */
   user-select: none;
 }
 
+.thinking-working-nest {
+  color: var(--accent);
+}
+
 .thinking-label {
-  display: inline-flex;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
   line-height: 1.2;
   letter-spacing: 0;
   color: var(--muted-strong);
   font-weight: 500;
-}
-
-.thinking-label-letter {
-  color: color-mix(in oklab, var(--muted) 72%, var(--muted-strong));
-  opacity: 0.58;
-  animation: thinking-label-wave 1450ms var(--ease) infinite;
-  animation-delay: calc(var(--thinking-letter-index) * 85ms);
-}
-
-@keyframes thinking-label-wave {
-  0%, 100% {
-    color: color-mix(in oklab, var(--muted) 72%, var(--muted-strong));
-    opacity: 0.58;
-  }
-  35% {
-    color: var(--muted-strong);
-    opacity: 1;
-  }
-  70% {
-    color: color-mix(in oklab, var(--accent-deep) 42%, var(--muted-strong));
-    opacity: 0.82;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .thinking-label-letter {
-    animation: none;
-    opacity: 0.78;
-    color: var(--muted-strong);
-  }
 }
 
 .conversation-empty {

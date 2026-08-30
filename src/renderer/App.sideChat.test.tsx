@@ -65,7 +65,7 @@ describe("App side chat launcher", () => {
       })
     );
 
-    expect(await screen.findByText("New session")).toBeInTheDocument();
+    expect(await screen.findByText("New chat")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Switch branch" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Worktree" })).toBeInTheDocument();
   });

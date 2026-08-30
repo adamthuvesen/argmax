@@ -1,4 +1,5 @@
 import { getToolTypeBucket, type ToolCall } from "./toolCalls.js";
+import { stableHash32 } from "./stableHash.js";
 
 /**
  * Deterministic codenames for spawned subagents. 100 moon names, assigned by
@@ -22,23 +23,13 @@ export const MOON_NAMES: readonly string[] = [
   "Xiangliu", "Namaka", "Ilmarë", "Actaea"
 ];
 
-/** FNV-1a 32-bit string hash. Cheap, well-distributed, and stable across runs. */
-function fnv1a(input: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
 /**
  * The name a spawn falls back to before the session's events have loaded and a
  * full assignment map exists. May collide across agents — the map is the source
  * of truth for uniqueness.
  */
 export function fallbackCodename(toolUseId: string): string {
-  return MOON_NAMES[fnv1a(toolUseId) % MOON_NAMES.length];
+  return MOON_NAMES[stableHash32(toolUseId) % MOON_NAMES.length];
 }
 
 /**
@@ -61,7 +52,7 @@ export function assignAgentCodenames(tools: readonly ToolCall[]): Map<string, st
 
   for (const toolUseId of agentToolUseIds) {
     if (assignments.has(toolUseId)) continue;
-    const start = fnv1a(toolUseId) % MOON_NAMES.length;
+    const start = stableHash32(toolUseId) % MOON_NAMES.length;
     if (taken.size >= MOON_NAMES.length) {
       assignments.set(toolUseId, MOON_NAMES[start]);
       continue;

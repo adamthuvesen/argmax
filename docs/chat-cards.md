@@ -174,7 +174,7 @@ array.
 a shrink: when a row below the fold disappears, the bottom moves up with it and
 the pinned view goes with it, so the correction has to be to not shrink. Two
 rows used to. The Thought block folding when the answer starts is handled by
-`holdOpen` (see below), and the pulsing Thinking line, which leaves at that
+`holdOpen` (see below), and the animated thinking line, which leaves at that
 same instant, now lives in `.conversation-tail`, a slot that holds the line's
 height whether the line is in it or not.
 
@@ -297,8 +297,8 @@ Two layers cooperate to keep it visible and out of the way:
 prop, computed per turn in `SessionConversationTurn` as *latest turn + session
 running + not paused on a card + no answer text yet*. While `live`, the block is
 **expanded** and labeled "Thinking". The reasoning streams in token-by-token,
-in place of the generic Thinking indicator (the pulsing label still covers the
-gap before any assistant content arrives). The instant the first answer token lands
+in place of the generic thinking indicator (the animated WorkingNest and word
+still cover the gap before any assistant content arrives). The instant the first answer token lands
 (or the turn stops being the active one, or it pauses for input), `live` flips
 off and the label settles to "Thought". A manual toggle overrides the auto
 behavior (same `userToggle ?? auto` pattern as the turn chip and tool groups)

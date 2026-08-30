@@ -94,11 +94,13 @@ const IDE_POPOVER_DISMISS_DELAY_MS = 120;
 function StatusMarker({
   state,
   prState,
-  priorityAttention
+  priorityAttention,
+  phaseKey
 }: {
   state: WorkspaceSummary["state"];
   prState?: WorkspaceSummary["prState"];
   priorityAttention?: PriorityAttention;
+  phaseKey: string;
 }): JSX.Element {
   // In the Priority section an input-starved session outranks everything —
   // the whole point of the row is "the agent is stalled on you". The "…"
@@ -112,7 +114,7 @@ function StatusMarker({
   if (state === "running") {
     // The shared working nest, sized to the 14px marker box. It is the same mark and
     // motion an agent tab and a sub-agent launch row show while they run.
-    return <WorkingNest active className="status-marker" size={14} />;
+    return <WorkingNest active className="status-marker" size={14} phaseKey={phaseKey} />;
   }
   if (prState === "MERGED") {
     return <GitMerge size={14} aria-hidden className="status-marker" data-pr="merged" />;
@@ -470,6 +472,7 @@ function SidebarSessionRowInner({
         state={workspace.state}
         prState={workspace.prState}
         priorityAttention={priorityAttention}
+        phaseKey={workspace.id}
       />
     ) : null;
 

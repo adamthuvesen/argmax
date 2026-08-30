@@ -6,46 +6,98 @@
    running work reads in the app's own color instead of a fixed green. A settled
    nest stays muted and still. That is what "done" should look like. */
 .working-nest {
+  --working-nest-phase: 0;
+  --working-nest-phase-offset: calc(var(--working-nest-cycle) * var(--working-nest-phase) / -4);
   flex: 0 0 auto;
   color: color-mix(in oklab, var(--muted) 60%, transparent);
   fill: currentColor;
+  transform-origin: center;
   transition: color var(--duration-fast) var(--ease);
 }
 
 .working-nest[data-active="true"] {
   color: var(--accent);
+  animation: working-nest-enter var(--motion-fast) var(--ease-out) both;
 }
 
-/* Delays are an exact quarter of the cycle, so the swell travels clockwise
-   without a dead beat and the nest looks like it is rearranging itself. */
-.working-nest[data-active="true"] .working-nest-dot {
+.working-nest-dot {
+  opacity: 1;
   transform-box: fill-box;
   transform-origin: center;
-  animation: working-nest-pulse var(--working-nest-cycle) var(--ease) infinite;
+  transform: scale(1);
+  transition:
+    opacity var(--motion-base) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
+}
+
+/* The leader rises quickly, holds, then gives way more slowly than it arrived.
+   The next dot starts before the outgoing dot settles, so emphasis moves around
+   a stable cluster instead of making the whole mark blink. */
+.working-nest[data-active="true"] .working-nest-dot {
+  animation: working-nest-relay var(--working-nest-cycle) linear infinite;
+  animation-delay: var(--working-nest-phase-offset);
 }
 
 .working-nest[data-active="true"] .working-nest-dot[data-dot="2"] {
-  animation-delay: calc(var(--working-nest-cycle) / 4);
+  animation-delay: calc(var(--working-nest-phase-offset) - var(--working-nest-cycle) * 0.75);
 }
 
 .working-nest[data-active="true"] .working-nest-dot[data-dot="3"] {
-  animation-delay: calc(var(--working-nest-cycle) / 2);
+  animation-delay: calc(var(--working-nest-phase-offset) - var(--working-nest-cycle) * 0.5);
 }
 
 .working-nest[data-active="true"] .working-nest-dot[data-dot="4"] {
-  animation-delay: calc(var(--working-nest-cycle) * 0.75);
+  animation-delay: calc(var(--working-nest-phase-offset) - var(--working-nest-cycle) * 0.25);
 }
 
-@keyframes working-nest-pulse {
-  0%,
-  100% {
+.working-nest[data-settling="true"] .working-nest-dot {
+  animation: working-nest-settle var(--working-nest-settle-duration) var(--ease-out) both;
+}
+
+@keyframes working-nest-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
     opacity: 1;
     transform: scale(1);
   }
+}
 
-  50% {
-    opacity: 0.35;
-    transform: scale(0.6);
+@keyframes working-nest-relay {
+  0%, 5% {
+    opacity: 1;
+    transform: scale(1.08);
+    animation-timing-function: var(--ease-in-out);
+  }
+
+  22% {
+    opacity: 0.65;
+    transform: scale(1);
+    animation-timing-function: var(--ease-out);
+  }
+
+  30%, 91.25% {
+    opacity: 0.36;
+    transform: scale(0.86);
+    animation-timing-function: var(--ease-out);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes working-nest-settle {
+  from {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -53,6 +105,10 @@
    rest, and the accent color carries the signal on its own. */
 @media (prefers-reduced-motion: reduce) {
   .working-nest[data-active="true"] .working-nest-dot {
+    animation: none;
+  }
+
+  .working-nest[data-settling="true"] .working-nest-dot {
     animation: none;
   }
 }

@@ -323,7 +323,9 @@ export function AgentActivityPane({
         </div>
         <div className="agent-activity-actions">
           <span className="agent-activity-status" data-status={activity.status}>
-            {activity.status === "running" ? <WorkingNest active size={12} /> : null}
+            {activity.status === "running" ? (
+              <WorkingNest active size={12} phaseKey={parentToolUseId} />
+            ) : null}
             {statusLabel(activity.status)}
           </span>
           {onClose ? (
@@ -399,7 +401,7 @@ export function AgentActivityPane({
 
         {showAgentActivityThinking ? (
           <div className="agent-activity-empty" role="status">
-            <ThinkingLabel />
+            <ThinkingLabel phaseKey={parentToolUseId} />
           </div>
         ) : null}
 

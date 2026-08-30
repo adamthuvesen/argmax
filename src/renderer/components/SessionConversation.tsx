@@ -778,7 +778,7 @@ export function SessionConversation({
               would shorten the transcript under a reader pinned to the bottom
               and pull the view up by its height. */}
           <div className="conversation-tail">
-            {isThinkingVisible ? <ThinkingLabel /> : null}
+            {isThinkingVisible ? <ThinkingLabel phaseKey={workspace?.id ?? session?.id} /> : null}
           </div>
         </div>
       </div>

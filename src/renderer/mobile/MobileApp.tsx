@@ -1,11 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type JSX } from "react";
-import { Archive, ChevronLeft, FolderGit2, Moon, MoreHorizontal, Plus, Sun } from "lucide-react";
+import { Archive, FolderGit2, Moon, MoreHorizontal, Plus, Sun } from "lucide-react";
 import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
 import { LinesSkeleton } from "../components/LinesSkeleton.js";
 import { SessionPane } from "../components/SessionPane.js";
 import { BottomSheet, SheetOption } from "./BottomSheet.js";
 import { takeDeepLinkSessionId } from "./deepLink.js";
-import { NewSessionScreen } from "./NewSessionScreen.js";
+import { MobileScreenHeader } from "./MobileScreenHeader.js";
+import { NewSessionScreen, type PickerKind } from "./NewSessionScreen.js";
 import { useMobileBackNavigation } from "./useMobileBackNavigation.js";
 import { useDashboardSession } from "../hooks/useDashboardSession.js";
 import { usePriorityDemotion } from "../hooks/usePriorityDemotion.js";
@@ -288,6 +289,9 @@ export function MobileApp(): JSX.Element {
 
   // Full-screen Changes/Files view for the open session.
   const [reviewOpen, setReviewOpen] = useState(false);
+  // Set when a file reference in the transcript was tapped, so the review
+  // screen lands on that file instead of the tree root.
+  const [reviewFilePath, setReviewFilePath] = useState<string | null>(null);
 
   const closeSession = useCallback(() => {
     setReviewOpen(false);
@@ -397,6 +401,9 @@ export function MobileApp(): JSX.Element {
   );
 
   const [newSessionOpen, setNewSessionOpen] = useState(false);
+  // The New session screen's picker sheets live here, not inside that screen,
+  // so a back gesture can close the sheet without discarding the typed prompt.
+  const [newSessionSheet, setNewSessionSheet] = useState<PickerKind | null>(null);
   const handleLaunched = useCallback(
     async (workspaceId: string): Promise<void> => {
       // The snapshot predates the new workspace; refresh before opening it so
@@ -409,20 +416,38 @@ export function MobileApp(): JSX.Element {
   );
 
   const sessionOpen = selectedWorkspaceId !== null && (selectedSession !== null || selectedSessionId !== null);
+  // Mirrors the render below: the review screen needs a workspace to draw, and
+  // a workspace that drops out of the snapshot must take its history entry
+  // with it, or one back press changes nothing on screen.
+  const reviewShown = sessionOpen && reviewOpen && selectedWorkspace !== null;
+  // A sheet is a screen as far as a back gesture is concerned: without this,
+  // back on the list screen leaves the app with the sheet still up, and back
+  // on the New session screen tears the screen down under an open picker.
+  const sheetOpen = actionsRow !== null || newSessionSheet !== null;
 
-  // Screen depth for the hardware back button: list → session/new → review.
-  const screenDepth = newSessionOpen ? 1 : sessionOpen ? (reviewOpen ? 2 : 1) : 0;
+  // Screen depth for the hardware back button: list → session/new → review,
+  // plus one for an open sheet.
+  const screenDepth =
+    (sessionOpen ? (reviewShown ? 2 : 1) : newSessionOpen ? 1 : 0) + (sheetOpen ? 1 : 0);
   const goBackOneScreen = useCallback((): void => {
-    if (reviewOpen) {
+    if (actionsRow !== null) {
+      setActionsRow(null);
+      return;
+    }
+    if (newSessionSheet !== null) {
+      setNewSessionSheet(null);
+      return;
+    }
+    if (reviewShown) {
       setReviewOpen(false);
       return;
     }
-    if (newSessionOpen) {
+    if (newSessionOpen && !sessionOpen) {
       setNewSessionOpen(false);
       return;
     }
     closeSession();
-  }, [closeSession, newSessionOpen, reviewOpen]);
+  }, [actionsRow, closeSession, newSessionOpen, newSessionSheet, reviewShown, sessionOpen]);
   useMobileBackNavigation(screenDepth, goBackOneScreen);
 
   const empty = pinnedRows.length === 0 && activityRows.length === 0;
@@ -450,52 +475,60 @@ export function MobileApp(): JSX.Element {
           onClose={() => setNewSessionOpen(false)}
           onLaunched={handleLaunched}
           onError={(message) => showToast({ kind: "error", message })}
+          openSheet={newSessionSheet}
+          onOpenSheetChange={setNewSessionSheet}
         />
-      ) : sessionOpen && reviewOpen && selectedWorkspace ? (
+      ) : reviewShown && selectedWorkspace ? (
         <Suspense
           fallback={<LinesSkeleton rows={10} label="Loading changes" className="review-diff-skeleton" />}
         >
-          <MobileReviewScreen workspace={selectedWorkspace} onClose={() => setReviewOpen(false)} />
+          <MobileReviewScreen
+            workspace={selectedWorkspace}
+            initialFilePath={reviewFilePath}
+            onClose={() => setReviewOpen(false)}
+          />
         </Suspense>
       ) : sessionOpen ? (
         <div className="mobile-session-screen">
-          <header className="mobile-session-header">
-            <button type="button" className="mobile-back" onClick={closeSession} aria-label="Back to sessions">
-              <ChevronLeft size={22} aria-hidden />
-            </button>
-            <span className="mobile-session-header-title">{selectedWorkspace?.taskLabel ?? ""}</span>
-            {selectedWorkspace ? (
-              <>
-                <button
-                  type="button"
-                  className="mobile-icon-button"
-                  onClick={() => void archiveWorkspace(selectedWorkspace)}
-                  aria-label="Archive session"
-                >
-                  <Archive size={18} aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  className="mobile-icon-button"
-                  onClick={() => setReviewOpen(true)}
-                  aria-label={
-                    selectedWorkspace.changedFiles > 0
-                      ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
-                      : "Files and changes"
-                  }
-                >
-                  <FolderGit2 size={18} aria-hidden />
-                  {selectedWorkspace.changedFiles > 0 ? (
-                    <span className="mobile-header-badge" aria-hidden>
-                      {selectedWorkspace.changedFiles}
-                    </span>
-                  ) : null}
-                </button>
-              </>
-            ) : (
-              <span className="mobile-header-spacer" aria-hidden />
-            )}
-          </header>
+          <MobileScreenHeader
+            onBack={closeSession}
+            backLabel="Back to sessions"
+            title={selectedWorkspace?.taskLabel ?? ""}
+            actions={
+              selectedWorkspace ? (
+                <>
+                  <button
+                    type="button"
+                    className="mobile-icon-button"
+                    onClick={() => void archiveWorkspace(selectedWorkspace)}
+                    aria-label="Archive session"
+                  >
+                    <Archive size={18} aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    className="mobile-icon-button"
+                    onClick={() => {
+                      setReviewFilePath(null);
+                      setReviewOpen(true);
+                    }}
+                    aria-label={
+                      selectedWorkspace.changedFiles > 0
+                        ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
+                        : "Files and changes"
+                    }
+                  >
+                    <FolderGit2 size={18} aria-hidden />
+                    {selectedWorkspace.changedFiles > 0 ? (
+                      <span className="mobile-header-badge" aria-hidden>
+                        {selectedWorkspace.changedFiles}
+                      </span>
+                    ) : null}
+                  </button>
+                </>
+              ) : undefined
+            }
+          />
           {connectionBanner}
           <SessionPane
             approvals={snapshot.approvals}
@@ -513,6 +546,10 @@ export function MobileApp(): JSX.Element {
             onSendQueuedMessageNow={commands.sendQueuedMessageNow}
             onTerminateSession={commands.terminateSession}
             onForkSession={forkSession}
+            onOpenFile={(path) => {
+              setReviewFilePath(path);
+              setReviewOpen(true);
+            }}
             showCostPanel={false}
             workspaceCardVisible={false}
           />

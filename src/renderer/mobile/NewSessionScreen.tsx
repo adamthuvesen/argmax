@@ -1,7 +1,8 @@
-import { ArrowUp, ChevronLeft, ChevronsUpDown, Folder, GitBranch, Zap } from "lucide-react";
+import { ArrowUp, ChevronsUpDown, Folder, GitBranch, Zap } from "lucide-react";
 import { useCallback, useMemo, useState, type JSX, type ReactNode } from "react";
 import { PROVIDER_TITLE_MODEL } from "../../shared/providerModels.js";
 import { BottomSheet, SheetOption } from "./BottomSheet.js";
+import { MobileScreenHeader } from "./MobileScreenHeader.js";
 import type { ProjectSummary, ProviderId } from "../../shared/types.js";
 import { persistLaunchModel, readStoredLaunchModel } from "../lib/launchModelPreference.js";
 import {
@@ -54,19 +55,25 @@ function ContextRow({
   );
 }
 
-type PickerKind = "project" | "workspace" | "model";
+export type PickerKind = "project" | "workspace" | "model";
 
 export function NewSessionScreen({
   projects,
   onClose,
   onLaunched,
-  onError
+  onError,
+  openSheet,
+  onOpenSheetChange
 }: {
   projects: ProjectSummary[];
   onClose: () => void;
   /** Called with the new workspace id after refresh-worthy state exists. */
   onLaunched: (workspaceId: string) => Promise<void>;
   onError: (message: string) => void;
+  /** Which picker sheet is up. Owned by MobileApp so a back gesture can pop
+   *  the sheet instead of tearing down this screen and the typed prompt. */
+  openSheet: PickerKind | null;
+  onOpenSheetChange: (kind: PickerKind | null) => void;
 }): JSX.Element {
   const [projectId, setProjectId] = useState(() => projects[0]?.id ?? "");
   const [prompt, setPrompt] = useState("");
@@ -84,7 +91,6 @@ export function NewSessionScreen({
   const [model, setModel] = useState<ModelPickerSelection>(
     () => readStoredLaunchModel() ?? factoryLaunchModel()
   );
-  const [openSheet, setOpenSheet] = useState<PickerKind | null>(null);
 
   const chooseWorkspaceMode = useCallback((mode: WorkspaceMode): void => {
     setWorkspaceMode(mode);
@@ -156,13 +162,7 @@ export function NewSessionScreen({
 
   return (
     <div className="mobile-new-screen">
-      <header className="mobile-session-header">
-        <button type="button" className="mobile-back" onClick={onClose} aria-label="Back to sessions">
-          <ChevronLeft size={22} aria-hidden />
-        </button>
-        <span className="mobile-session-header-title">New session</span>
-        <span className="mobile-header-spacer" aria-hidden />
-      </header>
+      <MobileScreenHeader onBack={onClose} backLabel="Back to sessions" title="New session" />
 
       {projects.length === 0 ? (
         <div className="mobile-empty">
@@ -181,21 +181,21 @@ export function NewSessionScreen({
               value={project?.name ?? ""}
               label="Project"
               open={openSheet === "project"}
-              onOpen={() => setOpenSheet("project")}
+              onOpen={() => onOpenSheetChange("project")}
             />
             <ContextRow
               icon={<GitBranch size={16} />}
               value={workspaceValue}
               label="Workspace"
               open={openSheet === "workspace"}
-              onOpen={() => setOpenSheet("workspace")}
+              onOpen={() => onOpenSheetChange("workspace")}
             />
             <ContextRow
               icon={<Zap size={16} />}
               value={modelValue}
               label="Model"
               open={openSheet === "model"}
-              onOpen={() => setOpenSheet("model")}
+              onOpen={() => onOpenSheetChange("model")}
             />
           </div>
 
@@ -225,7 +225,7 @@ export function NewSessionScreen({
       )}
 
       {openSheet === "project" ? (
-        <BottomSheet label="Choose project" onClose={() => setOpenSheet(null)}>
+        <BottomSheet label="Choose project" onClose={() => onOpenSheetChange(null)}>
           <div className="mobile-sheet-group">
             {projects.map((candidate) => (
               <SheetOption
@@ -234,7 +234,7 @@ export function NewSessionScreen({
                 selected={candidate.id === project?.id}
                 onSelect={() => {
                   setProjectId(candidate.id);
-                  setOpenSheet(null);
+                  onOpenSheetChange(null);
                 }}
               />
             ))}
@@ -243,14 +243,14 @@ export function NewSessionScreen({
       ) : null}
 
       {openSheet === "workspace" ? (
-        <BottomSheet label="Choose workspace" onClose={() => setOpenSheet(null)}>
+        <BottomSheet label="Choose workspace" onClose={() => onOpenSheetChange(null)}>
           <div className="mobile-sheet-group">
             <SheetOption
               label={`Current branch${project?.currentBranch ? ` (${project.currentBranch})` : ""}`}
               selected={workspaceMode === "current"}
               onSelect={() => {
                 chooseWorkspaceMode("current");
-                setOpenSheet(null);
+                onOpenSheetChange(null);
               }}
             />
             <SheetOption
@@ -258,7 +258,7 @@ export function NewSessionScreen({
               selected={workspaceMode === "worktree"}
               onSelect={() => {
                 chooseWorkspaceMode("worktree");
-                setOpenSheet(null);
+                onOpenSheetChange(null);
               }}
             />
           </div>
@@ -266,7 +266,7 @@ export function NewSessionScreen({
       ) : null}
 
       {openSheet === "model" ? (
-        <BottomSheet label="Choose model" onClose={() => setOpenSheet(null)}>
+        <BottomSheet label="Choose model" onClose={() => onOpenSheetChange(null)}>
           {PROVIDER_SETUP_ORDER.map((provider: ProviderId) => (
             <div key={provider} className="mobile-sheet-group">
               <p className="mobile-sheet-group-label">{PROVIDER_SETUP[provider].displayName}</p>
@@ -282,7 +282,7 @@ export function NewSessionScreen({
                       onSelect={() => {
                         setModel(option);
                         persistLaunchModel(option);
-                        setOpenSheet(null);
+                        onOpenSheetChange(null);
                       }}
                     />
                   );

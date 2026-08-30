@@ -56,6 +56,9 @@
   flex: 1 1 0;
   min-width: 0;
   max-width: 100%;
+  /* Reports the branch, does not switch it — the shared chip's pointer cursor
+     would advertise an action that isn't there. */
+  cursor: default;
 }
 
 .session-input-toolbar .composer-footer-chip--changes {

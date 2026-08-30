@@ -268,6 +268,37 @@ describe("CommandPalette", () => {
     await waitFor(() => expect(screen.queryByText("Stale message")).toBeNull());
   });
 
+  it("searches messages even while the searchMessages prop keeps changing identity", async () => {
+    // Upstream `searchMessages` is rebuilt on every `dashboard:delta`, so while
+    // an agent streams the prop churns faster than the 150ms debounce. The
+    // effect must not restart its timer for that.
+    const backend = vi
+      .fn<(query: string, limit: number) => Promise<MessageHit[]>>()
+      .mockResolvedValue([]);
+    const paletteWith = (search: (query: string, limit: number) => Promise<MessageHit[]>) => (
+      <CommandPalette
+        open={true}
+        commands={COMMANDS}
+        onClose={vi.fn()}
+        searchMessages={search}
+      />
+    );
+    const { rerender } = render(paletteWith((query, limit) => backend(query, limit)));
+
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+    fireEvent.change(input, { target: { value: "needle" } });
+
+    // 8 * 40ms of churn is well past the 150ms debounce, so the backend must
+    // already have run by the time the churn stops — waiting for it to settle
+    // first would hide the bug.
+    for (let tick = 0; tick < 8; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      rerender(paletteWith((query, limit) => backend(query, limit)));
+    }
+
+    expect(backend).toHaveBeenCalledWith("needle", 8);
+  });
+
   describe("Contents filter", () => {
     const CONTENT_RESULT: WorkspaceContentSearchResult = {
       files: [

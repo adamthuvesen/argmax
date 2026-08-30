@@ -353,7 +353,17 @@ export function SessionConversation({
       if (!enabling || review.isPanelOpen || isLogOpen || !workspace) return;
       requestAnimationFrame(() => {
         const card = conversationScrollRef.current?.querySelector('aside[aria-label="Workspace"]');
-        if (card instanceof HTMLElement && getComputedStyle(card).display === "none") {
+        if (!(card instanceof HTMLElement)) {
+          // A side chat has no worktree, so the card has nothing to summarize
+          // and never renders. Silence there is the same lie as silence in a
+          // pane too narrow to hold it.
+          setStatus({
+            kind: "info",
+            message: "Workspace card is on. It shows up on sessions that have a git worktree."
+          });
+          return;
+        }
+        if (getComputedStyle(card).display === "none") {
           setStatus({
             kind: "info",
             message:
@@ -672,6 +682,7 @@ export function SessionConversation({
         {showWorkspaceCard && workspace && workspace.kind === "git" ? (
           <WorkspaceCard
             changeSummary={changeSummary}
+            changesState={review.filesState}
             isTerminalOpen={isTerminalOpen ?? false}
             onBrowseFiles={review.openPanelInFilesMode}
             onHide={() => onHideWorkspaceCard?.()}

@@ -1,4 +1,5 @@
 import type { TimelineEvent } from "../../shared/types.js";
+import { stringValue } from "../../shared/typeGuards.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { buildSessionToolCalls } from "./sessionConversationModel.js";
 import { type ToolCall } from "./toolCalls.js";
@@ -19,7 +20,13 @@ export type AgentActivity = {
   receiverThreadIds: string[];
 };
 
-function stringValue(value: unknown): string | null {
+/**
+ * Same non-empty test as `stringValue`, but blank-aware: these reads feed the
+ * activity header, where a whitespace-only value must lose to the next
+ * fallback rather than render as an empty title or an empty prompt block. Id
+ * reads use the shared `stringValue` so they match the other timeline sweeps.
+ */
+function nonBlankText(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
@@ -77,9 +84,9 @@ function normalizedPromptEcho(value: string): string {
 
 function activityTitle(tool: ToolCall | null, parentToolUseId: string): string {
   if (!tool) return `Agent ${parentToolUseId}`;
-  const description = stringValue(tool.inputFull.description);
+  const description = nonBlankText(tool.inputFull.description);
   if (description) return description;
-  const subagentType = stringValue(tool.inputFull.subagent_type) ?? stringValue(tool.inputFull.subagentType);
+  const subagentType = nonBlankText(tool.inputFull.subagent_type) ?? nonBlankText(tool.inputFull.subagentType);
   if (subagentType) return subagentType;
   if (tool.inputPreview) return tool.inputPreview;
   return "Agent";
@@ -101,7 +108,7 @@ export function buildAgentActivity(params: {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const childToolIds = new Set(childTools.map((tool) => tool.id));
   const prompt = parentTool
-    ? stringValue(parentTool.inputFull.prompt) ?? stringValue(parentTool.inputFull.instructions)
+    ? nonBlankText(parentTool.inputFull.prompt) ?? nonBlankText(parentTool.inputFull.instructions)
     : null;
   const promptEcho = prompt ? normalizedPromptEcho(prompt) : null;
   const visibleChildMessages = promptEcho
@@ -116,7 +123,7 @@ export function buildAgentActivity(params: {
     return (a.kind === "message" ? -1 : 0) - (b.kind === "message" ? -1 : 0);
   });
   const subagentType = parentTool
-    ? stringValue(parentTool.inputFull.subagent_type) ?? stringValue(parentTool.inputFull.subagentType)
+    ? nonBlankText(parentTool.inputFull.subagent_type) ?? nonBlankText(parentTool.inputFull.subagentType)
     : null;
   const status = parentTool?.status ?? "missing";
   const finalOutput = parentTool?.output && !isInternalAgentLaunchMetadata(parentTool.output)

@@ -182,13 +182,28 @@ export function attachTerminalTab(
       if (pendingExit) writeExitLine(term, pendingExit);
 
       const inputSub = term.onData((data) => {
-        void window.argmax?.terminal.write({ terminalId, data });
+        // `terminal:write` rejects only on a real failure against a live PTY
+        // (writes during teardown answer ok), and a dropped keystroke would
+        // otherwise be an unhandled rejection nobody sees. Report it the way a
+        // failed spawn is reported and keep the tab alive.
+        void window.argmax?.terminal.write({ terminalId, data }).catch((error: unknown) => {
+          const message = errorMessage(error) || "Unknown error";
+          term.write(`\r\n\x1b[31m[terminal write failed: ${message}]\x1b[0m\r\n`);
+        });
       });
       entry.cleanups.push(() => inputSub.dispose());
     })
     .catch((error: unknown) => {
       const message = errorMessage(error) || "Unknown error";
       term.write(`\r\n\x1b[31m[failed to start terminal: ${message}]\x1b[0m\r\n`);
+      // No PTY, and nothing retries the spawn: `attachTerminalTab` short-circuits
+      // on the existing entry. `terminal:data` is one global channel, so leaving
+      // the subscription alive with `terminalId` still null would buffer every
+      // other terminal's output into this dead tab forever.
+      for (const cleanup of entry.cleanups) cleanup();
+      entry.cleanups = [];
+      pendingData.clear();
+      pendingExits.clear();
     });
 
   return entry;

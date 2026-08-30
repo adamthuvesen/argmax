@@ -9,7 +9,7 @@ export interface KeyBinding {
  * Derived from `src/shared/menuKeybindings.ts` so the native macOS menu and
  * the in-app cheat sheet can never drift for commands with actual shortcuts.
  * Order: menu-routed bindings first (top-of-cheat-sheet matches top-of-menu ordering in
- * `buildAppMenuTemplate`), then renderer-only chords (`⌘1..9`, `⌘P`, `⌘F`,
+ * `app_menu_spec`), then renderer-only chords (`⌘1..9`, `⌘P`, `⌘F`,
  * `⌘J`, `Esc`).
  */
 export const KEYBOARD_BINDINGS: readonly KeyBinding[] = [

@@ -283,7 +283,7 @@ export function setupAppTestMocks(): void {
     reason: "not-a-file"
   } as const);
   writeProjectFile = vi.fn<ArgmaxApi["workspace"]["writeFile"]>().mockResolvedValue({
-    ok: true,
+    ok: "true",
     mtimeMs: 0,
     size: 0
   });
@@ -399,7 +399,7 @@ export function setupAppTestMocks(): void {
       readFile: (target, path) => target.kind === "project" ? readProjectFile(target, path) : readWorkspaceFile(target, path),
       writeFile: (target, path, content, mtime) => target.kind === "project"
         ? writeProjectFile(target, path, content, mtime)
-        : Promise.resolve({ ok: true, mtimeMs: 0, size: 0 } as const),
+        : Promise.resolve({ ok: "true", mtimeMs: 0, size: 0 } as const),
       statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
       grepContent: () => Promise.resolve({ files: [], truncated: false })
     },

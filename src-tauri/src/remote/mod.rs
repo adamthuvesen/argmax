@@ -184,7 +184,11 @@ pub fn apply(app: &tauri::AppHandle, config: RemoteConfig) {
         .remote_server
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let previous = server.take();
+    let mut retired = RETIRED_SERVER
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    // A handle retired by an earlier disable may still be holding the port.
+    let previous = server.take().or_else(|| retired.take());
     if let Some(handle) = &previous {
         // Aborting drops the axum serve future, which closes the listener and
         // every connected WebSocket.
@@ -202,9 +206,18 @@ pub fn apply(app: &tauri::AppHandle, config: RemoteConfig) {
             server::serve(app, config).await;
         }));
     } else {
+        // Park the aborted handle rather than dropping it, so a later enable
+        // still has something to await before it rebinds the port.
+        *retired = previous;
         tracing::debug!("remote bridge disabled");
     }
 }
+
+/// A server task that was aborted while the bridge is disabled. It is kept out
+/// of `AppState::remote_server` because that slot answers `is_serving`, and an
+/// abort that has not completed yet would read as a live server.
+static RETIRED_SERVER: std::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>> =
+    std::sync::Mutex::new(None);
 
 /// True while a server task is alive. A finished handle means the server died
 /// (typically a failed port bind), so surface that as "not serving".

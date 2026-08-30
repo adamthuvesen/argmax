@@ -404,7 +404,13 @@ export function installTauriBridge(): void {
     // Browser preview and the demo snapshot depend on staying bridge-less.
     return;
   }
-  window.localStorage.setItem(REMOTE_BRIDGE_KEY, "1");
+  try {
+    window.localStorage.setItem(REMOTE_BRIDGE_KEY, "1");
+  } catch {
+    /* private mode: the flag can't persist, so the next load needs `?remote`
+       again. Losing it must not throw out of module evaluation and leave the
+       page with no bridge at all. */
+  }
   window.argmax = createArgmaxApi(createWsTransport());
   remoteBridgeInstalled = true;
 }

@@ -77,7 +77,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
       .mockResolvedValue({ kind: "text", content: "", size: 0, mtimeMs: 0 });
     writeWorkspaceFile = vi
       .fn<ArgmaxApi["workspace"]["writeFile"]>()
-      .mockResolvedValue({ ok: true, mtimeMs: 2, size: 0 });
+      .mockResolvedValue({ ok: "true", mtimeMs: 2, size: 0 });
     statWorkspaceFile = vi
       .fn<ArgmaxApi["workspace"]["statFile"]>()
       .mockResolvedValue({ mtimeMs: 1, size: 0 });
@@ -86,7 +86,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
       .mockResolvedValue({ kind: "text", content: "project\n", size: 8, mtimeMs: 10 });
     writeProjectFile = vi
       .fn<ArgmaxApi["workspace"]["writeFile"]>()
-      .mockResolvedValue({ ok: true, mtimeMs: 11, size: 0 });
+      .mockResolvedValue({ ok: "true", mtimeMs: 11, size: 0 });
 
     Object.defineProperty(window, "argmax", {
       configurable: true,
@@ -400,7 +400,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
       mtimeMs: 10
     });
     writeWorkspaceFile.mockResolvedValueOnce({
-      ok: false,
+      ok: "false",
       reason: "stale",
       currentMtimeMs: 15,
       size: 8

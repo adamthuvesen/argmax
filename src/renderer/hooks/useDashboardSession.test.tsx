@@ -336,6 +336,56 @@ describe("useDashboardSession — refresh / delta race", () => {
     );
   });
 
+  it("does not resurrect a session the pruner removed during loadSnapshot", async () => {
+    // The sync sweep's first tick fires as the app boots. If its removal delta
+    // lands after `dashboard:list` read the DB but before the response arrives,
+    // the list still carries the row and the union merge cannot drop it — the
+    // row is hard-deleted in SQLite, so the ghost points at nothing forever.
+    let deltaHandler: ((delta: DashboardDelta) => void) | null = null;
+    (window as unknown as { argmax: ArgmaxApi }).argmax = {
+      workspaces: { status: statusMock } as unknown as ArgmaxApi["workspaces"],
+      approvals: { pending: pendingMock, resolve: resolveApprovalMock } as unknown as ArgmaxApi["approvals"],
+      dashboard: {
+        onDelta: (handler: (delta: DashboardDelta) => void) => {
+          deltaHandler = handler;
+          return () => {
+            deltaHandler = null;
+          };
+        }
+      } as unknown as ArgmaxApi["dashboard"],
+      session: {
+        eventsSince: vi.fn().mockResolvedValue({
+          events: [],
+          rawOutputs: [],
+          eventCursor: 0,
+          rawOutputCursor: 0
+        })
+      } as unknown as ArgmaxApi["session"]
+    } as unknown as ArgmaxApi;
+
+    let resolveLoad!: (snapshot: DashboardSnapshot) => void;
+    const loadSnapshot = (): Promise<DashboardSnapshot> =>
+      new Promise((resolve) => {
+        resolveLoad = resolve;
+      });
+
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(deltaHandler).not.toBeNull());
+
+    act(() => {
+      deltaHandler?.({ removedSessionIds: ["session-existing"] });
+    });
+
+    await act(async () => {
+      // The stale list still carries the pruned session.
+      resolveLoad(baseSnapshot);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    expect(result.current.snapshot.sessions).toEqual([]);
+  });
+
   it("reconciles a running→complete transition once the terminal event lands", async () => {
     // macOS push lag: the turn-end `state: running → complete` delta is the
     // last emit and can sit undelivered on an idle event loop, leaving the

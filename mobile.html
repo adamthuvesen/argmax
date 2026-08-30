@@ -13,6 +13,27 @@
     <link rel="apple-touch-icon" href="./assets/icon.png" />
     <title>Argmax</title>
     <script>
+      // Resolve theme before React mounts to avoid a light/dark flash on cold
+      // start — over the tailnet the module graph takes long enough that the
+      // flash is the first thing the phone shows. Mirrors index.html and
+      // lib/theme.ts; intentionally inline + dependency-free.
+      (function () {
+        try {
+          var raw = localStorage.getItem("argmax.theme.mode");
+          var mode = raw === "light" || raw === "dark" || raw === "system" ? raw : "dark";
+          var resolved =
+            mode === "system"
+              ? window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light"
+              : mode;
+          document.documentElement.setAttribute("data-theme", resolved);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
+    <script>
       // The mobile entry always talks to the remote WS bridge; set the flag
       // before the module graph loads so tauriBridge picks the WS transport.
       try {

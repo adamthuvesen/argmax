@@ -1,4 +1,9 @@
-import { reasoningEffortsForModel, type ReasoningEffort } from "../../shared/providerModels.js";
+import {
+  clampEffort,
+  REASONING_EFFORTS,
+  reasoningEffortsForModel,
+  type ReasoningEffort
+} from "../../shared/providerModels.js";
 import { allModelOptions, type ModelPickerSelection } from "./models.js";
 
 /**
@@ -34,10 +39,15 @@ export function readStoredLaunchModel(): ModelPickerSelection | null {
     modelId: option.modelId
   };
   if (option.supportsReasoningEffort) {
+    // Clamp, don't just reject: a stored effort the model doesn't offer (the
+    // OpenCode Go variant lists are discrete) lands on the nearest level it
+    // does, and a corrupt value falls back to the catalog seed — which is
+    // itself already clamped for that model.
     const allowed = reasoningEffortsForModel(option.provider, option.modelId);
-    selection.reasoningEffort = allowed.includes(reasoningEffort as ReasoningEffort)
+    const stored = REASONING_EFFORTS.includes(reasoningEffort as ReasoningEffort)
       ? (reasoningEffort as ReasoningEffort)
-      : option.reasoningEffort;
+      : undefined;
+    selection.reasoningEffort = clampEffort(stored ?? option.reasoningEffort, allowed) ?? allowed[0];
   }
   return selection;
 }

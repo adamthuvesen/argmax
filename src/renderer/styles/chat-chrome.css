@@ -146,9 +146,7 @@
   z-index: 1;
 }
 
-.composer-input,
-.composer-context,
-.provider-toggle {
+.composer-input {
   display: flex;
   align-items: center;
 }
@@ -284,9 +282,9 @@
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
-
-
 .composer-context {
+  display: flex;
+  align-items: center;
   gap: 4px;
   min-height: 34px;
   /* Right padding clears the absolute-positioned send button; the left no
@@ -451,73 +449,6 @@
 
 .composer-context-chip:hover svg {
   opacity: 0.95;
-}
-
-.provider-toggle {
-  position: relative;
-  gap: 0;
-  min-height: 28px;
-  padding: 3px;
-  margin-left: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  background: var(--panel-soft);
-}
-
-.provider-toggle button {
-  position: relative;
-  z-index: 1;
-  min-height: 22px;
-  padding: 0 11px;
-  color: var(--muted-strong);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  cursor: pointer;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  transition: color var(--duration-fast) var(--ease);
-}
-
-.provider-toggle button:hover {
-  color: var(--text);
-}
-
-.provider-toggle button.active {
-  color: var(--text);
-  background: var(--panel);
-  box-shadow: 0 1px 0 rgba(31, 28, 24, 0.04), 0 1px 3px rgba(31, 28, 24, 0.10);
-}
-
-.model-selector {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.model-selector select,
-.model-selector input {
-  min-height: 30px;
-  max-width: 220px;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  outline: none;
-}
-
-.model-selector select {
-  padding: 0 28px 0 10px;
-}
-
-.model-selector input {
-  width: min(180px, 34vw);
-  padding: 0 9px;
 }
 
 .project-picker-anchor {
@@ -1029,16 +960,6 @@
   background: var(--panel-sunken);
 }
 
-/* Git actions dropdown — opens DOWNWARD from the conversation header. */
-.git-actions-popover {
-  top: calc(100% + 8px);
-  bottom: auto;
-  right: 0;
-  left: auto;
-  min-width: 300px;
-  padding: 10px;
-}
-
 .git-actions-list {
   margin: 0;
   padding: 0;
@@ -1081,7 +1002,6 @@
   text-transform: uppercase;
 }
 
-.git-actions-textarea,
 .git-actions-input {
   width: 100%;
   padding: 10px 12px;
@@ -1096,11 +1016,6 @@
   box-sizing: border-box;
 }
 
-.git-actions-textarea {
-  min-height: 88px;
-}
-
-.git-actions-textarea:focus,
 .git-actions-input:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;

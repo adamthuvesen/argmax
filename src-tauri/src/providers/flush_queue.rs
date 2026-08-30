@@ -298,6 +298,11 @@ impl ProviderEventFlushQueue {
     /// cumulative-delta baseline and marks the turn completed, so firing it on a
     /// mid-turn idle flush (or a user terminate) would prematurely complete the
     /// turn and duplicate the next delta. Mid-stream callers pass `false`.
+    ///
+    /// It doubles as the "the process is gone" signal: a half-written protocol
+    /// line is normally held back waiting for the rest of it, but after exit
+    /// the rest is never coming, so it is emitted rather than buffered
+    /// forever.
     pub fn flush_trailing_fragments(
         &mut self,
         connection: &mut Connection,
@@ -326,7 +331,7 @@ impl ProviderEventFlushQueue {
             if fragment.trim().is_empty() {
                 continue;
             }
-            if is_incomplete_json_line(&fragment) {
+            if is_incomplete_json_line(&fragment) && !synthesize_cursor_exit {
                 session.stream_buffers.insert(stream, fragment);
                 continue;
             }

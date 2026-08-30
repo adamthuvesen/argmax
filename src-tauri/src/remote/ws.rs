@@ -241,7 +241,9 @@ pub fn auth_outcome(message: &ClientMessage, expected_token: &str) -> AuthOutcom
     }
 }
 
-/// Length-independent compare so a wrong token leaks nothing through timing.
+/// Constant-time over equal-length candidates: a wrong token of the right
+/// length leaks nothing through timing. A length mismatch returns early, which
+/// is fine here — the token is a fixed 32 hex characters.
 fn tokens_match(candidate: &str, expected: &str) -> bool {
     if candidate.len() != expected.len() {
         return false;

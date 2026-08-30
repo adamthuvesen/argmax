@@ -178,6 +178,14 @@ pub fn run() {
                 let data_dir = user_data.join("local-state");
                 if let Err(e) = std::fs::create_dir_all(&data_dir) {
                     tracing::warn!(error = ?e, path = %data_dir.display(), "failed to create data directory");
+                    // No data directory means the database will never open, so
+                    // record the reason: without one every handler reports
+                    // "startup may still be in progress" forever.
+                    let state = tauri::Manager::state::<state::AppState>(app);
+                    let _ = state.db_open_error.set(format!(
+                        "could not create the data directory {}: {e}",
+                        data_dir.display()
+                    ));
                 } else {
                     // Refuse to run against local state another live instance
                     // owns: the boot recovery below would mark that instance's
@@ -381,7 +389,7 @@ pub fn run() {
                                 Arc::new(providers::runtime::RealProviderProcessLauncher::with_discovery(
                                     (*state.provider_discovery).clone(),
                                     session_launch_registry,
-                                    cursor_acp,
+                                    Arc::clone(&cursor_acp),
                                 ));
                             let providers = providers::session_service::ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
                                 Arc::clone(&database),
@@ -501,6 +509,11 @@ pub fn run() {
                                 Some(Arc::clone(&approvals)),
                                 Some(data_dir.join("side-chats")),
                             );
+                            // Archive and project teardown evict the workspace's
+                            // warm `cursor-agent acp` process; without the pool
+                            // here that eviction is a no-op and the child
+                            // outlives its removed worktree.
+                            workspaces.set_cursor_acp(cursor_acp);
                             if let Err(error) = workspaces.recover_interrupted_archives() {
                                 tracing::warn!(?error, "failed to recover interrupted workspace archives");
                             }
@@ -559,6 +572,12 @@ pub fn run() {
                         }
                     }
                 }
+            } else {
+                tracing::warn!("no app data dir; the database cannot be opened");
+                let state = tauri::Manager::state::<state::AppState>(app);
+                let _ = state
+                    .db_open_error
+                    .set("the app data directory could not be resolved".to_string());
             }
             if let Err(e) = menu::install_app_menu(app.handle(), cfg!(debug_assertions)) {
                 tracing::warn!(error = ?e, "failed to install app menu");
@@ -612,6 +631,7 @@ const SYNC_SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(
 /// Poll for sessions started outside Argmax. The first sweep is also the
 /// catch-up for everything that happened while the app was closed.
 async fn sync_sweep_loop(app: tauri::AppHandle) {
+    use crate::util::sync::LockOrRecover;
     use tauri::Manager;
 
     let Ok(app_data_dir) = app.path().app_data_dir() else {
@@ -619,20 +639,45 @@ async fn sync_sweep_loop(app: tauri::AppHandle) {
         return;
     };
     let mut interval = tokio::time::interval(SYNC_SWEEP_INTERVAL);
+    // A sweep that overran its tick must not be followed by a burst of
+    // catch-up sweeps: they would all scan the same unchanged files.
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         interval.tick().await;
         let config = crate::sync::load_or_create_config(&app_data_dir);
-        let state = app.state::<crate::state::AppState>();
-        let (Some(database), Some(workspaces)) = (state.db.get(), state.workspaces.get()) else {
-            continue;
+        // Clone the handles out and drop the `State` borrow before awaiting.
+        let (database, workspaces, sweep_lock) = {
+            let state = app.state::<crate::state::AppState>();
+            let (Some(database), Some(workspaces)) = (state.db.get(), state.workspaces.get())
+            else {
+                continue;
+            };
+            (
+                Arc::clone(database),
+                Arc::clone(workspaces),
+                Arc::clone(&state.sync_sweep),
+            )
         };
-        let outcome = crate::sync::run_sync(
-            database,
-            workspaces,
-            &config,
-            &crate::sync::home_dir(),
-            crate::sync::now_ms(),
-        );
+        // The sweep stats every transcript file under the provider store and
+        // writes SQLite, so it belongs on the blocking pool, not on a worker.
+        let outcome = tauri::async_runtime::spawn_blocking(move || {
+            let _serialized = sweep_lock.lock_or_recover("sync sweep");
+            crate::sync::run_sync(
+                &database,
+                &workspaces,
+                &config,
+                &crate::sync::home_dir(),
+                crate::sync::now_ms(),
+            )
+        })
+        .await;
+        let outcome = match outcome {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                tracing::warn!(?error, "session sync sweep task failed to join");
+                continue;
+            }
+        };
         let report = match outcome {
             Ok(outcome) => {
                 if outcome.imported > 0 || outcome.pruned > 0 || outcome.extended > 0 {
@@ -650,10 +695,9 @@ async fn sync_sweep_loop(app: tauri::AppHandle) {
                 crate::sync::SyncReport::failed(error.to_string())
             }
         };
-        *state
+        *app.state::<crate::state::AppState>()
             .sync_report
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(report);
+            .lock_or_recover("sync report") = Some(report);
     }
 }
 

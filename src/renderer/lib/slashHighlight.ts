@@ -10,10 +10,6 @@
  * the candidate so the composer can tint it. Extracted as a pure function so
  * the boundary cases are unit-tested without driving the DOM overlay.
  */
-export function leadingSlashCommand(input: string): string | null {
-  const match = /^\/(\S+)/.exec(input);
-  return match?.[1] ?? null;
-}
 
 export type SkillHighlightSegment = { text: string; skill: boolean };
 
@@ -49,7 +45,7 @@ export function splitSkillTokens(
 
 /**
  * Split a sent message into a leading skill invocation and the remaining
- * text, for transcript rendering. Stricter than `leadingSlashCommand`: the
+ * text, for transcript rendering. Stricter than a bare leading-slash match: the
  * token must have skill-name shape (word characters and dashes, one optional
  * `:` scope separator) so absolute paths like `/Users/...` and stray slashes
  * never render as a skill chip. The transcript has no skills list to check

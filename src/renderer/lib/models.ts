@@ -21,13 +21,22 @@ export type ModelPickerOption = ModelPickerSelection & { supportsReasoningEffort
 
 export const allModelOptions: ModelPickerOption[] = (Object.keys(PROVIDER_MODELS) as ProviderId[])
   .flatMap((provider) =>
-    PROVIDER_MODELS[provider].map((model) => ({
-      provider,
-      label: model.label,
-      modelId: model.modelId,
-      supportsReasoningEffort: Boolean(model.supportsReasoningEffort),
-      ...(model.supportsReasoningEffort ? { reasoningEffort: DEFAULT_REASONING_EFFORT } : {})
-    }))
+    PROVIDER_MODELS[provider].map((model) => {
+      // Clamp the seed onto what the model actually offers, exactly as
+      // `modelDefaultForProvider` does: the OpenCode Go variant lists are
+      // discrete (Kimi K3 is `max`-only), so an unclamped "medium" would show
+      // Medium in the picker while the adapter launched a different variant.
+      const reasoningEffort = model.supportsReasoningEffort
+        ? clampEffort(DEFAULT_REASONING_EFFORT, reasoningEffortsForModel(provider, model.modelId))
+        : undefined;
+      return {
+        provider,
+        label: model.label,
+        modelId: model.modelId,
+        supportsReasoningEffort: Boolean(model.supportsReasoningEffort),
+        ...(reasoningEffort ? { reasoningEffort } : {})
+      };
+    })
   );
 
 // One row per model now, so the key no longer encodes effort. The cross-provider

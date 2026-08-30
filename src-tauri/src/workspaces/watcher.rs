@@ -69,6 +69,19 @@ impl WatcherRegistry {
         self.checkouts.len()
     }
 
+    /// Drop a checkout whose refresh loop has stopped, along with every
+    /// subscription pointing at it. Without this the dead entry keeps the fast
+    /// path in `watch_impl` alive: a later workspace attaches to a watch whose
+    /// refresh task is gone and silently stops receiving status updates.
+    fn retire_checkout(&mut self, path: &Path) {
+        let Some(checkout) = self.checkouts.remove(path) else {
+            return;
+        };
+        for workspace_id in &checkout.subscribers {
+            self.subscriptions.remove(workspace_id);
+        }
+    }
+
     fn subscribers(&self, path: &Path) -> Vec<String> {
         self.checkouts
             .get(path)
@@ -350,6 +363,10 @@ fn spawn_refresh_loop(
                     path = %path.display(),
                     "watcher: no workspace rows left for checkout; stopping refresh loop"
                 );
+                service
+                    .watchers
+                    .lock_or_recover("watchers")
+                    .retire_checkout(&path);
                 return;
             }
         }

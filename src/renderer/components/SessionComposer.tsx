@@ -578,7 +578,15 @@ export function SessionComposer({
                 value={selectedModel}
                 availability={providerAvailability}
                 onChange={(model) => {
-                  if (model.provider !== session.provider) {
+                  // `session.provider` only catches up when the backend
+                  // relaunches on the next send, so after a confirmed switch
+                  // the staged selection is the truth about what was already
+                  // confirmed. Without it, a reasoning-effort nudge would
+                  // re-raise the dialog and drop the change.
+                  if (
+                    model.provider !== session.provider &&
+                    model.provider !== selectedModel.provider
+                  ) {
                     setPendingProviderSwitch({ sessionId: session.id, model });
                     return;
                   }
@@ -611,15 +619,12 @@ export function SessionComposer({
               </button>
             )}
             {workspace.kind === "git" ? (
-              <button
-                type="button"
-                className="composer-footer-chip composer-footer-chip--branch"
-                title={`Branch: ${workspace.branch}`}
-                aria-label={`Branch ${workspace.branch}`}
-              >
+              // A label, not a control: nothing happens on click, so it must
+              // not be tabbable or announced as a button.
+              <span className="composer-footer-chip composer-footer-chip--branch" title={`Branch: ${workspace.branch}`}>
                 <GitBranch size={11} aria-hidden="true" />
                 <span className="composer-footer-chip-label">{workspace.branch}</span>
-              </button>
+              </span>
             ) : null}
             {changeSummary ? (
               <button

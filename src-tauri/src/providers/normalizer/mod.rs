@@ -295,28 +295,6 @@ pub fn normalize_provider_event(
             result.provider_conversation_id = out.provider_conversation_id;
         }
     }
-    // A single unterminated blob that `lines()` never split can still be real
-    // content, so retry it whole. A message that DID split must not be retried:
-    // every one of its lines was already normalized, and a chunk whose lines
-    // were all deliberately dropped (Claude's `system` status/hook/token rows)
-    // would come back as one unparseable blob and surface as raw protocol JSON.
-    let is_single_line = !event.message.contains('\n');
-    if is_single_line
-        && result.events.is_empty()
-        && result.usages.is_empty()
-        && result.approvals.is_empty()
-        && !result.permission_blocked
-        && !event.message.trim().is_empty()
-    {
-        let mut retried = normalize_line(provider, event, event.message.trim(), context);
-        // The first pass may already have consumed a one-shot conversation id
-        // (OpenCode reports its `sessionID` once per launch), so the retry
-        // would come back empty-handed. Keep what the first pass found.
-        if retried.provider_conversation_id.is_none() {
-            retried.provider_conversation_id = result.provider_conversation_id;
-        }
-        return retried;
-    }
     result
 }
 

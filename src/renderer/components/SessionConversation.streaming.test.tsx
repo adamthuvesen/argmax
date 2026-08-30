@@ -123,10 +123,12 @@ describe("SessionConversation — streaming & composer", () => {
     ).toBeTruthy();
   });
 
-  it("marks the branch chip label as ellipsis-safe", () => {
+  it("marks the branch chip label as ellipsis-safe and leaves it out of the tab order", () => {
     renderConversation(baseSession());
 
-    const branchChip = screen.getByRole("button", { name: "Branch argmax/dashboard" });
+    // A label, not a control — it must not be reachable as a button.
+    expect(screen.queryByRole("button", { name: /^Branch / })).toBeNull();
+    const branchChip = screen.getByTitle("Branch: argmax/dashboard");
     expect(branchChip).toHaveClass("composer-footer-chip--branch");
     expect(branchChip.querySelector(".composer-footer-chip-label")).toHaveTextContent(
       "argmax/dashboard"

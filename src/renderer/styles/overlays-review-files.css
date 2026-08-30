@@ -770,24 +770,6 @@
   overflow: visible;
 }
 
-.file-preview-line {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  align-items: baseline;
-  line-height: 1.65;
-}
-
-.file-preview-gutter {
-  color: var(--muted-strong);
-  text-align: right;
-  padding-right: 12px;
-  user-select: none;
-}
-
-.file-preview-content {
-  white-space: pre;
-}
-
 .diff-blocks {
   display: grid;
   gap: 0;
@@ -853,8 +835,7 @@
   white-space: pre;
 }
 
-.diff-line .hl-token,
-.file-preview-content .hl-token {
+.diff-line .hl-token {
   white-space: pre;
 }
 

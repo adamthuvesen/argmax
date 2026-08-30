@@ -80,6 +80,17 @@ fn write_transcript(home: &Path, cwd: &str, session_id: &str, lines: &[String]) 
         .expect("write transcript");
 }
 
+/// Push a transcript's mtime forward: the sweep only re-reads a file whose
+/// mtime moved, and temp writes can land in the same millisecond.
+fn bump_mtime(path: &Path, seconds: u64) {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .expect("open transcript")
+        .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(seconds))
+        .expect("bump mtime");
+}
+
 fn user_line(cwd: &str, session_id: &str, timestamp: &str, text: &str) -> String {
     format!(
         r#"{{"type":"user","isSidechain":false,"cwd":"{cwd}","timestamp":"{timestamp}","sessionId":"{session_id}","message":{{"role":"user","content":"{text}"}}}}"#
@@ -133,6 +144,14 @@ impl Harness {
     fn sessions(&self) -> Vec<argmax_lib::persistence::sessions::SessionSummary> {
         let connection = self.database.connection();
         list_sessions_for_dashboard(&connection, None, 100).expect("list sessions")
+    }
+
+    fn transcript_path(&self, session_id: &str) -> std::path::PathBuf {
+        self.home
+            .path()
+            .join(".claude/projects")
+            .join(self.repo_path.replace(['/', '.', ' '], "-"))
+            .join(format!("{session_id}.jsonl"))
     }
 
     fn seed_session(&self, session_id: &str, prompt: &str) {
@@ -321,6 +340,113 @@ fn a_growing_transcript_extends_the_imported_session() {
             .count(),
         1
     );
+}
+
+#[test]
+fn consecutive_extends_keep_appending_every_new_line() {
+    let harness = harness();
+    harness.seed_session("sess-repeat", "Start");
+    assert_eq!(harness.sync(&claude_enabled()).imported, 1);
+    let session_id = harness.sessions()[0].id.clone();
+
+    let mut lines = vec![
+        user_line(
+            &harness.repo_path,
+            "sess-repeat",
+            "2026-08-30T10:00:00.000Z",
+            "Start",
+        ),
+        assistant_line(
+            &harness.repo_path,
+            "sess-repeat",
+            "2026-08-30T10:00:05.000Z",
+            "On it.",
+        ),
+    ];
+    // Three rounds, not one: the cursor is an absolute line index, and a
+    // single extend cannot tell an absolute cursor from a relative one. A
+    // cursor that adds itself to the new index runs away (2 → 6 → 12) and
+    // silences the session from the second extend onwards.
+    for round in 1..=3 {
+        lines.push(user_line(
+            &harness.repo_path,
+            "sess-repeat",
+            "2026-08-30T10:00:00.000Z",
+            &format!("Follow-up {round}"),
+        ));
+        lines.push(assistant_line(
+            &harness.repo_path,
+            "sess-repeat",
+            "2026-08-30T10:00:05.000Z",
+            &format!("Answer {round}"),
+        ));
+        write_transcript(
+            harness.home.path(),
+            &harness.repo_path,
+            "sess-repeat",
+            &lines,
+        );
+        bump_mtime(&harness.transcript_path("sess-repeat"), round * 5);
+
+        let outcome = harness.sync(&claude_enabled());
+        assert_eq!(
+            outcome.extended, 1,
+            "round {round} should extend the session"
+        );
+
+        let connection = harness.database.connection();
+        let events = list_session_events_since(&connection, &session_id, None, None)
+            .expect("events")
+            .events;
+        assert!(
+            events
+                .iter()
+                .any(|event| event.message.contains(&format!("Answer {round}"))),
+            "round {round} answer never reached the timeline: {events:#?}"
+        );
+    }
+
+    // And still exactly one copy of everything that came before.
+    let connection = harness.database.connection();
+    let events = list_session_events_since(&connection, &session_id, None, None)
+        .expect("events")
+        .events;
+    for round in 1..=3 {
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.message.contains(&format!("Answer {round}")))
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn a_transcript_with_no_assistant_reply_yet_imports_a_launchable_model() {
+    let harness = harness();
+    // The sweep can land between a terminal prompt and its first assistant
+    // chunk, and only the assistant lines carry the model. An empty model id
+    // would persist a session the CLI refuses to resume.
+    write_transcript(
+        harness.home.path(),
+        &harness.repo_path,
+        "sess-no-model",
+        &[user_line(
+            &harness.repo_path,
+            "sess-no-model",
+            "2026-08-30T10:00:00.000Z",
+            "Just asked",
+        )],
+    );
+
+    assert_eq!(harness.sync(&claude_enabled()).imported, 1);
+    let session = &harness.sessions()[0];
+    assert!(
+        !session.model_id.is_empty(),
+        "imported model id must be launchable"
+    );
+    assert!(!session.model_label.is_empty());
 }
 
 #[test]

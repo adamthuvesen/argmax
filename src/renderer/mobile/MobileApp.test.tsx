@@ -428,6 +428,53 @@ describe("MobileApp", () => {
     expect(await screen.findByRole("region", { name: "All sessions" })).toBeInTheDocument();
   });
 
+  it("closes the row actions sheet on a back gesture instead of leaving the list", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+
+    const row = screen.getByRole("button", { name: /Build dashboard/ }).closest("li");
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Session actions" }));
+    await screen.findByRole("dialog", { name: "Session actions" });
+
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    expect(screen.queryByRole("dialog", { name: "Session actions" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "All sessions" })).toBeInTheDocument();
+  });
+
+  it("closes a picker sheet on back without discarding the typed prompt", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Half-written idea" } });
+    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    await screen.findByRole("dialog", { name: "Choose model" });
+
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    expect(screen.queryByRole("dialog", { name: "Choose model" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Task")).toHaveValue("Half-written idea");
+  });
+
+  it("dismisses a sheet with Escape", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+
+    const row = screen.getByRole("button", { name: /Build dashboard/ }).closest("li");
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Session actions" }));
+    const sheet = await screen.findByRole("dialog", { name: "Session actions" });
+    expect(sheet).toHaveAttribute("aria-modal", "true");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog", { name: "Session actions" })).not.toBeInTheDocument();
+  });
+
   it("toggles between dark and light themes and persists the choice", async () => {
     render(<MobileApp />);
 

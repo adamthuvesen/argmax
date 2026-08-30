@@ -166,8 +166,8 @@ fn import(
             id: Uuid::new_v4().to_string(),
             workspace_id: workspace.id.clone(),
             provider: provider.to_string(),
-            model_label: model_label(session),
-            model_id: session.model_id.clone().unwrap_or_default(),
+            model_label: model_label(session, provider),
+            model_id: model_id(session, provider),
             provider_conversation_id: session.external_id.clone(),
             prompt: session.prompt.clone(),
             started_at: session.started_at.clone(),
@@ -214,7 +214,10 @@ fn extend(
     upsert_synced_session(
         &connection,
         &SyncedSessionRecord {
-            byte_cursor: record.byte_cursor + written as u64,
+            // `write_events` returns an absolute line index, not a count:
+            // adding the old cursor to it would make the cursor run away and
+            // skip every line after the second sweep.
+            byte_cursor: written as u64,
             source_mtime_ms: session.source_mtime_ms,
             source_path: session.source_path.to_string_lossy().to_string(),
             ..record.clone()
@@ -222,7 +225,9 @@ fn extend(
     )?;
     drop(connection);
 
-    if written == 0 {
+    // The cursor standing still means the file grew with rows this sweep
+    // skips (sidechains), so there is nothing new to show.
+    if written == record.byte_cursor as usize {
         return Ok(false);
     }
     workspaces.publish_session(summary);
@@ -314,11 +319,22 @@ fn delete_sessions(
 /// Sidebar label for the model the transcript was produced with. Rust has no
 /// model catalog (labels live in `src/shared/providerModels.ts`), so the raw
 /// id is the honest fallback.
-fn model_label(session: &DiscoveredSession) -> String {
+fn model_label(session: &DiscoveredSession, provider: &str) -> String {
     session
         .model_id
         .clone()
-        .unwrap_or_else(|| "Imported".to_string())
+        .unwrap_or_else(|| crate::provider_defaults(provider).model_label.to_string())
+}
+
+/// The model to resume the imported conversation with. A transcript swept up
+/// between the prompt and its first assistant chunk carries no model id yet,
+/// and an empty one is not a launchable session — the CLI rejects
+/// `--model ''` — so the provider default stands in.
+fn model_id(session: &DiscoveredSession, provider: &str) -> String {
+    session
+        .model_id
+        .clone()
+        .unwrap_or_else(|| crate::provider_defaults(provider).model_id.to_string())
 }
 
 fn iso_from_ms(ms: i64) -> String {

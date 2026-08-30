@@ -108,8 +108,7 @@
   color: var(--text);
 }
 
-.settings-row select,
-.settings-select {
+.settings-row select {
   min-height: 26px;
   padding: 0 26px 0 10px;
   font: inherit;
@@ -127,8 +126,7 @@
   transition: border-color var(--duration-fast) var(--ease);
 }
 
-.settings-row select:hover,
-.settings-select:hover {
+.settings-row select:hover {
   border-color: var(--line-strong);
 }
 
@@ -453,7 +451,6 @@
   --accent-swatch-color: #3f7ecb;
   --accent-swatch-soft: #e5eef9;
 }
-
 
 /* ---- Refresh button ---- */
 

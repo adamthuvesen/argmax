@@ -18,6 +18,7 @@ use crate::providers::discovery::ProviderDiscovery;
 use crate::providers::session_service::ProviderSessionService;
 use crate::remote::{RemoteEvent, REMOTE_EVENT_CAPACITY};
 use crate::session_control::SessionLaunchServer;
+use crate::skills::registry::SkillRegistry;
 use crate::terminal::service::TerminalService;
 use crate::util::startup_timer::StartupTimer;
 use crate::workspaces::WorkspaceService;
@@ -54,6 +55,16 @@ pub struct AppState {
     pub remote_events: broadcast::Sender<RemoteEvent>,
     /// Outcome of the most recent session-sync sweep, for the Settings pane.
     pub sync_report: std::sync::Mutex<Option<crate::sync::SyncReport>>,
+    /// One session-sync sweep at a time. `sync:set-config`, `sync:run-now` and
+    /// the 60s loop are otherwise free to interleave, and the sweep's read of
+    /// the already-imported ids and its write of the new row sit in separate
+    /// connections — so two sweeps import the same transcript twice, and the
+    /// second `synced_sessions` insert trips the provider/external unique
+    /// index and aborts the sweep with the duplicate session already persisted.
+    pub sync_sweep: Arc<std::sync::Mutex<()>>,
+    /// Skill discovery, held here so its per-provider cache survives across
+    /// calls: a fresh registry per `skills:list` re-walks every skill tree.
+    pub skills: Arc<SkillRegistry>,
 }
 
 // Hand-written because `broadcast::Sender` has no `Default`; every other field
@@ -77,6 +88,8 @@ impl Default for AppState {
             remote_server: std::sync::Mutex::new(None),
             remote_events: broadcast::channel(REMOTE_EVENT_CAPACITY).0,
             sync_report: std::sync::Mutex::new(None),
+            sync_sweep: Arc::new(std::sync::Mutex::new(())),
+            skills: Arc::new(SkillRegistry::from_env()),
         }
     }
 }

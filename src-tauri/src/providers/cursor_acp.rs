@@ -24,7 +24,7 @@
 //!   shared warm process cannot carry; ACP turns skip that injection.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -218,6 +218,22 @@ impl CursorAcpSessions {
             return Err(error);
         }
         Ok(workspace)
+    }
+
+    /// Drop the warm process for one workspace. The pool is otherwise only
+    /// drained at app exit, so a workspace whose checkout is going away
+    /// (archived worktree, removed project) would leave its child running with
+    /// its cwd on a deleted directory for the rest of the app's lifetime.
+    pub async fn evict(&self, workspace_path: &Path) {
+        let slot = self.workspaces.lock().await.remove(workspace_path);
+        let Some(slot) = slot else {
+            return;
+        };
+        // Bound before the `if let` so the guard drops before `slot` does.
+        let current = slot.current.lock_or_recover("acp workspace").take();
+        if let Some(workspace) = current {
+            workspace.client.kill();
+        }
     }
 
     /// Synchronous shutdown for Tauri's `RunEvent::Exit` callback, which runs
@@ -594,7 +610,18 @@ impl ProviderRuntimeHandle for AcpTurnHandle {
                 "session/cancel",
                 json!({ "sessionId": self.acp_session_id }),
             );
-            let _ = tokio::time::timeout(CANCEL_WAIT, done_rx.wait_for(|done| *done)).await;
+            // A timeout here means the prompt is still running: the caller
+            // (archive, "Send now") must not treat the turn as stopped and go
+            // on to remove the worktree or issue a second prompt.
+            if tokio::time::timeout(CANCEL_WAIT, done_rx.wait_for(|done| *done))
+                .await
+                .is_err()
+            {
+                return Err(ArgmaxError::service(
+                    "ACP_CANCEL_TIMEOUT",
+                    "Timed out waiting for the cancelled cursor ACP turn to stop.",
+                ));
+            }
             Ok(())
         })
     }

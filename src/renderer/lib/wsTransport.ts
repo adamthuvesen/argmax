@@ -34,6 +34,16 @@ const HEARTBEAT_MS = 20_000;
 /** No answer by then and the socket is a corpse, whatever `readyState` says. */
 const PONG_TIMEOUT_MS = 8_000;
 
+/**
+ * How long a request may sit unsent before it fails. A queued command replayed
+ * minutes later is worse than one that failed: the user tapped Archive on a
+ * dead socket, saw nothing happen, and moved on — the worktree must not be
+ * deleted when the phone finds the network again.
+ */
+const QUEUE_TIMEOUT_MS = 15_000;
+/** Ceiling on the offline queue; the oldest entries fail first. */
+const MAX_QUEUED_REQUESTS = 64;
+
 const PING_FRAME = JSON.stringify({ type: "ping" });
 
 /**
@@ -110,6 +120,8 @@ interface PendingRequest {
   frame: string;
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
+  /** Deadline while the request waits in `queued`; cleared once it is sent. */
+  queueTimer: ReturnType<typeof setTimeout> | null;
 }
 
 function connectBrowserSocket(url: string, handlers: RemoteSocketHandlers): RemoteSocket {
@@ -166,6 +178,7 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
   let nextRequestId = 1;
   let token: string | null = null;
   let tokenResolved = false;
+  let tokenPromptDismissed = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
   let pongDeadline: ReturnType<typeof setTimeout> | null = null;
@@ -178,27 +191,41 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
   /**
    * Read the token once per page — pairing-URL fragment first (the Settings
    * QR code encodes `#token=…`; fragments never leave the browser), then
-   * storage, then a prompt. A rejected token is cleared from storage so the
-   * next load re-asks, but the in-memory copy is reused across reconnects so
-   * backoff churn never turns into a prompt storm.
+   * storage, then a prompt. A resolved token is reused across reconnects, so
+   * backoff churn never turns into a prompt storm; a rejected one is dropped
+   * from storage AND memory so the next connect asks again instead of
+   * resending what the server just refused.
+   *
+   * Dismissing the prompt parks the reconnect loop (see `handleClose`) rather
+   * than asking again on every backoff tick. The next deliberate wake —
+   * foregrounding the page, the network returning — asks once more.
    */
   function resolveToken(): string {
     if (tokenResolved) return token ?? "";
-    tokenResolved = true;
     const paired = readPairingToken();
     if (paired) {
       window.localStorage.setItem(TOKEN_KEY, paired);
+      tokenResolved = true;
       token = paired;
       return token;
     }
-    token = window.localStorage.getItem(TOKEN_KEY);
-    if (token) return token;
+    const stored = window.localStorage.getItem(TOKEN_KEY);
+    if (stored) {
+      tokenResolved = true;
+      token = stored;
+      return token;
+    }
     const entered = promptForToken();
     if (entered) {
       window.localStorage.setItem(TOKEN_KEY, entered);
+      tokenResolved = true;
+      tokenPromptDismissed = false;
       token = entered;
+      return token;
     }
-    return token ?? "";
+    tokenPromptDismissed = true;
+    token = null;
+    return "";
   }
 
   /** Pull `#token=…` from the URL and scrub it from the address bar. */
@@ -209,10 +236,30 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     return match[1];
   }
 
+  function clearQueueTimer(request: PendingRequest): void {
+    if (request.queueTimer !== null) clearTimeout(request.queueTimer);
+    request.queueTimer = null;
+  }
+
+  /** Fail a request that never left the queue, with the message the mobile
+   *  toasts already treat as "the banner covers this". */
+  function failQueued(request: PendingRequest): void {
+    clearQueueTimer(request);
+    request.reject(new Error(REMOTE_CONNECTION_LOST_MESSAGE));
+  }
+
+  function expireQueued(request: PendingRequest): void {
+    const index = queued.indexOf(request);
+    if (index === -1) return;
+    queued.splice(index, 1);
+    failQueued(request);
+  }
+
   function flushQueue(): void {
     while (authed && socket && queued.length > 0) {
       const request = queued.shift();
       if (!request) return;
+      clearQueueTimer(request);
       inFlight.set(request.id, request);
       socket.send(request.frame);
     }
@@ -250,6 +297,10 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
 
   function handleAuthRejected(): void {
     window.localStorage.removeItem(TOKEN_KEY);
+    // Forget it in memory too. Leaving it resolved made every reconnect resend
+    // the token the server just refused, forever, with no way back to a prompt.
+    token = null;
+    tokenResolved = false;
     logger.error("renderer.remote-bridge", "remote token rejected", { url });
     socket?.close();
   }
@@ -303,13 +354,17 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     authed = false;
     socket = null;
     stopHeartbeat();
-    // Queued requests were never sent, so they ride the reconnect. In-flight
-    // ones lost their answer and have to fail.
+    // Queued requests ride the reconnect, but only until their own deadline —
+    // a command that lands after the user gave up on it is not a recovery.
+    // In-flight ones lost their answer and have to fail now.
     for (const request of inFlight.values()) {
       request.reject(new Error(REMOTE_CONNECTION_LOST_MESSAGE));
     }
     inFlight.clear();
     publishConnection({ status: "offline", resync: false });
+    // The server rejected the token and the user waved the prompt away.
+    // Reconnecting would only ask again every few seconds; wait for a wake.
+    if (tokenPromptDismissed) return;
     scheduleReconnect();
   }
 
@@ -405,12 +460,21 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
   function invoke<T>(channel: IpcChannel, input: unknown = {}): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const id = nextRequestId++;
-      queued.push({
+      const request: PendingRequest = {
         id,
         frame: JSON.stringify({ type: "request", id, channel, input }),
         resolve: (value: unknown) => resolve(value as T),
-        reject
-      });
+        reject,
+        queueTimer: null
+      };
+      request.queueTimer = setTimeout(() => expireQueued(request), QUEUE_TIMEOUT_MS);
+      queued.push(request);
+      // A phone held against a dead socket keeps issuing calls; drop the
+      // oldest, which are the least likely to still be what the user wants.
+      while (queued.length > MAX_QUEUED_REQUESTS) {
+        const dropped = queued.shift();
+        if (dropped) failQueued(dropped);
+      }
       flushQueue();
     });
   }

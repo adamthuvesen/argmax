@@ -12,7 +12,7 @@ Argmax launches Claude Code, Codex, Cursor Agent, and OpenCode through Rust serv
 - [follow_up.rs](../src-tauri/src/providers/follow_up.rs) builds the capped visible transcript used when resuming a completed session.
 - [orphan_cleanup.rs](../src-tauri/src/providers/orphan_cleanup.rs) matches and terminates detached provider CLIs during startup recovery.
 - [normalizer](../src-tauri/src/providers/normalizer) maps provider JSONL/stdout into timeline events.
-- [flush_queue.rs](../src-tauri/src/providers/flush_queue.rs) micro-batches event writes and publishes `dashboard:delta` after commit. Complete JSONL lines flush immediately. A trailing fragment without a newline is debounced for about 16 ms after the last stdout chunk so interactive sessions that stay alive after answering still surface chat rows before Stop. A fragment that opens a JSON object but does not parse is held back instead because it is a protocol line split across PTY reads, not human-readable output. Claude's compaction summary is one roughly 22 KB line delivered as two dozen 1 KB reads, so flushing its fragments would write raw protocol JSON into the timeline.
+- [flush_queue.rs](../src-tauri/src/providers/flush_queue.rs) micro-batches event writes and publishes `dashboard:delta` after commit. Complete JSONL lines flush immediately. A trailing fragment without a newline is debounced for about 16 ms after the last stdout chunk so interactive sessions that stay alive after answering still surface chat rows before Stop. A fragment that opens a JSON object but does not parse is held back instead because it is a protocol line split across PTY reads, not human-readable output. The exception is a process that exits mid-line: the exit-time flush emits the partial fragment rather than buffering it forever, since no newline is ever coming. Claude's compaction summary is one roughly 22 KB line delivered as two dozen 1 KB reads, so flushing its fragments would write raw protocol JSON into the timeline.
 - [pricing.rs](../src-tauri/src/providers/pricing.rs) mirrors renderer pricing defaults.
 - [title.rs](../src-tauri/src/providers/title.rs) runs a best-effort, locked-down one-shot CLI call to replace the provisional first-line sidebar label with a short generated title.
 
@@ -159,10 +159,20 @@ completes in ~2 s end to end versus ~10 s one-shot.
   `composer-2.5[fast=true]` variant. Hosted-agent session-launch credentials
   are per-process env vars a shared warm process cannot carry, so ACP turns do
   not receive the `$ARGMAX_BIN` session-launch surface.
-- **Lifecycle**: pool processes die with the app (`RunEvent::Exit` kills the
-  pool; `kill_on_drop` is the backstop). Boot orphan recovery cannot match
-  `cursor-agent acp` argv — it carries no session id — which is why the exit
-  hook exists; a hard crash can still leak one until logout.
+- **Lifecycle**: a workspace's pool entry is evicted and its process killed
+  when that workspace goes away — isolated archive (before `git worktree
+  remove`, so the child never outlives its directory), shared teardown for
+  scratch and popup rows, and project removal. A shared *git* checkout keeps
+  its entry warm: sibling workspaces may have a turn in flight and the checkout
+  itself is never removed. Whatever survives dies with the app (`RunEvent::Exit`
+  kills the pool; `kill_on_drop` is the backstop). Boot orphan recovery cannot
+  match `cursor-agent acp` argv — it carries no session id — which is why the
+  exit hook exists; a hard crash can still leak one until logout.
+- **Cancellation**: `terminate` cancels the in-flight prompt and waits for the
+  agent's `cancelled` stop reason. If that wait times out the handle returns
+  `ACP_CANCEL_TIMEOUT` rather than reporting success — archive must not remove
+  a worktree an agent may still be writing to, so the failure surfaces as
+  `WORKSPACE_PROVIDER_TIMEOUT`.
 
 OpenCode structured launches use `opencode run --dir <workspace> --format json
 --thinking` with the model in `provider/model` form (`-m opencode/big-pickle`).

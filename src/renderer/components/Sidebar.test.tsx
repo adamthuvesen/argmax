@@ -738,6 +738,27 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify([]));
   });
 
+  it("reveals every workspace that appears in one delta, across separate collapsed buckets", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["today", "older"]));
+
+    const THIS_WEEK = new Date(2026, 5, 2, 9, 0, 0).toISOString();
+    const seeded: DashboardSnapshot = {
+      ...viewSnapshot,
+      workspaces: [workspace("w-seed", "project-zebra", "Seed task", THIS_WEEK)],
+      sessions: [session("w-seed", THIS_WEEK)]
+    };
+
+    const { rerender } = render(<Sidebar {...baseProps} snapshot={seeded} />);
+
+    // One delta forks two sessions into two different collapsed buckets.
+    rerender(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
+
+    expect(screen.getByRole("button", { name: /Zebra task today/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Argmax task in april/ })).toBeInTheDocument();
+    expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify([]));
+  });
+
   it("toggles a date bucket by clicking the row, not just the chevron", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
 

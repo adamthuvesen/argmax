@@ -26,7 +26,7 @@ import {
 import type { Extension } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
 import { ChevronRight, Code, Eye, RotateCcw } from "lucide-react";
-import { Fragment, useCallback, useEffect, useMemo, useState, type JSX, type KeyboardEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
@@ -128,20 +128,11 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
   const buffer = state.buffer ?? preview.content;
   const dirtyMarker = state.isDirty ? "•" : "";
 
-  // The editor's own Mod-s keymap marks its event handled; this catches Cmd+S
-  // anywhere else in the preview, since there is no Save button.
-  const handlePreviewKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.key.toLowerCase() !== "s" || !(event.metaKey || event.ctrlKey) || event.defaultPrevented) return;
-    event.preventDefault();
-    if (state.canEdit && state.isDirty && state.saveState !== "saving") void state.saveFile();
-  };
-
   return (
     <div
       className="file-preview"
       data-mode={showRendered ? "rendered" : "source"}
       aria-label={`Preview of ${state.selectedPath}`}
-      onKeyDown={handlePreviewKeyDown}
     >
       <div className="file-preview-heading">
         <strong aria-label={state.selectedPath} title={state.selectedPath}>

@@ -1,5 +1,4 @@
-import { ChevronLeft } from "lucide-react";
-import { useMemo, useState, type JSX } from "react";
+import { useEffect, useMemo, useState, type JSX } from "react";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { ChangeCount } from "../components/ChangeCount.js";
 import { DiffBlocks } from "../components/DiffBlocks.js";
@@ -13,6 +12,7 @@ import {
   type ReviewSource
 } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
+import { MobileScreenHeader } from "./MobileScreenHeader.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
 
 function statusGlyph(status: string): string {
@@ -27,9 +27,12 @@ function statusGlyph(status: string): string {
  */
 export function MobileReviewScreen({
   workspace,
+  initialFilePath = null,
   onClose
 }: {
   workspace: WorkspaceSummary;
+  /** Open straight into this file — set when a chat file reference was tapped. */
+  initialFilePath?: string | null;
   onClose: () => void;
 }): JSX.Element {
   const source = useMemo<ReviewSource>(() => ({ kind: "workspace", workspace }), [workspace]);
@@ -43,6 +46,13 @@ export function MobileReviewScreen({
   const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
   // Files mode drills down: tree first, then the tapped file full-screen.
   const [fileOpen, setFileOpen] = useState(false);
+
+  const { openInFilesView } = review;
+  useEffect(() => {
+    if (!initialFilePath) return;
+    openInFilesView(initialFilePath);
+    setFileOpen(true);
+  }, [initialFilePath, openInFilesView]);
 
   const isChanges = review.mode === "changes";
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
@@ -72,35 +82,30 @@ export function MobileReviewScreen({
 
   return (
     <div className="mobile-review-screen">
-      <header className="mobile-session-header">
-        <button
-          type="button"
-          className="mobile-back"
-          onClick={previewingFile ? () => setFileOpen(false) : onClose}
-          aria-label={previewingFile ? "Back to files" : "Back to session"}
-        >
-          <ChevronLeft size={22} aria-hidden />
-        </button>
-        <div className="mobile-review-tabs" role="tablist" aria-label="Review mode">
-          <button
-            role="tab"
-            type="button"
-            aria-selected={isChanges}
-            onClick={() => review.setMode("changes")}
-          >
-            Changes
-          </button>
-          <button
-            role="tab"
-            type="button"
-            aria-selected={!isChanges}
-            onClick={() => review.setMode("files")}
-          >
-            Files
-          </button>
-        </div>
-        <span className="mobile-header-spacer" aria-hidden />
-      </header>
+      <MobileScreenHeader
+        onBack={previewingFile ? () => setFileOpen(false) : onClose}
+        backLabel={previewingFile ? "Back to files" : "Back to session"}
+        title={
+          <div className="mobile-review-tabs" role="tablist" aria-label="Review mode">
+            <button
+              role="tab"
+              type="button"
+              aria-selected={isChanges}
+              onClick={() => review.setMode("changes")}
+            >
+              Changes
+            </button>
+            <button
+              role="tab"
+              type="button"
+              aria-selected={!isChanges}
+              onClick={() => review.setMode("files")}
+            >
+              Files
+            </button>
+          </div>
+        }
+      />
 
       {isChanges ? (
         <div className="mobile-review-meta">

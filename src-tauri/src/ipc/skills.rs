@@ -4,10 +4,8 @@ use tauri::State;
 
 use super::{inputs::*, live_database};
 use crate::{
-    error::ArgmaxResult,
-    persistence::workspaces::find_workspace_by_id,
-    skills::registry::{SkillRegistry, SkillSummary},
-    state::AppState,
+    error::ArgmaxResult, persistence::workspaces::find_workspace_by_id,
+    skills::registry::SkillSummary, state::AppState,
 };
 
 #[tauri::command(rename = "skills:list")]
@@ -32,6 +30,7 @@ pub(crate) fn skills_list_impl(
         }
         None => None,
     };
-    let registry = SkillRegistry::from_env();
-    Ok(registry.list_skills(input.provider, workspace_cwd.as_deref()))
+    Ok(state
+        .skills
+        .list_skills(input.provider, workspace_cwd.as_deref()))
 }

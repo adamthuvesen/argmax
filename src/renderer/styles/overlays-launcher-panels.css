@@ -325,22 +325,7 @@
     /* On narrow widths the right-push would shove the mode pill onto its own
        line; let it sit inline with the rest instead. */
     margin-left: 0;
-  }
-
-  .provider-toggle {
-    margin-left: 0;
-  }
-
-  .model-selector {
-    flex: 1 1 100%;
-  }
-
-  .model-selector select,
-  .model-selector input {
-    max-width: 100%;
-  }
-
-  .conversation-surface {
+  }  .conversation-surface {
     padding-top: 20px;
   }
 

@@ -15,7 +15,7 @@ src/
 src-tauri/        Rust runtime, services, IPC handlers, persistence, packaging
 scripts/          Lightweight CI/check scripts
 docs/             Deeper subsystem docs; see Index
-assets/           App icon (icns + png) bundled into release builds
+assets/           App icon sources (svg + png) the icon generator reads
 dist/             Renderer build output (gitignored)
 release/          Packaged distributable output (gitignored)
 ```
@@ -36,7 +36,7 @@ npm run tauri:build     # production Tauri bundle
 - **All IPC** flows through `window.argmax.*`. Request/response channels are Rust `#[tauri::command]` handlers in [src-tauri/src/ipc](src-tauri/src/ipc), collected by `tauri-specta`, and exposed in [src/renderer/lib/tauriBridge.ts](src/renderer/lib/tauriBridge.ts). `src-tauri/tests/fixtures/channels.txt` and `npm run check:tauri-bridge` enforce channel parity.
 - **No native Node rebuild dance.** SQLite and PTYs live in Rust (`rusqlite`, `portable-pty`). Do not reintroduce `better-sqlite3`, `node-pty`, or native builder scripts.
 - **Renderer tests** query by **role / aria-label / title**, never by `className`.
-- **Three themes: Light / Dark / System.** Tokens live in [src/renderer/styles.css](src/renderer/styles.css); see [docs/styling.md](docs/styling.md).
+- **Three themes: Light / Dark / System.** Tokens live in [src/renderer/styles/tokens.css](src/renderer/styles/tokens.css); see [docs/styling.md](docs/styling.md).
 - **Shared values, not duplicates.** Model labels, ids, reasoning levels, and pricing live in [src/shared/providerModels.ts](src/shared/providerModels.ts).
 - **Provider protocol output is not chat.** Visible chat comes from normalized timeline events; raw transcript fallback is only for human-readable stdout/stderr.
 - **Dashboard state is SQLite-first and delta-driven.** Focused reads plus `dashboard:delta`; no recurring renderer poll.

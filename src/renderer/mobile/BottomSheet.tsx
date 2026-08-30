@@ -1,8 +1,10 @@
 import { Check } from "lucide-react";
-import type { JSX, ReactNode } from "react";
+import { useEffect, type JSX, type ReactNode } from "react";
 
 /** Bottom sheet chrome shared by every phone picker: dimmed backdrop, rounded
- *  panel, grabber. Tapping the backdrop closes it.
+ *  panel, grabber. Tapping the backdrop closes it, and so does Escape — a
+ *  phone paired to a keyboard, or the desktop browser the page also serves,
+ *  would otherwise have the backdrop as its only way out.
  *
  *  Sheets, not native `<select>`s: iOS anchors a select's menu to its row, so
  *  a long list opened from near the bottom edge clips off-screen. */
@@ -15,11 +17,22 @@ export function BottomSheet({
   onClose: () => void;
   children: ReactNode;
 }): JSX.Element {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   return (
     <div className="mobile-sheet-backdrop" role="presentation" onClick={onClose}>
       <div
         className="mobile-sheet"
         role="dialog"
+        aria-modal="true"
         aria-label={label}
         onClick={(event) => event.stopPropagation()}
       >

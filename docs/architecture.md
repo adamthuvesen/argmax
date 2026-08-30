@@ -35,7 +35,7 @@ Key folders:
 - `workspaces/`, `review/`, `files/`, `git/`: worktree lifecycle, diffs, file previews/writes, and branch/PR actions.
 - `approvals/`, `checks/`, `gh/`, `terminal/`, `attachments/`, `ide/`, `skills/`: subsystem services. Project learnings live in [ipc/learnings.rs](../src-tauri/src/ipc/learnings.rs) and [persistence/learnings.rs](../src-tauri/src/persistence/learnings.rs) ([memory.md](memory.md)). `notifications.rs` and `updater.rs` are top-level modules. Skill discovery roots are documented in [skills.md](skills.md).
 
-Dashboard freshness is SQLite-first: focused reads (`dashboard:list`, `session:events-since`, `workspaces:status`) plus post-commit `dashboard:delta` pushes.
+Dashboard freshness is SQLite-first: focused reads (`dashboard:list`, `session:events-since`, `workspace:status`) plus post-commit `dashboard:delta` pushes.
 
 ### Dependency Notes
 

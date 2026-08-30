@@ -33,6 +33,12 @@ jobs:
 
       - run: npm run test:rust
 
+      # Lives here, not in the js lane: the check regenerates the bindings with
+      # `cargo run --bin export-bindings`, which needs the Rust toolchain and
+      # Tauri's system libraries. On ubuntu the exporter cannot build, and an
+      # exporter that cannot run is indistinguishable from one that disagrees.
+      - run: npm run check:bindings
+
   js-checks:
     name: js lint · typecheck · tests
     runs-on: ubuntu-latest
@@ -50,8 +56,6 @@ jobs:
       - run: npm run lint
 
       - run: npm run typecheck
-
-      - run: npm run check:bindings
 
       - run: npm run check:tauri-bridge
 

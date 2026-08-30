@@ -46,11 +46,6 @@
   color: var(--text);
 }
 
-.empty-project-launcher {
-  justify-items: center;
-  gap: 22px;
-}
-
 /* ============================================================
    Welcome pane — fresh-install onboarding checklist
    (WelcomePane.tsx; shown while zero projects are registered)

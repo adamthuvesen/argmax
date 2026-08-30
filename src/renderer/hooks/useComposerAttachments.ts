@@ -85,12 +85,17 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
   // onto this key, in which case these images belong to it and travel along.
   const loadedKey = useRef(draftKey);
   const movedFrom = useRef<string | null>(null);
+  // Bumped only when the list is swapped for another draft's — a carried
+  // retarget keeps the same images, and the same generation, so an in-flight
+  // paste still belongs to them.
+  const listGeneration = useRef(0);
   if (loadedKey.current !== draftKey) {
     const previousKey = loadedKey.current;
     loadedKey.current = draftKey;
     if (carriedOnRetarget) {
       movedFrom.current = previousKey ?? null;
     } else {
+      listGeneration.current += 1;
       setPendingAttachments(readDraft(draftKey ?? null).attachments);
     }
   }
@@ -130,6 +135,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
         setStatus("Attaching images needs the desktop app.");
         return;
       }
+      const generation = listGeneration.current;
       try {
         for (const blob of blobs) {
           if (!isSupportedImageMime(blob.type)) continue;
@@ -139,6 +145,11 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
             mimeType: blob.type,
             dataBase64
           });
+          // The pane can retarget to another draft while the save is in flight
+          // (pick a different project in the launcher). Appending now would
+          // hang this image on a prompt it was never pasted into, and the
+          // persist effect below would write it into that draft.
+          if (listGeneration.current !== generation) return;
           setPendingAttachments((prev) => [
             ...prev,
             {

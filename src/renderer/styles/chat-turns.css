@@ -411,25 +411,6 @@
   background: var(--panel-soft);
 }
 
-.tool-call-flash {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: var(--accent-soft);
-  opacity: 0.55;
-  animation: tool-call-flash 620ms var(--ease) forwards;
-}
-
-.tool-call-item[data-status="error"] .tool-call-flash {
-  background: var(--panel-sunken);
-}
-
-@keyframes tool-call-flash {
-  0%   { opacity: 0.55; }
-  100% { opacity: 0; }
-}
-
 .tool-call-header {
   display: flex;
   align-items: center;
@@ -450,34 +431,6 @@
   color: var(--text);
 }
 
-.tool-call-icon {
-  display: flex;
-  align-items: center;
-  flex: 0 0 auto;
-  color: var(--muted);
-}
-
-.tool-call-name {
-  font-weight: 500;
-  font-family: var(--font-code);
-  font-size: var(--text-sm);
-  flex: 0 0 auto;
-}
-
-.tool-call-preview {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  font-family: var(--font-code);
-  font-size: var(--text-xs);
-  color: var(--muted);
-  background: transparent;
-  padding: 0;
-  border: 0;
-}
-
 .tool-call-spinner {
   animation: spin 1s linear infinite;
 }
@@ -485,15 +438,6 @@
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-}
-
-.tool-call-chevron {
-  flex: 0 0 auto;
-  transition: transform var(--duration-fast) var(--ease);
-}
-
-.tool-call-chevron.expanded {
-  transform: rotate(90deg);
 }
 
 .tool-call-detail {
@@ -714,22 +658,6 @@
   flex: 0 0 auto;
 }
 
-.tool-call-group-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  color: var(--muted);
-}
-
-.tool-call-group-icon svg {
-  width: 14px;
-  height: 14px;
-  stroke-width: 2;
-}
-
 .tool-call-group-eyebrow-label {
   font-family: var(--font-ui);
   font-size: var(--text-sm);
@@ -842,7 +770,7 @@
 }
 
 .tool-call-row-disclosure:hover {
-  background: var(--bg-soft);
+  background: var(--panel-soft);
   color: var(--muted-strong);
 }
 
@@ -1030,7 +958,6 @@
   font-weight: 400;
 }
 
-.agent-launch-role,
 .agent-launch-status {
   flex: 0 0 auto;
   overflow: hidden;
@@ -1038,18 +965,6 @@
   white-space: nowrap;
   color: var(--muted);
   font-size: var(--text-sm);
-}
-
-.agent-launch-subtitle {
-  display: block;
-  max-width: 100%;
-  margin-top: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-  font-size: var(--text-sm);
-  line-height: 1.4;
 }
 
 .agent-launch-row[data-status="error"] .agent-launch-status {

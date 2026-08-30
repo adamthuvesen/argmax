@@ -28,6 +28,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use once_cell::sync::OnceCell;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -61,6 +62,7 @@ use crate::persistence::workspaces::{
     set_workspace_priority_dismissed, update_workspace_state, update_workspace_status,
     PersistWorkspaceInput, WorkspaceStatusInput, WorkspaceSummary,
 };
+use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::session_service::ProviderSessionService;
 use crate::terminal::service::TerminalService;
@@ -130,6 +132,11 @@ pub struct WorkspaceService {
     checks: Option<Arc<CheckService>>,
     terminals: Option<Arc<TerminalService>>,
     approvals: Option<Arc<ApprovalService>>,
+    /// Warm `cursor-agent acp` process pool, installed after construction (it
+    /// is built alongside the provider launcher). Archive and project removal
+    /// evict the entry for a checkout they are about to stop managing —
+    /// nothing else drains the pool before `RunEvent::Exit`.
+    cursor_acp: OnceCell<Arc<CursorAcpSessions>>,
     /// App-owned directory that holds one subdirectory per scratch workspace
     /// (repo-less side chats). `None` when the app data dir could not be
     /// resolved — `create_scratch` then fails with a clear error.
@@ -180,8 +187,28 @@ impl WorkspaceService {
             checks,
             terminals,
             approvals,
+            cursor_acp: OnceCell::new(),
             scratch_root,
         })
+    }
+
+    /// Install the warm Cursor ACP pool so archive and project removal can
+    /// evict its per-workspace processes. Wired at boot after the pool is
+    /// built; without it eviction is a no-op and the pool only drains at exit.
+    pub fn set_cursor_acp(&self, pool: Arc<CursorAcpSessions>) {
+        if self.cursor_acp.set(pool).is_err() {
+            tracing::warn!("cursor ACP pool was already installed on the workspace service");
+        }
+    }
+
+    /// Kill the warm `cursor-agent acp` process pinned to `path`, if any.
+    /// Called where Argmax stops managing that checkout: the child otherwise
+    /// keeps running — on a removed worktree, with its cwd on a deleted
+    /// inode — until the app exits.
+    async fn evict_cursor_acp(&self, path: &str) {
+        if let Some(pool) = self.cursor_acp.get() {
+            pool.evict(Path::new(path)).await;
+        }
     }
 
     pub fn lifecycle(&self) -> Arc<WorkspaceLifecycle> {
@@ -630,8 +657,16 @@ impl WorkspaceService {
             ));
         }
         let source_workspace = find_workspace_by_id(&connection, &source_session.workspace_id)?;
+        // One transaction for the whole fork. The transcript copy is a row per
+        // event, and `events` carries an FTS5 insert trigger, so committing
+        // each one separately blocked the app's single connection for the
+        // length of the history — and a mid-copy failure left the workspace and
+        // session rows standing with a truncated transcript.
+        let transaction = connection
+            .unchecked_transaction()
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
         let workspace = persist_workspace(
-            &connection,
+            &transaction,
             &PersistWorkspaceInput {
                 id: Uuid::new_v4().to_string(),
                 project_id: source_workspace.project_id.clone(),
@@ -647,7 +682,7 @@ impl WorkspaceService {
             },
         )?;
         let session = persist_session(
-            &connection,
+            &transaction,
             &PersistSessionInput {
                 id: Uuid::new_v4().to_string(),
                 workspace_id: workspace.id.clone(),
@@ -667,11 +702,11 @@ impl WorkspaceService {
         let session = match source_session.provider_conversation_id.as_deref() {
             Some(conversation_id) => {
                 let session = update_session_provider_conversation_id(
-                    &connection,
+                    &transaction,
                     &session.id,
                     conversation_id,
                 )?;
-                set_session_resume_fork(&connection, &session.id)?;
+                set_session_resume_fork(&transaction, &session.id)?;
                 session
             }
             // No conversation to resume yet (nothing ever ran): the fork is
@@ -681,9 +716,9 @@ impl WorkspaceService {
         // Copy the transcript so the fork opens with the full history. Raw
         // provider output and usage stay with the original — they describe
         // work the fork did not perform.
-        for event in list_all_session_events(&connection, session_id)? {
+        for event in list_all_session_events(&transaction, session_id)? {
             persist_timeline_event(
-                &connection,
+                &transaction,
                 &PersistTimelineEventInput {
                     id: Uuid::new_v4().to_string(),
                     session_id: session.id.clone(),
@@ -694,6 +729,9 @@ impl WorkspaceService {
                 },
             )?;
         }
+        transaction
+            .commit()
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
         self.publish(DashboardDelta {
             projects: list_projects(&connection)?,
             workspaces: vec![workspace.clone()],
@@ -1028,6 +1066,9 @@ impl WorkspaceService {
         // No more status refreshes can be useful once quiescence has completed.
         // Close the OS watcher before the final git read and worktree removal.
         self.close_watcher(&workspace_id);
+        // The warm ACP process holds this worktree as its cwd, and the pool is
+        // keyed by path, so it must go before `worktree remove --force`.
+        self.evict_cursor_acp(&workspace.path).await;
 
         if !force && !workspace.shared_workspace {
             let recheck = match run_git_text(
@@ -1058,7 +1099,7 @@ impl WorkspaceService {
                     workspaces: vec![kept.clone()],
                     ..DashboardDelta::default()
                 });
-                if let Err(error) = super::watcher::watch_during_archive(&self, &workspace_id) {
+                if let Err(error) = super::watcher::watch_during_archive(self, &workspace_id) {
                     tracing::warn!(workspace_id = %workspace_id, ?error, "failed to restore watcher after dirty archive refusal");
                 }
                 lease.finish(ArchiveOutcome::Reopened);
@@ -1145,9 +1186,17 @@ impl WorkspaceService {
                     .as_ref()
                     .is_some_and(|root| path.starts_with(root))
             });
+        let acp_path_to_evict = (archived.kind != "git").then(|| archived.path.clone());
         let service = Arc::clone(self);
         tokio::spawn(async move {
             service.teardown_workspace_processes(&workspace_id).await;
+            // Scratch and popup rows carry `shared_workspace = true` over an
+            // app-owned per-chat directory, so their pool entry is theirs
+            // alone. A real shared checkout is left warm: sibling workspaces
+            // on the same directory may still be running a turn on it.
+            if let Some(path) = acp_path_to_evict {
+                service.evict_cursor_acp(&path).await;
+            }
             if let Some(path) = popup_dir_to_remove {
                 if let Err(error) = tokio::fs::remove_dir_all(&path).await {
                     tracing::warn!(
@@ -1224,12 +1273,12 @@ impl WorkspaceService {
     /// before the delete or the running agents become unreachable — still
     /// editing the checkout with no UI left to stop them.
     pub(crate) async fn teardown_project(self: &Arc<Self>, project_id: &str) {
-        let workspace_ids = {
+        let workspaces = {
             let connection = self.database.connection();
-            project_workspace_ids(&connection, project_id)
+            project_workspaces_to_tear_down(&connection, project_id)
         };
-        let workspace_ids = match workspace_ids {
-            Ok(ids) => ids,
+        let workspaces = match workspaces {
+            Ok(rows) => rows,
             Err(error) => {
                 tracing::warn!(
                     ?error,
@@ -1239,9 +1288,13 @@ impl WorkspaceService {
                 return;
             }
         };
-        for workspace_id in workspace_ids {
+        for (workspace_id, path) in workspaces {
             self.teardown_workspace_processes(&workspace_id).await;
             self.close_watcher(&workspace_id);
+            // Every workspace on this project is going away, the shared
+            // checkout included, so no warm process on any of these paths has
+            // a session left to serve.
+            self.evict_cursor_acp(&path).await;
         }
     }
 
@@ -1254,7 +1307,7 @@ impl WorkspaceService {
         });
         drop(connection);
         if Path::new(&restored.path).exists() {
-            if let Err(error) = super::watcher::watch_during_archive(&self, &prior.id) {
+            if let Err(error) = super::watcher::watch_during_archive(self, &prior.id) {
                 tracing::warn!(workspace_id = %prior.id, ?error, "failed to restore workspace watcher after archive failure");
             }
         } else {
@@ -1272,7 +1325,7 @@ impl WorkspaceService {
         });
         drop(connection);
         if Path::new(&failed.path).exists() {
-            if let Err(error) = super::watcher::watch_during_archive(&self, workspace_id) {
+            if let Err(error) = super::watcher::watch_during_archive(self, workspace_id) {
                 tracing::warn!(workspace_id = %workspace_id, ?error, "failed to restore watcher after archive failure");
             }
         } else {
@@ -1694,13 +1747,15 @@ fn ide_app_name(choice: OpenIdeChoice) -> &'static str {
     }
 }
 
-fn project_workspace_ids(
+fn project_workspaces_to_tear_down(
     connection: &rusqlite::Connection,
     project_id: &str,
-) -> rusqlite::Result<Vec<String>> {
+) -> rusqlite::Result<Vec<(String, String)>> {
     let mut statement =
-        connection.prepare_cached("SELECT id FROM workspaces WHERE project_id = ?")?;
-    let rows = statement.query_map([project_id], |row| row.get::<_, String>("id"))?;
+        connection.prepare_cached("SELECT id, path FROM workspaces WHERE project_id = ?")?;
+    let rows = statement.query_map([project_id], |row| {
+        Ok((row.get::<_, String>("id")?, row.get::<_, String>("path")?))
+    })?;
     rows.collect()
 }
 

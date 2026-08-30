@@ -52,6 +52,10 @@ fn run_now(state: &State<'_, AppState>, config: &SyncConfig) {
     let (Some(database), Some(workspaces)) = (state.db.get(), state.workspaces.get()) else {
         return;
     };
+    // One sweep at a time. Two concurrent sweeps read the same not-yet-imported
+    // transcript and both import it; the loser's `synced_sessions` insert then
+    // trips the provider/external unique index and aborts its whole sweep.
+    let _serialized = state.sync_sweep.lock_or_recover("sync sweep");
     let outcome = sync::run_sync(
         database,
         workspaces,

@@ -3,6 +3,7 @@ import {
   advanceTurnBoundary,
   isSubAgentProseEcho,
   isSupersededAnswerDelta,
+  isThinkingDelta,
   type TurnBoundary
 } from "./turnBoundaries.js";
 
@@ -104,10 +105,6 @@ const EVENT_DELTA_LIMIT = 4000;
 const EVENT_THINKING_LIMIT = 1000;
 const EVENT_TRACE_IMPORT_LIMIT = 1000;
 const EVENT_PROTECTED_LIMIT = 2000;
-
-function isThinkingDelta(event: TimelineEvent): boolean {
-  return event.type === "message.delta" && event.payload?.["thinking"] === true;
-}
 
 function isEvictableDelta(event: TimelineEvent): boolean {
   return event.type === "message.delta" && event.payload?.["thinking"] !== true;

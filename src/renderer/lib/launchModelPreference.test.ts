@@ -44,4 +44,20 @@ describe("launch model preference", () => {
 
     expect(readStoredLaunchModel()?.reasoningEffort).toBe(option.reasoningEffort);
   });
+
+  it("clamps a stored effort onto the levels the model actually offers", () => {
+    // OpenCode Go variant lists are discrete: GLM-5.3-Flash has no medium, and
+    // Kimi K3 has only max. A stored "medium" must land on a real variant, not
+    // ride through to the adapter as-is.
+    const stored = (modelId: string): string | undefined => {
+      window.localStorage.setItem(
+        LAUNCH_MODEL_KEY,
+        JSON.stringify({ provider: "opencode", modelId, reasoningEffort: "medium" })
+      );
+      return readStoredLaunchModel()?.reasoningEffort;
+    };
+
+    expect(stored("opencode-go/glm-5.3-flash")).toBe("low");
+    expect(stored("opencode-go/kimi-k3")).toBe("max");
+  });
 });

@@ -375,11 +375,7 @@ fn opencode_variant_args(model_id: &str, effort: Option<ReasoningEffort>) -> Vec
     }
     // Clamp down: highest supported whose rank ≤ incoming, else lowest.
     let incoming_rank = effort as u8;
-    if let Some(&best) = supported
-        .iter()
-        .filter(|e| (**e as u8) <= incoming_rank)
-        .last()
-    {
+    if let Some(&best) = supported.iter().rfind(|e| (**e as u8) <= incoming_rank) {
         vec!["--variant".to_string(), best.as_str().to_string()]
     } else {
         vec!["--variant".to_string(), supported[0].as_str().to_string()]

@@ -13,11 +13,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use argmax_lib::checks::service::{CheckService, RunWorkspaceCheckInput};
-use argmax_lib::error::ArgmaxError;
+use argmax_lib::error::{ArgmaxError, ArgmaxResult};
 use argmax_lib::ipc::inputs::{
-    ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesCreateCurrentInput,
-    WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput, WorkspacesKeepInput,
-    WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
+    ProvidersLaunchInput, ScratchWorkspaceKind, WorkspacesArchiveInput,
+    WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput,
+    WorkspacesKeepInput, WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
 };
 use argmax_lib::ipc::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
 use argmax_lib::persistence::{
@@ -27,6 +27,12 @@ use argmax_lib::persistence::{
     workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
 };
 use argmax_lib::providers::flush_queue::DashboardDelta;
+use argmax_lib::providers::runtime::{
+    BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle,
+};
+use argmax_lib::providers::session_service::ProviderSessionService;
+use argmax_lib::providers::ProviderLaunchInput;
+use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
 use argmax_lib::workspaces::WorkspaceService;
 
 use support::git_repo::{run_git, seed_git_repo};
@@ -1470,4 +1476,129 @@ async fn archiving_a_popup_workspace_removes_its_scratch_dir() {
         side_chat_path.exists(),
         "side-chat scratch dir must survive archive"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Provider teardown must abort the destructive step
+// ---------------------------------------------------------------------------
+
+/// A handle whose `terminate` never succeeds — the shape an ACP turn takes when
+/// its cancel wait times out (`ACP_CANCEL_TIMEOUT`).
+struct RefusingHandle;
+
+impl ProviderRuntimeHandle for RefusingHandle {
+    fn accepts_input(&self) -> bool {
+        false
+    }
+
+    fn disposed(&self) -> bool {
+        false
+    }
+
+    fn send_input(&self, _input: &str) {}
+
+    fn resize(&self, _cols: u16, _rows: u16) {}
+
+    fn terminate<'a>(&'a self) -> BoxFuture<'a, ArgmaxResult<()>> {
+        Box::pin(async {
+            Err(ArgmaxError::service(
+                "ACP_CANCEL_TIMEOUT",
+                "agent did not acknowledge the cancel",
+            ))
+        })
+    }
+}
+
+#[derive(Default)]
+struct RefusingLauncher;
+
+impl ProviderProcessLauncher for RefusingLauncher {
+    fn launch<'a>(
+        &'a self,
+        _input: ProviderLaunchInput,
+        _on_event: EventCallback,
+    ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+        Box::pin(async {
+            let handle: Arc<dyn ProviderRuntimeHandle> = Arc::new(RefusingHandle);
+            Ok(handle)
+        })
+    }
+}
+
+/// Archiving an isolated worktree removes it with `git worktree remove --force`.
+/// That step must never run while an agent may still be writing to the
+/// directory, so a provider that will not confirm its teardown has to fail the
+/// archive rather than let it proceed. Without this, a handle whose `terminate`
+/// silently returns `Ok` would let archive delete a live worktree.
+#[tokio::test]
+async fn archive_keeps_the_worktree_when_provider_teardown_fails() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let worktree_location = repo.path().join("worktrees");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &worktree_location.display().to_string(),
+    );
+
+    let lifecycle = Arc::new(WorkspaceLifecycle::new());
+    let providers = ProviderSessionService::with_launcher_and_lifecycle(
+        Arc::clone(&database),
+        Arc::new(RefusingLauncher),
+        |_delta| {},
+        Arc::clone(&lifecycle),
+    );
+    let service = WorkspaceService::with_services(
+        Arc::clone(&database),
+        |_delta| {},
+        Arc::clone(&lifecycle),
+        Some(Arc::clone(&providers)),
+        None,
+        None,
+        None,
+        None,
+    );
+
+    let workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("stuck agent".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("create isolated");
+
+    let launch: ProvidersLaunchInput = serde_json::from_value(serde_json::json!({
+        "workspaceId": workspace.id,
+        "provider": "claude",
+        "prompt": "do some work",
+        "modelLabel": "Opus 5",
+        "modelId": "claude-opus-5",
+        "cols": 80,
+        "rows": 24,
+    }))
+    .expect("launch input");
+    providers.launch(launch).await.expect("launch");
+
+    let error = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
+            force: Some(true),
+        })
+        .await
+        .expect_err("archive must fail when the provider will not confirm teardown");
+
+    assert!(
+        matches!(&error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "ACP_CANCEL_TIMEOUT"),
+        "archive should surface the provider's own failure, got {error:?}"
+    );
+    assert!(
+        std::path::Path::new(&workspace.path).exists(),
+        "worktree must survive an archive whose provider teardown failed"
+    );
+
+    let connection = database.connection();
+    let row = find_workspace_by_id(&connection, &workspace.id).expect("workspace row");
+    assert_eq!(row.state, "archive-failed");
 }

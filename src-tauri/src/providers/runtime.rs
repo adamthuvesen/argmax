@@ -149,14 +149,6 @@ impl RealProviderProcessLauncher {
             cursor_acp,
         }
     }
-
-    pub fn with_session_launch_registry(registry: Arc<SessionLaunchRegistry>) -> Self {
-        Self {
-            discovery: ProviderDiscovery::new(),
-            session_launch_registry: Some(registry),
-            cursor_acp: Arc::new(super::cursor_acp::CursorAcpSessions::new()),
-        }
-    }
 }
 
 impl Default for RealProviderProcessLauncher {

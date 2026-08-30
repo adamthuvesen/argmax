@@ -118,10 +118,13 @@ pub struct ProviderSessionService {
     /// Owned termination jobs. A caller may stop waiting when an archive
     /// bound expires, but the job itself continues until the provider handle
     /// is disposed and the cancelled state is persisted.
-    termination_jobs: Arc<Mutex<HashMap<String, watch::Receiver<Option<ArgmaxResult<()>>>>>>,
+    termination_jobs: Arc<Mutex<HashMap<String, TerminationJob>>>,
     lifecycle: Arc<WorkspaceLifecycle>,
     approvals: Option<Arc<ApprovalService>>,
 }
+
+/// The result slot a termination job publishes to; `None` while the job runs.
+type TerminationJob = watch::Receiver<Option<ArgmaxResult<()>>>;
 
 #[derive(Clone)]
 enum HandleEntry {

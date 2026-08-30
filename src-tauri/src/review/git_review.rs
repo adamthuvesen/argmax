@@ -310,21 +310,25 @@ async fn pick_review_base(
     }
     let mut seen: Vec<String> = Vec::new();
     let mut first_existing: Option<String> = None;
+    // Every file click in the Changes panel runs this loop, so resolve HEAD
+    // once and let one `rev-parse` per candidate answer both "does it exist"
+    // and "is it HEAD" — the two probes issued the identical command.
+    let head = rev_parse_commit(repo_path, "HEAD").await.ok();
     for candidate in candidates {
         if seen.contains(&candidate) {
             continue;
         }
         seen.push(candidate.clone());
-        if !ref_exists(repo_path, &candidate).await {
+        let Ok(resolved) = rev_parse_commit(repo_path, &candidate).await else {
             continue;
-        }
+        };
         if !has_common_ancestor(repo_path, &candidate).await {
             continue;
         }
         if first_existing.is_none() {
             first_existing = Some(candidate.clone());
         }
-        if !is_same_commit_as_head(repo_path, &candidate).await {
+        if head.as_deref() != Some(resolved.as_str()) {
             return Some(candidate);
         }
     }
@@ -350,16 +354,6 @@ async fn has_common_ancestor(repo_path: &Path, reference: &str) -> bool {
     .unwrap_or(false)
 }
 
-async fn is_same_commit_as_head(repo_path: &Path, reference: &str) -> bool {
-    let Ok(head) = rev_parse_commit(repo_path, "HEAD").await else {
-        return false;
-    };
-    rev_parse_commit(repo_path, reference)
-        .await
-        .map(|other| other == head)
-        .unwrap_or(false)
-}
-
 async fn rev_parse_commit(repo_path: &Path, spec: &str) -> ArgmaxResult<String> {
     let rev = format!("{spec}^{{commit}}");
     let exit = run_git_text_with_allowed_exit_codes(
@@ -377,21 +371,6 @@ async fn rev_parse_commit(repo_path: &Path, spec: &str) -> ArgmaxResult<String> 
         ));
     }
     Ok(sha.to_owned())
-}
-
-/// True when `reference` resolves to a commit in this repo/worktree. Exit code 1
-/// (no such ref) is the expected "missing" signal, not a hard git failure.
-async fn ref_exists(repo_path: &Path, reference: &str) -> bool {
-    let rev = format!("{reference}^{{commit}}");
-    run_git_text_with_allowed_exit_codes(
-        repo_path,
-        ["rev-parse", "--verify", "--quiet", rev.as_str()],
-        &[1],
-        GIT_TIMEOUT,
-    )
-    .await
-    .map(|exit| !exit.stdout.trim().is_empty())
-    .unwrap_or(false)
 }
 
 pub async fn list_changed_files_at_path(

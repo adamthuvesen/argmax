@@ -1,4 +1,5 @@
 import { ShieldAlert } from "lucide-react";
+import type { NewSessionSeed } from "./SessionComposer.js";
 import {
   Suspense,
   lazy,
@@ -124,7 +125,7 @@ export function SessionPane({
   /** Called on mount and on session.id change to backfill timeline events for this pane's session. */
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   /** Opens a launcher pane beside this one. Absent outside the grid. */
-  onNewSession?: () => void;
+  onNewSession?: (seed?: NewSessionSeed) => void;
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
   onOpenDetails?: (
     seedPrompt: string,

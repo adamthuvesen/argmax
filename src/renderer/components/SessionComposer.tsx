@@ -60,7 +60,9 @@ import { ContextRing } from "./ContextRing.js";
 import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import { LaunchModelSelector, ModelSelector } from "./ModelSelector.js";
+import { ProviderSwitchDialog } from "./ProviderSwitchDialog.js";
 import { SkillPopover } from "./SkillPopover.js";
+import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
@@ -72,6 +74,14 @@ const PROMPT_MAX_HEIGHT_PX = 140;
 export interface ComposerStatus {
   kind: "error" | "info";
   message: string;
+}
+
+/** What the provider-switch dialog hands the launcher when the user takes the
+ *  recommended path: the model they picked, and the follow-up they had
+ *  half-written for the old agent. */
+export interface NewSessionSeed {
+  model: ModelPickerSelection;
+  prompt: string;
 }
 
 export interface ComposerChangeSummary {
@@ -94,6 +104,7 @@ export function SessionComposer({
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
   onSendSessionInput,
+  onStartNewSession,
   onTerminateSession,
   pendingAnnotations = [],
   onRemoveAnnotation,
@@ -129,6 +140,9 @@ export function SessionComposer({
     agentMode: AgentMode,
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
+  /** Offered by the provider-switch dialog as the recommended alternative:
+      opens the launcher with the picked model and this composer's draft. */
+  onStartNewSession?: (seed: NewSessionSeed) => void;
   onTerminateSession: (sessionId: string) => Promise<void>;
   /** Transcript excerpts attached via the selection toolbar; serialized into
       the prompt at send time and cleared through `onClearAnnotations`. */
@@ -157,6 +171,15 @@ export function SessionComposer({
   const [sendingQueuedMessageId, setSendingQueuedMessageId] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
+  // A pick that changes provider is held here until the user confirms: the new
+  // agent can't resume this one's conversation, so the swap is worth a beat.
+  // Cancelling drops the pick and the composer keeps the current provider. The
+  // session id rides along because this pane outlives the session it shows: a
+  // held pick must not land on whatever session the pane retargets to.
+  const [pendingProviderSwitch, setPendingProviderSwitch] = useState<
+    { sessionId: string; model: ModelPickerSelection } | null
+  >(null);
+  const { availability: providerAvailability } = useProviderAvailability();
   // Dismissing the open-files chip skips those paths until the set of open
   // tabs changes, at which point the new set rides along again.
   const [dismissedOpenFilesKey, setDismissedOpenFilesKey] = useState<string | null>(null);
@@ -540,9 +563,18 @@ export function SessionComposer({
             ) : (
               // Idle: switching provider here relaunches the agent under the new
               // provider on the next send, carrying context via the transcript.
+              // Same-provider model changes commit straight away; a different
+              // provider goes through the confirmation below first.
               <LaunchModelSelector
                 value={selectedModel}
-                onChange={setSelectedModel}
+                availability={providerAvailability}
+                onChange={(model) => {
+                  if (model.provider !== session.provider) {
+                    setPendingProviderSwitch({ sessionId: session.id, model });
+                    return;
+                  }
+                  setSelectedModel(model);
+                }}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
                 withEffortSlider
@@ -745,6 +777,33 @@ export function SessionComposer({
         </p>
       ) : null}
       <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />
+      {/* Only while the pick still applies: the same idle session it was made
+          on. A turn starting mid-dialog would queue the follow-up and keep the
+          current provider anyway, so the offer would be a lie. */}
+      {session && pendingProviderSwitch?.sessionId === session.id && session.state !== "running" ? (
+        <ProviderSwitchDialog
+          from={session.provider}
+          to={pendingProviderSwitch.model.provider}
+          onCancel={() => setPendingProviderSwitch(null)}
+          onSwitch={() => {
+            setSelectedModel(pendingProviderSwitch.model);
+            setPendingProviderSwitch(null);
+            inputRef.current?.focus();
+          }}
+          onStartNewSession={
+            onStartNewSession
+              ? () => {
+                  // The draft moves to the launcher rather than being copied:
+                  // leaving it here too would offer the same text twice, in two
+                  // composers that send to different agents.
+                  onStartNewSession({ model: pendingProviderSwitch.model, prompt: input });
+                  setInput("");
+                  setPendingProviderSwitch(null);
+                }
+              : undefined
+          }
+        />
+      ) : null}
     </form>
   );
 }

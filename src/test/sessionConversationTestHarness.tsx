@@ -1,4 +1,5 @@
-import { render } from "@testing-library/react";
+import { render, type RenderResult } from "@testing-library/react";
+import type { JSX } from "react";
 import { vi } from "vitest";
 import type {
   PendingMessage,
@@ -72,8 +73,8 @@ export function baseSession(overrides: Partial<SessionSummary> = {}): SessionSum
     id: "session-a",
     workspaceId: "workspace-1",
     provider: "codex",
-    modelLabel: "GPT-5.3 Codex",
-    modelId: "gpt-5.5",
+    modelLabel: "GPT-5.6 Terra",
+    modelId: "gpt-5.6-terra",
     reasoningEffort: "medium",
     permissionMode: "auto-approve",
     providerConversationId: null,
@@ -149,29 +150,30 @@ export function cursorAssistantPayload(text: string): Record<string, unknown> {
   };
 }
 
-export function renderConversation(
+type ConversationOptions = {
+  defaultThinkingExpanded?: boolean;
+  defaultToolCallsExpanded?: boolean;
+  defaultToolCallGroupsExpanded?: boolean;
+  pendingMessages?: PendingMessage[];
+  onCancelQueuedMessage?: ReturnType<typeof vi.fn>;
+  onSendQueuedMessageNow?: ReturnType<typeof vi.fn>;
+  onSendSessionInput?: ReturnType<typeof vi.fn>;
+  onTerminateSession?: ReturnType<typeof vi.fn>;
+  onNewSession?: ReturnType<typeof vi.fn>;
+  onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
+  onOpenAgent?: (tool: ToolCall) => void;
+  onOpenSideChat?: (seedPrompt: string) => Promise<void>;
+  onOpenDetails?: (seedPrompt: string) => Promise<void>;
+  registerAnnotationSink?: Parameters<typeof SessionConversation>[0]["registerAnnotationSink"];
+  review?: ReviewState;
+};
+
+function conversationElement(
   session: SessionSummary,
-  events: TimelineEvent[] = [],
-  options: {
-    defaultThinkingExpanded?: boolean;
-    defaultToolCallsExpanded?: boolean;
-    defaultToolCallGroupsExpanded?: boolean;
-    pendingMessages?: PendingMessage[];
-    onCancelQueuedMessage?: ReturnType<typeof vi.fn>;
-    onSendQueuedMessageNow?: ReturnType<typeof vi.fn>;
-    onSendSessionInput?: ReturnType<typeof vi.fn>;
-    onTerminateSession?: ReturnType<typeof vi.fn>;
-    onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
-    onOpenAgent?: (tool: ToolCall) => void;
-    onOpenSideChat?: (seedPrompt: string) => Promise<void>;
-    onOpenDetails?: (seedPrompt: string) => Promise<void>;
-    registerAnnotationSink?: Parameters<
-      typeof SessionConversation
-    >[0]["registerAnnotationSink"];
-    review?: ReviewState;
-  } = {}
-) {
-  return render(
+  events: TimelineEvent[],
+  options: ConversationOptions
+): JSX.Element {
+  return (
     <SessionConversation
       events={events}
       isLogOpen={false}
@@ -184,6 +186,7 @@ export function renderConversation(
       {...(options.defaultThinkingExpanded !== undefined ? { defaultThinkingExpanded: options.defaultThinkingExpanded } : {})}
       {...(options.defaultToolCallsExpanded !== undefined ? { defaultToolCallsExpanded: options.defaultToolCallsExpanded } : {})}
       {...(options.defaultToolCallGroupsExpanded !== undefined ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded } : {})}
+      {...(options.onNewSession ? { onNewSession: options.onNewSession } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
       {...(options.onOpenAgent ? { onOpenAgent: options.onOpenAgent } : {})}
       {...(options.onOpenSideChat ? { onOpenSideChat: options.onOpenSideChat } : {})}
@@ -198,4 +201,23 @@ export function renderConversation(
       workspace={workspace}
     />
   );
+}
+
+export function renderConversation(
+  session: SessionSummary,
+  events: TimelineEvent[] = [],
+  options: ConversationOptions = {}
+) {
+  return render(conversationElement(session, events, options));
+}
+
+/** Re-render the same pane with a changed session — the component keeps its
+ *  state, which is the point when testing what survives a state transition. */
+export function rerenderConversation(
+  rerender: RenderResult["rerender"],
+  session: SessionSummary,
+  events: TimelineEvent[] = [],
+  options: ConversationOptions = {}
+): void {
+  rerender(conversationElement(session, events, options));
 }

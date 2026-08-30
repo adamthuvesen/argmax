@@ -33,7 +33,8 @@ const detectedIdes = [
 describe("SidebarSessionRow", () => {
   afterEach(() => cleanup());
 
-  it("exposes IDE chooser and archive actions as keyboard-reachable buttons", () => {
+  it("keeps the IDE chooser in the right-click menu, not on the hovered row", async () => {
+    const { fireEvent } = await import("@testing-library/react");
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
@@ -48,9 +49,13 @@ describe("SidebarSessionRow", () => {
       />
     );
 
+    // The row's hover actions are archive (and pin) only — no IDE button.
     expect(screen.queryByRole("button", { name: "Open in IDE" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Choose IDE" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Choose IDE" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Archive session" })).toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    expect(screen.getByRole("menuitem", { name: "Open in IDE" })).toBeEnabled();
   });
 
   it("ArrowDown / ArrowUp moves focus between session-link buttons across rows", async () => {
@@ -114,7 +119,8 @@ describe("SidebarSessionRow", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Choose IDE" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in IDE" }));
 
     // Preferred (default IDE) is focused first.
     const cursorItem = await screen.findByRole("menuitem", { name: /Cursor/ });
@@ -155,15 +161,16 @@ describe("SidebarSessionRow", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Choose IDE" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in IDE" }));
 
     const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
     expect(menu.parentElement).toBe(document.body);
     expect(menu).toHaveStyle({ position: "fixed" });
   });
 
-  it("dismisses the IDE picker when the pointer leaves it", async () => {
-    const { act, fireEvent } = await import("@testing-library/react");
+  it("dismisses the IDE picker on Escape", async () => {
+    const { fireEvent } = await import("@testing-library/react");
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
@@ -178,19 +185,12 @@ describe("SidebarSessionRow", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Choose IDE" }));
-    const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in IDE" }));
+    await screen.findByRole("menu", { name: "Open this worktree in" });
 
-    vi.useFakeTimers();
-    try {
-      fireEvent.mouseLeave(menu);
-      act(() => {
-        vi.advanceTimersByTime(130);
-      });
-      expect(screen.queryByRole("menu", { name: "Open this worktree in" })).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Open this worktree in" })).toBeNull();
   });
 
   it("right-click → Rename edits the label in place and commits on Enter", async () => {
@@ -897,6 +897,52 @@ describe("styles.css startup contract", () => {
       />
     );
     expect(screen.getByTitle("Synced from Claude")).toHaveTextContent("Claude");
+  });
+
+  it("offers Sync now on an imported row and runs the sweep once", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const onSyncNow = vi.fn();
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        importedProvider="Claude"
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        onSyncNow={onSyncNow}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sync now" }));
+
+    expect(onSyncNow).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no Sync now when the row was not imported", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        onSyncNow={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    expect(screen.queryByRole("menuitem", { name: "Sync now" })).toBeNull();
   });
 
   it("leaves rows for sessions started in Argmax unmarked", () => {

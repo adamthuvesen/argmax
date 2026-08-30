@@ -388,7 +388,7 @@ export function extractToolInputPreview(name: string, input: Record<string, unkn
     const preview = summarizeFileChanges(input.changes);
     if (preview) return preview;
   }
-  const path = input.file_path ?? input.path ?? input.relative_path;
+  const path = input.file_path ?? input.filePath ?? input.path ?? input.relative_path;
   if (typeof path === "string") return path;
   const query = input.query ?? input.pattern ?? input.search_term;
   if (typeof query === "string") return String(query).slice(0, 72);
@@ -455,7 +455,7 @@ export function extractToolError(payload: Record<string, unknown>): string | nul
 export function extractOpenablePath(name: string, input: Record<string, unknown>): string | null {
   const lower = name.toLowerCase();
   if (!/read|view|cat|write|edit|patch|create|open/.test(lower)) return null;
-  for (const key of ["file_path", "filepath", "path", "relative_path", "absolute_path"]) {
+  for (const key of ["file_path", "filePath", "filepath", "path", "relative_path", "absolute_path"]) {
     const value = input[key];
     if (typeof value === "string" && value.length > 0) return value;
   }

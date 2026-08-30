@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { SCRATCH_PROJECT_ID, type DashboardSnapshot } from "../../shared/types.js";
@@ -534,6 +534,7 @@ describe("Sidebar — date (sessions) view mode", () => {
   });
 
   const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
+  const RECENTLY = new Date(Date.now() - 5 * 60 * 1000).toISOString();
   const APRIL = new Date(2026, 3, 2, 9, 0, 0).toISOString();
 
   const viewSnapshot: DashboardSnapshot = {
@@ -907,10 +908,13 @@ describe("Sidebar — date (sessions) view mode", () => {
       sessions: [
         session("w-pinned", TODAY),
         {
+          // Recent enough to still be triage: Priority drops a row 30 minutes
+          // after its last message.
           ...session("w-blocked", TODAY),
           state: "waiting" as const,
           attention: "blocked" as const,
-          attentionChangedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+          attentionChangedAt: RECENTLY,
+          lastActivityAt: RECENTLY
         },
         session("w-plain", TODAY)
       ]
@@ -944,10 +948,13 @@ describe("Sidebar — date (sessions) view mode", () => {
 });
 
 describe("Sidebar — Priority section", () => {
-  // The Priority selector runs against real Date.now() with a 24h staleness
-  // gate, so fixture stamps are anchored to "now" rather than fixed dates.
-  const MINUTES_AGO_30 = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  // The Priority selector runs against real Date.now() and drops a row 30
+  // minutes after its last message, so fixture stamps are anchored to "now"
+  // rather than fixed dates, and sit inside that window.
+  const MINUTES_AGO_5 = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const MINUTES_AGO_10 = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const MINUTES_AGO_15 = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const MINUTES_AGO_45 = new Date(Date.now() - 45 * 60 * 1000).toISOString();
 
   const session = (
     workspaceId: string,
@@ -962,12 +969,12 @@ describe("Sidebar — Priority section", () => {
     permissionMode: "auto-approve" as const,
     agentMode: "auto" as const,
     providerConversationId: null,
-    state: attention === "blocked" ? ("waiting" as const) : ("running" as const),
+    state: attention === "blocked" ? ("waiting" as const) : ("complete" as const),
     attention,
     attentionChangedAt,
     startedAt: "2026-05-12T15:00:00.000Z",
     completedAt: null,
-    lastActivityAt: "2026-05-12T15:54:00.000Z",
+    lastActivityAt: attentionChangedAt,
     prompt: "Do the thing"
   });
 
@@ -993,8 +1000,8 @@ describe("Sidebar — Priority section", () => {
     ...snapshot,
     workspaces: [workspace("w-blocked", "Blocked task"), workspace("w-calm", "Calm task")],
     sessions: [
-      session("w-blocked", "blocked", MINUTES_AGO_30),
-      session("w-calm", "normal", MINUTES_AGO_30)
+      session("w-blocked", "blocked", MINUTES_AGO_10),
+      session("w-calm", "normal", MINUTES_AGO_10)
     ]
   };
 
@@ -1094,7 +1101,7 @@ describe("Sidebar — Priority section", () => {
         ...prioritySnapshot.workspaces,
         { ...workspace("w-pinned", "Pinned task"), pinned: true }
       ],
-      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_30)]
+      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_10)]
     };
 
     render(<Sidebar {...baseProps} showPriority snapshot={pinnedSnapshot} />);
@@ -1114,7 +1121,7 @@ describe("Sidebar — Priority section", () => {
       ],
       sessions: [
         ...prioritySnapshot.sessions,
-        session("w-pinned-blocked", "blocked", MINUTES_AGO_30)
+        session("w-pinned-blocked", "blocked", MINUTES_AGO_10)
       ]
     };
 
@@ -1145,7 +1152,7 @@ describe("Sidebar — Priority section", () => {
         ...prioritySnapshot.workspaces,
         { ...workspace("w-pinned", "Pinned task"), pinned: true }
       ],
-      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_30)]
+      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_10)]
     };
 
     render(
@@ -1159,7 +1166,7 @@ describe("Sidebar — Priority section", () => {
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Pinned task/ }));
     expect(screen.queryByRole("menuitem", { name: "Add to priority" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Remove from priority" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Done" })).toBeNull();
   });
 
   it("collapses and expands the Priority section from its header chevron", () => {
@@ -1202,7 +1209,7 @@ describe("Sidebar — Priority section", () => {
         ...prioritySnapshot.workspaces,
         { ...workspace("w-pinned", "Pinned task"), pinned: true }
       ],
-      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_30)]
+      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_10)]
     };
 
     render(<Sidebar {...baseProps} showPriority snapshot={pinnedSnapshot} />);
@@ -1225,7 +1232,7 @@ describe("Sidebar — Priority section", () => {
     expect(within(blockedRow).queryByText("Argmax")).toBeNull();
   });
 
-  it("removes a priority row from the context menu", () => {
+  it("marks a priority row done from the context menu", () => {
     const onRemoveFromPriority = vi.fn();
     render(
       <Sidebar
@@ -1237,7 +1244,7 @@ describe("Sidebar — Priority section", () => {
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Blocked task/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from priority" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Done" }));
 
     expect(onRemoveFromPriority).toHaveBeenCalledWith("w-blocked");
   });
@@ -1253,10 +1260,10 @@ describe("Sidebar — Priority section", () => {
       />
     );
 
-    // The calm row sits in its project group; its menu offers Add, not Remove.
+    // The calm row sits in its project group; its menu offers Add, not Done.
     fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
     fireEvent.contextMenu(screen.getByRole("button", { name: /Calm task/ }));
-    expect(screen.queryByRole("menuitem", { name: "Remove from priority" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Done" })).toBeNull();
     fireEvent.click(screen.getByRole("menuitem", { name: "Add to priority" }));
 
     expect(onAddToPriority).toHaveBeenCalledWith("w-calm");
@@ -1297,11 +1304,41 @@ describe("Sidebar — Priority section", () => {
     expect(screen.getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
   });
 
+  it("leaves out a row that has been quiet for more than 30 minutes", () => {
+    const quietSnapshot: DashboardSnapshot = {
+      ...prioritySnapshot,
+      sessions: [
+        session("w-blocked", "blocked", MINUTES_AGO_45),
+        session("w-calm", "normal", MINUTES_AGO_45)
+      ]
+    };
+    render(<Sidebar {...baseProps} showPriority snapshot={quietSnapshot} />);
+    expect(screen.queryByText("Priority")).toBeNull();
+  });
+
+  it("drops a row on its own once it goes quiet, without waiting for a delta", () => {
+    vi.useFakeTimers();
+    try {
+      render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
+      expect(screen.getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
+
+      // The last message was 10 minutes ago, so the row has 20 to go. No
+      // snapshot arrives in between — the section's own timer moves it.
+      act(() => {
+        vi.advanceTimersByTime(21 * 60 * 1000);
+      });
+      expect(screen.queryByText("Priority")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("hides a dismissed workspace whose attention has not changed since", () => {
     const dismissedSnapshot: DashboardSnapshot = {
       ...prioritySnapshot,
       workspaces: [
-        workspace("w-blocked", "Blocked task", MINUTES_AGO_15),
+        // Dismissed after the attention change, so the row stays down.
+        workspace("w-blocked", "Blocked task", MINUTES_AGO_5),
         workspace("w-calm", "Calm task")
       ]
     };
@@ -1310,8 +1347,147 @@ describe("Sidebar — Priority section", () => {
   });
 });
 
+describe("Sidebar — Working section", () => {
+  const MINUTES_AGO_10 = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+
+  const workingWorkspace = (id: string, taskLabel: string, overrides: Record<string, unknown> = {}) => ({
+    id,
+    projectId: "project-1",
+    taskLabel,
+    branch: `argmax/${id}`,
+    baseRef: "main",
+    path: `/tmp/${id}`,
+    state: "running" as const,
+    sharedWorkspace: false,
+    kind: "git" as const,
+    dirty: false,
+    changedFiles: 0,
+    lastActivityAt: MINUTES_AGO_10,
+    pinned: false,
+    priorityDismissedAt: null,
+    priorityAddedAt: null,
+    ...overrides
+  });
+
+  const workingSession = (workspaceId: string, state: "running" | "complete" = "running") => ({
+    id: `session-${workspaceId}`,
+    workspaceId,
+    provider: "codex" as const,
+    modelLabel: "GPT-5.3 Codex",
+    modelId: "gpt-5.5",
+    permissionMode: "auto-approve" as const,
+    agentMode: "auto" as const,
+    providerConversationId: null,
+    state,
+    attention: "normal" as const,
+    attentionChangedAt: MINUTES_AGO_10,
+    startedAt: MINUTES_AGO_10,
+    completedAt: null,
+    lastActivityAt: MINUTES_AGO_10,
+    prompt: "Do the thing"
+  });
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem(bootGroupCollapseSeedKey, "1");
+  });
+
+  afterEach(() => {
+    cleanup();
+    window.localStorage.clear();
+  });
+
+  it("floats a running session into Working, out of its date bucket", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    render(
+      <Sidebar
+        {...baseProps}
+        snapshot={{
+          ...snapshot,
+          workspaces: [workingWorkspace("w-live", "Live task")],
+          sessions: [workingSession("w-live")]
+        }}
+      />
+    );
+
+    expect(screen.getByText("Working")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Live task/ })).toBeInTheDocument();
+    // The row left its date bucket, so Today holds nothing and never renders.
+    expect(screen.queryByText("Today")).toBeNull();
+  });
+
+  it("drops a session back into its date bucket when the turn ends", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    render(
+      <Sidebar
+        {...baseProps}
+        snapshot={{
+          ...snapshot,
+          workspaces: [workingWorkspace("w-live", "Live task")],
+          sessions: [workingSession("w-live", "complete")]
+        }}
+      />
+    );
+
+    expect(screen.queryByText("Working")).toBeNull();
+    expect(screen.getByText("Today")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Live task/ })).toBeInTheDocument();
+  });
+
+  it("keeps Working above Priority and out of the project groups", () => {
+    render(
+      <Sidebar
+        {...baseProps}
+        showPriority
+        snapshot={{
+          ...snapshot,
+          workspaces: [
+            workingWorkspace("w-live", "Live task"),
+            workingWorkspace("w-failed", "Failed task")
+          ],
+          sessions: [
+            workingSession("w-live"),
+            {
+              ...workingSession("w-failed"),
+              state: "failed" as const,
+              attention: "failed" as const
+            }
+          ]
+        }}
+      />
+    );
+
+    expect(screen.getByText("Working")).toBeInTheDocument();
+    expect(screen.getByText("Priority")).toBeInTheDocument();
+    expect(
+      rendersAfter(screen.getByText("Working"), screen.getByText("Priority"))
+    ).toBe(true);
+    // Both rows left their project group: expanding it must not duplicate them.
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    expect(screen.getAllByRole("button", { name: /Live task/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Failed task/ })).toHaveLength(1);
+  });
+
+  it("keeps a pinned working session in Pinned", () => {
+    render(
+      <Sidebar
+        {...baseProps}
+        snapshot={{
+          ...snapshot,
+          workspaces: [workingWorkspace("w-live", "Live task", { pinned: true })],
+          sessions: [workingSession("w-live")]
+        }}
+      />
+    );
+
+    expect(screen.queryByText("Working")).toBeNull();
+    expect(screen.getByRole("button", { name: /Live task/ })).toBeInTheDocument();
+  });
+});
+
 describe("Sidebar — boot collapse defaults", () => {
-  const MINUTES_AGO_30 = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const MINUTES_AGO_10 = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const LONG_AGO = new Date(2024, 0, 4, 9, 0, 0).toISOString();
 
   const bootWorkspace = (id: string, taskLabel: string, lastActivityAt: string) => ({
@@ -1341,20 +1517,20 @@ describe("Sidebar — boot collapse defaults", () => {
     permissionMode: "auto-approve" as const,
     agentMode: "auto" as const,
     providerConversationId: null,
-    state: attention === "blocked" ? ("waiting" as const) : ("running" as const),
+    state: attention === "blocked" ? ("waiting" as const) : ("complete" as const),
     attention,
-    attentionChangedAt: MINUTES_AGO_30,
+    attentionChangedAt: MINUTES_AGO_10,
     startedAt: "2026-05-12T15:00:00.000Z",
     completedAt: null,
-    lastActivityAt: MINUTES_AGO_30,
+    lastActivityAt: MINUTES_AGO_10,
     prompt: "Do the thing"
   });
 
   const bootSnapshot: DashboardSnapshot = {
     ...snapshot,
     workspaces: [
-      { ...bootWorkspace("w-pinned", "Pinned task", MINUTES_AGO_30), pinned: true },
-      bootWorkspace("w-blocked", "Blocked task", MINUTES_AGO_30),
+      { ...bootWorkspace("w-pinned", "Pinned task", MINUTES_AGO_10), pinned: true },
+      bootWorkspace("w-blocked", "Blocked task", MINUTES_AGO_10),
       bootWorkspace("w-old", "Ancient task", LONG_AGO)
     ],
     sessions: [
@@ -1510,6 +1686,27 @@ describe("Sidebar — Side chats section", () => {
     // The side chat lives in its own section, not in a date bucket, so the
     // date buckets hold exactly the repo session.
     expect(screen.getByRole("button", { name: /Explain quantization/ })).toBeInTheDocument();
+  });
+
+  it("reveals a running side chat in Side chats, which the Working section never takes", () => {
+    // Working only floats git workspaces, so a running scratch row stays with
+    // the side chats — and the reveal has to expand that section, not Working.
+    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["side-chats"]));
+
+    render(
+      <Sidebar
+        {...baseProps}
+        selectedWorkspaceId="w-chat"
+        snapshot={{
+          ...sideChatSnapshot,
+          sessions: [session("w-repo"), { ...session("w-chat"), state: "running" as const }]
+        }}
+      />
+    );
+
+    expect(screen.queryByText("Working")).toBeNull();
+    expect(screen.getByRole("button", { name: /Explain quantization/ })).toBeInTheDocument();
+    expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify([]));
   });
 
   it("opens the side-chat launcher from the section's new-chat button", () => {

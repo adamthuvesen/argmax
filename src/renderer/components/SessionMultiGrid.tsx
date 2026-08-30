@@ -31,6 +31,7 @@ import type { AgentPaneRequest, GridCell, GridCoord, GridState, SplitPosition } 
 import { isAgentCell, isSessionCell, MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import type { ToolCall } from "../lib/toolCalls.js";
+import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { AgentTabsPane } from "./AgentTabsPane.js";
 import { SessionPane } from "./SessionPane.js";
 
@@ -72,7 +73,7 @@ interface SessionMultiGridProps {
   projectsById: Map<string, ProjectSummary>;
   workspacesById: Map<string, WorkspaceSummary>;
   sessionsById: Map<string, SessionSummary>;
-  defaultToolCallsExpanded?: boolean;
+  defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
   fastModeEnabled?: boolean;
@@ -141,7 +142,7 @@ export function SessionMultiGrid({
   projectsById,
   workspacesById,
   sessionsById,
-  defaultToolCallsExpanded,
+  defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
   fastModeEnabled,
@@ -421,7 +422,7 @@ export function SessionMultiGrid({
                       <SessionPane
                         approvals={approvals}
                         checks={checks}
-                        defaultToolCallsExpanded={defaultToolCallsExpanded}
+                        defaultToolCallsDisplay={defaultToolCallsDisplay}
                         defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                         defaultThinkingExpanded={defaultThinkingExpanded}
                         events={events}

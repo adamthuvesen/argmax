@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
-import { computePriorityEntries, shouldDemoteOnLeave } from "./priority.js";
+import { computePriorityEntries, nextPriorityIdleAt, PRIORITY_IDLE_MS } from "./priority.js";
 
 const workspace = (id: string, overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary => ({
   id,
@@ -129,16 +129,55 @@ describe("computePriorityEntries", () => {
     ).toHaveLength(1);
   });
 
-  it("excludes attention older than 24 hours", () => {
+  it("drops a quiet row 30 minutes after its last message", () => {
+    // Both stopped talking; only the one inside the window is still triage.
     const entries = computePriorityEntries(
-      [workspace("w-fresh"), workspace("w-stale")],
+      [workspace("w-recent"), workspace("w-quiet")],
       [
-        session("w-fresh", "failed", { attentionChangedAt: "2026-05-12T17:00:00.000Z" }),
-        session("w-stale", "failed", { attentionChangedAt: "2026-05-11T17:00:00.000Z" })
+        session("w-recent", "failed", {
+          state: "failed",
+          lastActivityAt: "2026-05-12T17:45:00.000Z"
+        }),
+        session("w-quiet", "failed", {
+          state: "failed",
+          lastActivityAt: "2026-05-12T17:15:00.000Z"
+        })
       ],
       NOW
     );
-    expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-fresh"]);
+    expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-recent"]);
+  });
+
+  it("keeps a working row however long the turn has run", () => {
+    // Reading a row no longer demotes it, and a live turn never goes idle.
+    const entries = computePriorityEntries(
+      [workspace("w-1")],
+      [
+        session("w-1", "approval-needed", {
+          state: "running",
+          lastActivityAt: "2026-05-11T09:00:00.000Z"
+        })
+      ],
+      NOW
+    );
+    expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-1"]);
+    // A working row has no deadline, so the section has nothing to wait for.
+    expect(entries[0]?.idleAt).toBeNull();
+    expect(nextPriorityIdleAt(entries)).toBeNull();
+  });
+
+  it("reports the earliest idle deadline so the sidebar can arm one timer", () => {
+    const entries = computePriorityEntries(
+      [workspace("w-soon"), workspace("w-later")],
+      [
+        session("w-soon", "failed", { state: "failed", lastActivityAt: "2026-05-12T17:40:00.000Z" }),
+        session("w-later", "failed", { state: "failed", lastActivityAt: "2026-05-12T17:50:00.000Z" })
+      ],
+      NOW
+    );
+    expect(nextPriorityIdleAt(entries)).toBe(
+      Date.parse("2026-05-12T17:40:00.000Z") + PRIORITY_IDLE_MS
+    );
   });
 
   it("floats manual adds without attention, after attention-driven entries", () => {
@@ -148,7 +187,7 @@ describe("computePriorityEntries", () => {
         workspace("w-blocked")
       ],
       [
-        // Manual entries ignore the staleness gate (no stamp here at all).
+        // Manual entries ignore the idle gate (no attention stamp at all).
         session("w-manual", "normal", { attentionChangedAt: undefined }),
         session("w-blocked", "blocked", { attentionChangedAt: "2026-05-12T17:00:00.000Z" })
       ],
@@ -170,98 +209,5 @@ describe("computePriorityEntries", () => {
       NOW
     );
     expect(entries).toEqual([]);
-  });
-});
-
-describe("shouldDemoteOnLeave", () => {
-  it("demotes any attention-driven Priority session after it has been read", () => {
-    expect(
-      shouldDemoteOnLeave(
-        workspace("w-1"),
-        [session("w-1", "blocked", { state: "waiting" })],
-        NOW
-      )
-    ).toBe(true);
-    expect(
-      shouldDemoteOnLeave(
-        workspace("w-1"),
-        [session("w-1", "approval-needed", { state: "waiting" })],
-        NOW
-      )
-    ).toBe(true);
-    expect(
-      shouldDemoteOnLeave(workspace("w-1"), [session("w-1", "failed", { state: "failed" })], NOW)
-    ).toBe(true);
-    expect(
-      shouldDemoteOnLeave(
-        workspace("w-1"),
-        [session("w-1", "review-ready", { state: "complete" })],
-        NOW
-      )
-    ).toBe(true);
-  });
-
-  it("keeps a working session in Priority even when it also waits", () => {
-    expect(
-      shouldDemoteOnLeave(
-        workspace("w-1"),
-        [session("w-1", "approval-needed", { state: "running" })],
-        NOW
-      )
-    ).toBe(false);
-  });
-
-  it("demotes a pinned workspace — a pin hides the Priority row, not the chip", () => {
-    expect(
-      shouldDemoteOnLeave(
-        workspace("w-1", { pinned: true }),
-        [session("w-1", "review-ready", { state: "complete" })],
-        NOW
-      )
-    ).toBe(true);
-  });
-
-  it("does not demote a workspace mid-teardown", () => {
-    // Stamping a dismissal here races the archive; a write that lands after the
-    // row is gone raises a spurious error toast on the desktop path.
-    for (const state of ["archiving", "archive-failed"] as const) {
-      expect(
-        shouldDemoteOnLeave(
-          workspace("w-1", { state }),
-          [session("w-1", "review-ready", { state: "complete" })],
-          NOW
-        )
-      ).toBe(false);
-    }
-  });
-
-  it("does not demote a purely manual entry", () => {
-    expect(
-      shouldDemoteOnLeave(
-        workspace("w-1", { priorityAddedAt: "2026-05-12T16:00:00.000Z" }),
-        [session("w-1", "normal", { state: "complete" })],
-        NOW
-      )
-    ).toBe(false);
-  });
-
-  it("does not demote a wait that is already dismissed", () => {
-    expect(
-      shouldDemoteOnLeave(
-        workspace("w-1", { priorityDismissedAt: "2026-05-12T16:00:00.000Z" }),
-        [session("w-1", "blocked", { state: "waiting", attentionChangedAt: "2026-05-12T15:00:00.000Z" })],
-        NOW
-      )
-    ).toBe(false);
-  });
-
-  it("demotes again after a later wait (fresh attention after more work)", () => {
-    expect(
-      shouldDemoteOnLeave(
-        workspace("w-1", { priorityDismissedAt: "2026-05-12T16:00:00.000Z" }),
-        [session("w-1", "blocked", { state: "waiting", attentionChangedAt: "2026-05-12T17:00:00.000Z" })],
-        NOW
-      )
-    ).toBe(true);
   });
 });

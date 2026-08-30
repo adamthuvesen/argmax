@@ -48,6 +48,7 @@ import {
   subAgentToolUseIds
 } from "../lib/sessionConversationModel.js";
 import { assignAgentCodenames } from "../lib/agentNames.js";
+import { buildSubagentCluster } from "../lib/subagentSummary.js";
 import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
@@ -61,6 +62,7 @@ import {
   isExitPlanModeToolName
 } from "../lib/turnInteractiveCards.js";
 import { foldTurnToolItems } from "../lib/turnToolItems.js";
+import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import {
   createAnnotation,
@@ -86,7 +88,7 @@ const THINKING_MIN_VISIBLE_MS = 600;
 
 export function SessionConversation({
   checks,
-  defaultToolCallsExpanded,
+  defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
   events,
@@ -129,7 +131,7 @@ export function SessionConversation({
   workspace
 }: {
   checks?: CheckRun[];
-  defaultToolCallsExpanded?: boolean;
+  defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
   events: TimelineEvent[];
@@ -326,6 +328,9 @@ export function SessionConversation({
     [events, sessionRunning]
   );
   const agentCodenames = useMemo(() => assignAgentCodenames(toolCalls), [toolCalls]);
+  // The workspace card's Subagents section reads the same tool list the agent
+  // tabs do, so its avatars and counts can never disagree with the tabs.
+  const subagentCluster = useMemo(() => buildSubagentCluster(toolCalls, agentCodenames), [toolCalls, agentCodenames]);
 
   const conversationItems = useMemo(
     () => foldConversationItems(conversationEvents, toolCalls),
@@ -691,6 +696,7 @@ export function SessionConversation({
             onToggleTerminal={() => onToggleTerminal?.()}
             session={session}
             setStatus={setStatus}
+            subagents={subagentCluster}
             workspace={workspace}
           />
         ) : null}
@@ -754,7 +760,7 @@ export function SessionConversation({
                   shouldRefocusInput={shouldRefocusInput}
                   setStatus={setStatus}
                   setAgentMode={setAgentMode}
-                  defaultToolCallsExpanded={defaultToolCallsExpanded}
+                  defaultToolCallsDisplay={defaultToolCallsDisplay}
                   defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                   defaultThinkingExpanded={defaultThinkingExpanded}
                 />

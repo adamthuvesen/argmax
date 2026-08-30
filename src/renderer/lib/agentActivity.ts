@@ -82,7 +82,7 @@ function normalizedPromptEcho(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
-function activityTitle(tool: ToolCall | null, parentToolUseId: string): string {
+export function activityTitle(tool: ToolCall | null, parentToolUseId: string): string {
   if (!tool) return `Agent ${parentToolUseId}`;
   const description = nonBlankText(tool.inputFull.description);
   if (description) return description;

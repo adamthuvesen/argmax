@@ -1,4 +1,3 @@
-import { Loader2 } from "lucide-react";
 import { memo, useMemo, useState, type JSX } from "react";
 import {
   buildGroupRows,
@@ -9,6 +8,7 @@ import {
 import { codenameForTool } from "../lib/agentNames.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
+import { WorkingNest } from "./WorkingNest.js";
 
 type ToolCallGroupBubbleProps = {
   group: ToolCallGroup;
@@ -71,7 +71,7 @@ function ToolCallGroupBubbleInner({
         ) : null}
         {summary.status === "running" ? (
           <span className="tool-call-group-running" aria-label="running" title="Running">
-            <Loader2 size={11} className="tool-call-spinner" aria-hidden="true" />
+            <WorkingNest active size={11} />
           </span>
         ) : null}
       </button>

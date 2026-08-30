@@ -171,10 +171,13 @@ pub fn persist_timeline_event(
     })
 }
 
+/// Returns the persisted event when the row was new, `None` when the id
+/// already existed — the sync sweep republishes fresh events from that return
+/// value without a second read.
 pub fn persist_timeline_event_if_absent(
     connection: &Connection,
     input: &PersistTimelineEventInput,
-) -> ArgmaxResult<bool> {
+) -> ArgmaxResult<Option<TimelineEvent>> {
     let created_at = input.created_at.clone().unwrap_or_else(now_iso);
     let payload_json = serde_json::to_string(&input.payload).map_err(json_error)?;
     let mut statement = connection
@@ -195,7 +198,18 @@ pub fn persist_timeline_event_if_absent(
             created_at.as_str(),
         ))
         .map_err(sqlite_error)?;
-    Ok(rows > 0)
+    if rows == 0 {
+        return Ok(None);
+    }
+    Ok(Some(TimelineEvent {
+        id: input.id.clone(),
+        session_id: input.session_id.clone(),
+        r#type: input.r#type.clone(),
+        message: input.message.clone(),
+        payload: input.payload.clone(),
+        created_at,
+        row_cursor: Some(connection.last_insert_rowid()),
+    }))
 }
 
 /// Returns whether a provider permission event with this request identity has

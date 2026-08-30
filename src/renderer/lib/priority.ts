@@ -22,16 +22,27 @@ export interface PriorityEntry {
   attention: PriorityAttention | null;
   /** When `attention` became current; null on sessions predating the column. */
   attentionChangedAt: string | null;
+  /**
+   * Epoch ms when this row goes quiet long enough to leave the section on its
+   * own. Null while it is working or when nothing ages it out (a manual add).
+   */
+  idleAt: number | null;
 }
 
 /**
- * Attention older than this is history, not triage — it stays in the normal
- * groups but no longer floats into Priority. Also the implicit gate for
- * pre-migration sessions (null stamp = unknown age = stale), which keeps the
- * first launch after the migration from flooding the section with every
- * failed session ever.
+ * A session that has said nothing for this long is history, not triage — it
+ * stays in the normal groups but no longer floats into Priority. The clock
+ * runs from the last message, so reading a row no longer demotes it: it holds
+ * its place until the conversation actually goes quiet. A workspace that is
+ * still working never goes idle, however long the turn runs.
  */
-export const PRIORITY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+export const PRIORITY_IDLE_MS = 30 * 60 * 1000;
+
+/** When a quiet session ages out; null when its last message is unreadable. */
+function idleDeadline(lastActivityAt: string): number | null {
+  const lastActivityMs = Date.parse(lastActivityAt);
+  return Number.isFinite(lastActivityMs) ? lastActivityMs + PRIORITY_IDLE_MS : null;
+}
 
 function severity(attention: string): number {
   return ATTENTION_SEVERITY[attention as PriorityAttention] ?? 0;
@@ -53,6 +64,8 @@ export interface WorkspaceAttention {
   attention: PriorityAttention;
   /** When `attention` became current. */
   changedAt: string;
+  /** The attention session's last message, the clock behind `PRIORITY_IDLE_MS`. */
+  lastActivityAt: string;
 }
 
 /**
@@ -62,9 +75,11 @@ export interface WorkspaceAttention {
  * one whose attention is being renewed.
  *
  * `archived` and `kept` workspaces are excluded (keeping is an explicit "I'm
- * done here"), and so is attention older than `PRIORITY_MAX_AGE_MS` or of
- * unknown age. Pinned workspaces are *not* excluded: a pin changes where a row
- * sits, not whether it needs you. Placement rules live in
+ * done here"), and so is a session quiet for longer than `PRIORITY_IDLE_MS`
+ * or of unknown age (pre-migration rows have no `attention_changed_at`, which
+ * keeps the first launch after that migration from flooding the section with
+ * every failed session ever). Pinned workspaces are *not* excluded: a pin
+ * changes where a row sits, not whether it needs you. Placement rules live in
  * `computePriorityEntries`.
  */
 export function computeWorkspaceAttention(
@@ -96,10 +111,16 @@ export function computeWorkspaceAttention(
     if (workspace.state === "archived" || workspace.state === "kept") continue;
     const found = bySession.get(workspace.id);
     if (!found || found.changedAt === null) continue;
-    const changedAtMs = Date.parse(found.changedAt);
-    if (!Number.isFinite(changedAtMs) || nowMs - changedAtMs > PRIORITY_MAX_AGE_MS) continue;
+    if (!isWorkspaceWorking(sessions, workspace.id)) {
+      const idleAtMs = idleDeadline(found.lastActivityAt);
+      if (idleAtMs === null || nowMs > idleAtMs) continue;
+    }
     if (isDismissed(workspace, found.changedAt)) continue;
-    result.set(workspace.id, { attention: found.attention, changedAt: found.changedAt });
+    result.set(workspace.id, {
+      attention: found.attention,
+      changedAt: found.changedAt,
+      lastActivityAt: found.lastActivityAt
+    });
   }
   return result;
 }
@@ -107,8 +128,10 @@ export function computeWorkspaceAttention(
 /**
  * Workspaces that need the user right now, most urgent first. `archived` and
  * `kept` workspaces are excluded — keeping is an explicit "I'm done here" —
- * and so is anything whose attention became current more than
- * `PRIORITY_MAX_AGE_MS` before `nowMs` (or whose age is unknown).
+ * and so is anything quiet for longer than `PRIORITY_IDLE_MS` (or whose last
+ * message is of unknown age). A row holds its place while it is working and
+ * for `PRIORITY_IDLE_MS` after the last message; opening it changes nothing,
+ * and right-click → "Done" is how the user clears it early.
  * Ties within a severity sort oldest-waiting first (triage, not a feed).
  *
  * A manual add (`priorityAddedAt`) floats the workspace regardless of
@@ -142,7 +165,11 @@ export function computePriorityEntries(
       // A manual add still shows real attention when there is fresh,
       // undismissed attention to show; otherwise it renders as a plain row.
       attention: found?.attention ?? null,
-      attentionChangedAt: found?.changedAt ?? null
+      attentionChangedAt: found?.changedAt ?? null,
+      idleAt:
+        found && !isWorkspaceWorking(sessions, workspace.id)
+          ? idleDeadline(found.lastActivityAt)
+          : null
     });
   }
 
@@ -160,26 +187,15 @@ export function computePriorityEntries(
 }
 
 /**
- * Attention-driven rows demote after the user has opened them and then left —
- * attention is an unread marker, and opening the session is reading it.
- * Working sessions stay: a live turn is still a priority reason. Purely
- * manual entries (no attention) stay until explicitly removed. Based on
- * `computeWorkspaceAttention` rather than `computePriorityEntries` so a
- * pinned workspace demotes too: a pin keeps the row out of the Priority
- * section, but its attention chip (the mobile list shows one) still has to
- * clear on read. A later attention change re-promotes the row either way.
+ * When the section next changes on its own: the earliest moment a listed row
+ * crosses the idle line. Null when nothing on screen is aging, so the caller
+ * can arm one timer instead of polling a clock.
  */
-export function shouldDemoteOnLeave(
-  workspace: WorkspaceSummary,
-  sessions: SessionSummary[],
-  nowMs: number
-): boolean {
-  if (isWorkspaceWorking(sessions, workspace.id)) return false;
-  // A workspace mid-teardown is not triage. `computeWorkspaceAttention` keeps
-  // these states (they still deserve a chip while the row is on screen), so
-  // they are excluded here: leaving an archiving session would otherwise stamp
-  // a dismissal that races the archive, and a write landing after the row is
-  // gone surfaces a spurious "Could not remove the session from priority."
-  if (workspace.state === "archiving" || workspace.state === "archive-failed") return false;
-  return computeWorkspaceAttention([workspace], sessions, nowMs).has(workspace.id);
+export function nextPriorityIdleAt(entries: PriorityEntry[]): number | null {
+  let earliest: number | null = null;
+  for (const entry of entries) {
+    if (entry.idleAt === null) continue;
+    if (earliest === null || entry.idleAt < earliest) earliest = entry.idleAt;
+  }
+  return earliest;
 }

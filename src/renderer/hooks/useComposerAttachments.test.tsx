@@ -13,6 +13,111 @@ afterEach(() => {
   delete (window as unknown as { argmax?: unknown }).argmax;
 });
 
+describe("useComposerAttachments — text paste stays native", () => {
+  it("never intercepts a plain-text clipboard, so the platform paste is verbatim", () => {
+    // A plain-text-only clipboard (no HTML flavor) must reach the textarea
+    // untouched: the hook only ever claims pastes carrying supported images
+    // or structured HTML. Intercepting plain text — or worse, re-serializing
+    // it — would mangle the user's formatting, so this pins preventDefault
+    // off for the plain flavor.
+    const { result } = renderHook(() =>
+      useComposerAttachments({
+        draftKey: "launch-a",
+        workspacePath: null,
+        setInput: () => undefined,
+        setStatus: () => undefined
+      })
+    );
+
+    const paste = {
+      clipboardData: {
+        items: [{ kind: "string", type: "text/plain" }],
+        getData: vi.fn(() => "")
+      },
+      preventDefault: vi.fn()
+    };
+
+    act(() => {
+      result.current.onComposerPaste(paste as never);
+    });
+
+    expect(paste.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds markdown from the HTML flavor when a styled copy carries structure", async () => {
+    // Copying rendered chat (Claude, Argmax, any web UI) puts a lossy plain
+    // flavor next to a structured HTML one. The composer must paste the
+    // markdown rebuilt from the HTML — list markers, code spans, emphasis —
+    // instead of the marker-less slop the plain flavor carries.
+    const setInput = vi.fn();
+    const { result } = renderHook(() =>
+      useComposerAttachments({
+        draftKey: "launch-a",
+        workspacePath: null,
+        setInput,
+        setStatus: () => undefined
+      })
+    );
+
+    const html =
+      "<ul><li><code>1. 2. 3.</code> gone — selecting rendered <code>&lt;ol&gt;</code> text</li>" +
+      "<li><strong>bold</strong> and <em>italics</em> survive</li></ul>";
+    const target = { value: "findings: ", selectionStart: 10, selectionEnd: 10, setSelectionRange: vi.fn() };
+    const paste = {
+      clipboardData: {
+        items: [{ kind: "string", type: "text/html" }],
+        getData: vi.fn(() => html)
+      },
+      currentTarget: target,
+      preventDefault: vi.fn()
+    };
+
+    act(() => {
+      result.current.onComposerPaste(paste as never);
+    });
+
+    // The paste is claimed synchronously; the markdown rebuilder is a lazy
+    // chunk, so the insert lands once that import settles.
+    expect(paste.preventDefault).toHaveBeenCalled();
+    await waitFor(() => expect(setInput).toHaveBeenCalledWith(expect.any(Function)));
+    const apply = setInput.mock.calls[0][0] as (prev: string) => string;
+    expect(apply("findings: ")).toBe(
+      "findings: - `1. 2. 3.` gone — selecting rendered `<ol>` text\n- **bold** and *italics* survive"
+    );
+    expect(target.setSelectionRange).toHaveBeenCalledWith(93, 93);
+  });
+
+  it("falls back to the plain flavor when the HTML carries no structure", () => {
+    // Styled copies of unstructured text (an editor selection, a flattened
+    // chat span) wrap the same words in a <span>. Converting those could only
+    // lose newlines, so the native paste wins.
+    const setInput = vi.fn();
+    const { result } = renderHook(() =>
+      useComposerAttachments({
+        draftKey: "launch-a",
+        workspacePath: null,
+        setInput,
+        setStatus: () => undefined
+      })
+    );
+
+    const paste = {
+      clipboardData: {
+        items: [{ kind: "string", type: "text/html" }],
+        getData: vi.fn(() => "<span style=\"font-weight: 390\">just a line</span>")
+      },
+      preventDefault: vi.fn()
+    };
+
+    act(() => {
+      result.current.onComposerPaste(paste as never);
+    });
+
+    expect(paste.preventDefault).not.toHaveBeenCalled();
+    expect(setInput).not.toHaveBeenCalled();
+  });
+});
+
 describe("useComposerAttachments — save races the composer retarget", () => {
   it("does not append an in-flight image to the draft the composer moved to", async () => {
     // Full launcher: paste a screenshot against project A, then pick project B

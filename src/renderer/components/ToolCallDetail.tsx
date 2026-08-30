@@ -17,6 +17,7 @@ const REDUNDANT_INPUT_KEYS = new Set([
   "absolute_path",
   "content",
   "file_path",
+  "filePath",
   "filepath",
   "path",
   "relative_path",

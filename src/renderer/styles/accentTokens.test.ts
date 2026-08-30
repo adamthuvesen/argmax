@@ -181,7 +181,7 @@ describe("accent CSS contract", () => {
     expect(rowTargetRule).toContain("font-family: var(--font-code);");
     expect(rowTargetRule).toContain("color: var(--muted);");
     expect(rowTargetRule).not.toContain("color: var(--text);");
-    expect(resourceRowRule).toContain("color: color-mix(in oklab, var(--accent) 14%, var(--muted));");
+    expect(resourceRowRule).toContain("color: var(--path-ink);");
   });
 
   it("keeps expanded tool details quiet and preview-like", () => {
@@ -233,11 +233,11 @@ describe("accent CSS contract", () => {
     expect(markdownCodeRule).toContain("background: transparent;");
     expect(markdownCodeRule).toContain("font-family: var(--font-code);");
     expect(markdownCodeRule).toContain("border: 0;");
-    expect(markdownCodeRule).toContain("color: color-mix(in oklab, var(--accent-deep) 32%, var(--text-soft) 68%);");
+    expect(markdownCodeRule).toContain("color: var(--code-ink);");
     expect(chatComposer).toContain(".file-chip");
     expect(fileChipRule).toContain("background: transparent;");
     expect(fileChipRule).toContain("font-family: var(--font-code);");
-    expect(fileChipRule).toContain("color: color-mix(in oklab, var(--accent-deep) 22%, var(--muted-strong));");
+    expect(fileChipRule).toContain("color: var(--code-ink);");
     expect(fileChipRule).toContain("text-decoration-line: none;");
     expect(readSource("src/renderer/components/FileChip.tsx")).not.toContain("Code2");
   });
@@ -328,8 +328,11 @@ describe("accent CSS contract", () => {
     const launchSendButtonRule = cssRuleBody(chatChrome, ".send-button");
     const sessionInputFocusRule = cssRuleBody(chatTools, ".session-input:focus-within");
 
-    expect(tokens).toContain("--user-message-bg: color-mix(in oklab, var(--panel-sunken) 72%, var(--panel) 28%);");
-    expect(tokens).toContain("--user-message-selection-bg:");
+    expect(tokens).toContain("--user-message-bg: var(--accent);");
+    expect(tokens).toContain("--user-message-fg: var(--bubble-on-ink);");
+    expect(tokens).toContain(
+      "--user-message-selection-bg: color-mix(in oklab, var(--user-message-fg) 26%, transparent);"
+    );
     expect(tokens).not.toContain("--user-message-border:");
     expect(tokens).toContain(':root[data-theme="dark"]');
     expect(bubbleRule).toContain("box-sizing: border-box;");
@@ -339,13 +342,13 @@ describe("accent CSS contract", () => {
     expect(userBubbleRule).not.toContain("border:");
     expect(userBubbleBodyRule).toContain("padding-right: 4px;");
     expect(userBubbleBodyRule).toContain("margin-right: -4px;");
-    expect(composerFocusRule).toContain("border-color: color-mix(in oklab, var(--accent) 34%, var(--line-strong));");
-    expect(composerFocusRule).toContain("0 0 0 2px color-mix(in oklab, var(--accent) 8%, transparent)");
+    expect(composerFocusRule).toContain("border-color: color-mix(in oklab, var(--accent) 68%, var(--line-strong));");
+    expect(composerFocusRule).toContain("0 0 0 2px color-mix(in oklab, var(--accent) 16%, transparent)");
     expect(launchSendButtonRule).toContain("width: 28px;");
     expect(launchSendButtonRule).toContain("height: 28px;");
     expect(launchSendButtonRule).toContain("border-radius: 999px;");
-    expect(sessionInputFocusRule).toContain("border-color: color-mix(in oklab, var(--accent) 34%, var(--line-strong));");
-    expect(sessionInputFocusRule).toContain("0 0 0 2px color-mix(in oklab, var(--accent) 8%, transparent)");
+    expect(sessionInputFocusRule).toContain("border-color: color-mix(in oklab, var(--accent) 68%, var(--line-strong));");
+    expect(sessionInputFocusRule).toContain("0 0 0 2px color-mix(in oklab, var(--accent) 16%, transparent)");
   });
 
   it("keeps session composer text aligned with assistant prose size", () => {
@@ -627,12 +630,12 @@ describe("accent CSS contract", () => {
     for (let level = 1; level <= 10; level += 1) {
       expect(tokens).toContain(`[data-font-size="${level}"]`);
     }
-    // Body text is `7 + level` px, which `fontSizeBasePx` mirrors in TS. Pin
+    // Body text is `9 + level` px, which `fontSizeBasePx` mirrors in TS. Pin
     // both ends of the step range so the two cannot drift apart.
-    expect(tokens).toContain("--type-step: -5px;");
-    expect(tokens).toContain("--type-step: 4px;");
-    expect(fontSizeBasePx(1)).toBe(13 - 5);
-    expect(fontSizeBasePx(10)).toBe(13 + 4);
+    expect(tokens).toContain("--type-step: -3px;");
+    expect(tokens).toContain("--type-step: 6px;");
+    expect(fontSizeBasePx(1)).toBe(13 - 3);
+    expect(fontSizeBasePx(10)).toBe(13 + 6);
     expect(tokens).toContain("--text-terminal: calc(13px + var(--type-step));");
     expect(tokens).toContain("--font-ui: \"Geist Sans\", ui-sans-serif");
     expect(bubbleParagraphRule).toContain("font-family: var(--font-prose);");

@@ -213,7 +213,7 @@ fn persist_trace_events(
 ) -> ArgmaxResult<usize> {
     let mut inserted = 0;
     for event in events {
-        if persist_timeline_event_if_absent(connection, &event)?
+        if persist_timeline_event_if_absent(connection, &event)?.is_some()
             || upgrade_trace_no_output_completion(connection, &event)?
         {
             inserted += 1;

@@ -80,6 +80,14 @@ describe("App", () => {
   });
 
   it("toggles project sessions in the sidebar and remembers collapsed projects", async () => {
+    // The collapse toggle only governs project groups, so seed a finished
+    // session: a running one would float into Working and out of the group.
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) =>
+        session.id === "session-1" ? { ...session, state: "complete" } : session
+      )
+    });
     const { unmount } = render(<App />);
 
     expect(await screen.findByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
@@ -839,7 +847,11 @@ describe("App", () => {
 
     await waitFor(() => expect(listBranches).toHaveBeenCalledTimes(1));
     expect(branchToggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("listbox", { name: "Select branch" })).toHaveTextContent("No other branches");
+    // The list paints a commit after the IPC resolves, so wait for the list
+    // itself — the call landing is not yet the list being on screen.
+    expect(await screen.findByRole("listbox", { name: "Select branch" })).toHaveTextContent(
+      "No other branches"
+    );
   });
 
   it("keeps project and branch pickers available from compact launcher details", async () => {
@@ -858,8 +870,7 @@ describe("App", () => {
 
     const branchToggle = within(details).getByRole("button", { name: "Switch branch" });
     fireEvent.click(branchToggle);
-    await waitFor(() => expect(listBranches).toHaveBeenCalledWith("project-1"));
-    expect(within(details).getByRole("listbox", { name: "Select branch" })).toHaveTextContent(
+    expect(await within(details).findByRole("listbox", { name: "Select branch" })).toHaveTextContent(
       "feature/tidy"
     );
     fireEvent.click(within(details).getByRole("button", { name: "feature/tidy" }));
@@ -872,9 +883,8 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Switch branch" }));
-    await waitFor(() => expect(listBranches).toHaveBeenCalledWith("project-1"));
 
-    const list = screen.getByRole("listbox", { name: "Select branch" });
+    const list = await screen.findByRole("listbox", { name: "Select branch" });
     // The list holds focus while open, so typing lands here and not in the
     // prompt behind it.
     await waitFor(() => expect(document.activeElement).toBe(list));

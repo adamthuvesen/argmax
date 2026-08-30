@@ -104,7 +104,7 @@ describe("SessionConversation — tools & chrome", () => {
           content: "{\"status\":\"ok\",\"data\":{\"answer\":\"stored fact\"}}"
         })
       ],
-      { defaultToolCallsExpanded: true }
+      { defaultToolCallsDisplay: "expanded" }
     );
 
     expect(screen.getByRole("button", { name: /mcp__engram__recall/ })).toHaveAttribute("aria-expanded", "true");
@@ -248,7 +248,7 @@ describe("SessionConversation — tools & chrome", () => {
           input: { file_path: "README.md" }
         })
       ],
-      { defaultToolCallsExpanded: false, defaultToolCallGroupsExpanded: false, onOpenAgent }
+      { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false, onOpenAgent }
     );
 
     const agentRow = screen.getByRole("button", { name: startedAgentName("Explore repo structure") });
@@ -665,4 +665,192 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByRole("menuitem", { name: "Push" })).toBeNull();
   });
 
+});
+
+describe("SessionConversation — single-line activity mode", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("collapses all tools between two replies into exactly one summary line", () => {
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "explore then run", "2026-05-12T15:00:00.000Z"),
+        event("t1", "message.delta", "Weighing options.", "2026-05-12T15:00:01.000Z", { thinking: true }),
+        event("read-start", "command.started", "Read", "2026-05-12T15:00:02.000Z", {
+          id: "read",
+          name: "Read",
+          input: { file_path: "README.md" }
+        }),
+        event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
+          tool_use_id: "read",
+          content: "readme"
+        }),
+        event("glob-start", "command.started", "Glob", "2026-05-12T15:00:03.500Z", {
+          id: "glob",
+          name: "Glob",
+          input: { pattern: "src/**/*.ts" }
+        }),
+        event("glob-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
+          tool_use_id: "glob",
+          content: "[]"
+        }),
+        event("m1", "message.completed", "First part done.", "2026-05-12T15:00:05.000Z"),
+        event("bash-start", "command.started", "Bash", "2026-05-12T15:00:06.000Z", {
+          id: "bash",
+          name: "Bash",
+          input: { command: "git status --short" }
+        }),
+        event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:07.000Z", {
+          tool_use_id: "bash",
+          content: ""
+        }),
+        event("m2", "message.completed", "Second part done.", "2026-05-12T15:00:08.000Z")
+      ],
+      { defaultToolCallsDisplay: "single-line" }
+    );
+
+    // One aggregated line per gap, not per-tool rows or group bubbles.
+    const exploreLines = screen.getAllByRole("button", { name: /Explored 1 file, 1 search/ });
+    expect(exploreLines).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /git status/ })).toBeNull();
+    // Saved Thought blocks fold away too.
+    expect(screen.queryByRole("button", { name: "Thought" })).toBeNull();
+    expect(screen.queryByText("Weighing options.")).toBeNull();
+    // The replies themselves stay.
+    expect(screen.getByText("First part done.")).toBeInTheDocument();
+    expect(screen.getByText("Second part done.")).toBeInTheDocument();
+
+    // Clicking the line reveals the per-tool rows for that gap only.
+    fireEvent.click(exploreLines[0]);
+    expect(exploreLines[0]).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Searched for src/**/*.ts" })).toBeInTheDocument();
+  });
+
+  it("keeps agent launches as their own line between the summary lines", () => {
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "delegate", "2026-05-12T15:00:00.000Z"),
+        event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
+          id: "read",
+          name: "Read",
+          input: { file_path: "README.md" }
+        }),
+        event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "read",
+          content: "readme"
+        }),
+        event("task-start", "command.started", "Task", "2026-05-12T15:00:03.000Z", {
+          id: "task",
+          name: "Task",
+          input: { description: "Audit renderer tools", prompt: "Audit.", subagent_type: "reviewer" }
+        }),
+        event("task-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
+          tool_use_id: "task",
+          content: "done"
+        }),
+        event("bash-start", "command.started", "Bash", "2026-05-12T15:00:05.000Z", {
+          id: "bash",
+          name: "Bash",
+          input: { command: "git status --short" }
+        }),
+        event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:06.000Z", {
+          tool_use_id: "bash",
+          content: ""
+        })
+      ],
+      { defaultToolCallsDisplay: "single-line" }
+    );
+
+    expect(screen.getByRole("button", { name: /Explored 1 file/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: startedAgentName("Audit renderer tools") })).toBeInTheDocument();
+    // The Task launch is not folded into either summary line.
+    expect(screen.queryByRole("button", { name: /Started 1 agent|Explored 1 file, started/ })).toBeNull();
+  });
+
+  it("keeps default rendering untouched when the display mode is not single-line", () => {
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
+        event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
+          id: "read",
+          name: "Read",
+          input: { file_path: "README.md" }
+        }),
+        event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "read",
+          content: "readme"
+        }),
+        event("glob-start", "command.started", "Glob", "2026-05-12T15:00:02.500Z", {
+          id: "glob",
+          name: "Glob",
+          input: { pattern: "src/**/*.ts" }
+        }),
+        event("glob-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
+          tool_use_id: "glob",
+          content: "[]"
+        })
+      ],
+      { defaultToolCallsDisplay: "collapsed" }
+    );
+
+    expect(screen.getByRole("button", { name: /Explored 1 file, 1 search/ })).toBeInTheDocument();
+    // Default (non single-line) rendering: one group bubble, rows folded.
+    expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
+  });
+});
+
+describe("SessionConversation — tool group default expansion", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  const exploringTurn = [
+    event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
+    event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
+      id: "read",
+      name: "Read",
+      input: { file_path: "README.md" }
+    }),
+    event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+      tool_use_id: "read",
+      content: "readme"
+    }),
+    event("glob-start", "command.started", "Glob", "2026-05-12T15:00:02.500Z", {
+      id: "glob",
+      name: "Glob",
+      input: { pattern: "src/**/*.ts" }
+    }),
+    event("glob-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
+      tool_use_id: "glob",
+      content: "[]"
+    })
+  ];
+
+  it("opens the groups when 'Tool call groups' is on, even while tool calls are collapsed", () => {
+    // The two settings are independent: the groups toggle is the finer one and
+    // still governs whether the latest turn's bubbles start open.
+    renderConversation(baseSession({ state: "complete" }), exploringTurn, {
+      defaultToolCallsDisplay: "collapsed",
+      defaultToolCallGroupsExpanded: true
+    });
+
+    expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
+  });
+
+  it("keeps the groups shut when 'Tool call groups' is off and tool calls are expanded", () => {
+    renderConversation(baseSession({ state: "complete" }), exploringTurn, {
+      defaultToolCallsDisplay: "expanded",
+      defaultToolCallGroupsExpanded: false
+    });
+
+    expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
+  });
 });

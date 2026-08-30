@@ -76,10 +76,10 @@ export function WorkingNest({
       } as CSSProperties}
       aria-hidden="true"
     >
-      <circle className="working-nest-dot" data-dot="1" cx="4.6" cy="4.6" r="1.8" />
-      <circle className="working-nest-dot" data-dot="2" cx="9.4" cy="4.6" r="1.8" />
-      <circle className="working-nest-dot" data-dot="3" cx="9.4" cy="9.4" r="1.8" />
-      <circle className="working-nest-dot" data-dot="4" cx="4.6" cy="9.4" r="1.8" />
+      <circle className="working-nest-dot" data-dot="1" cx="4.2" cy="4.2" r="2.2" />
+      <circle className="working-nest-dot" data-dot="2" cx="9.8" cy="4.2" r="2.2" />
+      <circle className="working-nest-dot" data-dot="3" cx="9.8" cy="9.8" r="2.2" />
+      <circle className="working-nest-dot" data-dot="4" cx="4.2" cy="9.8" r="2.2" />
     </svg>
   );
 }

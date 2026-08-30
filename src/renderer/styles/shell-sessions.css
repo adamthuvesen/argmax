@@ -145,10 +145,6 @@
   contain-intrinsic-size: auto 34px;
 }
 
-.session-row:has(.session-ide-popover) {
-  z-index: 10;
-}
-
 .session-row .session-link {
   padding-right: 46px;
 }
@@ -186,42 +182,12 @@
   min-width: 140px;
 }
 
-/* The IDE / pin / archive actions are hidden until hover or focus. Reserve the
-   wide clearance only while those actions are on screen; at rest the base
-   padding (which already clears the tokens badge) lets the label run close to
-   the edge. */
-.session-row:hover:has(.session-archive-btn) .session-link,
-.session-row:focus-within:has(.session-archive-btn) .session-link,
-.session-row:hover:has(.session-pin-btn) .session-link,
-.session-row:focus-within:has(.session-pin-btn) .session-link {
-  padding-right: 70px;
-}
-
+/* The pin / archive actions are hidden until hover or focus. A single action
+   fits inside the base padding (which already clears the tokens badge);
+   reserve the wider clearance only when both are on screen. */
 .session-row:hover:has(.session-pin-btn):has(.session-archive-btn) .session-link,
 .session-row:focus-within:has(.session-pin-btn):has(.session-archive-btn) .session-link {
-  padding-right: 92px;
-}
-
-.session-ide-cluster {
-  position: absolute;
-  right: var(--sidebar-action-inset);
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease);
-  pointer-events: none;
-}
-
-.session-row:hover .session-ide-cluster,
-.session-row:focus-within .session-ide-cluster {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.session-row:has(.session-archive-btn) .session-ide-cluster {
-  right: calc(var(--sidebar-action-step) + var(--sidebar-action-inset));
+  padding-right: 70px;
 }
 
 .session-row-action {
@@ -269,11 +235,9 @@
   opacity: 0.4;
 }
 
-.session-ide-cluster > .session-ide-popover {
-  bottom: auto;
-  top: calc(100% + 6px);
-  right: 0;
-  left: auto;
+/* The IDE list opens from the row's right-click menu, portaled at the cursor
+   like the menu itself, so it only needs its own comfortable width. */
+.session-ide-popover {
   min-width: 200px;
 }
 
@@ -333,16 +297,8 @@
   opacity: 0.85;
 }
 
-.session-row:has(.session-pin-btn) .session-ide-cluster {
-  right: calc(var(--sidebar-action-step) + var(--sidebar-action-inset));
-}
-
 .session-row:has(.session-pin-btn):has(.session-archive-btn) .session-pin-btn {
   right: calc(var(--sidebar-action-step) + var(--sidebar-action-inset));
-}
-
-.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-ide-cluster {
-  right: calc(2 * var(--sidebar-action-step) + var(--sidebar-action-inset));
 }
 
 .cost-panel {

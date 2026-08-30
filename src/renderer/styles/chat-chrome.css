@@ -116,8 +116,8 @@
 }
 
 .launcher-surface .composer:focus-within {
-  border-color: color-mix(in oklab, var(--accent) 34%, var(--line-strong));
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 8%, transparent),
+  border-color: color-mix(in oklab, var(--accent) 68%, var(--line-strong));
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 16%, transparent),
     0 8px 22px rgba(31, 28, 24, 0.055);
 }
 
@@ -1029,7 +1029,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--accent);
-  color: var(--bubble-on-ink);
+  color: var(--on-accent, var(--bubble-on-ink));
   font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;

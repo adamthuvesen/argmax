@@ -15,6 +15,7 @@ import type { NewSessionMode } from "../lib/newSessionMode.js";
 import type { PermissionMode } from "../lib/permissionMode.js";
 import type { ChatWidth } from "../lib/chatWidth.js";
 import type { ReviewPanelSide } from "../lib/reviewPanelSide.js";
+import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { AgentsSettings } from "./settings/AgentsSettings.js";
 import { SessionSyncSettings } from "./settings/SessionSyncSettings.js";
 import { GeneralSettings } from "./settings/GeneralSettings.js";
@@ -37,8 +38,8 @@ export type SettingsNavigationTarget = {
 export function SettingsPanel({
   defaultModel,
   onDefaultModelChange,
-  toolCallsExpanded,
-  onToolCallsExpandedChange,
+  toolCallsDisplay,
+  onToolCallsDisplayChange,
   toolCallGroupsExpanded,
   onToolCallGroupsExpandedChange,
   sidebarPriorityVisible,
@@ -82,8 +83,8 @@ export function SettingsPanel({
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
-  toolCallsExpanded: boolean;
-  onToolCallsExpandedChange: (v: boolean) => void;
+  toolCallsDisplay: ToolCallsDisplay;
+  onToolCallsDisplayChange: (v: ToolCallsDisplay) => void;
   toolCallGroupsExpanded: boolean;
   onToolCallGroupsExpandedChange: (v: boolean) => void;
   sidebarPriorityVisible: boolean;
@@ -297,8 +298,8 @@ export function SettingsPanel({
             <AgentsSettings
               defaultModel={defaultModel}
               onDefaultModelChange={onDefaultModelChange}
-              toolCallsExpanded={toolCallsExpanded}
-              onToolCallsExpandedChange={onToolCallsExpandedChange}
+              toolCallsDisplay={toolCallsDisplay}
+              onToolCallsDisplayChange={onToolCallsDisplayChange}
               toolCallGroupsExpanded={toolCallGroupsExpanded}
               onToolCallGroupsExpandedChange={onToolCallGroupsExpandedChange}
               thinkingExpanded={thinkingExpanded}

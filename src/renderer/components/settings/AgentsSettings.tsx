@@ -4,14 +4,16 @@ import type { DiscoveredProvider } from "../../../shared/types.js";
 import type { ModelPickerSelection } from "../../lib/models.js";
 import type { PermissionMode } from "../../lib/permissionMode.js";
 import { PROVIDER_INSTALL_HINTS } from "../../lib/providerInstallHints.js";
+import type { ToolCallsDisplay } from "../../lib/uiPreferences.js";
 import { CombinedModelSelector, type ProviderAvailability } from "../ModelSelector.js";
+import { WorkingNest } from "../WorkingNest.js";
 import { SectionHeader, Segmented, ToggleRow } from "./settingsPrimitives.js";
 
 export function AgentsSettings({
   defaultModel,
   onDefaultModelChange,
-  toolCallsExpanded,
-  onToolCallsExpandedChange,
+  toolCallsDisplay,
+  onToolCallsDisplayChange,
   toolCallGroupsExpanded,
   onToolCallGroupsExpandedChange,
   thinkingExpanded,
@@ -27,8 +29,8 @@ export function AgentsSettings({
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
-  toolCallsExpanded: boolean;
-  onToolCallsExpandedChange: (v: boolean) => void;
+  toolCallsDisplay: ToolCallsDisplay;
+  onToolCallsDisplayChange: (v: ToolCallsDisplay) => void;
   toolCallGroupsExpanded: boolean;
   onToolCallGroupsExpandedChange: (v: boolean) => void;
   thinkingExpanded: boolean;
@@ -77,21 +79,31 @@ export function AgentsSettings({
           </div>
           <Segmented
             legend="Tool calls in chat"
-            hint="The “Working for…” chip on each turn."
-            name="tool-calls-expand"
-            value={toolCallsExpanded ? "show" : "hide"}
-            onChange={(v) => onToolCallsExpandedChange(v === "show")}
+            hint={
+              toolCallsDisplay === "single-line"
+                ? "One self-updating line between replies; saved thoughts fold away too. Click the line for details."
+                : "The “Working for…” chip on each turn."
+            }
+            name="tool-calls-display"
+            value={toolCallsDisplay}
+            onChange={(v) => onToolCallsDisplayChange(v as ToolCallsDisplay)}
             options={[
-              { value: "show", label: "Show expanded" },
-              { value: "hide", label: "Show collapsed" }
+              { value: "expanded", label: "Show expanded" },
+              { value: "collapsed", label: "Show collapsed" },
+              { value: "single-line", label: "Single line" }
             ]}
           />
           <Segmented
             legend="Tool call groups"
-            hint="Inner bubbles like “Explored 6 files”."
+            hint={
+              toolCallsDisplay === "single-line"
+                ? "Unused while Tool calls is set to Single line."
+                : "Inner bubbles like “Explored 6 files”."
+            }
             name="tool-call-groups-expand"
             value={toolCallGroupsExpanded ? "show" : "hide"}
             onChange={(v) => onToolCallGroupsExpandedChange(v === "show")}
+            disabled={toolCallsDisplay === "single-line"}
             options={[
               { value: "show", label: "Show expanded" },
               { value: "hide", label: "Show collapsed" }
@@ -175,7 +187,11 @@ export function AgentsSettings({
               disabled={refreshingProviders}
               aria-label="Refresh provider discovery"
             >
-              <RefreshCcw size={13} aria-hidden="true" className={refreshingProviders ? "is-spinning" : undefined} />
+              {refreshingProviders ? (
+                <WorkingNest active size={13} />
+              ) : (
+                <RefreshCcw size={13} aria-hidden="true" />
+              )}
               <span>{refreshingProviders ? "Refreshing…" : "Refresh"}</span>
             </button>
           }

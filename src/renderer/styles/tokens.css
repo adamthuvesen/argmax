@@ -39,9 +39,9 @@
   --weight-ui: 400;
   --weight-prose: 400;
 
-  --sage: #5a8f72;
+  --sage: #446c56;
   --sage-soft: #e7efe7;
-  --sage-deep: #3d6a52;
+  --sage-deep: #2e503e;
   --accent: var(--sage);
   --accent-soft: var(--sage-soft);
   --accent-deep: var(--sage-deep);
@@ -142,10 +142,23 @@
   --bubble-on-ink: #ffffff;
   --user-bubble-bg: var(--ink);
   --user-bubble-fg: var(--bubble-on-ink);
-  --user-message-bg: color-mix(in oklab, var(--panel-sunken) 72%, var(--panel) 28%);
-  --user-message-fg: var(--text);
+  /* User message bubbles fill with the active accent. --bubble-on-ink inverts
+     per theme, which is exactly the fg each accent needs: light themes carry
+     mid-tone accents that want white ink, dark themes lift the accents to
+     pastels that want ink. */
+  --user-message-bg: var(--accent);
+  --user-message-fg: var(--bubble-on-ink);
   --user-message-shadow: none;
-  --user-message-selection-bg: var(--selection-bg);
+  /* Selection inside the bubble tints toward the fg token, so it resolves
+     against whichever ink the theme picked and stays visible on the accent. */
+  --user-message-selection-bg: color-mix(in oklab, var(--user-message-fg) 26%, transparent);
+
+  /* Monospace paths, file chips, and inline code carry the accent as ink.
+     They still mix toward the prose grays so a wall of file names stays calm,
+     but the accent has to actually read — the old 14–32% washes resolved to a
+     muddy gray that looked like a rendering mistake rather than a tint. */
+  --code-ink: color-mix(in oklab, var(--accent) 78%, var(--text-soft));
+  --path-ink: color-mix(in oklab, var(--accent) 62%, var(--muted-strong));
 
   /* Diff add/delete surfaces. Paired tokens so dark mode can keep the same
      semantic green/red without the glaring near-white pastels. */
@@ -191,7 +204,7 @@
 
 /* Type-size tokens. One scale, shifted whole pixels by `--type-step`: level 6
    is what Argmax ships, each level moves everything 1px, so body text
-   (`--text-base`) runs 8px at level 1 through 17px at level 10. The sizes are
+   (`--text-base`) runs 10px at level 1 through 19px at level 10. The sizes are
    declared on `[data-font-size]` as well as `:root`, not `:root` alone, so any
    container can host its own scale. `<html>` carries the app-chrome size while
    the session grid carries the agent-window size, and each recomputes the
@@ -202,43 +215,43 @@
 }
 
 [data-font-size="1"] {
-  --type-step: -5px;
-}
-
-[data-font-size="2"] {
-  --type-step: -4px;
-}
-
-[data-font-size="3"] {
   --type-step: -3px;
 }
 
-[data-font-size="4"] {
+[data-font-size="2"] {
   --type-step: -2px;
 }
 
-[data-font-size="5"] {
+[data-font-size="3"] {
   --type-step: -1px;
 }
 
-[data-font-size="6"] {
+[data-font-size="4"] {
   --type-step: 0px;
 }
 
-[data-font-size="7"] {
+[data-font-size="5"] {
   --type-step: 1px;
 }
 
-[data-font-size="8"] {
+[data-font-size="6"] {
   --type-step: 2px;
 }
 
-[data-font-size="9"] {
+[data-font-size="7"] {
   --type-step: 3px;
 }
 
-[data-font-size="10"] {
+[data-font-size="8"] {
   --type-step: 4px;
+}
+
+[data-font-size="9"] {
+  --type-step: 5px;
+}
+
+[data-font-size="10"] {
+  --type-step: 6px;
 }
 
 /* The app-chrome step, captured after the ladder above has resolved on
@@ -326,9 +339,9 @@
   --weight-ui: 380;
   --weight-prose: 390;
 
-  --sage: #7fb494;
-  --sage-soft: rgba(127, 180, 148, 0.14);
-  --sage-deep: #5a8f72;
+  --sage: #6dab86;
+  --sage-soft: rgba(109, 171, 134, 0.14);
+  --sage-deep: #55886c;
   --amber: #d9a566;
   --amber-soft: rgba(217, 165, 102, 0.14);
   --rose: #e08591;
@@ -363,10 +376,14 @@
   --bubble-on-ink: #131312;
   --user-bubble-bg: #2d2c27;
   --user-bubble-fg: #f4f2ec;
-  --user-message-bg: color-mix(in oklab, var(--panel-soft) 82%, var(--panel) 18%);
-  --user-message-fg: var(--text);
-  --user-message-shadow: inset 0 1px 0 rgba(255, 250, 235, 0.04);
-  --user-message-selection-bg: color-mix(in oklab, var(--accent) 35%, transparent);
+  --user-message-bg: var(--accent);
+  --user-message-fg: var(--bubble-on-ink);
+  --user-message-shadow: none;
+
+  /* Charcoal swallows the accent, so code ink keeps more of the light prose
+     gray than it does on paper — the paper mix read as a dim slab down a long
+     file list. */
+  --code-ink: color-mix(in oklab, var(--accent) 55%, var(--text));
 
   --shadow-1: inset 0 1px 0 rgba(255, 250, 235, 0.04), 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-2: inset 0 1px 0 rgba(255, 250, 235, 0.05), 0 8px 24px rgba(0, 0, 0, 0.55);
@@ -414,9 +431,9 @@
    stay on --sage, --amber, --rose, and the diff tokens so code additions
    remain green. */
 :root[data-accent="purple"] {
-  --accent: #8f63d9;
-  --accent-soft: #eee7fb;
-  --accent-deep: #6740ad;
+  --accent: #613e9a;
+  --accent-soft: #ece4fb;
+  --accent-deep: #46287b;
 }
 
 :root[data-accent="neutral"] {
@@ -426,21 +443,26 @@
 }
 
 :root[data-accent="orange"] {
-  --accent: #c77d3a;
-  --accent-soft: #f6eadc;
-  --accent-deep: #945824;
+  --accent: #a85c43;
+  --accent-soft: #f8e9e1;
+  --accent-deep: #874a36;
 }
 
 :root[data-accent="blue"] {
-  --accent: #3f7ecb;
+  --accent: #30609a;
   --accent-soft: #e5eef9;
-  --accent-deep: #2d5f9f;
+  --accent-deep: #224878;
 }
 
 :root[data-theme="dark"][data-accent="purple"] {
-  --accent: #b894ff;
-  --accent-soft: rgba(184, 148, 255, 0.16);
-  --accent-deep: #d0b9ff;
+  --accent: #714fb0;
+  --accent-soft: rgba(113, 79, 176, 0.16);
+  --accent-deep: #8366b3;
+  /* Dark purple is the one accent deep enough that charcoal text on an
+     accent-filled surface (the user bubble) falls under AA — white clears it
+     at 6.1:1. The other dark accents stay light enough for --bubble-on-ink. */
+  --on-accent: #ffffff;
+  --user-message-fg: var(--on-accent);
 }
 
 :root[data-theme="dark"][data-accent="neutral"] {
@@ -450,15 +472,15 @@
 }
 
 :root[data-theme="dark"][data-accent="orange"] {
-  --accent: #e8a263;
-  --accent-soft: rgba(232, 162, 99, 0.16);
-  --accent-deep: #f0bc89;
+  --accent: #d97757;
+  --accent-soft: rgba(217, 119, 87, 0.16);
+  --accent-deep: #ec9878;
 }
 
 :root[data-theme="dark"][data-accent="blue"] {
-  --accent: #79aeee;
-  --accent-soft: rgba(121, 174, 238, 0.16);
-  --accent-deep: #a8cbff;
+  --accent: #6693c9;
+  --accent-soft: rgba(102, 147, 201, 0.16);
+  --accent-deep: #8facd8;
 }
 
 /* Smooth crossfade when toggling themes. The .theme-transition class is added
@@ -486,7 +508,7 @@
 }
 
 /* Dark's global selection stays stronger; user message bubbles have their own
-   theme-aware selection token because they no longer sit on the ink slab. */
+   fg-tinted selection token because they sit on the accent slab. */
 :root[data-theme="dark"] ::selection {
   background: color-mix(in oklab, var(--accent) 35%, transparent);
   color: var(--text);

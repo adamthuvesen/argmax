@@ -431,7 +431,11 @@ describe("SessionConversation — streaming & composer", () => {
         event("c1-end", "command.completed", "Read", "2026-05-12T15:00:03.000Z", { id: "c1", content: "" }),
         event("m1", "message.completed", "Done.", "2026-05-12T15:00:04.000Z")
       ],
-      { defaultThinkingExpanded: true, defaultToolCallsExpanded: true, defaultToolCallGroupsExpanded: true }
+      {
+        defaultThinkingExpanded: true,
+        defaultToolCallsDisplay: "expanded",
+        defaultToolCallGroupsExpanded: true
+      }
     );
 
     expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "true");
@@ -459,7 +463,11 @@ describe("SessionConversation — streaming & composer", () => {
         event("c1-end", "command.completed", "Read", "2026-05-12T15:00:03.000Z", { id: "c1", content: "" }),
         event("m1", "message.completed", "Done.", "2026-05-12T15:00:04.000Z")
       ],
-      { defaultThinkingExpanded: false, defaultToolCallsExpanded: false, defaultToolCallGroupsExpanded: false }
+      {
+        defaultThinkingExpanded: false,
+        defaultToolCallsDisplay: "collapsed",
+        defaultToolCallGroupsExpanded: false
+      }
     );
 
     expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "false");

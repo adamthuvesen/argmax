@@ -310,9 +310,10 @@ export interface WorkspaceSummary {
   pinned: boolean;
   /**
    * When this workspace left the sidebar Priority section (null when not
-   * dismissed). Set by "Remove from priority", header Clear, or opening a
-   * waiting-for-input row and then navigating away. Spent (ignored) once
-   * session attention changes again. Compare against
+   * dismissed). Set by right-click "Done" or the header's Clear. Reading a
+   * row does not dismiss it — a quiet row ages out of the section on its own
+   * (`PRIORITY_IDLE_MS`), leaving no stamp. Spent (ignored) once session
+   * attention changes again. Compare against
    * `SessionSummary.attentionChangedAt`. Required, matching the wire shape:
    * an optional marker would let a locally-built summary omit it and erase
    * the dismissal on whole-object delta merge.

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
@@ -60,6 +60,16 @@ function workspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary 
   };
 }
 
+/**
+ * Opening the menu fires the PR lookup for the session. Settle it inside
+ * `act` so the state it sets lands during the test rather than after it,
+ * which is what React warns about.
+ */
+async function openMenu(): Promise<void> {
+  fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+  await act(async () => {});
+}
+
 describe("SessionActionsMenu", () => {
   let listForSession: ReturnType<typeof vi.fn>;
 
@@ -87,7 +97,7 @@ describe("SessionActionsMenu", () => {
     );
 
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    await openMenu();
 
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitem", { name: "Browse files" }));
@@ -114,7 +124,7 @@ describe("SessionActionsMenu", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    await openMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: "Open browser" }));
 
     expect(opened).toHaveLength(1);
@@ -134,7 +144,7 @@ describe("SessionActionsMenu", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    await openMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: "Git actions" }));
 
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
@@ -168,7 +178,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
     { id: "cursor" as const, label: "Cursor", appPath: "/Applications/Cursor.app", hasCli: true }
   ];
 
-  it("opens the default IDE from the menu", () => {
+  it("opens the default IDE from the menu", async () => {
     const onOpenInIde = vi.fn();
     render(
       <SessionActionsMenu
@@ -183,13 +193,13 @@ describe("SessionActionsMenu — Open in IDE", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    await openMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: "Open in Cursor" }));
 
     expect(onOpenInIde).toHaveBeenCalledWith("cursor");
   });
 
-  it("falls back to the first GUI IDE when the default is not detected", () => {
+  it("falls back to the first GUI IDE when the default is not detected", async () => {
     const onOpenInIde = vi.fn();
     render(
       <SessionActionsMenu
@@ -204,13 +214,13 @@ describe("SessionActionsMenu — Open in IDE", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    await openMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: "Open in Zed" }));
 
     expect(onOpenInIde).toHaveBeenCalledWith("zed");
   });
 
-  it("lists every GUI IDE when the user chose Ask each time", () => {
+  it("lists every GUI IDE when the user chose Ask each time", async () => {
     const onOpenInIde = vi.fn();
     render(
       <SessionActionsMenu
@@ -225,14 +235,14 @@ describe("SessionActionsMenu — Open in IDE", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    await openMenu();
     expect(screen.getByRole("menuitem", { name: "Open in VS Code" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitem", { name: "Open in Cursor" }));
 
     expect(onOpenInIde).toHaveBeenCalledWith("cursor");
   });
 
-  it("hides the action without a handler and disables it without IDEs", () => {
+  it("hides the action without a handler and disables it without IDEs", async () => {
     const { unmount } = render(
       <SessionActionsMenu
         isLogOpen={false}
@@ -242,7 +252,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
         workspace={workspace()}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    await openMenu();
     expect(screen.queryByRole("menuitem", { name: /Open in/ })).toBeNull();
     unmount();
 
@@ -258,7 +268,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
         onOpenInIde={vi.fn()}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    await openMenu();
     expect(screen.getByRole("menuitem", { name: "Open in IDE" })).toBeDisabled();
   });
 });

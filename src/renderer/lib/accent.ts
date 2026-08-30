@@ -18,13 +18,13 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     id: "green",
     label: "Green",
     hint: "The original Argmax tint. Code additions and status greens stay semantic either way.",
-    swatch: { color: "#5a8f72", soft: "#e7efe7" }
+    swatch: { color: "#446c56", soft: "#e7efe7" }
   },
   {
     id: "purple",
     label: "Purple",
     hint: "A soft purple accent for chrome.",
-    swatch: { color: "#8f63d9", soft: "#eee7fb" }
+    swatch: { color: "#613e9a", soft: "#ece4fb" }
   },
   {
     id: "neutral",
@@ -36,13 +36,13 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     id: "orange",
     label: "Orange",
     hint: "A warm orange accent for chrome without changing warnings or diffs.",
-    swatch: { color: "#c77d3a", soft: "#f6eadc" }
+    swatch: { color: "#a85c43", soft: "#f8e9e1" }
   },
   {
     id: "blue",
     label: "Blue",
     hint: "A cool blue accent for selection, focus, and transcript chrome.",
-    swatch: { color: "#3f7ecb", soft: "#e5eef9" }
+    swatch: { color: "#30609a", soft: "#e5eef9" }
   }
 ];
 

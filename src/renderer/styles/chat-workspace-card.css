@@ -4,10 +4,9 @@
    the text scrolling under it. */
 
 .workspace-card {
-  --workspace-card-width: 184px;
-  /* One inset shared by the frame padding and the full-bleed rules below,
-     so rows, header, and dividers all agree on the same edge. */
-  --workspace-card-inset: 6px;
+  --workspace-card-width: 224px;
+  --workspace-card-inset: 8px;
+  --workspace-card-row-gap: 10px;
   position: absolute;
   top: 2px;
   /* Same inset as the header's action cluster (`.section-heading` runs a 20px
@@ -30,35 +29,35 @@
 /* The card lives in the gutter beside the transcript, never on top of it, so
    it only appears once that gutter can hold it. The transcript is centered, so
    both gutters grow together: the pane has to be the measure plus a card
-   column on each side (184px card + 20px inset + 14px clearance ≈ 220px). One
+   column on each side (224px card + 20px inset + 14px clearance ≈ 260px). One
    threshold per chat width, because the measure is what moves. The container
    is `.session-multigrid-cell`. The card is hidden whenever a right-hand panel
    is docked, so cell width and transcript column width agree here. */
-@container (min-width: 960px) {
+@container (min-width: 1000px) {
   .app-shell[data-chat-width="1"] .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1080px) {
+@container (min-width: 1120px) {
   .app-shell[data-chat-width="2"] .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1220px) {
+@container (min-width: 1260px) {
   .app-shell[data-chat-width="3"] .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1380px) {
+@container (min-width: 1420px) {
   .app-shell[data-chat-width="4"] .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1540px) {
+@container (min-width: 1580px) {
   .app-shell[data-chat-width="5"] .workspace-card {
     display: flex;
   }
@@ -71,12 +70,12 @@
 .workspace-card-branch {
   display: flex;
   align-items: flex-start;
-  /* Same gap and inline inset as the rows below (6px card inset + 8px row
+  /* Same gap and inline inset as the rows below (8px card inset + 8px row
      padding), and a 13px icon to match theirs, so the branch name and the
      row labels start on the same x. */
   gap: var(--space-2);
-  margin: 0 calc(-1 * var(--workspace-card-inset)) var(--workspace-card-inset);
-  padding: 2px calc(var(--workspace-card-inset) + var(--space-2)) var(--space-2);
+  margin: 0 calc(-1 * var(--workspace-card-inset)) var(--space-2);
+  padding: 4px calc(var(--workspace-card-inset) + var(--space-2)) var(--space-2);
   color: var(--text);
   border-bottom: 1px solid var(--line-soft);
   font-size: var(--text-xs);
@@ -143,28 +142,54 @@
 
 /* Two groups: where the work is (changes / files / terminal) and what happens
    to it next (commit / PR). The rule between them runs edge to edge, matching
-   the header's, so the card reads as three framed sections. */
+   the header's, so the card reads as framed sections. */
 .workspace-card-rows {
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
 
+.workspace-card-rows + .workspace-card-rows,
+.workspace-card-rows + .workspace-card-section {
+  margin-inline: calc(-1 * var(--workspace-card-inset));
+  padding-inline: var(--workspace-card-inset);
+}
+
 .workspace-card-rows + .workspace-card-rows {
   margin-top: var(--workspace-card-inset);
   padding-top: var(--workspace-card-inset);
   border-top: 1px solid var(--line-soft);
-  margin-inline: calc(-1 * var(--workspace-card-inset));
-  padding-inline: var(--workspace-card-inset);
+}
+
+/* The Subagents group (WorkspaceCard's SubagentsSection) follows the same
+   framed-section rhythm as the row groups: hairline above, label, then its
+   one quiet row. */
+.workspace-card-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.workspace-card-rows + .workspace-card-section {
+  margin-top: var(--workspace-card-inset);
+  padding-top: var(--workspace-card-inset);
+  border-top: 1px solid var(--line-soft);
+}
+
+.workspace-card-section-label {
+  padding: 2px var(--space-2) 0;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.04em;
 }
 
 .workspace-card-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--workspace-card-row-gap);
   width: 100%;
-  min-height: 26px;
-  padding: 4px var(--space-2);
+  min-height: 30px;
+  padding: 5px var(--space-2);
   color: var(--text-soft);
   border: 0;
   border-radius: var(--radius-md);
@@ -254,4 +279,116 @@
   .workspace-card {
     animation: none;
   }
+}
+
+/* Subagents section: one overlapping avatar chip per launch (Codex-card
+   style), each tinted from the session icon palette, followed by a quiet
+   count. The chips echo .session-custom-icon's palette treatment so the
+   section reads as the same design language at card scale. */
+.workspace-card-subagents {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 30px;
+  padding: 5px var(--space-2);
+  border-radius: var(--radius-md);
+  cursor: default;
+}
+
+.workspace-card-agent-stack {
+  display: inline-flex;
+  align-items: center;
+}
+
+.workspace-card-agent {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--session-icon-blue);
+  background: color-mix(in oklab, var(--session-icon-blue) 16%, transparent);
+  border: 1px solid color-mix(in oklab, var(--session-icon-blue) 45%, transparent);
+  border-radius: 50%;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-ui);
+  line-height: 1;
+  user-select: none;
+}
+
+/* Overlap the stack, with the panel-colored ring keeping each chip legible. */
+.workspace-card-agent + .workspace-card-agent {
+  margin-left: -5px;
+  box-shadow: 0 0 0 2px var(--panel);
+}
+
+/* Every palette color rides the same data attribute the session icon picker
+   uses, so the tints stay in lockstep with the rest of the app. */
+.workspace-card-agent[data-icon-color="green"] {
+  color: var(--session-icon-green);
+  background: color-mix(in oklab, var(--session-icon-green) 16%, transparent);
+  border-color: color-mix(in oklab, var(--session-icon-green) 45%, transparent);
+}
+
+.workspace-card-agent[data-icon-color="teal"] {
+  color: var(--session-icon-teal);
+  background: color-mix(in oklab, var(--session-icon-teal) 16%, transparent);
+  border-color: color-mix(in oklab, var(--session-icon-teal) 45%, transparent);
+}
+
+.workspace-card-agent[data-icon-color="blue"] {
+  color: var(--session-icon-blue);
+  background: color-mix(in oklab, var(--session-icon-blue) 16%, transparent);
+  border-color: color-mix(in oklab, var(--session-icon-blue) 45%, transparent);
+}
+
+.workspace-card-agent[data-icon-color="violet"] {
+  color: var(--session-icon-violet);
+  background: color-mix(in oklab, var(--session-icon-violet) 16%, transparent);
+  border-color: color-mix(in oklab, var(--session-icon-violet) 45%, transparent);
+}
+
+.workspace-card-agent[data-icon-color="plum"] {
+  color: var(--session-icon-plum);
+  background: color-mix(in oklab, var(--session-icon-plum) 16%, transparent);
+  border-color: color-mix(in oklab, var(--session-icon-plum) 45%, transparent);
+}
+
+.workspace-card-agent[data-icon-color="clay"] {
+  color: var(--session-icon-clay);
+  background: color-mix(in oklab, var(--session-icon-clay) 16%, transparent);
+  border-color: color-mix(in oklab, var(--session-icon-clay) 45%, transparent);
+}
+
+.workspace-card-agent[data-icon-color="amber"] {
+  color: var(--session-icon-amber);
+  background: color-mix(in oklab, var(--session-icon-amber) 16%, transparent);
+  border-color: color-mix(in oklab, var(--session-icon-amber) 45%, transparent);
+}
+
+.workspace-card-agent[data-icon-color="pink"] {
+  color: var(--session-icon-pink);
+  background: color-mix(in oklab, var(--session-icon-pink) 16%, transparent);
+  border-color: color-mix(in oklab, var(--session-icon-pink) 45%, transparent);
+}
+
+/* The chips carry identity, not liveness — the working nest beside the count
+   is the single "running" mark. Error keeps its tint but drops to a rose ring
+   so a failure reads at a glance without turning the whole stack alarm-red. */
+.workspace-card-agent[data-status="error"] {
+  border-color: var(--rose);
+  opacity: 0.75;
+}
+
+.workspace-card-agent-more {
+  color: var(--muted);
+  background: var(--panel-soft);
+  border-color: var(--line);
+  font-size: var(--text-2xs);
+}
+
+.workspace-card-agent-count {
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }

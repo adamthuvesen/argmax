@@ -510,7 +510,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     expect(result.current.mode).toBe("files");
   });
 
-  it("still resets a closed panel's mode when the source changes", () => {
+  it("still resets a closed panel's mode when the source changes", async () => {
     const { result, rerender } = renderHook(
       ({ source }: { source: ReviewSource }) => useReviewState(source),
       { initialProps: { source: projectSource(makeProject()) } }
@@ -524,6 +524,9 @@ describe("useReviewState — IPC fan-out resistance", () => {
     });
 
     rerender({ source: projectSource(makeProject({ id: "project-2", name: "Other" })) });
+    // Each source change kicks off a fresh diff read; settle them inside act
+    // so the state they set lands during the test rather than after it.
+    await act(async () => {});
 
     expect(result.current.isPanelOpen).toBe(false);
     expect(result.current.mode).toBe("changes");

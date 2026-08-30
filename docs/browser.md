@@ -18,7 +18,7 @@ The panel is two halves that only meet through IPC:
   suggestions, 1Password fill, open-external, close), the tab strip, and an
   empty `.browser-panel-surface` div. Address input that doesn't read as a
   URL becomes a Google search. WKWebView reports only load start/finish —
-  never failure or cancellation — so the tab spinner is cleared by the stop
+  never failure or cancellation — so the tab's loading mark is cleared by the stop
   button directly and by a 20s no-event watchdog. Visits persist to localStorage via
   [browserHistory.ts](../src/renderer/lib/browserHistory.ts) and feed the
   address bar's suggestion popover. The tab list lives in a module-level store in
@@ -55,7 +55,7 @@ Request: `browser:open`, `browser:navigate`, `browser:back`, `browser:forward`,
 `browser:fill-credentials` — every input carries a `tabId`. Push:
 `browser:state` (`{tabId, url, title, loading}`, emitted only from the
 main-frame page-load callbacks — `on_navigation` also fires for iframe
-navigations, whose URLs must not reach the address bar or spinner),
+navigations, whose URLs must not reach the address bar or loading mark),
 `browser:new-tab`
 (a page requested a popup; the renderer opens a tab), and
 `browser:page-command` (a browser shortcut pressed while the page had

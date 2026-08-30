@@ -164,7 +164,7 @@
   border-radius: 0;
   appearance: none;
   background: transparent;
-  color: color-mix(in oklab, var(--accent-deep) 22%, var(--muted-strong));
+  color: var(--code-ink);
   font-family: var(--font-code);
   font-size: var(--text-sm);
   line-height: 1.35;

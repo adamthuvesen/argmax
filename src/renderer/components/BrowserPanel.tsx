@@ -36,6 +36,7 @@ import {
   updateBrowserTabState,
   type BrowserTab
 } from "../lib/browserPanel.js";
+import { WorkingNest } from "./WorkingNest.js";
 
 interface BrowserPanelProps {
   /** Normalized http(s) URL the pane should show. */
@@ -675,7 +676,7 @@ export function BrowserPanel({ url, requestSeq, onClose, onResizeMouseDown }: Br
               onClick={() => switchToTab(tab.id)}
             >
               {tab.loading ? (
-                <RotateCw size={11} strokeWidth={1.75} className="browser-tab-spinner" aria-hidden />
+                <WorkingNest active size={11} />
               ) : (
                 <TabFavicon url={tab.url} />
               )}

@@ -384,19 +384,19 @@
 .theme-picker-chip[data-theme-mode="light"] .theme-picker-swatch {
   --swatch-bg: #fdfdfd;
   --swatch-text: #1c1b18;
-  --swatch-accent: #5a8f72;
+  --swatch-accent: #446c56;
 }
 
 .theme-picker-chip[data-theme-mode="dark"] .theme-picker-swatch {
   --swatch-bg: #131312;
   --swatch-text: #e3e0d8;
-  --swatch-accent: #7fb494;
+  --swatch-accent: #6dab86;
 }
 
 .theme-picker-chip[data-theme-mode="system"] .theme-picker-swatch {
   --swatch-bg: #fdfdfd;
   --swatch-text: #1c1b18;
-  --swatch-accent: #5a8f72;
+  --swatch-accent: #446c56;
   background:
     linear-gradient(135deg, #fdfdfd 0%, #fdfdfd 50%, #131312 50%, #131312 100%);
 }
@@ -412,7 +412,7 @@
 }
 
 .theme-picker-chip[data-theme-mode="system"] .theme-picker-swatch-accent {
-  background: linear-gradient(180deg, #5a8f72 0%, #5a8f72 50%, #7fb494 50%, #7fb494 100%);
+  background: linear-gradient(180deg, #446c56 0%, #446c56 50%, #6dab86 50%, #6dab86 100%);
 }
 
 .accent-picker-swatch {
@@ -428,13 +428,13 @@
 }
 
 .accent-picker-chip[data-accent-id="green"] .accent-picker-swatch {
-  --accent-swatch-color: #5a8f72;
+  --accent-swatch-color: #446c56;
   --accent-swatch-soft: #e7efe7;
 }
 
 .accent-picker-chip[data-accent-id="purple"] .accent-picker-swatch {
-  --accent-swatch-color: #8f63d9;
-  --accent-swatch-soft: #eee7fb;
+  --accent-swatch-color: #613e9a;
+  --accent-swatch-soft: #ece4fb;
 }
 
 .accent-picker-chip[data-accent-id="neutral"] .accent-picker-swatch {
@@ -443,12 +443,12 @@
 }
 
 .accent-picker-chip[data-accent-id="orange"] .accent-picker-swatch {
-  --accent-swatch-color: #c77d3a;
-  --accent-swatch-soft: #f6eadc;
+  --accent-swatch-color: #a85c43;
+  --accent-swatch-soft: #f8e9e1;
 }
 
 .accent-picker-chip[data-accent-id="blue"] .accent-picker-swatch {
-  --accent-swatch-color: #3f7ecb;
+  --accent-swatch-color: #30609a;
   --accent-swatch-soft: #e5eef9;
 }
 
@@ -481,10 +481,6 @@
 .settings-refresh:disabled {
   cursor: default;
   opacity: 0.6;
-}
-
-.settings-refresh svg.is-spinning {
-  animation: spin 900ms linear infinite;
 }
 
 /* ---- Per-project settings form (Settings → Projects) ---- */

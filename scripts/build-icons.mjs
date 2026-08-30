@@ -13,6 +13,7 @@
 //   assets/icon.svg, assets/icon-dark.svg     browsable squircle artwork
 //   assets/icon.png, assets/icon-dark.png     1024px renders (README, docs)
 //   assets/Argmax.icon/                       Icon Composer source package
+//   public/argmax-icon.png                    PWA manifest icon (unhashed)
 //   src-tauri/icons/icon.icns                 legacy icon, macOS < 26
 //   src-tauri/icons/Assets.car                appearance-aware icon, macOS 26+
 //
@@ -36,6 +37,7 @@ import { deflateSync } from "node:zlib";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ASSETS = path.join(ROOT, "assets");
 const TAURI_ICONS = path.join(ROOT, "src-tauri", "icons");
+const PUBLIC = path.join(ROOT, "public");
 const ICON_PACKAGE = path.join(ASSETS, "Argmax.icon");
 
 const APPEARANCES = {
@@ -385,10 +387,18 @@ try {
   writePng(render({ mark: "#ffffff" }), path.join(ICON_PACKAGE, "Assets", "mark.png"));
   writeFileSync(path.join(ICON_PACKAGE, "icon.json"), `${JSON.stringify(iconDocument(), null, 2)}\n`);
 
+  // The PWA icon has to live in public/: Vite hashes anything referenced from
+  // HTML, and manifest.webmanifest is copied verbatim, so a hashed path would
+  // 404 for the installed app. Same render, unhashed name.
+  mkdirSync(PUBLIC, { recursive: true });
+  cpSync(path.join(ASSETS, "icon.png"), path.join(PUBLIC, "argmax-icon.png"));
+
   buildIcns(path.join(ASSETS, "icon.png"), scratch);
   buildAssetsCar(scratch);
 
-  console.log("icons rebuilt: assets/icon{,-dark}.{svg,png}, assets/Argmax.icon, src-tauri/icons/{icon.icns,Assets.car}");
+  console.log(
+    "icons rebuilt: assets/icon{,-dark}.{svg,png}, assets/Argmax.icon, public/argmax-icon.png, src-tauri/icons/{icon.icns,Assets.car}"
+  );
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }

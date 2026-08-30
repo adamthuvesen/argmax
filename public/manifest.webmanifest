@@ -2,7 +2,17 @@
   "name": "Argmax",
   "short_name": "Argmax",
   "start_url": "./mobile.html",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#111113",
-  "theme_color": "#111113"
+  "theme_color": "#111113",
+  "icons": [
+    {
+      "src": "./argmax-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
 }

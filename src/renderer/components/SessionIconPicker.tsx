@@ -1,5 +1,6 @@
 import { ArrowLeft, Check } from "lucide-react";
-import { useMemo, useRef, useState, type JSX } from "react";
+import { useEffect, useMemo, useState, type JSX } from "react";
+import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import {
   DEFAULT_SESSION_ICON_COLOR,
@@ -14,14 +15,12 @@ import {
 type SessionIconPickerProps = {
   icon: string | null;
   iconColor: string | null;
-  position: { top: number; left: number };
+  /** Where the right-click that opened it landed, in viewport coordinates. */
+  anchorPoint: AnchorPoint;
   /** Both null clears the custom glyph and restores the status marker. */
   onApply: (icon: string | null, iconColor: string | null) => void;
   onClose: () => void;
 };
-
-export const SESSION_ICON_PICKER_WIDTH = 336;
-export const SESSION_ICON_PICKER_HEIGHT = 360;
 
 /**
  * Edit Icon popover for a session row: color swatches, a search field, and the
@@ -31,14 +30,19 @@ export const SESSION_ICON_PICKER_HEIGHT = 360;
 export function SessionIconPicker({
   icon,
   iconColor,
-  position,
+  anchorPoint,
   onApply,
   onClose
 }: SessionIconPickerProps): JSX.Element {
-  const panelRef = useRef<HTMLDivElement | null>(null);
   const [query, setQuery] = useState("");
   const [draftColor, setDraftColor] = useState(() => resolveSessionIconColor(iconColor));
-  useDismissOnOutsideOrEscape(panelRef, true, onClose);
+  const panel = useAnchoredPopover({ open: true, gutter: 0, capHeight: true });
+  const { anchorToPoint } = panel;
+  useDismissOnOutsideOrEscape(panel.popoverRef, true, onClose);
+
+  useEffect(() => {
+    anchorToPoint(anchorPoint);
+  }, [anchorToPoint, anchorPoint]);
 
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -57,11 +61,11 @@ export function SessionIconPicker({
 
   return (
     <div
-      ref={panelRef}
+      ref={panel.setPopover}
       className="session-icon-picker"
       role="dialog"
       aria-label="Edit Icon"
-      style={{ position: "fixed", top: position.top, left: position.left }}
+      style={panel.floatingStyles}
     >
       <div className="session-icon-picker-header">
         <button

@@ -124,7 +124,6 @@ const baseProps = {
   canDragWorkspaceToGrid: false,
   detectedIdes: [],
   defaultIde: null,
-  showSessionTokens: false,
   showPriority: false
 };
 
@@ -189,7 +188,6 @@ describe("Sidebar — localStorage write isolation", () => {
           snapshot={snapshot}
           detectedIdes={[]}
           defaultIde={null}
-          showSessionTokens={false}
           showPriority={false}
         />
       </StrictMode>
@@ -236,7 +234,6 @@ describe("Sidebar — localStorage write isolation", () => {
           snapshot={snapshot}
           detectedIdes={[]}
           defaultIde={null}
-          showSessionTokens={false}
           showPriority={false}
         />
       </StrictMode>

@@ -24,8 +24,6 @@ export function GeneralSettings({
   onThemeModeChange,
   accentId,
   onAccentChange,
-  sidebarTokensVisible,
-  onSidebarTokensVisibleChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
   chatCostVisible,
@@ -57,8 +55,6 @@ export function GeneralSettings({
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
   onAccentChange: (accentId: AccentId) => void;
-  sidebarTokensVisible: boolean;
-  onSidebarTokensVisibleChange: (v: boolean) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
@@ -210,12 +206,6 @@ export function GeneralSettings({
             onChange={onSidebarPriorityVisibleChange}
           />
 
-          <ToggleRow
-            label="Show session tokens in sidebar"
-            description="Display per-session token usage under each sidebar entry."
-            checked={sidebarTokensVisible}
-            onChange={onSidebarTokensVisibleChange}
-          />
 
           <ToggleRow
             label="Show cost in agent chat"

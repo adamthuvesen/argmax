@@ -58,6 +58,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Session sync (import from provider CLIs)** → [session-sync.md](docs/session-sync.md)
 - **Worktrees, archive, review** → [workspaces.md](docs/workspaces.md)
 - **Approvals and checks** → [approvals-checks.md](docs/approvals-checks.md)
+- **Scheduled tasks / routines** → [scheduled-tasks.md](docs/scheduled-tasks.md)
 - **Integrated terminal panel** → [terminal.md](docs/terminal.md)
 - **In-app browser panel** → [browser.md](docs/browser.md)
 - **Mobile remote / WS bridge** → [remote.md](docs/remote.md)

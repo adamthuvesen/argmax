@@ -42,6 +42,8 @@ import type {
   RemoveProjectInput,
   ResolveApprovalInput,
   ReviewComparison,
+  Routine,
+  RoutineUpsertInput,
   RunCheckInput,
   SessionAgentEventsInput,
   SessionForkInput,
@@ -307,6 +309,14 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       getStatus: () => invokeCommand<SyncStatus>("sync:get-status"),
       setConfig: (input) => invokeCommand<SyncStatus>("sync:set-config", input),
       runNow: () => invokeCommand<SyncStatus>("sync:run-now")
+    },
+    routines: {
+      list: () => invokeCommand<Routine[]>("routines:list"),
+      upsert: (input: RoutineUpsertInput) => invokeCommand<Routine>("routines:upsert", input),
+      delete: (id: string) => invokeCommand<null>("routines:delete", { id }),
+      setEnabled: (id: string, enabled: boolean) =>
+        invokeCommand<Routine>("routines:set-enabled", { id, enabled }),
+      runNow: (id: string) => invokeCommand<Routine>("routines:run-now", { id })
     },
     menu: {
       onCommand: (listener) => subscribe<MenuCommand>("menu:command", listener)

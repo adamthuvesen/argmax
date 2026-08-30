@@ -150,6 +150,16 @@ pub static SYNCED_SESSIONS_COLUMNS: phf::Map<&'static str, &'static [&'static st
     ] as &'static [&'static str],
 };
 
+// Post-v19 `routines` shape: the scheduled-task table as created.
+pub static ROUTINES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "routines" => &[
+        "cron_expr", "created_at", "enabled", "id", "last_error",
+        "last_run_at", "model_id", "model_label", "name", "next_run_at",
+        "project_id", "prompt", "provider", "run_once_at",
+        "updated_at", "worktree",
+    ] as &'static [&'static str],
+};
+
 // Post-v9 `approvals` shape: provider-native requests retain the opaque
 // correlation id required to make replay idempotent across terminal states.
 pub static APPROVAL_PROVIDER_REQUEST_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -375,6 +385,14 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SYNCED_SESSIONS_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 19,
+        name: "routines",
+        up: ROUTINES,
+        affected_tables: &["routines"],
+        expected_columns: &ROUTINES_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 // Distinguishes real project checkouts ('git') from app-owned scratch
@@ -430,6 +448,38 @@ CREATE UNIQUE INDEX idx_synced_sessions_provider_external
   ON synced_sessions(provider, external_id);
 CREATE INDEX idx_synced_sessions_provider_adopted
   ON synced_sessions(provider, adopted);
+"#;
+
+// Scheduled tasks ("routines"): a stored prompt plus schedule that the
+// in-app scheduler launches as a normal top-level session. Exactly one of
+// `cron_expr` (6-field cron dialect, validated at upsert) or `run_once_at`
+// (RFC 3339) is set. `next_run_at` is maintained by Rust so the scheduler
+// tick and the UI read due-ness without recomputing; `last_error` surfaces
+// failed launches inline. `worktree` defaults isolated, matching the
+// safer default for unattended runs. The project cascade matches every other
+// `projects(id)` reference: removing a repository takes its scheduled tasks
+// with it instead of failing `projects:remove` on the constraint.
+const ROUTINES: &str = r#"
+CREATE TABLE routines (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  prompt TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model_label TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  worktree INTEGER NOT NULL DEFAULT 1,
+  cron_expr TEXT,
+  run_once_at TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_run_at TEXT,
+  next_run_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_routines_enabled_next
+  ON routines(enabled, next_run_at);
 "#;
 
 // The per-project default model previously stored only its display label,
@@ -1108,6 +1158,7 @@ mod tests {
                 (16, compute_migration_checksum(SESSION_RESUME_FORK)),
                 (17, compute_migration_checksum(RESET_PROJECT_DEFAULT_AGENT)),
                 (18, compute_migration_checksum(SYNCED_SESSIONS)),
+                (19, compute_migration_checksum(ROUTINES)),
             ]
         );
 

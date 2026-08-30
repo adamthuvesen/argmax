@@ -1,0 +1,524 @@
+/* ============================================================
+   Schedule — the scheduled-tasks board and its editor.
+
+   Two surfaces, one column width. The list is a status board:
+   quiet rows, one accent marker, actions that stay out of the
+   way until you reach for them. The editor is a compose form
+   that reads its own schedule back as a sentence.
+
+   Every colour, radius, and step comes from tokens.css.
+   ============================================================ */
+
+.sched-surface {
+  width: min(100%, 880px);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) var(--space-8);
+  animation: sched-rise var(--motion-base) var(--ease-out) both;
+}
+
+@keyframes sched-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.sched-column {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* ---------- Toolbar ---------- */
+
+.sched-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-1);
+}
+
+.sched-count {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.sched-count-sep {
+  color: var(--muted);
+}
+
+/* ---------- Buttons ---------- */
+
+.sched-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--space-3);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-soft);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.sched-button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.sched-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.sched-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sched-button-primary {
+  color: var(--bubble-on-ink);
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.sched-button-primary:hover:not(:disabled) {
+  color: var(--bubble-on-ink);
+  background: var(--accent-deep);
+  border-color: transparent;
+}
+
+/* ---------- List ---------- */
+
+.sched-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.sched-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+.sched-row + .sched-row {
+  border-top: 1px solid var(--line-soft);
+}
+
+/* Opaque, not a translucent wash: the hover controls sit on top of the row
+   and paint the same fill to cover the text they replace. */
+.sched-row:hover,
+.sched-row:focus-within {
+  background: var(--panel-soft);
+}
+
+/* One 5px dot carries the whole row state: counting down, stopped, broken. */
+.sched-marker {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.sched-row[data-state="scheduled"] .sched-marker {
+  background: var(--accent);
+}
+
+.sched-row[data-state="paused"] .sched-marker {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.sched-row[data-state="failed"] .sched-marker {
+  background: var(--rose);
+}
+
+.sched-row-body {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sched-row-name {
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sched-row[data-state="paused"] .sched-row-name {
+  color: var(--muted-strong);
+}
+
+.sched-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sched-dot {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+  flex: 0 0 auto;
+}
+
+.sched-row-when {
+  display: grid;
+  gap: 1px;
+  justify-items: end;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.sched-row-cadence {
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+}
+
+.sched-row-next {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sched-row-failed {
+  color: var(--rose);
+  cursor: help;
+}
+
+/* Controls overlay the row's right edge instead of reserving a column for
+   themselves. Reserving one left a dead gutter that pushed the schedule text
+   into the middle of the row; overlaying lets that text sit flush against the
+   same right edge on every row, and the controls take the space only while
+   you are actually reaching for them. Nothing is lost at rest: the marker dot
+   and the right column already say whether a task is counting down, paused,
+   or broken. */
+.sched-row-actions {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--space-4) 0 var(--space-6);
+  background: linear-gradient(
+    to right,
+    transparent 0,
+    var(--panel-soft) var(--space-6)
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.sched-row:hover .sched-row-actions,
+.sched-row:focus-within .sched-row-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sched-row-toggle {
+  margin-left: var(--space-2);
+  padding: 0;
+}
+
+.sched-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.sched-icon-button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--overlay-med);
+}
+
+.sched-icon-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  color: var(--text);
+}
+
+.sched-icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sched-icon-button-danger:hover:not(:disabled) {
+  color: var(--rose);
+}
+
+/* ---------- Messages and empty state ---------- */
+
+.sched-status,
+.sched-alert,
+.sched-loading {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.sched-status {
+  color: var(--muted-strong);
+}
+
+.sched-alert {
+  color: var(--rose);
+}
+
+.sched-loading {
+  color: var(--muted);
+  padding: var(--space-6) 0;
+}
+
+.sched-empty {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  max-width: 46ch;
+  padding: var(--space-8) 0 0;
+}
+
+.sched-empty-headline {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--text);
+}
+
+.sched-empty-body {
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--muted-strong);
+}
+
+.sched-empty-action {
+  padding-top: var(--space-2);
+}
+
+/* ---------- Editor ---------- */
+
+.sched-form {
+  /* One width for every control in the form — pickers, time, date, minute. */
+  --sched-control-width: 232px;
+  display: grid;
+  gap: var(--space-7);
+  min-width: 0;
+}
+
+.sched-group {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.sched-group + .sched-group {
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--line-soft);
+}
+
+.sched-eyebrow {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sched-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Short controls — a time, a minute, a picker — sit beside their label rather
+   than stranding a 60px input under a full-width one. Every one of them hangs
+   off the same right edge, so When and Where read as one column of rows. */
+.sched-field-inline {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.sched-field-inline > :not(.sched-label) {
+  justify-self: end;
+}
+
+.sched-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-soft);
+}
+
+.sched-input {
+  width: 100%;
+  padding: 7px var(--space-3);
+  font-family: inherit;
+  font-size: var(--text-base);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+
+.sched-input::placeholder {
+  color: var(--muted);
+}
+
+.sched-input:hover {
+  border-color: var(--line-strong);
+}
+
+.sched-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.sched-input-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+/* The time, date and minute fields are controls in the same column as the
+   pickers, so they take the same width rather than shrinking to their content. */
+.sched-input-compact,
+.sched-input-number {
+  width: var(--sched-control-width);
+  font-variant-numeric: tabular-nums;
+}
+
+.sched-textarea {
+  resize: vertical;
+  min-height: 92px;
+  line-height: 1.55;
+}
+
+.sched-help {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.sched-help code {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--code-ink);
+}
+
+/* ---------- Schedule read-back — the one loud element ---------- */
+
+.sched-readback {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--muted-strong);
+  background: var(--accent-soft);
+  border-radius: var(--radius-md);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.sched-readback strong {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.sched-readback-empty {
+  color: var(--muted);
+}
+
+/* ---------- Targets + switch ---------- */
+
+/* Every choice in the form is a control of the same width on the same right
+   edge, so When and Where read as one column of rows rather than a mix of
+   chips, toggles and menus. */
+.sched-picker {
+  width: var(--sched-control-width);
+}
+
+/* ---------- Form footer ---------- */
+
+.sched-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line-soft);
+}
+
+.sched-actions-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.sched-actions-buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* No viewport media query here on purpose: `body` carries a 900px min-width,
+   so one could never fire. The panel instead has to survive its *container*
+   narrowing as the sidebar takes width — the name column is the flexible one
+   (min-width: 0 plus ellipsis) and everything else is content-sized. */
+
+@media (prefers-reduced-motion: reduce) {
+  .sched-surface {
+    animation: none;
+  }
+
+  .sched-row,
+  .sched-row-actions,
+  .sched-button,
+  .sched-icon-button,
+  .sched-input {
+    transition: none;
+  }
+}

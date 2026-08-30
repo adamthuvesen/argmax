@@ -115,6 +115,7 @@ const baseProps = {
   onOpenKeyboardShortcuts: noop,
   onOpenProviders: noop,
   onOpenProject: noop,
+  onOpenScheduledTasks: noop,
   onOpenSettings: noop,
   onOpenWorkspaceChat: noop,
   onResizeMouseDown: noop,
@@ -178,6 +179,7 @@ describe("Sidebar — localStorage write isolation", () => {
           onOpenKeyboardShortcuts={noop}
           onOpenProviders={noop}
           onOpenProject={noop}
+          onOpenScheduledTasks={noop}
           onOpenSettings={noop}
           onOpenWorkspaceChat={noop}
           onResizeMouseDown={noop}
@@ -224,6 +226,7 @@ describe("Sidebar — localStorage write isolation", () => {
           onOpenKeyboardShortcuts={noop}
           onOpenProviders={noop}
           onOpenProject={noop}
+          onOpenScheduledTasks={noop}
           onOpenSettings={noop}
           onOpenWorkspaceChat={noop}
           onResizeMouseDown={noop}

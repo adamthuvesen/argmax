@@ -642,6 +642,46 @@ async browserFillCredentials(input: BrowserFillCredentialsInput) : Promise<Resul
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async routinesList(input: RoutinesListInput) : Promise<Result<Routine[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("routines_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async routinesUpsert(input: RoutinesUpsertInput) : Promise<Result<Routine, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("routines_upsert", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async routinesDelete(input: RoutinesDeleteInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("routines_delete", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async routinesSetEnabled(input: RoutinesSetEnabledInput) : Promise<Result<Routine, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("routines_set_enabled", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async routinesRunNow(input: RoutinesRunNowInput) : Promise<Result<Routine, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("routines_run_now", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -849,6 +889,12 @@ export type RepoPath = string
 export type ReviewComparison = "workingTree" | "branch" | "committed"
 export type ReviewListChangedFilesInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; comparison?: ReviewComparison }
 export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath | null; comparison?: ReviewComparison }
+export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdAt: string; updatedAt: string }
+export type RoutinesDeleteInput = { id: NonEmptyString }
+export type RoutinesListInput = Record<string, never>
+export type RoutinesRunNowInput = { id: NonEmptyString }
+export type RoutinesSetEnabledInput = { id: NonEmptyString; enabled: boolean }
+export type RoutinesUpsertInput = { id: NonEmptyString; name: NonEmptyString; projectId: ProjectId; prompt: Prompt; provider: ProviderId; modelLabel: NonEmptyString; modelId: NonEmptyString; worktree: boolean; cronExpr: string | null; runOnceAt: string | null; enabled: boolean | null }
 export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; learnings: number; usageEvents: number }
 export type RuntimeDiagnostics = { rssBytes: number; openFileDescriptors: number; tokioTrackedTasks: number }
 export type SaveImageResult = { filePath: string; sizeBytes: number }

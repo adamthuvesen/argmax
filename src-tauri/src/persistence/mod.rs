@@ -7,6 +7,7 @@ pub mod gh;
 pub mod learnings;
 pub mod migrations;
 pub mod projects;
+pub mod routines;
 pub mod sessions;
 pub mod synced;
 pub mod time;

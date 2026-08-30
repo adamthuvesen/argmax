@@ -946,3 +946,42 @@ pub struct SyncSetConfigInput {
     pub opencode: bool,
     pub window_hours: u32,
 }
+
+// Scheduled tasks ("routines"): a stored prompt plus schedule the in-app
+// scheduler launches as a top-level session. See routines/scheduler.rs.
+empty_input!(RoutinesListInput);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RoutinesUpsertInput {
+    pub id: NonEmptyString,
+    pub name: NonEmptyString,
+    pub project_id: ProjectId,
+    pub prompt: Prompt,
+    pub provider: ProviderId,
+    pub model_label: NonEmptyString,
+    pub model_id: NonEmptyString,
+    pub worktree: bool,
+    pub cron_expr: Option<String>,
+    pub run_once_at: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RoutinesDeleteInput {
+    pub id: NonEmptyString,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RoutinesSetEnabledInput {
+    pub id: NonEmptyString,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RoutinesRunNowInput {
+    pub id: NonEmptyString,
+}

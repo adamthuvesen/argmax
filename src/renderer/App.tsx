@@ -53,6 +53,7 @@ import { useDashboardSession } from "./hooks/useDashboardSession.js";
 import { useSessionCommands } from "./hooks/useSessionCommands.js";
 import {
   CommandPalette,
+  ScheduledTasksPanel,
   SettingsPanel,
   useLazyOverlayPrefetch
 } from "./hooks/useLazyOverlayPrefetch.js";
@@ -128,6 +129,8 @@ export function App(): JSX.Element {
   const {
     isSettingsOpen,
     setIsSettingsOpen,
+    isScheduledTasksOpen,
+    setIsScheduledTasksOpen,
     isPaletteOpen,
     setIsPaletteOpen,
     isCheatSheetOpen,
@@ -973,6 +976,12 @@ export function App(): JSX.Element {
   const onOpenSettingsRow = useCallback((): void => {
     openSettingsTarget("general");
   }, [openSettingsTarget]);
+  const onOpenScheduledTasksRow = useCallback((): void => {
+    setIsPaletteOpen(false);
+    setIsFullLauncherOpen(false);
+    // Opening the panel closes settings for us: the two share the slot.
+    setIsScheduledTasksOpen(true);
+  }, [setIsFullLauncherOpen, setIsPaletteOpen, setIsScheduledTasksOpen]);
   const onOpenProvidersRow = useCallback((): void => {
     openSettingsTarget("agents", "settings-providers");
   }, [openSettingsTarget]);
@@ -1430,6 +1439,7 @@ export function App(): JSX.Element {
         selectedSession,
         onNewSession: () => handleMenuCommand("new-session"),
         onOpenSettings: () => openSettingsTarget("general"),
+        onOpenScheduledTasks: onOpenScheduledTasksRow,
         onOpenSettingsSection: (group, sectionId) => openSettingsTarget(group, sectionId),
         onOpenSearch: openMessagePalette,
         onStopSession: (sessionId) => void terminateSession(sessionId),
@@ -1445,6 +1455,7 @@ export function App(): JSX.Element {
       snapshot,
       selectedSession,
       handleMenuCommand,
+      onOpenScheduledTasksRow,
       openSettingsTarget,
       terminateSession,
       openWorkspaceChat,
@@ -1705,6 +1716,7 @@ export function App(): JSX.Element {
         onArchiveWorkspace={onArchiveWorkspaceRow}
         onOpenInIde={onOpenInIdeRow}
         onOpenProject={onOpenProjectRow}
+        onOpenScheduledTasks={onOpenScheduledTasksRow}
         onOpenSettings={onOpenSettingsRow}
         onOpenProviders={onOpenProvidersRow}
         onOpenDiagnostics={onOpenDiagnosticsRow}
@@ -1728,7 +1740,7 @@ export function App(): JSX.Element {
 
       <section className="workspace" ref={workspaceRef}>
         <div className={
-          isSettingsOpen
+          isSettingsOpen || isScheduledTasksOpen
             ? "work-scroll settings-scroll"
             : isFullLauncherOpen || grid.rows.length === 0
               ? "work-scroll launcher-scroll"
@@ -1736,7 +1748,7 @@ export function App(): JSX.Element {
         }>
           {loadState === "error" ? (
             <EmptyState message={loadError} onRetry={() => void loadDashboard()} />
-          ) : loadState === "loading" && grid.rows.length === 0 && !isSettingsOpen ? (
+          ) : loadState === "loading" && grid.rows.length === 0 && !isSettingsOpen && !isScheduledTasksOpen ? (
             <SkeletonPane />
           ) : isSettingsOpen ? (
             <Suspense fallback={<SkeletonPane />}>
@@ -1792,6 +1804,10 @@ export function App(): JSX.Element {
                 onProjectUpdated={handleProjectUpdated}
                 navigationTarget={settingsNavigationTarget}
               />
+            </Suspense>
+          ) : isScheduledTasksOpen ? (
+            <Suspense fallback={<SkeletonPane />}>
+              <ScheduledTasksPanel projects={realProjects} />
             </Suspense>
           ) : isFullLauncherOpen ? (
             renderLaunchSurface(launcherProject)

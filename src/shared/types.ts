@@ -485,6 +485,47 @@ export interface SyncStatus {
   lastError: string | null;
 }
 
+/** A stored scheduled task: a prompt plus schedule, fired by the Rust
+ *  scheduler as a normal top-level session. Wire shape mirrors the Rust
+ *  `Routine` record (see src-tauri/src/persistence/routines.rs).
+ *
+ *  There is no permission or agent mode here: nobody is watching a scheduled
+ *  run, so they always launch auto-approve. The scheduler hardcodes it. */
+export interface Routine {
+  id: string;
+  name: string;
+  projectId: string;
+  prompt: string;
+  provider: ProviderId;
+  modelLabel: string;
+  modelId: string;
+  worktree: boolean;
+  /** 6-field cron expression (sec min hour dom month dow); null for one-shots. */
+  cronExpr: string | null;
+  /** RFC 3339 UTC timestamp; null for recurring schedules. */
+  runOnceAt: string | null;
+  enabled: boolean;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RoutineUpsertInput {
+  id: string;
+  name: string;
+  projectId: string;
+  prompt: string;
+  provider: ProviderId;
+  modelLabel: string;
+  modelId: string;
+  worktree: boolean;
+  cronExpr: string | null;
+  runOnceAt: string | null;
+  enabled?: boolean;
+}
+
 export type DashboardDelta = {
   [K in keyof DashboardSnapshot]?: DashboardSnapshot[K];
 } & {
@@ -607,6 +648,13 @@ export interface ArgmaxApi {
     getStatus: () => Promise<SyncStatus>;
     setConfig: (input: SyncConfigInput) => Promise<SyncStatus>;
     runNow: () => Promise<SyncStatus>;
+  };
+  routines: {
+    list: () => Promise<Routine[]>;
+    upsert: (input: RoutineUpsertInput) => Promise<Routine>;
+    delete: (id: string) => Promise<null>;
+    setEnabled: (id: string, enabled: boolean) => Promise<Routine>;
+    runNow: (id: string) => Promise<Routine>;
   };
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;

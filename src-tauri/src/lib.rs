@@ -21,6 +21,7 @@ pub mod persistence;
 pub mod providers;
 pub mod remote;
 pub mod review;
+pub mod routines;
 pub mod session_control;
 pub mod sessions;
 pub mod skills;
@@ -597,6 +598,10 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 sync_sweep_loop(sync_app).await;
             });
+            // Scheduled tasks ("routines") fire stored prompts on a schedule.
+            // The loop pulls services from state per tick, so starting it
+            // here — before the database may have opened — is safe.
+            routines::scheduler::spawn(app.handle().clone());
             if app.get_window("main").is_some() {
                 timer.mark("window.create");
             }

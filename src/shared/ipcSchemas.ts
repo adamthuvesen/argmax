@@ -80,6 +80,7 @@ export const IPC_CHANNELS = [
   "browser:back",
   "browser:forward",
   "browser:reload",
+  "browser:stop",
   "browser:set-bounds",
   "browser:close",
   "browser:fill-credentials"

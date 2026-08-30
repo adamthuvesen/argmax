@@ -14,21 +14,25 @@ pub enum MenuCommand {
     NewSession,
     OpenSettings,
     ToggleSidebar,
+    ToggleLeftSidebar,
     ToggleDebugLog,
     OpenCommandPalette,
     OpenCheatSheet,
     CheckForUpdates,
+    CloseSurface,
 }
 
 impl MenuCommand {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 9] = [
         Self::NewSession,
         Self::OpenSettings,
         Self::ToggleSidebar,
+        Self::ToggleLeftSidebar,
         Self::ToggleDebugLog,
         Self::OpenCommandPalette,
         Self::OpenCheatSheet,
         Self::CheckForUpdates,
+        Self::CloseSurface,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -36,10 +40,12 @@ impl MenuCommand {
             Self::NewSession => "new-session",
             Self::OpenSettings => "open-settings",
             Self::ToggleSidebar => "toggle-sidebar",
+            Self::ToggleLeftSidebar => "toggle-left-sidebar",
             Self::ToggleDebugLog => "toggle-debug-log",
             Self::OpenCommandPalette => "open-command-palette",
             Self::OpenCheatSheet => "open-cheat-sheet",
             Self::CheckForUpdates => "check-for-updates",
+            Self::CloseSurface => "close-surface",
         }
     }
 
@@ -76,7 +82,6 @@ pub enum NativeItem {
     HideOthers,
     ShowAll,
     Quit,
-    CloseWindow,
     Undo,
     Redo,
     Cut,
@@ -106,8 +111,13 @@ pub fn app_menu_spec(is_dev: bool) -> Vec<MenuSpec> {
         ),
         command(
             MenuCommand::ToggleSidebar,
-            "Toggle Sidebar",
+            "Toggle Right Sidebar",
             Some("CmdOrCtrl+B"),
+        ),
+        command(
+            MenuCommand::ToggleLeftSidebar,
+            "Toggle Left Sidebar",
+            Some("CmdOrCtrl+Shift+B"),
         ),
         command(
             MenuCommand::ToggleDebugLog,
@@ -157,7 +167,11 @@ pub fn app_menu_spec(is_dev: bool) -> Vec<MenuSpec> {
             items: vec![
                 command(MenuCommand::NewSession, "New Session", Some("CmdOrCtrl+N")),
                 MenuEntry::Separator,
-                native(NativeItem::CloseWindow),
+                // Not the predefined Close Window: with focus inside a
+                // native browser tab, its unconditional ⌘W would close the
+                // whole window. The renderer routes this to the browser tab
+                // or the focused session pane instead.
+                command(MenuCommand::CloseSurface, "Close", Some("CmdOrCtrl+W")),
             ],
         },
         MenuSpec {
@@ -219,22 +233,23 @@ pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
     }
 
     if let Some(command) = MenuCommand::from_id(id) {
-        if let Some(window) = app.get_webview_window("main") {
-            if let Err(error) = window.emit(MENU_COMMAND_EVENT, command.as_str()) {
-                tracing::warn!(
-                    command = command.as_str(),
-                    ?error,
-                    "failed to emit menu command"
-                );
-            }
+        // Not `get_webview_window`: that returns None once the browser pane
+        // adds child webviews to the main window, silently eating every
+        // menu command.
+        if let Err(error) = app.emit_to("main", MENU_COMMAND_EVENT, command.as_str()) {
+            tracing::warn!(
+                command = command.as_str(),
+                ?error,
+                "failed to emit menu command"
+            );
         }
         return;
     }
 
     match id {
         "argmax:dev-reload" | "argmax:dev-force-reload" => {
-            if let Some(window) = app.get_webview_window("main") {
-                if let Err(error) = window.reload() {
+            if let Some(webview) = app.get_webview("main") {
+                if let Err(error) = webview.reload() {
                     tracing::warn!(?error, "failed to reload webview from menu");
                 }
             }
@@ -310,10 +325,6 @@ fn append_item<R: Runtime>(
             }
             NativeItem::Quit => {
                 let item = PredefinedMenuItem::quit(app, Some("Quit Argmax"))?;
-                submenu.append(&item)?;
-            }
-            NativeItem::CloseWindow => {
-                let item = PredefinedMenuItem::close_window(app, None)?;
                 submenu.append(&item)?;
             }
             NativeItem::Undo => {
@@ -458,8 +469,8 @@ fn set_main_window_zoom<R: Runtime>(app: &AppHandle<R>, zoom: f64) {
 }
 
 fn apply_main_window_zoom<R: Runtime>(app: &AppHandle<R>, zoom: f64) {
-    if let Some(window) = app.get_webview_window("main") {
-        if let Err(error) = window.set_zoom(zoom) {
+    if let Some(webview) = app.get_webview("main") {
+        if let Err(error) = webview.set_zoom(zoom) {
             tracing::warn!(?error, zoom, "failed to set webview zoom");
         }
     }
@@ -467,11 +478,11 @@ fn apply_main_window_zoom<R: Runtime>(app: &AppHandle<R>, zoom: f64) {
 
 #[cfg(debug_assertions)]
 fn toggle_devtools<R: Runtime>(app: &AppHandle<R>) {
-    if let Some(window) = app.get_webview_window("main") {
-        if window.is_devtools_open() {
-            window.close_devtools();
+    if let Some(webview) = app.get_webview("main") {
+        if webview.is_devtools_open() {
+            webview.close_devtools();
         } else {
-            window.open_devtools();
+            webview.open_devtools();
         }
     }
 }
@@ -504,6 +515,7 @@ mod tests {
                 (MenuCommand::OpenSettings, "Settings…", Some("CmdOrCtrl+,")),
                 (MenuCommand::CheckForUpdates, "Check for Updates…", None),
                 (MenuCommand::NewSession, "New Session", Some("CmdOrCtrl+N")),
+                (MenuCommand::CloseSurface, "Close", Some("CmdOrCtrl+W")),
                 (
                     MenuCommand::OpenCommandPalette,
                     "Command Palette…",
@@ -511,8 +523,13 @@ mod tests {
                 ),
                 (
                     MenuCommand::ToggleSidebar,
-                    "Toggle Sidebar",
+                    "Toggle Right Sidebar",
                     Some("CmdOrCtrl+B"),
+                ),
+                (
+                    MenuCommand::ToggleLeftSidebar,
+                    "Toggle Left Sidebar",
+                    Some("CmdOrCtrl+Shift+B"),
                 ),
                 (
                     MenuCommand::ToggleDebugLog,

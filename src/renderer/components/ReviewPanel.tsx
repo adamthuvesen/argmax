@@ -243,6 +243,8 @@ export function ReviewPanel({
       if (event.shiftKey || event.altKey) return;
       if (event.key.toLowerCase() !== "w") return;
       if (event.isComposing || event.repeat) return;
+      // ⌘W inside the browser panel belongs to its tab strip, not ours.
+      if (event.target instanceof Element && event.target.closest(".browser-panel")) return;
       event.preventDefault();
       event.stopPropagation();
       review.workspaceFiles.closeTab(activePath);

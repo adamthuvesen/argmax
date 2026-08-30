@@ -634,15 +634,19 @@ export interface ArgmaxApi {
     onExit: (listener: (event: TerminalExitEvent) => void) => EventSubscription;
   };
   browser: {
-    open: (input: { url: string; bounds: BrowserBounds }) => Promise<{ ok: true }>;
-    navigate: (url: string) => Promise<{ ok: true }>;
-    back: () => Promise<{ ok: true }>;
-    forward: () => Promise<{ ok: true }>;
-    reload: () => Promise<{ ok: true }>;
-    setBounds: (input: { bounds: BrowserBounds; visible: boolean }) => Promise<{ ok: true }>;
-    close: () => Promise<{ ok: true }>;
-    fillCredentials: () => Promise<BrowserFillResult>;
+    open: (input: { url: string; bounds: BrowserBounds; tabId: string }) => Promise<{ ok: true }>;
+    navigate: (url: string, tabId: string) => Promise<{ ok: true }>;
+    back: (tabId: string) => Promise<{ ok: true }>;
+    forward: (tabId: string) => Promise<{ ok: true }>;
+    reload: (tabId: string) => Promise<{ ok: true }>;
+    stop: (tabId: string) => Promise<{ ok: true }>;
+    setBounds: (input: { bounds: BrowserBounds; visible: boolean; tabId: string }) => Promise<{ ok: true }>;
+    /** Destroys the tab's webview (history and session included). */
+    close: (tabId: string) => Promise<{ ok: true }>;
+    fillCredentials: (tabId: string) => Promise<BrowserFillResult>;
     onState: (listener: (event: BrowserStateEvent) => void) => EventSubscription;
+    onNewTab: (listener: (event: BrowserNewTabEvent) => void) => EventSubscription;
+    onPageCommand: (listener: (event: BrowserPageCommandEvent) => void) => EventSubscription;
   };
 }
 
@@ -655,9 +659,23 @@ export interface BrowserBounds {
 }
 
 export interface BrowserStateEvent {
+  tabId: string;
   url: string;
   /** Present on page-load finish; absent on plain navigations. */
   title: string | null;
+  loading: boolean;
+}
+
+/** A page asked for a popup / target="_blank"; the renderer opens a new tab. */
+export interface BrowserNewTabEvent {
+  tabId: string;
+  url: string;
+}
+
+/** A browser shortcut pressed while the page itself had focus. */
+export interface BrowserPageCommandEvent {
+  tabId: string;
+  command: "close-tab" | "new-tab" | "focus-address" | (string & {});
 }
 
 export interface BrowserFillResult {
@@ -710,7 +728,9 @@ export type MenuCommand =
   | "toggle-debug-log"
   | "open-command-palette"
   | "open-cheat-sheet"
-  | "check-for-updates";
+  | "check-for-updates"
+  | "toggle-left-sidebar"
+  | "close-surface";
 
 declare global {
   interface Window {

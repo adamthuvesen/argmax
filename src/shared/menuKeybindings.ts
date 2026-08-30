@@ -57,10 +57,24 @@ export const MENU_KEYBINDINGS: readonly MenuKeybinding[] = [
     menuLocation: "file"
   },
   {
+    command: "close-surface",
+    accelerator: "CmdOrCtrl+W",
+    displayAccelerator: "⌘W",
+    label: "Close browser tab or session pane",
+    menuLocation: "file"
+  },
+  {
     command: "toggle-sidebar",
     accelerator: "CmdOrCtrl+B",
     displayAccelerator: "⌘B",
-    label: "Toggle sidebar",
+    label: "Toggle right sidebar",
+    menuLocation: "view"
+  },
+  {
+    command: "toggle-left-sidebar",
+    accelerator: "CmdOrCtrl+Shift+B",
+    displayAccelerator: "⌘⇧B",
+    label: "Toggle left sidebar",
     menuLocation: "view"
   },
   {
@@ -101,6 +115,5 @@ export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   { displayAccelerator: "⌘F", label: "Open command palette on Messages" },
   { displayAccelerator: "⌘⇧F", label: "Open command palette on File Contents" },
   { displayAccelerator: "⌘J", label: "Toggle integrated terminal" },
-  { displayAccelerator: "⌘W", label: "Close focused session pane" },
   { displayAccelerator: "Esc", label: "Close the topmost overlay" }
 ] as const;

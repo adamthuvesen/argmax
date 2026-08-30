@@ -1,7 +1,13 @@
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
 import { CHAT_WIDTH_HINTS, type ChatWidth } from "../../lib/chatWidth.js";
 import { FONT_OPTIONS, FONT_SIZE_HINTS, type FontFamilyId, type FontSize } from "../../lib/fonts.js";
+import {
+  isLinkTarget,
+  persistLinkTarget,
+  readStoredLinkTarget,
+  type LinkTarget
+} from "../../lib/linkTarget.js";
 import { SCALE_LEVEL_CHOICES, toScaleLevel, type ScaleLevel } from "../../lib/scaleLevel.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
 import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
@@ -78,6 +84,15 @@ export function GeneralSettings({
     const level = toScaleLevel(raw);
     if (level) apply(level);
   };
+  // Read at click time by the chat's link handler, so localStorage is the
+  // source of truth and no App-level state is needed.
+  const [linkTarget, setLinkTarget] = useState<LinkTarget>(readStoredLinkTarget);
+  const pickLinkTarget = (raw: string): void => {
+    if (!isLinkTarget(raw)) return;
+    setLinkTarget(raw);
+    persistLinkTarget(raw);
+  };
+
 
   return (
     <>
@@ -239,6 +254,24 @@ export function GeneralSettings({
           <div className="settings-card-sub">
             <p className="settings-font-caption">
               How wide a conversation runs before it stops growing. {CHAT_WIDTH_HINTS[chatWidth]}
+            </p>
+          </div>
+
+          <Segmented
+            legend="Web links from chat"
+            name="link-target"
+            value={linkTarget}
+            onChange={pickLinkTarget}
+            options={[
+              { value: "system", label: "Default browser" },
+              { value: "argmax", label: "Argmax browser" }
+            ]}
+          />
+          <div className="settings-card-sub">
+            <p className="settings-font-caption">
+              {linkTarget === "argmax"
+                ? "Links open in the in-app browser pane. ⌘-click opens your default browser."
+                : "Links open in your default browser. ⌘-click opens the in-app browser pane."}
             </p>
           </div>
 

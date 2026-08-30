@@ -148,7 +148,7 @@ fn show_message<R: Runtime>(
         .title(title)
         .kind(kind)
         .buttons(MessageDialogButtons::Ok);
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_window("main") {
         builder = builder.parent(&window);
     }
     builder.show(|_| {});

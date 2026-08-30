@@ -108,6 +108,7 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "browser:back",
     "browser:forward",
     "browser:reload",
+    "browser:stop",
     "browser:set-bounds",
     "browser:close",
     "browser:fill-credentials",
@@ -209,6 +210,7 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         browser::browser_back,
         browser::browser_forward,
         browser::browser_reload,
+        browser::browser_stop,
         browser::browser_set_bounds,
         browser::browser_close,
         browser::browser_fill_credentials

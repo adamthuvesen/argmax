@@ -88,7 +88,7 @@ fn set_app_badge<R: Runtime>(app: &AppHandle<R>, text: &str) -> ArgmaxResult<()>
     } else {
         Some(text.to_string())
     };
-    app.get_webview_window("main")
+    app.get_window("main")
         .ok_or_else(|| ArgmaxError::service("DOCK_BADGE_WINDOW_MISSING", "main window missing"))?
         .set_badge_label(label)
         .map_err(|error| ArgmaxError::service("DOCK_BADGE_FAILED", error.to_string()))

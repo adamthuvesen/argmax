@@ -1,6 +1,6 @@
 # Architecture
 
-Argmax has a Rust/Tauri runtime and a React/Vite renderer, joined by a stable `window.argmax` API.
+Argmax pairs a Rust/Tauri runtime with a React/Vite renderer over a `window.argmax` bridge.
 
 ## Map
 
@@ -11,66 +11,56 @@ Argmax has a Rust/Tauri runtime and a React/Vite renderer, joined by a stable `w
 | Providers | [providers.md](providers.md) |
 | SQLite | [data.md](data.md) |
 | Worktrees, review, files, git | [workspaces.md](workspaces.md) |
+| Scheduled tasks | [scheduled-tasks.md](scheduled-tasks.md) |
 | Approvals and checks | [approvals-checks.md](approvals-checks.md) |
 | Terminal panel | [terminal.md](terminal.md) |
+| In-app browser | [browser.md](browser.md) |
+| Mobile remote | [remote.md](remote.md) |
 | GitHub CI feedback | [gh.md](gh.md) |
 | Learnings | [memory.md](memory.md) |
 | Skills / slash autocomplete | [skills.md](skills.md) |
 | Chat surface and cards | [chat-cards.md](chat-cards.md) |
+| Styling | [styling.md](styling.md) |
 | Perf budgets | [performance.md](performance.md) |
 | Tests | [testing.md](testing.md) |
 | Release | [release.md](release.md) |
 
 ## Runtime: `src-tauri`
 
-[src-tauri/src/lib.rs](../src-tauri/src/lib.rs) initializes the app, database, services, menu, protocols, and event publishers. Long-lived services are stored in [state.rs](../src-tauri/src/state.rs) and exposed to command handlers through `tauri::State`.
+[src-tauri/src/lib.rs](../src-tauri/src/lib.rs) initializes app state, SQLite, services, menus, and event channels. Shared services live in [state.rs](../src-tauri/src/state.rs) and are accessed via `tauri::State`.
 
-Key folders:
+Key directories:
 
-- `ipc/`: request/response commands grouped by namespace.
-- `persistence/`: SQLite connection, migrations, and table-family repositories.
-- `providers/`: Claude/Codex/Cursor/OpenCode adapters, PTY process runtime, normalizers, and event flush queue.
-- `session_control.rs`: private agent-to-app transport for launching a separate top-level session through the live workspace and provider services.
-- `sessions/`: session orchestration between `ipc/` and `providers/`.
-- `workspaces/`, `review/`, `files/`, `git/`: worktree lifecycle, diffs, file previews/writes, and branch/PR actions.
-- `approvals/`, `checks/`, `gh/`, `terminal/`, `attachments/`, `ide/`, `skills/`: subsystem services. Project learnings live in [ipc/learnings.rs](../src-tauri/src/ipc/learnings.rs) and [persistence/learnings.rs](../src-tauri/src/persistence/learnings.rs) ([memory.md](memory.md)). `notifications.rs` and `updater.rs` are top-level modules. Skill discovery roots are documented in [skills.md](skills.md).
+- `ipc/`: Request/response command handlers.
+- `persistence/`: SQLite connection, migrations, and repository queries.
+- `providers/`: Adapter CLIs (Claude, Codex, Cursor, OpenCode), PTY runtime, normalizers, and the event flush queue.
+- `session_control.rs`: Private socket transport for agent-initiated session launches.
+- `sessions/`: Orchestration between IPC and providers.
+- `workspaces/`, `review/`, `files/`, `git/`: Worktree lifecycle, diffs, file operations, and git commands.
+- `approvals/`, `checks/`, `gh/`, `terminal/`, `attachments/`, `ide/`, `skills/`, `routines/`: Subsystem services.
 
-Dashboard freshness is SQLite-first: focused reads (`dashboard:list`, `session:events-since`, `workspace:status`) plus post-commit `dashboard:delta` pushes.
+Dashboard state is SQLite-first: UI reads (`dashboard:list`, `session:events-since`, `workspace:status`) paired with post-commit `dashboard:delta` push events.
 
-### Dependency Notes
+### Dependencies
 
-- **tauri >= 2.11** required for `#[tauri::command(rename = "...")]` to keep stable IPC channel names across the bridge.
-- **rusqlite bundled-full** ships FTS5 for full-text search on `events_fts` and `learnings_fts` sidecars.
-- **portable-pty 0.9** for cross-platform PTY process management (provider launches and terminal emulation).
+- **tauri >= 2.11**: Enables `#[tauri::command(rename = "...")]` for stable IPC channel names.
+- **rusqlite bundled-full**: Includes FTS5 for search across timeline events and learnings.
+- **portable-pty 0.9**: PTY process management for providers and terminals.
 
 ## Renderer: `src/renderer`
 
-React 19 + Vite. [App.tsx](../src/renderer/App.tsx) composes the shell; [tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) centralizes app command IPC through `window.argmax`. The only direct renderer Tauri API usage is the window API, not app IPC: [windowChrome.ts](../src/renderer/lib/windowChrome.ts) for drag/zoom chrome and [App.tsx](../src/renderer/App.tsx) for the window minimum-size enforcement. Browser-preview mode detects missing Tauri internals and falls back to [demoSnapshot.ts](../src/renderer/demoSnapshot.ts).
+React 19 + Vite. [App.tsx](../src/renderer/App.tsx) renders the shell; [tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) handles IPC via `window.argmax`. Direct Tauri API usage is limited to window chrome in [windowChrome.ts](../src/renderer/lib/windowChrome.ts) and min-size constraints in [App.tsx](../src/renderer/App.tsx). In standalone browser previews, the renderer falls back to [demoSnapshot.ts](../src/renderer/demoSnapshot.ts).
 
-Heavy panels are lazy-loaded. Renderer tests use [src/test/appTestHarness.ts](../src/test/appTestHarness.ts) and [src/test/fixtures/dashboardSnapshot.ts](../src/test/fixtures/dashboardSnapshot.ts).
+[SessionMultiGrid.tsx](../src/renderer/components/SessionMultiGrid.tsx) manages three pane types:
+- **Session panes**: Primary conversation views.
+- **Launcher panes**: In-grid session creation. Each launcher has its own `projectId` via `setLauncherProject` ([gridState.ts](../src/renderer/lib/gridState.ts)), so launching in another repo does not change the global app selection.
+- **Agent activity panes**: Subagent traces linked to a parent session and tool use ID. These close when the parent session pane closes.
 
-[SessionMultiGrid.tsx](../src/renderer/components/SessionMultiGrid.tsx) renders
-three pane kinds: session, launcher, and agent activity. Agent cells are not
-primary sessions. They point back to a parent session and parent tool use id, and
-the grid helpers drop them when the parent session pane is closed or replaced.
-That keeps subagent activity tied to the chat that launched it.
-
-A launcher cell owns its own `projectId`, separate from the app's selected
-project. Switching repositories inside a grid launcher calls
-`setLauncherProject` ([gridState.ts](../src/renderer/lib/gridState.ts)) and
-retargets that one cell. Only the standalone full launcher moves the app's
-selection. That is what makes "launch a task in any repository from inside a
-session" possible without taking the sessions being watched off screen.
-
-The session pane's actions menu offers "New session here", which always opens a
-launcher cell beside the current pane regardless of the `argmax.newSessionMode`
-preference. The preference decides what ⌘N does from the shell, but an action
-invoked from *inside* a session must not swap the grid out from under it. A
-full grid reports the limit as a toast rather than silently doing nothing.
+"New session here" in the pane menu opens a launcher adjacent to the active pane without replacing the grid.
 
 ## Shared: `src/shared`
 
-- [bindings.d.ts](../src/shared/bindings.d.ts): generated Rust types.
-- [types.ts](../src/shared/types.ts): hand-written `ArgmaxApi` and renderer domain aliases.
-- [ipcSchemas.ts](../src/shared/ipcSchemas.ts): request channel-name union for the bridge; runtime validation lives in Rust.
-- [providerModels.ts](../src/shared/providerModels.ts): model lists, defaults, and pricing.
+- [bindings.d.ts](../src/shared/bindings.d.ts): Generated Rust types from `tauri-specta`.
+- [types.ts](../src/shared/types.ts): `ArgmaxApi` interface and renderer domain types.
+- [ipcSchemas.ts](../src/shared/ipcSchemas.ts): Channel-name union for the bridge.
+- [providerModels.ts](../src/shared/providerModels.ts): Model metadata, defaults, and pricing.

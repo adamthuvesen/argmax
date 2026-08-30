@@ -1,51 +1,32 @@
 # Data
 
-SQLite is owned by Rust under [src-tauri/src/persistence](../src-tauri/src/persistence). The database lives in Tauri app data as `argmax.sqlite`; WAL/SHM sidecars live next to it.
+Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/persistence). The database file is `argmax.sqlite` in the Tauri app data folder, operating with WAL and SHM sidecars.
 
 ## Migrations
 
-[migrations.rs](../src-tauri/src/persistence/migrations.rs) contains the consolidated schema and checksum runner. Migrations are append-only. Never edit an applied migration: the boot path recomputes stored SHA-256 checksums and refuses drift.
+[migrations.rs](../src-tauri/src/persistence/migrations.rs) runs append-only schema migrations with SHA-256 checksum verification on startup. Applied migrations must never be edited.
 
-FTS5 sidecars index timeline events and learnings. The initial Rust migration is the schema baseline for the Tauri app data directory.
-
-`synced_sessions` (v18) tracks sessions imported from a provider CLI's own
-transcript store, including the `adopted` flag that decides whether a session
-survives turning sync off. See [session-sync.md](session-sync.md).
-
-`routines` (v19) stores scheduled tasks: a prompt plus schedule that the
-in-app scheduler launches as normal top-level sessions. See
-[scheduled-tasks.md](scheduled-tasks.md).
+- FTS5 sidecar tables index timeline events and learnings.
+- `synced_sessions` (v18) tracks sessions imported from external provider transcripts. See [session-sync.md](session-sync.md).
+- `routines` (v19) stores scheduled task prompts and cadences. See [scheduled-tasks.md](scheduled-tasks.md).
+- Legacy checkpoint tables are preserved for backward compatibility without creating new entries.
 
 ## Repositories
 
-Table-family modules (`projects.rs`, `workspaces.rs`, `sessions.rs`, `events.rs`, `approvals.rs`, `checks.rs`, `usage.rs`, `learnings.rs`, `gh.rs`) expose typed reads/writes for services and IPC handlers, and `dashboard.rs` composes the focused reads below from those repositories.
+Typed modules (`projects.rs`, `workspaces.rs`, `sessions.rs`, `events.rs`, `approvals.rs`, `checks.rs`, `usage.rs`, `learnings.rs`, `gh.rs`, `routines.rs`) expose queries to services and IPC.
 
-Dashboard reads are intentionally split:
+Focused reads in `dashboard.rs`:
+- `dashboard:list`: Returns projects, workspaces, sessions, and checks.
+- `session:events-since`: Pages timeline events and raw output by SQLite `rowid`.
+- `approvals:pending`: Returns outstanding approval requests.
 
-- `dashboard:list` returns projects, workspaces, sessions, and checks.
-- `session:events-since` pages selected-session events/raw output by SQLite `rowid`.
-- `approvals:pending` is a separate focused read.
+A background sweeper deletes raw provider output older than 7 days. `system:vacuum-database` runs `VACUUM` in a background task.
 
-Raw provider output older than 7 days is pruned by the retention sweeper. `system:vacuum-database` runs `VACUUM` in a blocking task.
+## Subagent Trace Persistence
 
-The schema still contains the checkpoint table from earlier releases. Existing
-rows and patch files are kept so upgrades do not delete user data, but Argmax
-no longer creates, lists, or restores checkpoints.
+Child traces from Codex and Cursor are stored directly in `events` rows using `payload_json`. Rows use deterministic IDs:
+`trace:<provider>:<sessionId>:<parentToolUseId>:<childId>:<seq>:<kind>`
 
-## Subagent Trace Imports
+The repository uses insert-if-absent to avoid duplicate events across repeated pane loads. A temporary Cursor `traceNoOutput` placeholder is updated in place once the real tool output is parsed.
 
-Codex and Cursor child-agent traces are stored as normal timeline events. There
-is no migration for this: `events.payload_json` already holds provider-specific
-JSON. Imported rows use deterministic IDs in the form
-`trace:<provider>:<sessionId>:<parentToolUseId>:<childId>:<seq>:<kind>`, and the
-events repository inserts them only when absent so repeated pane opens are safe.
-The one exception is a synthetic Cursor `traceNoOutput` completion: it holds
-the sequence slot of a tool result that has not been written yet, and when a
-later poll finds the real result under the same ID the row is upgraded in
-place (same rowid) instead of being ignored.
-
-Imported payloads carry the spawning `parent_tool_use_id`, `traceImported: true`,
-`providerChildSessionId`, `traceSource`, and `traceSequence`. The parent chat
-projection hides those child rows. `session:agent-events` reads them back for
-the agent pane together with the parent launch/completion rows and any linked
-Codex child-thread messages.
+Payloads include `parent_tool_use_id`, `traceImported: true`, `providerChildSessionId`, `traceSource`, and `traceSequence`. Parent conversation views filter out child events, while `session:agent-events` fetches them for subagent panes.

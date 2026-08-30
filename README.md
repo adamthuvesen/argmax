@@ -5,21 +5,19 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.png">
-    <img src="assets/icon.png" alt="Argmax purple mascot" width="96" height="96">
+    <img src="assets/icon.png" alt="Argmax mascot" width="96" height="96">
   </picture>
 </p>
 
-A local desktop app with a Rust core and React UI for running Claude Code, Codex, Cursor Agent, and OpenCode in isolated git worktrees or your current checkout.
+A local desktop app for running Claude Code, Codex, Cursor Agent, and OpenCode in isolated git worktrees or your current checkout.
 
-Single-user, on-device, no cloud, no auth. Built for sessions that need real repo context: persistent transcripts, review tools, checks, approvals, and optional worktree isolation for running agents in parallel.
+Single-user, on-device, no cloud, no auth. Includes persistent transcripts, diff review, checks, approvals, and worktree isolation for parallel agent runs.
 
-![Argmax running agent sessions across parallel git worktrees](assets/screenshots/hero.png)
+![Argmax screenshot](assets/screenshots/hero.png)
 
 ## Status
 
-Early and still changing — see [CHANGELOG.md](CHANGELOG.md) for the current version. The first public Rust/Tauri release targets macOS. Linux and Windows are not release targets yet.
-
-Behavior, the SQLite schema, and the UI can change between versions. There are no stability guarantees yet.
+macOS is the primary release target. See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Stack
 
@@ -35,9 +33,9 @@ Behavior, the SQLite schema, and the UI can change between versions. There are n
 
 ## Prerequisites
 
-- **Node.js** 20.19+ or 22.12+ and npm
-- **Rust** 1.95+ ([install rustup](https://rustup.rs))
-- **macOS**. The first public Rust/Tauri release is macOS-only; Linux and Windows are not release targets yet.
+- Node.js 20.19+ or 22.12+ and npm
+- Rust 1.95+
+- macOS
 
 ## Setup & Run
 
@@ -46,65 +44,45 @@ npm install
 npm run tauri:dev
 ```
 
-This starts the macOS Tauri app with the Rust backend.
+### Static UI Demo
 
-## Static Demo
-
-Run the renderer in a browser with no secrets and no local app data:
+Run the renderer in a browser using mock data from `src/renderer/demoSnapshot.ts`:
 
 ```bash
 npx vite --host 127.0.0.1
 ```
 
-Open `http://127.0.0.1:5173/`.
-
-Outside Tauri there is no Rust backend. The renderer uses `src/renderer/demoSnapshot.ts` instead of live IPC. The fixture uses sample paths and sample session text only.
-
-The screenshot above shows the macOS app running agent sessions across parallel git worktrees: the review queue, an active session's conversation with file changes and passing checks, and the diff review pane.
-
-## Reproducible Check
-
-The renderer entry chunk is checked against a 2 MiB budget:
+## Commands
 
 ```bash
-npm run build:renderer
-npm run check:bundle
-```
-
-`check:bundle` reads `dist/renderer/index.html`, finds the emitted entry script, and fails if that file is over budget.
-
-## Common Commands
-
-```bash
-npm run tauri:dev       # Tauri dev app
-npm run tauri:build     # production Tauri bundle
-npm run build:renderer  # browser renderer build
+npm run tauri:dev       # Start Tauri dev app
+npm run tauri:build     # Build production bundle
+npm run build:renderer  # Build renderer bundle
 npm run lint            # ESLint
-npm run typecheck       # renderer/shared TypeScript
-npm run test:unit       # Vitest unit/integration tests
-npm run test:perf       # renderer perf budgets
-npm run test:rust       # Cargo tests for src-tauri
-npm test                # unit + perf + Rust tests
-npm run check:bindings  # generated bindings freshness guard
-npm run check:tauri-bridge
+npm run typecheck       # TypeScript check
+npm run test:unit       # Vitest unit tests
+npm run test:perf       # Performance benchmarks
+npm run test:rust       # Cargo test suite
+npm test                # Run all test suites
+npm run check:bindings  # Verify TS bindings freshness
+npm run check:tauri-bridge # Check IPC channel parity
+npm run check:bundle    # Verify bundle size budget
 ```
 
 ## Layout
 
 ```
 src/
-├── renderer/     React UI built by Vite
-├── shared/       Shared TS types and generated Rust bindings
-└── test/         Vitest setup and renderer fixtures
+├── renderer/     React UI
+├── shared/       Shared TypeScript types and generated bindings
+└── test/         Vitest configuration and test harness
 
-src-tauri/        Rust runtime, services, persistence, IPC, packaging config
-docs/             Subsystem docs
-scripts/          Lightweight CI/check scripts
-assets/           App icons
+src-tauri/        Rust runtime, services, persistence, IPC handlers
+docs/             Subsystem documentation
+scripts/          CI and verification scripts
+assets/           Application icons
 ```
 
-Build output (`dist/`, `release/`, `src-tauri/target/`) and local databases (`*.sqlite*`) are gitignored.
+Runtime database state is stored in `argmax.sqlite` under the Tauri app data folder.
 
-Runtime state is stored in `argmax.sqlite` under the Tauri app-data directory. `raw_outputs` rows older than 7 days are pruned daily; everything else is kept.
-
-Subsystem conventions live in [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md).
+Subsystem details live in [`docs/`](docs/) and [`AGENTS.md`](AGENTS.md).

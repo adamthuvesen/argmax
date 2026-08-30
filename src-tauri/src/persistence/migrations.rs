@@ -119,6 +119,19 @@ pub static WORKSPACE_KIND_COLUMNS: phf::Map<&'static str, &'static [&'static str
     ] as &'static [&'static str],
 };
 
+// Post-v16 `sessions` shape: adds the `resume_fork` flag consumed (and
+// cleared) by the next resumed launch of a forked session.
+pub static SESSION_RESUME_FORK_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "input_tokens", "last_activity_at", "last_model_id",
+        "model_id", "model_label", "output_tokens", "permission_mode", "prompt",
+        "provider", "provider_conversation_id", "reasoning_effort", "resume_fork",
+        "started_at", "state", "workspace_id",
+    ] as &'static [&'static str],
+};
+
 // Post-v9 `approvals` shape: provider-native requests retain the opaque
 // correlation id required to make replay idempotent across terminal states.
 pub static APPROVAL_PROVIDER_REQUEST_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -320,6 +333,14 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &WORKSPACE_KIND_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 16,
+        name: "session_resume_fork",
+        up: SESSION_RESUME_FORK,
+        affected_tables: &["sessions"],
+        expected_columns: &SESSION_RESUME_FORK_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 // Distinguishes real project checkouts ('git') from app-owned scratch
@@ -328,6 +349,14 @@ pub static MIGRATIONS: &[Migration] = &[
 const WORKSPACE_KIND: &str = r#"
 ALTER TABLE workspaces ADD COLUMN kind TEXT NOT NULL DEFAULT 'git'
   CHECK (kind IN ('git', 'scratch', 'popup'));
+"#;
+
+// Set on a forked session so its first resumed turn passes `--fork-session`
+// (Claude) and diverges into a new provider conversation instead of appending
+// to the original's. Cleared whenever a new provider conversation id is
+// persisted for the session.
+const SESSION_RESUME_FORK: &str = r#"
+ALTER TABLE sessions ADD COLUMN resume_fork INTEGER NOT NULL DEFAULT 0;
 "#;
 
 // The per-project default model previously stored only its display label,
@@ -940,7 +969,7 @@ mod tests {
         // v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PROJECT_DEFAULT_MODEL_ID_COLUMNS, "projects")
             .expect("projects");
-        verify_table_columns(&connection, &PRIORITY_DISMISSAL_COLUMNS, "sessions")
+        verify_table_columns(&connection, &SESSION_RESUME_FORK_COLUMNS, "sessions")
             .expect("sessions");
         verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
             .expect("workspaces");
@@ -1004,6 +1033,7 @@ mod tests {
                 ),
                 (14, compute_migration_checksum(PROJECT_DEFAULT_MODEL_ID)),
                 (15, compute_migration_checksum(WORKSPACE_KIND)),
+                (16, compute_migration_checksum(SESSION_RESUME_FORK)),
             ]
         );
 

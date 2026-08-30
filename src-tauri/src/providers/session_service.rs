@@ -53,10 +53,10 @@ use crate::{
         },
         projects::list_projects,
         sessions::{
-            find_session_by_id, persist_session, update_session_agent_mode, update_session_model,
-            update_session_provider, update_session_provider_conversation_id, update_session_state,
-            PersistSessionInput, SessionAgentModeInput, SessionModelInput, SessionProviderInput,
-            SessionStateInput, SessionSummary,
+            find_session_by_id, persist_session, session_resume_fork, update_session_agent_mode,
+            update_session_model, update_session_provider, update_session_provider_conversation_id,
+            update_session_state, PersistSessionInput, SessionAgentModeInput, SessionModelInput,
+            SessionProviderInput, SessionStateInput, SessionSummary,
         },
         time::now_iso,
         workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
@@ -333,6 +333,7 @@ impl ProviderSessionService {
             reasoning_effort: input.reasoning_effort,
             fast_mode: input.fast_mode,
             resume_conversation_id: None,
+            resume_fork: false,
             permission_mode,
             agent_mode,
             cols: input.cols.get(),
@@ -439,6 +440,17 @@ impl ProviderSessionService {
         let (workspace_id, session_provider, session_permission_mode) = {
             let connection = self.database.connection();
             let session = find_session_by_id(&connection, &session_id)?;
+            if session.imported {
+                // Continuing an imported session is what adopts it: from here
+                // it is an ordinary session and the sync pruner leaves it
+                // alone, however the sync settings change.
+                if crate::persistence::synced::mark_synced_session_adopted(
+                    &connection,
+                    &session_id,
+                )? {
+                    tracing::info!(session_id = %session_id, "imported session adopted");
+                }
+            }
             (
                 session.workspace_id,
                 parse_provider(&session.provider)?,
@@ -576,7 +588,14 @@ impl ProviderSessionService {
                             "Switched provider to {}.",
                             get_provider_definition(requested_provider).display_name
                         ),
-                        payload: json!({ "provider": requested_provider.as_str() }),
+                        // The chat surface renders this seam from the payload:
+                        // it names both ends of the handoff and the model the
+                        // new provider is picking up with.
+                        payload: json!({
+                            "from": current_provider.as_str(),
+                            "provider": requested_provider.as_str(),
+                            "modelLabel": model_label.as_str(),
+                        }),
                         created_at: None,
                     },
                 )?);
@@ -664,6 +683,11 @@ impl ProviderSessionService {
                     .as_deref()
                     .and_then(parse_reasoning_effort),
                 fast_mode: input.fast_mode,
+                // A forked session's first resume must diverge into a new
+                // provider conversation; the flag is cleared once the new
+                // conversation id lands.
+                resume_fork: resume_conversation_id.is_some()
+                    && session_resume_fork(&connection, &session_id)?,
                 resume_conversation_id,
                 permission_mode,
                 agent_mode,
@@ -1120,27 +1144,6 @@ impl ProviderSessionService {
             }
         }
         Ok(recovered.len())
-    }
-
-    pub async fn dispose_all(&self) -> ArgmaxResult<()> {
-        let entries = self
-            .handles
-            .lock_or_recover("handles")
-            .drain()
-            .map(|(_, entry)| entry)
-            .collect::<Vec<_>>();
-        let mut tasks = Vec::new();
-        for entry in entries {
-            if let HandleEntry::Resolved(handle) = entry {
-                tasks.push(tokio::spawn(async move {
-                    tokio::time::timeout(Duration::from_millis(2500), handle.terminate()).await
-                }));
-            }
-        }
-        for task in tasks {
-            let _ = task.await;
-        }
-        Ok(())
     }
 
     fn is_current_provider_invocation(

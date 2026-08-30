@@ -1,5 +1,8 @@
 import { memo, useState, type JSX, type MutableRefObject } from "react";
+import { Sparkles } from "lucide-react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
+import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
+import { leadingSkillInvocation } from "../lib/slashHighlight.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { parsePlan } from "../lib/parsePlan.js";
@@ -43,6 +46,7 @@ function SessionConversationTurnInner({
   onOpenFile,
   onOpenAgent,
   onTerminateSession,
+  onForkSession,
   onSendSessionInput,
   inputRef,
   shouldRefocusInput,
@@ -62,6 +66,7 @@ function SessionConversationTurnInner({
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onOpenAgent?: (tool: ToolCall) => void;
   onTerminateSession: (sessionId: string) => Promise<void>;
+  onForkSession?: (sessionId: string) => Promise<void>;
   onSendSessionInput: SessionConversationSendInput;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   shouldRefocusInput: MutableRefObject<boolean>;
@@ -357,6 +362,23 @@ function SessionConversationTurnInner({
     .map((c) => c.createdAt)
     .filter((t): t is string => typeof t === "string" && t.length > 0)
     .sort()[0];
+  // Hover footer content: the turn's assistant prose for Copy, and a fork
+  // handler when the provider supports forking a resumed conversation.
+  const turnMarkdown = item.assistantEvents
+    .map((event) => event.message)
+    .filter((message) => message.length > 0)
+    .join("\n\n");
+  // Mirror `fork_session`'s gate (orchestration.rs): a mid-turn fork would copy
+  // a partial transcript, so the backend refuses "running" and "waiting". The
+  // footer only hides itself on the *latest* live turn, so without this every
+  // earlier turn — and every turn of a waiting session — offered a button whose
+  // only possible outcome was an error toast.
+  const forkable =
+    session !== null &&
+    FORK_CAPABLE_PROVIDERS.has(session.provider) &&
+    session.state !== "running" &&
+    session.state !== "waiting" &&
+    onForkSession !== undefined;
   return (
     <TurnBlock
       key={item.id}
@@ -368,6 +390,8 @@ function SessionConversationTurnInner({
       onToggleTools={() => setToolsExpandOverride(!toolsExpanded)}
       body={bodyChildren}
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
+      {...(turnMarkdown ? { turnMarkdown } : {})}
+      {...(forkable && session ? { onFork: () => void onForkSession?.(session.id) } : {})}
     />
   );
 }
@@ -439,7 +463,26 @@ export function SessionConversationUserMessage({
           kind="user"
           rawMarkdown={displayMessage}
         >
-          <p>{displayMessage}</p>
+          <p>
+            {(() => {
+              // A message sent as `/skill args` renders the invocation as an
+              // accent-colored chip so a skill run reads differently from
+              // plain prose. The raw text (with the slash) stays in
+              // rawMarkdown so copy keeps the real message.
+              const skill = leadingSkillInvocation(displayMessage);
+              if (!skill) return displayMessage;
+              const label = skill.name.charAt(0).toUpperCase() + skill.name.slice(1);
+              return (
+                <>
+                  <span className="user-skill-chip" title={`/${skill.name}`}>
+                    <Sparkles size={12} aria-hidden />
+                    {label}
+                  </span>
+                  {skill.rest ? ` ${skill.rest}` : null}
+                </>
+              );
+            })()}
+          </p>
         </ChatBubble>
       ) : null}
       <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />

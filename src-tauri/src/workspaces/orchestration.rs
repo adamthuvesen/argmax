@@ -40,15 +40,20 @@ use crate::git::exec::run_git_text;
 use crate::ipc::inputs::{
     OpenIdeChoice, ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesAutotitleInput,
     WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput,
-    WorkspacesKeepInput, WorkspacesOpenInIdeInput, WorkspacesSetIconInput,
-    WorkspacesSetLabelInput, WorkspacesSetPinnedInput, WorkspacesSetPriorityAddedInput,
-    WorkspacesSetPriorityDismissedInput,
+    WorkspacesKeepInput, WorkspacesOpenInIdeInput, WorkspacesSetIconInput, WorkspacesSetLabelInput,
+    WorkspacesSetPinnedInput, WorkspacesSetPriorityAddedInput, WorkspacesSetPriorityDismissedInput,
 };
 use crate::persistence::database::Database;
-use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
+use crate::persistence::events::{
+    list_all_session_events, persist_timeline_event, PersistTimelineEventInput,
+};
 use crate::persistence::projects::{
     find_project_by_id, list_projects, persist_project, require_project, PersistProjectInput,
     ProjectSettings,
+};
+use crate::persistence::sessions::{
+    find_session_by_id, persist_session, set_session_resume_fork,
+    update_session_provider_conversation_id, PersistSessionInput, SessionSummary,
 };
 use crate::persistence::workspaces::{
     find_workspace_by_id, persist_workspace, set_workspace_icon, set_workspace_label,
@@ -61,6 +66,13 @@ use crate::providers::session_service::ProviderSessionService;
 use crate::terminal::service::TerminalService;
 use crate::util::sync::LockOrRecover;
 use crate::util::workspace_paths::normalize;
+
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionForkResult {
+    pub workspace: WorkspaceSummary,
+    pub session: SessionSummary,
+}
 
 /// Trailing-edge coalescing window for fs.watch bursts (e.g. `npm install`).
 pub(super) const WATCH_DEBOUNCE_MS: u64 = 200;
@@ -516,6 +528,183 @@ impl WorkspaceService {
             tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
         }
         Ok(workspace)
+    }
+
+    /// The workspace that hosts one imported session (see `crate::sync`).
+    /// Same shape as `create_current`, but the delta waits: the session row is
+    /// created next, and shipping both together stops the sidebar from
+    /// flashing an empty workspace.
+    pub fn create_current_for_import(
+        self: &Arc<Self>,
+        project_id: &str,
+        task_label: &str,
+    ) -> ArgmaxResult<WorkspaceSummary> {
+        let connection = self.database.connection();
+        let project = require_project(&connection, project_id)?;
+        let workspace = persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: Uuid::new_v4().to_string(),
+                project_id: project.id.clone(),
+                task_label: task_label.to_string(),
+                branch: project.current_branch.clone(),
+                base_ref: project
+                    .default_branch
+                    .clone()
+                    .unwrap_or_else(|| project.current_branch.clone()),
+                path: project.repo_path.clone(),
+                state: "complete".to_string(),
+                shared_workspace: true,
+                kind: "git".to_string(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )?;
+        Ok(workspace)
+    }
+
+    /// Ship a freshly imported session and its workspace as one delta, then
+    /// start watching the checkout like any other row.
+    pub fn publish_imported(
+        self: &Arc<Self>,
+        workspace: WorkspaceSummary,
+        session: SessionSummary,
+    ) {
+        self.publish(DashboardDelta {
+            workspaces: vec![workspace.clone()],
+            sessions: vec![session],
+            ..DashboardDelta::default()
+        });
+        if let Err(error) = self.watch(&workspace.id) {
+            tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
+        }
+    }
+
+    pub fn publish_session(&self, session: SessionSummary) {
+        self.publish(DashboardDelta {
+            sessions: vec![session],
+            ..DashboardDelta::default()
+        });
+    }
+
+    /// Tell the renderer to drop pruned imports. Deletion already happened in
+    /// SQLite; this is the only signal the delta protocol has for "gone".
+    pub fn remove_imported(&self, workspace_ids: &[String], session_ids: &[String]) {
+        if workspace_ids.is_empty() && session_ids.is_empty() {
+            return;
+        }
+        for workspace_id in workspace_ids {
+            self.close_watcher(workspace_id);
+        }
+        self.publish(DashboardDelta {
+            removed_session_ids: session_ids.to_vec(),
+            removed_workspace_ids: workspace_ids.to_vec(),
+            ..DashboardDelta::default()
+        });
+    }
+
+    /// Fork a finished session: a new sidebar workspace at the same checkout
+    /// whose session carries a copy of the transcript and the source's
+    /// provider conversation id, flagged so its first resumed turn diverges
+    /// (`--fork-session`) instead of appending to the original conversation.
+    ///
+    /// Not for Cursor: its CLI/ACP has no fork-on-resume, so two sessions
+    /// sharing one conversation id would write into the same provider
+    /// session. Claude diverges via `--fork-session`, Codex via `exec fork`,
+    /// OpenCode via `run --fork`. The fork always points at the source
+    /// workspace's directory as a shared checkout — archiving the fork never
+    /// tears down a worktree it does not own.
+    pub fn fork_session(self: &Arc<Self>, session_id: &str) -> ArgmaxResult<SessionForkResult> {
+        let connection = self.database.connection();
+        let source_session = find_session_by_id(&connection, session_id)?;
+        if source_session.provider == "cursor" {
+            return Err(invalid_workspace(
+                "Cursor sessions can't be forked: cursor-agent has no way to fork a resumed conversation.",
+                "Fork a Claude, Codex, or OpenCode session instead.",
+            ));
+        }
+        if matches!(source_session.state.as_str(), "running" | "waiting") {
+            return Err(invalid_workspace(
+                "This session is still working; forking mid-turn would copy a partial transcript.",
+                "Wait for the turn to finish, then fork.",
+            ));
+        }
+        let source_workspace = find_workspace_by_id(&connection, &source_session.workspace_id)?;
+        let workspace = persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: Uuid::new_v4().to_string(),
+                project_id: source_workspace.project_id.clone(),
+                task_label: format!("{} (fork)", source_workspace.task_label),
+                branch: source_workspace.branch.clone(),
+                base_ref: source_workspace.base_ref.clone(),
+                path: source_workspace.path.clone(),
+                state: "complete".to_string(),
+                shared_workspace: true,
+                kind: source_workspace.kind.clone(),
+                dirty: source_workspace.dirty,
+                changed_files: source_workspace.changed_files,
+            },
+        )?;
+        let session = persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: Uuid::new_v4().to_string(),
+                workspace_id: workspace.id.clone(),
+                provider: source_session.provider.clone(),
+                model_label: source_session.model_label.clone(),
+                model_id: source_session.model_id.clone(),
+                reasoning_effort: source_session.reasoning_effort.clone(),
+                permission_mode: Some(source_session.permission_mode.clone()),
+                agent_mode: source_session.agent_mode.clone(),
+                prompt: source_session.prompt.clone(),
+                state: "complete".to_string(),
+                attention: "normal".to_string(),
+            },
+        )?;
+        // Order matters: setting the conversation id clears resume_fork, so
+        // the flag goes on afterwards.
+        let session = match source_session.provider_conversation_id.as_deref() {
+            Some(conversation_id) => {
+                let session = update_session_provider_conversation_id(
+                    &connection,
+                    &session.id,
+                    conversation_id,
+                )?;
+                set_session_resume_fork(&connection, &session.id)?;
+                session
+            }
+            // No conversation to resume yet (nothing ever ran): the fork is
+            // just a transcript copy that starts fresh on its first message.
+            None => session,
+        };
+        // Copy the transcript so the fork opens with the full history. Raw
+        // provider output and usage stay with the original — they describe
+        // work the fork did not perform.
+        for event in list_all_session_events(&connection, session_id)? {
+            persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: Uuid::new_v4().to_string(),
+                    session_id: session.id.clone(),
+                    r#type: event.r#type,
+                    message: event.message,
+                    payload: event.payload,
+                    created_at: Some(event.created_at),
+                },
+            )?;
+        }
+        self.publish(DashboardDelta {
+            projects: list_projects(&connection)?,
+            workspaces: vec![workspace.clone()],
+            sessions: vec![session.clone()],
+            ..DashboardDelta::default()
+        });
+        drop(connection);
+        if let Err(error) = self.watch(&workspace.id) {
+            tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
+        }
+        Ok(SessionForkResult { workspace, session })
     }
 
     /// Create a repo-less scratch workspace: an app-owned directory under

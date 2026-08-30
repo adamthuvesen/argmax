@@ -61,11 +61,14 @@ pub async fn projects_register(
 
 #[tauri::command(rename = "projects:remove")]
 #[specta::specta]
-pub fn projects_remove(state: State<'_, AppState>, input: ProjectsRemoveInput) -> ArgmaxResult<()> {
-    projects_remove_impl(&state, input)
+pub async fn projects_remove(
+    state: State<'_, AppState>,
+    input: ProjectsRemoveInput,
+) -> ArgmaxResult<()> {
+    projects_remove_impl(&state, input).await
 }
 
-pub(crate) fn projects_remove_impl(
+pub(crate) async fn projects_remove_impl(
     state: &AppState,
     input: ProjectsRemoveInput,
 ) -> ArgmaxResult<()> {
@@ -76,6 +79,12 @@ pub(crate) fn projects_remove_impl(
             "PROJECT_NOT_REMOVABLE",
             "The side-chats project is app-managed and cannot be removed.",
         ));
+    }
+    // The same cascade takes sessions, checks and approvals with it, and every
+    // subsystem looks its victims up by those rows — so stop the project's
+    // agents, checks, terminals and watchers before the delete, not after.
+    if let Some(workspaces) = state.workspaces.get() {
+        workspaces.teardown_project(input.project_id.as_str()).await;
     }
     let database = live_database(state)?;
     let connection = database.connection();

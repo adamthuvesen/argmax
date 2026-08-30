@@ -68,7 +68,7 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
         }
         "projects:remove" => {
             let input: ProjectsRemoveInput = parse(channel, input)?;
-            encode(projects::projects_remove_impl(state, input)?)
+            encode(projects::projects_remove_impl(state, input).await?)
         }
         "projects:update-settings" => {
             let input: ProjectsUpdateSettingsInput = parse(channel, input)?;

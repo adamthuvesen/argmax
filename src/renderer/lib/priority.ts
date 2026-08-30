@@ -49,6 +49,61 @@ function isDismissed(workspace: WorkspaceSummary, attentionChangedAt: string | n
   return attentionChangedAt === null || dismissedAt >= attentionChangedAt;
 }
 
+export interface WorkspaceAttention {
+  attention: PriorityAttention;
+  /** When `attention` became current. */
+  changedAt: string;
+}
+
+/**
+ * Fresh, undismissed attention per workspace — the signal behind both the
+ * Priority section's placement and the attention chip on a row. Highest
+ * severity wins; ties go to the most recently active session since that is the
+ * one whose attention is being renewed.
+ *
+ * `archived` and `kept` workspaces are excluded (keeping is an explicit "I'm
+ * done here"), and so is attention older than `PRIORITY_MAX_AGE_MS` or of
+ * unknown age. Pinned workspaces are *not* excluded: a pin changes where a row
+ * sits, not whether it needs you. Placement rules live in
+ * `computePriorityEntries`.
+ */
+export function computeWorkspaceAttention(
+  workspaces: WorkspaceSummary[],
+  sessions: SessionSummary[],
+  nowMs: number
+): Map<string, WorkspaceAttention> {
+  const bySession = new Map<string, { attention: PriorityAttention; changedAt: string | null; lastActivityAt: string }>();
+  for (const session of sessions) {
+    const rank = severity(session.attention);
+    if (rank === 0) continue;
+    const current = bySession.get(session.workspaceId);
+    if (
+      current &&
+      (severity(current.attention) > rank ||
+        (severity(current.attention) === rank && current.lastActivityAt >= session.lastActivityAt))
+    ) {
+      continue;
+    }
+    bySession.set(session.workspaceId, {
+      attention: session.attention as PriorityAttention,
+      changedAt: session.attentionChangedAt ?? null,
+      lastActivityAt: session.lastActivityAt
+    });
+  }
+
+  const result = new Map<string, WorkspaceAttention>();
+  for (const workspace of workspaces) {
+    if (workspace.state === "archived" || workspace.state === "kept") continue;
+    const found = bySession.get(workspace.id);
+    if (!found || found.changedAt === null) continue;
+    const changedAtMs = Date.parse(found.changedAt);
+    if (!Number.isFinite(changedAtMs) || nowMs - changedAtMs > PRIORITY_MAX_AGE_MS) continue;
+    if (isDismissed(workspace, found.changedAt)) continue;
+    result.set(workspace.id, { attention: found.attention, changedAt: found.changedAt });
+  }
+  return result;
+}
+
 /**
  * Workspaces that need the user right now, most urgent first. `archived` and
  * `kept` workspaces are excluded — keeping is an explicit "I'm done here" —
@@ -68,26 +123,7 @@ export function computePriorityEntries(
   sessions: SessionSummary[],
   nowMs: number
 ): PriorityEntry[] {
-  // Highest-severity attention per workspace; ties go to the most recently
-  // active session since that is the one whose attention is being renewed.
-  const attentionByWorkspace = new Map<string, { attention: PriorityAttention; changedAt: string | null; lastActivityAt: string }>();
-  for (const session of sessions) {
-    const rank = severity(session.attention);
-    if (rank === 0) continue;
-    const current = attentionByWorkspace.get(session.workspaceId);
-    if (
-      current &&
-      (severity(current.attention) > rank ||
-        (severity(current.attention) === rank && current.lastActivityAt >= session.lastActivityAt))
-    ) {
-      continue;
-    }
-    attentionByWorkspace.set(session.workspaceId, {
-      attention: session.attention as PriorityAttention,
-      changedAt: session.attentionChangedAt ?? null,
-      lastActivityAt: session.lastActivityAt
-    });
-  }
+  const attentionByWorkspace = computeWorkspaceAttention(workspaces, sessions, nowMs);
 
   const entries: PriorityEntry[] = [];
   for (const workspace of workspaces) {
@@ -99,20 +135,14 @@ export function computePriorityEntries(
       workspace.state === "archive-failed"
     ) continue;
     const found = attentionByWorkspace.get(workspace.id);
-    const attentionQualifies = (() => {
-      if (!found || found.changedAt === null) return false;
-      const changedAtMs = Date.parse(found.changedAt);
-      if (!Number.isFinite(changedAtMs) || nowMs - changedAtMs > PRIORITY_MAX_AGE_MS) return false;
-      return !isDismissed(workspace, found.changedAt);
-    })();
     const manuallyAdded = Boolean(workspace.priorityAddedAt);
-    if (!attentionQualifies && !manuallyAdded) continue;
+    if (!found && !manuallyAdded) continue;
     entries.push({
       workspace,
       // A manual add still shows real attention when there is fresh,
       // undismissed attention to show; otherwise it renders as a plain row.
-      attention: attentionQualifies && found ? found.attention : null,
-      attentionChangedAt: attentionQualifies && found ? found.changedAt : null
+      attention: found?.attention ?? null,
+      attentionChangedAt: found?.changedAt ?? null
     });
   }
 
@@ -130,12 +160,14 @@ export function computePriorityEntries(
 }
 
 /**
- * Attention-driven Priority rows demote after the user has opened them and
- * then left — Priority is an unread list, and opening the session is reading
- * it. Working sessions stay: a live turn is still a priority reason. Purely
- * manual entries (no attention) stay until explicitly removed. Uses the same
- * inclusion/dismissal rules as `computePriorityEntries`, so a later attention
- * change re-promotes the row.
+ * Attention-driven rows demote after the user has opened them and then left —
+ * attention is an unread marker, and opening the session is reading it.
+ * Working sessions stay: a live turn is still a priority reason. Purely
+ * manual entries (no attention) stay until explicitly removed. Based on
+ * `computeWorkspaceAttention` rather than `computePriorityEntries` so a
+ * pinned workspace demotes too: a pin keeps the row out of the Priority
+ * section, but its attention chip (the mobile list shows one) still has to
+ * clear on read. A later attention change re-promotes the row either way.
  */
 export function shouldDemoteOnLeave(
   workspace: WorkspaceSummary,
@@ -143,6 +175,11 @@ export function shouldDemoteOnLeave(
   nowMs: number
 ): boolean {
   if (isWorkspaceWorking(sessions, workspace.id)) return false;
-  const entry = computePriorityEntries([workspace], sessions, nowMs)[0];
-  return entry !== undefined && entry.attention !== null;
+  // A workspace mid-teardown is not triage. `computeWorkspaceAttention` keeps
+  // these states (they still deserve a chip while the row is on screen), so
+  // they are excluded here: leaving an archiving session would otherwise stamp
+  // a dismissal that races the archive, and a write landing after the row is
+  // gone surfaces a spurious "Could not remove the session from priority."
+  if (workspace.state === "archiving" || workspace.state === "archive-failed") return false;
+  return computeWorkspaceAttention([workspace], sessions, nowMs).has(workspace.id);
 }

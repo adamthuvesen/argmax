@@ -82,6 +82,17 @@ import {
   SessionConversationUserMessage
 } from "./SessionConversationTurn.js";
 
+// How many transcript items are mounted at once.
+//
+// Half the sessions in a real database hold ~53 events, but the tail is long:
+// the largest holds 3,040 events and 3.3 MB of text, and every one of them was
+// a live DOM subtree that React re-reconciled on each streaming delta. Mounting
+// a window instead keeps a long session as cheap to render as a short one; the
+// rest is one click away and stays in the snapshot either way.
+const CONVERSATION_WINDOW = 120;
+/// Items revealed per "Show earlier" click.
+const CONVERSATION_WINDOW_STEP = 240;
+
 const THINKING_SHOW_DELAY_MS = 700;
 const THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS = 1800;
 const THINKING_MIN_VISIBLE_MS = 600;
@@ -341,6 +352,15 @@ export function SessionConversation({
     (): RenderItem[] => foldRenderItems(conversationItems, session, foldTurnToolItems),
     [conversationItems, session]
   );
+  const [visibleCount, setVisibleCount] = useState(CONVERSATION_WINDOW);
+  // A different session starts from the bottom again.
+  useEffect(() => setVisibleCount(CONVERSATION_WINDOW), [sessionId]);
+  const windowStart = Math.max(0, renderItems.length - visibleCount);
+  const windowedItems = useMemo(
+    () => renderItems.slice(windowStart),
+    [renderItems, windowStart]
+  );
+
   // The card is the ambient stand-in for a docked right-hand panel, so an open
   // review or debug-log panel takes its place rather than sitting beside it.
   const showWorkspaceCard = workspaceCardEnabled && !review.isPanelOpen && !isLogOpen;
@@ -610,6 +630,19 @@ export function SessionConversation({
     handleUserScrollIntent: handleConversationScrollIntent,
     handleScroll: handleConversationScroll
   } = useSmartFollowScroll(sessionId, conversationItems, isThinkingVisible, inputRef);
+  // Revealing earlier turns grows the list upward. The list is bottom-anchored,
+  // so holding the distance from the bottom leaves what the user is reading
+  // exactly where it was.
+  const showEarlierItems = (): void => {
+    const list = conversationListRef.current;
+    const anchorFromBottom = list ? list.scrollHeight - list.scrollTop : null;
+    setVisibleCount((current) => current + CONVERSATION_WINDOW_STEP);
+    if (anchorFromBottom === null) return;
+    requestAnimationFrame(() => {
+      const node = conversationListRef.current;
+      if (node) node.scrollTop = node.scrollHeight - anchorFromBottom;
+    });
+  };
   const repositoryName =
     headingLabel ?? project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
 
@@ -724,8 +757,14 @@ export function SessionConversation({
             }
           }}
         >
+          {windowStart > 0 ? (
+            <button type="button" className="conversation-show-earlier" onClick={showEarlierItems}>
+              Show earlier messages ({windowStart} hidden)
+            </button>
+          ) : null}
           {renderItems.length > 0 ? (
-            renderItems.map((item, index) => {
+            windowedItems.map((item, windowIndex) => {
+              const index = windowStart + windowIndex;
               if (item.kind === "user-message") {
                 return (
                   <SessionConversationUserMessage

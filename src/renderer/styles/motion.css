@@ -1,0 +1,25 @@
+/* Motion that runs regardless of whether anyone is looking.
+
+   The app keeps ~28 `infinite` animations alive — status pulses, skeleton
+   shimmers, the launcher mascot, the working nest. Each one keeps the
+   compositor scheduling frames for as long as its element is mounted, which on
+   a laptop is a measurable idle draw for pixels nobody is watching. A hidden
+   document pauses all of them; `windowChrome` sets the attribute.
+
+   Paused, not disabled: `animation-play-state` resumes mid-cycle, so nothing
+   jumps when the window comes back. */
+html[data-document-hidden="true"] *,
+html[data-document-hidden="true"] *::before,
+html[data-document-hidden="true"] *::after {
+  animation-play-state: paused !important;
+}
+
+/* Respect the system setting for people who ask for less motion. Decorative
+   loops stop; transitions are left alone so controls still feel responsive. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-iteration-count: 1 !important;
+  }
+}

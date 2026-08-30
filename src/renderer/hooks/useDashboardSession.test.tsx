@@ -1,5 +1,5 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type {
   ApprovalRequest,
   ArgmaxApi,
@@ -406,7 +406,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       expect(result.current.selectedSession?.state).toBe("running");
 
       // The event poll pulls the turn's terminal `session.completed`.
-      (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (window.argmax!.session.eventsSince as unknown as Mock<ArgmaxApi["session"]["eventsSince"]>).mockResolvedValueOnce({
         events: [
           {
             id: "ev-done",
@@ -487,7 +487,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       expect(statusMock).not.toHaveBeenCalled();
 
       // The current turn ends: a NEW terminal event lands; the DB shows complete.
-      (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (window.argmax!.session.eventsSince as unknown as Mock<ArgmaxApi["session"]["eventsSince"]>).mockResolvedValueOnce({
         events: [
           {
             id: "ev-this-turn",
@@ -548,7 +548,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       });
       expect(statusMock).not.toHaveBeenCalled();
       expect(
-        (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mock.calls.length
+        (window.argmax!.session.eventsSince as unknown as Mock<ArgmaxApi["session"]["eventsSince"]>).mock.calls.length
       ).toBeGreaterThan(0);
 
       // Past the throttle window: exactly one mid-turn status refresh fires,
@@ -572,7 +572,7 @@ describe("useDashboardSession — refresh / delta race", () => {
   it("keeps session event cursors monotonic when overlapping tail reads resolve out of order", async () => {
     let resolveSlow!: (value: Awaited<ReturnType<ArgmaxApi["session"]["eventsSince"]>>) => void;
     let resolveFast!: (value: Awaited<ReturnType<ArgmaxApi["session"]["eventsSince"]>>) => void;
-    (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>)
+    (window.argmax!.session.eventsSince as unknown as Mock<ArgmaxApi["session"]["eventsSince"]>)
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {

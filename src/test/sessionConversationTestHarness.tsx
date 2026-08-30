@@ -150,21 +150,27 @@ export function cursorAssistantPayload(text: string): Record<string, unknown> {
   };
 }
 
+type ConversationProps = Parameters<typeof SessionConversation>[0];
+
 type ConversationOptions = {
   defaultThinkingExpanded?: boolean;
   defaultToolCallsExpanded?: boolean;
   defaultToolCallGroupsExpanded?: boolean;
   pendingMessages?: PendingMessage[];
-  onCancelQueuedMessage?: ReturnType<typeof vi.fn>;
-  onSendQueuedMessageNow?: ReturnType<typeof vi.fn>;
-  onSendSessionInput?: ReturnType<typeof vi.fn>;
-  onTerminateSession?: ReturnType<typeof vi.fn>;
-  onNewSession?: ReturnType<typeof vi.fn>;
+  // The conversation's own prop types, not `ReturnType<typeof vi.fn>`:
+  // Vitest 4 types a bare `vi.fn()` as `Mock<Procedure | Constructable>`,
+  // which no longer widens to a call signature, so a loose option type here
+  // poisons every prop it feeds.
+  onCancelQueuedMessage?: ConversationProps["onCancelQueuedMessage"];
+  onSendQueuedMessageNow?: ConversationProps["onSendQueuedMessageNow"];
+  onSendSessionInput?: ConversationProps["onSendSessionInput"];
+  onTerminateSession?: ConversationProps["onTerminateSession"];
+  onNewSession?: ConversationProps["onNewSession"];
   onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
   onOpenAgent?: (tool: ToolCall) => void;
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
   onOpenDetails?: (seedPrompt: string) => Promise<void>;
-  registerAnnotationSink?: Parameters<typeof SessionConversation>[0]["registerAnnotationSink"];
+  registerAnnotationSink?: ConversationProps["registerAnnotationSink"];
   review?: ReviewState;
 };
 
@@ -177,10 +183,10 @@ function conversationElement(
     <SessionConversation
       events={events}
       isLogOpen={false}
-      onSendSessionInput={options.onSendSessionInput ?? vi.fn().mockResolvedValue(undefined)}
-      onTerminateSession={options.onTerminateSession ?? vi.fn().mockResolvedValue(undefined)}
-      onCancelQueuedMessage={options.onCancelQueuedMessage ?? vi.fn().mockResolvedValue(undefined)}
-      onSendQueuedMessageNow={options.onSendQueuedMessageNow ?? vi.fn().mockResolvedValue(undefined)}
+      onSendSessionInput={options.onSendSessionInput ?? vi.fn(() => Promise.resolve())}
+      onTerminateSession={options.onTerminateSession ?? vi.fn(() => Promise.resolve())}
+      onCancelQueuedMessage={options.onCancelQueuedMessage ?? vi.fn(() => Promise.resolve())}
+      onSendQueuedMessageNow={options.onSendQueuedMessageNow ?? vi.fn(() => Promise.resolve())}
       pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}
       {...(options.defaultThinkingExpanded !== undefined ? { defaultThinkingExpanded: options.defaultThinkingExpanded } : {})}

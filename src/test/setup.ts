@@ -1,6 +1,12 @@
 import { afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import "./codemirrorMock.js";
+
+// DOM-only test scaffolding. Node-environment tests (pure logic) never render
+// CodeMirror, and the mock's import chain touches browser globals that emit
+// warnings in node.
+if (typeof window !== "undefined") {
+  await import("./codemirrorMock.js");
+}
 
 function installMemoryStorage(): void {
   const stores = new WeakMap<Storage, Map<string, string>>();
@@ -57,14 +63,13 @@ function installMemoryStorage(): void {
   });
 }
 
-if (typeof window !== "undefined") {
-  try {
-    if (typeof window.localStorage.getItem !== "function") {
-      installMemoryStorage();
-    }
-  } catch {
-    installMemoryStorage();
-  }
+// Unconditional in a DOM environment, with no "is the native one usable?"
+// probe first: jsdom's own `localStorage` is not what survives onto the test
+// global, so that probe always ended up here anyway — and reading the global
+// to find out tripped Node's experimental webstorage getter, which warned
+// once per test file.
+if (typeof window !== "undefined" && typeof Storage !== "undefined") {
+  installMemoryStorage();
 }
 
 // jsdom has no ResizeObserver; components that glue native views to DOM rects
@@ -75,6 +80,28 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     unobserve(): void {}
     disconnect(): void {}
   };
+}
+
+// jsdom ships no matchMedia. Components ask it for `prefers-reduced-motion`
+// and `pointer: coarse`; "no match" is the desktop default the suite wants,
+// and a real function is also what `vi.spyOn(window, "matchMedia")` needs —
+// Vitest 4 refuses to spy on an undefined property.
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: (query: string): MediaQueryList =>
+      ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false
+      }) as MediaQueryList
+  });
 }
 
 // jsdom ships no layout engine, so it has no scrollIntoView. Components that

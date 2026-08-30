@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ComposerAttachment } from "../../shared/types.js";
 import { readDraft, writeDraftAttachments, writeDraftText } from "./composerDrafts.js";

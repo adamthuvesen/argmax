@@ -24,6 +24,13 @@ Vitest config lives in [vitest.config.ts](../vitest.config.ts); setup lives in [
 
 Perf microbenches are isolated through [vitest.perf.config.ts](../vitest.perf.config.ts) and [src/test/perf.test.ts](../src/test/perf.test.ts).
 
+**Two projects, split by what a file needs.** `.test.tsx` runs under jsdom;
+`.test.ts` runs under plain node, because jsdom's per-file environment startup
+is one of the suite's larger costs and pure-logic tests never touch a DOM. A
+`.test.ts` that *does* need one — `localStorage`, `window`, `document` — opens
+with a `// @vitest-environment jsdom` docblock, which still wins per file. A
+node-environment test that suddenly cannot find `window` is missing that line.
+
 Subagent activity coverage is split by layer: [agentActivity.test.ts](../src/renderer/lib/agentActivity.test.ts)
 checks the pane projection, [gridState.test.ts](../src/renderer/lib/gridState.test.ts)
 checks dependent agent panes, and [App.grid.test.tsx](../src/renderer/App.grid.test.tsx)

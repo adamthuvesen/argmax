@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_IDE_KEY, NO_DEFAULT_IDE, readStoredDefaultIde } from "./ide.js";
 

@@ -13,6 +13,9 @@ const MAX_BACKOFF_MS = 8_000;
 /** Heartbeat cadence and pong deadline, mirroring the transport's constants. */
 const HEARTBEAT_MS = 20_000;
 const PONG_TIMEOUT_MS = 8_000;
+/** Offline-queue deadline and ceiling, mirroring the transport's constants. */
+const QUEUE_TIMEOUT_MS = 15_000;
+const MAX_QUEUED_REQUESTS = 64;
 
 class FakeSocket implements RemoteSocket {
   readonly sent: string[] = [];
@@ -307,11 +310,12 @@ describe("wsTransport", () => {
     expect(sockets[1].pings()).toHaveLength(1);
   });
 
-  it("clears a rejected token so the next load re-prompts", () => {
+  it("clears a rejected token and asks for a new one on the next connect", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { connect, sockets } = fakeTransportSeam();
-    createWsTransport({ connect });
+    const promptForToken = vi.fn(() => "fresh-token");
+    createWsTransport({ connect, promptForToken });
     const socket = sockets[0];
 
     socket.open();
@@ -319,6 +323,69 @@ describe("wsTransport", () => {
 
     expect(window.localStorage.getItem(TOKEN_KEY)).toBeNull();
     expect(socket.closed).toBe(true);
+
+    // The rejected token must not be resent forever: the reconnect prompts.
+    vi.advanceTimersByTime(MAX_BACKOFF_MS);
+    expect(sockets).toHaveLength(2);
+    sockets[1].open();
+    expect(promptForToken).toHaveBeenCalledTimes(1);
+    expect(sockets[1].frames()).toEqual([{ type: "auth", token: "fresh-token" }]);
+  });
+
+  it("parks the reconnect loop when the token prompt is dismissed, and asks again on wake", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { connect, sockets } = fakeTransportSeam();
+    const promptForToken = vi.fn(() => null);
+    createWsTransport({ connect, promptForToken });
+
+    sockets[0].open();
+    sockets[0].deliver({ type: "auth-error" });
+    vi.advanceTimersByTime(MAX_BACKOFF_MS);
+
+    // Second connect has no stored token left, so it asks — and is waved away.
+    sockets[1].open();
+    expect(promptForToken).toHaveBeenCalledTimes(1);
+    sockets[1].deliver({ type: "auth-error" });
+
+    // Backoff must not turn the dismissal into a prompt every few seconds.
+    vi.advanceTimersByTime(MAX_BACKOFF_MS * 10);
+    expect(sockets).toHaveLength(2);
+    expect(promptForToken).toHaveBeenCalledTimes(1);
+
+    // Foregrounding the page is a deliberate retry, so it asks once more.
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(sockets).toHaveLength(3);
+    sockets[2].open();
+    expect(promptForToken).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails a queued request that waits out its deadline instead of replaying it", async () => {
+    vi.useFakeTimers();
+    const { connect, sockets } = fakeTransportSeam();
+    const transport = createWsTransport({ connect });
+
+    const archive = transport.invoke("workspaces:archive", { workspaceId: "w-1" });
+    vi.advanceTimersByTime(QUEUE_TIMEOUT_MS);
+    await expect(archive).rejects.toThrow("Argmax remote connection lost");
+
+    // The destructive command must be gone, not waiting for the reconnect.
+    sockets[0].authenticate();
+    expect(sockets[0].requests()).toHaveLength(0);
+  });
+
+  it("caps the offline queue, failing the oldest request first", async () => {
+    vi.useFakeTimers();
+    const { connect, sockets } = fakeTransportSeam();
+    const transport = createWsTransport({ connect });
+
+    const pending = Array.from({ length: MAX_QUEUED_REQUESTS + 1 }, () =>
+      transport.invoke("health:ping", {})
+    );
+
+    await expect(pending[0]).rejects.toThrow("Argmax remote connection lost");
+    sockets[0].authenticate();
+    expect(sockets[0].requests()).toHaveLength(MAX_QUEUED_REQUESTS);
   });
 
   it("prompts once for a missing token and persists it", () => {

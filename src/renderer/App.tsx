@@ -41,7 +41,7 @@ import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { EMPTY_GRID, MAX_COLS, openWorkspaceInGrid, terminalWorkspaceId } from "./lib/gridState.js";
 import { toggleTerminalPanel } from "./lib/terminalTabs.js";
-import { onBrowserPanelRequest } from "./lib/browserPanel.js";
+import { onBrowserPanelRequest, requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
 // out of the production renderer bundle. Browser-preview mode (no Tauri
 // bridge) is the only consumer; packaged builds always have window.argmax.
@@ -55,6 +55,7 @@ import {
 } from "./hooks/useLazyOverlayPrefetch.js";
 import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
 import { useOverlays } from "./hooks/useOverlays.js";
+import { useBrowserPanelResize } from "./hooks/useBrowserPanelResize.js";
 import { DEFAULT_WORKSPACE_MIN_WIDTH_PX, useSidebarResize } from "./hooks/useSidebarResize.js";
 import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange } from "./lib/theme.js";
@@ -130,8 +131,20 @@ export function App(): JSX.Element {
     setIsCheatSheetOpen
   } = useOverlays();
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  const [browserPanelUrl, setBrowserPanelUrl] = useState<string | null>(null);
-  useEffect(() => onBrowserPanelRequest(setBrowserPanelUrl), []);
+  // Each request carries a sequence number: asking for the URL the pane is
+  // already on has to stay a state change, or React bails on the identical
+  // string and the pane never navigates back to it.
+  const [browserPanelRequest, setBrowserPanelRequest] = useState<{
+    url: string;
+    seq: number;
+  } | null>(null);
+  useEffect(
+    () =>
+      onBrowserPanelRequest((url) =>
+        setBrowserPanelRequest((previous) => ({ url, seq: (previous?.seq ?? 0) + 1 }))
+      ),
+    []
+  );
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const workspaceRef = useRef<HTMLElement | null>(null);
   const settingsNavigationRequestRef = useRef(0);
@@ -311,6 +324,7 @@ export function App(): JSX.Element {
     return Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, gridColumnWidth, sessionGridRequiredWorkspaceMinWidth);
   }, [requiredGridColumns, sessionGridRequiredWorkspaceMinWidth]);
   const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize(requiredWorkspaceMinWidth);
+  const { browserPanelWidth, isResizingBrowserPanel, onBrowserResizeMouseDown } = useBrowserPanelResize();
   const requiredWindowMinWidth = useMemo(() => {
     const sidebarPart = sidebarCollapsed ? 0 : sidebarWidth;
     return Math.max(STATIC_APP_MIN_WIDTH_PX, requiredWorkspaceMinWidth + sidebarPart);
@@ -440,6 +454,19 @@ export function App(): JSX.Element {
         case "toggle-sidebar":
           setRightPanelToggleSignal((signal) => signal + 1);
           return;
+        case "toggle-left-sidebar":
+          toggleSidebarCollapsed();
+          return;
+        // Menu ⌘W. It only fires when the renderer didn't consume ⌘W first
+        // (useGlobalKeybindings preventDefaults after closing a pane), which
+        // in practice means focus was inside a native browser tab.
+        case "close-surface":
+          if (browserPanelRequest !== null) {
+            requestCloseActiveBrowserTab();
+          } else {
+            closeFocusedPane();
+          }
+          return;
         case "toggle-debug-log":
           setDebugLogToggleSignal((signal) => signal + 1);
           return;
@@ -447,7 +474,7 @@ export function App(): JSX.Element {
           return;
       }
     },
-    [isSettingsOpen, openNewSessionPane, openSettingsTarget, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
+    [browserPanelRequest, closeFocusedPane, isSettingsOpen, openNewSessionPane, openSettingsTarget, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen, toggleSidebarCollapsed]
   );
 
   // ⌘P / ⌘F / ⌘⇧F are all the ⌘K overlay; only the pre-selected filter differs.
@@ -1541,10 +1568,10 @@ export function App(): JSX.Element {
       style={{
         gridTemplateColumns:
           (sidebarCollapsed ? "minmax(0, 1fr)" : `${sidebarWidth}px minmax(0, 1fr)`) +
-          (browserPanelUrl !== null ? " minmax(360px, 480px)" : ""),
+          (browserPanelRequest !== null ? ` ${browserPanelWidth}px` : ""),
         ["--sidebar-width" as string]: `${sidebarWidth}px`
       }}
-      data-resizing={isResizing ? "true" : undefined}
+      data-resizing={isResizing || isResizingBrowserPanel ? "true" : undefined}
       data-chat-width={String(chatWidth)}
       data-review-panel-side={reviewPanelSide}
       data-sidebar-collapsed={sidebarCollapsed ? "true" : undefined}
@@ -1793,8 +1820,13 @@ export function App(): JSX.Element {
           </div>
         ) : null}
       </section>
-      {browserPanelUrl !== null ? (
-        <BrowserPanel url={browserPanelUrl} onClose={() => setBrowserPanelUrl(null)} />
+      {browserPanelRequest !== null ? (
+        <BrowserPanel
+          url={browserPanelRequest.url}
+          requestSeq={browserPanelRequest.seq}
+          onClose={() => setBrowserPanelRequest(null)}
+          onResizeMouseDown={onBrowserResizeMouseDown}
+        />
       ) : null}
     </main>
   );

@@ -38,6 +38,36 @@ describe("modelSelectionFromSession", () => {
       modelId: "gpt-5.6-sol",
     });
   });
+
+  it("shows the catalog label when a session stored a raw API id", () => {
+    // An imported Claude session records `claude-opus-5` as its label, because
+    // that is what the provider's transcript names. The chip must read "Opus 5".
+    const imported: SessionSummary = {
+      ...BASE_SESSION,
+      provider: "claude",
+      modelLabel: "claude-opus-5",
+      modelId: "claude-opus-5"
+    };
+
+    expect(modelSelectionFromSession(imported)).toEqual({
+      label: "Opus 5",
+      modelId: "claude-opus-5"
+    });
+  });
+
+  it("falls back to the provider's default when the model is not in the catalog", () => {
+    const retired: SessionSummary = {
+      ...BASE_SESSION,
+      provider: "claude",
+      modelLabel: "claude-opus-3-ancient",
+      modelId: "claude-opus-3-ancient"
+    };
+
+    const selection = modelSelectionFromSession(retired);
+
+    expect(selection).toEqual(modelDefaultForProvider("claude"));
+    expect(selection.modelId).not.toBe("claude-opus-3-ancient");
+  });
 });
 
 function discovered(

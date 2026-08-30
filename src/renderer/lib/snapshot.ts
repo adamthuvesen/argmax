@@ -154,7 +154,26 @@ function mergeEventsBounded(
   return pruneSupersededDeltas(capped.length === sorted.length ? sorted : capped);
 }
 
-export function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: DashboardDelta): DashboardSnapshot {
+export function mergeDashboardDelta(
+  incoming: DashboardSnapshot,
+  delta: DashboardDelta
+): DashboardSnapshot {
+  let snapshot = incoming;
+  // Removals first: the sync pruner deletes imported sessions in the
+  // background, and the rest of the delta protocol has no way to say "gone".
+  const removedSessions = new Set(delta.removedSessionIds ?? []);
+  const removedWorkspaces = new Set(delta.removedWorkspaceIds ?? []);
+  if (removedSessions.size > 0 || removedWorkspaces.size > 0) {
+    snapshot = {
+      ...snapshot,
+      workspaces: snapshot.workspaces.filter((workspace) => !removedWorkspaces.has(workspace.id)),
+      sessions: snapshot.sessions.filter(
+        (session) => !removedSessions.has(session.id) && !removedWorkspaces.has(session.workspaceId)
+      ),
+      events: snapshot.events.filter((event) => !removedSessions.has(event.sessionId))
+    };
+  }
+
   const projects = delta.projects
     ? (() => {
         const merged = upsertById(snapshot.projects, delta.projects);
@@ -176,6 +195,7 @@ export function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: Dashboar
   const pendingMessages = mergePendingMessages(snapshot.pendingMessages, delta.pendingMessages);
 
   if (
+    snapshot === incoming &&
     projects === snapshot.projects &&
     workspaces === snapshot.workspaces &&
     sessions === snapshot.sessions &&

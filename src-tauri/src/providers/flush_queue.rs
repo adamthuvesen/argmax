@@ -64,6 +64,14 @@ pub struct DashboardDelta {
     pub approvals: Vec<ApprovalRequest>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pending_messages: Option<std::collections::BTreeMap<String, Vec<PendingMessage>>>,
+    /// Rows the renderer must drop rather than merge. The delta protocol is
+    /// otherwise whole-object replacement, which has no way to say "gone" —
+    /// the sync pruner needs one, since it deletes in the background rather
+    /// than as the result of an IPC call the renderer could react to.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub removed_session_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub removed_workspace_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -458,6 +466,8 @@ impl DashboardDelta {
             && self.raw_outputs.is_empty()
             && self.approvals.is_empty()
             && self.pending_messages.is_none()
+            && self.removed_session_ids.is_empty()
+            && self.removed_workspace_ids.is_empty()
     }
 
     /// Conflate `other` into `self`. Entity/event vectors are concatenated in
@@ -476,6 +486,9 @@ impl DashboardDelta {
             let merged = self.pending_messages.get_or_insert_with(Default::default);
             merged.extend(incoming);
         }
+        self.removed_session_ids.extend(other.removed_session_ids);
+        self.removed_workspace_ids
+            .extend(other.removed_workspace_ids);
     }
 }
 

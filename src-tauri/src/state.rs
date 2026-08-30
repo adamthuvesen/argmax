@@ -25,6 +25,11 @@ use crate::workspaces::WorkspaceService;
 pub struct AppState {
     pub startup_timer: Arc<StartupTimer>,
     pub db: OnceCell<Arc<Database>>,
+    /// Why the database never opened, when it never opened. A migration abort
+    /// (checksum drift, a failed statement) leaves `db` empty and every handler
+    /// failing identically, so the reason is kept here and handed to the
+    /// renderer — otherwise the only actionable text is buried in the logs.
+    pub db_open_error: OnceCell<String>,
     pub approvals: OnceCell<Arc<ApprovalService>>,
     pub providers: OnceCell<Arc<ProviderSessionService>>,
     pub session_launch_server: OnceCell<SessionLaunchServer>,
@@ -56,6 +61,7 @@ impl Default for AppState {
         Self {
             startup_timer: Arc::default(),
             db: OnceCell::new(),
+            db_open_error: OnceCell::new(),
             approvals: OnceCell::new(),
             providers: OnceCell::new(),
             session_launch_server: OnceCell::new(),

@@ -39,6 +39,34 @@ mod tests {
         assert!(snapshot.checks.is_empty());
     }
 
+    /// A migration abort is the common reason the database never opens, and the
+    /// text it carries is the only thing that tells the user what to fix.
+    #[test]
+    fn dashboard_list_reports_why_the_database_never_opened() {
+        let state = AppState::new();
+        assert!(state
+            .db_open_error
+            .set("Migration v18 (synced_sessions) checksum drift: stored=abc expected=def".into())
+            .is_ok());
+
+        let error = dashboard_list_impl(&state).expect_err("no database means no snapshot");
+
+        assert!(
+            error.to_string().contains("checksum drift"),
+            "the abort reason must survive to the renderer, got: {error}"
+        );
+    }
+
+    #[test]
+    fn dashboard_list_says_boot_is_in_flight_when_nothing_failed() {
+        let error =
+            dashboard_list_impl(&AppState::new()).expect_err("no database means no snapshot");
+
+        assert!(error
+            .to_string()
+            .contains("startup may still be in progress"));
+    }
+
     fn state_with_database(database: Database) -> AppState {
         let state = AppState::new();
         assert!(state.db.set(Arc::new(database)).is_ok());

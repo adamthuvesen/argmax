@@ -1029,6 +1029,33 @@ impl WorkspaceService {
         }
     }
 
+    /// Drain every process-owning subsystem for all of a project's workspaces.
+    /// `projects:remove` cascades workspaces and sessions out of SQLite, and
+    /// each subsystem resolves its victims from those rows, so this has to run
+    /// before the delete or the running agents become unreachable — still
+    /// editing the checkout with no UI left to stop them.
+    pub(crate) async fn teardown_project(self: &Arc<Self>, project_id: &str) {
+        let workspace_ids = {
+            let connection = self.database.connection();
+            project_workspace_ids(&connection, project_id)
+        };
+        let workspace_ids = match workspace_ids {
+            Ok(ids) => ids,
+            Err(error) => {
+                tracing::warn!(
+                    ?error,
+                    project_id,
+                    "project removal: could not list workspaces to tear down"
+                );
+                return;
+            }
+        };
+        for workspace_id in workspace_ids {
+            self.teardown_workspace_processes(&workspace_id).await;
+            self.close_watcher(&workspace_id);
+        }
+    }
+
     fn restore_archive_state(self: &Arc<Self>, prior: &WorkspaceSummary) -> ArgmaxResult<()> {
         let connection = self.database.connection();
         let restored = update_workspace_state(&connection, &prior.id, &prior.state)?;
@@ -1476,6 +1503,16 @@ fn ide_app_name(choice: OpenIdeChoice) -> &'static str {
         OpenIdeChoice::Iterm => "iTerm",
         OpenIdeChoice::Default => "", // handled inline; never reached here
     }
+}
+
+fn project_workspace_ids(
+    connection: &rusqlite::Connection,
+    project_id: &str,
+) -> rusqlite::Result<Vec<String>> {
+    let mut statement =
+        connection.prepare_cached("SELECT id FROM workspaces WHERE project_id = ?")?;
+    let rows = statement.query_map([project_id], |row| row.get::<_, String>("id"))?;
+    rows.collect()
 }
 
 /// Upsert the hidden singleton project that owns scratch workspaces. Keyed by

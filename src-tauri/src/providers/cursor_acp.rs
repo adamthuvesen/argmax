@@ -64,7 +64,16 @@ pub fn is_acp_eligible(input: &ProviderLaunchInput) -> bool {
 
 #[derive(Default)]
 pub struct CursorAcpSessions {
-    workspaces: tokio::sync::Mutex<HashMap<PathBuf, Arc<AcpWorkspace>>>,
+    workspaces: tokio::sync::Mutex<HashMap<PathBuf, Arc<WorkspaceSlot>>>,
+}
+
+/// The pool entry for one workspace. `boot` serializes spawn plus the
+/// `initialize` handshake for this workspace alone, so a cold — or hung —
+/// process boot in one worktree never blocks Cursor launches in another.
+#[derive(Default)]
+struct WorkspaceSlot {
+    boot: tokio::sync::Mutex<()>,
+    current: Mutex<Option<Arc<AcpWorkspace>>>,
 }
 
 struct AcpWorkspace {
@@ -102,7 +111,7 @@ impl CursorAcpSessions {
                     // The agent replays the full history via session/update
                     // BEFORE answering session/load, so subscribe first and
                     // discard everything that arrived before the response.
-                    let mut replay = client.subscribe(resume_id);
+                    let (replay_token, mut replay) = client.subscribe(resume_id);
                     let load = client
                         .request(
                             "session/load",
@@ -114,7 +123,7 @@ impl CursorAcpSessions {
                         )
                         .await;
                     while replay.try_recv().is_ok() {}
-                    client.unsubscribe(resume_id);
+                    client.unsubscribe(resume_id, replay_token);
                     load?;
                     workspace
                         .live_sessions
@@ -162,19 +171,36 @@ impl CursorAcpSessions {
         binary_path: &str,
         input: &ProviderLaunchInput,
     ) -> ArgmaxResult<Arc<AcpWorkspace>> {
-        let mut workspaces = self.workspaces.lock().await;
-        if let Some(existing) = workspaces.get(&input.workspace_path) {
+        let slot = {
+            let mut workspaces = self.workspaces.lock().await;
+            Arc::clone(
+                workspaces
+                    .entry(input.workspace_path.clone())
+                    .or_insert_with(|| Arc::new(WorkspaceSlot::default())),
+            )
+        };
+        // The map lock is released before the expensive work below, so only
+        // this workspace's launches queue behind its boot.
+        let _boot = slot.boot.lock().await;
+        if let Some(existing) = slot.current.lock_or_recover("acp workspace").clone() {
             if !existing.client.is_dead() {
-                return Ok(Arc::clone(existing));
+                return Ok(existing);
             }
-            workspaces.remove(&input.workspace_path);
         }
         let client = AcpClient::spawn(
             binary_path,
             &input.workspace_path,
             build_provider_environment([("NO_COLOR".to_string(), "1".to_string())]),
         )?;
-        client
+        let workspace = Arc::new(AcpWorkspace {
+            client,
+            live_sessions: Mutex::new(HashSet::new()),
+        });
+        // Publish before the handshake so app shutdown can still kill a child
+        // that is only half-initialized.
+        *slot.current.lock_or_recover("acp workspace") = Some(Arc::clone(&workspace));
+        let handshake = workspace
+            .client
             .request(
                 "initialize",
                 json!({
@@ -185,33 +211,26 @@ impl CursorAcpSessions {
                     "clientInfo": { "name": "argmax", "version": env!("CARGO_PKG_VERSION") },
                 }),
             )
-            .await?;
-        let workspace = Arc::new(AcpWorkspace {
-            client,
-            live_sessions: Mutex::new(HashSet::new()),
-        });
-        workspaces.insert(input.workspace_path.clone(), Arc::clone(&workspace));
+            .await;
+        if let Err(error) = handshake {
+            workspace.client.kill();
+            slot.current.lock_or_recover("acp workspace").take();
+            return Err(error);
+        }
         Ok(workspace)
     }
 
-    /// Kill every pooled process. Called on app shutdown; `kill_on_drop` on
-    /// the children is the backstop.
-    pub async fn dispose_all(&self) {
-        let mut workspaces = self.workspaces.lock().await;
-        for (_, workspace) in workspaces.drain() {
-            workspace.client.kill();
-        }
-    }
-
-    /// Synchronous shutdown variant for Tauri's `RunEvent::Exit` callback,
-    /// which runs on the macOS main thread (not a tokio worker, so blocking
-    /// on the pool lock is safe there). Boot-time orphan recovery cannot
-    /// match `cursor-agent acp` processes — their argv carries no session
-    /// id — so a warm process must not outlive the app.
+    /// Synchronous shutdown for Tauri's `RunEvent::Exit` callback, which runs
+    /// on the macOS main thread (not a tokio worker, so blocking on the pool
+    /// lock is safe there — nothing holds it across an await). Boot-time
+    /// orphan recovery cannot match `cursor-agent acp` processes — their argv
+    /// carries no session id — so a warm process must not outlive the app.
     pub fn kill_all_blocking(&self) {
         let mut workspaces = self.workspaces.blocking_lock();
-        for (_, workspace) in workspaces.drain() {
-            workspace.client.kill();
+        for (_, slot) in workspaces.drain() {
+            if let Some(workspace) = slot.current.lock_or_recover("acp workspace").take() {
+                workspace.client.kill();
+            }
         }
     }
 }
@@ -322,7 +341,7 @@ async fn run_turn(
         "transport": "acp",
     }));
 
-    let mut updates = client.subscribe(&acp_session_id);
+    let (subscription, mut updates) = client.subscribe(&acp_session_id);
     let prompt_request = client.request(
         "session/prompt",
         json!({
@@ -342,7 +361,9 @@ async fn run_turn(
                             emit_line(line);
                         }
                     }
-                    // Subscriber channel closed: the ACP process died.
+                    // Subscriber channel closed: the ACP process died. (A turn
+                    // displaced by a later one on the same session lands here
+                    // too; its event is dropped as a stale invocation.)
                     None => break Err(ArgmaxError::service(
                         "ACP_CONNECTION_DEAD",
                         "cursor ACP server exited mid-turn",
@@ -358,7 +379,7 @@ async fn run_turn(
             emit_line(line);
         }
     }
-    client.unsubscribe(&acp_session_id);
+    client.unsubscribe(&acp_session_id, subscription);
 
     match outcome {
         Ok(response) => {

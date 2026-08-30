@@ -291,7 +291,22 @@ pub fn run() {
                                     // write needs no NSApp event loop.
                                     remote::publish(&remote_events, "dashboard:delta", &delta);
                                     let handle = emit_handle.clone();
+                                    // Diagnostic for the "stream freezes, then everything
+                                    // bursts at once" symptom: if the main-thread hop parks
+                                    // (tao#625-style missed wake-up), the closure runs long
+                                    // after it was scheduled. Log the parking so the next
+                                    // occurrence attributes the stall to this hop rather
+                                    // than the renderer.
+                                    let scheduled_at = std::time::Instant::now();
                                     if let Err(error) = emit_handle.run_on_main_thread(move || {
+                                        let parked = scheduled_at.elapsed();
+                                        if parked > std::time::Duration::from_millis(500) {
+                                            tracing::warn!(
+                                                parked_ms = parked.as_millis() as u64,
+                                                events = delta.events.len(),
+                                                "dashboard:delta emit sat scheduled on the main thread; event-loop wake lagged"
+                                            );
+                                        }
                                         if let Err(error) = handle.emit("dashboard:delta", delta) {
                                             tracing::warn!(?error, "failed to emit dashboard delta");
                                         }
@@ -536,7 +551,11 @@ pub fn run() {
                             // SERVICE_ERROR.
                             timer.mark("services.construct");
                         }
-                        Err(e) => tracing::warn!(error = ?e, "failed to open database"),
+                        Err(e) => {
+                            tracing::warn!(error = ?e, "failed to open database");
+                            let state = tauri::Manager::state::<state::AppState>(app);
+                            let _ = state.db_open_error.set(e.to_string());
+                        }
                     }
                 }
             }

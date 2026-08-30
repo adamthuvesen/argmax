@@ -297,20 +297,6 @@ impl TerminalService {
         signal_target_term_then_kill(SignalTarget::Process(pid), Some(&reaped)).await;
     }
 
-    /// Terminate every live terminal (used at app shutdown).
-    pub async fn dispose_all(&self) {
-        let targets: Vec<(u32, Arc<AtomicBool>)> = {
-            let terminals = self.terminals.lock_or_recover("terminals");
-            terminals
-                .values()
-                .filter_map(|entry| entry.pid.map(|pid| (pid, Arc::clone(&entry.reaped))))
-                .collect()
-        };
-        for (pid, reaped) in targets {
-            signal_target_term_then_kill(SignalTarget::Process(pid), Some(&reaped)).await;
-        }
-    }
-
     pub async fn terminate_workspace(
         self: &Arc<Self>,
         workspace_id: &str,

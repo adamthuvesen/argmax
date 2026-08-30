@@ -135,6 +135,45 @@ const tauriTransport: BridgeTransport = {
   subscribe: subscribeThroughTauri
 };
 
+// Diagnostic for the "stream freezes, then everything bursts at once"
+// symptom. A burst has two possible stalls with identical end states:
+// deltas ARRIVING late in a clump (backend delivery parked — see the
+// matching Rust-side warn in lib.rs), or arriving on time but APPLYING
+// late (this JS thread was blocked). Logging arrival gaps here separates
+// the two: a silence-then-clump in these warnings means delivery; smooth
+// arrivals during a visibly frozen UI mean a renderer stall.
+const BURST_SILENCE_MS = 3000;
+const BURST_WINDOW_MS = 1000;
+const BURST_MIN_DELTAS = 8;
+let lastDeltaAt: number | undefined;
+let burstSilenceMs = 0;
+let burstStartedAt: number | undefined;
+let burstCount = 0;
+function trackDeltaArrival(): void {
+  const now = performance.now();
+  const gap = lastDeltaAt === undefined ? 0 : now - lastDeltaAt;
+  lastDeltaAt = now;
+  if (gap > BURST_SILENCE_MS) {
+    burstSilenceMs = gap;
+    burstStartedAt = now;
+    burstCount = 1;
+    return;
+  }
+  if (burstStartedAt === undefined) return;
+  if (now - burstStartedAt > BURST_WINDOW_MS) {
+    burstStartedAt = undefined;
+    return;
+  }
+  burstCount += 1;
+  if (burstCount === BURST_MIN_DELTAS) {
+    console.warn(
+      `[argmax] dashboard:delta burst: ${BURST_MIN_DELTAS}+ deltas within ` +
+        `${Math.round(now - burstStartedAt)}ms after ${Math.round(burstSilenceMs)}ms of silence — ` +
+        "delivery stalled upstream of the renderer"
+    );
+  }
+}
+
 export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
   const invokeCommand = <T>(channel: IpcChannel, input: unknown = {}): Promise<T> =>
     transport.invoke<T>(channel, input);
@@ -145,7 +184,10 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     dashboard: {
       list: () => invokeCommand<DashboardListSnapshot>("dashboard:list"),
       onDelta: (listener: (delta: DashboardDelta) => void) =>
-        subscribe<DashboardDelta>("dashboard:delta", listener)
+        subscribe<DashboardDelta>("dashboard:delta", (delta) => {
+          trackDeltaArrival();
+          listener(delta);
+        })
     },
     projects: {
       list: () => invokeCommand<ProjectSummary[]>("projects:list"),

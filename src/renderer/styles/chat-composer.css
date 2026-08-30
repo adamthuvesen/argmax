@@ -65,7 +65,12 @@
   max-width: none;
   overflow: visible;
   font-family: var(--font-mono);
-  font-size: var(--text-xs-plus);
+  /* A step under the branch chip's --text-xs, which reads as the same size:
+     the mono face is wider with a taller x-height than the prose one beside
+     it, and the diff green/red carry far more contrast than the branch's
+     --muted. At matched pixels the counts dominate a row where they are the
+     secondary fact. */
+  font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
   font-weight: 500;
 }

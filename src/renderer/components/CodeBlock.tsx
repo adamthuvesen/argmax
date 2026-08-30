@@ -94,7 +94,13 @@ export function CodeBlock({
     void copy(codeText);
   };
 
-  const labelTag = fenceTag ?? null;
+  // "```text" and friends mean "no highlighting", not a language worth
+  // naming — a TEXT label over plain output is noise, so those render the
+  // same blank header as an untagged fence.
+  const labelTag =
+    fenceTag && !["text", "plaintext", "plain", "txt"].includes(fenceTag.toLowerCase())
+      ? fenceTag
+      : null;
   return (
     <div className="code-block" data-lang={lang ?? undefined}>
       <div className="code-block-header">

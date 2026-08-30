@@ -16,6 +16,11 @@ describe("CodeBlock", () => {
     expect(screen.getByText("ts")).toBeInTheDocument();
   });
 
+  it("hides the label for plain-text fences — TEXT over plain output is noise", () => {
+    render(<CodeBlock className="language-text">plain output</CodeBlock>);
+    expect(screen.queryByText("text")).not.toBeInTheDocument();
+  });
+
   it("copies the raw text content to the clipboard", async () => {
     const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
     Object.defineProperty(navigator, "clipboard", {

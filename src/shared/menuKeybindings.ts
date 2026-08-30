@@ -3,14 +3,15 @@ import type { MenuCommand } from "./types.js";
 /**
  * Single source of truth for menu-routed keybindings.
  *
- * `buildAppMenuTemplate` (main) and `KEYBOARD_BINDINGS` (renderer cheat sheet)
+ * `app_menu_spec` (src-tauri/src/menu.rs) and `KEYBOARD_BINDINGS` (renderer
+ * cheat sheet)
  * both derive from this list so a binding can never silently drift between
  * the macOS menu and the in-app cheat sheet. Each entry pairs:
  *
  * - `command`: the `MenuCommand` enum value that flows through the renderer's
  *   `menu:command` channel.
  * - `accelerator`: the menu accelerator accelerator string (`CmdOrCtrl+K`).
- *   Forwarded to `MenuItemConstructorOptions.accelerator`.
+ *   Forwarded to the Tauri menu item's accelerator.
  * - `displayAccelerator`: the glyph form for the cheat sheet (`⌘K`). Kept
  *   independent of the menu string because the cheat sheet renders
  *   characters humans recognize, not Tauri's normalized identifiers.

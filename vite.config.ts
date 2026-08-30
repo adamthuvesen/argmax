@@ -9,10 +9,10 @@ export default defineConfig({
   build: {
     outDir: "dist/renderer",
     emptyOutDir: true,
-    // The renderer's main-chunk budget is enforced in CI by `npm run check:bundle`
-    // (scripts/check-bundle.mjs, 2 MiB hard limit). This warning limit is set to
-    // roughly match so a local `vite build` flags an oversized chunk before CI
-    // fails on it.
+    // The eager-graph budgets are enforced in CI by `npm run check:bundle`
+    // (scripts/check-bundle.mjs: 1.25 MiB for the desktop entry, 1.00 MiB for
+    // mobile). This warning limit is deliberately looser — it flags a single
+    // oversized chunk locally; the script is what holds the real budget.
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
       input: {

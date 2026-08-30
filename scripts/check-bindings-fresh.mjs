@@ -3,12 +3,18 @@
 // codegen would emit for the current `src-tauri` sources. Runs in CI so an
 // out-of-date binding file blocks merge.
 //
-// mtime is the cheap pre-filter, not the verdict. A rebase, a `git checkout`,
-// a `touch`, or another agent editing this checkout all move input mtimes
-// without changing a single exported type, and failing on that trains people
-// to regenerate reflexively. That stamps someone else's in-flight Rust into
-// their diff. When mtime trips, regenerate to a temp file and compare bytes:
-// only a real difference fails.
+// Locally, mtime is the cheap pre-filter, not the verdict. A rebase, a `git
+// checkout`, a `touch`, or another agent editing this checkout all move input
+// mtimes without changing a single exported type, and failing on that trains
+// people to regenerate reflexively. That stamps someone else's in-flight Rust
+// into their diff. When mtime trips, regenerate to a temp file and compare
+// bytes: only a real difference fails.
+//
+// In CI the pre-filter is skipped entirely. A fresh clone writes every file in
+// one checkout in sorted path order, and `src-tauri/…` sorts before
+// `src/shared/bindings.d.ts` (`-` < `/`), so the bindings are always the newer
+// file and the filter would wave every run through. CI compares bytes on every
+// run, and an exporter that cannot run there is a failure, not a pass.
 
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -58,8 +64,7 @@ const stale = inputs.filter((path) => {
  *
  * Returns `"match"`, `"differ"`, or `"unavailable"` when the exporter could not
  * run at all (no cargo, compile error). An unavailable exporter is not a pass:
- * the caller falls back to the mtime verdict rather than waving the check
- * through on a toolchain problem.
+ * the caller fails rather than waving the check through on a toolchain problem.
  */
 function compareGeneratedBindings() {
     const scratch = mkdtempSync(join(tmpdir(), "argmax-bindings-"));
@@ -95,7 +100,9 @@ function compareGeneratedBindings() {
     }
 }
 
-if (stale.length === 0) {
+const inCI = Boolean(process.env.CI);
+
+if (!inCI && stale.length === 0) {
     console.log(
         `ok: ${relative(ROOT, BINDINGS)} is at least as new as all ${inputs.length} backend input(s).`,
     );
@@ -106,8 +113,10 @@ const { verdict, detail } = compareGeneratedBindings();
 
 if (verdict === "match") {
     console.log(
-        `ok: ${relative(ROOT, BINDINGS)} matches the current backend types ` +
-            `(${stale.length} input file(s) are newer, but no exported type changed).`,
+        stale.length > 0
+            ? `ok: ${relative(ROOT, BINDINGS)} matches the current backend types ` +
+                  `(${stale.length} input file(s) are newer, but no exported type changed).`
+            : `ok: ${relative(ROOT, BINDINGS)} matches the current backend types.`,
     );
     process.exit(0);
 }
@@ -115,8 +124,7 @@ if (verdict === "match") {
 console.error(
     verdict === "differ"
         ? `error: ${relative(ROOT, BINDINGS)} does not match the current backend types.`
-        : `error: could not verify ${relative(ROOT, BINDINGS)} because the exporter did not run, ` +
-              `and ${stale.length} input file(s) are newer.`,
+        : `error: could not verify ${relative(ROOT, BINDINGS)} because the exporter did not run.`,
 );
 console.error(
     "       Run `npm run generate:bindings` to regenerate the bindings before committing.",

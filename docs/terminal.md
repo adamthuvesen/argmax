@@ -1,26 +1,24 @@
 # Terminal
 
-User-spawned integrated terminals are independent from provider PTYs. They live in [src-tauri/src/terminal/service.rs](../src-tauri/src/terminal/service.rs).
+Integrated terminal instances run independently from provider PTYs under [src-tauri/src/terminal/service.rs](../src-tauri/src/terminal/service.rs).
 
-IPC:
+## IPC Channels
 
 - `terminal:spawn`
 - `terminal:write`
 - `terminal:resize`
 - `terminal:terminate`
-- `terminal:data`
-- `terminal:exit`
+- `terminal:data` (push)
+- `terminal:exit` (push)
 
-The service uses `portable-pty`, emits data chunks immediately, and terminates through Rust process-control helpers. Provider sessions use their own PTYs in `providers/`.
+The backend uses `portable-pty` for process execution and event chunk emission. Subscriptions require `core:event:default` in `src-tauri/capabilities/default.json`.
 
-The renderer subscribes through Tauri's core event plugin, so `src-tauri/capabilities/default.json` must grant `core:event:default`; app commands like `terminal:spawn` can work even when event subscriptions are denied.
+`Cmd/Ctrl+J` toggles the terminal panel for the active workspace (`toggleTerminalPanel`). Collapsing the panel keeps the PTY process running.
 
-`Cmd/Ctrl+J` is owned by the app-level keybinding layer, not an individual chat pane. The app closes transient overlays/settings, focuses an existing session workspace when needed, then toggles that workspace's entry in the terminal store (`toggleTerminalPanel`) directly; pressing it again collapses the same terminal without killing its PTY. (An earlier design bumped a counter prop that `SessionPane` replayed in an effect — a remounted pane re-saw the historical count and flipped the persisted panel on every session switch.)
+## Renderer Lifecycle
 
-## Renderer persistence
-
-Terminal state survives session switches. Tab metadata, the active tab, and the panel-open flag live in a workspace-keyed module store, [src/renderer/lib/terminalTabs.ts](../src/renderer/lib/terminalTabs.ts) (import-safe from the main bundle). The xterm instances and PTY wiring live in [src/renderer/lib/terminalRuntime.ts](../src/renderer/lib/terminalRuntime.ts), keyed by tab id and only imported from the lazy xterm chunk. Each runtime owns a host `<div>` that xterm renders into; `TerminalInstance` reparents that host into the pane on mount and detaches it on unmount. Unmounting (tab switch, ⌘J collapse, session switch, pane close) never terminates the PTY — only closing a tab, LRU eviction, or app shutdown does.
-
-Memory guardrails: xterm scrollback is capped at 5000 lines per terminal, and at most `MAX_TERMINAL_WORKSPACES` (6) workspaces keep live terminals. Opening a terminal for a workspace beyond the cap evicts the least-recently-used workspace with no mounted panel, terminating its PTYs and disposing its xterm instances.
-
-The xterm theme also pins `minimumContrastRatio: 4.5` ([terminalRuntime.ts](../src/renderer/lib/terminalRuntime.ts)): shell prompts often emit truecolor picked for another terminal's background, so xterm lifts any foreground that falls below WCAG-ish contrast instead of trusting the theme palette alone.
+Terminal state persists across session switches:
+- **State stores:** Tab metadata, active tabs, and panel visibility are stored in [src/renderer/lib/terminalTabs.ts](../src/renderer/lib/terminalTabs.ts).
+- **xterm runtime:** [src/renderer/lib/terminalRuntime.ts](../src/renderer/lib/terminalRuntime.ts) manages lazy xterm instances and PTY event listeners. Each instance attaches to a host `<div>` that reparents when panes mount or unmount.
+- **Resource limits:** Scrollback is capped at 5,000 lines. At most 6 workspaces (`MAX_TERMINAL_WORKSPACES`) retain running terminals; exceeding this evicts the least recently used unmounted workspace.
+- **Contrast:** The xterm theme sets `minimumContrastRatio: 4.5` ([terminalRuntime.ts](../src/renderer/lib/terminalRuntime.ts)) to ensure prompt readability.

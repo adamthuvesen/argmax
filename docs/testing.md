@@ -1,66 +1,39 @@
 # Testing
 
-Argmax has two test layers:
-
-- Vitest for renderer/shared TypeScript.
-- Cargo tests for the Rust/Tauri runtime.
+Argmax has two test suites: Vitest for the frontend and Cargo for the Rust backend.
 
 ## Commands
 
 ```bash
-npm run test:unit
-npm run test:perf
-npm run test:rust
-npm test
-npm run check:bindings
-npm run check:tauri-bridge
+npm test                # Run unit, perf, and Rust test suites
+npm run test:unit       # Vitest unit and component tests
+npm run test:perf       # Vitest performance benchmarks
+npm run test:rust       # Cargo test suite for src-tauri
+npm run check:bindings  # Verify Specta TS bindings freshness
+npm run check:tauri-bridge # Check IPC channel inventory parity
 ```
-
-`npm test` runs unit tests, perf tests, and Rust tests. There is no native Node rebuild step.
 
 ## TypeScript Tests
 
-Vitest config lives in [vitest.config.ts](../vitest.config.ts); setup lives in [src/test/setup.ts](../src/test/setup.ts). Prefer role/label/title queries. Browser-preview and app-shell tests mock `window.argmax` through [appTestHarness.ts](../src/test/appTestHarness.ts).
-
-Perf microbenches are isolated through [vitest.perf.config.ts](../vitest.perf.config.ts) and [src/test/perf.test.ts](../src/test/perf.test.ts).
-
-**Two projects, split by what a file needs.** `.test.tsx` runs under jsdom;
-`.test.ts` runs under plain node, because jsdom's per-file environment startup
-is one of the suite's larger costs and pure-logic tests never touch a DOM. A
-`.test.ts` that *does* need one — `localStorage`, `window`, `document` — opens
-with a `// @vitest-environment jsdom` docblock, which still wins per file. A
-node-environment test that suddenly cannot find `window` is missing that line.
-
-Subagent activity coverage is split by layer: [agentActivity.test.ts](../src/renderer/lib/agentActivity.test.ts)
-checks the pane projection, [gridState.test.ts](../src/renderer/lib/gridState.test.ts)
-checks dependent agent panes, and [App.grid.test.tsx](../src/renderer/App.grid.test.tsx)
-checks the user flow from an agent row into the split pane.
+- **Framework:** Vitest with Testing Library. Config in [vitest.config.ts](../vitest.config.ts) and setup in [src/test/setup.ts](../src/test/setup.ts).
+- **DOM vs Node Environment:** `.test.tsx` runs under jsdom; `.test.ts` runs under node for speed. `.test.ts` files that require DOM/browser globals (`window`, `document`, `localStorage`) use a `// @vitest-environment jsdom` docblock.
+- **DOM Queries:** Query by role, accessible name, label, or title rather than CSS classes.
+- **Mocks:** Browser preview and shell tests mock `window.argmax` using [src/test/appTestHarness.ts](../src/test/appTestHarness.ts).
+- **Performance Benchmarks:** Run through [vitest.perf.config.ts](../vitest.perf.config.ts) and [src/test/perf.test.ts](../src/test/perf.test.ts).
 
 ## Rust Tests
 
-Rust tests live next to the code and under [src-tauri/tests](../src-tauri/tests). They cover IPC inventory, git/review/workspace services, provider sessions, persistence, and command validation. Use focused Cargo filters while iterating, then `npm run test:rust` before calling runtime work done.
+Rust tests are located inline and in [src-tauri/tests](../src-tauri/tests), covering IPC command parity, workspace lifecycles, provider normalization, migrations, and git operations.
 
-Provider normalizer tests cover visible chat rows. Subagent trace import tests
-live with [subagent_trace.rs](../src-tauri/src/providers/subagent_trace.rs) and
-use sanitized Codex/Cursor fixtures to check deterministic imports and
-duplicate-safe repeated backfills.
-
-### Rust Test Iteration
+### Running Specific Tests
 
 Run a single test by name:
 
 ```bash
-cargo test --manifest-path src-tauri/Cargo.toml my_test_name
+cargo test --manifest-path src-tauri/Cargo.toml <test_name>
 ```
 
-Watch mode (requires `cargo-watch`):
-
-```bash
-cargo install cargo-watch
-cargo watch -x "test --manifest-path src-tauri/Cargo.toml" -c
-```
-
-Test a specific module or package:
+Run tests for a package:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml -p argmax_lib

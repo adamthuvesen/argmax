@@ -1,43 +1,34 @@
 # Performance Budgets
 
-Budgets cover cold start, IPC latency, and renderer hot paths.
+Performance budgets define targets for cold start, IPC response times, and frontend data transformations.
 
-## Startup
+## Startup Budget
 
-[src-tauri/src/util/startup_timer.rs](../src-tauri/src/util/startup_timer.rs) records app boot phases and `system:diagnostics` exposes them. Target `boot → window.ready-to-show` is ≤ 800 ms for the Tauri build.
+Tracked by [src-tauri/src/util/startup_timer.rs](../src-tauri/src/util/startup_timer.rs) and exposed via `system:diagnostics`. Target `boot → window.ready-to-show` is ≤ 800 ms on macOS.
 
-Phase notes:
+- `sessions.recover`: Uses the `idx_events_restart_recovery` partial index (migration v13) to keep startup orphan detection bounded to O(sessions).
+- Process orphan scans run in background tasks to avoid blocking the setup hook.
 
-- `setup.enter` absorbs Tauri builder/plugin init and config-window webview creation (~200 ms on macOS, mostly WKWebView) — Tauri creates config windows right before the setup hook.
-- `sessions.recover` must stay O(sessions): the orphan probe on `events` relies on the partial index `idx_events_restart_recovery` (migration v13). Without it the probe walked every event row per session (~670 ms on a 166 MB database) and dominated cold start.
-- The `ps` orphan-process scan runs on a background thread; nothing on the setup path may shell out or sleep.
-- `window.ready-to-show` is marked once on the first page-load `Finished` event; reloads never restamp it.
+## Renderer Benchmarks
 
-## Renderer Perf
-
-Run:
+Run via:
 
 ```bash
 npm run test:perf
 ```
 
-Pinned budgets in [src/test/perf.test.ts](../src/test/perf.test.ts):
+Targets defined in [src/test/perf.test.ts](../src/test/perf.test.ts):
 
-- `mergeDashboardDelta` over 200 sessions: p95 < 5 ms.
-- `mergeDashboardDelta` with a 500-delta streamed answer + tool rows: p95 < 5 ms.
-- `buildFileTree` over 10,000 entries: < 75 ms.
-- `searchFilePaths` over 10,000 entries: p95 < 25 ms.
-- `parseUnifiedDiff` over a 500-hunk synthetic diff: p95 < 20 ms.
+- `mergeDashboardDelta` across 200 sessions: p95 < 5 ms.
+- `mergeDashboardDelta` with 500 deltas + tool rows: p95 < 5 ms.
+- `buildFileTree` across 10,000 files: < 75 ms.
+- `searchFilePaths` across 10,000 paths: p95 < 25 ms.
+- `parseUnifiedDiff` across a 500-hunk diff: p95 < 20 ms.
 
 ## IPC Latency
 
-[src-tauri/src/util/ipc_latency.rs](../src-tauri/src/util/ipc_latency.rs) tracks per-channel p50/p99/count. `system:diagnostics` returns the histogram for Settings → Diagnostics. Investigate any request channel whose p99 exceeds 100 ms.
+[src-tauri/src/util/ipc_latency.rs](../src-tauri/src/util/ipc_latency.rs) tracks latency histograms accessible in Settings → Diagnostics. Target p99 is < 100 ms.
 
-Subagent trace scans must stay pane-scoped. Main chat polling uses
-`session:events-since`; only an open agent activity pane calls
-`session:agent-events`, and it stops polling once the parent session and parent
-tool are done. The agent-events read scans at most the newest
-`SESSION_AGENT_EVENT_SCAN_LIMIT` (2000) rows of the parent session, so a long
-session never turns pane polling into a full-table scan. Codex discovery is bounded to the parent launch date plus nearby
-session folders, and Cursor prompt fallback checks the workspace project first
-before looking across other Cursor project roots.
+To prevent IPC bottlenecks:
+- General timeline polling uses `session:events-since`.
+- `session:agent-events` is only invoked when an agent activity pane is mounted, bounded by `SESSION_AGENT_EVENT_SCAN_LIMIT` (2,000 rows).

@@ -86,6 +86,13 @@ export function useDashboardSession(
   const dashboardLoadToken = useRef(0);
   const dashboardRefreshToken = useRef(0);
   const dashboardDeltaRevision = useRef(0);
+  // Sessions a delta pruned while a snapshot load was in flight. `dashboard:list`
+  // is a point-in-time DB read, so a prune that lands after that read but before
+  // its response reaches us is invisible to it — and the delta merge below is
+  // union-by-upsert, which cannot express removal. Null when no load is running.
+  const removedDuringLoad = useRef<{ sessions: Set<string>; workspaces: Set<string> } | null>(
+    null
+  );
   const sessionCursorsRef = useRef(new Map<string, SessionCursor>());
   const resolveApprovalTokens = useRef(new Map<string, number>());
   const pendingSelectionRef = useRef<{ sessionId: string; workspaceId: string } | null>(null);
@@ -157,6 +164,18 @@ export function useDashboardSession(
   const loadDashboard = useCallback(async (): Promise<void> => {
     const token = ++dashboardLoadToken.current;
     const deltaRevision = dashboardDeltaRevision.current;
+    const pruned = { sessions: new Set<string>(), workspaces: new Set<string>() };
+    removedDuringLoad.current = pruned;
+    // A row the sweep deleted mid-load is hard-deleted in SQLite, and nothing
+    // removes it later: `loadDashboard` runs once per app run and the merge
+    // never deletes. Replay the removals against whatever we settle on.
+    const withoutPruned = (settled: DashboardSnapshot): DashboardSnapshot =>
+      pruned.sessions.size === 0 && pruned.workspaces.size === 0
+        ? settled
+        : mergeDashboardDelta(settled, {
+            removedSessionIds: [...pruned.sessions],
+            removedWorkspaceIds: [...pruned.workspaces]
+          });
     try {
       const data = await loadSnapshot();
       if (token !== dashboardLoadToken.current) {
@@ -164,7 +183,7 @@ export function useDashboardSession(
       }
       setSnapshot((current) => {
         if (deltaRevision === dashboardDeltaRevision.current) {
-          return data;
+          return withoutPruned(data);
         }
         // `dashboard:delta` pushes while loadSnapshot() was in flight. Server
         // lists are authoritative; upsert concurrent entity rows without
@@ -176,7 +195,7 @@ export function useDashboardSession(
           checks: current.checks,
           projects: current.projects
         });
-        return {
+        return withoutPruned({
           ...merged,
           events: pruneSupersededDeltas(
             mergeByCreatedAt(
@@ -192,7 +211,7 @@ export function useDashboardSession(
             100,
             "desc"
           )
-        };
+        });
       });
       setLoadState("ready");
       setLoadError(null);
@@ -205,6 +224,11 @@ export function useDashboardSession(
       // the only actionable thing the user has. Tauri rejections are plain
       // values rather than Error instances, so read them through errorMessage.
       setLoadError(errorMessage(error) || "Dashboard load failed");
+    } finally {
+      // A newer load may already have claimed the slot; only clear our own.
+      if (removedDuringLoad.current === pruned) {
+        removedDuringLoad.current = null;
+      }
     }
   }, [loadSnapshot]);
 
@@ -282,6 +306,11 @@ export function useDashboardSession(
     }
     return window.argmax.dashboard.onDelta((delta) => {
       dashboardDeltaRevision.current += 1;
+      const collecting = removedDuringLoad.current;
+      if (collecting) {
+        for (const id of delta.removedSessionIds ?? []) collecting.sessions.add(id);
+        for (const id of delta.removedWorkspaceIds ?? []) collecting.workspaces.add(id);
+      }
       setSnapshot((current) => mergeDashboardDelta(current, delta));
       setLoadState("ready");
       setLoadError(null);

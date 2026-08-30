@@ -99,8 +99,30 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
     // because provider+workspaceId did not change.
     expect(skillsList).toHaveBeenCalledTimes(1);
 
-    // Resolve so the in-flight handle doesn't leak between tests.
+    // ...and the response still has to land. Those keystrokes re-run the effect,
+    // and a cancelling cleanup would discard this result while the re-run bails
+    // on the latch — leaving the list empty for the rest of the session.
     resolveFirst([{ name: "review", description: "review code", source: "user" }]);
+    await waitFor(() => expect(screen.getByTestId("filtered-count").textContent).toBe("1"));
+  });
+
+  it("drops the previous provider's skills when the provider changes", async () => {
+    // The pane retargets provider in place, so the hook never remounts: a list
+    // keyed to the old provider must not be served while the new one loads.
+    skillsList.mockResolvedValueOnce([
+      { name: "review", description: "review code", source: "user" },
+      { name: "refactor", description: "refactor code", source: "user" }
+    ]);
+    skillsList.mockResolvedValueOnce([{ name: "rustdoc", description: "rust docs", source: "user" }]);
+
+    const { rerender } = render(<Harness initialInput="/r" />);
+    await waitFor(() => expect(screen.getByTestId("filtered-count").textContent).toBe("2"));
+
+    rerender(<Harness initialInput="/r" provider="codex" />);
+    expect(screen.getByTestId("filtered-count").textContent).toBe("0");
+
+    await waitFor(() => expect(screen.getByTestId("filtered-count").textContent).toBe("1"));
+    expect(skillsList).toHaveBeenLastCalledWith({ provider: "codex", workspaceId: "workspace-1" });
   });
 
   it("retries the skills fetch after a transient failure (no permanent latch)", async () => {

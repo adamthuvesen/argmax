@@ -20,6 +20,9 @@ export function parseSlashQuery(input: string): { query: string; start: number }
   return { query, start: input.length - query.length - 1 };
 }
 
+/** Stable empty list so the memos below don't refire on every render. */
+const NO_SKILLS: SkillSummary[] = [];
+
 interface UseSlashAutocompleteArgs {
   input: string;
   setInput: (value: string) => void;
@@ -46,9 +49,15 @@ export function useSlashAutocomplete({
   provider,
   workspaceId
 }: UseSlashAutocompleteArgs): SlashAutocompleteState {
-  const [skills, setSkills] = useState<SkillSummary[]>([]);
+  // Loaded skills carry the provider/workspace key they were fetched for. The
+  // pane retargets provider in place (no remount), so a list that is not for
+  // the current key must never be served — otherwise `/` after a Claude → Codex
+  // switch offers Claude's commands.
+  const [loaded, setLoaded] = useState<{ key: string; skills: SkillSummary[] } | null>(null);
   const [selectionIndex, setSelectionIndex] = useState(0);
   const fetchedFor = useRef<string | null>(null);
+  const cacheKey = provider ? `${provider}::${workspaceId ?? ""}` : null;
+  const skills = loaded && loaded.key === cacheKey ? loaded.skills : NO_SKILLS;
   // Memoize so identity is stable per `input`. Without this, every parent
   // render rebuilds the result object, refiring the fetch + filter effects
   // below on deps that didn't actually change.
@@ -61,10 +70,9 @@ export function useSlashAutocomplete({
   // `input` so a retry after a transient failure refires as the user keeps
   // typing; the `fetchedFor` latch still collapses it to one IPC call.
   useEffect(() => {
-    if ((slashQuery === null && !input.startsWith("/")) || !provider) {
+    if ((slashQuery === null && !input.startsWith("/")) || !provider || !cacheKey) {
       return;
     }
-    const cacheKey = `${provider}::${workspaceId ?? ""}`;
     if (fetchedFor.current === cacheKey) {
       return;
     }
@@ -76,22 +84,23 @@ export function useSlashAutocomplete({
     // don't fire duplicate IPC calls; cleared on failure so a transient
     // error can be retried on the next render.
     fetchedFor.current = cacheKey;
-    let cancelled = false;
+    // No cancelling cleanup. `input` is a dep, so a keystroke during the
+    // in-flight window re-runs this effect: a cleanup would drop the response
+    // while the re-run bailed on the latch, wedging the list at empty for the
+    // rest of the session. The latch identity is the guard instead — a response
+    // for a superseded key is simply not committed.
     void api
       .list({ provider, workspaceId })
       .then((result) => {
-        if (cancelled) return;
-        setSkills(result);
+        if (fetchedFor.current !== cacheKey) return;
+        setLoaded({ key: cacheKey, skills: result });
       })
       .catch(() => {
-        if (cancelled) return;
+        if (fetchedFor.current !== cacheKey) return;
         fetchedFor.current = null;
-        setSkills([]);
+        setLoaded({ key: cacheKey, skills: [] });
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [input, slashQuery, provider, workspaceId]);
+  }, [input, slashQuery, provider, workspaceId, cacheKey]);
 
   const skillNames = useMemo(
     () => new Set(skills.map((skill) => skill.name.toLowerCase())),

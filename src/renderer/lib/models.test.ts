@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { reasoningEffortsForModel } from "../../shared/providerModels.js";
 import type { DiscoveredProvider, ProviderId, SessionSummary } from "../../shared/types.js";
 import {
+  allModelOptions,
   FALLBACK_LAUNCH_MODEL,
   factoryLaunchModel,
   modelDefaultForProvider,
@@ -158,5 +160,26 @@ describe("preferredLaunchModel", () => {
       modelId: "cursor-grok-4.6-medium",
       reasoningEffort: "medium"
     });
+  });
+});
+
+describe("allModelOptions", () => {
+  it("seeds every effort-capable model with an effort that model actually offers", () => {
+    // The seed is what the picker shows and what launch sends, so a level the
+    // model has no variant for is silently remapped by the adapter.
+    const offenders = allModelOptions
+      .filter(
+        (option) =>
+          option.supportsReasoningEffort &&
+          (!option.reasoningEffort ||
+            !reasoningEffortsForModel(option.provider, option.modelId).includes(option.reasoningEffort))
+      )
+      .map((option) => `${option.modelId}=${String(option.reasoningEffort)}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it("seeds Kimi K3 with max, its only variant, not the default medium", () => {
+    const kimi = allModelOptions.find((option) => option.modelId === "opencode-go/kimi-k3");
+    expect(kimi?.reasoningEffort).toBe("max");
   });
 });

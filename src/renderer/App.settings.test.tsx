@@ -456,8 +456,8 @@ describe("App settings", () => {
       expect(window.localStorage.getItem("argmax.font.family")).toBe("jetbrains-mono")
     );
     expect(document.documentElement.getAttribute("data-font")).toBe("jetbrains-mono");
-    expect(window.localStorage.getItem("argmax.font.size")).toBe("3");
-    expect(document.documentElement.getAttribute("data-font-size")).toBe("3");
+    expect(window.localStorage.getItem("argmax.font.scale")).toBe("6");
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
   });
 
   it("settings Appearance section switches the app font size and persists it", async () => {
@@ -467,16 +467,16 @@ describe("App settings", () => {
     await openSettings();
     await screen.findByRole("heading", { name: "Appearance" });
 
-    const fontSize = screen.getByRole("radiogroup", { name: "App font size" });
-    expect(within(fontSize).getByRole("radio", { name: "3" })).toBeChecked();
+    const fontSize = screen.getByRole("slider", { name: "App font size" });
+    expect(fontSize).toHaveValue("6");
 
-    // The scale reaches past the old Small/Default/Large trio at both ends.
-    fireEvent.click(within(fontSize).getByRole("radio", { name: "5" }));
-    await waitFor(() => expect(window.localStorage.getItem("argmax.font.size")).toBe("5"));
-    expect(document.documentElement.getAttribute("data-font-size")).toBe("5");
+    // The slider reaches past the old 1–5 scale at both ends.
+    fireEvent.change(fontSize, { target: { value: "10" } });
+    await waitFor(() => expect(window.localStorage.getItem("argmax.font.scale")).toBe("10"));
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("10");
 
-    fireEvent.click(within(fontSize).getByRole("radio", { name: "1" }));
-    await waitFor(() => expect(window.localStorage.getItem("argmax.font.size")).toBe("1"));
+    fireEvent.change(fontSize, { target: { value: "1" } });
+    await waitFor(() => expect(window.localStorage.getItem("argmax.font.scale")).toBe("1"));
     expect(document.documentElement.getAttribute("data-font-size")).toBe("1");
   });
 
@@ -487,32 +487,42 @@ describe("App settings", () => {
     await openSettings();
     await screen.findByRole("heading", { name: "Appearance" });
 
-    const appFontSize = screen.getByRole("radiogroup", { name: "App font size" });
-    const chatFontSize = screen.getByRole("radiogroup", { name: "Agent window font size" });
-    expect(within(chatFontSize).getByRole("radio", { name: "3" })).toBeChecked();
+    const appFontSize = screen.getByRole("slider", { name: "App font size" });
+    const chatFontSize = screen.getByRole("slider", { name: "Agent window font size" });
+    expect(chatFontSize).toHaveValue("6");
 
-    fireEvent.click(within(chatFontSize).getByRole("radio", { name: "4" }));
-    await waitFor(() => expect(window.localStorage.getItem("argmax.font.size.chat")).toBe("4"));
+    fireEvent.change(chatFontSize, { target: { value: "7" } });
+    await waitFor(() => expect(window.localStorage.getItem("argmax.font.scale.chat")).toBe("7"));
     // App chrome must not follow the agent-window size.
-    expect(window.localStorage.getItem("argmax.font.size")).toBe("3");
-    expect(document.documentElement.getAttribute("data-font-size")).toBe("3");
-    expect(within(appFontSize).getByRole("radio", { name: "3" })).toBeChecked();
+    expect(window.localStorage.getItem("argmax.font.scale")).toBe("6");
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
+    expect(appFontSize).toHaveValue("6");
 
-    fireEvent.click(within(appFontSize).getByRole("radio", { name: "2" }));
-    await waitFor(() => expect(document.documentElement.getAttribute("data-font-size")).toBe("2"));
-    expect(window.localStorage.getItem("argmax.font.size.chat")).toBe("4");
-    expect(within(chatFontSize).getByRole("radio", { name: "4" })).toBeChecked();
+    fireEvent.change(appFontSize, { target: { value: "5" } });
+    await waitFor(() => expect(document.documentElement.getAttribute("data-font-size")).toBe("5"));
+    expect(window.localStorage.getItem("argmax.font.scale.chat")).toBe("7");
+    expect(chatFontSize).toHaveValue("7");
+  });
+
+  it("migrates a stored 1–5 level onto the 1–10 scale", async () => {
+    window.localStorage.setItem("argmax.font.size", "4");
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    // Old level 4 (one step up) becomes new level 7 and persists under the new key.
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("7");
+    await waitFor(() => expect(window.localStorage.getItem("argmax.font.scale")).toBe("7"));
   });
 
   it("carries the agent-window size on the session grid, not on app chrome", async () => {
-    window.localStorage.setItem("argmax.font.size.chat", "5");
+    window.localStorage.setItem("argmax.font.scale.chat", "5");
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
     const grid = await screen.findByRole("group", { name: "Session panes" });
     expect(grid).toHaveAttribute("data-font-size", "5");
-    expect(document.documentElement.getAttribute("data-font-size")).toBe("3");
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
   });
 
   it("settings Appearance section renders the Accent picker and persists accent changes", async () => {
@@ -562,8 +572,8 @@ describe("App settings", () => {
   });
 
   it("migrates sizes stored by the old three-way settings", async () => {
-    // Small/Default/Large and Narrow/Default/Wide were levels 2, 3 and 4 of
-    // the scale that replaced them.
+    // Small/Default/Large sat one step either side of the default: levels 5, 6
+    // and 7 on the font scale, 2, 3 and 4 on the chat-width scale.
     window.localStorage.setItem("argmax.font.size", "large");
     window.localStorage.setItem("argmax.font.size.chat", "small");
     window.localStorage.setItem(CHAT_WIDTH_KEY, "wide");
@@ -571,12 +581,13 @@ describe("App settings", () => {
     await screen.findByRole("button", { name: "Build dashboard" });
 
     await waitFor(() =>
-      expect(document.documentElement.getAttribute("data-font-size")).toBe("4")
+      expect(document.documentElement.getAttribute("data-font-size")).toBe("7")
     );
     expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "4");
-    // The level is written back, so the legacy value converts on first run.
-    await waitFor(() => expect(window.localStorage.getItem("argmax.font.size")).toBe("4"));
-    expect(window.localStorage.getItem("argmax.font.size.chat")).toBe("2");
+    // The level is written back under the new key, so the legacy value
+    // converts on first run.
+    await waitFor(() => expect(window.localStorage.getItem("argmax.font.scale")).toBe("7"));
+    expect(window.localStorage.getItem("argmax.font.scale.chat")).toBe("5");
     expect(window.localStorage.getItem(CHAT_WIDTH_KEY)).toBe("4");
   });
 

@@ -231,23 +231,15 @@
   box-shadow: none;
 }
 
+/* Placement comes from `align="end"` on the picker; only the stacking order and
+   the width cap are settings-specific. */
 .settings-model-picker .model-picker-flyout {
-  top: calc(100% + 6px);
-  right: 0;
-  bottom: auto;
-  left: auto;
-  align-items: flex-start;
   z-index: 45;
 }
 
 .settings-model-picker .model-picker-popover {
   min-width: min(220px, calc(100vw - 48px));
   max-height: min(320px, calc(100dvh - 180px));
-}
-
-.settings-model-picker .model-speed-popover {
-  margin-top: var(--model-submenu-top, 0);
-  margin-bottom: 0;
 }
 
 /* ---- Hints & captions ---- */

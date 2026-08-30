@@ -1,7 +1,15 @@
 import { useState, type JSX } from "react";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
 import { CHAT_WIDTH_HINTS, type ChatWidth } from "../../lib/chatWidth.js";
-import { FONT_OPTIONS, FONT_SIZE_HINTS, type FontFamilyId, type FontSize } from "../../lib/fonts.js";
+import {
+  FONT_OPTIONS,
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  fontSizeBasePx,
+  toFontSize,
+  type FontFamilyId,
+  type FontSize
+} from "../../lib/fonts.js";
 import {
   isLinkTarget,
   persistLinkTarget,
@@ -18,6 +26,7 @@ import {
   KeyValueList,
   SectionHeader,
   Segmented,
+  SliderRow,
   ThemePicker,
   ToggleRow
 } from "./settingsPrimitives.js";
@@ -78,11 +87,17 @@ export function GeneralSettings({
   randomSessionIconEnabled: boolean;
   onRandomSessionIconEnabledChange: (v: boolean) => void;
 }): JSX.Element {
-  // The size controls share one 1–5 scale: 1 smallest, 3 what Argmax ships,
-  // 5 largest. `Segmented` speaks strings, the settings speak levels.
+  // Chat width keeps the 1–5 scale: 1 narrowest, 3 what Argmax ships, 5
+  // widest. `Segmented` speaks strings, the setting speaks levels.
   const pickLevel = (raw: string, apply: (level: ScaleLevel) => void): void => {
     const level = toScaleLevel(raw);
     if (level) apply(level);
+  };
+  // Font sizes ride a 1–10 slider: each level is 1px of body text, 8px at 1
+  // through 17px at 10, with the shipped 13px default at 6.
+  const pickFontSize = (raw: number, apply: (size: FontSize) => void): void => {
+    const size = toFontSize(String(raw));
+    if (size) apply(size);
   };
   // Read at click time by the chat's link handler, so localStorage is the
   // source of truth and no App-level state is needed.
@@ -92,7 +107,6 @@ export function GeneralSettings({
     setLinkTarget(raw);
     persistLinkTarget(raw);
   };
-
 
   return (
     <>
@@ -186,31 +200,33 @@ export function GeneralSettings({
             </p>
           </div>
 
-          <Segmented
+          <SliderRow
             legend="App font size"
-            hint="1 smallest · 3 default · 5 largest"
-            name="font-size"
-            value={String(fontSize)}
-            onChange={(v) => pickLevel(v, onFontSizeChange)}
-            options={SCALE_LEVEL_CHOICES}
+            hint="1 smallest · 6 default · 10 largest"
+            min={FONT_SIZE_MIN}
+            max={FONT_SIZE_MAX}
+            value={fontSize}
+            valueLabel={`${fontSizeBasePx(fontSize)}px`}
+            onChange={(v) => pickFontSize(v, onFontSizeChange)}
           />
           <div className="settings-card-sub">
             <p className="settings-font-caption">
-              Sidebar, titlebar, settings, and search. {FONT_SIZE_HINTS[fontSize]}
+              Sidebar, titlebar, settings, and search. Body text at {fontSizeBasePx(fontSize)}px.
             </p>
           </div>
 
-          <Segmented
+          <SliderRow
             legend="Agent window font size"
-            hint="1 smallest · 3 default · 5 largest"
-            name="chat-font-size"
-            value={String(chatFontSize)}
-            onChange={(v) => pickLevel(v, onChatFontSizeChange)}
-            options={SCALE_LEVEL_CHOICES}
+            hint="1 smallest · 6 default · 10 largest"
+            min={FONT_SIZE_MIN}
+            max={FONT_SIZE_MAX}
+            value={chatFontSize}
+            valueLabel={`${fontSizeBasePx(chatFontSize)}px`}
+            onChange={(v) => pickFontSize(v, onChatFontSizeChange)}
           />
           <div className="settings-card-sub">
             <p className="settings-font-caption">
-              Conversations, composers, and agent activity panes. {FONT_SIZE_HINTS[chatFontSize]}
+              Conversations, composers, and agent activity panes. Body text at {fontSizeBasePx(chatFontSize)}px.
             </p>
           </div>
 
@@ -220,7 +236,6 @@ export function GeneralSettings({
             checked={sidebarPriorityVisible}
             onChange={onSidebarPriorityVisibleChange}
           />
-
 
           <ToggleRow
             label="Show cost in agent chat"
@@ -258,24 +273,6 @@ export function GeneralSettings({
           </div>
 
           <Segmented
-            legend="Web links from chat"
-            name="link-target"
-            value={linkTarget}
-            onChange={pickLinkTarget}
-            options={[
-              { value: "system", label: "Default browser" },
-              { value: "argmax", label: "Argmax browser" }
-            ]}
-          />
-          <div className="settings-card-sub">
-            <p className="settings-font-caption">
-              {linkTarget === "argmax"
-                ? "Links open in the in-app browser pane. ⌘-click opens your default browser."
-                : "Links open in your default browser. ⌘-click opens the in-app browser pane."}
-            </p>
-          </div>
-
-          <Segmented
             legend="Files panel side"
             name="review-panel-side"
             value={reviewPanelSide}
@@ -290,6 +287,24 @@ export function GeneralSettings({
               {reviewPanelSide === "left"
                 ? "IDE order: changes and files on the left, the conversation on the right."
                 : "Changes and files dock to the right of the conversation — how Argmax ships."}
+            </p>
+          </div>
+
+          <Segmented
+            legend="Web links from chat"
+            name="link-target"
+            value={linkTarget}
+            onChange={pickLinkTarget}
+            options={[
+              { value: "system", label: "Default browser" },
+              { value: "argmax", label: "Argmax browser" }
+            ]}
+          />
+          <div className="settings-card-sub">
+            <p className="settings-font-caption">
+              {linkTarget === "argmax"
+                ? "Links open in the in-app browser pane. ⌘-click opens your default browser."
+                : "Links open in your default browser. ⌘-click opens the in-app browser pane."}
             </p>
           </div>
 

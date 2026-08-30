@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { fontSizeBasePx } from "../lib/fonts.js";
 
 function readSource(path: string): string {
   return readFileSync(resolve(process.cwd(), path), "utf8");
@@ -618,9 +619,19 @@ describe("accent CSS contract", () => {
 
     expect(tokens).toContain("--font-prose: \"Geist Sans\", ui-sans-serif");
     expect(tokens).toContain(':root[data-font="lilex"]');
-    // One scale shifted by --type-step across five levels. 3 is the shipped size.
-    expect(tokens).toContain('[data-font-size="1"]');
-    expect(tokens).toContain('[data-font-size="5"]');
+    // One scale shifted by --type-step across ten levels; 6 is the shipped
+    // size. Assert every level: a missing block silently inherits `:root`'s
+    // `--type-step: 0px`, so that level would render identical to the default
+    // while Settings still captions it a different px size.
+    for (let level = 1; level <= 10; level += 1) {
+      expect(tokens).toContain(`[data-font-size="${level}"]`);
+    }
+    // Body text is `7 + level` px, which `fontSizeBasePx` mirrors in TS. Pin
+    // both ends of the step range so the two cannot drift apart.
+    expect(tokens).toContain("--type-step: -5px;");
+    expect(tokens).toContain("--type-step: 4px;");
+    expect(fontSizeBasePx(1)).toBe(13 - 5);
+    expect(fontSizeBasePx(10)).toBe(13 + 4);
     expect(tokens).toContain("--text-terminal: calc(13px + var(--type-step));");
     expect(tokens).toContain("--font-ui: \"Geist Sans\", ui-sans-serif");
     expect(bubbleParagraphRule).toContain("font-family: var(--font-prose);");
@@ -901,5 +912,23 @@ describe("accent CSS contract", () => {
     expect(scopeRule).toContain("top: calc(100% + 4px);");
     expect(scopeRule).toContain("bottom: auto;");
     expect(scopeRule).toContain("left: auto;");
+  });
+
+  it("registers --text-terminal so JS reads pixels instead of a calc() string", () => {
+    // xterm renders to canvas and cannot inherit CSS, so
+    // `resolveTerminalFontSize()` reads this token back through
+    // `getPropertyValue`. An UNregistered custom property is substituted, not
+    // computed: the read returns the literal "calc(13px + var(--type-step))",
+    // the px parse fails, and the terminal silently pins to the fallback while
+    // every other surface resizes. jsdom resolves neither calc() nor
+    // @property, so the source is the only place this can be guarded.
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    const registration = /@property\s+--text-terminal\s*\{(?<body>[^}]+)\}/.exec(tokens);
+
+    expect(registration?.groups?.body).toBeDefined();
+    expect(registration?.groups?.body).toContain('syntax: "<length>"');
+    // The token is declared per-container (`:root, [data-font-size]`), so it
+    // has to inherit for a nested scale to reach the terminal.
+    expect(registration?.groups?.body).toContain("inherits: true");
   });
 });

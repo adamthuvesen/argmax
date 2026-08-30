@@ -528,6 +528,35 @@
   background: var(--panel);
 }
 
+/* Range-slider rows (font sizes). Shares the segmented rows' copy column so
+   the two control styles align in the same card. */
+.settings-slider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.settings-slider-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-slider-control input[type="range"] {
+  width: 180px;
+  accent-color: var(--accent);
+}
+
+.settings-slider-value {
+  min-width: 4ch;
+  text-align: right;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-strong);
+}
+
 .settings-segmented-option {
   position: relative;
   display: inline-flex;

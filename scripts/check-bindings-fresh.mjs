@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Fails when `src/shared/bindings.d.ts` does not match what the tauri-specta
-// codegen would emit for the current `src-tauri` sources. Runs in CI so an
-// out-of-date binding file blocks merge.
+// codegen would emit for the current `src-tauri` sources. Runs in CI's macOS
+// lane so an out-of-date binding file blocks merge — it belongs there because
+// regenerating shells out to a Tauri binary, which needs the Rust toolchain
+// and Tauri's system libraries to build at all.
 //
 // Locally, mtime is the cheap pre-filter, not the verdict. A rebase, a `git
 // checkout`, a `touch`, or another agent editing this checkout all move input
@@ -127,7 +129,10 @@ console.error(
         : `error: could not verify ${relative(ROOT, BINDINGS)} because the exporter did not run.`,
 );
 console.error(
-    "       Run `npm run generate:bindings` to regenerate the bindings before committing.",
+    verdict === "differ"
+        ? "       Run `npm run generate:bindings` to regenerate the bindings before committing."
+        : "       The exporter is a Tauri binary — it needs the Rust toolchain and Tauri's\n" +
+          "       system libraries. Run this where `cargo run --bin export-bindings` builds.",
 );
 if (detail) {
     console.error(`       exporter: ${detail.split("\n").slice(-3).join(" / ")}`);

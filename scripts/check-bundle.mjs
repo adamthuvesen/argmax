@@ -22,14 +22,11 @@ const ROOT = process.cwd();
 const DIST = join(ROOT, "dist/renderer");
 
 // Budgets sit roughly a third above the measured graph, so ordinary growth
-// passes and a newly-eager dependency fails. Mobile ought to be the tighter of
-// the two — it ships over the tailnet to a phone, not off the local disk — but
-// it still pulls the review screen's tree eagerly, so its budget holds today's
-// measurement to stop further growth and drops to ~1 MiB once that screen
-// loads lazily.
+// passes and a newly-eager dependency fails. Mobile is tighter: it ships over
+// the tailnet to a phone, not off the local disk.
 const ENTRIES = [
   { html: "index.html", label: "desktop", budgetBytes: 1.25 * 1024 * 1024 },
-  { html: "mobile.html", label: "mobile", budgetBytes: 2.25 * 1024 * 1024 }
+  { html: "mobile.html", label: "mobile", budgetBytes: 1.0 * 1024 * 1024 }
 ];
 
 function fail(message) {

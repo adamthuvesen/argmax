@@ -24,12 +24,20 @@ pub struct NtfyMessage {
     /// ntfy tags header value; rendered as emoji by the apps. Empty sends no
     /// Tags header, so the push shows the bare title.
     pub tags: &'static str,
+    /// Where tapping the push should land: the mobile page deep-linked to the
+    /// session that raised it. `None` when no mobile URL is known, which
+    /// leaves the notification inert rather than opening the wrong place.
+    pub click: Option<String>,
 }
 
 type Sink = Box<dyn Fn(NtfyMessage) + Send + Sync>;
 
 pub struct NtfyPublisher {
     sink: Sink,
+    /// Mobile page URL the pushes deep-link into, e.g.
+    /// `http://mac.tail1234.ts.net:8790/mobile.html`. `None` while no remote
+    /// URL is known, which sends pushes without a Click header.
+    mobile_url: Option<String>,
     last_signaled: Mutex<BoundedMap<String, String>>,
 }
 
@@ -37,31 +45,38 @@ impl NtfyPublisher {
     /// Publisher POSTing to `topic_url` (the full topic URL, e.g.
     /// `https://ntfy.sh/<topic>`). Requests run on a throwaway thread so the
     /// dashboard-delta path never waits on the network.
-    pub fn new(topic_url: String) -> Self {
-        Self::with_sink(Box::new(move |message: NtfyMessage| {
-            let topic_url = topic_url.clone();
-            std::thread::spawn(move || {
-                let agent = ureq::AgentBuilder::new()
-                    .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
-                    .build();
-                let mut request = agent
-                    .post(&topic_url)
-                    .set("Title", &message.title)
-                    .set("Priority", message.priority);
-                if !message.tags.is_empty() {
-                    request = request.set("Tags", message.tags);
-                }
-                let result = request.send_string(&message.body);
-                if let Err(error) = result {
-                    tracing::warn!(%error, "ntfy publish failed");
-                }
-            });
-        }))
+    pub fn new(topic_url: String, mobile_url: Option<String>) -> Self {
+        Self::with_sink(
+            Box::new(move |message: NtfyMessage| {
+                let topic_url = topic_url.clone();
+                std::thread::spawn(move || {
+                    let agent = ureq::AgentBuilder::new()
+                        .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
+                        .build();
+                    let mut request = agent
+                        .post(&topic_url)
+                        .set("Title", &message.title)
+                        .set("Priority", message.priority);
+                    if !message.tags.is_empty() {
+                        request = request.set("Tags", message.tags);
+                    }
+                    if let Some(click) = message.click.as_deref() {
+                        request = request.set("Click", click);
+                    }
+                    let result = request.send_string(&message.body);
+                    if let Err(error) = result {
+                        tracing::warn!(%error, "ntfy publish failed");
+                    }
+                });
+            }),
+            mobile_url,
+        )
     }
 
-    fn with_sink(sink: Sink) -> Self {
+    fn with_sink(sink: Sink, mobile_url: Option<String>) -> Self {
         Self {
             sink,
+            mobile_url,
             last_signaled: Mutex::new(BoundedMap::new(DEDUP_CAPACITY)),
         }
     }
@@ -70,7 +85,7 @@ impl NtfyPublisher {
     /// per (state, attention) value per session, and only for transitions a
     /// phone cares about: stalled on the user, failed, or finished.
     pub fn observe(&self, session: &SessionSummary) {
-        let Some(message) = signal_for(session) else {
+        let Some(message) = signal_for(session, self.mobile_url.as_deref()) else {
             return;
         };
         let signature = format!("{}|{}", session.state, session.attention);
@@ -105,7 +120,7 @@ pub fn post_test(topic_url: &str) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
-fn signal_for(session: &SessionSummary) -> Option<NtfyMessage> {
+fn signal_for(session: &SessionSummary, mobile_url: Option<&str>) -> Option<NtfyMessage> {
     let prompt = truncated_prompt(&session.prompt);
     let (title, priority, tags) = match (session.attention.as_str(), session.state.as_str()) {
         ("approval-needed", _) => ("Needs approval", "high", "raised_hand"),
@@ -121,7 +136,23 @@ fn signal_for(session: &SessionSummary) -> Option<NtfyMessage> {
         body: prompt,
         priority,
         tags,
+        click: mobile_url.map(|base| deep_link(base, &session.id)),
     })
+}
+
+/// `<mobile page>?session=<id>`, read once by the phone on load
+/// (`src/renderer/mobile/deepLink.ts`). Session ids are hex/dash ids from
+/// SQLite, so they need no escaping; anything else is dropped rather than
+/// half-escaped into a header ureq would reject.
+fn deep_link(mobile_url: &str, session_id: &str) -> String {
+    if !session_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return mobile_url.to_string();
+    }
+    let separator = if mobile_url.contains('?') { '&' } else { '?' };
+    format!("{mobile_url}{separator}session={session_id}")
 }
 
 fn truncated_prompt(prompt: &str) -> String {
@@ -140,6 +171,8 @@ mod tests {
     use super::*;
     use std::sync::mpsc;
 
+    const MOBILE_URL: &str = "http://mac.tail1234.ts.net:8790/mobile.html";
+
     fn session(state: &str, attention: &str) -> SessionSummary {
         SessionSummary {
             id: "s1".to_string(),
@@ -155,6 +188,7 @@ mod tests {
             state: state.to_string(),
             attention: attention.to_string(),
             attention_changed_at: None,
+            imported: false,
             started_at: "2026-01-01T00:00:00Z".to_string(),
             completed_at: None,
             last_activity_at: "2026-01-01T00:00:00Z".to_string(),
@@ -166,16 +200,24 @@ mod tests {
                 cache_write: 0,
             },
             context_tokens: 0,
-            imported: false,
             context_window: None,
         }
     }
 
     fn capture_publisher() -> (NtfyPublisher, mpsc::Receiver<NtfyMessage>) {
+        capture_publisher_linking(Some(MOBILE_URL.to_string()))
+    }
+
+    fn capture_publisher_linking(
+        mobile_url: Option<String>,
+    ) -> (NtfyPublisher, mpsc::Receiver<NtfyMessage>) {
         let (tx, rx) = mpsc::channel();
-        let publisher = NtfyPublisher::with_sink(Box::new(move |message| {
-            let _ = tx.send(message);
-        }));
+        let publisher = NtfyPublisher::with_sink(
+            Box::new(move |message| {
+                let _ = tx.send(message);
+            }),
+            mobile_url,
+        );
         (publisher, rx)
     }
 
@@ -202,7 +244,7 @@ mod tests {
             ("failed", "normal"),
             ("complete", "normal"),
         ] {
-            let message = signal_for(&session(state, attention)).expect("signal");
+            let message = signal_for(&session(state, attention), Some(MOBILE_URL)).expect("signal");
             assert!(
                 message.title.is_ascii(),
                 "non-ASCII title: {}",
@@ -219,11 +261,40 @@ mod tests {
     }
 
     #[test]
+    fn pushes_deep_link_to_the_session_that_raised_them() {
+        let (publisher, rx) = capture_publisher();
+        publisher.observe(&session("running", "approval-needed"));
+        let message = rx.try_recv().expect("signal");
+        assert_eq!(
+            message.click.as_deref(),
+            Some("http://mac.tail1234.ts.net:8790/mobile.html?session=s1")
+        );
+        // The Click value is an HTTP header too, so it carries the same
+        // ASCII-only constraint as the title.
+        assert!(message.click.unwrap().is_ascii());
+    }
+
+    #[test]
+    fn no_mobile_url_sends_a_push_without_a_link() {
+        let (publisher, rx) = capture_publisher_linking(None);
+        publisher.observe(&session("running", "approval-needed"));
+        assert_eq!(rx.try_recv().expect("signal").click, None);
+    }
+
+    #[test]
+    fn an_exotic_session_id_falls_back_to_the_bare_page() {
+        let mut summary = session("running", "blocked");
+        summary.id = "s 1?&".to_string();
+        let message = signal_for(&summary, Some(MOBILE_URL)).expect("signal");
+        assert_eq!(message.click.as_deref(), Some(MOBILE_URL));
+    }
+
+    #[test]
     fn long_prompts_truncate() {
         let long = "x".repeat(400);
         let mut summary = session("failed", "normal");
         summary.prompt = long;
-        let message = signal_for(&summary).expect("failed signal");
+        let message = signal_for(&summary, Some(MOBILE_URL)).expect("failed signal");
         assert!(message.body.chars().count() <= 141);
         assert!(message.body.ends_with('…'));
     }

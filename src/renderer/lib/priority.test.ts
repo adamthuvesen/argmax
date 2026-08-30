@@ -211,6 +211,30 @@ describe("shouldDemoteOnLeave", () => {
     ).toBe(false);
   });
 
+  it("demotes a pinned workspace — a pin hides the Priority row, not the chip", () => {
+    expect(
+      shouldDemoteOnLeave(
+        workspace("w-1", { pinned: true }),
+        [session("w-1", "review-ready", { state: "complete" })],
+        NOW
+      )
+    ).toBe(true);
+  });
+
+  it("does not demote a workspace mid-teardown", () => {
+    // Stamping a dismissal here races the archive; a write that lands after the
+    // row is gone raises a spurious error toast on the desktop path.
+    for (const state of ["archiving", "archive-failed"] as const) {
+      expect(
+        shouldDemoteOnLeave(
+          workspace("w-1", { state }),
+          [session("w-1", "review-ready", { state: "complete" })],
+          NOW
+        )
+      ).toBe(false);
+    }
+  });
+
   it("does not demote a purely manual entry", () => {
     expect(
       shouldDemoteOnLeave(

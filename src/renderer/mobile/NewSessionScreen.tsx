@@ -1,6 +1,7 @@
-import { ArrowUp, Check, ChevronLeft, ChevronsUpDown, Folder, GitBranch, Zap } from "lucide-react";
+import { ArrowUp, ChevronLeft, ChevronsUpDown, Folder, GitBranch, Zap } from "lucide-react";
 import { useCallback, useMemo, useState, type JSX, type ReactNode } from "react";
 import { PROVIDER_TITLE_MODEL } from "../../shared/providerModels.js";
+import { BottomSheet, SheetOption } from "./BottomSheet.js";
 import type { ProjectSummary, ProviderId } from "../../shared/types.js";
 import { persistLaunchModel, readStoredLaunchModel } from "../lib/launchModelPreference.js";
 import {
@@ -16,6 +17,7 @@ import {
   writeWorkspaceMode,
   type WorkspaceMode
 } from "../lib/workspaceMode.js";
+import { REMOTE_CONNECTION_LOST_MESSAGE } from "../lib/wsTransport.js";
 
 /** A quiet Codex-style context row: icon + current value + up/down chevron,
  *  with an invisible button stretched over it so tapping anywhere opens the
@@ -49,49 +51,6 @@ function ContextRow({
         onClick={onOpen}
       />
     </div>
-  );
-}
-
-/** Bottom sheet chrome shared by the pickers: dimmed backdrop, rounded panel,
- *  grabber. Tapping the backdrop closes it. */
-function PickerSheet({
-  label,
-  onClose,
-  children
-}: {
-  label: string;
-  onClose: () => void;
-  children: ReactNode;
-}): JSX.Element {
-  return (
-    <div className="mobile-sheet-backdrop" role="presentation" onClick={onClose}>
-      <div
-        className="mobile-sheet"
-        role="dialog"
-        aria-label={label}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="mobile-sheet-grabber" aria-hidden="true" />
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function SheetOption({
-  label,
-  selected,
-  onSelect
-}: {
-  label: string;
-  selected: boolean;
-  onSelect: () => void;
-}): JSX.Element {
-  return (
-    <button type="button" className="mobile-sheet-option" aria-pressed={selected} onClick={onSelect}>
-      <span>{label}</span>
-      {selected ? <Check size={16} aria-hidden="true" /> : null}
-    </button>
   );
 }
 
@@ -147,20 +106,33 @@ export function NewSessionScreen({
               baseRef: project.currentBranch ?? null
             })
           : await window.argmax.workspaces.createCurrent({ projectId: project.id, taskLabel });
-      await window.argmax.providers.launch({
-        workspaceId: workspace.id,
-        provider: model.provider,
-        prompt: trimmed,
-        modelLabel: model.label,
-        modelId: model.modelId,
-        reasoningEffort: model.reasoningEffort ?? null,
-        fastMode: false,
-        agentMode: "auto",
-        permissionMode: "auto-approve",
-        cols: 120,
-        rows: 32,
-        attachments: null
-      });
+      try {
+        await window.argmax.providers.launch({
+          workspaceId: workspace.id,
+          provider: model.provider,
+          prompt: trimmed,
+          modelLabel: model.label,
+          modelId: model.modelId,
+          reasoningEffort: model.reasoningEffort ?? null,
+          fastMode: false,
+          agentMode: "auto",
+          permissionMode: "auto-approve",
+          cols: 120,
+          rows: 32,
+          attachments: null
+        });
+      } catch (error) {
+        // No session started, so the workspace (and its worktree) would sit
+        // stranded with no explanation. A lost socket is the exception: the
+        // backend may have launched fine and only the reply went missing, so
+        // archiving there would kill a live session and delete its worktree.
+        if (!(error instanceof Error && error.message === REMOTE_CONNECTION_LOST_MESSAGE)) {
+          void window.argmax.workspaces
+            .archive({ workspaceId: workspace.id, force: true })
+            .catch(() => undefined);
+        }
+        throw error;
+      }
       void window.argmax.workspaces
         .autoTitle({
           workspaceId: workspace.id,
@@ -253,7 +225,7 @@ export function NewSessionScreen({
       )}
 
       {openSheet === "project" ? (
-        <PickerSheet label="Choose project" onClose={() => setOpenSheet(null)}>
+        <BottomSheet label="Choose project" onClose={() => setOpenSheet(null)}>
           <div className="mobile-sheet-group">
             {projects.map((candidate) => (
               <SheetOption
@@ -267,11 +239,11 @@ export function NewSessionScreen({
               />
             ))}
           </div>
-        </PickerSheet>
+        </BottomSheet>
       ) : null}
 
       {openSheet === "workspace" ? (
-        <PickerSheet label="Choose workspace" onClose={() => setOpenSheet(null)}>
+        <BottomSheet label="Choose workspace" onClose={() => setOpenSheet(null)}>
           <div className="mobile-sheet-group">
             <SheetOption
               label={`Current branch${project?.currentBranch ? ` (${project.currentBranch})` : ""}`}
@@ -290,11 +262,11 @@ export function NewSessionScreen({
               }}
             />
           </div>
-        </PickerSheet>
+        </BottomSheet>
       ) : null}
 
       {openSheet === "model" ? (
-        <PickerSheet label="Choose model" onClose={() => setOpenSheet(null)}>
+        <BottomSheet label="Choose model" onClose={() => setOpenSheet(null)}>
           {PROVIDER_SETUP_ORDER.map((provider: ProviderId) => (
             <div key={provider} className="mobile-sheet-group">
               <p className="mobile-sheet-group-label">{PROVIDER_SETUP[provider].displayName}</p>
@@ -317,7 +289,7 @@ export function NewSessionScreen({
                 })}
             </div>
           ))}
-        </PickerSheet>
+        </BottomSheet>
       ) : null}
     </div>
   );

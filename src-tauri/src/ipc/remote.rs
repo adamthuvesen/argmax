@@ -79,6 +79,13 @@ pub async fn remote_set_config(
         // paired phone.
         token: remote::load_or_create_config(&app_data_dir).token,
         ntfy_topic,
+        // Persisted so the ntfy publisher can deep-link at boot, where the
+        // async tailnet probe is out of reach. Saving Settings is what keeps it
+        // current after the tailnet name changes.
+        mobile_url: Some(mobile_page_url(
+            probe_tailscale().await.as_ref(),
+            input.port,
+        )),
     };
     remote::save_config(&app_data_dir, &config)?;
     remote::apply(&app, config.clone());
@@ -121,12 +128,22 @@ fn require_app_data_dir(app: &AppHandle) -> ArgmaxResult<std::path::PathBuf> {
         .ok_or_else(|| ArgmaxError::service("APP_DATA_DIR", "app data dir unavailable"))
 }
 
+/// The mobile page as the phone reaches it: over the tailnet when Tailscale is
+/// up, else loopback. One definition so the pairing QR, the Settings links, and
+/// the ntfy deep link can never point somewhere different from each other.
+fn mobile_page_url(tailscale: Option<&TailscaleProbe>, port: u16) -> String {
+    match tailscale {
+        Some(probe) => format!("http://{}:{}/mobile.html", probe.dns_name, port),
+        None => format!("http://127.0.0.1:{port}/mobile.html"),
+    }
+}
+
 async fn build_status(state: &AppState, config: RemoteConfig) -> ArgmaxResult<RemoteStatus> {
     let tailscale = probe_tailscale().await;
-    let local_url = format!("http://127.0.0.1:{}/mobile.html", config.port);
+    let local_url = mobile_page_url(None, config.port);
     let tailnet_url = tailscale
         .as_ref()
-        .map(|probe| format!("http://{}:{}/mobile.html", probe.dns_name, config.port));
+        .map(|probe| mobile_page_url(Some(probe), config.port));
     let pairing_url = format!(
         "{}#token={}",
         tailnet_url.as_deref().unwrap_or(&local_url),

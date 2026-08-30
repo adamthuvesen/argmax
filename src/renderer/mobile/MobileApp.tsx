@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
-import { Archive, ChevronLeft, FolderGit2, Moon, Plus, Sun } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import { Archive, ChevronLeft, FolderGit2, Moon, MoreHorizontal, Plus, Sun } from "lucide-react";
 import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
+import { LinesSkeleton } from "../components/LinesSkeleton.js";
 import { SessionPane } from "../components/SessionPane.js";
-import { MobileReviewScreen } from "./MobileReviewScreen.js";
+import { BottomSheet, SheetOption } from "./BottomSheet.js";
+import { takeDeepLinkSessionId } from "./deepLink.js";
 import { NewSessionScreen } from "./NewSessionScreen.js";
+import { useMobileBackNavigation } from "./useMobileBackNavigation.js";
 import { useDashboardSession } from "../hooks/useDashboardSession.js";
 import { usePriorityDemotion } from "../hooks/usePriorityDemotion.js";
 import { useSessionCommands } from "../hooks/useSessionCommands.js";
 import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
-import { computePriorityEntries, type PriorityAttention } from "../lib/priority.js";
+import { computeWorkspaceAttention, type PriorityAttention } from "../lib/priority.js";
 import {
   applyThemeToDocument,
   readStoredTheme,
@@ -22,6 +25,15 @@ import {
   subscribeRemoteConnection,
   type RemoteConnectionState
 } from "../lib/wsTransport.js";
+
+// The review screen drags in the file tree, the diff renderer and the
+// CodeMirror preview — ~1.36 MB the phone would otherwise pull over the tailnet
+// on every cold load for a screen reached only from the session header. Lazy
+// like the desktop's ReviewPanel (SessionPane.tsx), so mobile.html stops
+// preloading that chunk.
+const MobileReviewScreen = lazy(async () => ({
+  default: (await import("./MobileReviewScreen.js")).MobileReviewScreen
+}));
 
 const ATTENTION_LABEL: Record<PriorityAttention, string> = {
   "approval-needed": "needs approval",
@@ -53,18 +65,22 @@ function MobileSessionRow({
   row,
   projectName,
   nowMs,
-  onOpen
+  onOpen,
+  onOpenActions
 }: {
   row: SessionListRow;
   projectName: string | null;
   nowMs: number;
   onOpen: (workspaceId: string) => void;
+  onOpenActions: (row: SessionListRow) => void;
 }): JSX.Element {
   const { workspace, session, attention } = row;
   const running = workspace.state === "running";
   const age = relativeAge(session?.lastActivityAt ?? workspace.lastActivityAt, nowMs);
   return (
-    <li>
+    // The actions button is a sibling of the open button, not nested inside
+    // it: a button within a button is invalid and swallows the inner tap.
+    <li className="mobile-session-item">
       <button
         type="button"
         className="mobile-session-row"
@@ -88,6 +104,18 @@ function MobileSessionRow({
         </span>
         {age ? <span className="mobile-session-age">{age}</span> : null}
       </button>
+      {/* Named without the task label so it doesn't shadow the row button
+          under a name query; the row's own text precedes it for a reader. */}
+      <button
+        type="button"
+        className="mobile-session-more"
+        aria-label="Session actions"
+        title={workspace.taskLabel}
+        aria-haspopup="dialog"
+        onClick={() => onOpenActions(row)}
+      >
+        <MoreHorizontal size={18} aria-hidden />
+      </button>
     </li>
   );
 }
@@ -97,13 +125,15 @@ function SessionSection({
   rows,
   projectNamesById,
   nowMs,
-  onOpen
+  onOpen,
+  onOpenActions
 }: {
   label: string;
   rows: SessionListRow[];
   projectNamesById: Map<string, string>;
   nowMs: number;
   onOpen: (workspaceId: string) => void;
+  onOpenActions: (row: SessionListRow) => void;
 }): JSX.Element | null {
   if (rows.length === 0) return null;
   return (
@@ -117,6 +147,7 @@ function SessionSection({
             projectName={projectNamesById.get(row.workspace.projectId) ?? null}
             nowMs={nowMs}
             onOpen={onOpen}
+            onOpenActions={onOpenActions}
           />
         ))}
       </ul>
@@ -185,6 +216,25 @@ export function MobileApp(): JSX.Element {
     }
   });
 
+  // A push notification links to one session: `mobile.html?session=<id>`. The
+  // id is read once at mount — before any snapshot exists — and cashed in as
+  // soon as the session shows up, so tapping a push lands on the transcript
+  // that raised it instead of the list.
+  const [pendingDeepLink, setPendingDeepLink] = useState(takeDeepLinkSessionId);
+  useEffect(() => {
+    if (!pendingDeepLink) return;
+    const linked = snapshot.sessions.find((session) => session.id === pendingDeepLink);
+    // Keep waiting while the first snapshot is still loading; a session that
+    // never arrives (archived, wrong host) simply leaves the reader on the list.
+    if (!linked) {
+      if (loadState === "loading") return;
+      setPendingDeepLink(null);
+      return;
+    }
+    setPendingDeepLink(null);
+    openWorkspaceChat(linked.workspaceId);
+  }, [loadState, openWorkspaceChat, pendingDeepLink, snapshot.sessions]);
+
   const [connection, setConnection] = useState<RemoteConnectionState>({
     status: "connected",
     resync: false
@@ -219,18 +269,13 @@ export function MobileApp(): JSX.Element {
   // still marks rows with a chip; it just doesn't reorder them.
   const { pinnedRows, activityRows } = useMemo(() => {
     const sessionsByWorkspace = new Map(snapshot.sessions.map((session) => [session.workspaceId, session]));
-    const attentionByWorkspace = new Map(
-      computePriorityEntries(snapshot.workspaces, snapshot.sessions, nowMs).map((entry) => [
-        entry.workspace.id,
-        entry.attention
-      ])
-    );
+    const attentionByWorkspace = computeWorkspaceAttention(snapshot.workspaces, snapshot.sessions, nowMs);
     const rows: SessionListRow[] = snapshot.workspaces
       .filter((workspace) => workspace.state !== "archived" && workspace.kind !== "popup")
       .map((workspace) => ({
         workspace,
         session: sessionsByWorkspace.get(workspace.id) ?? null,
-        attention: attentionByWorkspace.get(workspace.id) ?? null
+        attention: attentionByWorkspace.get(workspace.id)?.attention ?? null
       }));
     const activityOf = (row: SessionListRow): string =>
       row.session?.lastActivityAt ?? row.workspace.lastActivityAt ?? "";
@@ -292,6 +337,65 @@ export function MobileApp(): JSX.Element {
     [closeSession, refresh, showToast]
   );
 
+  // Same fork flow as the desktop grid: new workspace, copied transcript,
+  // diverging provider conversation. Refresh first so openWorkspaceChat can
+  // resolve the forked row, then jump straight into it.
+  const forkSession = useCallback(
+    async (sessionId: string): Promise<void> => {
+      if (!window.argmax) return;
+      try {
+        const forked = await window.argmax.session.fork({ sessionId });
+        await refresh();
+        openWorkspaceChat(forked.workspace.id);
+      } catch (error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Couldn't fork the session."
+        });
+      }
+    },
+    [openWorkspaceChat, refresh, showToast]
+  );
+
+  const [actionsRow, setActionsRow] = useState<SessionListRow | null>(null);
+
+  const setPinned = useCallback(
+    async (workspace: WorkspaceSummary): Promise<void> => {
+      if (!window.argmax) return;
+      try {
+        await window.argmax.workspaces.setPinned({
+          workspaceId: workspace.id,
+          pinned: !workspace.pinned
+        });
+      } catch (error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Couldn't change the pin."
+        });
+      }
+      await refresh();
+    },
+    [refresh, showToast]
+  );
+
+  const renameWorkspace = useCallback(
+    async (workspace: WorkspaceSummary): Promise<void> => {
+      if (!window.argmax) return;
+      const nextLabel = window.prompt("Session name", workspace.taskLabel)?.trim();
+      if (!nextLabel || nextLabel === workspace.taskLabel) return;
+      try {
+        await window.argmax.workspaces.setLabel({ workspaceId: workspace.id, taskLabel: nextLabel });
+      } catch (error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Couldn't rename the session."
+        });
+      }
+      await refresh();
+    },
+    [refresh, showToast]
+  );
+
   const [newSessionOpen, setNewSessionOpen] = useState(false);
   const handleLaunched = useCallback(
     async (workspaceId: string): Promise<void> => {
@@ -305,6 +409,22 @@ export function MobileApp(): JSX.Element {
   );
 
   const sessionOpen = selectedWorkspaceId !== null && (selectedSession !== null || selectedSessionId !== null);
+
+  // Screen depth for the hardware back button: list → session/new → review.
+  const screenDepth = newSessionOpen ? 1 : sessionOpen ? (reviewOpen ? 2 : 1) : 0;
+  const goBackOneScreen = useCallback((): void => {
+    if (reviewOpen) {
+      setReviewOpen(false);
+      return;
+    }
+    if (newSessionOpen) {
+      setNewSessionOpen(false);
+      return;
+    }
+    closeSession();
+  }, [closeSession, newSessionOpen, reviewOpen]);
+  useMobileBackNavigation(screenDepth, goBackOneScreen);
+
   const empty = pinnedRows.length === 0 && activityRows.length === 0;
   // Slim enough to sit under either header without displacing the screen it
   // belongs to; the list and the conversation stay usable while it shows.
@@ -318,6 +438,10 @@ export function MobileApp(): JSX.Element {
   return (
     <div
       className="mobile-shell"
+      // A phone is read at arm's length: host the type scale two levels above
+      // the desktop default (6) so body text lands at 15px. The attribute
+      // recomputes every --text-* token for the subtree; see tokens.css.
+      data-font-size="8"
       data-screen={sessionOpen ? "session" : newSessionOpen ? "new" : "list"}
     >
       {!sessionOpen && newSessionOpen ? (
@@ -328,7 +452,11 @@ export function MobileApp(): JSX.Element {
           onError={(message) => showToast({ kind: "error", message })}
         />
       ) : sessionOpen && reviewOpen && selectedWorkspace ? (
-        <MobileReviewScreen workspace={selectedWorkspace} onClose={() => setReviewOpen(false)} />
+        <Suspense
+          fallback={<LinesSkeleton rows={10} label="Loading changes" className="review-diff-skeleton" />}
+        >
+          <MobileReviewScreen workspace={selectedWorkspace} onClose={() => setReviewOpen(false)} />
+        </Suspense>
       ) : sessionOpen ? (
         <div className="mobile-session-screen">
           <header className="mobile-session-header">
@@ -384,6 +512,7 @@ export function MobileApp(): JSX.Element {
             onCancelQueuedMessage={commands.cancelQueuedMessage}
             onSendQueuedMessageNow={commands.sendQueuedMessageNow}
             onTerminateSession={commands.terminateSession}
+            onForkSession={forkSession}
             showCostPanel={false}
             workspaceCardVisible={false}
           />
@@ -431,6 +560,7 @@ export function MobileApp(): JSX.Element {
                   projectNamesById={projectNamesById}
                   nowMs={nowMs}
                   onOpen={openWorkspaceChat}
+                  onOpenActions={setActionsRow}
                 />
                 <SessionSection
                   label={pinnedRows.length > 0 ? "Sessions" : "All sessions"}
@@ -438,12 +568,45 @@ export function MobileApp(): JSX.Element {
                   projectNamesById={projectNamesById}
                   nowMs={nowMs}
                   onOpen={openWorkspaceChat}
+                  onOpenActions={setActionsRow}
                 />
               </>
             )}
           </div>
         </div>
       )}
+      {actionsRow ? (
+        <BottomSheet label="Session actions" onClose={() => setActionsRow(null)}>
+          <p className="mobile-sheet-group-label">{actionsRow.workspace.taskLabel}</p>
+          <div className="mobile-sheet-group">
+            <SheetOption
+              label={actionsRow.workspace.pinned ? "Unpin" : "Pin to top"}
+              onSelect={() => {
+                const { workspace } = actionsRow;
+                setActionsRow(null);
+                void setPinned(workspace);
+              }}
+            />
+            <SheetOption
+              label="Rename"
+              onSelect={() => {
+                const { workspace } = actionsRow;
+                setActionsRow(null);
+                void renameWorkspace(workspace);
+              }}
+            />
+            <SheetOption
+              label="Archive"
+              danger
+              onSelect={() => {
+                const { workspace } = actionsRow;
+                setActionsRow(null);
+                void archiveWorkspace(workspace);
+              }}
+            />
+          </div>
+        </BottomSheet>
+      ) : null}
       {toast ? (
         <div className={`mobile-toast mobile-toast-${toast.kind}`} role="status">
           {toast.message}

@@ -8,6 +8,7 @@
 //            {"type":"response","id":1,"ok":…} | {"type":"response","id":1,"error":…}
 //            {"type":"event","channel":"dashboard:delta","payload":…}
 //            {"type":"pong"}
+//            {"type":"resync"}   (events were dropped; reload the snapshot)
 //
 // The ping/pong pair is an app-level heartbeat for the phone client: a mobile
 // radio drops the NAT mapping without closing the socket, and the browser
@@ -127,9 +128,14 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
                 },
                 event = events.recv() => match event {
                     Ok(event) => event_frame(&event),
+                    // Pushed events are fire-and-forget, so the skipped window
+                    // is gone for this client — including the deltas that carry
+                    // approval requests. Say so instead of only logging: the
+                    // client reloads its snapshot the same way it does after a
+                    // reconnect.
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
                         tracing::warn!(skipped, "remote client fell behind the event stream");
-                        continue;
+                        resync_frame()
                     }
                     Err(broadcast::error::RecvError::Closed) => break,
                 },
@@ -259,6 +265,12 @@ pub fn pong_frame() -> String {
     json!({ "type": "pong" }).to_string()
 }
 
+/// Sent when this client's event receiver lagged: events were dropped, so the
+/// client must reload its snapshot rather than resume from the stream.
+pub fn resync_frame() -> String {
+    json!({ "type": "resync" }).to_string()
+}
+
 pub fn response_ok_frame(id: i64, value: Value) -> String {
     json!({ "type": "response", "id": id, "ok": value }).to_string()
 }
@@ -354,6 +366,12 @@ mod tests {
             auth_outcome(&ClientMessage::Ping, "secret"),
             AuthOutcome::Rejected(_)
         ));
+    }
+
+    #[test]
+    fn a_dropped_event_window_is_named_so_the_client_can_reload() {
+        let parsed: Value = serde_json::from_str(&resync_frame()).expect("frame is json");
+        assert_eq!(parsed["type"], "resync");
     }
 
     #[test]

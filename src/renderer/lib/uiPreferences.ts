@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react";
 
-export const SIDEBAR_TOKENS_KEY = "argmax.sidebar.tokens.visible";
 export const SIDEBAR_PRIORITY_KEY = "argmax.sidebar.priority.visible";
 export const SIDEBAR_COLLAPSED_KEY = "argmax.sidebar.collapsed";
 export const CHAT_COST_KEY = "argmax.chat.cost.visible";

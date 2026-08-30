@@ -90,7 +90,6 @@ import {
   RANDOM_SESSION_ICON_KEY,
   SIDEBAR_COLLAPSED_KEY,
   SIDEBAR_PRIORITY_KEY,
-  SIDEBAR_TOKENS_KEY,
   THINKING_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
   TOOL_CALLS_EXPANDED_KEY,
@@ -143,7 +142,6 @@ export function App(): JSX.Element {
     TOOL_CALL_GROUPS_EXPANDED_KEY,
     false
   );
-  const [sidebarTokensVisible, setSidebarTokensVisible] = useBooleanUiPreference(SIDEBAR_TOKENS_KEY, false);
   const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
   const [sidebarCollapsed, setSidebarCollapsed] = useBooleanUiPreference(SIDEBAR_COLLAPSED_KEY, false);
   // Transient "peek" state: while collapsed, hovering the left edge slides the
@@ -1641,7 +1639,6 @@ export function App(): JSX.Element {
         snapshot={snapshot}
         detectedIdes={detectedIdes}
         defaultIde={defaultIde}
-        showSessionTokens={sidebarTokensVisible}
         collapsed={sidebarCollapsed}
         onPeekLeave={() => setSidebarPeek(false)}
       />
@@ -1667,8 +1664,6 @@ export function App(): JSX.Element {
                 onToolCallsExpandedChange={setToolCallsExpanded}
                 toolCallGroupsExpanded={toolCallGroupsExpanded}
                 onToolCallGroupsExpandedChange={setToolCallGroupsExpanded}
-                sidebarTokensVisible={sidebarTokensVisible}
-                onSidebarTokensVisibleChange={setSidebarTokensVisible}
                 sidebarPriorityVisible={sidebarPriorityVisible}
                 onSidebarPriorityVisibleChange={setSidebarPriorityVisible}
                 chatCostVisible={chatCostVisible}

@@ -40,8 +40,6 @@ export function SettingsPanel({
   onToolCallsExpandedChange,
   toolCallGroupsExpanded,
   onToolCallGroupsExpandedChange,
-  sidebarTokensVisible,
-  onSidebarTokensVisibleChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
   chatCostVisible,
@@ -87,8 +85,6 @@ export function SettingsPanel({
   onToolCallsExpandedChange: (v: boolean) => void;
   toolCallGroupsExpanded: boolean;
   onToolCallGroupsExpandedChange: (v: boolean) => void;
-  sidebarTokensVisible: boolean;
-  onSidebarTokensVisibleChange: (v: boolean) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
@@ -277,8 +273,6 @@ export function SettingsPanel({
               onThemeModeChange={onThemeModeChange}
               accentId={accentId}
               onAccentChange={onAccentChange}
-              sidebarTokensVisible={sidebarTokensVisible}
-              onSidebarTokensVisibleChange={onSidebarTokensVisibleChange}
               sidebarPriorityVisible={sidebarPriorityVisible}
               onSidebarPriorityVisibleChange={onSidebarPriorityVisibleChange}
               chatCostVisible={chatCostVisible}

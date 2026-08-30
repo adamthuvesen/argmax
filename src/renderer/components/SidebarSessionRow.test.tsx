@@ -29,30 +29,6 @@ const detectedIdes = [
   { id: "cursor" as const, label: "Cursor", appPath: "/Applications/Cursor.app", hasCli: true }
 ];
 
-function testRect({
-  left,
-  top,
-  right,
-  bottom
-}: {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-}): DOMRect {
-  return {
-    x: left,
-    y: top,
-    width: right - left,
-    height: bottom - top,
-    top,
-    right,
-    bottom,
-    left,
-    toJSON: () => ({})
-  };
-}
-
 describe("SidebarSessionRow", () => {
   afterEach(() => cleanup());
 
@@ -60,7 +36,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -69,7 +44,6 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -87,7 +61,6 @@ describe("SidebarSessionRow", () => {
       <div>
         <SidebarSessionRow
           workspace={{ ...workspaceBase, id: "ws-1", taskLabel: "First" }}
-          workspaceTokens={null}
           isSelected={false}
           isOpenInGrid={false}
           canDragToGrid={true}
@@ -96,11 +69,9 @@ describe("SidebarSessionRow", () => {
           onOpenInIde={vi.fn()}
           detectedIdes={detectedIdes}
           defaultIde="vscode"
-          showTokens={false}
         />
         <SidebarSessionRow
           workspace={{ ...workspaceBase, id: "ws-2", taskLabel: "Second" }}
-          workspaceTokens={null}
           isSelected={false}
           isOpenInGrid={false}
           canDragToGrid={true}
@@ -109,7 +80,6 @@ describe("SidebarSessionRow", () => {
           onOpenInIde={vi.fn()}
           detectedIdes={detectedIdes}
           defaultIde="vscode"
-          showTokens={false}
         />
       </div>
     );
@@ -132,7 +102,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -141,7 +110,6 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="cursor"
-        showTokens={false}
       />
     );
 
@@ -164,53 +132,17 @@ describe("SidebarSessionRow", () => {
     expect(screen.getByRole("menuitem", { name: /Cursor/ })).toHaveFocus();
   });
 
-  it("keeps the IDE picker inside the left viewport edge", async () => {
+  // Keeping the picker on screen is Floating UI's job now, and jsdom has no
+  // layout for it to measure — so this checks the wiring instead: the menu is
+  // portaled out to <body> and carries the primitive's own fixed positioning.
+  // Drop the style spread and it falls back to the stylesheet's
+  // `position: absolute; bottom: calc(100% + 6px)`, which at <body> puts the
+  // menu at the top of the page rather than under its row.
+  it("positions the IDE picker with the shared anchored-popover styles", async () => {
     const { fireEvent } = await import("@testing-library/react");
-    const originalInnerWidth = window.innerWidth;
-    const originalInnerHeight = window.innerHeight;
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
-    Object.defineProperty(window, "innerHeight", { configurable: true, value: 500 });
-    const rectSpy = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
-      if (this.classList.contains("session-ide-cluster")) {
-        return testRect({ left: 28, top: 20, right: 52, bottom: 40 });
-      }
-      return testRect({ left: 0, top: 0, right: 0, bottom: 0 });
-    });
-
-    try {
-      render(
-        <SidebarSessionRow
-          workspace={workspaceBase}
-          workspaceTokens={null}
-          isSelected={false}
-          isOpenInGrid={false}
-          canDragToGrid={true}
-          onOpenWorkspaceChat={vi.fn()}
-          onArchiveWorkspace={vi.fn()}
-          onOpenInIde={vi.fn()}
-          detectedIdes={detectedIdes}
-          defaultIde="cursor"
-          showTokens={false}
-        />
-      );
-
-      fireEvent.click(screen.getByRole("button", { name: "Choose IDE" }));
-
-      const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
-      expect(menu).toHaveStyle({ position: "fixed", left: "8px", right: "auto" });
-    } finally {
-      rectSpy.mockRestore();
-      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
-      Object.defineProperty(window, "innerHeight", { configurable: true, value: originalInnerHeight });
-    }
-  });
-
-  it("dismisses the IDE picker when the pointer leaves it", async () => {
-    const { act, fireEvent } = await import("@testing-library/react");
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -219,7 +151,29 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="cursor"
-        showTokens={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose IDE" }));
+
+    const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
+    expect(menu.parentElement).toBe(document.body);
+    expect(menu).toHaveStyle({ position: "fixed" });
+  });
+
+  it("dismisses the IDE picker when the pointer leaves it", async () => {
+    const { act, fireEvent } = await import("@testing-library/react");
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="cursor"
       />
     );
 
@@ -244,7 +198,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -254,7 +207,6 @@ describe("SidebarSessionRow", () => {
         onRename={onRename}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -279,7 +231,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -289,7 +240,6 @@ describe("SidebarSessionRow", () => {
         onRename={onRename}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -309,7 +259,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -318,7 +267,6 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -332,7 +280,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -342,7 +289,6 @@ describe("SidebarSessionRow", () => {
         onSetIcon={onSetIcon}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -364,7 +310,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -374,7 +319,6 @@ describe("SidebarSessionRow", () => {
         onSetIcon={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -393,7 +337,6 @@ describe("SidebarSessionRow", () => {
 
   it("a running turn hides the custom icon and restores it when the turn ends", () => {
     const props = {
-      workspaceTokens: null,
       isSelected: false,
       isOpenInGrid: false,
       canDragToGrid: true,
@@ -403,7 +346,6 @@ describe("SidebarSessionRow", () => {
       onSetIcon: vi.fn(),
       detectedIdes,
       defaultIde: "vscode" as const,
-      showTokens: false
     };
     const { rerender } = render(
       <SidebarSessionRow
@@ -439,7 +381,6 @@ describe("SidebarSessionRow", () => {
       render(
         <SidebarSessionRow
           workspace={{ ...workspaceBase, state, prState, prNumber, icon: "Flag", iconColor: "clay" }}
-          workspaceTokens={null}
           isSelected={false}
           isOpenInGrid={false}
           canDragToGrid={true}
@@ -448,7 +389,6 @@ describe("SidebarSessionRow", () => {
           onOpenInIde={vi.fn()}
           detectedIdes={detectedIdes}
           defaultIde="vscode"
-          showTokens={false}
         />
       );
 
@@ -463,7 +403,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -473,7 +412,6 @@ describe("SidebarSessionRow", () => {
         onSetIcon={onSetIcon}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -487,7 +425,6 @@ describe("SidebarSessionRow", () => {
 
   it("clearing the icon restores the default status marker on the row", () => {
     const props = {
-      workspaceTokens: null,
       isSelected: false,
       isOpenInGrid: false,
       canDragToGrid: true,
@@ -496,7 +433,6 @@ describe("SidebarSessionRow", () => {
       onOpenInIde: vi.fn(),
       detectedIdes,
       defaultIde: "vscode" as const,
-      showTokens: false
     };
     const { rerender } = render(
       <SidebarSessionRow
@@ -522,7 +458,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -532,7 +467,6 @@ describe("SidebarSessionRow", () => {
         onSetIcon={onSetIcon}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -550,7 +484,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -560,7 +493,6 @@ describe("SidebarSessionRow", () => {
         onRename={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -575,7 +507,6 @@ describe("SidebarSessionRow", () => {
     const sharedIdes = detectedIdes;
     const prev = {
       workspace: { ...workspaceBase },
-      workspaceTokens: null,
       isSelected: false,
       isOpenInGrid: false,
       canDragToGrid: true,
@@ -584,7 +515,6 @@ describe("SidebarSessionRow", () => {
       onOpenInIde,
       detectedIdes: sharedIdes,
       defaultIde: "vscode" as const,
-      showTokens: false
     };
     const next = { ...prev, workspace: { ...workspaceBase } };
 
@@ -624,7 +554,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, prState: "MERGED", prNumber: 42 }}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -633,7 +562,6 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -647,7 +575,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, prState: "OPEN", prNumber: 7 }}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -656,7 +583,6 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -670,7 +596,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -679,7 +604,6 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -690,7 +614,6 @@ describe("SidebarSessionRow", () => {
 
   it("keeps a leading marker on rows that carry a live signal", () => {
     const props = {
-      workspaceTokens: null,
       isSelected: false,
       isOpenInGrid: false,
       canDragToGrid: true,
@@ -699,7 +622,6 @@ describe("SidebarSessionRow", () => {
       onOpenInIde: vi.fn(),
       detectedIdes,
       defaultIde: "vscode" as const,
-      showTokens: false
     };
 
     const { rerender } = render(
@@ -726,7 +648,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -735,7 +656,6 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -747,7 +667,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, prState: "CLOSED", prNumber: 9 }}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -756,7 +675,6 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -770,7 +688,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, state: "failed", prState: "MERGED", prNumber: 1 }}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -779,7 +696,6 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -791,7 +707,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, state: "running" }}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -800,7 +715,6 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -815,7 +729,6 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, state: "running", prState: "OPEN", prNumber: 3 }}
-        workspaceTokens={null}
         isSelected={false}
         isOpenInGrid={false}
         canDragToGrid={true}
@@ -824,7 +737,6 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
-        showTokens={false}
       />
     );
 
@@ -844,7 +756,6 @@ describe("SidebarSessionRow", () => {
     "reverts to the normal status icon when the turn ends as %s (pr: %s)",
     (endState, prState, prNumber) => {
       const props = {
-        workspaceTokens: null,
         isSelected: false,
         isOpenInGrid: false,
         canDragToGrid: true,
@@ -853,7 +764,6 @@ describe("SidebarSessionRow", () => {
         onOpenInIde: vi.fn(),
         detectedIdes,
         defaultIde: "vscode" as const,
-        showTokens: false
       };
       const { rerender } = render(
         <SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "running" }} />

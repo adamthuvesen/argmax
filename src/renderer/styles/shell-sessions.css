@@ -326,35 +326,6 @@
   right: calc(2 * var(--sidebar-action-step) + var(--sidebar-action-inset));
 }
 
-.session-tokens {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
-  padding: 1px 4px;
-  font-size: var(--text-2xs-plus);
-  color: var(--muted-strong);
-  background: var(--sidebar);
-  border-radius: var(--radius-xs);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1, "calt" 0, "ss01" 0;
-  letter-spacing: -0.01em;
-  pointer-events: none;
-  opacity: 1;
-  transition: opacity var(--duration-fast) var(--ease);
-}
-
-.session-row:hover .session-tokens,
-.session-row:focus-within .session-tokens {
-  opacity: 0;
-}
-
-.session-tokens[data-zero="true"] {
-  color: var(--muted);
-  opacity: 0.6;
-}
-
 .cost-panel {
   margin: 0;
   padding: 8px 12px;

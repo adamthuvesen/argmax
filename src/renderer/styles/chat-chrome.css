@@ -584,27 +584,17 @@
   max-height: min(320px, calc(100dvh - 96px));
 }
 
-/* Two-panel model picker: a flat model list plus a right-side Speed submenu
-   opened by the Speed row (fast-capable providers only). */
+/* Two-panel model picker: a flat model list plus a Speed submenu opened by the
+   Speed row (fast-capable providers only). Both boxes are placed by
+   `useAnchoredPopover` — the flyout against the chip, the submenu against its
+   own row — so neither side nor offset is set here. */
 .model-picker-flyout {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
   z-index: 30;
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
 }
 
-/* Launcher composer opens its menus downward (mirrors the .composer-context rule above). */
-.composer-context .model-picker-flyout {
-  top: calc(100% + 6px);
-  bottom: auto;
-  align-items: flex-start;
-}
-
-/* Inside the flyout the two cards are laid out by flex, not absolutely stacked. */
-.model-picker-flyout .project-picker-popover {
+/* The list fills the flyout; the flyout is what carries the position. Scoped to
+   the list on purpose — the Speed submenu is a sibling that positions itself. */
+.model-picker-flyout > .model-picker-popover {
   position: static;
   top: auto;
   bottom: auto;
@@ -612,13 +602,6 @@
 
 .model-speed-popover {
   min-width: 230px;
-  margin-bottom: var(--model-submenu-bottom, 0);
-}
-
-.composer-context .model-speed-popover {
-  align-self: flex-end;
-  margin-top: 0;
-  margin-bottom: 0;
 }
 
 .model-picker-row {

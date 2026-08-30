@@ -17,7 +17,6 @@ import {
   memo,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -28,16 +27,12 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { DetectedIde, IdeId, WorkspaceSummary } from "../../shared/types.js";
-import { formatTokens } from "../formatTokens.js";
+import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import type { PriorityAttention } from "../lib/priority.js";
 import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
-import {
-  SESSION_ICON_PICKER_HEIGHT,
-  SESSION_ICON_PICKER_WIDTH,
-  SessionIconPicker
-} from "./SessionIconPicker.js";
+import { SessionIconPicker } from "./SessionIconPicker.js";
 import { WorkingNest } from "./WorkingNest.js";
 
 // Human phrasing appended to the row title when the row sits in the sidebar's
@@ -49,12 +44,6 @@ const PRIORITY_TITLE: Record<PriorityAttention, string> = {
   "review-ready": "ready for review"
 };
 
-export interface WorkspaceTokenBreakdown {
-  input: number;
-  output: number;
-  cached: number;
-}
-
 export interface WorkspaceClickModifiers {
   ctrlOrMeta: boolean;
   alt: boolean;
@@ -62,7 +51,6 @@ export interface WorkspaceClickModifiers {
 
 type SidebarSessionRowProps = {
   workspace: WorkspaceSummary;
-  workspaceTokens: WorkspaceTokenBreakdown | null;
   isSelected: boolean;
   isOpenInGrid: boolean;
   canDragToGrid: boolean;
@@ -75,13 +63,14 @@ type SidebarSessionRowProps = {
   onWorkspaceDragEnd?: () => void;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
-  showTokens: boolean;
   /**
    * Second row line under the label — the owning project's name. Set on rows
    * whose group doesn't already name the project (Priority, Pinned, date
    * view) while the Priority section is enabled.
    */
   subtitle?: string | null;
+  /** Provider name shown as a small marker when this session was synced from
+   *  that agent's own history rather than started in Argmax. */
   /** Set when the row renders inside the Priority section: why it floated up. */
   priorityAttention?: PriorityAttention;
   /** Priority rows only — right-click "Remove from priority" dismisses the row. */
@@ -92,23 +81,7 @@ type SidebarSessionRowProps = {
   onSetIcon?: (workspaceId: string, icon: string | null, iconColor: string | null) => void;
 };
 
-const IDE_POPOVER_WIDTH = 200;
-const IDE_POPOVER_MAX_HEIGHT = 260;
-const IDE_POPOVER_GUTTER = 8;
 const IDE_POPOVER_DISMISS_DELAY_MS = 120;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(value, max));
-}
-
-function idePopoverPosition(rect: Pick<DOMRect, "bottom" | "right">): { top: number; left: number } {
-  const maxLeft = Math.max(IDE_POPOVER_GUTTER, window.innerWidth - IDE_POPOVER_WIDTH - IDE_POPOVER_GUTTER);
-  const maxTop = Math.max(IDE_POPOVER_GUTTER, window.innerHeight - IDE_POPOVER_MAX_HEIGHT - IDE_POPOVER_GUTTER);
-  return {
-    top: clamp(rect.bottom + 6, IDE_POPOVER_GUTTER, maxTop),
-    left: clamp(rect.right - IDE_POPOVER_WIDTH, IDE_POPOVER_GUTTER, maxLeft)
-  };
-}
 
 // Leading glyph for a session row, rendered only when the row carries a live
 // signal (see statusOverlayFor). A turn in flight takes precedence over
@@ -208,7 +181,6 @@ function CustomIconMarker({
 
 function SidebarSessionRowInner({
   workspace,
-  workspaceTokens,
   isSelected,
   isOpenInGrid,
   canDragToGrid,
@@ -221,7 +193,6 @@ function SidebarSessionRowInner({
   onWorkspaceDragEnd,
   detectedIdes,
   defaultIde,
-  showTokens,
   subtitle,
   priorityAttention,
   onRemoveFromPriority,
@@ -229,14 +200,16 @@ function SidebarSessionRowInner({
   onSetIcon
 }: SidebarSessionRowProps): JSX.Element {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
-  const pickerRef = useRef<HTMLDivElement | null>(null);
-  const popoverRef = useRef<HTMLUListElement | null>(null);
+  const idePicker = useAnchoredPopover({
+    open: pickerOpen,
+    placement: "bottom-end",
+    capHeight: true
+  });
   const pickerCloseTimerRef = useRef<number | null>(null);
   // Keep direct refs to every menuitem so ↑/↓ keyboard nav can move focus.
   // The map is rebuilt every render from the `detectedIdes` list; reading
-  // `current` after layout is fine because the popover only mounts when
-  // `pickerOpen && popoverPos`.
+  // `current` after layout is fine because the popover only mounts while
+  // `pickerOpen`.
   const menuItemRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const clearPickerCloseTimer = useCallback((): void => {
     if (pickerCloseTimerRef.current === null) return;
@@ -254,24 +227,33 @@ function SidebarSessionRowInner({
       setPickerOpen(false);
     }, IDE_POPOVER_DISMISS_DELAY_MS);
   }, [clearPickerCloseTimer]);
-  useDismissOnOutsideOrEscape(pickerRef, pickerOpen, closePicker, popoverRef);
+  useDismissOnOutsideOrEscape(idePicker.anchorRef, pickerOpen, closePicker, idePicker.popoverRef);
 
   useEffect(() => clearPickerCloseTimer, [clearPickerCloseTimer]);
 
   // Right-click "Rename" → inline edit. The context menu is portaled at the
   // cursor; committing writes the new label through onRename.
-  const [contextMenuPos, setContextMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [contextMenuPoint, setContextMenuPoint] = useState<AnchorPoint | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [draftLabel, setDraftLabel] = useState("");
-  const contextMenuRef = useRef<HTMLUListElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
-  const closeContextMenu = (): void => setContextMenuPos(null);
-  useDismissOnOutsideOrEscape(contextMenuRef, contextMenuPos !== null, closeContextMenu);
+  const contextMenu = useAnchoredPopover({
+    open: contextMenuPoint !== null,
+    gutter: 0,
+    capHeight: true
+  });
+  const { anchorToPoint: anchorContextMenu } = contextMenu;
+  const closeContextMenu = (): void => setContextMenuPoint(null);
+  useDismissOnOutsideOrEscape(contextMenu.popoverRef, contextMenuPoint !== null, closeContextMenu);
+
+  useEffect(() => {
+    anchorContextMenu(contextMenuPoint);
+  }, [anchorContextMenu, contextMenuPoint]);
 
   // Right-click "Edit Icon" → the icon picker replaces the menu at the same
-  // anchor point, clamped so a right-click near an edge stays on screen.
-  const [iconPickerPos, setIconPickerPos] = useState<{ top: number; left: number } | null>(null);
-  const closeIconPicker = useCallback((): void => setIconPickerPos(null), []);
+  // point. The picker positions itself against it.
+  const [iconPickerPoint, setIconPickerPoint] = useState<AnchorPoint | null>(null);
+  const closeIconPicker = useCallback((): void => setIconPickerPoint(null), []);
 
   // Focus + select the input once it mounts so the user can type immediately.
   useEffect(() => {
@@ -281,17 +263,16 @@ function SidebarSessionRowInner({
     }
   }, [isEditing]);
 
-  // Focus the first menuitem (preferring the current default IDE) once the
-  // popover has been positioned and its menuitems have mounted into the DOM.
-  // The useLayoutEffect that sets popoverPos triggers a second render — this
-  // effect runs after that render commits, so the refs are populated.
+  // Focus the first menuitem, preferring the current default IDE. The popover
+  // mounts in the same render that opens it, so by the time this effect runs
+  // its menuitems are in the DOM and the refs are populated.
   useEffect(() => {
-    if (!pickerOpen || !popoverPos) return;
+    if (!pickerOpen) return;
     const preferredId =
       detectedIdes.find((entry) => entry.id === defaultIde)?.id ?? detectedIdes[0]?.id;
     if (!preferredId) return;
     menuItemRefs.current.get(preferredId)?.focus();
-  }, [pickerOpen, popoverPos, detectedIdes, defaultIde]);
+  }, [pickerOpen, detectedIdes, defaultIde]);
 
   const handleMenuKeyDown = (
     entryId: IdeId
@@ -316,17 +297,6 @@ function SidebarSessionRowInner({
     if (!nextId) return;
     menuItemRefs.current.get(nextId)?.focus();
   };
-
-  useLayoutEffect(() => {
-    if (!pickerOpen) {
-      setPopoverPos(null);
-      return;
-    }
-    const cluster = pickerRef.current;
-    if (!cluster) return;
-    const rect = cluster.getBoundingClientRect();
-    setPopoverPos(idePopoverPosition(rect));
-  }, [pickerOpen]);
 
   const showArchive =
     workspace.state === "complete" ||
@@ -379,43 +349,14 @@ function SidebarSessionRowInner({
     if (!hasContextMenu) return;
     event.preventDefault();
     event.stopPropagation();
-    // Clamp to the viewport so a right-click near the bottom/right edge doesn't
-    // push the menu off-screen. Sizes are the popover's min-width plus a small
-    // per-item height estimate.
-    const MENU_WIDTH = 150;
-    const itemCount =
-      (onRename ? 1 : 0) +
-      (onSetIcon ? 1 : 0) +
-      (onRemoveFromPriority ? 1 : 0) +
-      (onAddToPriority ? 1 : 0);
-    const MENU_HEIGHT = 8 + itemCount * 30;
-    const left = Math.min(event.clientX, Math.max(8, window.innerWidth - MENU_WIDTH));
-    const top = Math.min(event.clientY, Math.max(8, window.innerHeight - MENU_HEIGHT));
-    setContextMenuPos({ top, left });
+    setContextMenuPoint({ x: event.clientX, y: event.clientY });
   };
 
   const startEditIcon = (): void => {
-    const anchor = contextMenuPos;
+    const point = contextMenuPoint;
     closeContextMenu();
-    if (!anchor) return;
-    setIconPickerPos({
-      top: clamp(
-        anchor.top,
-        IDE_POPOVER_GUTTER,
-        Math.max(
-          IDE_POPOVER_GUTTER,
-          window.innerHeight - SESSION_ICON_PICKER_HEIGHT - IDE_POPOVER_GUTTER
-        )
-      ),
-      left: clamp(
-        anchor.left,
-        IDE_POPOVER_GUTTER,
-        Math.max(
-          IDE_POPOVER_GUTTER,
-          window.innerWidth - SESSION_ICON_PICKER_WIDTH - IDE_POPOVER_GUTTER
-        )
-      )
-    });
+    if (!point) return;
+    setIconPickerPoint(point);
   };
 
   const startRename = (): void => {
@@ -586,27 +527,9 @@ function SidebarSessionRowInner({
               <span>{displayLabel}</span>
             )}
           </button>
-      {showTokens ? (() => {
-        const inputOutput = (workspaceTokens?.input ?? 0) + (workspaceTokens?.output ?? 0);
-        const display = formatTokens(inputOutput);
-        const cached = workspaceTokens?.cached ?? 0;
-        const tooltip = workspaceTokens
-          ? `Tokens so far — ${formatTokens(workspaceTokens.input)} in · ${formatTokens(workspaceTokens.output)} out${cached > 0 ? ` · ${formatTokens(cached)} cached` : ""}`
-          : "No tokens recorded yet";
-        return (
-          <span
-            className="session-tokens"
-            aria-label={`Tokens: ${display}`}
-            title={tooltip}
-            data-zero={inputOutput === 0 ? "true" : undefined}
-          >
-            {display}
-          </span>
-        );
-      })() : null}
       <div
         className="session-ide-cluster"
-        ref={pickerRef}
+        ref={idePicker.setAnchor}
         onMouseEnter={clearPickerCloseTimer}
         onMouseLeave={schedulePickerClose}
       >
@@ -622,21 +545,15 @@ function SidebarSessionRowInner({
         >
           <ExternalLink size={12} />
         </button>
-        {pickerOpen && popoverPos && createPortal(
+        {pickerOpen && createPortal(
           <ul
-            ref={popoverRef}
+            ref={idePicker.setPopover}
             className="project-picker-popover session-ide-popover"
             role="menu"
             aria-label="Open this worktree in"
             onMouseEnter={clearPickerCloseTimer}
             onMouseLeave={schedulePickerClose}
-            style={{
-              position: "fixed",
-              top: popoverPos.top,
-              left: popoverPos.left,
-              right: "auto",
-              bottom: "auto"
-            }}
+            style={idePicker.floatingStyles}
           >
             {detectedIdes.map((entry) => {
               const isShell = entry.id === "terminal" || entry.id === "iterm";
@@ -701,20 +618,14 @@ function SidebarSessionRowInner({
           )}
         </>
       )}
-      {contextMenuPos && hasContextMenu
+      {contextMenuPoint && hasContextMenu
         ? createPortal(
             <ul
-              ref={contextMenuRef}
+              ref={contextMenu.setPopover}
               className="project-picker-popover session-context-menu"
               role="menu"
               aria-label="Session actions"
-              style={{
-                position: "fixed",
-                top: contextMenuPos.top,
-                left: contextMenuPos.left,
-                right: "auto",
-                bottom: "auto"
-              }}
+              style={contextMenu.floatingStyles}
             >
               {onRename ? (
                 <li role="none">
@@ -788,12 +699,12 @@ function SidebarSessionRowInner({
             document.body
           )
         : null}
-      {iconPickerPos && onSetIcon
+      {iconPickerPoint && onSetIcon
         ? createPortal(
             <SessionIconPicker
               icon={workspace.icon ?? null}
               iconColor={workspace.iconColor ?? null}
-              position={iconPickerPos}
+              anchorPoint={iconPickerPoint}
               onApply={(icon, iconColor) => onSetIcon(workspace.id, icon, iconColor)}
               onClose={closeIconPicker}
             />,
@@ -821,7 +732,6 @@ export function sidebarSessionRowEqual(
   if (prev.isSelected !== next.isSelected) return false;
   if (prev.isOpenInGrid !== next.isOpenInGrid) return false;
   if (prev.canDragToGrid !== next.canDragToGrid) return false;
-  if (prev.showTokens !== next.showTokens) return false;
   if (prev.defaultIde !== next.defaultIde) return false;
   if (prev.detectedIdes !== next.detectedIdes) return false;
   if (prev.onOpenWorkspaceChat !== next.onOpenWorkspaceChat) return false;
@@ -855,11 +765,7 @@ export function sidebarSessionRowEqual(
   ) {
     return false;
   }
-  const pt = prev.workspaceTokens;
-  const nt = next.workspaceTokens;
-  if (pt === nt) return true;
-  if (pt === null || nt === null) return false;
-  return pt.input === nt.input && pt.output === nt.output && pt.cached === nt.cached;
+  return true;
 }
 
 export const SidebarSessionRow = memo(SidebarSessionRowInner, sidebarSessionRowEqual);

@@ -157,51 +157,34 @@ describe("LaunchModelSelector — all providers", () => {
     expect(onFastModeEnabledChange).toHaveBeenCalledWith(true);
   });
 
-  it("anchors the speed submenu to the speed row", () => {
+  // Both boxes are placed by `useAnchoredPopover` — the flyout against the
+  // chip, the Speed submenu against its own row. jsdom has no layout to check
+  // where they land, so this pins the wiring: each carries the primitive's
+  // inline positioning rather than falling back to a hard-coded side in CSS,
+  // which is what used to leave the flyout clipped at the viewport edge.
+  it("positions the model flyout and speed submenu with the shared primitive", () => {
     const value: ModelPickerSelection = {
       provider: "claude",
       label: "Opus 5",
       modelId: "claude-opus-5",
       reasoningEffort: "high"
     };
-    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-      const rect = (top: number, bottom: number) => ({
-        x: 0,
-        y: top,
-        width: 300,
-        height: bottom - top,
-        top,
-        right: 300,
-        bottom,
-        left: 0,
-        toJSON: () => ({})
-      });
+    render(
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        value={value}
+        onChange={vi.fn()}
+        fastModeEnabled={false}
+        onFastModeEnabledChange={vi.fn()}
+      />
+    );
 
-      if (this.classList.contains("model-picker-popover")) return rect(100, 500);
-      if (this.classList.contains("model-picker-submenu-trigger")) return rect(420, 460);
-      return rect(0, 0);
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+    const flyout = screen.getByRole("listbox", { name: "Launch model" }).parentElement;
+    expect(flyout).toHaveStyle({ position: "absolute" });
 
-    try {
-      render(
-        <LaunchModelSelector
-          ariaLabel="Launch model"
-          value={value}
-          onChange={vi.fn()}
-          fastModeEnabled={false}
-          onFastModeEnabledChange={vi.fn()}
-        />
-      );
-
-      fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-      fireEvent.click(screen.getByRole("button", { name: "Speed" }));
-
-      const speedMenu = screen.getByRole("listbox", { name: "Speed" });
-      expect(speedMenu.getAttribute("style") ?? "").toContain("--model-submenu-top: 320px");
-      expect(speedMenu.getAttribute("style") ?? "").toContain("--model-submenu-bottom: 40px");
-    } finally {
-      rectSpy.mockRestore();
-    }
+    fireEvent.click(screen.getByRole("button", { name: "Speed" }));
+    expect(screen.getByRole("listbox", { name: "Speed" })).toHaveStyle({ position: "absolute" });
   });
 
   it("marks fast mode in the closed chip for supported providers", () => {

@@ -171,7 +171,6 @@ export function Sidebar({
   snapshot,
   detectedIdes,
   defaultIde,
-  showSessionTokens,
   collapsed,
   onPeekLeave
 }: {
@@ -219,7 +218,6 @@ export function Sidebar({
   snapshot: DashboardSnapshot;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
-  showSessionTokens: boolean;
   /** Whether the sidebar is collapsed (rendered as a hover-peek overlay). */
   collapsed?: boolean;
   /** Pointer left the sidebar while collapsed — parent should end the peek. */
@@ -485,21 +483,6 @@ export function Sidebar({
     [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
   );
 
-  const workspaceTokenMap = useMemo(() => {
-    const map = new Map<string, { input: number; output: number; cached: number }>();
-    for (const session of snapshot.sessions) {
-      const tokens = session.tokens;
-      if (!tokens) continue;
-      const prev = map.get(session.workspaceId) ?? { input: 0, output: 0, cached: 0 };
-      map.set(session.workspaceId, {
-        input: prev.input + tokens.input,
-        output: prev.output + tokens.output,
-        cached: prev.cached + tokens.cacheRead + tokens.cacheWrite
-      });
-    }
-    return map;
-  }, [snapshot.sessions]);
-
   // Compute next outside the setState updater so the localStorage write fires
   // exactly once per toggle. (React 18 StrictMode runs updater callbacks
   // twice in dev — a side effect inside one would persist twice.)
@@ -558,6 +541,34 @@ export function Sidebar({
     [collapsedDateGroups]
   );
 
+  // Expand whichever section hosts the given row: its recency bucket (or
+  // Pinned / Priority / Side chats) in the Sessions view, its project group in
+  // the Projects view. Shared by the two reveal effects below.
+  const revealWorkspaceGroup = useCallback(
+    (workspace: DashboardSnapshot["workspaces"][number]): void => {
+      const groupKey = workspace.pinned
+        ? PINNED_GROUP_KEY
+        : priorityWorkspaceIds.has(workspace.id)
+          ? PRIORITY_GROUP_KEY
+          : workspace.kind === "scratch"
+            ? SIDE_CHATS_GROUP_KEY
+            : viewMode === "sessions"
+              ? dateGroups.find((group) => group.items.some((item) => item.id === workspace.id))
+                  ?.key ?? null
+              : null;
+      if (groupKey && collapsedDateGroups.has(groupKey)) {
+        const next = new Set(collapsedDateGroups);
+        next.delete(groupKey);
+        setCollapsedDateGroups(next);
+        saveCollapsedDateGroupIds(next);
+      }
+      if (viewMode === "projects" && workspace.kind === "git") {
+        expandProjectVisibility(workspace.projectId);
+      }
+    },
+    [collapsedDateGroups, dateGroups, expandProjectVisibility, priorityWorkspaceIds, viewMode]
+  );
+
   // A newly launched (or newly selected) session must not vanish into a
   // collapsed section: expand the group that hosts the selected row. Keyed on
   // the id *changing* — once revealed, the user may still collapse the group
@@ -568,34 +579,8 @@ export function Sidebar({
     const workspace = sidebarWorkspaces.find((candidate) => candidate.id === selectedWorkspaceId);
     if (!workspace || workspace.state === "archived") return;
     lastExpandedForWorkspaceId.current = selectedWorkspaceId;
-    const groupKey = workspace.pinned
-      ? PINNED_GROUP_KEY
-      : priorityWorkspaceIds.has(workspace.id)
-        ? PRIORITY_GROUP_KEY
-        : workspace.kind === "scratch"
-          ? SIDE_CHATS_GROUP_KEY
-          : viewMode === "sessions"
-            ? dateGroups.find((group) => group.items.some((item) => item.id === workspace.id))?.key ??
-              null
-            : null;
-    if (groupKey && collapsedDateGroups.has(groupKey)) {
-      const next = new Set(collapsedDateGroups);
-      next.delete(groupKey);
-      setCollapsedDateGroups(next);
-      saveCollapsedDateGroupIds(next);
-    }
-    if (viewMode === "projects" && workspace.kind === "git") {
-      expandProjectVisibility(workspace.projectId);
-    }
-  }, [
-    collapsedDateGroups,
-    dateGroups,
-    expandProjectVisibility,
-    priorityWorkspaceIds,
-    selectedWorkspaceId,
-    sidebarWorkspaces,
-    viewMode
-  ]);
+    revealWorkspaceGroup(workspace);
+  }, [revealWorkspaceGroup, selectedWorkspaceId, sidebarWorkspaces]);
 
   const toggleDateGroupExpansion = useCallback(
     (key: string): void => {
@@ -870,7 +855,6 @@ export function Sidebar({
               <div key={workspace.id} className="session-row-wrap">
                 <SidebarSessionRow
                   workspace={workspace}
-                  workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
                   isSelected={selectedWorkspaceId === workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                   canDragToGrid={canDragWorkspaceToGrid}
@@ -885,7 +869,6 @@ export function Sidebar({
                   onWorkspaceDragEnd={onWorkspaceDragEnd}
                   detectedIdes={detectedIdes}
                   defaultIde={defaultIde}
-                  showTokens={showSessionTokens}
                 />
               </div>
             ))}
@@ -984,7 +967,6 @@ export function Sidebar({
                 <SidebarSessionRow
                   workspace={workspace}
                   subtitle={subtitleFor(workspace.projectId)}
-                  workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
                   isSelected={selectedWorkspaceId === workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                   canDragToGrid={canDragWorkspaceToGrid}
@@ -998,7 +980,6 @@ export function Sidebar({
                   onWorkspaceDragEnd={onWorkspaceDragEnd}
                   detectedIdes={detectedIdes}
                   defaultIde={defaultIde}
-                  showTokens={showSessionTokens}
                 />
               </div>
             ))}
@@ -1039,7 +1020,6 @@ export function Sidebar({
                 <SidebarSessionRow
                   workspace={entry.workspace}
                   subtitle={subtitleFor(entry.workspace.projectId)}
-                  workspaceTokens={workspaceTokenMap.get(entry.workspace.id) ?? null}
                   isSelected={selectedWorkspaceId === entry.workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(entry.workspace.id)}
                   canDragToGrid={canDragWorkspaceToGrid}
@@ -1055,7 +1035,6 @@ export function Sidebar({
                   onWorkspaceDragEnd={onWorkspaceDragEnd}
                   detectedIdes={detectedIdes}
                   defaultIde={defaultIde}
-                  showTokens={showSessionTokens}
                 />
               </div>
             ))}
@@ -1114,7 +1093,6 @@ export function Sidebar({
                           <SidebarSessionRow
                             workspace={workspace}
                             subtitle={subtitleFor(workspace.projectId)}
-                            workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
                             isSelected={selectedWorkspaceId === workspace.id}
                             isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                             canDragToGrid={canDragWorkspaceToGrid}
@@ -1129,7 +1107,6 @@ export function Sidebar({
                             onWorkspaceDragEnd={onWorkspaceDragEnd}
                             detectedIdes={detectedIdes}
                             defaultIde={defaultIde}
-                            showTokens={showSessionTokens}
                           />
                         </div>
                       ))}
@@ -1270,7 +1247,6 @@ export function Sidebar({
                     >
                       <SidebarSessionRow
                         workspace={workspace}
-                        workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
                         isSelected={selectedWorkspaceId === workspace.id}
                         isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                         canDragToGrid={canDragWorkspaceToGrid}
@@ -1285,7 +1261,6 @@ export function Sidebar({
                         onWorkspaceDragEnd={onWorkspaceDragEnd}
                         detectedIdes={detectedIdes}
                         defaultIde={defaultIde}
-                        showTokens={showSessionTokens}
                       />
                     </div>
                   ))}

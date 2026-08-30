@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
@@ -7,10 +7,8 @@ import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
 import { FAST_MODE_KEY, RANDOM_SESSION_ICON_KEY } from "./lib/uiPreferences.js";
 import { APP_VERSION_LABEL } from "../shared/appVersion.js";
 import {
-  dashboardDeltaListener,
   launchProvider,
   listDetectedIdes,
-  missingSession,
   mockDashboardSnapshot,
   openInIde,
   providersDiscover,
@@ -177,45 +175,6 @@ describe("App settings", () => {
     await waitFor(() =>
       expect(window.localStorage.getItem("argmax.thinking.expanded")).toBe("true")
     );
-  });
-
-  it("hides sidebar session tokens by default and shows them when enabled in Settings", async () => {
-    sessionCostSummary.mockResolvedValue({
-      sessionId: "session-1",
-      modelId: "gpt-5.5",
-      tokens: { input: 12_300, output: 4_500, cacheRead: 50_000, cacheWrite: 0 },
-      costUsd: 0.012
-    });
-
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-
-    // Push a delta carrying token counts so the workspace-token map populates.
-    act(() => {
-      dashboardDeltaListener?.({
-        sessions: [
-          {
-            ...((snapshot.sessions[0] ?? missingSession())),
-            costUsd: 0.012,
-            tokens: { input: 12_300, output: 4_500, cacheRead: 50_000, cacheWrite: 0 }
-          }
-        ]
-      });
-    });
-
-    expect(screen.queryByLabelText(/Tokens: 16\.8k/)).not.toBeInTheDocument();
-
-    await openSettings();
-    await screen.findByRole("heading", { name: "Appearance" });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Show session tokens in sidebar" }));
-
-    await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.sidebar.tokens.visible")).toBe("true")
-    );
-    // 12.3k + 4.5k = 16.8k displayed; cache reads stay in the tooltip only.
-    const cell = await screen.findByLabelText(/Tokens: 16\.8k/);
-    expect(cell).toHaveTextContent("16.8k");
-    expect(cell.getAttribute("title")).toContain("50k cached");
   });
 
   it("disables the composer pixel field by default and persists turning it on", async () => {

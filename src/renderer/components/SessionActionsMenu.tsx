@@ -9,9 +9,10 @@ import {
   SquareArrowOutUpRight,
   SquarePen
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
+import { useCallback, useEffect, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import type { DetectedIde, GhPrRecord, IdeId, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { GitActionsMenu } from "./GitActionsMenu.js";
 import type { ComposerStatus } from "./SessionComposer.js";
@@ -54,29 +55,16 @@ export function SessionActionsMenu({
   const [prs, setPrs] = useState<GhPrRecord[]>([]);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsMode, setActionsMode] = useState<"main" | "git">("main");
-  const [actionsPos, setActionsPos] = useState<{ top: number; right: number } | null>(null);
-  const actionsAnchorRef = useRef<HTMLDivElement | null>(null);
-  const actionsPopoverRef = useRef<HTMLDivElement | null>(null);
   const closeActions = useCallback(() => {
     setActionsOpen(false);
     setActionsMode("main");
   }, []);
 
-  useDismissOnOutsideOrEscape(actionsAnchorRef, actionsOpen, closeActions, actionsPopoverRef);
+  // Right-aligned under the trigger, flipping above it near the bottom of the
+  // screen. The git submenu swaps in a longer list, so the height cap matters.
+  const menu = useAnchoredPopover({ open: actionsOpen, placement: "bottom-end", capHeight: true });
 
-  useLayoutEffect(() => {
-    if (!actionsOpen) {
-      setActionsPos(null);
-      return;
-    }
-    const anchor = actionsAnchorRef.current;
-    if (!anchor) return;
-    const rect = anchor.getBoundingClientRect();
-    setActionsPos({
-      top: rect.bottom + 6,
-      right: Math.max(8, window.innerWidth - rect.right)
-    });
-  }, [actionsOpen]);
+  useDismissOnOutsideOrEscape(menu.anchorRef, actionsOpen, closeActions, menu.popoverRef);
 
   useEffect(() => {
     if (!session?.id || !window.argmax) {
@@ -125,7 +113,7 @@ export function SessionActionsMenu({
   }, [session?.id, setStatus]);
 
   return (
-    <div className="session-actions-anchor" ref={actionsAnchorRef}>
+    <div className="session-actions-anchor" ref={menu.setAnchor}>
       <button
         className="small-icon"
         type="button"
@@ -137,19 +125,13 @@ export function SessionActionsMenu({
       >
         <MoreHorizontal size={16} />
       </button>
-      {actionsOpen && actionsPos && createPortal(
+      {actionsOpen && createPortal(
         <div
-          ref={actionsPopoverRef}
+          ref={menu.setPopover}
           className="project-picker-popover session-actions-popover"
           role="menu"
           aria-label="Session actions"
-          style={{
-            position: "fixed",
-            top: actionsPos.top,
-            right: actionsPos.right,
-            left: "auto",
-            bottom: "auto"
-          }}
+          style={menu.floatingStyles}
         >
           {actionsMode === "main" && (
             <ul className="session-actions-list">

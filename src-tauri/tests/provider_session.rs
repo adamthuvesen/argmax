@@ -796,6 +796,20 @@ async fn provider_switch_relaunches_new_provider_fresh() {
     }
 
     wait_for_event(&database, &session.id, "session.provider-changed", "Codex").await;
+
+    // The chat surface renders the seam from the payload, so it has to name
+    // both ends of the handoff and the model picking the session up.
+    let connection = database.connection();
+    let tail =
+        list_session_events_since(&connection, &session.id, None, None).expect("list events");
+    let marker = tail
+        .events
+        .iter()
+        .find(|event| event.r#type == "session.provider-changed")
+        .expect("provider-changed event");
+    assert_eq!(marker.payload["from"], "claude");
+    assert_eq!(marker.payload["provider"], "codex");
+    assert_eq!(marker.payload["modelLabel"], "GPT-5.5");
 }
 
 #[tokio::test]

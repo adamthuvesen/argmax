@@ -83,7 +83,11 @@ transcript instead of using a native resume. Switching is gated to idle sessions
 the composer locks the picker to the session's provider while a turn is running.
 A follow-up sent mid-turn queues and keeps the current provider. A switch
 requires `model_label`/`model_id` for the new provider. A `session.provider-changed`
-timeline marker records the handoff.
+timeline marker records the handoff, carrying `from`, `provider`, and
+`modelLabel` so the chat can render the seam. Every provider pair is allowed;
+the transcript is the only context that crosses, which is what the composer's
+confirmation dialog says before committing. See
+[chat-cards.md](chat-cards.md#provider-handoff).
 
 Claude structured launches use `--output-format stream-json`, `--verbose`,
 `--include-partial-messages`, and `--brief` so answer/thinking deltas stream

@@ -88,6 +88,14 @@ timeline marker records the handoff.
 Claude structured launches use `--output-format stream-json`, `--verbose`,
 `--include-partial-messages`, and `--brief` so answer/thinking deltas stream
 live and Claude can send explicit user-facing messages through `SendUserMessage`.
+A session created by `session:fork` (the turn footer's Fork button) carries a
+one-shot `resume_fork` flag: its first resumed turn uses the provider's
+fork-on-resume form — Claude adds `--fork-session`, Codex swaps `exec resume`
+for `exec fork`, OpenCode adds `--fork` — so the CLI diverges into a new
+session id instead of appending to the source conversation, and persisting
+that new id clears the flag. Cursor sessions can't be forked: cursor-agent has
+no fork-on-resume, so `FORK_CAPABLE_PROVIDERS` (providerModels.ts) and the
+`fork_session` gate (orchestration.rs) both exclude it.
 The normalizer unwraps `stream_event` rows, maps `SendUserMessage` tool calls to
 `message.completed`, and maps a successful `result` row's `result` field to
 `message.completed`. Context compaction becomes a

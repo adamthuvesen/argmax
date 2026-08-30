@@ -502,6 +502,20 @@ export function App(): JSX.Element {
     },
     [openWorkspaceChat]
   );
+  // Fork the session into a new workspace (same checkout, copied transcript,
+  // diverging provider conversation) and jump into the fork.
+  const forkSession = useCallback(
+    async (sessionId: string): Promise<void> => {
+      if (!window.argmax) return;
+      try {
+        const forked = await window.argmax.session.fork({ sessionId });
+        openWorkspaceChat(forked.workspace.id, { ctrlOrMeta: false, alt: false });
+      } catch (error) {
+        showErrorToast(error instanceof Error ? error.message : "Couldn't fork the session.");
+      }
+    },
+    [openWorkspaceChat, showErrorToast]
+  );
   const closeSettingsFromKeybinding = useCallback(
     (): void => setIsSettingsOpen(false),
     [setIsSettingsOpen]
@@ -1757,6 +1771,7 @@ export function App(): JSX.Element {
               onSendQueuedMessageNow={sendQueuedMessageNow}
               pendingMessages={snapshot.pendingMessages}
               onTerminateSession={terminateSession}
+              onForkSession={forkSession}
               onRunCheck={runCheck}
               registerPaletteFileContext={registerPaletteFileContext}
             />

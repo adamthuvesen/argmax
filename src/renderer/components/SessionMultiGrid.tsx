@@ -120,6 +120,7 @@ interface SessionMultiGridProps {
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string) => Promise<void>;
+  onForkSession: (sessionId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   /** App-level setter the focused SessionPane registers with so its file
       source + pick handler are wired into the command palette's Files
@@ -173,6 +174,7 @@ export function SessionMultiGrid({
   onSendQueuedMessageNow,
   pendingMessages,
   onTerminateSession,
+  onForkSession,
   onRunCheck,
   registerPaletteFileContext
 }: SessionMultiGridProps): JSX.Element {
@@ -445,6 +447,7 @@ export function SessionMultiGrid({
                         onSendQueuedMessageNow={onSendQueuedMessageNow}
                         pendingMessages={pendingMessages}
                         onTerminateSession={onTerminateSession}
+                        onForkSession={onForkSession}
                         project={project}
                         rawOutputs={rawOutputs}
                         rightPanelToggleSignal={rightPanelToggleSignal}

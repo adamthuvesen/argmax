@@ -166,6 +166,7 @@ mod tests {
                 cache_write: 0,
             },
             context_tokens: 0,
+            imported: false,
             context_window: None,
         }
     }

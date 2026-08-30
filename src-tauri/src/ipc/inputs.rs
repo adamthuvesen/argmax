@@ -916,3 +916,15 @@ mod tests {
         assert!(serde_json::from_value::<WorkspaceWriteFileInput>(stale_write).is_err());
     }
 }
+
+/// Settings → Agents → Session sync. Mirrors `SyncConfig`; the handler
+/// normalizes (window clamped, unreadable providers forced off).
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SyncSetConfigInput {
+    pub claude: bool,
+    pub codex: bool,
+    pub cursor: bool,
+    pub opencode: bool,
+    pub window_hours: u32,
+}

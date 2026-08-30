@@ -1,29 +1,14 @@
 import { useEffect, useState } from "react";
-import { createHighlighterCore, type HighlighterCore } from "shiki/core";
+import {
+  createHighlighterCore,
+  type HighlighterCore,
+  type LanguageInput,
+  type ThemeInput
+} from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
 import { themeAppearance } from "./theme.js";
-
-// Import each curated language module explicitly so Vite can tree-shake the
-// rest of Shiki's bundled grammars out of the renderer bundle.
-import typescript from "shiki/langs/typescript.mjs";
-import tsx from "shiki/langs/tsx.mjs";
-import javascript from "shiki/langs/javascript.mjs";
-import jsx from "shiki/langs/jsx.mjs";
-import python from "shiki/langs/python.mjs";
-import go from "shiki/langs/go.mjs";
-import rust from "shiki/langs/rust.mjs";
-import json from "shiki/langs/json.mjs";
-import markdown from "shiki/langs/markdown.mjs";
-import html from "shiki/langs/html.mjs";
-import css from "shiki/langs/css.mjs";
-import shellscript from "shiki/langs/shellscript.mjs";
-import sql from "shiki/langs/sql.mjs";
-import yaml from "shiki/langs/yaml.mjs";
-import toml from "shiki/langs/toml.mjs";
-import vitesseLight from "shiki/themes/vitesse-light.mjs";
-import vitesseDark from "shiki/themes/vitesse-dark.mjs";
 
 export interface HighlightToken {
   content: string;
@@ -40,22 +25,32 @@ function activeThemeName(): string {
     : LIGHT_THEME;
 }
 
-const CURATED_LANGS = [
-  typescript,
-  tsx,
-  javascript,
-  jsx,
-  python,
-  go,
-  rust,
-  json,
-  markdown,
-  html,
-  css,
-  shellscript,
-  sql,
-  yaml,
-  toml
+// Each curated grammar is a thunk, not a static import: `createHighlighterCore`
+// takes `MaybeGetter` inputs and awaits them, so Vite emits one on-demand chunk
+// per grammar instead of hoisting ~1.1 MB of grammar JSON into the eagerly
+// loaded chunk both entries preload. Nothing is fetched until the first code
+// block asks for highlighting; until then callers render plain text.
+const CURATED_LANGS: LanguageInput[] = [
+  () => import("shiki/langs/typescript.mjs"),
+  () => import("shiki/langs/tsx.mjs"),
+  () => import("shiki/langs/javascript.mjs"),
+  () => import("shiki/langs/jsx.mjs"),
+  () => import("shiki/langs/python.mjs"),
+  () => import("shiki/langs/go.mjs"),
+  () => import("shiki/langs/rust.mjs"),
+  () => import("shiki/langs/json.mjs"),
+  () => import("shiki/langs/markdown.mjs"),
+  () => import("shiki/langs/html.mjs"),
+  () => import("shiki/langs/css.mjs"),
+  () => import("shiki/langs/shellscript.mjs"),
+  () => import("shiki/langs/sql.mjs"),
+  () => import("shiki/langs/yaml.mjs"),
+  () => import("shiki/langs/toml.mjs")
+];
+
+const CURATED_THEMES: ThemeInput[] = [
+  () => import("shiki/themes/vitesse-light.mjs"),
+  () => import("shiki/themes/vitesse-dark.mjs")
 ];
 
 let highlighter: HighlighterCore | null = null;
@@ -69,7 +64,7 @@ function ensureHighlighter(): HighlighterCore | null {
   if (highlighter) return highlighter;
   if (highlighterPromise) return null;
   highlighterPromise = createHighlighterCore({
-    themes: [vitesseLight, vitesseDark],
+    themes: CURATED_THEMES,
     langs: CURATED_LANGS,
     engine: createJavaScriptRegexEngine()
   })

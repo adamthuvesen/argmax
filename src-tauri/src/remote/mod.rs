@@ -42,6 +42,12 @@ pub struct RemoteConfig {
     /// `enabled` — notifications are useful even without the WS bridge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ntfy_topic: Option<String>,
+    /// Mobile page URL pushes deep-link into — the same base the pairing QR
+    /// encodes, so a notification opens wherever the phone was paired.
+    /// Re-derived from the tailnet probe whenever Settings saves, because the
+    /// publisher runs far from the async probe and needs it at boot too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mobile_url: Option<String>,
 }
 
 impl RemoteConfig {
@@ -53,6 +59,7 @@ impl RemoteConfig {
             port: DEFAULT_PORT,
             token: generate_token(),
             ntfy_topic: None,
+            mobile_url: None,
         }
     }
 }
@@ -166,10 +173,9 @@ pub async fn start(app: tauri::AppHandle) {
 pub fn apply(app: &tauri::AppHandle, config: RemoteConfig) {
     let state = tauri::Manager::state::<crate::state::AppState>(app);
 
-    let publisher = config
-        .ntfy_topic
-        .clone()
-        .map(|topic| std::sync::Arc::new(ntfy::NtfyPublisher::new(topic)));
+    let publisher = config.ntfy_topic.clone().map(|topic| {
+        std::sync::Arc::new(ntfy::NtfyPublisher::new(topic, config.mobile_url.clone()))
+    });
     if let Ok(mut ntfy) = state.ntfy.write() {
         *ntfy = publisher;
     }

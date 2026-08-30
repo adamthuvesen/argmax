@@ -15,6 +15,9 @@
  *   no subscribe frame: the server pushes to every authed client, so
  *   `subscribe()` only registers locally and resubscription after a reconnect
  *   is implicit.
+ * - server → `{ type: "resync" }` when this client fell behind the event stream
+ *   and the host dropped frames for it. The socket stays open, so this is the
+ *   only signal that the snapshot is now stale.
  */
 
 import type { IpcChannel } from "../../shared/ipcSchemas.js";
@@ -279,6 +282,11 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
         return;
       case "pong":
         clearPongDeadline();
+        return;
+      // The host dropped events this client was too slow to read. The socket is
+      // still live, so nothing else would ever flag the gap.
+      case "resync":
+        publishConnection({ status: "connected", resync: true });
         return;
       case "response":
         settleResponse(frame);

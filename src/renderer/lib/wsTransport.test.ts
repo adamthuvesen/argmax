@@ -277,6 +277,19 @@ describe("wsTransport", () => {
     expect(states.at(-1)).toEqual({ status: "connected", resync: true });
   });
 
+  it("flags a resync frame on a socket that never dropped", () => {
+    const { connect, sockets } = fakeTransportSeam();
+    createWsTransport({ connect });
+    const states = recordConnectionStates();
+    sockets[0].authenticate();
+
+    // The host dropped events this client was too slow to read. The socket is
+    // still live, so nothing else would ever tell the app its snapshot is stale.
+    sockets[0].deliver({ type: "resync" });
+
+    expect(states.at(-1)).toEqual({ status: "connected", resync: true });
+  });
+
   it("reconnects without waiting out the backoff when the page comes back", () => {
     vi.useFakeTimers();
     const { connect, sockets } = fakeTransportSeam();

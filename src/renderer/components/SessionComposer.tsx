@@ -53,7 +53,7 @@ import {
 } from "../lib/agentMode.js";
 import { clearDraft } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
-import { leadingSlashCommand } from "../lib/slashHighlight.js";
+import { splitSkillTokens } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { ChangeCount } from "./ChangeCount.js";
 import { ContextRing } from "./ContextRing.js";
@@ -222,18 +222,15 @@ export function SessionComposer({
 
   useAutoGrowTextArea(inputRef, input, PROMPT_MAX_HEIGHT_PX);
 
-  // Tint a leading `/command` token in the accent colour once it maps to a
-  // real skill. A textarea can't colour a substring, so a mirror div renders
-  // the same text behind a transparent-text textarea — mounted only while a
-  // valid skill is present, so normal typing never routes through the overlay.
-  const skillHighlight = useMemo(() => {
-    const name = leadingSlashCommand(input);
-    if (name === null || !slashAutocomplete.skillNames.has(name.toLowerCase())) {
-      return null;
-    }
-    const head = `/${name}`;
-    return { head, tail: input.slice(head.length) };
-  }, [input, slashAutocomplete.skillNames]);
+  // Tint every `/command` token that maps to a real skill — leading or
+  // mid-message — in the accent colour. A textarea can't colour a substring,
+  // so a mirror div renders the same text behind a transparent-text textarea —
+  // mounted only while a valid skill is present, so normal typing never
+  // routes through the overlay.
+  const skillHighlight = useMemo(
+    () => splitSkillTokens(input, (name) => slashAutocomplete.skillNames.has(name)),
+    [input, slashAutocomplete.skillNames]
+  );
   const highlightBackdropRef = useRef<HTMLDivElement | null>(null);
   const syncHighlightScroll = useCallback((event: ReactUIEvent<HTMLTextAreaElement>): void => {
     const backdrop = highlightBackdropRef.current;
@@ -345,6 +342,11 @@ export function SessionComposer({
   return (
     <form
       className="session-input"
+      // The agent window carries its own type scale (Settings → chat font
+      // size), which is about reading the transcript. The composer is chrome —
+      // model chip, repo, branch, changed files — so it holds the app-chrome
+      // scale instead, matching the launcher's composer. See tokens.css.
+      data-type-scale="chrome"
       ref={inputFormRef}
       onSubmit={(event) => void submitInput(event)}
       onDragOver={onComposerDragOver}
@@ -505,8 +507,15 @@ export function SessionComposer({
       <div className="session-input-field">
         {skillHighlight ? (
           <div className="composer-highlight-backdrop" aria-hidden="true" ref={highlightBackdropRef}>
-            <span className="composer-skill-token">{skillHighlight.head}</span>
-            {skillHighlight.tail}
+            {skillHighlight.map((segment, index) =>
+              segment.skill ? (
+                <span key={index} className="composer-skill-token">
+                  {segment.text}
+                </span>
+              ) : (
+                segment.text
+              )
+            )}
           </div>
         ) : null}
         <textarea
@@ -534,7 +543,7 @@ export function SessionComposer({
           placeholder={
             canSend
               ? isQueueing
-                ? "Queue a follow-up — sent when the current turn finishes"
+                ? "Queue a follow-up"
                 : "Reply to your agent, or @-mention files"
               : ""
           }

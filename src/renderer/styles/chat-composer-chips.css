@@ -741,12 +741,17 @@ button.composer-compact-context-row:hover,
 
 /* Slash-command highlight. A textarea can't colour a substring, so a mirror
    div paints the text behind the textarea and the textarea text goes
-   transparent (caret stays visible). Only the leading /command token is
-   tinted; the rest is painted in the normal text colour so the visible text
-   still reads through. Every metric here MUST match the `.session-input
-   textarea` box (font, padding, line-height, wrapping) or the painted text
-   drifts from the caret. The overlay is mounted only while a real skill is
-   typed, so this never affects ordinary input. */
+   transparent (caret stays visible). Every /command token that maps to a real
+   skill is tinted — leading or mid-message; the rest is painted in the normal
+   text colour so the visible text still reads through. Every metric here MUST
+   match the textarea box (font, padding, line-height, wrapping) or the
+   painted text drifts from the caret — which is also why the token gets no
+   font-weight change: bolder glyphs are wider, and everything painted after a
+   mid-message token would drift off the invisible text. The overlay is
+   mounted only while a real skill is typed, so this never affects ordinary
+   input. Shared by the session composer (.session-input-field) and the
+   launcher (.composer-input); both textareas use the same font, 8px padding,
+   and 1.55 line-height. */
 .composer-highlight-backdrop {
   position: absolute;
   inset: 0;
@@ -765,10 +770,10 @@ button.composer-compact-context-row:hover,
 
 .composer-skill-token {
   color: var(--accent);
-  font-weight: 600;
 }
 
-.session-input-field textarea.composer-input--highlighting {
+.session-input-field textarea.composer-input--highlighting,
+.composer-input textarea.composer-input--highlighting {
   position: relative;
   z-index: 1;
   color: transparent;

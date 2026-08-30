@@ -1,6 +1,8 @@
 import { memo, useState, type JSX, type MutableRefObject } from "react";
+import { Sparkles } from "lucide-react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
+import { leadingSkillInvocation } from "../lib/slashHighlight.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { parsePlan } from "../lib/parsePlan.js";
@@ -461,7 +463,26 @@ export function SessionConversationUserMessage({
           kind="user"
           rawMarkdown={displayMessage}
         >
-          <p>{displayMessage}</p>
+          <p>
+            {(() => {
+              // A message sent as `/skill args` renders the invocation as an
+              // accent-colored chip so a skill run reads differently from
+              // plain prose. The raw text (with the slash) stays in
+              // rawMarkdown so copy keeps the real message.
+              const skill = leadingSkillInvocation(displayMessage);
+              if (!skill) return displayMessage;
+              const label = skill.name.charAt(0).toUpperCase() + skill.name.slice(1);
+              return (
+                <>
+                  <span className="user-skill-chip" title={`/${skill.name}`}>
+                    <Sparkles size={12} aria-hidden />
+                    {label}
+                  </span>
+                  {skill.rest ? ` ${skill.rest}` : null}
+                </>
+              );
+            })()}
+          </p>
         </ChatBubble>
       ) : null}
       <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />

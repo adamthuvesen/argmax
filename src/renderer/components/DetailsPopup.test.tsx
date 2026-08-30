@@ -21,16 +21,21 @@ const EVENTS: TimelineEvent[] = [
   event("m1", "user.message", "Explain this excerpt in more detail: vector clocks", "2026-05-12T15:00:00.000Z")
 ];
 
+// The popup's own prop types, not `ReturnType<typeof vi.fn>`: Vitest 4 types
+// a bare `vi.fn()` as `Mock<Procedure | Constructable>`, which no longer
+// widens to a call signature, so a loose override type poisons the prop.
+type DetailsPopupProps = Parameters<typeof DetailsPopup>[0];
+
 function renderPopup(overrides: {
-  onClose?: ReturnType<typeof vi.fn>;
-  onLoadSessionEvents?: ReturnType<typeof vi.fn>;
+  onClose?: DetailsPopupProps["onClose"];
+  onLoadSessionEvents?: DetailsPopupProps["onLoadSessionEvents"];
 } = {}) {
   return render(
     <DetailsPopup
       events={EVENTS}
       onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
-      onClose={overrides.onClose ?? vi.fn()}
-      onLoadSessionEvents={overrides.onLoadSessionEvents ?? vi.fn().mockResolvedValue(undefined)}
+      onClose={overrides.onClose ?? vi.fn(() => {})}
+      onLoadSessionEvents={overrides.onLoadSessionEvents ?? vi.fn(() => Promise.resolve())}
       onSendQueuedMessageNow={vi.fn().mockResolvedValue(undefined)}
       onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
       onTerminateSession={vi.fn().mockResolvedValue(undefined)}

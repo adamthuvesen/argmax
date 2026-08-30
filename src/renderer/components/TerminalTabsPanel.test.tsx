@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { ArgmaxApi, TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
 import { TerminalTabsPanel } from "./TerminalTabsPanel.js";
 import { resetTerminalTabsForTests } from "../lib/terminalTabs.js";
@@ -47,10 +47,13 @@ vi.mock("@xterm/addon-fit", () => ({
 vi.mock("@xterm/xterm/css/xterm.css", () => ({}));
 
 interface ArgmaxStub {
-  spawn: ReturnType<typeof vi.fn>;
-  write: ReturnType<typeof vi.fn>;
-  resize: ReturnType<typeof vi.fn>;
-  terminate: ReturnType<typeof vi.fn>;
+  // Named signatures, not `ReturnType<typeof vi.fn>`: Vitest 4 types a bare
+  // `vi.fn()` as `Mock<Procedure | Constructable>`, so an untyped stub makes
+  // every `mockImplementationOnce` here look like it returns void.
+  spawn: Mock<() => Promise<{ terminalId: string }>>;
+  write: Mock<() => Promise<{ ok: true }>>;
+  resize: Mock<() => Promise<{ ok: true }>>;
+  terminate: Mock<() => Promise<{ ok: true }>>;
   emitData: (event: TerminalDataEvent) => void;
   emitExit: (event: TerminalExitEvent) => void;
 }

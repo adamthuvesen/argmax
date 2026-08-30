@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { CommandPalette, type MessageHit, type PaletteCommand } from "./CommandPalette.js";
 import type { WorkspaceContentSearchResult } from "../../shared/types.js";
 
@@ -11,13 +11,13 @@ const COMMANDS: PaletteCommand[] = Array.from({ length: 12 }, (_, i) => ({
 }));
 
 describe("CommandPalette", () => {
-  let scrollSpy: ReturnType<typeof vi.fn>;
+  let scrollSpy: Mock<Element["scrollIntoView"]>;
 
   beforeEach(() => {
     // jsdom doesn't implement layout, so scrollIntoView is undefined on
     // HTMLElement.prototype by default. Stub it so we can assert the keyboard
     // nav effect runs against the currently selected row.
-    scrollSpy = vi.fn();
+    scrollSpy = vi.fn<Element["scrollIntoView"]>();
     Element.prototype.scrollIntoView = scrollSpy;
   });
 
@@ -291,10 +291,16 @@ describe("CommandPalette", () => {
     // 8 * 40ms of churn is well past the 150ms debounce, so the backend must
     // already have run by the time the churn stops — waiting for it to settle
     // first would hide the bug.
+    // Real waits, but inside `act`: the debounce fires mid-loop and the
+    // backend's resolution sets state, which React otherwise reports as an
+    // update outside the test.
     for (let tick = 0; tick < 8; tick += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      });
       rerender(paletteWith((query, limit) => backend(query, limit)));
     }
+    await act(async () => {});
 
     expect(backend).toHaveBeenCalledWith("needle", 8);
   });

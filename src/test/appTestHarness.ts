@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { vi } from "vitest";
 import type { ArgmaxApi, DashboardDelta, DashboardSnapshot, MenuCommand } from "../shared/types.js";
 import {
@@ -536,11 +536,22 @@ export async function openSettings(group: SettingsGroup = "General"): Promise<vo
   const menu = await screen.findByRole("menu", { name: "Argmax menu" });
   fireEvent.click(within(menu).getByRole("menuitem", { name: /Settings/ }));
   await screen.findByRole("heading", { name: "Settings" });
-  if (group === "General") return;
+  if (group === "General") return settle();
 
   const settingsGroups = screen.getByRole("complementary", { name: "Settings groups" });
   fireEvent.click(within(settingsGroups).getByRole("button", { name: new RegExp(`\\b${group}\\b`) }));
   if (group === "System") {
     await screen.findByText("No learnings captured yet. Complete a session to start filling this list.");
   }
+  await settle();
+}
+
+/**
+ * The settings panels ask for their own status on mount (session sync, the
+ * remote bridge). Those reads resolve a microtask after the click that opened
+ * the panel, so every caller has to let them land inside `act` — otherwise
+ * React reports the state they set as an update outside the test.
+ */
+async function settle(): Promise<void> {
+  await act(async () => {});
 }

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { FolderIcon } from "@react-symbols/icons/utils";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";

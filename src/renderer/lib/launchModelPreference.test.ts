@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { LAUNCH_MODEL_KEY, persistLaunchModel, readStoredLaunchModel } from "./launchModelPreference.js";
 import { allModelOptions } from "./models.js";

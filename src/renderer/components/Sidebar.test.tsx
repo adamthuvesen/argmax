@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { StrictMode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { SCRATCH_PROJECT_ID, type DashboardSnapshot } from "../../shared/types.js";
 import {
   collapsedDateGroupsStorageKey,
@@ -141,7 +141,7 @@ function getProjectButtonOrder(): string[] {
 }
 
 describe("Sidebar — localStorage write isolation", () => {
-  let setItemSpy: ReturnType<typeof vi.spyOn>;
+  let setItemSpy: MockInstance<(key: string, value: string) => void>;
 
   beforeEach(() => {
     window.localStorage.clear();
@@ -253,7 +253,7 @@ describe("Sidebar — localStorage write isolation", () => {
 });
 
 describe("Sidebar — project sort menu", () => {
-  let setItemSpy: ReturnType<typeof vi.spyOn>;
+  let setItemSpy: MockInstance<(key: string, value: string) => void>;
 
   beforeEach(() => {
     window.localStorage.clear();

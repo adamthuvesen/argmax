@@ -9,7 +9,10 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 - FTS5 sidecar tables index timeline events and learnings.
 - `synced_sessions` (v18) tracks sessions imported from external provider transcripts. See [session-sync.md](session-sync.md).
 - `routines` (v19) stores scheduled task prompts and cadences. See [scheduled-tasks.md](scheduled-tasks.md).
+- `routines` was normalized by v20. A pre-release v19 created it with `permission_mode` and `agent_mode` columns no code read, so every database that ran the draft failed the checksum and the app could not open its own store. `ACCEPTED_LEGACY_CHECKSUMS` names that one historical body — the check stays strict for unknown drift — and v20 rebuilds the table through an explicit column list, a no-op copy for databases that only saw the merged body. Editing an applied migration is still forbidden; this is the repair once it has already happened.
 - Legacy checkpoint tables are preserved for backward compatibility without creating new entries.
+
+Reads take pooled `SQLITE_OPEN_READ_ONLY` connections through `Database::read_connection`, not the writer `Mutex<Connection>`, so a read never queues behind a write. A write attempted on the read path fails loudly; that is the point. See [performance.md](performance.md).
 
 ## Repositories
 

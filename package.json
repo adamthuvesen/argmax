@@ -21,6 +21,7 @@
     "check:bindings": "node scripts/check-bindings-fresh.mjs",
     "generate:bindings": "cargo run --manifest-path src-tauri/Cargo.toml --bin export-bindings -- src/shared/bindings.d.ts",
     "check:tauri-bridge": "node scripts/check-tauri-bridge.mjs",
+    "check:main-thread": "node scripts/check-main-thread-handlers.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
     "typecheck": "tsc --noEmit"
   },

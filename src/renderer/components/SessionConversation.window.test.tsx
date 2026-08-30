@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
 import { baseSession, event, renderConversation } from "../../test/sessionConversationTestHarness.js";

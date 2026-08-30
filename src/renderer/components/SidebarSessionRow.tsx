@@ -69,9 +69,9 @@ type SidebarSessionRowProps = {
    * view) while the Priority section is enabled.
    */
   subtitle?: string | null;
-  importedProvider?: string | null;
   /** Provider name shown as a small marker when this session was synced from
    *  that agent's own history rather than started in Argmax. */
+  importedProvider?: string | null;
   /** Set when the row renders inside the Priority section: why it floated up. */
   priorityAttention?: PriorityAttention;
   /** Priority rows only — right-click "Remove from priority" dismisses the row. */

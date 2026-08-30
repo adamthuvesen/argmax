@@ -50,8 +50,11 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
       id: "session-1",
       workspaceId: "workspace-1",
       provider: "codex",
-      modelLabel: "GPT-5.3 Codex",
-      modelId: "gpt-5.5",
+      // A current, non-default catalog model: the picker resolves labels from
+      // the catalog, so a retired id here would render as the provider default
+      // and mask what these tests actually check.
+      modelLabel: "GPT-5.6 Terra",
+      modelId: "gpt-5.6-terra",
       reasoningEffort: "medium",
       permissionMode: "auto-approve",
       providerConversationId: null,

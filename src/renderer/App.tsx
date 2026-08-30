@@ -18,7 +18,8 @@ import type {
   MenuCommand,
   ProjectSummary,
   SessionSummary,
-  WorkspaceContentSearchResult
+  WorkspaceContentSearchResult,
+  WorkspaceSummary
 } from "../shared/types.js";
 import { SCRATCH_PROJECT_ID } from "../shared/types.js";
 import { launcherDraftKey, writeDraftText } from "./lib/composerDrafts.js";
@@ -677,6 +678,11 @@ export function App(): JSX.Element {
         return;
       }
 
+      // Clear the workspace selection first: while a workspace stays selected,
+      // the selection-sync effect forces selectedProjectId back to that
+      // workspace's project, silently undoing the new pick.
+      setSelectedSessionId(null);
+      setSelectedWorkspaceId(null);
       setSelectedProjectId(result.project.id);
       setGrid(EMPTY_GRID);
       setSnapshot((current) => mergeDashboardDelta(current, { projects: [result.project] }));
@@ -687,7 +693,7 @@ export function App(): JSX.Element {
         message: error instanceof Error ? error.message : "Argmax requires a local git repository."
       });
     }
-  }, [setGrid, setSelectedProjectId, setSnapshot]);
+  }, [setGrid, setSelectedProjectId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot]);
 
   const removeProject = useCallback(async (projectId: string): Promise<void> => {
     if (!window.argmax) {
@@ -1320,24 +1326,36 @@ export function App(): JSX.Element {
   // never user-managed). Archive strays as snapshots arrive — an attempted-id
   // set (not a one-shot flag) keeps the sweep idempotent while still catching
   // rows that only show up after the first, possibly partial, delta. Ids of
-  // popups launched this run are claimed into the set so the sweep can never
-  // race a launch in flight.
+  // popups launched this run are claimed into the set so the sweep never
+  // archives one that is in use.
   const sweptPopupWorkspaceIds = useRef(new Set<string>());
+  // create_scratch publishes the popup row on the dashboard delta channel
+  // before its reply reaches the renderer, so the id cannot be claimed in
+  // time. The sweep stands down while a popup is being created and re-runs
+  // once the last one settles, so real strays are still caught.
+  const popupCreationsInFlight = useRef(0);
+  const [popupSweepEpoch, setPopupSweepEpoch] = useState(0);
   const launchDetailsPopup = useCallback(
     async (prompt: string, context?: { attachToChat?: () => void }): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to launch local agents.");
       }
       const api = window.argmax;
-      const workspace = await api.workspaces.createScratch({
-        taskLabel: "More details",
-        kind: "popup"
-      });
-      // create_scratch publishes the row before this command returns, so a
-      // dashboard delta can land while providers.launch is still in flight.
-      // Claim the id now or the stray sweep below would archive the popup —
-      // and delete its scratch dir — out from under the launching session.
-      sweptPopupWorkspaceIds.current.add(workspace.id);
+      popupCreationsInFlight.current += 1;
+      let workspace: WorkspaceSummary;
+      try {
+        workspace = await api.workspaces.createScratch({
+          taskLabel: "More details",
+          kind: "popup"
+        });
+        // The id is knowable only now; claim it before the sweep resumes so
+        // the popup is never archived — and its scratch dir deleted — out
+        // from under the session about to launch into it.
+        sweptPopupWorkspaceIds.current.add(workspace.id);
+      } finally {
+        popupCreationsInFlight.current -= 1;
+        if (popupCreationsInFlight.current === 0) setPopupSweepEpoch((epoch) => epoch + 1);
+      }
       const launchedSession = await api.providers
         .launch({
           workspaceId: workspace.id,
@@ -1384,7 +1402,7 @@ export function App(): JSX.Element {
     [disposeDetailsSession, fastModeEnabled, launchModel, setSnapshot]
   );
   useEffect(() => {
-    if (loadState === "loading" || !window.argmax) return;
+    if (loadState === "loading" || popupCreationsInFlight.current > 0 || !window.argmax) return;
     const api = window.argmax;
     for (const workspace of snapshot.workspaces) {
       if (
@@ -1399,7 +1417,7 @@ export function App(): JSX.Element {
           .catch(() => undefined);
       }
     }
-  }, [loadState, snapshot.workspaces]);
+  }, [loadState, popupSweepEpoch, snapshot.workspaces]);
 
   const paletteCommands = useMemo(
     () =>

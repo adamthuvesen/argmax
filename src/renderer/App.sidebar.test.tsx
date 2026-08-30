@@ -40,6 +40,60 @@ describe("App sidebar", () => {
     setupAppTestMocks();
   });
 
+  it("expands the hosting date group when a workspace appears without being selected", async () => {
+    window.localStorage.setItem("argmax.sidebar.viewMode", JSON.stringify("sessions"));
+    render(<App />);
+    // The seeded snapshot has no Today activity, so the bucket isn't rendered
+    // yet — and per-launch defaults would show it collapsed once it appears.
+    await screen.findByRole("button", { name: /Older sessions/ });
+    expect(screen.queryByRole("button", { name: /Today sessions/ })).not.toBeInTheDocument();
+
+    // A fork (or an agent-launched session) lands as a delta with a fresh
+    // workspace the user never clicked. Its group must open so the creation
+    // is visibly confirmed.
+    const forkedWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-forked",
+      projectId: "project-1",
+      taskLabel: "Morning Status Check (fork)",
+      branch: "main",
+      baseRef: "main",
+      path: "/tmp/project-1",
+      state: "complete",
+      sharedWorkspace: true,
+      kind: "git",
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: new Date().toISOString(),
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
+    };
+    const forkedSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-forked",
+      workspaceId: "workspace-forked",
+      provider: "claude",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-1",
+      prompt: "Morning status check",
+      state: "complete",
+      attention: "normal",
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      lastActivityAt: new Date().toISOString()
+    };
+    await act(async () => {
+      dashboardDeltaListener?.({ workspaces: [forkedWorkspace], sessions: [forkedSession] });
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole("button", { name: /Today sessions/ })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+  });
+
   it("opens a sidebar session", async () => {
     const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-2",
@@ -227,8 +281,8 @@ describe("App sidebar", () => {
         sessionId: "session-1",
         input: "continue with tests",
         provider: "codex",
-        modelLabel: "GPT-5.3 Codex",
-        modelId: "gpt-5.5",
+        modelLabel: "GPT-5.6 Terra",
+        modelId: "gpt-5.6-terra",
         reasoningEffort: "medium",
         fastMode: false,
         agentMode: "auto",

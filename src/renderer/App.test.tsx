@@ -132,7 +132,7 @@ describe("App", () => {
 
     const modelButton = await screen.findByRole("button", { name: "Session model" });
     const initialLabel = modelButton.textContent ?? "";
-    expect(initialLabel).toContain("GPT-5.3 Codex");
+    expect(initialLabel).toContain("GPT-5.6 Terra");
 
     // Model selection is session-id scoped. Deltas for the same session must
     // not overwrite a local picker choice while the session stays selected.
@@ -648,8 +648,8 @@ describe("App", () => {
       id: "session-new",
       workspaceId: "workspace-new",
       provider: "codex",
-      modelLabel: "GPT-5.3 Codex",
-      modelId: "gpt-5.5",
+      modelLabel: "GPT-5.6 Terra",
+      modelId: "gpt-5.6-terra",
       reasoningEffort: "medium",
       permissionMode: "auto-approve",
       providerConversationId: null,
@@ -722,8 +722,8 @@ describe("App", () => {
       id: "session-mention",
       workspaceId: "workspace-mention",
       provider: "codex",
-      modelLabel: "GPT-5.3 Codex",
-      modelId: "gpt-5.5",
+      modelLabel: "GPT-5.6 Terra",
+      modelId: "gpt-5.6-terra",
       reasoningEffort: "medium",
       permissionMode: "auto-approve",
       providerConversationId: null,
@@ -929,6 +929,27 @@ describe("App", () => {
         taskLabel: "Update shell aliases"
       })
     );
+  });
+
+  it("selects the added project even while a workspace session is open", async () => {
+    const dotfilesProject = secondProject();
+    pickProjectFolder.mockResolvedValue({ cancelled: false, project: dotfilesProject });
+
+    render(<App />);
+
+    // Open the existing workspace's chat first: with a workspace selected, the
+    // selection-sync effect used to snap selectedProjectId back to that
+    // workspace's project, undoing the freshly added project's selection.
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    // The chat must actually be open (workspace selected) before adding.
+    await screen.findByLabelText("Session conversation");
+    fireEvent.click(await screen.findByRole("button", { name: "Add Project" }));
+
+    // The launcher's own project chip — not the sidebar group — must target
+    // the fresh project.
+    const projectChip = await screen.findByRole("button", { name: "Switch project" });
+    await waitFor(() => expect(projectChip).toHaveTextContent("Dotfiles"));
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
   });
 
   it("leaves state unchanged when folder selection is cancelled", async () => {

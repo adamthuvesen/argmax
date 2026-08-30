@@ -49,9 +49,7 @@ pub const SESSION_LAUNCH_SOCKET_ENV: &str = "ARGMAX_SESSION_LAUNCH_SOCKET";
 pub const SESSION_LAUNCH_TOKEN_ENV: &str = "ARGMAX_SESSION_LAUNCH_TOKEN";
 pub const ARGMAX_BIN_ENV: &str = "ARGMAX_BIN";
 
-// `pub(crate)` so session sync can strip it back off an imported transcript's
-// first prompt: Argmax prepends it, so it must not become the session's title.
-pub(crate) const SESSION_LAUNCH_INSTRUCTION: &str = r#"Argmax session launching is available only when the user explicitly asks for a separate Argmax session. Use "$ARGMAX_BIN" session launch --project <registered name or absolute repo path> --prompt '<task>'. Omit --project to use this session's project. The default uses the current checkout. Add --worktree for isolation. This creates a top-level sidebar session, not a subagent."#;
+const SESSION_LAUNCH_INSTRUCTION: &str = r#"Argmax session launching is available only when the user explicitly asks for a separate Argmax session. Use "$ARGMAX_BIN" session launch --project <registered name or absolute repo path> --prompt '<task>'. Omit --project to use this session's project. The default uses the current checkout. Add --worktree for isolation. This creates a top-level sidebar session, not a subagent."#;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SessionLaunchError {

@@ -218,6 +218,10 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
             let input: SessionAgentEventsInput = parse(channel, input)?;
             encode(session::session_agent_events_impl(state, input).await?)
         }
+        "session:fork" => {
+            let input: SessionForkInput = parse(channel, input)?;
+            encode(session::session_fork_impl(state, input)?)
+        }
         "session:cost-summary" => {
             let input: SessionCostSummaryInput = parse(channel, input)?;
             encode(session::session_cost_summary_impl(state, input)?)

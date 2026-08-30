@@ -194,7 +194,7 @@ pub fn run() {
                             // Tauri builds the config's `main` window before the
                             // setup hook runs; hide it so the doomed instance
                             // doesn't flash a dead UI behind the dialog.
-                            if let Some(window) = app.get_webview_window("main") {
+                            if let Some(window) = app.get_window("main") {
                                 let _ = window.hide();
                             }
                             use tauri_plugin_dialog::DialogExt;
@@ -578,7 +578,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 sync_sweep_loop(sync_app).await;
             });
-            if app.get_webview_window("main").is_some() {
+            if app.get_window("main").is_some() {
                 timer.mark("window.create");
             }
             tracing::info!(

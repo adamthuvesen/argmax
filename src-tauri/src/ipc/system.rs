@@ -249,7 +249,7 @@ fn apply_theme<R: Runtime>(app: &AppHandle<R>, mode: ThemeMode) -> ArgmaxResult<
         ThemeMode::System => None,
     };
     app.set_theme(theme);
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_window("main") {
         window
             .set_theme(theme)
             .map_err(|error| ArgmaxError::service("THEME_APPLY", error.to_string()))?;

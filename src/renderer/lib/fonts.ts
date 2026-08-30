@@ -1,5 +1,3 @@
-import { DEFAULT_SCALE_LEVEL, readStoredScaleLevel, type ScaleLevel } from "./scaleLevel.js";
-
 export type FontFamilyId =
   | "lilex"
   | "system-mono"
@@ -21,8 +19,28 @@ export type FontOption = {
   stack: string;
 };
 
-/** Type size, 1 (smallest) to 5 (largest). See `ScaleLevel`. */
-export type FontSize = ScaleLevel;
+/**
+ * Type size, 1 (smallest) to 10 (largest). Each level shifts the whole type
+ * scale by one pixel: body text (`--text-base`) is `7 + level` px, so level 1
+ * reads at 8px, the default 6 at the 13px Argmax ships, and 10 at 17px.
+ */
+export type FontSize = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+
+export const FONT_SIZE_MIN: FontSize = 1;
+export const FONT_SIZE_MAX: FontSize = 10;
+
+/** Body-text (`--text-base`) size at a level, for the settings caption. */
+export function fontSizeBasePx(size: FontSize): number {
+  return 7 + size;
+}
+
+export function toFontSize(raw: string | null | undefined): FontSize | null {
+  if (!raw) return null;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed >= FONT_SIZE_MIN && parsed <= FONT_SIZE_MAX
+    ? (parsed as FontSize)
+    : null;
+}
 
 const SYSTEM_MONO_FALLBACK = '"Lilex Nerd Font", ui-monospace, "SFMono-Regular", Consolas, monospace';
 
@@ -103,27 +121,37 @@ export const FONT_OPTIONS: readonly FontOption[] = [
 
 export const DEFAULT_FONT_ID: FontFamilyId = "geist-sans";
 export const FONT_STORAGE_KEY = "argmax.font.family";
-export const DEFAULT_FONT_SIZE: FontSize = DEFAULT_SCALE_LEVEL;
+export const DEFAULT_FONT_SIZE: FontSize = 6;
 /** App-chrome size: sidebar, titlebar, settings, global overlays. */
-export const FONT_SIZE_STORAGE_KEY = "argmax.font.size";
+export const FONT_SIZE_STORAGE_KEY = "argmax.font.scale";
 /** Agent-window size: conversations, composers, and agent activity panes. */
-export const CHAT_FONT_SIZE_STORAGE_KEY = "argmax.font.size.chat";
+export const CHAT_FONT_SIZE_STORAGE_KEY = "argmax.font.scale.chat";
 
-/** Sizes stored by the three-way setting the 1–5 scale replaced. */
-const LEGACY_FONT_SIZES: Readonly<Record<string, FontSize>> = {
-  small: 2,
-  default: 3,
-  large: 4
+/**
+ * Keys the retired 1–5 scale wrote. They keep their own names because the two
+ * scales share numerals: a stored "4" means one size on the old scale and
+ * another on the new, so the value can only be trusted under the key that
+ * matches its scale. Old level N maps to N + 3 (both scales step 1px, and the
+ * old default 3 is the new default 6); the string ids predate even the 1–5
+ * scale.
+ */
+const LEGACY_FONT_SIZE_STORAGE_KEY = "argmax.font.size";
+const LEGACY_CHAT_FONT_SIZE_STORAGE_KEY = "argmax.font.size.chat";
+const LEGACY_STRING_FONT_SIZES: Readonly<Record<string, FontSize>> = {
+  small: 5,
+  default: 6,
+  large: 7
 };
 
-/** Caption under the size control, one per level. */
-export const FONT_SIZE_HINTS: Readonly<Record<FontSize, string>> = {
-  1: "Smallest. Dense.",
-  2: "Denser text.",
-  3: "Argmax's default type scale.",
-  4: "Larger, roomier text.",
-  5: "Largest. Most generous."
-};
+function readLegacyFontSize(key: string): FontSize | null {
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return null;
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 5) {
+    return (parsed + 3) as FontSize;
+  }
+  return LEGACY_STRING_FONT_SIZES[raw] ?? null;
+}
 
 const ALL_FONT_IDS = new Set<string>(FONT_OPTIONS.map((option) => option.id));
 
@@ -137,7 +165,12 @@ export function readStoredFont(): FontFamilyId {
 }
 
 export function readStoredFontSize(): FontSize {
-  return readStoredScaleLevel(FONT_SIZE_STORAGE_KEY, LEGACY_FONT_SIZES) ?? DEFAULT_FONT_SIZE;
+  if (typeof window === "undefined") return DEFAULT_FONT_SIZE;
+  return (
+    toFontSize(window.localStorage.getItem(FONT_SIZE_STORAGE_KEY)) ??
+    readLegacyFontSize(LEGACY_FONT_SIZE_STORAGE_KEY) ??
+    DEFAULT_FONT_SIZE
+  );
 }
 
 /**
@@ -146,7 +179,12 @@ export function readStoredFontSize(): FontSize {
  * nothing jumps.
  */
 export function readStoredChatFontSize(): FontSize {
-  return readStoredScaleLevel(CHAT_FONT_SIZE_STORAGE_KEY, LEGACY_FONT_SIZES) ?? readStoredFontSize();
+  if (typeof window === "undefined") return DEFAULT_FONT_SIZE;
+  return (
+    toFontSize(window.localStorage.getItem(CHAT_FONT_SIZE_STORAGE_KEY)) ??
+    readLegacyFontSize(LEGACY_CHAT_FONT_SIZE_STORAGE_KEY) ??
+    readStoredFontSize()
+  );
 }
 
 export function applyFontToDocument(id: FontFamilyId): void {

@@ -468,27 +468,33 @@ export function setupAppTestMocks(): void {
       onExit: () => () => undefined
     },
     sync: {
-      getStatus: vi.fn(() => Promise.resolve({
+      getStatus: vi.fn(() =>
+        Promise.resolve({
           config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
           supportedProviders: ["claude"],
           lastRunAt: null,
           importedCount: 0,
           lastError: null
-        })),
-      setConfig: vi.fn(() => Promise.resolve({
+        })
+      ),
+      setConfig: vi.fn(() =>
+        Promise.resolve({
           config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
           supportedProviders: ["claude"],
           lastRunAt: null,
           importedCount: 0,
           lastError: null
-        })),
-      runNow: vi.fn(() => Promise.resolve({
+        })
+      ),
+      runNow: vi.fn(() =>
+        Promise.resolve({
           config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
           supportedProviders: ["claude"],
           lastRunAt: null,
           importedCount: 0,
           lastError: null
-        }))
+        })
+      )
     },
     browser: {
       open: () => Promise.resolve({ ok: true }),
@@ -498,8 +504,8 @@ export function setupAppTestMocks(): void {
       reload: () => Promise.resolve({ ok: true }),
       setBounds: () => Promise.resolve({ ok: true }),
       close: () => Promise.resolve({ ok: true }),
+      stop: () => Promise.resolve({ ok: true }),
       fillCredentials: () => Promise.resolve({ ok: true, itemTitle: "Test Login" }),
-      stop: () => Promise.resolve({ ok: true as const }),
       onState: () => () => undefined,
       onNewTab: () => () => undefined,
       onPageCommand: () => () => undefined

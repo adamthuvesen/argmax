@@ -1,5 +1,4 @@
 import { ShieldAlert } from "lucide-react";
-import type { NewSessionSeed } from "./SessionComposer.js";
 import {
   Suspense,
   lazy,
@@ -14,6 +13,7 @@ import {
   type MouseEvent as ReactMouseEvent
 } from "react";
 import type { ModelPickerSelection } from "../lib/models.js";
+import type { NewSessionSeed } from "./SessionComposer.js";
 import type { ReviewCommentInput } from "../lib/composerAnnotations.js";
 import type {
   AgentMode,

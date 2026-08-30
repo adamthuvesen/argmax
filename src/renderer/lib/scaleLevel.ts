@@ -1,11 +1,13 @@
 /**
- * The 1–5 scale behind every size setting: type sizes for app chrome and agent
- * windows, and the agent window's content width. 1 is the smallest step, 5 the
- * largest, and 3 is what Argmax ships. A fresh install looks the same as it
- * always did while leaving two steps of headroom in each direction.
+ * The 1–5 scale behind the agent window's content width. 1 is the narrowest
+ * step, 5 the widest, and 3 is what Argmax ships, leaving two steps of headroom
+ * in each direction.
  *
- * Levels 2, 3 and 4 are the sizes the old three-way settings offered, which is
- * what `LEGACY_*` maps in the modules below migrate onto.
+ * Type sizes no longer ride this scale: they moved to the 1–10 slider in
+ * `fonts.ts`, which owns its own levels and migration.
+ *
+ * Levels 2, 3 and 4 are the sizes the old three-way setting offered, which is
+ * what the `LEGACY_*` map in `chatWidth.ts` migrates onto.
  */
 export type ScaleLevel = 1 | 2 | 3 | 4 | 5;
 

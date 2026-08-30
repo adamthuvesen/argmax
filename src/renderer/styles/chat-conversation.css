@@ -1177,6 +1177,25 @@
   color: var(--user-message-fg);
 }
 
+/* Leading `/skill` invocation rendered as an accent-colored chip inside the
+   user bubble, so a skill run reads at a glance as "ran a skill", not prose. */
+.user-skill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  vertical-align: baseline;
+  color: var(--accent);
+  font-weight: 600;
+  /* Label-sized, not prose-sized: the chip is a marker ("ran a skill"), so it
+     sits at the agent view's label size rather than inheriting bubble prose. */
+  font-size: var(--text-sm);
+}
+
+.user-skill-chip svg {
+  flex: 0 0 auto;
+  translate: 0 1px;
+}
+
 /* A long paste (multi-paragraph message) would otherwise grow the bubble to the
    full height of its content and push the reply off-screen. Cap the body and let
    it scroll internally past that point; short messages stay below the cap and

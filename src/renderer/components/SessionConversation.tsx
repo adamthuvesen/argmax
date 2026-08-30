@@ -5,7 +5,6 @@ import {
   MessagesSquare,
   X
 } from "lucide-react";
-import type { NewSessionSeed } from "./SessionComposer.js";
 import {
   useCallback,
   useEffect,
@@ -28,7 +27,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
-import { useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
+import { SCROLL_INTENT_KEYS, useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { modelPickerSelectionFromSession, type ModelPickerSelection } from "../lib/models.js";
 import { orderedOpenFilePaths } from "../lib/openFileContext.js";
@@ -71,7 +70,7 @@ import {
 } from "../lib/composerAnnotations.js";
 import { buildDetailsSeed, buildSideChatSeed } from "../lib/sideChat.js";
 import { SelectionToolbar, type ChatSelection } from "./SelectionToolbar.js";
-import { SessionComposer, type ComposerStatus } from "./SessionComposer.js";
+import { SessionComposer, type ComposerStatus, type NewSessionSeed } from "./SessionComposer.js";
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
@@ -80,16 +79,6 @@ import {
   SessionConversationTurn,
   SessionConversationUserMessage
 } from "./SessionConversationTurn.js";
-
-const SCROLL_INTENT_KEYS = new Set([
-  "ArrowDown",
-  "ArrowUp",
-  "End",
-  "Home",
-  "PageDown",
-  "PageUp",
-  " "
-]);
 
 const THINKING_SHOW_DELAY_MS = 700;
 const THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS = 1800;
@@ -711,7 +700,9 @@ export function SessionConversation({
             }
           }}
           onKeyDown={(event) => {
-            if (event.target === event.currentTarget && SCROLL_INTENT_KEYS.has(event.key)) {
+            // Unlike pointerdown, a scroll key is intent wherever focus sits:
+            // the browser scrolls this list for any descendant control.
+            if (SCROLL_INTENT_KEYS.has(event.key)) {
               handleConversationScrollIntent();
             }
           }}
@@ -845,9 +836,9 @@ export function SessionConversation({
           isQueueing={isQueueing}
           onFastModeEnabledChange={onFastModeEnabledChange}
           onCancelQueuedMessage={onCancelQueuedMessage}
-          onStartNewSession={onNewSession}
           onSendQueuedMessageNow={onSendQueuedMessageNow}
           onSendSessionInput={sendSessionInput}
+          onStartNewSession={onNewSession}
           onTerminateSession={onTerminateSession}
           pendingAnnotations={pendingAnnotations}
           onRemoveAnnotation={removeAnnotation}

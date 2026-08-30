@@ -192,6 +192,49 @@ export function Segmented({
   );
 }
 
+export function SliderRow({
+  legend,
+  hint,
+  min,
+  max,
+  value,
+  valueLabel,
+  onChange
+}: {
+  legend: string;
+  hint?: string;
+  min: number;
+  max: number;
+  value: number;
+  /** Readout beside the slider, e.g. the resulting size in px. */
+  valueLabel: string;
+  onChange: (next: number) => void;
+}): JSX.Element {
+  return (
+    <div className="settings-slider">
+      <span className="settings-segmented-copy">
+        <span className="settings-segmented-legend">{legend}</span>
+        {hint ? <span className="settings-segmented-hint">{hint}</span> : null}
+      </span>
+      <div className="settings-slider-control">
+        <input
+          type="range"
+          aria-label={legend}
+          // The level is an index; the size it produces is the meaningful
+          // value, so announce that rather than a bare "6".
+          aria-valuetext={valueLabel}
+          min={min}
+          max={max}
+          step={1}
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+        />
+        <span className="settings-slider-value">{valueLabel}</span>
+      </div>
+    </div>
+  );
+}
+
 export function ToggleRow({
   label,
   description,

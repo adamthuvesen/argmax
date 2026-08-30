@@ -2,6 +2,7 @@ import {
   clampEffort,
   costOf as rendererCostOf,
   DEFAULT_REASONING_EFFORT,
+  modelLabelFor,
   PROVIDER_MODEL_DEFAULTS,
   PROVIDER_MODELS,
   reasoningEffortsForModel,
@@ -126,8 +127,17 @@ export function modelSelectionFromSession(session: SessionSummary | null): Provi
   if (!session) {
     return modelDefaultForProvider("codex");
   }
+  // The catalog wins over the stored label when it recognizes the id: an
+  // imported session's label is the provider's raw API id, not a chip name.
+  const label = modelLabelFor(session.provider, session.modelId);
+  if (!label) {
+    // A model Argmax doesn't carry — an imported transcript can name anything,
+    // and a retired model outlives its catalog entry. Fall back to that
+    // provider's default rather than showing a raw id the picker can't match.
+    return modelDefaultForProvider(session.provider);
+  }
   return {
-    label: session.modelLabel,
+    label,
     modelId: session.modelId,
     ...(session.reasoningEffort ? { reasoningEffort: session.reasoningEffort } : {})
   };

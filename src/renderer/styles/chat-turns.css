@@ -7,6 +7,40 @@
   gap: 10px;
 }
 
+/* Hover-revealed actions under a finished turn (copy reply, fork session).
+   The row keeps its height so revealing it never shifts the transcript;
+   only the buttons fade in. Also revealed on focus for keyboard users. */
+.turn-block-footer {
+  display: flex;
+  gap: 4px;
+  margin-top: -4px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.turn-block:hover .turn-block-footer,
+.turn-block-footer:focus-within {
+  opacity: 1;
+}
+
+.turn-block-footer-action {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.turn-block-footer-action:hover {
+  background: var(--panel-sunken);
+  color: var(--text);
+}
+
 .turn-block-header {
   display: flex;
   align-items: center;

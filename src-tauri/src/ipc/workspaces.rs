@@ -107,7 +107,10 @@ pub(crate) async fn workspaces_archive_impl(
     live_workspaces(state)?.archive(input).await
 }
 
-#[tauri::command(rename = "workspaces:open-in-ide")]
+// `async` so the body runs off the macOS main thread: `open_in_ide` blocks on
+// `open -a`, which does not return until LaunchServices has finished launching
+// a cold IDE, and a sync command body would freeze the whole window until then.
+#[tauri::command(rename = "workspaces:open-in-ide", async)]
 #[specta::specta]
 pub fn workspaces_open_in_ide(
     state: State<'_, AppState>,

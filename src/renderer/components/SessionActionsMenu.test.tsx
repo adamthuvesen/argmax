@@ -99,6 +99,29 @@ describe("SessionActionsMenu", () => {
     });
   });
 
+  it("opens the browser pane from the menu", async () => {
+    const { onBrowserPanelRequest } = await import("../lib/browserPanel.js");
+    const opened: string[] = [];
+    const unsubscribe = onBrowserPanelRequest((url) => opened.push(url));
+
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        session={session()}
+        workspace={workspace()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open browser" }));
+
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatch(/^https:\/\//);
+    unsubscribe();
+  });
+
   it("switches between the main menu and git actions in place", async () => {
     render(
       <SessionActionsMenu

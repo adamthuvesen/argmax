@@ -10,9 +10,9 @@ import {
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
-import type { NewSessionSeed } from "./SessionComposer.js";
 import type { FontSize } from "../lib/fonts.js";
 import type { ModelPickerSelection } from "../lib/models.js";
+import type { NewSessionSeed } from "./SessionComposer.js";
 import type {
   AgentMode,
   ApprovalRequest,

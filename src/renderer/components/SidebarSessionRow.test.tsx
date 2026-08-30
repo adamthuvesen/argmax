@@ -912,5 +912,4 @@ describe("styles.css startup contract", () => {
     );
     expect(screen.queryByTitle(/^Synced from/)).not.toBeInTheDocument();
   });
-
 });

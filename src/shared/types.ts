@@ -63,7 +63,6 @@ export type AttentionState = "normal" | "approval-needed" | "blocked" | "failed"
 export type CheckStatus = "queued" | "running" | "passed" | "failed" | "cancelled";
 
 export type EventType =
-  | "session.provider-changed"
   | "session.started"
   | "session.streaming"
   | "user.message"
@@ -83,6 +82,7 @@ export type EventType =
   | "session.cancelled"
   | "session.compacting"
   | "session.compacted"
+  | "session.provider-changed"
   | "session.recovered-from-crash";
 
 export interface ProjectSettings {
@@ -726,11 +726,11 @@ export type MenuCommand =
   | "new-session"
   | "open-settings"
   | "toggle-sidebar"
+  | "toggle-left-sidebar"
   | "toggle-debug-log"
   | "open-command-palette"
   | "open-cheat-sheet"
   | "check-for-updates"
-  | "toggle-left-sidebar"
   | "close-surface";
 
 declare global {

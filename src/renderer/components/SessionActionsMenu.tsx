@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Folder,
   GitBranch,
+  Globe,
   MoreHorizontal,
   PanelRightDashed,
   SquareArrowOutUpRight,
@@ -12,6 +13,7 @@ import {
 import { useCallback, useEffect, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import type { DetectedIde, GhPrRecord, IdeId, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import { openBrowserPanel } from "../lib/browserPanel.js";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { GitActionsMenu } from "./GitActionsMenu.js";
@@ -165,6 +167,21 @@ export function SessionActionsMenu({
                 >
                   <Folder size={14} aria-hidden="true" />
                   Browse files
+                </button>
+              </li>
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item"
+                  title="Open the in-app browser pane beside the chat"
+                  onClick={() => {
+                    closeActions();
+                    openBrowserPanel();
+                  }}
+                >
+                  <Globe size={14} aria-hidden="true" />
+                  Open browser
                 </button>
               </li>
               {onOpenInIde && ideChoices.length === 0 ? (

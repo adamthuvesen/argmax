@@ -81,6 +81,33 @@ describe("ProjectsSettings", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Project settings saved.");
   });
 
+  it("changing the default agent via the picker enables Save and persists the new model", async () => {
+    const updateSettings = vi.fn().mockResolvedValue(project());
+    installUpdateStub(updateSettings);
+
+    render(<ProjectsSettings projects={[project()]} onProjectUpdated={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Save project settings" })).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText("Default agent"));
+    fireEvent.click(await screen.findByText("Opus 5"));
+
+    const saveButton = screen.getByRole("button", { name: "Save project settings" });
+    expect(saveButton).not.toBeDisabled();
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          defaultProvider: "claude",
+          defaultModelLabel: "Opus 5",
+          defaultModelId: "claude-opus-5"
+        }) as unknown
+      })
+    );
+  });
+
   it("starts dirty for a legacy row without a stored model id, so saving backfills it", () => {
     const legacy = project();
     legacy.settings = { ...legacy.settings, defaultModelId: "" };

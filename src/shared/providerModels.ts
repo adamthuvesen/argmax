@@ -42,6 +42,15 @@ export interface ProviderModelSelection {
   reasoningEffort?: ReasoningEffort;
 }
 
+/** Provider names as written in the UI. The Rust side keeps its own copy in
+ *  `get_provider_definition`; keep the two spellings in step. */
+export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
+  claude: "Claude",
+  codex: "Codex",
+  cursor: "Cursor",
+  opencode: "OpenCode"
+};
+
 /** All effort levels, low → high. Claude exposes the full list; other providers
  *  stop at Extra High — their CLIs don't accept Max/Ultra (the Rust adapters
  *  clamp any that slip through, e.g. after a provider switch). */
@@ -195,6 +204,19 @@ export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
   opencode: "opencode/big-pickle"
 };
 
+/**
+ * Providers whose CLI can fork a resumed conversation, which is what the turn
+ * footer's Fork button rides: Claude via `--fork-session`, Codex via
+ * `exec fork`, OpenCode via `run --fork`. Cursor has no equivalent — resuming
+ * its chat id from two sessions would write into one conversation. Mirrors the
+ * gate in `fork_session` (src-tauri/src/workspaces/orchestration.rs).
+ */
+export const FORK_CAPABLE_PROVIDERS: ReadonlySet<string> = new Set<ProviderId>([
+  "claude",
+  "codex",
+  "opencode"
+]);
+
 export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> = {
   claude: {
     label: "Opus 5",
@@ -325,6 +347,22 @@ export function normalizeModelId(modelId: string): string {
   return modelId.replace(/-\d{8}$/, "");
 }
 
+/**
+ * Display label for a model id, or null when the catalog doesn't know it.
+ * Sessions carry a stored label, but it is only as good as whatever wrote it:
+ * an imported session's label comes from the provider's transcript, which
+ * records the API id ("claude-opus-5"), not a name meant for a chip. The
+ * catalog is the authority whenever it recognizes the id.
+ */
+export function modelLabelFor(provider: ProviderId, modelId: string): string | null {
+  if (!modelId) return null;
+  const wanted = normalizeModelId(modelId);
+  const match = PROVIDER_MODELS[provider]?.find(
+    (model) => normalizeModelId(model.modelId) === wanted
+  );
+  return match?.label ?? null;
+}
+
 // Bounded so a runaway caller passing dynamic ids can't leak this dedup set.
 const loggedUnknownModels = new BoundedSet<string>(100);
 
@@ -368,24 +406,3 @@ export function contextWindowForModel(modelId: string): number | null {
   }
   return null;
 }
-
-/** Human-facing provider names, for handoff copy that names both ends. */
-export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
-  claude: "Claude",
-  codex: "Codex",
-  cursor: "Cursor",
-  opencode: "OpenCode"
-};
-
-/**
- * Providers whose CLI can fork a resumed conversation, which is what the turn
- * footer's Fork button rides: Claude via `--fork-session`, Codex via
- * `exec fork`, OpenCode via `run --fork`. Cursor has no equivalent — resuming
- * its chat id from two sessions would write into one conversation. Mirrors the
- * gate in `fork_session` (src-tauri/src/workspaces/orchestration.rs).
- */
-export const FORK_CAPABLE_PROVIDERS: ReadonlySet<string> = new Set<ProviderId>([
-  "claude",
-  "codex",
-  "opencode"
-]);

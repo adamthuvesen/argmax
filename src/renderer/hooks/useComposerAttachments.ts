@@ -15,6 +15,7 @@ import {
   readBlobAsBase64
 } from "../lib/composerAttachments.js";
 import { readDraft, writeDraftAttachments } from "../lib/composerDrafts.js";
+import { isRemoteBridge } from "../lib/tauriBridge.js";
 import type { AttachmentMimeType, ComposerAttachment } from "../../shared/types.js";
 
 export interface ComposerAttachmentsApi {
@@ -47,6 +48,14 @@ export interface ComposerAttachmentsDeps {
   setInput: (updater: (prev: string) => string) => void;
   /** Surface an error to the composer status line. */
   setStatus: (status: string | null) => void;
+  /**
+   * Third element of `useComposerDraft`: true for the render in which typed
+   * text followed the composer onto a new draft key. Images are part of that
+   * same unsent message, so they move with it instead of being swapped for the
+   * new target's — otherwise the prompt arrives carrying screenshots the user
+   * never attached to it, and freshly pasted ones are dropped on the floor.
+   */
+  carriedOnRetarget?: boolean;
 }
 
 /**
@@ -65,21 +74,34 @@ export interface ComposerAttachmentsDeps {
  * screenshot never has to be taken twice.
  */
 export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerAttachmentsApi {
-  const { draftKey, workspacePath, setInput, setStatus } = deps;
+  const { draftKey, workspacePath, setInput, setStatus, carriedOnRetarget = false } = deps;
   const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>(
     () => readDraft(draftKey ?? null).attachments
   );
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
   // A pane that swaps drafts without remounting starts from the new draft's
-  // own images, never the previous one's.
+  // own images, never the previous one's — unless the typed text just carried
+  // onto this key, in which case these images belong to it and travel along.
   const loadedKey = useRef(draftKey);
+  const movedFrom = useRef<string | null>(null);
   if (loadedKey.current !== draftKey) {
+    const previousKey = loadedKey.current;
     loadedKey.current = draftKey;
-    setPendingAttachments(readDraft(draftKey ?? null).attachments);
+    if (carriedOnRetarget) {
+      movedFrom.current = previousKey ?? null;
+    } else {
+      setPendingAttachments(readDraft(draftKey ?? null).attachments);
+    }
   }
 
   useEffect(() => {
+    // Clear the images off the draft the text left behind, so the source ends
+    // up empty rather than holding screenshots whose sentence has moved on.
+    if (movedFrom.current) {
+      writeDraftAttachments(movedFrom.current, []);
+      movedFrom.current = null;
+    }
     if (draftKey) writeDraftAttachments(draftKey, pendingAttachments);
   }, [draftKey, pendingAttachments]);
 
@@ -98,6 +120,14 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       const api = window.argmax;
       if (!api) {
         setStatus("Open the Tauri app window to attach images.");
+        return;
+      }
+      // Images are written to the host's attachment store, which the bridge
+      // does not expose. Say so plainly — the raw REMOTE_UNSUPPORTED text
+      // ("attachments:save-image is only available in the desktop app") reads
+      // like a crash under the phone's composer.
+      if (isRemoteBridge()) {
+        setStatus("Attaching images needs the desktop app.");
         return;
       }
       try {

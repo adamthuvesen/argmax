@@ -958,7 +958,7 @@
 .rail-sort-divider {
   height: 1px;
   margin: 4px 0;
-  background: var(--border);
+  background: var(--line);
 }
 
 /* Session actions menu — replaces the row of header icons. Sized to fit short

@@ -3,20 +3,21 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import type { ProviderId, SkillSummary } from "../../shared/types.js";
 
 /**
- * Returns the partial skill name when the input is a slash command being
- * composed (no whitespace yet), otherwise null. The popover only opens on
- * `/<name>` shapes; once the user adds a space (typing args) the popover
- * stays closed.
+ * Returns the partial skill name when the input ends in a slash command being
+ * composed — `/<name>` at the start of the input or after whitespace, with no
+ * space typed after it yet. Mid-sentence invocations count ("check this /sn"),
+ * so the popover is not limited to messages that open with the skill. `start`
+ * is the index of the token's `/` so a selection can replace just that token.
+ * Word-internal slashes (paths like `foo/bar`) never match: the `/` must
+ * follow whitespace or start the input.
  */
-export function parseSlashQuery(input: string): { query: string } | null {
-  if (!input.startsWith("/")) {
+export function parseSlashQuery(input: string): { query: string; start: number } | null {
+  const match = /(^|\s)\/(\S*)$/.exec(input);
+  if (!match) {
     return null;
   }
-  const rest = input.slice(1);
-  if (/\s/.test(rest)) {
-    return null;
-  }
-  return { query: rest };
+  const query = match[2] ?? "";
+  return { query, start: input.length - query.length - 1 };
 }
 
 interface UseSlashAutocompleteArgs {
@@ -53,13 +54,14 @@ export function useSlashAutocomplete({
   // below on deps that didn't actually change.
   const slashQuery = useMemo(() => parseSlashQuery(input), [input]);
 
-  // Fetch whenever the input opens with a slash — not only while the popover
-  // query is live. The composer tints a `/command` token even after a space
-  // is typed (popover closed), which needs the list loaded in that state too.
-  // Keyed on `input` so a retry after a transient failure refires as the user
-  // keeps typing; the `fetchedFor` latch still collapses it to one IPC call.
+  // Fetch whenever a slash command is live at the end of the input OR the
+  // input opens with one — not only while the popover query is live. The
+  // composer tints a leading `/command` token even after a space is typed
+  // (popover closed), which needs the list loaded in that state too. Keyed on
+  // `input` so a retry after a transient failure refires as the user keeps
+  // typing; the `fetchedFor` latch still collapses it to one IPC call.
   useEffect(() => {
-    if (!input.startsWith("/") || !provider) {
+    if ((slashQuery === null && !input.startsWith("/")) || !provider) {
       return;
     }
     const cacheKey = `${provider}::${workspaceId ?? ""}`;
@@ -89,7 +91,7 @@ export function useSlashAutocomplete({
     return () => {
       cancelled = true;
     };
-  }, [input, provider, workspaceId]);
+  }, [input, slashQuery, provider, workspaceId]);
 
   const skillNames = useMemo(
     () => new Set(skills.map((skill) => skill.name.toLowerCase())),
@@ -115,8 +117,11 @@ export function useSlashAutocomplete({
     }
   }, [filteredSkills.length, selectionIndex]);
 
+  // Replace only the live `/token` (which always trails the input) so a
+  // mid-sentence invocation keeps the text typed before it.
   const selectSkill = (name: string): void => {
-    setInput(`/${name} `);
+    const prefix = slashQuery ? input.slice(0, slashQuery.start) : "";
+    setInput(`${prefix}/${name} `);
     setSelectionIndex(0);
   };
 
@@ -144,7 +149,9 @@ export function useSlashAutocomplete({
     }
     if (event.key === "Escape") {
       event.preventDefault();
-      setInput("");
+      // Drop just the live `/token`; for a message that is nothing but the
+      // token this clears the input, matching the old behavior.
+      setInput(slashQuery ? input.slice(0, slashQuery.start) : "");
       setSelectionIndex(0);
     }
   };

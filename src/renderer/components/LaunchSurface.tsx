@@ -9,14 +9,14 @@ import {
   useState,
   type FormEvent,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent
+  type KeyboardEvent as ReactKeyboardEvent,
+  type UIEvent as ReactUIEvent
 } from "react";
 import { createPortal } from "react-dom";
 import {
   SCRATCH_PROJECT_ID,
   type AgentMode,
   type ComposerAttachment,
-  type DiscoveredProvider,
   type ProjectSummary
 } from "../../shared/types.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
@@ -25,8 +25,9 @@ import {
   imageAttachmentReference
 } from "../lib/composerAttachments.js";
 import { clearDraft, launcherDraftKey } from "../lib/composerDrafts.js";
-import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
+import { splitSkillTokens } from "../lib/slashHighlight.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
+import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useComposerDraft } from "../hooks/useComposerDraft.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
@@ -46,7 +47,7 @@ import {
 } from "../lib/workspaceMode.js";
 import { ComposerPixelField } from "./ComposerPixelField.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
-import { LaunchModelSelector, type ProviderAvailability } from "./ModelSelector.js";
+import { LaunchModelSelector } from "./ModelSelector.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
 // launcher's first paint doesn't ship the highlighter.
@@ -137,7 +138,9 @@ export function LaunchSurface({
       : null;
   // Picking another project (or side chat) from the context picker is how the
   // user aims a prompt they are still writing, so the text follows the pick.
-  const [prompt, setPrompt] = useComposerDraft(draftKey, { carryTextOnRetarget: true });
+  const [prompt, setPrompt, promptCarriedOnRetarget] = useComposerDraft(draftKey, {
+    carryTextOnRetarget: true
+  });
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const {
@@ -154,7 +157,8 @@ export function LaunchSurface({
     draftKey,
     workspacePath: activeProject?.repoPath ?? null,
     setInput: setPrompt,
-    setStatus
+    setStatus,
+    carriedOnRetarget: promptCarriedOnRetarget
   });
   const [agentMode, setAgentMode] = useState<AgentMode>("auto");
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
@@ -171,18 +175,7 @@ export function LaunchSurface({
   // (cached in Rust, so the cold-launch path pays nothing extra) and the picker
   // stays optimistic — every model enabled — until it resolves. Used to disable
   // uninstalled providers and annotate ones that need login.
-  const { data: discoveredProviders } = useAsyncLoad<DiscoveredProvider[]>(
-    () => window.argmax!.providers.discover(),
-    { fallbackMessage: "Provider discovery failed." }
-  );
-  const providerAvailability = useMemo<ProviderAvailability | undefined>(() => {
-    if (!discoveredProviders) return undefined;
-    const map: ProviderAvailability = {};
-    for (const entry of discoveredProviders) {
-      map[entry.provider] = { installed: entry.installed, authenticated: entry.authenticated };
-    }
-    return map;
-  }, [discoveredProviders]);
+  const { availability: providerAvailability, discovered: discoveredProviders } = useProviderAvailability();
 
   // If the pre-filled selection points at a provider that isn't usable — CLI
   // not installed, or installed but not logged in — steer to the highest-
@@ -444,6 +437,18 @@ export function LaunchSurface({
     source: activeProject ? { kind: "project", id: activeProject.id } : null
   });
 
+  // Same accent tint for `/skill` tokens as the session composer: a mirror
+  // div behind a transparent-text textarea (see chat-composer-chips.css).
+  const skillHighlight = useMemo(
+    () => splitSkillTokens(prompt, (name) => slashAutocomplete.skillNames.has(name)),
+    [prompt, slashAutocomplete.skillNames]
+  );
+  const highlightBackdropRef = useRef<HTMLDivElement | null>(null);
+  const syncHighlightScroll = useCallback((event: ReactUIEvent<HTMLTextAreaElement>): void => {
+    const backdrop = highlightBackdropRef.current;
+    if (backdrop) backdrop.scrollTop = event.currentTarget.scrollTop;
+  }, []);
+
   const onPromptKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     slashAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
@@ -567,7 +572,21 @@ export function LaunchSurface({
           </div>
         ) : null}
         <div className="composer-input">
+          {skillHighlight ? (
+            <div className="composer-highlight-backdrop" aria-hidden="true" ref={highlightBackdropRef}>
+              {skillHighlight.map((segment, index) =>
+                segment.skill ? (
+                  <span key={index} className="composer-skill-token">
+                    {segment.text}
+                  </span>
+                ) : (
+                  segment.text
+                )
+              )}
+            </div>
+          ) : null}
           <textarea
+            className={skillHighlight ? "composer-input--highlighting" : undefined}
             aria-label="Task prompt"
             aria-autocomplete="list"
             aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
@@ -585,6 +604,7 @@ export function LaunchSurface({
             }}
             onKeyDown={onPromptKeyDown}
             onPaste={onComposerPaste}
+            onScroll={syncHighlightScroll}
             onSelect={fileAutocomplete.onSelectionChange}
             onClick={fileAutocomplete.onSelectionChange}
             placeholder={placeholderText}

@@ -8,6 +8,10 @@ SQLite is owned by Rust under [src-tauri/src/persistence](../src-tauri/src/persi
 
 FTS5 sidecars index timeline events and learnings. The initial Rust migration is the schema baseline for the Tauri app data directory.
 
+`synced_sessions` (v18) tracks sessions imported from a provider CLI's own
+transcript store, including the `adopted` flag that decides whether a session
+survives turning sync off. See [session-sync.md](session-sync.md).
+
 ## Repositories
 
 Table-family modules (`projects.rs`, `workspaces.rs`, `sessions.rs`, `events.rs`, `approvals.rs`, `checks.rs`, `usage.rs`, `learnings.rs`, `gh.rs`) expose typed reads/writes for services and IPC handlers, and `dashboard.rs` composes the focused reads below from those repositories.

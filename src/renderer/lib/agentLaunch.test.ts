@@ -3,7 +3,6 @@ import {
   agentLaunchAriaLabel,
   agentLaunchStatusHint,
   agentLaunchTitle,
-  agentRoleLabel,
   agentStatusLabel,
   isInternalAgentLaunchMetadata
 } from "./agentLaunch.js";
@@ -25,17 +24,6 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
   };
 }
 
-describe("agentRoleLabel", () => {
-  it("title-cases a concrete subagent_type", () => {
-    expect(agentRoleLabel(tool({ inputFull: { subagent_type: "reviewer" } }))).toBe("Reviewer");
-    expect(agentRoleLabel(tool({ inputFull: { subagentType: "code-reviewer" } }))).toBe("Code Reviewer");
-  });
-
-  it("skips generic roles so the moon name can stand in", () => {
-    expect(agentRoleLabel(tool({ inputFull: { subagent_type: "general-purpose" } }))).toBeNull();
-    expect(agentRoleLabel(tool({ inputFull: { subagentType: { unspecified: {} } } }))).toBeNull();
-  });
-});
 
 describe("agentLaunchTitle", () => {
   it("names the launched agent and never the prompt", () => {

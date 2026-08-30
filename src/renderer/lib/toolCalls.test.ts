@@ -189,7 +189,6 @@ describe("summarizeToolGroup — single-bucket headlines", () => {
       })
     ]);
     expect(out.headline).toBe("Ran 3 commands");
-    expect(out.preview).toBe("sed · rg · npm run");
   });
 
   it("edit-only → Edited N files", () => {

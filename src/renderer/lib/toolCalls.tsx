@@ -238,48 +238,6 @@ export function describeToolAction(tool: ToolCall): string {
 // tools that's the basename; for shell commands it's the first real binary
 // word, peeking through `zsh -lc '…'` / `bash -c '…'` wrappers and stripping
 // leading quotes so `'git status --short'` reads as `git`.
-function previewTokenForTool(tool: ToolCall): string | null {
-  const bucket = getFineBucket(tool.name);
-  const raw = (tool.inputPreview ?? "").trim();
-  if (!raw) return null;
-  const basenameOf = (p: string): string => {
-    const t = p.replace(/\/$/, "");
-    return t.includes("/") ? t.split("/").pop() ?? t : t;
-  };
-  if (bucket === "bash") return extractBashCommandName(raw);
-  if (bucket === "web") {
-    // Strip scheme + host to a compact hostname hint.
-    const match = raw.match(/^https?:\/\/([^/?#]+)/i);
-    return match?.[1] ?? raw.slice(0, 28);
-  }
-  // read-files / read-lists / edit / search / agent / other — prefer the
-  // basename of any path-looking input; otherwise keep the raw input clipped.
-  const candidate = raw.includes("/") ? basenameOf(raw) : raw;
-  const stripped = candidate.replace(/^['"`]|['"`]$/g, "").trim();
-  if (!stripped) return null;
-  // trimEnd so a mid-word slice never leaves a trailing space that reads as
-  // "and , find" once the tokens are comma-joined.
-  return stripped.slice(0, 28).trimEnd();
-}
-
-function extractBashCommandName(input: string): string | null {
-  // Peel surrounding quotes and shell-wrapper prefixes so the inner command
-  // surfaces. Handles `zsh -lc 'rg foo'`, `bash -c "git status"`, and the
-  // common `sh -c <cmd>` shape. Falls back to the first whitespace-delimited
-  // word for plain commands.
-  const s = unwrapShellCommand(input);
-  // After unwrapping, take the first meaningful word.
-  const firstWordRaw = s.split(/[\s|;&]/, 1)[0] ?? "";
-  const firstWord = commandBasename(firstWordRaw);
-  if (!firstWord) return null;
-  // For `git status --short`, the user reads it as "git status" — surface a
-  // two-word hint when the first word is a known multiverb command driver.
-  if (firstWord === "git" || firstWord === "npm" || firstWord === "yarn" || firstWord === "pnpm" || firstWord === "uv" || firstWord === "cargo") {
-    const second = s.split(/[\s|;&]/)[1] ?? "";
-    return second ? `${firstWord} ${second}`.slice(0, 28) : firstWord;
-  }
-  return firstWord.slice(0, 28);
-}
 
 export function displayBashCommand(input: string): string {
   return unwrapShellCommand(input).slice(0, 72);
@@ -306,16 +264,8 @@ function stripOuterQuotes(input: string): string {
   return input;
 }
 
-function commandBasename(input: string): string {
-  const stripped = stripOuterQuotes(input).trim();
-  if (!stripped) return "";
-  const parts = stripped.split("/");
-  return parts[parts.length - 1] ?? stripped;
-}
-
 export function summarizeToolGroup(tools: ToolCall[]): {
   headline: string;
-  preview: string;
   currentAction: string | null;
   status: ToolCall["status"];
   hasErrors: boolean;
@@ -335,44 +285,6 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   }
   const headline = clauses.length > 0 ? clauses.join(", ") : `${tools.length} tool calls`;
 
-  // Build a scannable preview: filenames for read/edit/list/search tools,
-  // distinct binary names for bash commands. Dedupes so a group running
-  // `rg` three times shows "rg" once, not three slash-joined repetitions.
-  // The prior shape joined raw shell text ("zsh -lc 'git status --short'…")
-  // which was a wall, not a preview.
-  // Agent (Task) tools are excluded from the token preview: their full
-  // description already headlines the group as the "Started agent …" row, and
-  // splicing a sentence fragment in among filenames produced run-ons like
-  // "Explore agent structure and , find, ls, …". The eyebrow stat line
-  // ("Spawned 1 agent") carries the count; the preview stays scannable tokens.
-  const previewable = tools.filter((tool) => getFineBucket(tool.name) !== "agent");
-  const seen = new Set<string>();
-  const previewParts: string[] = [];
-  let truncated = false;
-  for (let i = 0; i < previewable.length; i++) {
-    const tool = previewable[i];
-    if (!tool) continue;
-    const token = previewTokenForTool(tool);
-    if (!token) continue;
-    if (seen.has(token)) continue;
-    seen.add(token);
-    previewParts.push(token);
-    if (previewParts.length === 3) {
-      // Mark truncated if any later tool would have produced a new token.
-      for (let j = i + 1; j < previewable.length; j++) {
-        const next = previewable[j];
-        if (!next) continue;
-        const t = previewTokenForTool(next);
-        if (t && !seen.has(t)) {
-          truncated = true;
-          break;
-        }
-      }
-      break;
-    }
-  }
-  const preview = previewParts.join(" · ") + (truncated ? " · …" : "");
-
   let hasError = false;
   let allErrors = tools.length > 0;
   let latestRunning: ToolCall | null = null;
@@ -390,7 +302,7 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   // action so the collapsed header shows what the agent is doing right now.
   const currentAction = latestRunning ? describeToolAction(latestRunning) : null;
 
-  return { headline, preview, currentAction, status, hasErrors: hasError };
+  return { headline, currentAction, status, hasErrors: hasError };
 }
 
 export function extractToolUseId(payload: Record<string, unknown>): string | null {

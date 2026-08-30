@@ -1,13 +1,15 @@
 import type { TimelineEvent } from "../../shared/types.js";
+import { objectValue, stringValue } from "../../shared/typeGuards.js";
 
-function stringValue(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-function objectValue(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
+/**
+ * Claude extended-thinking content, surfaced by the normalizer as a
+ * `message.delta` carrying `thinking: true`. The dashboard merge budgets these
+ * separately and never prunes them, and the chat view renders them as their own
+ * "Thought" block — the two must agree on what counts, so this is the one
+ * definition.
+ */
+export function isThinkingDelta(event: TimelineEvent): boolean {
+  return event.type === "message.delta" && event.payload?.["thinking"] === true;
 }
 
 /**
@@ -96,7 +98,7 @@ export function isSupersededAnswerDelta(
 ): boolean {
   return (
     event.type === "message.delta" &&
-    event.payload?.["thinking"] !== true &&
+    !isThinkingDelta(event) &&
     (nextBoundary?.kind === "completed" ||
       (nextBoundary?.kind === "tool" && isCompletedPrefixDuplicate(event, nextBoundary.completedText)))
   );

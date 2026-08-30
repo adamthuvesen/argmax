@@ -1,11 +1,12 @@
 import { ArrowDown, Bot, ChevronDown, X } from "lucide-react";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { SCROLL_INTENT_KEYS, useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
 import { coalesceAssistantGroups, type AssistantGroup } from "../lib/sessionTurnView.js";
 import type { ToolCall } from "../lib/toolCalls.js";
+import { groupToolRuns, type TurnBodyChild } from "../lib/turnChildren.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
 import { ChatBubble } from "./ChatBubble.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
@@ -35,38 +36,6 @@ function isLongPrompt(prompt: string | null): boolean {
   return prompt.length > PROMPT_COLLAPSE_THRESHOLD || prompt.split("\n").length > 8;
 }
 
-type ActivityRenderChild = {
-  kind: "assistant" | "tool";
-  id: string;
-  node: ReactNode;
-};
-
-function renderActivityChildren(children: ActivityRenderChild[]): ReactNode {
-  const fragments: ReactNode[] = [];
-  let toolRun: ActivityRenderChild[] = [];
-  const flushTools = (): void => {
-    const first = toolRun[0];
-    if (!first) return;
-    fragments.push(
-      <div key={`tools-${first.id}`} className="turn-block-tools">
-        {toolRun.map((child) => (
-          <Fragment key={child.id}>{child.node}</Fragment>
-        ))}
-      </div>
-    );
-    toolRun = [];
-  };
-  for (const child of children) {
-    if (child.kind === "tool") {
-      toolRun.push(child);
-    } else {
-      flushTools();
-      fragments.push(<Fragment key={child.id}>{child.node}</Fragment>);
-    }
-  }
-  flushTools();
-  return fragments;
-}
 
 function renderAssistantGroup({
   group,
@@ -190,7 +159,7 @@ export function AgentActivityPane({
     [activity.items, finalOutput, activity.status]
   );
   const streaming = parentSession?.state === "running" && activity.status === "running";
-  const activityChildren = useMemo((): ActivityRenderChild[] => {
+  const activityChildren = useMemo((): TurnBodyChild[] => {
     const assistantEvents = activity.items.flatMap((item) =>
       item.kind === "message" ? [item.event] : []
     );
@@ -417,7 +386,7 @@ export function AgentActivityPane({
 
         {activityChildren.length > 0 ? (
           <div className="agent-activity-items turn-block-body">
-            {renderActivityChildren(activityChildren)}
+            {groupToolRuns(activityChildren)}
           </div>
         ) : !showLimitedNotice && !showAgentActivityThinking ? (
           <div className="agent-activity-empty" role="status">

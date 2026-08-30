@@ -2,6 +2,7 @@ import type { TimelineEvent } from "../../shared/types.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import type { RenderItem } from "./foldConversation.js";
 import { parsePlan } from "./parsePlan.js";
+import { isThinkingDelta } from "./turnBoundaries.js";
 import {
   collectAskUserQuestionState,
   collectExitPlanState,
@@ -27,10 +28,6 @@ export type AssistantGroup = {
   // collapsible "Thought" block rather than inline answer text.
   thinking?: boolean;
 };
-
-function isThinkingDelta(event: TimelineEvent): boolean {
-  return event.type === "message.delta" && event.payload?.["thinking"] === true;
-}
 
 function cursorAssistantSnapshot(event: TimelineEvent): string | null {
   if (event.type !== "message.delta" || event.payload.type !== "assistant") {

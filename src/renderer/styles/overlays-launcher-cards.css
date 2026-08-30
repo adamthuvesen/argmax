@@ -141,10 +141,6 @@
   color: var(--muted);
 }
 
-.plan-card-folio-time {
-  color: var(--muted-strong);
-}
-
 /* ---------- Content column (right) ---------- */
 .plan-card-content {
   display: flex;
@@ -198,25 +194,6 @@
   width: 6px;
   height: 6px;
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 12%, transparent);
-}
-
-.plan-card-spine {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: 0;
-  text-transform: uppercase;
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.plan-card-spine-dot {
-  width: 3px;
-  height: 3px;
-  background: var(--muted);
-  border-radius: 50%;
-  opacity: 0.7;
 }
 
 .plan-card-actions {

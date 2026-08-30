@@ -1,14 +1,6 @@
 import { stringValue } from "../../shared/typeGuards.js";
 import type { ToolCall } from "./toolCalls.js";
 
-const GENERIC_ROLES = new Set([
-  "general-purpose",
-  "general_purpose",
-  "generalpurpose",
-  "default",
-  "unspecified"
-]);
-
 function trimmedString(value: unknown): string | null {
   const raw = stringValue(value);
   if (!raw) return null;
@@ -33,27 +25,6 @@ export function isInternalAgentLaunchMetadata(output: string): boolean {
     normalized.includes("subagent launched") ||
     normalized.includes("agent launched successfully")
   );
-}
-
-function rawSubagentType(tool: ToolCall): string | null {
-  return trimmedString(tool.inputFull.subagent_type) ?? trimmedString(tool.inputFull.subagentType);
-}
-
-function titleCaseRole(value: string): string {
-  return value
-    .split(/[-_\s]+/)
-    .filter((part) => part.length > 0)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(" ");
-}
-
-/** Human role from `subagent_type` / `subagentType`. Generic roles are skipped. */
-export function agentRoleLabel(tool: ToolCall): string | null {
-  const raw = rawSubagentType(tool);
-  if (!raw) return null;
-  const normalized = raw.toLowerCase().replace(/_/g, "-");
-  if (GENERIC_ROLES.has(normalized) || GENERIC_ROLES.has(raw.toLowerCase())) return null;
-  return titleCaseRole(raw);
 }
 
 /**

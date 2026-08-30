@@ -1,17 +1,12 @@
 import { ChevronRight, Copy, GitFork } from "lucide-react";
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import { formatElapsedSeconds } from "../formatElapsed.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
 import type { TurnToolItem } from "../lib/toolCalls.js";
+import { groupToolRuns, type TurnBodyChild } from "../lib/turnChildren.js";
 
-export type { TurnToolItem };
-
-export type TurnBodyChild = {
-  kind: "assistant" | "tool";
-  id: string;
-  node: ReactNode;
-};
+export type { TurnToolItem, TurnBodyChild };
 
 interface Bounds {
   startedAt: number;
@@ -67,48 +62,10 @@ function isToolRunning(item: TurnToolItem): boolean {
   return item.group.tools.some((t) => t.status === "running");
 }
 
-// Group consecutive tool children into a single .turn-block-tools wrapper so
-// adjacent tools share the tight 8px gap, while assistant text and tool runs
-// keep the looser 18px body gap. When collapsed, tool children are dropped
-// entirely and only assistant children render.
-function renderPhaseChildren(children: TurnBodyChild[]): ReactNode {
-  const fragments: ReactNode[] = [];
-  let toolRun: TurnBodyChild[] = [];
-  const flushTools = (): void => {
-    if (toolRun.length === 0) return;
-    const first = toolRun[0];
-    if (!first) {
-      toolRun = [];
-      return;
-    }
-    fragments.push(
-      <div key={`tools-${first.id}`} className="turn-block-tools">
-        {toolRun.map((t) => (
-          <Fragment key={t.id}>{t.node}</Fragment>
-        ))}
-      </div>
-    );
-    toolRun = [];
-  };
-  for (const child of children) {
-    if (child.kind === "tool") {
-      toolRun.push(child);
-    } else {
-      flushTools();
-      fragments.push(<Fragment key={child.id}>{child.node}</Fragment>);
-    }
-  }
-  flushTools();
-  return fragments;
-}
 
-// Render the turn body as a plain stream of children. Every child always
-// renders — tool calls are NEVER removed when "collapsed". Collapsing a turn
-// folds each tool group to its header (the group's own `defaultExpanded`,
-// driven by the parent), so the work the agent did stays in the chat.
-function renderBody(children: TurnBodyChild[]): ReactNode {
-  return renderPhaseChildren(children);
-}
+// Tool calls are NEVER removed when a turn is "collapsed". Collapsing folds
+// each tool group to its header (the group's own `defaultExpanded`, driven by
+// the parent), so the work the agent did stays in the chat.
 
 export function TurnBlock({
   toolItems,
@@ -274,7 +231,7 @@ export function TurnBlock({
         className="turn-block-body"
         data-just-revealed={justRevealed ? "true" : undefined}
       >
-        {renderBody(body)}
+        {groupToolRuns(body)}
       </div>
       {!running && (turnMarkdown || onFork) ? (
         <TurnFooter {...(turnMarkdown ? { turnMarkdown } : {})} {...(onFork ? { onFork } : {})} />

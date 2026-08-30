@@ -1,4 +1,5 @@
 import type { TimelineEvent } from "../../shared/types.js";
+import { stringValue } from "../../shared/typeGuards.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { COMPACTION_FINISHED, COMPACTION_STARTED } from "./compaction.js";
 import { PROVIDER_CHANGED } from "./providerSwitch.js";
@@ -62,10 +63,6 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
     : [];
-}
-
-function stringValue(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function receiverThreadIds(tool: ToolCall): string[] {

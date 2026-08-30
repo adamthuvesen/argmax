@@ -113,10 +113,15 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
 /// `state.db.get()` boilerplate.
 pub(crate) fn live_database(state: &AppState) -> ArgmaxResult<Arc<Database>> {
     state.db.get().cloned().ok_or_else(|| {
-        ArgmaxError::service(
-            "DATABASE_NOT_READY",
-            "database is not initialized (startup may still be in progress, or DB setup failed — see logs)",
-        )
+        // A recorded open failure is the whole story; without one, boot is
+        // simply still in flight.
+        match state.db_open_error.get() {
+            Some(reason) => ArgmaxError::service("DATABASE_NOT_READY", reason),
+            None => ArgmaxError::service(
+                "DATABASE_NOT_READY",
+                "database is not initialized (startup may still be in progress)",
+            ),
+        }
     })
 }
 

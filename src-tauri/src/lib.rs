@@ -536,7 +536,11 @@ pub fn run() {
                             // SERVICE_ERROR.
                             timer.mark("services.construct");
                         }
-                        Err(e) => tracing::warn!(error = ?e, "failed to open database"),
+                        Err(e) => {
+                            tracing::warn!(error = ?e, "failed to open database");
+                            let state = tauri::Manager::state::<state::AppState>(app);
+                            let _ = state.db_open_error.set(e.to_string());
+                        }
                     }
                 }
             }

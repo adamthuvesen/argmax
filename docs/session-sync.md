@@ -51,10 +51,17 @@ Per provider, per sweep:
    small (on a typical machine, hundreds of transcript files reduce to a
    handful).
 5. **Import** the new ones, **extend** the ones whose file grew, and prune any
-   whose transcript disappeared.
+   whose transcript disappeared. An extension publishes the new timeline
+   events with the summary delta, so an open conversation view shows the
+   external continuation live — no reopen needed.
 
 A conversation id Argmax already owns is skipped, so a session Argmax launched
 is never imported as a duplicate of itself.
+
+The sweep also runs on demand: Settings → Agents → Session sync has a
+run-now path (`sync:run-now`), and right-clicking an imported sidebar row
+offers **Sync now**. Manual runs take the same sweep lock as the timer, so
+they never overlap it.
 
 Idempotence comes from deterministic event ids —
 `sync:<provider>:<external id>:<line>:<index>` — inserted with

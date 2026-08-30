@@ -547,7 +547,20 @@ fn content_text(update: &Value) -> Option<String> {
 /// The one-shot stream wraps each tool in a kind-named object (`shell`,
 /// `readToolCall`, …) that the normalizer uses as the display name. Map ACP's
 /// `kind` onto the closest one-shot names so chat cards render the same.
+///
+/// `kind` is a coarse ACP bucket — everything outside read/edit/execute lands
+/// in `other`, which is what a sub-agent launch reports. Cursor still names
+/// the real tool in `rawInput._toolName` (`task` for a sub-agent), so prefer
+/// that: it's what makes the chat row read "Started agent …" instead of a
+/// nameless "other".
 fn tool_key(update: &Value) -> String {
+    if let Some(name) = update
+        .pointer("/rawInput/_toolName")
+        .and_then(Value::as_str)
+        .filter(|name| !name.is_empty())
+    {
+        return name.to_string();
+    }
     match update.get("kind").and_then(Value::as_str) {
         Some("execute") => "shell".to_string(),
         Some(kind) if !kind.is_empty() => kind.to_string(),
@@ -695,6 +708,38 @@ mod tests {
             "echo hi"
         );
         assert_eq!(completed[0]["tool_call"]["shell"]["result"]["output"], "hi");
+    }
+
+    #[test]
+    fn subagent_launches_keep_their_tool_name_instead_of_the_other_kind() {
+        let mut translation = TurnTranslation::default();
+        let started = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "tool-1",
+            "kind": "other",
+            "status": "pending",
+            "rawInput": {
+                "_toolName": "task",
+                "description": "Sync docs with code changes",
+                "prompt": "Review the docs",
+                "subagentType": "general",
+            },
+        })));
+        assert_eq!(
+            started[0]["tool_call"]["task"]["args"]["description"],
+            "Sync docs with code changes"
+        );
+
+        let completed = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "status": "completed",
+            "rawOutput": { "success": true },
+        })));
+        assert_eq!(
+            completed[0]["tool_call"]["task"]["result"]["success"],
+            json!(true)
+        );
     }
 
     #[test]

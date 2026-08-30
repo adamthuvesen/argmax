@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use super::{claude, DiscoveredSession, SyncConfig};
 use crate::error::ArgmaxResult;
-use crate::persistence::events::persist_timeline_event_if_absent;
+use crate::persistence::events::{persist_timeline_event_if_absent, TimelineEvent};
 use crate::persistence::projects::list_projects;
 use crate::persistence::sessions::{
     delete_session, persist_imported_session, touch_imported_session, PersistImportedSessionInput,
@@ -174,7 +174,7 @@ fn import(
             last_activity_at: session.last_activity_at.clone(),
         },
     )?;
-    let written = write_events(&connection, provider, &summary.id, session, 0)?;
+    let (written, _) = write_events(&connection, provider, &summary.id, session, 0)?;
     upsert_synced_session(
         &connection,
         &SyncedSessionRecord {
@@ -194,7 +194,9 @@ fn import(
     Ok(())
 }
 
-/// Append transcript lines written since the last sweep.
+/// Append transcript lines written since the last sweep, keeping the events
+/// that were actually inserted. The cursor standing still means the file grew
+/// with rows this sweep skips (sidechains), so there is nothing new to show.
 fn extend(
     database: &Database,
     workspaces: &Arc<WorkspaceService>,
@@ -202,7 +204,7 @@ fn extend(
     session: &DiscoveredSession,
 ) -> ArgmaxResult<bool> {
     let connection = database.connection();
-    let written = write_events(
+    let (written, events) = write_events(
         &connection,
         &record.provider,
         &record.session_id,
@@ -225,31 +227,33 @@ fn extend(
     )?;
     drop(connection);
 
-    // The cursor standing still means the file grew with rows this sweep
-    // skips (sidechains), so there is nothing new to show.
-    if written == record.byte_cursor as usize {
+    if events.is_empty() {
         return Ok(false);
     }
-    workspaces.publish_session(summary);
+    // Publish the fresh events with the summary, so an open conversation view
+    // shows the external continuation live instead of only after a reopen.
+    workspaces.publish_session_with_events(summary, events);
     Ok(true)
 }
 
 /// Normalize transcript lines into timeline events. Returns how many lines
-/// were consumed, which becomes the next read's starting point.
+/// were consumed (the next read's starting point) and the events that were
+/// actually inserted — duplicates from a re-read come back as nothing.
 fn write_events(
     connection: &rusqlite::Connection,
     provider: &str,
     session_id: &str,
     session: &DiscoveredSession,
     from_line: usize,
-) -> ArgmaxResult<usize> {
+) -> ArgmaxResult<(usize, Vec<TimelineEvent>)> {
     let provider_id = match provider {
         "claude" => crate::ipc::validation::ProviderId::Claude,
-        _ => return Ok(from_line),
+        _ => return Ok((from_line, Vec::new())),
     };
     let lines = claude::timeline_lines(&session.source_path, from_line);
     let mut context = NormalizerSessionContext::default();
     let mut highest_line = from_line;
+    let mut inserted = Vec::new();
 
     for (line_number, line) in lines {
         highest_line = line_number + 1;
@@ -267,10 +271,12 @@ fn write_events(
                 "sync:{provider}:{}:{line_number}:{index}",
                 session.external_id
             );
-            persist_timeline_event_if_absent(connection, &event)?;
+            if let Some(persisted) = persist_timeline_event_if_absent(connection, &event)? {
+                inserted.push(persisted);
+            }
         }
     }
-    Ok(highest_line)
+    Ok((highest_line, inserted))
 }
 
 fn prune(

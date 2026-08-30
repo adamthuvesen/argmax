@@ -46,7 +46,7 @@ use crate::ipc::inputs::{
 };
 use crate::persistence::database::Database;
 use crate::persistence::events::{
-    list_all_session_events, persist_timeline_event, PersistTimelineEventInput,
+    list_all_session_events, persist_timeline_event, PersistTimelineEventInput, TimelineEvent,
 };
 use crate::persistence::projects::{
     find_project_by_id, list_projects, persist_project, require_project, PersistProjectInput,
@@ -610,6 +610,17 @@ impl WorkspaceService {
     pub fn publish_session(&self, session: SessionSummary) {
         self.publish(DashboardDelta {
             sessions: vec![session],
+            ..DashboardDelta::default()
+        });
+    }
+
+    /// A session whose transcript grew outside the app (session sync's
+    /// `extend`): the fresh events ride the delta so an open conversation view
+    /// shows the external continuation without a reopen-and-backfill.
+    pub fn publish_session_with_events(&self, session: SessionSummary, events: Vec<TimelineEvent>) {
+        self.publish(DashboardDelta {
+            sessions: vec![session],
+            events,
             ..DashboardDelta::default()
         });
     }

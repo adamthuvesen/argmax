@@ -148,7 +148,11 @@ completes in ~2 s end to end versus ~10 s one-shot.
   (`system/init` with the ACP session id as the resume id, cumulative
   `assistant` text, `thinking` deltas, `tool_call` rows, `result/success`), so
   the flush queue, chat cards, and `complete_cursor_turn_after_result` are
-  unchanged. Stop sends `session/cancel`; the warm process survives the turn.
+  unchanged. A tool row is named from `rawInput._toolName` when Cursor sends it
+  — ACP's own `kind` collapses everything outside read/edit/execute into
+  `other`, which would render a sub-agent launch (`task`) as a nameless tool
+  instead of an agent row. Stop sends `session/cancel`; the warm process
+  survives the turn.
   Follow-ups reuse the live session, or `session/load` it after an app restart
   (the replayed history is discarded — the timeline already has it).
 - **Permissions**: `session/request_permission` is auto-answered with the

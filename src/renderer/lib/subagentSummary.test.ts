@@ -1,0 +1,61 @@
+import { describe, expect, it } from "vitest";
+import { MOON_NAMES, assignAgentCodenames } from "./agentNames.js";
+import { SESSION_ICON_COLORS } from "./sessionIcons.js";
+import type { ToolCall } from "./toolCalls.js";
+import { buildSubagentCluster } from "./subagentSummary.js";
+
+function tool(overrides: Partial<ToolCall> = {}): ToolCall {
+  return {
+    id: "t1",
+    toolUseId: "t1",
+    name: "Task",
+    inputPreview: "Map the renderer",
+    inputFull: { description: "Map the renderer", subagent_type: "explore" },
+    output: null,
+    status: "done",
+    createdAt: "2026-05-12T15:00:00.000Z",
+    completedAt: "2026-05-12T15:00:01.000Z",
+    error: null,
+    ...overrides
+  };
+}
+
+describe("buildSubagentCluster", () => {
+  it("returns null when the session launched no subagents", () => {
+    const tools = [tool({ name: "Bash", inputFull: {} }), tool({ name: "Read", inputFull: {} })];
+    expect(buildSubagentCluster(tools, assignAgentCodenames(tools))).toBeNull();
+    expect(buildSubagentCluster([], new Map())).toBeNull();
+  });
+
+  it("counts statuses and names each spawn with its codename and title", () => {
+    const tools = [
+      tool({ toolUseId: "spawn-1", id: "row-1", status: "done" }),
+      tool({ toolUseId: "spawn-2", id: "row-2", status: "running", inputFull: { subagent_type: "general" } }),
+      tool({ toolUseId: "spawn-3", id: "row-3", status: "error", inputFull: {} }),
+      // Non-agent tools must not join the cluster.
+      tool({ toolUseId: "bash-1", id: "row-4", name: "Bash", inputFull: {} })
+    ];
+    const cluster = buildSubagentCluster(tools, assignAgentCodenames(tools));
+    expect(cluster).not.toBeNull();
+    expect(cluster?.running).toBe(1);
+    expect(cluster?.done).toBe(1);
+    expect(cluster?.failed).toBe(1);
+    expect(cluster?.entries.map((entry) => entry.toolUseId)).toEqual(["spawn-1", "spawn-2", "spawn-3"]);
+    expect(cluster?.entries.every((entry) => MOON_NAMES.includes(entry.codename))).toBe(true);
+    // Title prefers the description, then the subagent type, then the preview.
+    expect(cluster?.entries[0]?.title).toBe("Map the renderer");
+    expect(cluster?.entries[1]?.title).toBe("general");
+    expect(cluster?.entries[2]?.title).toBe("Map the renderer");
+  });
+
+  it("tints each avatar from a stable palette entry keyed by the spawn id", () => {
+    const tools = [tool({ toolUseId: "spawn-1" }), tool({ toolUseId: "spawn-2" })];
+    const cluster = buildSubagentCluster(tools, new Map());
+    const first = cluster?.entries[0];
+    const again = buildSubagentCluster(tools, new Map())?.entries[0];
+    expect(first?.iconColor).toBe(again?.iconColor);
+    for (const entry of cluster?.entries ?? []) {
+      expect(SESSION_ICON_COLORS).toContain(entry.iconColor);
+    }
+  });
+});

@@ -1,16 +1,17 @@
 import {
   Archive,
+  Check,
   CircleEllipsis,
   CircleX,
   ExternalLink,
   GitMerge,
   GitPullRequest,
-  ListChecks,
   ListPlus,
   Palette,
   Pencil,
   Pin,
   PinOff,
+  RefreshCw,
   Terminal
 } from "lucide-react";
 import {
@@ -74,15 +75,17 @@ type SidebarSessionRowProps = {
   importedProvider?: string | null;
   /** Set when the row renders inside the Priority section: why it floated up. */
   priorityAttention?: PriorityAttention;
-  /** Priority rows only — right-click "Remove from priority" dismisses the row. */
+  /** Priority rows only — right-click "Done" drops the row back to its group. */
   onRemoveFromPriority?: (workspaceId: string) => void;
   /** Non-priority rows — right-click "Add to priority" floats the row manually. */
   onAddToPriority?: (workspaceId: string) => void;
   /** Right-click "Edit Icon" — both values null clears the custom glyph. */
   onSetIcon?: (workspaceId: string, icon: string | null, iconColor: string | null) => void;
+  /** Right-click "Sync now" on an imported row — runs one session-sync sweep
+   *  so continuations made in the provider CLI appear immediately. */
+  onSyncNow?: () => void;
 };
 
-const IDE_POPOVER_DISMISS_DELAY_MS = 120;
 
 // Leading glyph for a session row, rendered only when the row carries a live
 // signal (see statusOverlayFor). A turn in flight takes precedence over
@@ -201,39 +204,29 @@ function SidebarSessionRowInner({
   priorityAttention,
   onRemoveFromPriority,
   onAddToPriority,
-  onSetIcon
+  onSetIcon,
+  onSyncNow
 }: SidebarSessionRowProps): JSX.Element {
-  const [pickerOpen, setPickerOpen] = useState(false);
+  // Right-click "Open in IDE" → the IDE list replaces the menu at the same
+  // point, the way "Edit Icon" hands off to the icon picker.
+  const [idePickerPoint, setIdePickerPoint] = useState<AnchorPoint | null>(null);
   const idePicker = useAnchoredPopover({
-    open: pickerOpen,
-    placement: "bottom-end",
+    open: idePickerPoint !== null,
+    gutter: 0,
     capHeight: true
   });
-  const pickerCloseTimerRef = useRef<number | null>(null);
+  const { anchorToPoint: anchorIdePicker } = idePicker;
   // Keep direct refs to every menuitem so ↑/↓ keyboard nav can move focus.
   // The map is rebuilt every render from the `detectedIdes` list; reading
   // `current` after layout is fine because the popover only mounts while
-  // `pickerOpen`.
+  // the picker is open.
   const menuItemRefs = useRef(new Map<string, HTMLButtonElement | null>());
-  const clearPickerCloseTimer = useCallback((): void => {
-    if (pickerCloseTimerRef.current === null) return;
-    window.clearTimeout(pickerCloseTimerRef.current);
-    pickerCloseTimerRef.current = null;
-  }, []);
-  const closePicker = useCallback((): void => {
-    clearPickerCloseTimer();
-    setPickerOpen(false);
-  }, [clearPickerCloseTimer]);
-  const schedulePickerClose = useCallback((): void => {
-    clearPickerCloseTimer();
-    pickerCloseTimerRef.current = window.setTimeout(() => {
-      pickerCloseTimerRef.current = null;
-      setPickerOpen(false);
-    }, IDE_POPOVER_DISMISS_DELAY_MS);
-  }, [clearPickerCloseTimer]);
-  useDismissOnOutsideOrEscape(idePicker.anchorRef, pickerOpen, closePicker, idePicker.popoverRef);
+  const closePicker = useCallback((): void => setIdePickerPoint(null), []);
+  useDismissOnOutsideOrEscape(idePicker.popoverRef, idePickerPoint !== null, closePicker);
 
-  useEffect(() => clearPickerCloseTimer, [clearPickerCloseTimer]);
+  useEffect(() => {
+    anchorIdePicker(idePickerPoint);
+  }, [anchorIdePicker, idePickerPoint]);
 
   // Right-click "Rename" → inline edit. The context menu is portaled at the
   // cursor; committing writes the new label through onRename.
@@ -271,12 +264,12 @@ function SidebarSessionRowInner({
   // mounts in the same render that opens it, so by the time this effect runs
   // its menuitems are in the DOM and the refs are populated.
   useEffect(() => {
-    if (!pickerOpen) return;
+    if (idePickerPoint === null) return;
     const preferredId =
       detectedIdes.find((entry) => entry.id === defaultIde)?.id ?? detectedIdes[0]?.id;
     if (!preferredId) return;
     menuItemRefs.current.get(preferredId)?.focus();
-  }, [pickerOpen, detectedIdes, defaultIde]);
+  }, [idePickerPoint, detectedIdes, defaultIde]);
 
   const handleMenuKeyDown = (
     entryId: IdeId
@@ -321,20 +314,13 @@ function SidebarSessionRowInner({
         ? guiIdes[0].id
         : null;
 
-  const buttonDisabled = !hasPath || !hasIdes;
-  // Surfaced on the (disabled) chooser so the user learns why it's inert.
+  const ideDisabled = !hasPath || !hasIdes;
+  // Surfaced on the (disabled) menu item so the user learns why it's inert.
   const disabledReason = !hasPath
     ? "Worktree not ready yet"
     : !hasIdes
       ? "No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
       : null;
-
-  const handleChevronClick = (event: ReactMouseEvent): void => {
-    event.stopPropagation();
-    if (buttonDisabled) return;
-    clearPickerCloseTimer();
-    setPickerOpen((open) => !open);
-  };
 
   const displayLabel = workspace.taskLabel.trim() || workspace.branch || "Untitled session";
   // Surface the PR in the accessible row title so the marker icon has a name —
@@ -348,12 +334,20 @@ function SidebarSessionRowInner({
   const priorityTitle = priorityAttention ? ` — ${PRIORITY_TITLE[priorityAttention]}` : "";
   const title = `${displayLabel} — ${workspace.state}${priorityTitle}${prTitle}${isOpenInGrid ? " — in view" : ""}`;
 
-  const hasContextMenu = Boolean(onRename || onRemoveFromPriority || onAddToPriority || onSetIcon);
+  // "Sync now" only makes sense on a row imported from a provider store —
+  // Argmax-owned sessions have nothing to re-read.
+  const canSyncNow = Boolean(onSyncNow && importedProvider);
   const handleContextMenu = (event: ReactMouseEvent): void => {
-    if (!hasContextMenu) return;
     event.preventDefault();
     event.stopPropagation();
     setContextMenuPoint({ x: event.clientX, y: event.clientY });
+  };
+
+  const startOpenInIde = (): void => {
+    const point = contextMenuPoint;
+    closeContextMenu();
+    if (!point) return;
+    setIdePickerPoint(point);
   };
 
   const startEditIcon = (): void => {
@@ -539,69 +533,6 @@ function SidebarSessionRowInner({
               <span>{displayLabel}</span>
             )}
           </button>
-      <div
-        className="session-ide-cluster"
-        ref={idePicker.setAnchor}
-        onMouseEnter={clearPickerCloseTimer}
-        onMouseLeave={schedulePickerClose}
-      >
-        <button
-          className="session-row-action session-ide-open"
-          aria-label="Choose IDE"
-          aria-haspopup="menu"
-          aria-expanded={pickerOpen}
-          title={disabledReason ?? "Choose IDE"}
-          type="button"
-          disabled={buttonDisabled}
-          onClick={handleChevronClick}
-        >
-          <ExternalLink size={12} />
-        </button>
-        {pickerOpen && createPortal(
-          <ul
-            ref={idePicker.setPopover}
-            className="project-picker-popover session-ide-popover"
-            role="menu"
-            aria-label="Open this worktree in"
-            onMouseEnter={clearPickerCloseTimer}
-            onMouseLeave={schedulePickerClose}
-            style={idePicker.floatingStyles}
-          >
-            {detectedIdes.map((entry) => {
-              const isShell = entry.id === "terminal" || entry.id === "iterm";
-              return (
-                <li key={entry.id} role="none">
-                  <button
-                    ref={(node) => {
-                      if (node === null) {
-                        menuItemRefs.current.delete(entry.id);
-                      } else {
-                        menuItemRefs.current.set(entry.id, node);
-                      }
-                    }}
-                    type="button"
-                    className="project-picker-item"
-                    role="menuitem"
-                    aria-pressed={effectiveDefault === entry.id}
-                    onKeyDown={handleMenuKeyDown(entry.id)}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closePicker();
-                      onOpenInIde(workspace.id, entry.id, {
-                        pinAsDefault: defaultIde === null && effectiveDefault === null
-                      });
-                    }}
-                  >
-                    {isShell ? <Terminal size={13} aria-hidden="true" /> : <ExternalLink size={13} aria-hidden="true" />}
-                    {entry.label}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>,
-          document.body
-        )}
-      </div>
       {onTogglePin ? (
         <button
           className="session-row-action session-pin-btn"
@@ -630,7 +561,7 @@ function SidebarSessionRowInner({
           )}
         </>
       )}
-      {contextMenuPoint && hasContextMenu
+      {contextMenuPoint
         ? createPortal(
             <ul
               ref={contextMenu.setPopover}
@@ -671,6 +602,39 @@ function SidebarSessionRowInner({
                   </button>
                 </li>
               ) : null}
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item"
+                  disabled={ideDisabled}
+                  title={disabledReason ?? undefined}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    startOpenInIde();
+                  }}
+                >
+                  <ExternalLink size={13} aria-hidden="true" />
+                  Open in IDE
+                </button>
+              </li>
+              {canSyncNow && onSyncNow ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeContextMenu();
+                      onSyncNow();
+                    }}
+                  >
+                    <RefreshCw size={13} aria-hidden="true" />
+                    Sync now
+                  </button>
+                </li>
+              ) : null}
               {/* After Rename, which keeps its long-standing first slot — a
                   mis-click here moves the row immediately. */}
               {onRemoveFromPriority ? (
@@ -685,8 +649,8 @@ function SidebarSessionRowInner({
                       onRemoveFromPriority(workspace.id);
                     }}
                   >
-                    <ListChecks size={13} aria-hidden="true" />
-                    Remove from priority
+                    <Check size={13} aria-hidden="true" />
+                    Done
                   </button>
                 </li>
               ) : null}
@@ -707,6 +671,50 @@ function SidebarSessionRowInner({
                   </button>
                 </li>
               ) : null}
+            </ul>,
+            document.body
+          )
+        : null}
+      {idePickerPoint
+        ? createPortal(
+            <ul
+              ref={idePicker.setPopover}
+              className="project-picker-popover session-ide-popover"
+              role="menu"
+              aria-label="Open this worktree in"
+              style={idePicker.floatingStyles}
+            >
+              {detectedIdes.map((entry) => {
+                const isShell = entry.id === "terminal" || entry.id === "iterm";
+                return (
+                  <li key={entry.id} role="none">
+                    <button
+                      ref={(node) => {
+                        if (node === null) {
+                          menuItemRefs.current.delete(entry.id);
+                        } else {
+                          menuItemRefs.current.set(entry.id, node);
+                        }
+                      }}
+                      type="button"
+                      className="project-picker-item"
+                      role="menuitem"
+                      aria-pressed={effectiveDefault === entry.id}
+                      onKeyDown={handleMenuKeyDown(entry.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        closePicker();
+                        onOpenInIde(workspace.id, entry.id, {
+                          pinAsDefault: defaultIde === null && effectiveDefault === null
+                        });
+                      }}
+                    >
+                      {isShell ? <Terminal size={13} aria-hidden="true" /> : <ExternalLink size={13} aria-hidden="true" />}
+                      {entry.label}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>,
             document.body
           )
@@ -759,6 +767,7 @@ export function sidebarSessionRowEqual(
   if (prev.onRemoveFromPriority !== next.onRemoveFromPriority) return false;
   if (prev.onAddToPriority !== next.onAddToPriority) return false;
   if (prev.onSetIcon !== next.onSetIcon) return false;
+  if (prev.onSyncNow !== next.onSyncNow) return false;
   const pw = prev.workspace;
   const nw = next.workspace;
   if (pw === nw) {

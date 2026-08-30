@@ -23,6 +23,16 @@ async function openArgmaxMenu(): Promise<HTMLElement> {
   return screen.findByRole("menu", { name: "Argmax menu" });
 }
 
+// The IDE chooser lives in the session row's right-click menu; discovery is
+// async, so wait for the item to come out of its "no IDEs yet" disabled state.
+async function openIdeMenu(): Promise<HTMLElement> {
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Build dashboard" }));
+  const ideItem = await screen.findByRole("menuitem", { name: "Open in IDE" });
+  await waitFor(() => expect(ideItem).not.toBeDisabled());
+  fireEvent.click(ideItem);
+  return ideItem;
+}
+
 describe("App settings", () => {
   afterEach(() => {
     cleanup();
@@ -121,20 +131,6 @@ describe("App settings", () => {
     expect((settingsScroller as HTMLElement).scrollTop).toBe(0);
   });
 
-  it("resets settings scroll when the active Settings sidebar button is clicked again", async () => {
-    const { container } = render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-    await openSettings();
-
-    const settingsScroller = container.querySelector(".settings-scroll");
-    expect(settingsScroller).toBeInstanceOf(HTMLElement);
-    (settingsScroller as HTMLElement).scrollTop = 96;
-
-    await openSettings();
-
-    expect((settingsScroller as HTMLElement).scrollTop).toBe(0);
-  });
-
   it("toggles settings with Cmd+, including from the focused launcher prompt", async () => {
     render(<App />);
 
@@ -175,6 +171,22 @@ describe("App settings", () => {
     await waitFor(() =>
       expect(window.localStorage.getItem("argmax.thinking.expanded")).toBe("true")
     );
+  });
+
+  it("settings Single line tool-call display persists and disables the groups row", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    await openSettings("Agents");
+
+    const group = await screen.findByRole("radiogroup", { name: "Tool calls in chat" });
+    fireEvent.click(within(group).getByRole("radio", { name: "Single line" }));
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.toolCalls.display")).toBe("single-line")
+    );
+
+    const groupsGroup = screen.getByRole("radiogroup", { name: "Tool call groups" });
+    expect(within(groupsGroup).getByRole("radio", { name: "Show expanded" })).toBeDisabled();
   });
 
   it("disables the composer pixel field by default and persists turning it on", async () => {
@@ -297,9 +309,10 @@ describe("App settings", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    const ideButton = await screen.findByRole("button", { name: "Choose IDE" });
-    expect(ideButton).toBeDisabled();
-    expect(ideButton).toHaveAttribute("title", "Worktree not ready yet");
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Build dashboard" }));
+    const ideItem = await screen.findByRole("menuitem", { name: "Open in IDE" });
+    expect(ideItem).toBeDisabled();
+    expect(ideItem).toHaveAttribute("title", "Worktree not ready yet");
   });
 
   it("auto-selects the only detected GUI IDE as the menu default when none is stored", async () => {
@@ -311,22 +324,19 @@ describe("App settings", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    const chevron = await screen.findByRole("button", { name: "Choose IDE" });
-    await waitFor(() => expect(chevron).not.toBeDisabled());
-    fireEvent.click(chevron);
+    const ideItem = await openIdeMenu();
+    expect(ideItem).not.toBeDisabled();
 
     const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
     expect(within(menu).getByRole("menuitem", { name: "Windsurf" })).toHaveAttribute("aria-pressed", "true");
     expect(within(menu).getByRole("menuitem", { name: "Terminal" })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("lists every detected IDE in the chevron menu", async () => {
+  it("lists every detected IDE in the right-click menu", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    const chevron = await screen.findByRole("button", { name: "Choose IDE" });
-    await waitFor(() => expect(chevron).not.toBeDisabled());
-    fireEvent.click(chevron);
+    await openIdeMenu();
 
     const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
     const items = within(menu).getAllByRole("menuitem");
@@ -334,15 +344,13 @@ describe("App settings", () => {
     expect(items.map((item) => item.textContent)).toEqual(["VS Code", "Cursor", "Terminal"]);
   });
 
-  it("opens the chosen IDE from the chevron menu without changing the default", async () => {
+  it("opens the chosen IDE from the right-click menu without changing the default", async () => {
     window.localStorage.setItem("argmax.defaultIde", "vscode");
 
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    const chevron = await screen.findByRole("button", { name: "Choose IDE" });
-    await waitFor(() => expect(chevron).not.toBeDisabled());
-    fireEvent.click(chevron);
+    await openIdeMenu();
     const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Cursor" }));
 
@@ -504,16 +512,6 @@ describe("App settings", () => {
     expect(chatFontSize).toHaveValue("7");
   });
 
-  it("migrates a stored 1–5 level onto the 1–10 scale", async () => {
-    window.localStorage.setItem("argmax.font.size", "4");
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-
-    // Old level 4 (one step up) becomes new level 7 and persists under the new key.
-    expect(document.documentElement.getAttribute("data-font-size")).toBe("7");
-    await waitFor(() => expect(window.localStorage.getItem("argmax.font.scale")).toBe("7"));
-  });
-
   it("carries the agent-window size on the session grid, not on app chrome", async () => {
     window.localStorage.setItem("argmax.font.scale.chat", "5");
     render(<App />);
@@ -523,32 +521,6 @@ describe("App settings", () => {
     const grid = await screen.findByRole("group", { name: "Session panes" });
     expect(grid).toHaveAttribute("data-font-size", "5");
     expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
-  });
-
-  it("settings Appearance section renders the Accent picker and persists accent changes", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-
-    await openSettings();
-    await screen.findByRole("heading", { name: "Appearance" });
-
-    const accentPicker = screen.getByRole("radiogroup", { name: "Accent" });
-    expect(within(accentPicker).getByRole("radio", { name: "Green" })).toHaveAttribute(
-      "aria-checked",
-      "true"
-    );
-
-    fireEvent.click(within(accentPicker).getByRole("radio", { name: "Orange" }));
-    await waitFor(() =>
-      expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("orange")
-    );
-    expect(document.documentElement.getAttribute("data-accent")).toBe("orange");
-
-    fireEvent.click(within(accentPicker).getByRole("radio", { name: "Blue" }));
-    await waitFor(() =>
-      expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("blue")
-    );
-    expect(document.documentElement.getAttribute("data-accent")).toBe("blue");
   });
 
   it("settings Appearance section switches chat width and persists it", async () => {
@@ -591,6 +563,59 @@ describe("App settings", () => {
     expect(window.localStorage.getItem(CHAT_WIDTH_KEY)).toBe("4");
   });
 
+  it("resets settings scroll when the active Settings sidebar button is clicked again", async () => {
+    const { container } = render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    await openSettings();
+
+    const settingsScroller = container.querySelector(".settings-scroll");
+    expect(settingsScroller).toBeInstanceOf(HTMLElement);
+    (settingsScroller as HTMLElement).scrollTop = 96;
+
+    await openSettings();
+
+    expect((settingsScroller as HTMLElement).scrollTop).toBe(0);
+  });
+
+
+  it("migrates a stored 1–5 level onto the 1–10 scale", async () => {
+    window.localStorage.setItem("argmax.font.size", "4");
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    // Old level 4 (one step up) becomes new level 7 and persists under the new key.
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("7");
+    await waitFor(() => expect(window.localStorage.getItem("argmax.font.scale")).toBe("7"));
+  });
+
+
+  it("settings Appearance section renders the Accent picker and persists accent changes", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Appearance" });
+
+    const accentPicker = screen.getByRole("radiogroup", { name: "Accent" });
+    expect(within(accentPicker).getByRole("radio", { name: "Green" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+
+    fireEvent.click(within(accentPicker).getByRole("radio", { name: "Orange" }));
+    await waitFor(() =>
+      expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("orange")
+    );
+    expect(document.documentElement.getAttribute("data-accent")).toBe("orange");
+
+    fireEvent.click(within(accentPicker).getByRole("radio", { name: "Blue" }));
+    await waitFor(() =>
+      expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("blue")
+    );
+    expect(document.documentElement.getAttribute("data-accent")).toBe("blue");
+  });
+
+
   it("settings Appearance section wires the macOS-native options through to the document attribute", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -612,4 +637,5 @@ describe("App settings", () => {
       expect(window.localStorage.getItem("argmax.font.family")).toBe(id);
     }
   });
+
 });

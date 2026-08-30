@@ -129,10 +129,10 @@ describe("fonts", () => {
     expect(readStoredChatFontSize()).toBe(2);
   });
 
-  it("maps levels to body-text pixels, 8px at 1 through 17px at 10", () => {
-    expect(fontSizeBasePx(1)).toBe(8);
-    expect(fontSizeBasePx(DEFAULT_FONT_SIZE)).toBe(13);
-    expect(fontSizeBasePx(10)).toBe(17);
+  it("maps levels to body-text pixels, 10px at 1 through 19px at 10", () => {
+    expect(fontSizeBasePx(1)).toBe(10);
+    expect(fontSizeBasePx(DEFAULT_FONT_SIZE)).toBe(15);
+    expect(fontSizeBasePx(10)).toBe(19);
   });
 
   it("applyFontSizeToDocument sets the data-font-size attribute on <html>", () => {

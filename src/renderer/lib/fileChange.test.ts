@@ -131,6 +131,41 @@ describe("interpretFileChange — MultiEdit", () => {
   });
 });
 
+describe("interpretFileChange — opencode camelCase inputs", () => {
+  it("renders an edit diff from filePath/oldString/newString", () => {
+    const { change } = firstChange("edit", {
+      filePath: "/tmp/a.ts",
+      oldString: "foo\nbar",
+      newString: "FOO\nBAR\nBAZ"
+    });
+    expect(change.kind).toBe("edit");
+    if (change.kind !== "edit") return;
+    expect(change.addCount).toBe(3);
+    expect(change.delCount).toBe(2);
+  });
+
+  it("renders a create diff from filePath/content", () => {
+    const { change } = firstChange("write", {
+      filePath: "/tmp/new.ts",
+      content: "hello\nworld"
+    });
+    expect(change.kind).toBe("create");
+    if (change.kind !== "create") return;
+    expect(change.addCount).toBe(2);
+  });
+
+  it("marks replaceAll with a note", () => {
+    const { change } = firstChange("edit", {
+      filePath: "/tmp/a.ts",
+      oldString: "x",
+      newString: "y",
+      replaceAll: true
+    });
+    if (change.kind !== "edit") throw new Error("bad kind");
+    expect(change.note).toMatch(/all matches/i);
+  });
+});
+
 describe("interpretFileChange — Codex file_change", () => {
   it("expands a multi-file changes array", () => {
     const result = interpretFileChange("file_change", {

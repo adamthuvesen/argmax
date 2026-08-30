@@ -11,12 +11,14 @@ import type { ModelPickerSelection } from "../lib/models.js";
 import { isSupportedImageMime } from "../lib/composerAttachments.js";
 import { buildTurnRenderState } from "../lib/sessionTurnView.js";
 import { isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
+import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { codenameForTool } from "../lib/agentNames.js";
 import { visibleTurnToolItem } from "../lib/turnToolItems.js";
 import { sessionAgentModeKey, writeStoredAgentMode } from "../lib/agentMode.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
 import type { AgentMode } from "../../shared/types.js";
 import { AgentLaunchList } from "./AgentLaunchList.js";
+import { ActivitySummaryLine } from "./ActivitySummaryLine.js";
 import { ChatBubble } from "./ChatBubble.js";
 import { PlanCard } from "./PlanCard.js";
 import { QuestionCard } from "./QuestionCard.js";
@@ -52,7 +54,7 @@ function SessionConversationTurnInner({
   shouldRefocusInput,
   setStatus,
   setAgentMode,
-  defaultToolCallsExpanded,
+  defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded
 }: {
@@ -72,7 +74,7 @@ function SessionConversationTurnInner({
   shouldRefocusInput: MutableRefObject<boolean>;
   setStatus: (status: ComposerStatus | null) => void;
   setAgentMode: (mode: AgentMode) => void;
-  defaultToolCallsExpanded?: boolean;
+  defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
 }): JSX.Element {
@@ -112,10 +114,15 @@ function SessionConversationTurnInner({
   // toggles this for the whole turn; collapsing folds the tool groups to their
   // headers AND the Thought block, so one control governs the turn's reasoning
   // and its tools. Nothing is removed from the chat. A per-row chevron still
-  // overrides an individual group or the Thought block.
-  const toolsExpandedDefault = isLatestTurn
-    ? (defaultToolCallGroupsExpanded ?? defaultToolCallsExpanded ?? false)
-    : false;
+  // overrides an individual group or the Thought block. "Tool call groups"
+  // still wins over "Tool calls in chat" when it is set, so groups can open
+  // while the tool rows stay collapsed. Single-line mode ("cleanest") never
+  // expands: tool runs render as one self-updating line.
+  const minimalActivity = defaultToolCallsDisplay === "single-line";
+  const toolsExpandedDefault =
+    isLatestTurn && !minimalActivity
+      ? (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded")
+      : false;
   const [toolsExpandOverride, setToolsExpandOverride] = useState<boolean | null>(null);
   const toolsExpanded = toolsExpandOverride ?? toolsExpandedDefault;
   const reportSendError = (message: string): void => setStatus({ kind: "error", message });
@@ -204,48 +211,55 @@ function SessionConversationTurnInner({
     createdAt: string;
     sortAt: string;
     agentTools?: ToolCall[];
+    // Flat tool list this child contributes to a single-line-mode run.
+    runTools?: ToolCall[];
   };
-  const assistantChildren: AnnotatedChild[] = visibleAssistantGroups.map((group) => {
-    if (group.thinking) {
+  const assistantChildren: AnnotatedChild[] = visibleAssistantGroups
+    .map((group): AnnotatedChild | null => {
+      // Single-line mode folds completed Thought blocks away entirely — only
+      // the live "Thinking" indicator (governed by thinkingLive) survives.
+      if (minimalActivity && group.thinking && !thinkingLive) return null;
+      if (group.thinking) {
+        const node = (
+          <ThoughtBlock
+            key={group.id}
+            defaultExpanded={toolsExpandOverride ?? defaultThinkingExpanded}
+            live={thinkingLive}
+            holdOpen={isLatestTurn && toolsExpandOverride !== false}
+            durationMs={thoughtDurationMs(group.createdAt, group.lastActivityAt)}
+          >
+            <StreamingMarkdown
+              text={group.text}
+              streaming={false}
+              workspace={workspace}
+              onOpenFile={onOpenFile}
+            />
+          </ThoughtBlock>
+        );
+        return { kind: "assistant", id: group.id, node, createdAt: group.createdAt, sortAt: group.lastActivityAt };
+      }
+      const planNode = tryRenderPlan(group);
+      if (planNode) {
+        return { kind: "assistant", id: group.id, node: planNode, createdAt: group.createdAt, sortAt: group.lastActivityAt };
+      }
       const node = (
-        <ThoughtBlock
+        <ChatBubble
           key={group.id}
-          defaultExpanded={toolsExpandOverride ?? defaultThinkingExpanded}
-          live={thinkingLive}
-          holdOpen={isLatestTurn && toolsExpandOverride !== false}
-          durationMs={thoughtDurationMs(group.createdAt, group.lastActivityAt)}
+          kind="assistant"
+          rawMarkdown={group.text}
         >
           <StreamingMarkdown
             text={group.text}
-            streaming={false}
+            streaming={group.streaming}
+            revealKey={session ? `${session.id}:${group.createdAt}:${group.id}` : null}
             workspace={workspace}
             onOpenFile={onOpenFile}
           />
-        </ThoughtBlock>
+        </ChatBubble>
       );
       return { kind: "assistant", id: group.id, node, createdAt: group.createdAt, sortAt: group.lastActivityAt };
-    }
-    const planNode = tryRenderPlan(group);
-    if (planNode) {
-      return { kind: "assistant", id: group.id, node: planNode, createdAt: group.createdAt, sortAt: group.lastActivityAt };
-    }
-    const node = (
-      <ChatBubble
-        key={group.id}
-        kind="assistant"
-        rawMarkdown={group.text}
-      >
-        <StreamingMarkdown
-          text={group.text}
-          streaming={group.streaming}
-          revealKey={session ? `${session.id}:${group.createdAt}:${group.id}` : null}
-          workspace={workspace}
-          onOpenFile={onOpenFile}
-        />
-      </ChatBubble>
-    );
-    return { kind: "assistant", id: group.id, node, createdAt: group.createdAt, sortAt: group.lastActivityAt };
-  });
+    })
+    .filter((child): child is AnnotatedChild => child !== null);
   if (exitPlanCard && exitPlanTool) {
     assistantChildren.push({
       kind: "assistant",
@@ -286,6 +300,7 @@ function SessionConversationTurnInner({
           id: tItem.tool.id,
           createdAt: tItem.tool.createdAt,
           sortAt: tItem.tool.createdAt,
+          runTools: [tItem.tool, ...(tItem.children ?? [])],
           node: (
             <ToolCallRow
               tool={tItem.tool}
@@ -305,6 +320,7 @@ function SessionConversationTurnInner({
         id: tItem.group.id,
         createdAt: firstCreatedAt,
         sortAt: firstCreatedAt,
+        runTools: tItem.group.tools,
         node: (
           <ToolCallGroupBubble
             group={tItem.group}
@@ -336,7 +352,50 @@ function SessionConversationTurnInner({
       child.agentTools ? { ...child, agentTools: [...child.agentTools] } : child
     );
   }
-  const bodyChildren: TurnBodyChild[] = coalescedChildren.map((child) => {
+  // Single-line mode: every consecutive run of tool children between two
+  // anchors (assistant text, agent launch, or a card) collapses into ONE
+  // self-updating summary line. Agent launches pass through untouched — they
+  // are the only extra row allowed between replies. The merged child anchors
+  // on the run's first tool id so the line mutates in place ("Read 1 file" →
+  // "Read 2 files, edited 1 file") as the run grows instead of appending.
+  let bodySource: AnnotatedChild[] = coalescedChildren;
+  if (minimalActivity) {
+    const activityChildren: AnnotatedChild[] = [];
+    let run: { tools: ToolCall[]; anchor: AnnotatedChild } | null = null;
+    const flushRun = (): void => {
+      if (!run) return;
+      const { tools, anchor } = run;
+      run = null;
+      const first = tools[0];
+      activityChildren.push({
+        kind: "tool",
+        id: first ? `activity-${first.id}` : anchor.id,
+        createdAt: anchor.createdAt,
+        sortAt: anchor.sortAt,
+        node: (
+          <ActivitySummaryLine
+            tools={tools}
+            workspaceCwd={workspace?.path ?? null}
+            agentCodenames={agentCodenames}
+            onOpenFile={onOpenFile}
+            onOpenAgent={onOpenAgent}
+          />
+        )
+      });
+    };
+    for (const child of coalescedChildren) {
+      if (child.kind === "tool" && child.runTools && child.runTools.length > 0) {
+        if (run) run.tools.push(...child.runTools);
+        else run = { tools: [...child.runTools], anchor: child };
+        continue;
+      }
+      flushRun();
+      activityChildren.push(child);
+    }
+    flushRun();
+    bodySource = activityChildren;
+  }
+  const bodyChildren: TurnBodyChild[] = bodySource.map((child) => {
     if (child.agentTools) {
       const first = child.agentTools[0];
       const id = first ? `agent-list-${first.id}` : child.id;

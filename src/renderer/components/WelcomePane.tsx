@@ -13,6 +13,7 @@ import type { DiscoveredProvider } from "../../shared/types.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { PROVIDER_INSTALL_HINTS } from "../lib/providerInstallHints.js";
 import { PROVIDER_SETUP, PROVIDER_SETUP_ORDER } from "../lib/providerSetup.js";
+import { WorkingNest } from "./WorkingNest.js";
 
 /**
  * Fresh-install onboarding surface. Renders when the user has no projects
@@ -91,7 +92,11 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
             disabled={refreshing}
             aria-label="Re-run provider discovery"
           >
-            <RefreshCcw size={14} aria-hidden="true" className={refreshing ? "is-spinning" : undefined} />
+            {refreshing ? (
+              <WorkingNest active size={14} />
+            ) : (
+              <RefreshCcw size={14} aria-hidden="true" />
+            )}
             <span>{refreshing ? "Detecting…" : "Try again"}</span>
           </button>
         </header>

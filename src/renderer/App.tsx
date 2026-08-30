@@ -97,15 +97,14 @@ import {
   SIDEBAR_PRIORITY_KEY,
   THINKING_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
-  TOOL_CALLS_EXPANDED_KEY,
   WORKSPACE_CARD_KEY,
-  useBooleanUiPreference
+  useBooleanUiPreference,
+  useToolCallsDisplayPreference
 } from "./lib/uiPreferences.js";
 import { randomSessionIcon } from "./lib/sessionIcons.js";
 import { loadDashboardSnapshot } from "./lib/loadDashboardSnapshot.js";
 import { buildPaletteCommands, buildSessionLabelById } from "./lib/buildPaletteCommands.js";
 import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
-import { usePriorityDemotion } from "./hooks/usePriorityDemotion.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 import { isTauriRuntime } from "./lib/tauriBridge.js";
@@ -160,7 +159,7 @@ export function App(): JSX.Element {
   const settingsNavigationRequestRef = useRef(0);
   const [settingsNavigationTarget, setSettingsNavigationTarget] = useState<SettingsNavigationTarget | null>(null);
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
-  const [toolCallsExpanded, setToolCallsExpanded] = useBooleanUiPreference(TOOL_CALLS_EXPANDED_KEY, false);
+  const [toolCallsDisplay, setToolCallsDisplay] = useToolCallsDisplayPreference();
   const [toolCallGroupsExpanded, setToolCallGroupsExpanded] = useBooleanUiPreference(
     TOOL_CALL_GROUPS_EXPANDED_KEY,
     false
@@ -815,17 +814,6 @@ export function App(): JSX.Element {
     [refreshDashboardStatus]
   );
 
-  usePriorityDemotion({
-    selectedWorkspaceId,
-    isSettingsOpen,
-    isFullLauncherOpen,
-    workspaces: snapshot.workspaces,
-    sessions: snapshot.sessions,
-    onDemote: (workspaceId) => {
-      void removeFromPriority(workspaceId);
-    }
-  });
-
   // Random session icons for sessions this renderer did not launch: agent-
   // driven session control and the mobile companion create workspaces
   // backend-side, skipping the launch paths that call `setIcon`. When a
@@ -927,6 +915,20 @@ export function App(): JSX.Element {
     },
     [setWorkspaceIcon]
   );
+  // Right-click "Sync now" on an imported sidebar row: one sweep covers every
+  // provider at once, and the sweep publishes fresh events as deltas, so the
+  // row's conversation updates without a reopen.
+  const onSyncNowWorkspaceRow = useCallback((): void => {
+    if (!window.argmax) {
+      setToast({ kind: "error", message: "Open the Tauri app window to sync sessions." });
+      return;
+    }
+    void withToast(
+      () => window.argmax!.sync.runNow(),
+      setToast,
+      "Could not run session sync."
+    );
+  }, []);
   const onAddProjectRow = useCallback((): void => {
     void addProject();
   }, [addProject]);
@@ -1708,6 +1710,7 @@ export function App(): JSX.Element {
         onAddToPriority={onAddToPriorityRow}
         onClearPriority={onClearPrioritySection}
         onSetWorkspaceIcon={onSetWorkspaceIconRow}
+        onSyncNowWorkspace={onSyncNowWorkspaceRow}
         showPriority={sidebarPriorityVisible}
         onOpenLauncher={onOpenLauncherRow}
         onAddProject={onAddProjectRow}
@@ -1755,8 +1758,8 @@ export function App(): JSX.Element {
               <SettingsPanel
                 defaultModel={launchModel}
                 onDefaultModelChange={handleLaunchModelChange}
-                toolCallsExpanded={toolCallsExpanded}
-                onToolCallsExpandedChange={setToolCallsExpanded}
+                toolCallsDisplay={toolCallsDisplay}
+                onToolCallsDisplayChange={setToolCallsDisplay}
                 toolCallGroupsExpanded={toolCallGroupsExpanded}
                 onToolCallGroupsExpandedChange={setToolCallGroupsExpanded}
                 sidebarPriorityVisible={sidebarPriorityVisible}
@@ -1822,7 +1825,7 @@ export function App(): JSX.Element {
               projectsById={projectsById}
               workspacesById={workspacesById}
               sessionsById={sessionsById}
-              defaultToolCallsExpanded={toolCallsExpanded}
+              defaultToolCallsDisplay={toolCallsDisplay}
               defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
               defaultThinkingExpanded={thinkingExpanded}
               fastModeEnabled={fastModeEnabled}

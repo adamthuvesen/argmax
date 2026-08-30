@@ -37,6 +37,7 @@ function classifySingleFileTool(lower: string): {
 
 const SINGLE_FILE_PATH_KEYS = [
   "file_path",
+  "filePath",
   "filepath",
   "path",
   "relative_path",
@@ -66,6 +67,24 @@ export function editedFilePaths(name: string, input: Record<string, unknown>): s
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+// Edit tools carry the before/after pair in snake_case (Claude) or camelCase
+// (opencode `edit`/`patch`); read both so one input-shape table serves every
+// provider.
+function editPair(source: Record<string, unknown>): { old: string; new: string } {
+  return {
+    old: typeof source.old_string === "string"
+      ? source.old_string
+      : typeof source.oldString === "string"
+        ? source.oldString
+        : "",
+    new: typeof source.new_string === "string"
+      ? source.new_string
+      : typeof source.newString === "string"
+        ? source.newString
+        : ""
+  };
 }
 
 export function interpretFileChange(
@@ -104,10 +123,9 @@ export function interpretFileChange(
     for (const raw of edits) {
       if (!raw || typeof raw !== "object") continue;
       const e = raw as Record<string, unknown>;
-      const oldStr = typeof e.old_string === "string" ? e.old_string : "";
-      const newStr = typeof e.new_string === "string" ? e.new_string : "";
-      if (e.replace_all === true) replaceAll = true;
-      const built = synthesizeHunk(oldStr, newStr);
+      const pair = editPair(e);
+      if (e.replace_all === true || e.replaceAll === true) replaceAll = true;
+      const built = synthesizeHunk(pair.old, pair.new);
       const parsed = parseUnifiedDiff(built.diff);
       for (const block of parsed) hunks.push(block);
       addCount += built.adds;
@@ -128,25 +146,24 @@ export function interpretFileChange(
   }
 
   if (isEdit) {
-    const oldStr = typeof input.old_string === "string" ? input.old_string : "";
-    const newStr = typeof input.new_string === "string" ? input.new_string : "";
-    if (oldStr === "" && newStr === "") return null;
-    const tooLarge = oldStr.length + newStr.length > MAX_INLINE_CHARS;
+    const pair = editPair(input);
+    if (pair.old === "" && pair.new === "") return null;
+    const tooLarge = pair.old.length + pair.new.length > MAX_INLINE_CHARS;
     if (tooLarge) {
       return [
         {
           kind: "edit",
           path,
           hunks: [],
-          addCount: countLines(newStr),
-          delCount: countLines(oldStr),
+          addCount: countLines(pair.new),
+          delCount: countLines(pair.old),
           note: "Change too large to preview inline."
         }
       ];
     }
-    const built = synthesizeHunk(oldStr, newStr);
+    const built = synthesizeHunk(pair.old, pair.new);
     const hunks = parseUnifiedDiff(built.diff);
-    const replaceAll = input.replace_all === true;
+    const replaceAll = input.replace_all === true || input.replaceAll === true;
     return [
       {
         kind: "edit",

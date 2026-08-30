@@ -147,7 +147,8 @@ export function Segmented({
   name,
   value,
   onChange,
-  options
+  options,
+  disabled = false
 }: {
   legend: string;
   hint?: string;
@@ -155,6 +156,8 @@ export function Segmented({
   value: string;
   onChange: (next: string) => void;
   options: ReadonlyArray<SegmentedOption>;
+  /** Disables the whole control (e.g. a mode that makes this setting moot). */
+  disabled?: boolean;
 }): JSX.Element {
   return (
     <div className="settings-segmented" role="radiogroup" aria-label={legend}>
@@ -162,7 +165,7 @@ export function Segmented({
         <span className="settings-segmented-legend">{legend}</span>
         {hint ? <span className="settings-segmented-hint">{hint}</span> : null}
       </span>
-      <div className="settings-segmented-track" data-count={options.length}>
+      <div className="settings-segmented-track" data-count={options.length} data-disabled={disabled ? "true" : undefined}>
         {options.map((option) => {
           const checked = option.value === value;
           return (
@@ -170,14 +173,14 @@ export function Segmented({
               key={option.value}
               className="settings-segmented-option"
               data-checked={checked ? "true" : "false"}
-              data-disabled={option.disabled ? "true" : "false"}
+              data-disabled={option.disabled || disabled ? "true" : "false"}
             >
               <input
                 type="radio"
                 name={name}
                 value={option.value}
                 checked={checked}
-                disabled={option.disabled}
+                disabled={option.disabled || disabled}
                 onChange={() => onChange(option.value)}
               />
               <span className="settings-segmented-label">{option.label}</span>

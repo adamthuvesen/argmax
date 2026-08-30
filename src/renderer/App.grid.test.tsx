@@ -511,62 +511,6 @@ describe("App grid", () => {
     expect(screen.getAllByRole("region", { name: "Agent activity for Build dashboard" })).toHaveLength(1);
   });
 
-  it("keeps an inactive but still-running subagent tab polling", async () => {
-    mockDashboardSnapshot({
-      ...snapshot,
-      events: [
-        {
-          id: "task-2",
-          sessionId: "session-1",
-          type: "command.started",
-          message: "Task",
-          payload: { id: "task-2", name: "Task", input: { description: "Write tests", prompt: "Add coverage." } },
-          createdAt: "2026-05-08T15:54:03.000Z"
-        },
-        {
-          id: "task-1",
-          sessionId: "session-1",
-          type: "command.started",
-          message: "Task",
-          payload: { id: "task-1", name: "Task", input: { description: "Map renderer", prompt: "Find renderer files." } },
-          createdAt: "2026-05-08T15:54:02.000Z"
-        },
-        {
-          id: "user-message",
-          sessionId: "session-1",
-          type: "user.message",
-          message: "Map this",
-          payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
-    });
-
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
-    await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
-    fireEvent.click(screen.getByRole("button", { name: startedAgentName("Write tests") }));
-    await screen.findByRole("tablist", { name: "Subagent tabs" });
-
-    // task-2 is active; task-1 is hidden but still running.
-    expect(screen.getByRole("tab", { name: "Triton" })).toHaveAttribute("aria-selected", "false");
-
-    const task1Calls = (): number =>
-      sessionAgentEvents.mock.calls.filter((call) => call[0].parentToolUseId === "task-1").length;
-
-    await waitFor(() => {
-      expect(sessionAgentEvents).toHaveBeenCalledWith({ sessionId: "session-1", parentToolUseId: "task-1" });
-      expect(sessionAgentEvents).toHaveBeenCalledWith({ sessionId: "session-1", parentToolUseId: "task-2" });
-    });
-
-    const before = task1Calls();
-    await waitFor(() => {
-      expect(task1Calls()).toBeGreaterThan(before);
-    }, { timeout: 2500 });
-  });
-
   it("prunes a superseded subagent tab on session stop while keeping the cell", async () => {
     const prompt = "Map renderer";
     mockDashboardSnapshot({
@@ -1776,4 +1720,61 @@ describe("App grid", () => {
       expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
     });
   });
+
+  it("keeps an inactive but still-running subagent tab polling", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        {
+          id: "task-2",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: { id: "task-2", name: "Task", input: { description: "Write tests", prompt: "Add coverage." } },
+          createdAt: "2026-05-08T15:54:03.000Z"
+        },
+        {
+          id: "task-1",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: { id: "task-1", name: "Task", input: { description: "Map renderer", prompt: "Find renderer files." } },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
+    await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: startedAgentName("Write tests") }));
+    await screen.findByRole("tablist", { name: "Subagent tabs" });
+
+    // task-2 is active; task-1 is hidden but still running.
+    expect(screen.getByRole("tab", { name: "Triton" })).toHaveAttribute("aria-selected", "false");
+
+    const task1Calls = (): number =>
+      sessionAgentEvents.mock.calls.filter((call) => call[0].parentToolUseId === "task-1").length;
+
+    await waitFor(() => {
+      expect(sessionAgentEvents).toHaveBeenCalledWith({ sessionId: "session-1", parentToolUseId: "task-1" });
+      expect(sessionAgentEvents).toHaveBeenCalledWith({ sessionId: "session-1", parentToolUseId: "task-2" });
+    });
+
+    const before = task1Calls();
+    await waitFor(() => {
+      expect(task1Calls()).toBeGreaterThan(before);
+    }, { timeout: 2500 });
+  });
+
 });

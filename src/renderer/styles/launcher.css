@@ -165,10 +165,6 @@
   opacity: 0.6;
 }
 
-.welcome-refresh svg.is-spinning {
-  animation: spin 900ms linear infinite;
-}
-
 .welcome-providers {
   display: grid;
   gap: 8px;

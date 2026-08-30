@@ -72,7 +72,7 @@ The "Thinking" bubble is suppressed when any of these are true:
 
 - `session.state !== "running"`
 - the last significant event is `message.delta` (visible assistant text is actively streaming)
-- a *visible* tool is running (`tool.name` is not `ExitPlanMode` / an ask-question tool; the tool's own spinner is the indicator)
+- a *visible* tool is running (`tool.name` is not `ExitPlanMode` / an ask-question tool; the tool's own working nest is the indicator)
 - **subagent rows do not count as parent progress**: tool boundaries and prose
   that carry a `parent_tool_use_id` fold under the launch row and never render
   in the parent chat, so neither the visible-tool check nor
@@ -231,11 +231,23 @@ padding, so it sets the fade to `0px`.
 [WorkspaceCard.tsx](../src/renderer/components/WorkspaceCard.tsx) floats a
 summary of the session's worktree in the conversation's right gutter: the branch
 and its base, the diff stat, and one row each for Changes, Files, Terminal,
-Commit, and the pull request. Every row hands off to a surface that already
-exists: `review.toggleChangesPanel`, `review.openPanelInFilesMode`, the
-terminal toggle, the commit dialog, and `git.viewOrCreatePr`. The card is an
-index into the pane, never a second place the same state is computed. A clean
-worktree disables the Changes row rather than opening an empty panel.
+Commit, and the pull request, plus a Subagents section (below). Every row hands
+off to a surface that already exists: `review.toggleChangesPanel`,
+`review.openPanelInFilesMode`, the terminal toggle, the commit dialog, and
+`git.viewOrCreatePr`. The card is an index into the pane, never a second place
+the same state is computed. A clean worktree disables the Changes row rather
+than opening an empty panel.
+
+**The Subagents section is a glanceable roster, not a second agent view.**
+`SessionConversation` derives it from the same `buildSessionToolCalls` output
+and codename assignments the agent tabs use
+(`buildSubagentCluster` in `lib/subagentSummary.ts`), so the card can never
+disagree with the tabs beside it. It shows one palette-tinted avatar per launch
+(codename initial, hashed from the spawn's `toolUseId`), pulsing while running,
+rose-ringed on failure, folding into a +N chip past five, and a quiet count
+("2 running · 4 done"). It is deliberately not clickable: deep inspection stays
+in the agent tabs and the activity pane. Sessions with no launches render no
+section at all.
 
 **It yields to whatever docks on the right.** `showWorkspaceCard` in
 `SessionConversation.tsx` is `workspaceCardEnabled && !review.isPanelOpen &&
@@ -372,8 +384,9 @@ Same-provider model changes are unaffected and commit immediately.
 
 ## Subagent activity panes
 
-Agent tool rows (`Task`, Codex `spawn_agent`, Cursor `taskToolCall`) open an
-in-app activity pane instead of dumping child-agent prose into the parent chat.
+Agent tool rows (Claude `Task` / `Agent`, Codex `spawn_agent`, OpenCode `task`,
+Cursor `taskToolCall` or ACP `task`) open an in-app activity pane instead of
+dumping child-agent prose into the parent chat.
 The row itself is a split control: clicking the main row opens or focuses the
 pane, while the small chevron still expands inline metadata. The parent
 projection hides rows with `parent_tool_use_id` and Codex child-thread
@@ -414,7 +427,7 @@ normal chat view does not scan provider trace directories. While a running
 subagent has no imported child rows yet, the pane shows the same quiet Thinking
 state as the main chat. The limited-data notice appears only after the pane has
 settled and the provider still did not expose child activity. Child tool rows
-stay compact while running; the spinner carries live state so fast tools do not
+stay compact while running; the working nest carries live state so fast tools do not
 flash open and closed as completions arrive.
 
 Providers can emit a launch-looking row before the real child link exists, then
@@ -600,6 +613,26 @@ when `document.activeElement` is an `INPUT`/`TEXTAREA`/contenteditable).
 
 The footer surfaces the contract visually as decorative `aria-hidden` key
 hints, so sighted keyboard users don't have to discover it.
+
+## Single-line activity mode
+
+"Tool calls in chat" in Settings → Agents is a three-way control
+(`argmax.toolCalls.display`, migrated from the older boolean):
+**Show expanded / Show collapsed / Single line**. Single line is the
+cleanest setting: every consecutive run of tool children between two anchors
+(assistant text, agent launch, or a Plan/Question card) collapses into ONE
+self-updating line (`ActivitySummaryLine`) rendering
+`summarizeToolGroup`'s headline — "Read 1 file" becomes
+"Explored 2 files, edited 1 file" in place as work streams in. Completed
+Thought blocks fold away too; only the live pre-answer "Thinking" indicator
+survives. Agent launches stay their own line — they are the only extra row
+allowed between replies. Clicking a summary line reveals that gap's per-tool
+rows. Implementation: run collapse + Thought hiding in
+[SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx);
+the line itself in
+[ActivitySummaryLine.tsx](../src/renderer/components/ActivitySummaryLine.tsx)
+(reuses the group-bubble header classes; the keyed headline span remounts on
+text change to replay the fade, which is the "it's updating" affordance).
 
 ## Other knobs
 

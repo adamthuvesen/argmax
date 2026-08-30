@@ -36,7 +36,7 @@ import { lastTurnEditedPaths } from "../lib/lastTurnFiles.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
-import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
+import { readBoundedNumberPreference, type ToolCallsDisplay } from "../lib/uiPreferences.js";
 import {
   getWorkspaceTerminalState,
   setTerminalPanelOpen,
@@ -74,7 +74,7 @@ const TERMINAL_DEFAULT_HEIGHT = 280;
 export function SessionPane({
   approvals,
   checks,
-  defaultToolCallsExpanded,
+  defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
   events,
@@ -113,7 +113,7 @@ export function SessionPane({
 }: {
   approvals: ApprovalRequest[];
   checks?: CheckRun[];
-  defaultToolCallsExpanded?: boolean;
+  defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
   events: TimelineEvent[];
@@ -555,7 +555,7 @@ export function SessionPane({
       <div className="session-main-column" data-terminal-open={terminalOpen ? "true" : undefined}>
         <SessionConversation
           checks={checks}
-          defaultToolCallsExpanded={defaultToolCallsExpanded}
+          defaultToolCallsDisplay={defaultToolCallsDisplay}
           defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
           defaultThinkingExpanded={defaultThinkingExpanded}
           events={visibleEvents}

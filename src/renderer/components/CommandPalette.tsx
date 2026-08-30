@@ -24,6 +24,7 @@ import type {
 } from "../../shared/types.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
+import { WorkingNest } from "./WorkingNest.js";
 
 export type { PaletteGroup, PaletteItem } from "../lib/paletteSearch.js";
 
@@ -740,19 +741,19 @@ export function CommandPalette({
           })}
           {messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH ? (
             <li className="command-palette-loading" role="status">
-              <span className="command-palette-loading-dot" aria-hidden="true" />
+              <WorkingNest active size={12} />
               Searching messages…
             </li>
           ) : null}
           {filesRunning ? (
             <li className="command-palette-loading" role="status">
-              <span className="command-palette-loading-dot" aria-hidden="true" />
+              <WorkingNest active size={12} />
               Loading files…
             </li>
           ) : null}
           {contentsRunning ? (
             <li className="command-palette-loading" role="status">
-              <span className="command-palette-loading-dot" aria-hidden="true" />
+              <WorkingNest active size={12} />
               Searching file contents…
             </li>
           ) : null}

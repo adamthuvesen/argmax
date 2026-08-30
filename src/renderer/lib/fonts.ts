@@ -21,8 +21,8 @@ export type FontOption = {
 
 /**
  * Type size, 1 (smallest) to 10 (largest). Each level shifts the whole type
- * scale by one pixel: body text (`--text-base`) is `7 + level` px, so level 1
- * reads at 8px, the default 6 at the 13px Argmax ships, and 10 at 17px.
+ * scale by one pixel: body text (`--text-base`) is `9 + level` px, so level 1
+ * reads at 10px, the default 6 at the 15px Argmax ships, and 10 at 19px.
  */
 export type FontSize = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
@@ -31,7 +31,7 @@ export const FONT_SIZE_MAX: FontSize = 10;
 
 /** Body-text (`--text-base`) size at a level, for the settings caption. */
 export function fontSizeBasePx(size: FontSize): number {
-  return 7 + size;
+  return 9 + size;
 }
 
 export function toFontSize(raw: string | null | undefined): FontSize | null {

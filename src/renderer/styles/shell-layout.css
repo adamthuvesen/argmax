@@ -385,6 +385,7 @@
    chrome, same chevron tucked inside the label, same pointer affordance. They
    just never host the … / + cluster, which stays on the lead recency header. */
 .project-group.session-pinned-group > .session-pinned-row,
+.project-group.session-working-group > .session-working-row,
 .project-group.session-priority-group > .session-priority-row {
   cursor: pointer;
 }
@@ -905,23 +906,6 @@
   font-size: var(--text-2xs);
   font-weight: var(--weight-ui);
   line-height: 1;
-}
-
-.browser-tab-spinner {
-  flex: none;
-  animation: browser-tab-spin 0.9s linear infinite;
-}
-
-@keyframes browser-tab-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .browser-tab-spinner {
-    animation: none;
-  }
 }
 
 .browser-tab-close {

@@ -154,7 +154,7 @@ type ConversationProps = Parameters<typeof SessionConversation>[0];
 
 type ConversationOptions = {
   defaultThinkingExpanded?: boolean;
-  defaultToolCallsExpanded?: boolean;
+  defaultToolCallsDisplay?: "expanded" | "collapsed" | "single-line";
   defaultToolCallGroupsExpanded?: boolean;
   pendingMessages?: PendingMessage[];
   // The conversation's own prop types, not `ReturnType<typeof vi.fn>`:
@@ -190,7 +190,7 @@ function conversationElement(
       pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}
       {...(options.defaultThinkingExpanded !== undefined ? { defaultThinkingExpanded: options.defaultThinkingExpanded } : {})}
-      {...(options.defaultToolCallsExpanded !== undefined ? { defaultToolCallsExpanded: options.defaultToolCallsExpanded } : {})}
+      {...(options.defaultToolCallsDisplay !== undefined ? { defaultToolCallsDisplay: options.defaultToolCallsDisplay } : {})}
       {...(options.defaultToolCallGroupsExpanded !== undefined ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded } : {})}
       {...(options.onNewSession ? { onNewSession: options.onNewSession } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}

@@ -3,7 +3,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
 import { baseSession, workspace } from "../../test/sessionConversationTestHarness.js";
+import type { SubagentCluster } from "../lib/subagentSummary.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
+
+function subagentCluster(overrides: Partial<SubagentCluster> = {}): SubagentCluster {
+  return {
+    entries: [
+      { toolUseId: "spawn-1", codename: "Io", title: "Map the renderer", status: "done", iconColor: "blue" },
+      { toolUseId: "spawn-2", codename: "Titan", title: "Sweep tests", status: "running", iconColor: "amber" }
+    ],
+    running: 1,
+    done: 1,
+    failed: 0,
+    ...overrides
+  };
+}
 
 function renderCard(
   overrides: {
@@ -16,6 +30,7 @@ function renderCard(
     onOpenCommitDialog?: () => void;
     onToggleTerminal?: () => void;
     setStatus?: (status: { kind: "error" | "info"; message: string } | null) => void;
+    subagents?: SubagentCluster | null;
     workspace?: WorkspaceSummary;
   } = {}
 ) {
@@ -35,6 +50,7 @@ function renderCard(
       onToggleTerminal={overrides.onToggleTerminal ?? vi.fn()}
       session={baseSession()}
       setStatus={overrides.setStatus ?? vi.fn()}
+      subagents={"subagents" in overrides ? overrides.subagents ?? null : undefined}
       workspace={overrides.workspace ?? workspace}
     />
   );
@@ -96,15 +112,15 @@ describe("WorkspaceCard", () => {
     );
 
     const clean = screen.getByRole("button", { name: "Changes" });
-    expect(clean.textContent).toContain("clean");
+    expect(clean.textContent).toBe("Changes");
     expect(clean).toBeDisabled();
   });
 
-  it("withholds the clean verdict until the changed-file list is known", () => {
+  it("reports the unresolved states until the changed-file list is known", () => {
     const { rerender } = renderCard({ changeSummary: null, changesState: "loading" });
 
     const loading = screen.getByRole("button", { name: "Changes" });
-    expect(loading.textContent).not.toContain("clean");
+    expect(loading.textContent).toContain("…");
     expect(loading).toHaveAttribute("title", "Loading changed files…");
 
     rerender(
@@ -124,7 +140,7 @@ describe("WorkspaceCard", () => {
     );
 
     const failed = screen.getByRole("button", { name: "Changes" });
-    expect(failed.textContent).not.toContain("clean");
+    expect(failed.textContent).toContain("unavailable");
     expect(failed).toHaveAttribute("title", "Could not load the changed files");
   });
 
@@ -190,5 +206,41 @@ describe("WorkspaceCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Hide workspace card" }));
 
     expect(onHide).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the subagent roster with a per-state count once the session spawns agents", () => {
+    renderCard({ subagents: subagentCluster() });
+
+    const section = screen.getByRole("region", { name: "Subagents" });
+    expect(section.textContent).toContain("1 running");
+    expect(section.textContent).toContain("1 done");
+    // Codenames surface in the hover roster, one chip per launch.
+    const roster = section.querySelector(".workspace-card-subagents");
+    expect(roster?.getAttribute("title")).toContain("Io — Completed");
+    expect(roster?.getAttribute("title")).toContain("Titan — Running");
+    expect(section.querySelectorAll(".workspace-card-agent")).toHaveLength(2);
+  });
+
+  it("folds the avatar stack into a +N chip beyond five launches and reports failures", () => {
+    const entries = Array.from({ length: 7 }, (_, index) => ({
+      toolUseId: `spawn-${index}`,
+      codename: `Moon${index}`,
+      title: `Agent ${index}`,
+      status: index === 6 ? ("error" as const) : ("done" as const),
+      iconColor: "blue"
+    }));
+    renderCard({ subagents: { entries, running: 0, done: 6, failed: 1 } });
+
+    const section = screen.getByRole("region", { name: "Subagents" });
+    expect(section.querySelectorAll(".workspace-card-agent")).toHaveLength(6); // 5 chips + "+2"
+    expect(section.textContent).toContain("+2");
+    expect(section.textContent).toContain("1 failed");
+    expect(section.textContent).toContain("6 done");
+  });
+
+  it("keeps the subagents section out of a session that never spawned one", () => {
+    renderCard({ subagents: null });
+
+    expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
   });
 });

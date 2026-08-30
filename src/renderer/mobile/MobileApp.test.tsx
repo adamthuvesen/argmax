@@ -93,7 +93,8 @@ describe("MobileApp", () => {
           workspaceId: "workspace-2",
           state: "blocked",
           attention: "approval-needed",
-          attentionChangedAt: new Date().toISOString()
+          attentionChangedAt: new Date().toISOString(),
+          lastActivityAt: new Date().toISOString()
         },
         {
           ...snapshot.sessions[0],
@@ -101,7 +102,8 @@ describe("MobileApp", () => {
           workspaceId: "workspace-3",
           state: "blocked",
           attention: "approval-needed",
-          attentionChangedAt: new Date().toISOString()
+          attentionChangedAt: new Date().toISOString(),
+          lastActivityAt: new Date().toISOString()
         }
       ]
     };
@@ -134,8 +136,9 @@ describe("MobileApp", () => {
     expect(await screen.findByRole("region", { name: "All sessions" })).toBeInTheDocument();
   });
 
-  it("dismisses an attention chip after the session was opened and left", async () => {
-    // Mirror of the desktop sidebar's read-clears-priority rule.
+  it("keeps an attention chip after the session was opened and left", async () => {
+    // Mirror of the desktop sidebar: attention is not an unread marker. The
+    // chip holds until the session goes quiet, whatever the user reads.
     mockDashboardSnapshot({
       ...snapshot,
       sessions: snapshot.sessions.map((session) =>
@@ -144,7 +147,8 @@ describe("MobileApp", () => {
               ...session,
               state: "complete" as const,
               attention: "review-ready" as const,
-              attentionChangedAt: new Date().toISOString()
+              attentionChangedAt: new Date().toISOString(),
+              lastActivityAt: new Date().toISOString()
             }
           : session
       )
@@ -159,12 +163,11 @@ describe("MobileApp", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Back to sessions" }));
 
-    await waitFor(() =>
-      expect(setPriorityDismissed).toHaveBeenCalledWith({
-        workspaceId: "workspace-1",
-        dismissed: true
-      })
+    const backToList = await screen.findByRole("region", { name: "All sessions" });
+    expect(within(backToList).getByRole("button", { name: /Build dashboard/ })).toHaveTextContent(
+      "review ready"
     );
+    expect(setPriorityDismissed).not.toHaveBeenCalled();
   });
 
   it("forks a Claude session from the turn footer and opens the fork", async () => {

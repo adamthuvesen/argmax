@@ -43,9 +43,10 @@ describe("App sidebar", () => {
   it("expands the hosting date group when a workspace appears without being selected", async () => {
     window.localStorage.setItem("argmax.sidebar.viewMode", JSON.stringify("sessions"));
     render(<App />);
-    // The seeded snapshot has no Today activity, so the bucket isn't rendered
-    // yet — and per-launch defaults would show it collapsed once it appears.
-    await screen.findByRole("button", { name: /Older sessions/ });
+    // The seeded workspace is mid-turn, so it floats into Working; the seeded
+    // snapshot has no Today activity, so that bucket isn't rendered yet — and
+    // per-launch defaults would show it collapsed once it appears.
+    await screen.findByRole("button", { name: /Working sessions/ });
     expect(screen.queryByRole("button", { name: /Today sessions/ })).not.toBeInTheDocument();
 
     // A fork (or an agent-launched session) lands as a delta with a fresh
@@ -968,8 +969,9 @@ describe("App sidebar", () => {
     expect(screen.queryByRole("button", { name: "Stale-Project" })).not.toBeInTheDocument();
   });
 
-  it("removes a waiting session from priority after the user reads it and leaves", async () => {
+  it("keeps a read session in priority and clears it on right-click → Done", async () => {
     window.localStorage.setItem("argmax.sidebar.priority.visible", "true");
+    // Inside the 30-minute idle window, so the row is triage either way.
     const attentionChangedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const waitingWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-wait",
@@ -983,7 +985,7 @@ describe("App sidebar", () => {
       kind: "git",
       dirty: false,
       changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      lastActivityAt: attentionChangedAt,
       pinned: false,
       priorityDismissedAt: null,
       priorityAddedAt: null
@@ -1019,7 +1021,7 @@ describe("App sidebar", () => {
       attentionChangedAt,
       startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: null,
-      lastActivityAt: "2026-05-08T16:04:00.000Z"
+      lastActivityAt: attentionChangedAt
     };
     const otherSession: DashboardSnapshot["sessions"][number] = {
       id: "session-other",
@@ -1072,10 +1074,19 @@ describe("App sidebar", () => {
 
     const waitingRow = await screen.findByRole("button", { name: /Waiting chat/ });
     expect(waitingRow).toHaveAttribute("title", expect.stringContaining("waiting for input"));
-    fireEvent.click(waitingRow);
-    expect(setPriorityDismissed).not.toHaveBeenCalled();
 
+    // Reading it and moving on leaves it in place — Priority is not an unread
+    // list any more; it holds the row until it goes quiet or the user is done.
+    fireEvent.click(waitingRow);
     fireEvent.click(screen.getByRole("button", { name: /Other chat/ }));
+    expect(setPriorityDismissed).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /Waiting chat/ })).toHaveAttribute(
+      "title",
+      expect.stringContaining("waiting for input")
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Waiting chat/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Done" }));
 
     await waitFor(() =>
       expect(setPriorityDismissed).toHaveBeenCalledWith({

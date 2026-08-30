@@ -9,13 +9,18 @@
   --working-nest-phase: 0;
   --working-nest-phase-offset: calc(var(--working-nest-cycle) * var(--working-nest-phase) / -4);
   flex: 0 0 auto;
-  color: color-mix(in oklab, var(--muted) 60%, transparent);
+  color: color-mix(in oklab, var(--muted) 78%, transparent);
   fill: currentColor;
   transform-origin: center;
   transition: color var(--duration-fast) var(--ease);
 }
 
+/* The leader wears `--accent-deep`, which each theme defines as the
+   contrast-forward twin of the accent (darker in light themes, lighter in dark
+   ones). Relaying between the two colors is what makes the mark read from a
+   glance instead of dissolving into the surface. */
 .working-nest[data-active="true"] {
+  --working-nest-lead: var(--accent-deep);
   color: var(--accent);
   animation: working-nest-enter var(--motion-fast) var(--ease-out) both;
 }
@@ -68,25 +73,29 @@
 @keyframes working-nest-relay {
   0%, 5% {
     opacity: 1;
-    transform: scale(1.08);
+    fill: var(--working-nest-lead);
+    transform: scale(1.14);
     animation-timing-function: var(--ease-in-out);
   }
 
   22% {
-    opacity: 0.65;
+    opacity: 0.82;
+    fill: currentColor;
     transform: scale(1);
     animation-timing-function: var(--ease-out);
   }
 
   30%, 91.25% {
-    opacity: 0.36;
+    opacity: 0.52;
+    fill: currentColor;
     transform: scale(0.86);
     animation-timing-function: var(--ease-out);
   }
 
   100% {
     opacity: 1;
-    transform: scale(1.08);
+    fill: var(--working-nest-lead);
+    transform: scale(1.14);
   }
 }
 

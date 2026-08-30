@@ -613,3 +613,21 @@
   outline: none;
   box-shadow: var(--ring);
 }
+
+/* A control another setting has made moot — "Tool call groups" while "Tool
+   calls in chat" runs in Single line. Dim the whole track and drop the
+   pointer affordance so the row reads as unavailable rather than
+   unresponsive; the hint beside the legend says why. */
+.settings-segmented-track[data-disabled="true"] {
+  opacity: 0.55;
+}
+
+.settings-segmented-option[data-disabled="true"],
+.settings-segmented-option[data-disabled="true"]:hover {
+  color: var(--muted);
+  cursor: default;
+}
+
+.settings-segmented-option[data-disabled="true"] input[type="radio"] {
+  cursor: default;
+}

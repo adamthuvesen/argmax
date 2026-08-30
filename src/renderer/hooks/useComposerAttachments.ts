@@ -15,6 +15,7 @@ import {
   readBlobAsBase64
 } from "../lib/composerAttachments.js";
 import { readDraft, writeDraftAttachments } from "../lib/composerDrafts.js";
+import { shouldPreferHtmlFlavor } from "../lib/clipboardMarkdown.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
 import type { AttachmentMimeType, ComposerAttachment } from "../../shared/types.js";
 
@@ -210,7 +211,8 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
 
   const onComposerPaste = useCallback(
     (event: ReactClipboardEvent<HTMLTextAreaElement>): void => {
-      const items = event.clipboardData?.items;
+      const clipboard = event.clipboardData;
+      const items = clipboard?.items;
       if (!items || items.length === 0) return;
       const images: Blob[] = [];
       for (const item of Array.from(items)) {
@@ -219,11 +221,45 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
         const file = item.getAsFile();
         if (file) images.push(file);
       }
-      if (images.length === 0) return;
+      if (images.length > 0) {
+        event.preventDefault();
+        void attachImageBlobs(images);
+        return;
+      }
+      // A selection copy of rendered content pairs a lossy plain-text flavor
+      // (list markers, backticks, and emphasis are styling, so they never
+      // reach the text) with a structured HTML flavor. A plain textarea reads
+      // only the lossy one, which is how rendered chat pastes as unmarked
+      // slop. When the HTML flavor carries structure, rebuild markdown from
+      // it; otherwise fall through and let the native paste insert the plain
+      // text untouched.
+      const html = clipboard.getData("text/html");
+      if (!html || !shouldPreferHtmlFlavor(html)) return;
       event.preventDefault();
-      void attachImageBlobs(images);
+      const target = event.currentTarget;
+      const start = target.selectionStart ?? target.value.length;
+      const end = target.selectionEnd ?? start;
+      const plain = clipboard.getData("text/plain");
+      const insert = (text: string): void => {
+        setInput((prev) => prev.slice(0, start) + text + prev.slice(end));
+        const caret = start + text.length;
+        // React usually skips the value write when the DOM already matches, so
+        // the synchronous set survives; the frame callback re-asserts it when a
+        // real re-render does flush and resets the caret to the end.
+        target.setSelectionRange(caret, caret);
+        requestAnimationFrame(() => target.setSelectionRange(caret, caret));
+      };
+      // The markdown rebuilder carries Turndown, which only a structured paste
+      // ever needs, so it loads here rather than in the composer's eager
+      // chunk. The paste is already claimed at this point: if the chunk cannot
+      // load, insert the plain flavor rather than swallowing what the user
+      // pasted.
+      void import("../lib/htmlToMarkdown.js").then(
+        ({ htmlToMarkdown }) => insert(htmlToMarkdown(html)),
+        () => insert(plain)
+      );
     },
-    [attachImageBlobs]
+    [attachImageBlobs, setInput]
   );
 
   const onAttachmentInputChange = useCallback(

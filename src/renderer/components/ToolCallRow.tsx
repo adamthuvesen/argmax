@@ -1,10 +1,11 @@
-import { ChevronRight, Loader2 } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { interpretFileChange, type FileChange } from "../lib/fileChange.js";
 import { shortenPathsInText } from "../lib/pathDisplay.js";
 import { describeToolAction, getToolIcon, getToolTypeBucket, type ToolCall } from "../lib/toolCalls.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallDetail } from "./ToolCallDetail.js";
+import { WorkingNest } from "./WorkingNest.js";
 
 function splitVerbTarget(action: string): { verb: string; target: string } {
   const space = action.indexOf(" ");
@@ -144,7 +145,7 @@ function ToolCallRowInner({
       ) : null}
       {tool.status === "running" ? (
         <span className="tool-call-row-running" aria-hidden="true">
-          <Loader2 size={11} className="tool-call-spinner" />
+          <WorkingNest active size={11} />
         </span>
       ) : null}
     </button>

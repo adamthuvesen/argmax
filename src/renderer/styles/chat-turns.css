@@ -317,7 +317,8 @@
 }
 
 .thinking-working-nest {
-  color: var(--accent);
+  width: calc(var(--text-sm) + 2px);
+  height: calc(var(--text-sm) + 2px);
 }
 
 .thinking-label {
@@ -429,15 +430,6 @@
 .tool-call-header:hover {
   background: var(--row-hover);
   color: var(--text);
-}
-
-.tool-call-spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 .tool-call-detail {
@@ -703,6 +695,16 @@
   padding-left: 0;
 }
 
+/* Single-line activity mode ("Tool calls in chat: Single line"). One line per
+   gap between replies summarizing ALL the tools in it, mutating in place as
+   work streams in. Reuses the group-bubble header styling; the keyed headline
+   span remounts on every text change so the fade replays — that replay is the
+   "it's updating" affordance. Clicking reveals the per-tool rows. */
+.activity-summary-line .activity-summary-headline {
+  display: inline-block;
+  animation: msg-in 180ms var(--ease) both;
+}
+
 /* Codex-style compact rows: one line per tool ("Read foo.ts", "Ran git
    status"). Click to expand into the same Error/Open/Input/Output panel a
    ToolCallBubble would show. No chip, no chevron — just the icon, verb,
@@ -855,7 +857,7 @@
 /* Sub-agent rows are marked by the accent "Agent" verb + prose target alone —
    the full-row tint read as loud, so it's gone; the row uses the normal hover. */
 .tool-call-row[data-tool-type="agent"] .tool-call-row-verb {
-  color: color-mix(in oklab, var(--accent) 28%, var(--muted-strong));
+  color: var(--path-ink);
   font-weight: 500;
   letter-spacing: 0;
 }
@@ -936,7 +938,13 @@
    running sub-agent reads the same in the transcript as the session does in the
    list. Only the row's position is local. */
 .agent-launch-nest {
-  margin-top: 3px;
+  /* The mark scales with the type ladder and is centered on the row's first
+     line, which is `--text-base * 1.3` tall inside the button's 2px of top
+     padding. A fixed 14px mark drifted off the text at the larger type sizes. */
+  --agent-launch-nest-size: calc(var(--text-base) + 2px);
+  width: var(--agent-launch-nest-size);
+  height: var(--agent-launch-nest-size);
+  margin-top: calc(2px + (var(--text-base) * 1.3 - var(--agent-launch-nest-size)) / 2);
   margin-right: 4px;
 }
 

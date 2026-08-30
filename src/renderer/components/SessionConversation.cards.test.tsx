@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionConversation } from "./SessionConversation.js";
 import {
@@ -384,108 +384,12 @@ describe("SessionConversation — cards", () => {
 
     expect(onTerminate).toHaveBeenCalledWith("session-a");
     // Send fires AFTER terminate resolves.
-    await vi.waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    // Testing Library's waitFor, not Vitest's: this one polls inside `act`,
+    // so the terminate/send chain's state updates land during the test.
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     const terminateOrder = onTerminate.mock.invocationCallOrder[0];
     const sendOrder = onSend.mock.invocationCallOrder[0];
     expect(terminateOrder).toBeLessThan(sendOrder);
-  });
-
-  it("delays Thinking after a completed assistant chunk while the session is still running", () => {
-    vi.useFakeTimers();
-    // Provider answer events and runtime completion state arrive in separate
-    // dashboard deltas. Do not flash a tail Thinking bubble during that short
-    // handoff; only show the marker if the session stays silent longer.
-    renderConversation(
-      baseSession({ provider: "claude", state: "running" }),
-      [
-        event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
-        event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
-      ]
-    );
-
-    expect(screen.getByText("Done.")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-    act(() => {
-      vi.advanceTimersByTime(700);
-    });
-    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-    act(() => {
-      vi.advanceTimersByTime(1100);
-    });
-    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
-  });
-
-  it("suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)", () => {
-    // When AskUserQuestion has fired and no user.message has landed since,
-    // the agent is waiting on the user — even though the probe may still
-    // technically be running while it emits fallback text. The Thinking
-    // bubble would mislead the user into thinking the agent is still
-    // working. The card itself conveys "waiting for you".
-    renderConversation(
-      baseSession({ provider: "claude", state: "running" }),
-      [
-        event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z", {
-          agentMode: "plan"
-        }),
-        event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
-          type: "tool_use",
-          id: "tu_q_running",
-          name: "AskUserQuestion",
-          input: { questions: [{ question: "?", header: "?", multiSelect: false, options: [{ label: "A" }] }] }
-        })
-        // No command.completed yet — tool still running.
-      ]
-    );
-
-    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-  });
-
-  it("restores Thinking once the user submits and a new user.message arrives", () => {
-    // After the user submits the card, a new user.message lands.
-    // `lastUserMessageTime` now advances past the AskUserQuestion's
-    // createdAt, so the outstanding-ask gate releases and Thinking is
-    // free to indicate that the next turn is being processed.
-    renderConversation(
-      baseSession({ provider: "claude", state: "running" }),
-      [
-        event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z", {
-          agentMode: "plan"
-        }),
-        event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
-          type: "tool_use",
-          id: "tu_q_done",
-          name: "AskUserQuestion",
-          input: { questions: [{ question: "?", header: "?", multiSelect: false, options: [{ label: "A" }] }] }
-        }),
-        event("tu-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
-          tool_use_id: "tu_q_done",
-          content: "Answer questions?",
-          is_error: true
-        }),
-        event("u2", "user.message", "**Question**: A", "2026-05-12T15:00:03.000Z")
-      ]
-    );
-
-    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
-  });
-
-  it("hides the Thinking indicator while a regular tool is actually running on screen", () => {
-    // For a visible tool, the row's own spinner is the progress indicator —
-    // no need to double up with Thinking.
-    renderConversation(
-      baseSession({ provider: "claude", state: "running" }),
-      [
-        event("u1", "user.message", "run it", "2026-05-12T15:00:00.000Z"),
-        event("tu-start", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
-          type: "tool_use",
-          id: "tu_bash_running",
-          name: "Bash",
-          input: { command: "ls" }
-        })
-      ]
-    );
-
-    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
 
   it("renders an AskUserQuestion card immediately from command.started and hides the raw row", () => {
@@ -784,7 +688,7 @@ describe("SessionConversation — cards", () => {
   it("renders an ExitPlanMode card when the tool is folded into a mixed tool group", () => {
     render(
       <SessionConversation
-        defaultToolCallsExpanded={true}
+        defaultToolCallsDisplay={"expanded"}
         events={[
           event("u1", "user.message", "plan and check", "2026-05-12T15:00:00.000Z", {
             agentMode: "plan"
@@ -904,5 +808,105 @@ describe("SessionConversation — cards", () => {
     expect(screen.queryByRole("button", { name: /Ran 2 commands/ })).not.toBeInTheDocument();
   });
 
+  it("delays Thinking after a completed assistant chunk while the session is still running", () => {
+    vi.useFakeTimers();
+    // Provider answer events and runtime completion state arrive in separate
+    // dashboard deltas. Do not flash a tail Thinking bubble during that short
+    // handoff; only show the marker if the session stays silent longer.
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
+        event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    expect(screen.getByText("Done.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(1100);
+    });
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+
+  it("suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)", () => {
+    // When AskUserQuestion has fired and no user.message has landed since,
+    // the agent is waiting on the user — even though the probe may still
+    // technically be running while it emits fallback text. The Thinking
+    // bubble would mislead the user into thinking the agent is still
+    // working. The card itself conveys "waiting for you".
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z", {
+          agentMode: "plan"
+        }),
+        event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+          type: "tool_use",
+          id: "tu_q_running",
+          name: "AskUserQuestion",
+          input: { questions: [{ question: "?", header: "?", multiSelect: false, options: [{ label: "A" }] }] }
+        })
+        // No command.completed yet — tool still running.
+      ]
+    );
+
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
+
+
+  it("restores Thinking once the user submits and a new user.message arrives", () => {
+    // After the user submits the card, a new user.message lands.
+    // `lastUserMessageTime` now advances past the AskUserQuestion's
+    // createdAt, so the outstanding-ask gate releases and Thinking is
+    // free to indicate that the next turn is being processed.
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z", {
+          agentMode: "plan"
+        }),
+        event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+          type: "tool_use",
+          id: "tu_q_done",
+          name: "AskUserQuestion",
+          input: { questions: [{ question: "?", header: "?", multiSelect: false, options: [{ label: "A" }] }] }
+        }),
+        event("tu-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "tu_q_done",
+          content: "Answer questions?",
+          is_error: true
+        }),
+        event("u2", "user.message", "**Question**: A", "2026-05-12T15:00:03.000Z")
+      ]
+    );
+
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+
+  it("hides the Thinking indicator while a regular tool is actually running on screen", () => {
+    // For a visible tool, the row's own spinner is the progress indicator —
+    // no need to double up with Thinking.
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("u1", "user.message", "run it", "2026-05-12T15:00:00.000Z"),
+        event("tu-start", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
+          type: "tool_use",
+          id: "tu_bash_running",
+          name: "Bash",
+          input: { command: "ls" }
+        })
+      ]
+    );
+
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
 
 });

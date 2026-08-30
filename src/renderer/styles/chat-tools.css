@@ -60,7 +60,7 @@
   white-space: nowrap;
   font-family: var(--font-code);
   font-size: var(--text-sm);
-  color: color-mix(in oklab, var(--accent) 14%, var(--muted));
+  color: var(--path-ink);
   background: transparent;
   padding: 0;
 }
@@ -198,7 +198,7 @@
   white-space: nowrap;
   font-family: var(--font-code);
   font-size: var(--text-sm);
-  color: color-mix(in oklab, var(--accent) 14%, var(--muted));
+  color: var(--path-ink);
 }
 
 .tool-call-file-preview {
@@ -562,8 +562,8 @@
 }
 
 .session-input:focus-within {
-  border-color: color-mix(in oklab, var(--accent) 34%, var(--line-strong));
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 8%, transparent),
+  border-color: color-mix(in oklab, var(--accent) 68%, var(--line-strong));
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 16%, transparent),
     0 8px 22px rgba(31, 28, 24, 0.055);
 }
 

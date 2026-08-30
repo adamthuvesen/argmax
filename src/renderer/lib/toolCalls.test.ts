@@ -3,6 +3,7 @@ import {
   buildGroupRows,
   describeToolAction,
   extractCompletionCorrelationId,
+  extractOpenablePath,
   extractToolInputPreview,
   extractToolUseId,
   getToolTypeBucket,
@@ -82,6 +83,16 @@ describe("Task / sub-agent tools", () => {
     expect(getToolTypeBucket("collab_tool_call")).toBe("agent");
   });
 
+  it("classifies the launch tool every provider actually emits", () => {
+    // The names each CLI puts on the wire today: Claude's `Agent`, Codex's
+    // `spawn_agent`, OpenCode's `task`, and Cursor's `taskToolCall` (one-shot
+    // stream) or `task` (ACP, taken from `rawInput._toolName` because ACP's
+    // own `kind` for a sub-agent launch is the useless `other`).
+    for (const name of ["Agent", "spawn_agent", "task", "taskToolCall"]) {
+      expect(getToolTypeBucket(name)).toBe("agent");
+    }
+  });
+
   it("exposes the shared agent classifier for grouping decisions", () => {
     expect(isAgentToolName("Task")).toBe(true);
     expect(isAgentToolName("taskToolCall")).toBe(true);
@@ -152,6 +163,16 @@ describe("file_change tools", () => {
 
   it("uses the edit bucket", () => {
     expect(getToolTypeBucket("file_change")).toBe("edit");
+  });
+});
+
+describe("opencode camelCase inputs", () => {
+  it("previews the filePath so edit rows name the file", () => {
+    expect(extractToolInputPreview("edit", { filePath: "/repo/src/a.ts" })).toBe("/repo/src/a.ts");
+  });
+
+  it("exposes filePath as openable", () => {
+    expect(extractOpenablePath("edit", { filePath: "/repo/src/a.ts" })).toBe("/repo/src/a.ts");
   });
 });
 

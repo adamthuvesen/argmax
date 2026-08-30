@@ -9,7 +9,6 @@ import { MobileScreenHeader } from "./MobileScreenHeader.js";
 import { NewSessionScreen, type PickerKind } from "./NewSessionScreen.js";
 import { useMobileBackNavigation } from "./useMobileBackNavigation.js";
 import { useDashboardSession } from "../hooks/useDashboardSession.js";
-import { usePriorityDemotion } from "../hooks/usePriorityDemotion.js";
 import { useSessionCommands } from "../hooks/useSessionCommands.js";
 import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
 import { computeWorkspaceAttention, type PriorityAttention } from "../lib/priority.js";
@@ -199,22 +198,6 @@ export function MobileApp(): JSX.Element {
     loadSessionEvents,
     setToast: showToast,
     fastMode: false
-  });
-
-  // Same read-clears-attention rule as the desktop sidebar: opening a session
-  // and going back to the list dismisses its chip; running sessions keep it.
-  usePriorityDemotion({
-    selectedWorkspaceId,
-    isSettingsOpen: false,
-    isFullLauncherOpen: false,
-    workspaces: snapshot.workspaces,
-    sessions: snapshot.sessions,
-    onDemote: (workspaceId) => {
-      void window.argmax?.workspaces
-        .setPriorityDismissed({ workspaceId, dismissed: true })
-        .then(() => refresh())
-        .catch(() => undefined);
-    }
   });
 
   // A push notification links to one session: `mobile.html?session=<id>`. The

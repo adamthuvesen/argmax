@@ -325,7 +325,16 @@ export function ReviewPanel({
   };
 
   return (
-    <aside className="review-panel" aria-label="Review panel" ref={panelRef}>
+    <aside
+      className="review-panel"
+      // The agent window's chat scale is about reading the transcript. The
+      // review panel is sidebar-class chrome — files, changes, and the diff
+      // code between them — so it holds the app-chrome scale, matching the
+      // left sidebar and the workspace card. See tokens.css.
+      data-type-scale="chrome"
+      aria-label="Review panel"
+      ref={panelRef}
+    >
       {onResizePanelMouseDown ? (
         <div className="panel-col-resize-handle" aria-hidden="true" onMouseDown={onResizePanelMouseDown} />
       ) : null}

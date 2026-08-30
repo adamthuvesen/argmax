@@ -642,7 +642,8 @@ button.composer-compact-context-row:hover,
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
-  max-width: min(80%, 880px);
+  /* Matches .chat-bubble.user: the group may span the full column width. */
+  max-width: 100%;
 }
 
 .user-message-group .chat-bubble.user {

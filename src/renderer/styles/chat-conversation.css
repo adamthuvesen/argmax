@@ -962,7 +962,7 @@
      inheriting the prose weight token. */
   font-weight: 400;
   font-variant-ligatures: none;
-  color: color-mix(in oklab, var(--accent-deep) 32%, var(--text-soft) 68%);
+  color: var(--code-ink);
 }
 
 .markdown pre {
@@ -1166,7 +1166,11 @@
 
 .chat-bubble.user {
   align-self: flex-end;
-  max-width: min(80%, 880px);
+  /* No left gutter: the bubble may run the full width of the conversation
+     column. The accent slab already separates user from agent, so reserving
+     empty space on the left only forced long prompts taller for no reading
+     gain. `align-self: flex-end` still shrink-wraps short messages. */
+  max-width: 100%;
   color: var(--user-message-fg);
   background: var(--user-message-bg);
   box-shadow: var(--user-message-shadow);
@@ -1177,14 +1181,32 @@
   color: var(--user-message-fg);
 }
 
-/* Leading `/skill` invocation rendered as an accent-colored chip inside the
-   user bubble, so a skill run reads at a glance as "ran a skill", not prose. */
+/* Links and inline code inside the bubble drop their accent-deep ink — it was
+   tuned for panel surfaces and disappears on an accent background — for the
+   bubble fg, keeping the underline as the affordance. */
+.chat-bubble.user .markdown a {
+  color: var(--user-message-fg);
+  text-decoration-color: color-mix(in oklab, var(--user-message-fg) 55%, transparent);
+}
+
+.chat-bubble.user .markdown a:hover {
+  text-decoration-color: var(--user-message-fg);
+}
+
+.chat-bubble.user .markdown code {
+  color: var(--user-message-fg);
+}
+
+/* Leading `/skill` invocation rendered as a marked chip inside the user
+   bubble, so a skill run reads at a glance as "ran a skill", not prose. The
+   bubble itself is the accent slab, so the chip rides the bubble fg instead
+   of the accent it used to borrow. */
 .user-skill-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   vertical-align: baseline;
-  color: var(--accent);
+  color: var(--user-message-fg);
   font-weight: 600;
   /* Label-sized, not prose-sized: the chip is a marker ("ran a skill"), so it
      sits at the agent view's label size rather than inheriting bubble prose. */
@@ -1197,19 +1219,67 @@
 }
 
 /* A long paste (multi-paragraph message) would otherwise grow the bubble to the
-   full height of its content and push the reply off-screen. Cap the body and let
-   it scroll internally past that point; short messages stay below the cap and
-   look unchanged. The cap lives on this inner wrapper rather than .chat-bubble so
-   the copy button (anchored at top: 100%) isn't clipped by the scroll container.
-   The scrollbar inherits the app's global ::-webkit-scrollbar styling. */
+   full height of its content and push the reply off-screen. Clip the body at a
+   cap and hand the rest to the Show more toggle below — an inner scrollport
+   would trap the wheel and hide the prompt behind a second scroll axis. Short
+   messages stay below the cap and look unchanged. The cap lives on this inner
+   wrapper rather than .chat-bubble so the toggle and the copy button (anchored
+   at top: 100%) sit outside the clip. */
 .chat-bubble.user .chat-bubble-body {
-  /* The body is a scroll container for long pasted prompts. Give text a tiny
-     paint gutter inside the bubble padding so the final glyph is not clipped
-     by the scrollport edge when a short prompt fits on one line. */
+  /* Give text a tiny paint gutter inside the bubble padding so the final glyph
+     is not clipped by the overflow edge when a short prompt fits on one line. */
   padding-right: 4px;
   margin-right: -4px;
-  max-height: 40vh;
-  overflow-y: auto;
+  /* Six lines of bubble prose: enough to recognize the prompt, short enough
+     that the reply stays on screen. Line-based rather than viewport-based so
+     the preview is the same size on a laptop and on a tall display. */
+  max-height: calc(6 * 1.68em);
+  overflow: hidden;
+}
+
+/* Fade the cut so the clipped line reads as "more below" rather than as a
+   glyph the layout chopped in half. Only when the body is actually clipped —
+   on a message that fits, the same mask would fade its last line for nothing. */
+.chat-bubble.user .chat-bubble-body.clipped {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+}
+
+.chat-bubble.user .chat-bubble-body.expanded {
+  max-height: none;
+  overflow: visible;
+}
+
+/* Opens the clipped remainder in place. Bare text in the bubble's bottom-left
+   corner — a filled chip on the slab read as a second surface, so the control
+   is just a quiet gray label that firms up on hover. */
+.chat-bubble-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in oklab, var(--user-message-fg) 52%, transparent);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.2;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.chat-bubble-expand:hover {
+  color: var(--user-message-fg);
+}
+
+.chat-bubble-expand:focus-visible {
+  outline: none;
+  color: var(--user-message-fg);
+  text-decoration: underline;
+}
+
+.chat-bubble-expand svg {
+  flex: 0 0 auto;
 }
 
 /* Floating "scroll to latest" button. Anchors to the conversation list (which

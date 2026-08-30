@@ -3,8 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { baseSession, renderConversation } from "../../test/sessionConversationTestHarness.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { ArgmaxApi } from "../../shared/types.js";
+import type * as TauriBridgeModule from "../lib/tauriBridge.js";
 
 const SCREENSHOT_PATH = "/attachments/session-a/shot.png";
+
+// The harness installs its own window.argmax, so the transport flag is the one
+// thing the attachment hook still needs told.
+const remote = vi.hoisted(() => ({ bridge: false }));
+vi.mock("../lib/tauriBridge.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof TauriBridgeModule>();
+  return { ...actual, isRemoteBridge: () => remote.bridge };
+});
 
 function prompt(): HTMLTextAreaElement {
   return screen.getByLabelText("Session prompt");
@@ -42,6 +51,7 @@ describe("SessionComposer unsent drafts", () => {
 
   afterEach(() => {
     cleanup();
+    remote.bridge = false;
   });
 
   it("brings the unsent text back when the session is opened again", () => {
@@ -88,6 +98,20 @@ describe("SessionComposer unsent drafts", () => {
 
     renderConversation(baseSession());
     expect(prompt().value).toBe("retry me");
+  });
+
+  it("explains that pasting an image needs the desktop app on the remote bridge", async () => {
+    remote.bridge = true;
+    renderConversation(baseSession());
+    pasteScreenshot();
+
+    // Plain English instead of the dispatcher's "attachments:save-image is
+    // only available in the desktop app", and no doomed request.
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Attaching images needs the desktop app."
+    );
+    expect(window.argmax?.attachments.saveImage).not.toHaveBeenCalled();
+    expect(attachedScreenshots()).toEqual([]);
   });
 
   it("brings a pasted screenshot back when the session is opened again", async () => {

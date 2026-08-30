@@ -62,7 +62,7 @@ describe("launcher prompt across context changes", () => {
     expect(screen.getByLabelText("Task prompt")).toHaveValue("Refactor the auth guard");
   });
 
-  it("restores the target project's own draft instead of overwriting it", async () => {
+  it("carries the typed prompt over a stale draft stored on the target project", async () => {
     window.localStorage.setItem(
       "argmax.composer.drafts",
       JSON.stringify({ "launch-project-2": { text: "Rotate the keys", attachments: [] } })
@@ -73,9 +73,47 @@ describe("launcher prompt across context changes", () => {
     });
 
     await pickProject("Dotfiles");
-    expect(screen.getByLabelText("Task prompt")).toHaveValue("Rotate the keys");
-
-    await pickProject("Argmax");
     expect(screen.getByLabelText("Task prompt")).toHaveValue("Fix the parser");
+  });
+
+  it("restores a project's stored draft when the composer is empty", async () => {
+    window.localStorage.setItem(
+      "argmax.composer.drafts",
+      JSON.stringify({ "launch-project-2": { text: "Rotate the keys", attachments: [] } })
+    );
+    renderWithTwoProjects();
+    await screen.findByLabelText("Task prompt");
+
+    await pickProject("Dotfiles");
+    expect(screen.getByLabelText("Task prompt")).toHaveValue("Rotate the keys");
+  });
+
+  it("does not hand the carried prompt the target project's screenshots", async () => {
+    // Text and images are one unsent message. Carrying the text onto another
+    // project while adopting that project's stored images would submit a
+    // screenshot the user never attached to this prompt — and would strand the
+    // image whose explaining sentence was just overwritten.
+    window.localStorage.setItem(
+      "argmax.composer.drafts",
+      JSON.stringify({
+        "launch-project-2": {
+          text: "Rotate the keys — see the screenshot",
+          attachments: [{ filePath: "/tmp/shot.png", mimeType: "image/png", sizeBytes: 10 }]
+        }
+      })
+    );
+    renderWithTwoProjects();
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Fix the parser" }
+    });
+
+    await pickProject("Dotfiles");
+
+    expect(screen.getByLabelText("Task prompt")).toHaveValue("Fix the parser");
+    expect(screen.queryByRole("button", { name: /Remove attachment/i })).not.toBeInTheDocument();
+    const stored = JSON.parse(
+      window.localStorage.getItem("argmax.composer.drafts") ?? "{}"
+    ) as Record<string, { attachments?: unknown[] } | undefined>;
+    expect(stored["launch-project-2"]?.attachments ?? []).toEqual([]);
   });
 });

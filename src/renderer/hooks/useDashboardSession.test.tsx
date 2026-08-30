@@ -260,6 +260,24 @@ describe("useDashboardSession — refresh / delta race", () => {
     expect(result.current.loadError).toBe("status refresh failed");
   });
 
+  it("keeps the reason a Tauri rejection carries instead of a generic fallback", async () => {
+    // Tauri command errors arrive as plain values, not Error instances. A
+    // migration abort's text is the only actionable thing the user gets, and
+    // App renders loadError verbatim in the EmptyState panel.
+    const loadSnapshot = (): Promise<DashboardSnapshot> =>
+      // Rejecting with a plain object is the behaviour under test: Tauri does exactly this.
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+      Promise.reject({
+        code: "DATABASE_NOT_READY",
+        message: "Migration v18 (synced_sessions) checksum drift: stored=abc expected=def"
+      });
+
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+
+    await waitFor(() => expect(result.current.loadState).toBe("error"));
+    expect(result.current.loadError).toContain("checksum drift");
+  });
+
   it("keeps sessions added by delta during loadSnapshot (audit M11)", async () => {
     const deltaSession = makeSession({
       id: "session-delta",

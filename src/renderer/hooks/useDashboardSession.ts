@@ -201,7 +201,10 @@ export function useDashboardSession(
         return;
       }
       setLoadState("error");
-      setLoadError(error instanceof Error ? error.message : "Dashboard load failed");
+      // A failed load is usually a schema or migration abort, and its message is
+      // the only actionable thing the user has. Tauri rejections are plain
+      // values rather than Error instances, so read them through errorMessage.
+      setLoadError(errorMessage(error) || "Dashboard load failed");
     }
   }, [loadSnapshot]);
 
@@ -256,7 +259,7 @@ export function useDashboardSession(
       const current = snapshotRef.current;
       const hasSnapshot =
         current.projects.length > 0 || current.workspaces.length > 0 || current.sessions.length > 0;
-      const message = error instanceof Error ? error.message : "Dashboard refresh failed";
+      const message = errorMessage(error) || "Dashboard refresh failed";
       if (hasSnapshot) {
         logger.warn("renderer.dashboard", "refresh failed; keeping last-good snapshot", {
           error: errorMessage(error)
@@ -571,9 +574,7 @@ export function useDashboardSession(
             )
           }));
         }
-        onErrorToastRef.current?.(
-          error instanceof Error ? error.message : "Could not resolve approval."
-        );
+        onErrorToastRef.current?.(errorMessage(error) || "Could not resolve approval.");
       }
     },
     [refresh]

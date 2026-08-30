@@ -25,6 +25,9 @@ pub fn acquire(data_dir: &Path) -> std::io::Result<Option<InstanceLock>> {
     let file = OpenOptions::new()
         .create(true)
         .write(true)
+        // The file is a pure sentinel; nothing reads or writes its contents,
+        // so neither truncating nor keeping the old bytes matters.
+        .truncate(false)
         .open(data_dir.join("argmax.lock"))?;
     match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
         Ok(lock) => Ok(Some(InstanceLock { _file: lock })),

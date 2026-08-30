@@ -252,9 +252,12 @@ impl TerminalService {
         Ok(TerminalSpawnResult { terminal_id })
     }
 
-    /// Forward `data` to the PTY. Silently no-ops on unknown ids; stale ids
-    /// are a benign renderer/runtime race.
-    pub fn write(&self, terminal_id: &str, data: &[u8]) {
+    /// Forward `data` to the PTY. A failed write or flush is an error — a
+    /// keystroke swallowed by a live PTY is a bug worth seeing. An unknown id
+    /// stays a no-op: `spawn_reader_thread` removes the entry before it emits
+    /// `terminal:exit`, so every keystroke between a shell exiting and the
+    /// renderer disposing its input handler would otherwise raise one.
+    pub fn write(&self, terminal_id: &str, data: &[u8]) -> ArgmaxResult<()> {
         // Take a handle to the writer and drop the map lock before writing:
         // the PTY master write blocks once the child stops draining its tty
         // input queue, and holding `terminals` across that stalls every other
@@ -265,10 +268,12 @@ impl TerminalService {
                 .get(terminal_id)
                 .map(|entry| Arc::clone(&entry.writer))
         };
-        let Some(writer) = writer else { return };
+        let Some(writer) = writer else { return Ok(()) };
         let mut writer = writer.lock_or_recover("terminal writer");
-        let _ = writer.write_all(data);
-        let _ = writer.flush();
+        writer
+            .write_all(data)
+            .and_then(|()| writer.flush())
+            .map_err(|error| ArgmaxError::service("TERMINAL_WRITE_FAILED", error.to_string()))
     }
 
     /// Resize the PTY for the live terminal. No-op on unknown ids.
@@ -658,8 +663,10 @@ mod tests {
             on_exit,
             script_factory("sleep 1; exit 0"),
         );
-        // These must not panic / error.
-        svc.write("ghost", b"hello");
+        // These must not panic / error: the entry is already gone by the time
+        // the renderer stops sending keystrokes.
+        svc.write("ghost", b"hello")
+            .expect("write to a dead id is a no-op");
         svc.resize("ghost", 100, 50);
         svc.terminate("ghost").await;
         assert_eq!(svc.live_count(), 0);
@@ -751,9 +758,10 @@ mod tests {
             .unwrap();
         // Give the PTY a moment to wire up the read loop.
         sleep(Duration::from_millis(150)).await;
-        svc.write(&result.terminal_id, b"hello\n");
+        svc.write(&result.terminal_id, b"hello\n")
+            .expect("write hello");
         sleep(Duration::from_millis(150)).await;
-        svc.write(&result.terminal_id, b"bye\n");
+        svc.write(&result.terminal_id, b"bye\n").expect("write bye");
         let _info = timeout(Duration::from_secs(5), exit_rx)
             .await
             .expect("exit did not fire");

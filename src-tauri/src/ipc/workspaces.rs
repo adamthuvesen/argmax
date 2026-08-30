@@ -107,16 +107,23 @@ pub(crate) async fn workspaces_archive_impl(
     live_workspaces(state)?.archive(input).await
 }
 
-// `async` so the body runs off the macOS main thread: `open_in_ide` blocks on
-// `open -a`, which does not return until LaunchServices has finished launching
-// a cold IDE, and a sync command body would freeze the whole window until then.
-#[tauri::command(rename = "workspaces:open-in-ide", async)]
+// `spawn_blocking`, not `#[tauri::command(async)]`: that flag is a
+// `tokio::spawn`, and `open_in_ide` blocks on `open -a`, which does not return
+// until LaunchServices has finished launching a cold IDE — long enough to park
+// a tokio worker, and long enough to freeze the window from a sync body.
+#[tauri::command(rename = "workspaces:open-in-ide")]
 #[specta::specta]
-pub fn workspaces_open_in_ide(
+pub async fn workspaces_open_in_ide(
     state: State<'_, AppState>,
     input: WorkspacesOpenInIdeInput,
 ) -> ArgmaxResult<SystemOk> {
-    workspaces_open_in_ide_impl(&state, input)
+    let workspaces = live_workspaces(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        workspaces.open_in_ide(input)?;
+        Ok(SystemOk { ok: true })
+    })
+    .await
+    .map_err(|error| ArgmaxError::service("WORKSPACES_OPEN_IN_IDE_JOIN", error.to_string()))?
 }
 
 pub(crate) fn workspaces_open_in_ide_impl(

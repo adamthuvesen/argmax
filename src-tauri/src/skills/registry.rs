@@ -4,6 +4,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
+    time::{Duration, Instant},
 };
 
 use serde::Serialize;
@@ -12,6 +13,13 @@ use specta::Type;
 use crate::ipc::validation::ProviderId;
 
 pub const SKILL_FILE_SIZE_CAP_BYTES: u64 = 262_144;
+
+/// How long a listing stays cached. The registry now lives for the whole
+/// process, so an unbounded cache would hide a skill the user adds while
+/// Argmax is running until the next restart. Slash autocomplete asks on every
+/// `/` keystroke and each miss walks three skill trees synchronously, so the
+/// window only has to outlast a burst of typing.
+const CACHE_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
 #[serde(rename_all = "kebab-case")]
@@ -34,7 +42,7 @@ pub struct SkillSummary {
 #[derive(Debug)]
 pub struct SkillRegistry {
     home_dir: PathBuf,
-    cache: Mutex<BTreeMap<String, Vec<SkillSummary>>>,
+    cache: Mutex<BTreeMap<String, (Instant, Vec<SkillSummary>)>>,
 }
 
 impl SkillRegistry {
@@ -67,13 +75,15 @@ impl SkillRegistry {
                 .map(|path| path.to_string_lossy().into_owned())
                 .unwrap_or_default()
         );
-        if let Some(cached) = self
+        if let Some((stored_at, cached)) = self
             .cache
             .lock_or_recover("skills cache")
             .get(&cache_key)
             .cloned()
         {
-            return cached;
+            if stored_at.elapsed() < CACHE_TTL {
+                return cached;
+            }
         }
 
         let mut collected = BTreeMap::<String, SkillSummary>::new();
@@ -85,7 +95,7 @@ impl SkillRegistry {
         let result = collected.into_values().collect::<Vec<_>>();
         self.cache
             .lock_or_recover("skills cache")
-            .insert(cache_key, result.clone());
+            .insert(cache_key, (Instant::now(), result.clone()));
         result
     }
 

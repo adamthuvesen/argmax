@@ -480,6 +480,26 @@ impl DashboardDelta {
     /// — row), and `pending_messages` is a per-session snapshot, so `other`'s
     /// entries overwrite `self`'s for any session it touches. Used by the delta
     /// emit worker to merge a burst of streamed deltas into a single push.
+    /// Rough serialized size, for deciding how much to conflate into one push.
+    ///
+    /// Event text dominates a delta by orders of magnitude — a single
+    /// `command.completed` payload reaches 711 KB in a real database — so
+    /// summing the variable-length fields tracks the JSON size closely enough
+    /// to budget against, and costs no allocation.
+    pub fn approx_payload_bytes(&self) -> usize {
+        let events: usize = self
+            .events
+            .iter()
+            .map(|event| event.message.len() + approx_json_bytes(&event.payload))
+            .sum();
+        let raw: usize = self
+            .raw_outputs
+            .iter()
+            .map(|output| output.content.len())
+            .sum();
+        events + raw
+    }
+
     pub fn merge_from(&mut self, other: DashboardDelta) {
         self.projects.extend(other.projects);
         self.workspaces.extend(other.workspaces);
@@ -494,6 +514,27 @@ impl DashboardDelta {
         self.removed_session_ids.extend(other.removed_session_ids);
         self.removed_workspace_ids
             .extend(other.removed_workspace_ids);
+    }
+}
+
+/// Serialized size of a JSON value, without serializing it. Structural
+/// characters are counted approximately; the string and number leaves — which
+/// are what actually vary — are counted exactly.
+fn approx_json_bytes(value: &serde_json::Value) -> usize {
+    match value {
+        serde_json::Value::Null => 4,
+        serde_json::Value::Bool(_) => 5,
+        serde_json::Value::Number(_) => 8,
+        serde_json::Value::String(text) => text.len() + 2,
+        serde_json::Value::Array(items) => {
+            2 + items.len() + items.iter().map(approx_json_bytes).sum::<usize>()
+        }
+        serde_json::Value::Object(entries) => {
+            2 + entries
+                .iter()
+                .map(|(key, value)| key.len() + 4 + approx_json_bytes(value))
+                .sum::<usize>()
+        }
     }
 }
 

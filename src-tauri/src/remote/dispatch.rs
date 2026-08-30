@@ -69,7 +69,7 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
 
         "projects:list" => {
             let _input: ProjectsListInput = parse(channel, input)?;
-            encode(projects::projects_list_impl(state)?)
+            encode(projects::projects_list_impl(state).await?)
         }
         "projects:register" => {
             let input: ProjectsRegisterInput = parse(channel, input)?;
@@ -101,11 +101,11 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
 
         "dashboard:list" => {
             let _input: DashboardListInput = parse(channel, input)?;
-            encode(dashboard::dashboard_list_impl(state)?)
+            encode(dashboard::dashboard_list_impl(state).await?)
         }
         "workspace:status" => {
             let input: WorkspaceStatusInput = parse(channel, input)?;
-            encode(workspace_files::workspace_status_impl(state, input)?)
+            encode(workspace_files::workspace_status_impl(state, input).await?)
         }
 
         "workspaces:create-isolated" => {
@@ -224,7 +224,7 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
 
         "session:events-since" => {
             let input: SessionEventsSinceInput = parse(channel, input)?;
-            encode(session::session_events_since_impl(state, input)?)
+            encode(session::session_events_since_impl(state, input).await?)
         }
         "session:agent-events" => {
             let input: SessionAgentEventsInput = parse(channel, input)?;
@@ -240,7 +240,7 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
         }
         "session:search" => {
             let input: SessionSearchInput = parse(channel, input)?;
-            encode(session::session_search_impl(state, input)?)
+            encode(session::session_search_impl(state, input).await?)
         }
 
         "review:list-changed-files" => {
@@ -292,7 +292,7 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
 
         "learnings:list" => {
             let input: LearningsListInput = parse(channel, input)?;
-            encode(learnings::learnings_list_impl(state, input)?)
+            encode(learnings::learnings_list_impl(state, input).await?)
         }
         "learnings:update" => {
             let input: LearningsUpdateInput = parse(channel, input)?;

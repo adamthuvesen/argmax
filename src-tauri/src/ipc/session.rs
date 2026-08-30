@@ -1,4 +1,4 @@
-use super::{inputs::*, live_database};
+use super::{inputs::*, live_database, read_off_main};
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
     persistence::{
@@ -17,25 +17,30 @@ const DEFAULT_SEARCH_LIMIT: u16 = 20;
 
 #[tauri::command(rename = "session:events-since")]
 #[specta::specta]
-pub fn session_events_since(
+pub async fn session_events_since(
     state: State<'_, AppState>,
     input: SessionEventsSinceInput,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
-    session_events_since_impl(&state, input)
+    session_events_since_impl(&state, input).await
 }
 
-pub(crate) fn session_events_since_impl(
+pub(crate) async fn session_events_since_impl(
     state: &AppState,
     input: SessionEventsSinceInput,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
     let database = live_database(state)?;
-    let connection = database.connection();
-    list_session_tail(
-        &connection,
-        input.session_id.as_str(),
-        input.event_cursor.map(|cursor| cursor as i64),
-        input.raw_output_cursor.map(|cursor| cursor as i64),
-    )
+    let session_id = input.session_id.into_string();
+    let event_cursor = input.event_cursor.map(|cursor| cursor as i64);
+    let raw_output_cursor = input.raw_output_cursor.map(|cursor| cursor as i64);
+    read_off_main(move || {
+        list_session_tail(
+            &database.read_connection(),
+            &session_id,
+            event_cursor,
+            raw_output_cursor,
+        )
+    })
+    .await
 }
 
 #[tauri::command(rename = "session:agent-events")]
@@ -116,22 +121,22 @@ pub(crate) fn session_cost_summary_impl(
 
 #[tauri::command(rename = "session:search")]
 #[specta::specta]
-pub fn session_search(
+pub async fn session_search(
     state: State<'_, AppState>,
     input: SessionSearchInput,
 ) -> ArgmaxResult<Vec<EventSearchResult>> {
-    session_search_impl(&state, input)
+    session_search_impl(&state, input).await
 }
 
-pub(crate) fn session_search_impl(
+pub(crate) async fn session_search_impl(
     state: &AppState,
     input: SessionSearchInput,
 ) -> ArgmaxResult<Vec<EventSearchResult>> {
     let database = live_database(state)?;
-    let connection = database.connection();
     let limit = input
         .limit
         .map(|limit| limit.get() as usize)
         .unwrap_or(DEFAULT_SEARCH_LIMIT as usize);
-    search_events(&connection, input.query.as_str(), limit)
+    let query = input.query.as_str().to_owned();
+    read_off_main(move || search_events(&database.read_connection(), &query, limit)).await
 }

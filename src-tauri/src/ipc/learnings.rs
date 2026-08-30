@@ -1,6 +1,6 @@
 use tauri::State;
 
-use super::{inputs::*, live_database};
+use super::{inputs::*, live_database, read_off_main};
 use crate::{
     error::ArgmaxResult,
     persistence::learnings::{
@@ -13,24 +13,24 @@ const DEFAULT_LEARNINGS_LIMIT: u16 = 50;
 
 #[tauri::command(rename = "learnings:list")]
 #[specta::specta]
-pub fn learnings_list(
+pub async fn learnings_list(
     state: State<'_, AppState>,
     input: LearningsListInput,
 ) -> ArgmaxResult<Vec<Learning>> {
-    learnings_list_impl(&state, input)
+    learnings_list_impl(&state, input).await
 }
 
-pub(crate) fn learnings_list_impl(
+pub(crate) async fn learnings_list_impl(
     state: &AppState,
     input: LearningsListInput,
 ) -> ArgmaxResult<Vec<Learning>> {
     let database = live_database(state)?;
-    let connection = database.connection();
     let limit = input
         .limit
         .map(|limit| limit.get() as usize)
         .unwrap_or(DEFAULT_LEARNINGS_LIMIT as usize);
-    list_learnings(&connection, input.project_id.as_str(), limit)
+    let project_id = input.project_id.into_string();
+    read_off_main(move || list_learnings(&database.read_connection(), &project_id, limit)).await
 }
 
 #[tauri::command(rename = "learnings:update")]

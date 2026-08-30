@@ -123,6 +123,23 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
 /// Resolve the live `Database` Arc from `AppState`. Shared across IPC
 /// handler modules so each ported command does not re-duplicate the
 /// `state.db.get()` boilerplate.
+/// Run a blocking database read off the macOS main thread.
+///
+/// Tauri resolves a sync `#[tauri::command]` body inline on the main thread, so
+/// a 24 ms dashboard read is 24 ms the window cannot draw or handle input. The
+/// `async` flag is not the fix — it is `tokio::spawn`, which parks a shared
+/// worker that provider IO and the `dashboard:delta` emit loop also need.
+/// `spawn_blocking` uses the pool sized for exactly this.
+pub(crate) async fn read_off_main<T, F>(read: F) -> ArgmaxResult<T>
+where
+    F: FnOnce() -> ArgmaxResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(read)
+        .await
+        .map_err(|error| ArgmaxError::service("DATABASE_READ_JOIN", error.to_string()))?
+}
+
 pub(crate) fn live_database(state: &AppState) -> ArgmaxResult<Arc<Database>> {
     state.db.get().cloned().ok_or_else(|| {
         // A recorded open failure is the whole story; without one, boot is

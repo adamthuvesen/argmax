@@ -8,7 +8,7 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use super::inputs::*;
-use super::live_database;
+use super::{live_database, read_off_main};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use crate::persistence::projects::{
@@ -19,17 +19,16 @@ use crate::state::AppState;
 
 #[tauri::command(rename = "projects:list")]
 #[specta::specta]
-pub fn projects_list(
+pub async fn projects_list(
     state: State<'_, AppState>,
     _input: ProjectsListInput,
 ) -> ArgmaxResult<Vec<ProjectSummary>> {
-    projects_list_impl(&state)
+    projects_list_impl(&state).await
 }
 
-pub(crate) fn projects_list_impl(state: &AppState) -> ArgmaxResult<Vec<ProjectSummary>> {
+pub(crate) async fn projects_list_impl(state: &AppState) -> ArgmaxResult<Vec<ProjectSummary>> {
     let database = live_database(state)?;
-    let connection = database.connection();
-    list_projects(&connection)
+    read_off_main(move || list_projects(&database.read_connection())).await
 }
 
 #[tauri::command(rename = "projects:pick-folder")]

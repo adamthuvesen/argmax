@@ -42,6 +42,14 @@ use util::startup_timer::StartupTimer;
 /// the backpressure is visible rather than silently growing the channel.
 const DELTA_CONFLATE_WARN: usize = 256;
 
+/// How much event text one `dashboard:delta` push may carry.
+///
+/// The emit path evals a JS source string containing the serialized payload, so
+/// this is really a cap on how long JavaScriptCore parses on the main thread.
+/// 256 KB keeps that in the low milliseconds while still coalescing an ordinary
+/// token burst into a single push.
+const MAX_CONFLATED_DELTA_BYTES: usize = 256 * 1024;
+
 /// Construct and run the Tauri app.
 pub fn run() {
     let timer = Arc::new(StartupTimer::new());
@@ -274,8 +282,24 @@ pub fn run() {
                                     // behind a busy main thread. Merging into a single atomic delta
                                     // also removes any inter-emit ordering risk. No added latency in
                                     // the common case (try_recv returns empty → emit the one delta).
+                                    //
+                                    // Conflate by payload size, not just count.
+                                    // `Emitter::emit` renders the whole payload
+                                    // into a JS source string and evals it —
+                                    // unlike `ipc::Channel`, it has no
+                                    // large-payload fetch path — so an unbounded
+                                    // merge hands JavaScriptCore a multi-megabyte
+                                    // program to parse on the main thread. Stop
+                                    // draining once the budget is spent; the
+                                    // remainder stays queued and goes out on the
+                                    // next iteration, in order.
                                     let mut conflated = 1usize;
-                                    while let Ok(next) = delta_rx.try_recv() {
+                                    let mut pending_bytes = delta.approx_payload_bytes();
+                                    while pending_bytes < MAX_CONFLATED_DELTA_BYTES {
+                                        let Ok(next) = delta_rx.try_recv() else {
+                                            break;
+                                        };
+                                        pending_bytes += next.approx_payload_bytes();
                                         delta.merge_from(next);
                                         conflated += 1;
                                     }

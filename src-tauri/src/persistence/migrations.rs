@@ -14,6 +14,22 @@ pub struct Migration {
     pub requires_foreign_keys_off: bool,
 }
 
+// Checksums of migration bodies that were applied to real databases by
+// pre-release builds and then edited before the migration was merged. Drift
+// detection exists to catch an applied migration being rewritten, and that is
+// exactly what happened here — but the databases already carry the draft shape,
+// so refusing to open them only strands the user. Accepting a *named* historical
+// body keeps the check strict for genuinely unknown drift, and the follow-up
+// migration re-normalizes the table to the canonical shape.
+//
+// v19 (routines): the draft body created the table with `permission_mode` and
+// `agent_mode` columns that no code ever read; v20 rebuilds without them.
+static ACCEPTED_LEGACY_CHECKSUMS: phf::Map<u32, &'static [&'static str]> = phf_map! {
+    19u32 => &[
+        "51cdcb4c128ae4b43895a0f674dcbf88cab9262e01510d790cea0e39f89d434b",
+    ] as &'static [&'static str],
+};
+
 const ALL_TABLES: &[&str] = &[
     "projects",
     "workspaces",
@@ -393,6 +409,14 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &ROUTINES_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 20,
+        name: "routines_canonical_shape",
+        up: ROUTINES_CANONICAL_SHAPE,
+        affected_tables: &["routines"],
+        expected_columns: &ROUTINES_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
 ];
 
 // Distinguishes real project checkouts ('git') from app-owned scratch
@@ -478,6 +502,50 @@ CREATE TABLE routines (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE INDEX idx_routines_enabled_next
+  ON routines(enabled, next_run_at);
+"#;
+
+// A pre-release build of v19 created `routines` with `permission_mode` and
+// `agent_mode` columns; the merged v19 dropped them. Databases that ran the
+// draft therefore carry two columns the head schema does not expect, which
+// fails `verify_head_table_columns` even once the checksum is accepted.
+// Rebuilding through an explicit column list converges both shapes — it is a
+// no-op copy for databases that only ever saw the merged body.
+const ROUTINES_CANONICAL_SHAPE: &str = r#"
+CREATE TABLE routines_canonical (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  prompt TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model_label TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  worktree INTEGER NOT NULL DEFAULT 1,
+  cron_expr TEXT,
+  run_once_at TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_run_at TEXT,
+  next_run_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+INSERT INTO routines_canonical (
+  id, name, project_id, prompt, provider, model_label, model_id, worktree,
+  cron_expr, run_once_at, enabled, last_run_at, next_run_at, last_error,
+  created_at, updated_at
+)
+SELECT
+  id, name, project_id, prompt, provider, model_label, model_id, worktree,
+  cron_expr, run_once_at, enabled, last_run_at, next_run_at, last_error,
+  created_at, updated_at
+FROM routines;
+
+DROP TABLE routines;
+ALTER TABLE routines_canonical RENAME TO routines;
+
 CREATE INDEX idx_routines_enabled_next
   ON routines(enabled, next_run_at);
 "#;
@@ -945,8 +1013,20 @@ fn verify_applied_checksum(
     applied: &SchemaMigrationRow,
 ) -> ArgmaxResult<()> {
     let expected = compute_migration_checksum(migration.up);
+    let accepted_legacy = ACCEPTED_LEGACY_CHECKSUMS
+        .get(&migration.version)
+        .copied()
+        .unwrap_or(&[]);
     match &applied.checksum {
         Some(stored) if stored == &expected => Ok(()),
+        Some(stored) if accepted_legacy.contains(&stored.as_str()) => {
+            tracing::warn!(
+                version = migration.version,
+                name = migration.name,
+                "migration body was edited after release; accepting a known legacy checksum"
+            );
+            Ok(())
+        }
         Some(stored) => Err(migration_drift(format!(
             "Migration v{} ({}) checksum drift: stored={} expected={}",
             migration.version, migration.name, stored, expected
@@ -1159,6 +1239,7 @@ mod tests {
                 (17, compute_migration_checksum(RESET_PROJECT_DEFAULT_AGENT)),
                 (18, compute_migration_checksum(SYNCED_SESSIONS)),
                 (19, compute_migration_checksum(ROUTINES)),
+                (20, compute_migration_checksum(ROUTINES_CANONICAL_SHAPE)),
             ]
         );
 
@@ -1321,6 +1402,75 @@ mod tests {
         let mut connection = Connection::open_in_memory().expect("open db");
         run_migrations_with(&mut connection, &first).expect("first migrate");
         let err = run_migrations_with(&mut connection, &changed).expect_err("drift");
+        assert!(matches!(err, ArgmaxError::MigrationDrift { .. }));
+    }
+
+    #[test]
+    fn a_draft_v19_database_converges_on_the_canonical_routines_shape() {
+        // Reproduces a database migrated by the pre-release v19 body: two extra
+        // columns and a checksum the merged body no longer computes.
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations(&mut connection).expect("migrate to head");
+        connection
+            .execute_batch(
+                "DROP TABLE routines;
+                 CREATE TABLE routines (
+                   id TEXT PRIMARY KEY,
+                   name TEXT NOT NULL,
+                   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                   prompt TEXT NOT NULL,
+                   provider TEXT NOT NULL,
+                   model_label TEXT NOT NULL,
+                   model_id TEXT NOT NULL,
+                   permission_mode TEXT NOT NULL DEFAULT 'auto-approve',
+                   agent_mode TEXT NOT NULL DEFAULT 'auto',
+                   worktree INTEGER NOT NULL DEFAULT 1,
+                   cron_expr TEXT,
+                   run_once_at TEXT,
+                   enabled INTEGER NOT NULL DEFAULT 1,
+                   last_run_at TEXT,
+                   next_run_at TEXT,
+                   last_error TEXT,
+                   created_at TEXT NOT NULL,
+                   updated_at TEXT NOT NULL
+                 );
+                 DELETE FROM schema_migrations WHERE version = 20;",
+            )
+            .expect("install draft routines table");
+        connection
+            .execute(
+                "UPDATE schema_migrations SET checksum = ? WHERE version = 19",
+                [ACCEPTED_LEGACY_CHECKSUMS.get(&19).expect("legacy list")[0]],
+            )
+            .expect("stamp legacy checksum");
+
+        run_migrations(&mut connection).expect("legacy checksum is accepted and v20 repairs");
+
+        let mut columns: Vec<String> = connection
+            .prepare("PRAGMA table_info(routines)")
+            .expect("prepare")
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("query")
+            .collect::<Result<_, _>>()
+            .expect("rows");
+        columns.sort();
+        let mut expected = ROUTINES_COLUMNS["routines"].to_vec();
+        expected.sort_unstable();
+        assert_eq!(columns, expected);
+    }
+
+    #[test]
+    fn an_unlisted_checksum_for_v19_still_reports_drift() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations(&mut connection).expect("migrate to head");
+        connection
+            .execute(
+                "UPDATE schema_migrations SET checksum = ? WHERE version = 19",
+                ["not-a-body-we-ever-shipped"],
+            )
+            .expect("stamp unknown checksum");
+
+        let err = run_migrations(&mut connection).expect_err("unknown drift must still fail");
         assert!(matches!(err, ArgmaxError::MigrationDrift { .. }));
     }
 

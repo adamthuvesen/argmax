@@ -18,13 +18,41 @@
 }
 
 .launcher-hero-dot {
+  position: relative;
   width: 7px;
   height: 7px;
   border-radius: 999px;
   background: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
-  animation: status-pulse 2.4s var(--ease) infinite;
   flex: 0 0 auto;
+}
+
+/* The pulse rides a pseudo-element's transform and opacity, both of which the
+   compositor animates without repainting. It used to animate `box-shadow`,
+   which is not composited: every frame re-rastered the layer the dot sits in,
+   and this one 7px dot measured ~5% of a CPU core at idle — more than the rest
+   of the app's animations combined. The resting ring stays a static
+   `box-shadow`, which costs nothing because it never changes. */
+.launcher-hero-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(90, 143, 114, 0.18);
+  animation: status-pulse-ring 2.4s var(--ease) infinite;
+}
+
+@keyframes status-pulse-ring {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+
+  50% {
+    transform: scale(2.14);
+    opacity: 1;
+  }
 }
 
 .launcher-hero-eyebrow {

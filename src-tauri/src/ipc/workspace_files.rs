@@ -1,6 +1,6 @@
 use tauri::State;
 
-use super::{inputs::*, live_database};
+use super::{inputs::*, live_database, read_off_main};
 use crate::{
     error::ArgmaxResult,
     files::git_grep_parser::WorkspaceContentSearchResult,
@@ -14,25 +14,27 @@ use crate::{
 
 #[tauri::command(rename = "workspace:status")]
 #[specta::specta]
-pub fn workspace_status(
+pub async fn workspace_status(
     state: State<'_, AppState>,
     input: WorkspaceStatusInput,
 ) -> ArgmaxResult<WorkspaceStatusSnapshot> {
-    workspace_status_impl(&state, input)
+    workspace_status_impl(&state, input).await
 }
 
-pub(crate) fn workspace_status_impl(
+pub(crate) async fn workspace_status_impl(
     state: &AppState,
     input: WorkspaceStatusInput,
 ) -> ArgmaxResult<WorkspaceStatusSnapshot> {
     let database = live_database(state)?;
-    let connection = database.connection();
     let workspace_ids = input.workspace_ids.map(|ids| {
         ids.into_iter()
             .map(|workspace_id| workspace_id.into_string())
             .collect::<Vec<_>>()
     });
-    list_workspace_status(&connection, workspace_ids.as_deref())
+    read_off_main(move || {
+        list_workspace_status(&database.read_connection(), workspace_ids.as_deref())
+    })
+    .await
 }
 
 #[tauri::command(rename = "workspace:list-files")]

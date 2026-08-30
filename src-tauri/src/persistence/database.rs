@@ -1,8 +1,9 @@
-use std::path::Path;
+use std::ops::Deref;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 use tokio::task::JoinSet;
 
 use crate::error::{ArgmaxError, ArgmaxResult};
@@ -13,23 +14,87 @@ use crate::util::sync::LockOrRecover;
 const PRUNE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const RAW_OUTPUT_RETENTION_DAYS: i64 = 7;
 
+/// Idle reader connections kept alive between reads. Reads are short and the
+/// pool only has to cover the handlers that can overlap — the webview, the
+/// remote bridge, and a background sweep — so a small cap beats a large one:
+/// every extra connection is its own page cache.
+const MAX_IDLE_READERS: usize = 4;
+
+/// Read-only connections onto the same WAL database.
+///
+/// One `Mutex<Connection>` for the whole app serialized readers behind writers
+/// even though WAL exists precisely so they don't have to. Readers are opened
+/// `SQLITE_OPEN_READ_ONLY`, which makes the split enforceable rather than
+/// conventional: routing a write through the read path fails loudly instead of
+/// silently taking the wrong lock.
+struct ReaderPool {
+    path: PathBuf,
+    idle: Mutex<Vec<Connection>>,
+}
+
+/// A borrowed read connection. Derefs to `Connection`, so read call sites take
+/// `&connection` exactly as they did behind the writer guard.
+pub enum ReadGuard<'a> {
+    /// A pooled reader, returned to the pool on drop.
+    Pooled {
+        pool: &'a ReaderPool,
+        connection: Option<Connection>,
+    },
+    /// The writer connection — used for in-memory databases (a second handle
+    /// would open a different database) and whenever opening a reader fails.
+    Writer(MutexGuard<'a, Connection>),
+}
+
+impl Deref for ReadGuard<'_> {
+    type Target = Connection;
+
+    fn deref(&self) -> &Connection {
+        match self {
+            // `None` is only reachable after `Drop` has taken the connection,
+            // and the guard is gone by then.
+            ReadGuard::Pooled { connection, .. } => connection
+                .as_ref()
+                .expect("reader taken while still borrowed"),
+            ReadGuard::Writer(guard) => guard,
+        }
+    }
+}
+
+impl Drop for ReadGuard<'_> {
+    fn drop(&mut self) {
+        let ReadGuard::Pooled { pool, connection } = self else {
+            return;
+        };
+        let Some(connection) = connection.take() else {
+            return;
+        };
+        let mut idle = pool.idle.lock_or_recover("reader pool");
+        if idle.len() < MAX_IDLE_READERS {
+            idle.push(connection);
+        }
+    }
+}
+
 pub struct Database {
     connection: Arc<Mutex<Connection>>,
+    /// `None` for in-memory databases, which cannot be reopened by path.
+    readers: Option<ReaderPool>,
     prune_tasks: Mutex<JoinSet<()>>,
 }
 
 impl Database {
     pub fn open(path: impl AsRef<Path>) -> ArgmaxResult<Self> {
-        let connection = Connection::open(path).map_err(sqlite_error)?;
-        Self::from_connection(connection)
+        let path = path.as_ref().to_path_buf();
+        let connection = Connection::open(&path).map_err(sqlite_error)?;
+        Self::from_connection(connection, Some(path))
     }
 
     pub fn open_in_memory() -> ArgmaxResult<Self> {
         let connection = Connection::open_in_memory().map_err(sqlite_error)?;
-        Self::from_connection(connection)
+        Self::from_connection(connection, None)
     }
 
-    fn from_connection(mut connection: Connection) -> ArgmaxResult<Self> {
+    fn from_connection(mut connection: Connection, path: Option<PathBuf>) -> ArgmaxResult<Self> {
         configure_connection(&connection)?;
         run_migrations(&mut connection)?;
         prune_old_raw_outputs(&connection)?;
@@ -54,8 +119,16 @@ impl Database {
             });
         }
 
+        // Migrations have run by now, so a reader opened here sees the head
+        // schema. Readers are opened lazily; this only records where from.
+        let readers = path.map(|path| ReaderPool {
+            path,
+            idle: Mutex::new(Vec::new()),
+        });
+
         Ok(Self {
             connection,
+            readers,
             prune_tasks: Mutex::new(prune_tasks),
         })
     }
@@ -66,6 +139,42 @@ impl Database {
         // bad row anywhere in the app into a permanent IPC outage that
         // only restart can clear.
         self.connection.lock_or_recover("database connection")
+    }
+
+    /// A connection for a read-only query.
+    ///
+    /// WAL lets readers run concurrently with the writer, so read handlers that
+    /// take this never queue behind an in-flight write — and a long write (or a
+    /// `VACUUM`) no longer stalls every reader in the app.
+    pub fn read_connection(&self) -> ReadGuard<'_> {
+        let Some(pool) = self.readers.as_ref() else {
+            return ReadGuard::Writer(self.connection());
+        };
+        let pooled = pool.idle.lock_or_recover("reader pool").pop();
+        let connection = match pooled {
+            Some(connection) => connection,
+            None => match open_reader(&pool.path) {
+                Ok(connection) => connection,
+                // Degrade to the writer rather than fail the read: a reader
+                // that cannot open is a resource problem, not a data problem.
+                Err(error) => {
+                    tracing::warn!(?error, "could not open a read connection; using the writer");
+                    return ReadGuard::Writer(self.connection());
+                }
+            },
+        };
+        ReadGuard::Pooled {
+            pool,
+            connection: Some(connection),
+        }
+    }
+
+    /// Readers currently parked in the pool. Test-only visibility into reuse.
+    pub fn idle_reader_count(&self) -> usize {
+        self.readers
+            .as_ref()
+            .map(|pool| pool.idle.lock_or_recover("reader pool").len())
+            .unwrap_or(0)
     }
 
     pub fn dispose(&self) {
@@ -85,6 +194,23 @@ impl Drop for Database {
         tasks.abort_all();
         tasks.detach_all();
     }
+}
+
+/// Open one read-only connection. `journal_mode` is a property of the database
+/// file, not the connection, so a reader inherits WAL without setting it — and
+/// could not set it anyway without write access.
+fn open_reader(path: &Path) -> ArgmaxResult<Connection> {
+    let connection = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| sqlite_error_with("SQLITE_OPEN_READER", error))?;
+    let _: i64 = connection
+        .query_row("PRAGMA busy_timeout = 5000", [], |row| row.get(0))
+        .map_err(|error| sqlite_error_with("SQLITE_PRAGMA_BUSY_TIMEOUT", error))?;
+    Ok(connection)
 }
 
 pub fn configure_connection(connection: &Connection) -> ArgmaxResult<()> {
@@ -138,6 +264,111 @@ fn sqlite_error_with(code: &str, error: rusqlite::Error) -> ArgmaxError {
 mod tests {
     use super::*;
     use crate::persistence::migrations::MIGRATIONS;
+    use std::time::Instant;
+
+    /// The whole point of the reader pool: WAL lets a read run while a write is
+    /// open, and a single shared `Mutex<Connection>` threw that away. Without
+    /// the pool this read waits out the writer — which is how a `VACUUM` or a
+    /// slow transaction froze every panel in the app at once.
+    #[test]
+    fn a_read_does_not_wait_for_an_open_write_transaction() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("concurrency.sqlite");
+        let database = Arc::new(Database::open(&path).expect("open db"));
+        // A table of our own keeps the test about locking rather than about
+        // whichever columns the real schema currently requires.
+        database
+            .connection()
+            .execute_batch("CREATE TABLE lock_probe (id INTEGER PRIMARY KEY);")
+            .expect("probe table");
+
+        let write_held = Duration::from_millis(400);
+        let writer = {
+            let database = Arc::clone(&database);
+            std::thread::spawn(move || {
+                let mut connection = database.connection();
+                let transaction = connection.transaction().expect("begin");
+                transaction
+                    .execute("INSERT INTO lock_probe (id) VALUES (1)", [])
+                    .expect("insert");
+                std::thread::sleep(write_held);
+                transaction.commit().expect("commit");
+            })
+        };
+
+        // Let the writer take the lock before timing the read.
+        std::thread::sleep(Duration::from_millis(50));
+        let started = Instant::now();
+        let count: i64 = database
+            .read_connection()
+            .query_row("SELECT COUNT(*) FROM lock_probe", [], |row| row.get(0))
+            .expect("read during write");
+        let read_took = started.elapsed();
+        writer.join().expect("writer thread");
+
+        // The uncommitted row is invisible to the reader, which is correct:
+        // the read saw the last committed snapshot rather than blocking for one.
+        assert_eq!(count, 0);
+        assert!(
+            read_took < write_held / 2,
+            "read waited {read_took:?} for a {write_held:?} write; it is queued behind the writer"
+        );
+    }
+
+    #[test]
+    fn readers_are_returned_to_the_pool_and_reused() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("pool.sqlite");
+        let database = Database::open(&path).expect("open db");
+        assert_eq!(database.idle_reader_count(), 0);
+
+        {
+            let _first = database.read_connection();
+            assert_eq!(
+                database.idle_reader_count(),
+                0,
+                "in-flight reader is not idle"
+            );
+        }
+        assert_eq!(database.idle_reader_count(), 1, "reader returns on drop");
+
+        {
+            let _reused = database.read_connection();
+            assert_eq!(
+                database.idle_reader_count(),
+                0,
+                "the parked reader is reused"
+            );
+        }
+        assert_eq!(database.idle_reader_count(), 1);
+    }
+
+    /// Read-only opens make the read/write split enforceable instead of a
+    /// convention someone can quietly break.
+    #[test]
+    fn a_write_through_the_read_path_fails_loudly() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("readonly.sqlite");
+        let database = Database::open(&path).expect("open db");
+
+        let error = database
+            .read_connection()
+            .execute("DELETE FROM projects", [])
+            .expect_err("a write on the read path must fail");
+
+        assert!(
+            error.to_string().contains("readonly"),
+            "expected a read-only rejection, got: {error}"
+        );
+    }
+
+    /// In-memory databases cannot be reopened by path, so the pool is absent
+    /// and reads fall back to the writer connection. Tests rely on this.
+    #[test]
+    fn an_in_memory_database_reads_through_the_writer() {
+        let database = Database::open_in_memory().expect("open db");
+        assert!(matches!(database.read_connection(), ReadGuard::Writer(_)));
+    }
 
     #[test]
     fn open_in_memory_configures_and_migrates() {

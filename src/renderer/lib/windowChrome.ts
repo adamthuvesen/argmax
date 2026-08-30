@@ -23,4 +23,17 @@ export function installWindowChrome(): void {
   });
 }
 
+// Mirrors document visibility onto the root element so CSS can stop the app's
+// decorative loops while nobody is watching — see styles/motion.css. Runs
+// outside the Tauri guard: the browser demo harness and the mobile surface both
+// benefit, and it costs one attribute write per visibility change.
+export function installDocumentVisibility(): void {
+  const sync = (): void => {
+    document.documentElement.dataset.documentHidden = String(document.hidden);
+  };
+  document.addEventListener("visibilitychange", sync);
+  sync();
+}
+
 installWindowChrome();
+installDocumentVisibility();

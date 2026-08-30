@@ -12,6 +12,7 @@
 @import url("./styles/scheduled-tasks.css");
 @import url("./styles/chat.css");
 @import url("./styles/overlays.css");
+@import url("./styles/motion.css");
 
 @font-face {
   font-family: "VT323";

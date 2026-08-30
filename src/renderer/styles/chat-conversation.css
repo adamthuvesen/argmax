@@ -1337,3 +1337,23 @@
   background: var(--panel);
   box-shadow: 0 7px 18px rgba(31, 28, 24, 0.15);
 }
+
+/* Reveals the part of a long transcript the render window leaves unmounted.
+   Only appears when something is actually hidden. */
+.conversation-show-earlier {
+  align-self: center;
+  margin: 4px 0 12px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.conversation-show-earlier:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}

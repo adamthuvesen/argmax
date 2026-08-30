@@ -9,6 +9,7 @@ import {
   type ReasoningEffort
 } from "../../shared/providerModels.js";
 import type { ProviderId } from "../../shared/types.js";
+import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { EffortPixelField } from "./EffortPixelField.js";
@@ -59,11 +60,6 @@ function availabilityAnnotation(
   if (entry.authenticated === false) return { annotation: "needs login" };
   return {};
 }
-
-type SubmenuStyle = CSSProperties & {
-  "--model-submenu-top"?: string;
-  "--model-submenu-bottom"?: string;
-};
 
 type ChipModelOption<T> = {
   key: string;
@@ -125,6 +121,7 @@ export function ModelSelector({
 export function LaunchModelSelector({
   ariaLabel,
   anchorClassName,
+  align,
   availability,
   fastModeEnabled = false,
   inputId,
@@ -137,6 +134,7 @@ export function LaunchModelSelector({
 }: {
   ariaLabel: string;
   anchorClassName?: string;
+  align?: "start" | "end";
   availability?: ProviderAvailability;
   fastModeEnabled?: boolean;
   inputId?: string;
@@ -165,6 +163,7 @@ export function LaunchModelSelector({
     <ChipModelPicker
       ariaLabel={ariaLabel}
       anchorClassName={anchorClassName}
+      align={align}
       fastModeEnabled={fastModeEnabled}
       inputId={inputId}
       isSelected={(model) => model.provider === value.provider && model.modelId === value.modelId}
@@ -350,6 +349,7 @@ function EffortSlider({
 function ChipModelPicker<T extends ProviderModelSelection>({
   ariaLabel,
   anchorClassName,
+  align = "start",
   fastModeEnabled,
   inputId,
   isSelected,
@@ -365,6 +365,9 @@ function ChipModelPicker<T extends ProviderModelSelection>({
 }: {
   ariaLabel: string;
   anchorClassName?: string;
+  /** Which edge the flyout lines up with. Settings hangs its chip off the
+   *  right margin, so the menu has to grow leftward from there. */
+  align?: "start" | "end";
   fastModeEnabled: boolean;
   inputId?: string;
   isSelected: (value: T) => boolean;
@@ -384,7 +387,6 @@ function ChipModelPicker<T extends ProviderModelSelection>({
 }): JSX.Element {
   const [internalOpen, setInternalOpen] = useState(false);
   const [fastModeMenuOpen, setFastModeMenuOpen] = useState(false);
-  const [submenuOffset, setSubmenuOffset] = useState<{ top: number; bottom: number } | null>(null);
   const open = controlledOpen ?? internalOpen;
   const setOpen = (next: boolean | ((open: boolean) => boolean)): void => {
     const nextValue = typeof next === "function" ? next(open) : next;
@@ -393,13 +395,31 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     }
     if (!nextValue) {
       setFastModeMenuOpen(false);
-      setSubmenuOffset(null);
     }
     onOpenChange?.(nextValue);
   };
-  const anchorRef = useRef<HTMLDivElement | null>(null);
   const primaryListRef = useRef<HTMLUListElement | null>(null);
-  useDismissOnOutsideOrEscape(anchorRef, open, () => setOpen(false));
+
+  // Stays inside the anchor rather than portaling to <body>: the composer and
+  // settings both style this menu through descendant selectors, and the chip
+  // already establishes the stacking context the menu wants. `flip` picks the
+  // side — the agent composer sits at the bottom of its pane so the menu opens
+  // upward there, while settings has room below.
+  const flyout = useAnchoredPopover({
+    open,
+    placement: align === "end" ? "bottom-end" : "bottom-start",
+    strategy: "absolute"
+  });
+  // The Speed submenu hangs off its own row, so it tracks that row instead of
+  // being nudged into place with margins measured against the list.
+  const speedMenu = useAnchoredPopover({
+    open: fastModeMenuOpen,
+    placement: "right-start",
+    gutter: 6,
+    strategy: "absolute"
+  });
+
+  useDismissOnOutsideOrEscape(flyout.anchorRef, open, () => setOpen(false));
   const selectedSupportsFastMode = supportsFastModeForValue(value);
   // Fast mode is surfaced as a submenu the UI labels "Speed" (Standard / Fast);
   // picking "Fast" flips fastModeEnabled. The code below uses the fast-mode name
@@ -447,33 +467,11 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     setOpen(false);
   };
 
-  const anchorSubmenuTo = (trigger: HTMLElement): void => {
-    const list = primaryListRef.current;
-    if (!list) {
-      setSubmenuOffset(null);
-      return;
-    }
-
-    const listRect = list.getBoundingClientRect();
-    const triggerRect = trigger.getBoundingClientRect();
-    setSubmenuOffset({
-      top: Math.max(0, Math.round(triggerRect.top - listRect.top)),
-      bottom: Math.max(0, Math.round(listRect.bottom - triggerRect.bottom))
-    });
-  };
-
-  const submenuStyle: SubmenuStyle | undefined = submenuOffset
-    ? {
-        "--model-submenu-top": `${submenuOffset.top}px`,
-        "--model-submenu-bottom": `${submenuOffset.bottom}px`
-      }
-    : undefined;
-
   return (
     <div className="model-picker-cluster">
     <div
       className={`project-picker-anchor model-picker-anchor${anchorClassName ? ` ${anchorClassName}` : ""}`}
-      ref={anchorRef}
+      ref={flyout.setAnchor}
     >
       <button
         type="button"
@@ -493,6 +491,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
       {open && (
         <div
           className="model-picker-flyout"
+          ref={flyout.setPopover}
+          style={flyout.floatingStyles}
           onClick={(event) => {
             // Clicking inert popover chrome (group labels, padding) dismisses,
             // mirroring the other composer pickers. Buttons handle their own
@@ -559,17 +559,10 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                 <li role="presentation" className="model-picker-row model-picker-speed-row">
                   <button
                     type="button"
+                    ref={speedMenu.setAnchor}
                     className="project-picker-item model-picker-item model-picker-submenu-trigger"
                     aria-expanded={fastModeMenuOpen}
-                    onClick={(event) => {
-                      const nextFastModeMenuOpen = !fastModeMenuOpen;
-                      setFastModeMenuOpen(nextFastModeMenuOpen);
-                      if (nextFastModeMenuOpen) {
-                        anchorSubmenuTo(event.currentTarget);
-                      } else {
-                        setSubmenuOffset(null);
-                      }
-                    }}
+                    onClick={() => setFastModeMenuOpen((menuOpen) => !menuOpen)}
                   >
                     <span className="model-picker-name">Speed</span>
                     <ChevronRight size={14} aria-hidden="true" className="model-picker-submenu-caret" />
@@ -583,7 +576,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
               className="project-picker-popover model-speed-popover"
               role="listbox"
               aria-label="Speed"
-              style={submenuStyle}
+              ref={speedMenu.setPopover}
+              style={speedMenu.floatingStyles}
             >
               <li className="project-picker-group-label" role="presentation">
                 Speed
@@ -657,6 +651,7 @@ export function CombinedModelSelector({
     <LaunchModelSelector
       ariaLabel={ariaLabel}
       anchorClassName="settings-model-picker"
+      align="end"
       availability={availability}
       inputId={inputId}
       value={selectedValue}

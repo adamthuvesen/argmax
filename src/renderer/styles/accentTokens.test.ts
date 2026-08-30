@@ -570,13 +570,20 @@ describe("accent CSS contract", () => {
     expect(compactModelLabelRule).toContain("white-space: nowrap;");
   });
 
-  it("keeps speed submenu opening upward in launcher model picker", () => {
+  // Which side the model menus open on is decided at runtime by
+  // `useAnchoredPopover`, which flips when the preferred side won't fit. A side
+  // re-added in CSS would win over the inline styles on one axis and fight the
+  // flip on the other, so the stylesheet must stay out of placement entirely.
+  it("leaves model picker placement to the anchored-popover primitive", () => {
     const chatChrome = readSource("src/renderer/styles/chat-chrome.css");
-    const speedRule = cssRuleBody(chatChrome, ".composer-context .model-speed-popover");
+    const flyoutRule = cssRuleBody(chatChrome, ".model-picker-flyout");
+    const speedRule = cssRuleBody(chatChrome, ".model-speed-popover");
 
-    expect(speedRule).toContain("align-self: flex-end;");
-    expect(speedRule).toContain("margin-top: 0;");
-    expect(speedRule).toContain("margin-bottom: 0;");
+    for (const rule of [flyoutRule, speedRule]) {
+      expect(rule).not.toMatch(/^\s*(top|bottom|left|right|position)\s*:/m);
+    }
+    expect(flyoutRule).toContain("z-index: 30;");
+    expect(speedRule).toContain("min-width: 230px;");
   });
 
   it("keeps project and model picker menus dense", () => {

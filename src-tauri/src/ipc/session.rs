@@ -9,6 +9,7 @@ use crate::{
     },
     providers::subagent_trace::import_subagent_trace_events,
     state::AppState,
+    workspaces::orchestration::SessionForkResult,
 };
 use tauri::State;
 
@@ -69,6 +70,30 @@ pub(crate) async fn session_agent_events_impl(
     })
     .await
     .map_err(|error| ArgmaxError::service("SESSION_AGENT_EVENTS_JOIN", error.to_string()))?
+}
+
+// `async` so the transcript copy (potentially thousands of row inserts) runs
+// off the macOS main thread.
+#[tauri::command(rename = "session:fork", async)]
+#[specta::specta]
+pub fn session_fork(
+    state: State<'_, AppState>,
+    input: SessionForkInput,
+) -> ArgmaxResult<SessionForkResult> {
+    session_fork_impl(&state, input)
+}
+
+pub(crate) fn session_fork_impl(
+    state: &AppState,
+    input: SessionForkInput,
+) -> ArgmaxResult<SessionForkResult> {
+    let workspaces = state.workspaces.get().cloned().ok_or_else(|| {
+        ArgmaxError::service(
+            "WORKSPACE_SERVICE_NOT_READY",
+            "workspace service is not initialized",
+        )
+    })?;
+    workspaces.fork_session(input.session_id.as_str())
 }
 
 #[tauri::command(rename = "session:cost-summary")]

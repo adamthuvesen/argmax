@@ -946,6 +946,7 @@ mod tests {
             reasoning_effort: Some(ReasoningEffort::High),
             fast_mode: true,
             resume_conversation_id: None,
+            resume_fork: false,
             permission_mode: PermissionMode::AutoApprove,
             agent_mode: AgentMode::Auto,
             cols: 120,

@@ -300,6 +300,30 @@ pub fn persist_raw_output(
     })
 }
 
+/// Every timeline row for a session, oldest first and unpaged.
+///
+/// `list_session_events_since` is the renderer's pager: called with no cursor
+/// it returns only the newest `SESSION_EVENT_PAGE_LIMIT` rows. Copying a
+/// transcript (session fork) needs all of it — a long run passes 500 rows
+/// easily, since every tool call and assistant chunk is a row, and paging
+/// would otherwise drop the beginning of the conversation with no warning.
+pub fn list_all_session_events(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    let mut statement = connection
+        .prepare_cached(
+            "SELECT rowid AS row_cursor, * FROM events WHERE session_id = ? ORDER BY rowid ASC",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map((session_id,), event_row_to_timeline_event)
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
 fn list_event_rows(
     connection: &Connection,
     session_id: &str,

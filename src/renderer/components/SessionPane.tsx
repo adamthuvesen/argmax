@@ -97,6 +97,7 @@ export function SessionPane({
   onOpenAgent,
   pendingMessages,
   onTerminateSession,
+  onForkSession,
   project,
   rawOutputs,
   registerPaletteFileContext,
@@ -147,6 +148,7 @@ export function SessionPane({
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string) => Promise<void>;
+  onForkSession?: (sessionId: string) => Promise<void>;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   rightPanelToggleSignal?: number;
@@ -565,6 +567,7 @@ export function SessionPane({
           onSendQueuedMessageNow={onSendQueuedMessageNow}
           pendingMessages={sessionId ? (pendingMessages?.[sessionId] ?? []) : []}
           onTerminateSession={onTerminateSession}
+          onForkSession={onForkSession}
           onRunCheck={onRunCheck}
           onOpenFile={handleOpenFile}
           onOpenAgent={onOpenAgent}

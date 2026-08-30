@@ -53,10 +53,10 @@ use crate::{
         },
         projects::list_projects,
         sessions::{
-            find_session_by_id, persist_session, update_session_agent_mode, update_session_model,
-            update_session_provider, update_session_provider_conversation_id, update_session_state,
-            PersistSessionInput, SessionAgentModeInput, SessionModelInput, SessionProviderInput,
-            SessionStateInput, SessionSummary,
+            find_session_by_id, persist_session, session_resume_fork, update_session_agent_mode,
+            update_session_model, update_session_provider, update_session_provider_conversation_id,
+            update_session_state, PersistSessionInput, SessionAgentModeInput, SessionModelInput,
+            SessionProviderInput, SessionStateInput, SessionSummary,
         },
         time::now_iso,
         workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
@@ -333,6 +333,7 @@ impl ProviderSessionService {
             reasoning_effort: input.reasoning_effort,
             fast_mode: input.fast_mode,
             resume_conversation_id: None,
+            resume_fork: false,
             permission_mode,
             agent_mode,
             cols: input.cols.get(),
@@ -664,6 +665,11 @@ impl ProviderSessionService {
                     .as_deref()
                     .and_then(parse_reasoning_effort),
                 fast_mode: input.fast_mode,
+                // A forked session's first resume must diverge into a new
+                // provider conversation; the flag is cleared once the new
+                // conversation id lands.
+                resume_fork: resume_conversation_id.is_some()
+                    && session_resume_fork(&connection, &session_id)?,
                 resume_conversation_id,
                 permission_mode,
                 agent_mode,
@@ -1120,27 +1126,6 @@ impl ProviderSessionService {
             }
         }
         Ok(recovered.len())
-    }
-
-    pub async fn dispose_all(&self) -> ArgmaxResult<()> {
-        let entries = self
-            .handles
-            .lock_or_recover("handles")
-            .drain()
-            .map(|(_, entry)| entry)
-            .collect::<Vec<_>>();
-        let mut tasks = Vec::new();
-        for entry in entries {
-            if let HandleEntry::Resolved(handle) = entry {
-                tasks.push(tokio::spawn(async move {
-                    tokio::time::timeout(Duration::from_millis(2500), handle.terminate()).await
-                }));
-            }
-        }
-        for task in tasks {
-            let _ = task.await;
-        }
-        Ok(())
     }
 
     fn is_current_provider_invocation(

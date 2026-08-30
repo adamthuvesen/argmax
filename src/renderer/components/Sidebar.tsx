@@ -582,6 +582,22 @@ export function Sidebar({
     revealWorkspaceGroup(workspace);
   }, [revealWorkspaceGroup, selectedWorkspaceId, sidebarWorkspaces]);
 
+  // A workspace that APPEARS without being selected — a fork, or a session an
+  // agent launched from inside another session — must also surface, so the
+  // user sees the action succeeded. Diff against the previously seen ids; the
+  // first non-empty snapshot seeds silently so boot never unfolds everything.
+  const knownWorkspaceIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const known = knownWorkspaceIdsRef.current;
+    if (sidebarWorkspaces.length === 0 && known === null) return;
+    knownWorkspaceIdsRef.current = new Set(sidebarWorkspaces.map((workspace) => workspace.id));
+    if (known === null) return;
+    for (const workspace of sidebarWorkspaces) {
+      if (known.has(workspace.id) || workspace.state === "archived") continue;
+      revealWorkspaceGroup(workspace);
+    }
+  }, [revealWorkspaceGroup, sidebarWorkspaces]);
+
   const toggleDateGroupExpansion = useCallback(
     (key: string): void => {
       const next = new Set(expandedDateGroups);

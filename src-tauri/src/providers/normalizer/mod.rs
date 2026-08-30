@@ -392,6 +392,22 @@ fn normalize_json_payload(
                 })
                 .map(str::to_string)
         }
+        // A fresh Claude launch is handed `--session-id`, so its reported id
+        // just echoes the one we chose. A FORKED resume is not: `--fork-session`
+        // makes the CLI mint a new id, and without capturing it the fork keeps
+        // its one-shot `resume_fork` flag forever, re-forking the *source*
+        // snapshot on every turn and discarding its own history.
+        ProviderId::Claude
+            if matches!(
+                (
+                    provider_type.as_deref(),
+                    string_value(payload.get("subtype"))
+                ),
+                (Some("system"), Some("init"))
+            ) =>
+        {
+            string_value(payload.get("session_id")).map(str::to_string)
+        }
         ProviderId::Cursor
             if matches!(
                 (
@@ -1026,6 +1042,34 @@ mod tests {
             &mut context,
         );
         assert_eq!(second.provider_conversation_id, None);
+    }
+
+    #[test]
+    fn claude_reports_the_session_id_from_its_init_line() {
+        // A forked resume runs `--resume <source> --fork-session`, so the CLI
+        // mints a NEW session id and only the init line carries it. Without
+        // capturing it the fork's one-shot `resume_fork` flag is never spent
+        // (only `update_session_provider_conversation_id` clears it), and every
+        // later turn re-forks the source snapshot, throwing away the fork's own
+        // history and orphaning a CLI session per turn.
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(r#"{"type":"system","subtype":"init","session_id":"claude-fork-1"}"#),
+            &mut context,
+        );
+        assert_eq!(
+            result.provider_conversation_id.as_deref(),
+            Some("claude-fork-1")
+        );
+
+        // Ordinary turn traffic must not rewrite the session row.
+        let assistant = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(r#"{"type":"system","subtype":"status","status":"compacting"}"#),
+            &mut context,
+        );
+        assert_eq!(assistant.provider_conversation_id, None);
     }
 
     pub(crate) fn output_event(message: &str) -> ProviderOutputEvent {

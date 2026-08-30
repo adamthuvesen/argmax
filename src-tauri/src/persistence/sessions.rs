@@ -307,15 +307,40 @@ pub fn update_session_provider_conversation_id(
     session_id: &str,
     provider_conversation_id: &str,
 ) -> ArgmaxResult<SessionSummary> {
+    // A fresh provider conversation id also spends any pending fork flag: the
+    // forked launch has diverged, and later resumes must NOT fork again.
     let mut statement = connection
         .prepare_cached(
-            "UPDATE sessions SET provider_conversation_id = ?, last_activity_at = ? WHERE id = ?",
+            "UPDATE sessions SET provider_conversation_id = ?, resume_fork = 0, last_activity_at = ? WHERE id = ?",
         )
         .map_err(sqlite_error)?;
     statement
         .execute((provider_conversation_id, now_iso(), session_id))
         .map_err(sqlite_error)?;
     find_session_by_id(connection, session_id)
+}
+
+/// Mark a session so its next resumed launch forks the provider conversation
+/// (`--fork-session` for Claude) instead of appending to the original's.
+pub fn set_session_resume_fork(connection: &Connection, session_id: &str) -> ArgmaxResult<()> {
+    let changes = connection
+        .prepare_cached("UPDATE sessions SET resume_fork = 1 WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute([session_id])
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("session", session_id));
+    }
+    Ok(())
+}
+
+pub fn session_resume_fork(connection: &Connection, session_id: &str) -> ArgmaxResult<bool> {
+    connection
+        .prepare_cached("SELECT resume_fork FROM sessions WHERE id = ?")
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| row.get::<_, i64>(0))
+        .map(|value| value != 0)
+        .map_err(sqlite_error)
 }
 
 pub fn find_session_by_id(

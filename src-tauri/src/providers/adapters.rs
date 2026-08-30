@@ -111,6 +111,11 @@ fn claude_structured_resume_args(
         "--resume".to_string(),
         resume_conversation_id.to_string(),
     ];
+    // A forked session's first resume diverges into a new CLI session instead
+    // of appending turns to the conversation it was copied from.
+    if input.resume_fork {
+        args.push("--fork-session".to_string());
+    }
     args.extend(claude_permission_args(input));
     args.extend(claude_reasoning_args(input));
     args.extend(claude_fast_mode_args(input));
@@ -144,9 +149,14 @@ fn codex_structured_resume_args(
     input: &ProviderLaunchInput,
     resume_conversation_id: &str,
 ) -> Vec<String> {
+    // A forked session's first resume diverges into a new CLI session
+    // (`exec fork`) instead of appending turns to the conversation it was
+    // copied from. Same positional shape as `exec resume`: flags, then the
+    // session id, then `-` for the stdin prompt.
+    let subcommand = if input.resume_fork { "fork" } else { "resume" };
     let mut args = vec![
         "exec".to_string(),
-        "resume".to_string(),
+        subcommand.to_string(),
         "--json".to_string(),
     ];
     args.extend(codex_permission_args(input));
@@ -202,49 +212,22 @@ fn cursor_model_for(
     fast_mode: bool,
 ) -> String {
     let with_effort = match (model_id, reasoning_effort) {
-        ("gpt-5.6-luna-medium" | "gpt-5.6-terra-medium" | "gpt-5.6-sol-medium", Some(effort)) => {
-            let suffix = match effort {
-                ReasoningEffort::Low => "low",
-                ReasoningEffort::Medium => "medium",
-                ReasoningEffort::High => "high",
-                ReasoningEffort::Xhigh => "xhigh",
-                ReasoningEffort::Max | ReasoningEffort::Ultra => "max",
-            };
+        (
+            "gpt-5.6-luna-medium"
+            | "gpt-5.6-terra-medium"
+            | "gpt-5.6-sol-medium"
+            | "claude-opus-5-thinking-medium",
+            Some(effort),
+        ) => {
             let family = model_id.trim_end_matches("-medium");
-            format!("{family}-{suffix}")
+            format!("{family}-{}", effort_suffix(effort))
         }
-        ("claude-opus-5-thinking-medium", Some(effort)) => {
-            let suffix = match effort {
-                ReasoningEffort::Low => "low",
-                ReasoningEffort::Medium => "medium",
-                ReasoningEffort::High => "high",
-                ReasoningEffort::Xhigh => "xhigh",
-                ReasoningEffort::Max | ReasoningEffort::Ultra => "max",
-            };
-            format!("claude-opus-5-thinking-{suffix}")
-        }
-        ("cursor-grok-4.6-medium" | "cursor-grok-4.5-medium", Some(effort)) => {
-            let suffix = match effort {
-                ReasoningEffort::Low => "low",
-                ReasoningEffort::Medium => "medium",
-                ReasoningEffort::High
-                | ReasoningEffort::Xhigh
-                | ReasoningEffort::Max
-                | ReasoningEffort::Ultra => "high",
-            };
+        (
+            "cursor-grok-4.6-medium" | "cursor-grok-4.5-medium" | "gemini-3.7-flash-medium",
+            Some(effort),
+        ) => {
             let family = model_id.trim_end_matches("-medium");
-            format!("{family}-{suffix}")
-        }
-        ("gemini-3.7-flash-medium", Some(effort)) => {
-            let suffix = match effort {
-                ReasoningEffort::Low => "low",
-                ReasoningEffort::Medium => "medium",
-                ReasoningEffort::High
-                | ReasoningEffort::Xhigh
-                | ReasoningEffort::Max
-                | ReasoningEffort::Ultra => "high",
-            };
-            format!("gemini-3.7-flash-{suffix}")
+            format!("{family}-{}", effort_suffix_capped_at_high(effort))
         }
         _ => model_id.to_string(),
     };
@@ -252,6 +235,27 @@ fn cursor_model_for(
         format!("{with_effort}-fast")
     } else {
         with_effort
+    }
+}
+
+fn effort_suffix(effort: ReasoningEffort) -> &'static str {
+    match effort {
+        ReasoningEffort::Low => "low",
+        ReasoningEffort::Medium => "medium",
+        ReasoningEffort::High => "high",
+        ReasoningEffort::Xhigh => "xhigh",
+        ReasoningEffort::Max | ReasoningEffort::Ultra => "max",
+    }
+}
+
+fn effort_suffix_capped_at_high(effort: ReasoningEffort) -> &'static str {
+    match effort {
+        ReasoningEffort::Low => "low",
+        ReasoningEffort::Medium => "medium",
+        ReasoningEffort::High
+        | ReasoningEffort::Xhigh
+        | ReasoningEffort::Max
+        | ReasoningEffort::Ultra => "high",
     }
 }
 
@@ -326,6 +330,11 @@ fn opencode_structured_resume_args(
         "-s".to_string(),
         resume_conversation_id.to_string(),
     ];
+    // Fork-on-resume: `--fork` copies the session server-side before the
+    // message lands, so the original conversation stays untouched.
+    if input.resume_fork {
+        args.push("--fork".to_string());
+    }
     args.extend(opencode_agent_mode_args(input));
     args.extend(opencode_permission_args(input));
     args.extend(opencode_variant_args(
@@ -557,6 +566,51 @@ mod tests {
             ]
         );
         assert_eq!((definition.structured_stdin)(&input), None);
+    }
+
+    #[test]
+    fn claude_forked_resume_adds_fork_session_flag() {
+        let mut input = launch_input(ProviderId::Claude);
+        input.resume_fork = true;
+        let definition = get_provider_definition(ProviderId::Claude);
+        let args = (definition.structured_resume_args)(&input, "conv-7");
+        assert_eq!(
+            args[..5],
+            ["-p", "--brief", "--resume", "conv-7", "--fork-session"]
+        );
+
+        input.resume_fork = false;
+        let args = (definition.structured_resume_args)(&input, "conv-7");
+        assert!(!args.contains(&"--fork-session".to_string()));
+    }
+
+    #[test]
+    fn codex_forked_resume_swaps_to_exec_fork() {
+        let mut input = launch_input(ProviderId::Codex);
+        input.resume_fork = true;
+        let definition = get_provider_definition(ProviderId::Codex);
+        let args = (definition.structured_resume_args)(&input, "conv-7");
+        assert_eq!(args[..3], ["exec", "fork", "--json"]);
+        assert!(args.contains(&"conv-7".to_string()));
+
+        input.resume_fork = false;
+        let args = (definition.structured_resume_args)(&input, "conv-7");
+        assert_eq!(args[..3], ["exec", "resume", "--json"]);
+    }
+
+    #[test]
+    fn opencode_forked_resume_adds_fork_flag() {
+        let mut input = launch_input(ProviderId::Opencode);
+        input.resume_fork = true;
+        let definition = get_provider_definition(ProviderId::Opencode);
+        let args = (definition.structured_resume_args)(&input, "ses_7");
+        let session_flag = args.iter().position(|a| a == "-s").unwrap();
+        assert_eq!(args[session_flag + 1], "ses_7");
+        assert_eq!(args[session_flag + 2], "--fork");
+
+        input.resume_fork = false;
+        let args = (definition.structured_resume_args)(&input, "ses_7");
+        assert!(!args.contains(&"--fork".to_string()));
     }
 
     #[test]
@@ -1117,6 +1171,7 @@ mod tests {
             reasoning_effort,
             fast_mode: false,
             resume_conversation_id: None,
+            resume_fork: false,
             permission_mode: PermissionMode::AutoApprove,
             agent_mode: AgentMode::Auto,
             cols: 100,

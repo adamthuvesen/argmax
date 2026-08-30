@@ -121,6 +121,7 @@ export function SessionConversation({
   onSendQueuedMessageNow,
   pendingMessages = [],
   onTerminateSession,
+  onForkSession,
   onRunCheck,
   onToggleLog,
   onToggleTerminal,
@@ -195,6 +196,7 @@ export function SessionConversation({
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
+  onForkSession?: (sessionId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   onToggleLog: () => void;
   /** Called when the user clicks a file reference inside agent text. When
@@ -739,6 +741,7 @@ export function SessionConversation({
                   onOpenFile={onOpenFile}
                   onOpenAgent={onOpenAgent}
                   onTerminateSession={onTerminateSession}
+                  onForkSession={onForkSession}
                   onSendSessionInput={sendSessionInput}
                   inputRef={inputRef}
                   shouldRefocusInput={shouldRefocusInput}

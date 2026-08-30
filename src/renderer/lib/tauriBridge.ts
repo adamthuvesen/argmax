@@ -42,6 +42,8 @@ import type {
   ReviewComparison,
   RunCheckInput,
   SessionAgentEventsInput,
+  SessionForkInput,
+  SessionForkResult,
   SessionCostSummary,
   SessionCostSummaryInput,
   SessionEventsSinceInput,
@@ -250,6 +252,7 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         invokeCommand<SessionEventsSinceResult>("session:events-since", input),
       agentEvents: (input: SessionAgentEventsInput) =>
         invokeCommand<SessionEventsSinceResult>("session:agent-events", input),
+      fork: (input: SessionForkInput) => invokeCommand<SessionForkResult>("session:fork", input),
       costSummary: (input: SessionCostSummaryInput) =>
         invokeCommand<SessionCostSummary>("session:cost-summary", input),
       search: (input) => invokeCommand<SessionSearchResult>("session:search", input)

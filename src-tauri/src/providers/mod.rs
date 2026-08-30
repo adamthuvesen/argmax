@@ -44,6 +44,11 @@ pub struct ProviderLaunchInput {
     pub reasoning_effort: Option<ReasoningEffort>,
     pub fast_mode: bool,
     pub resume_conversation_id: Option<String>,
+    /// Diverge instead of continuing: the resumed launch starts a NEW provider
+    /// conversation seeded with the old history (`--fork-session` on Claude).
+    /// Set on sessions created by `sessions:fork`; spent once a fresh
+    /// conversation id is persisted.
+    pub resume_fork: bool,
     pub permission_mode: PermissionMode,
     pub agent_mode: AgentMode,
     pub cols: u16,

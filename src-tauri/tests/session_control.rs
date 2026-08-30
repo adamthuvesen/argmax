@@ -157,6 +157,7 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
         reasoning_effort: Some(ReasoningEffort::High),
         fast_mode: true,
         resume_conversation_id: None,
+        resume_fork: false,
         permission_mode: PermissionMode::AutoApprove,
         agent_mode: AgentMode::Auto,
         cols: 120,

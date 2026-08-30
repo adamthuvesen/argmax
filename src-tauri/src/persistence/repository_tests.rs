@@ -22,10 +22,10 @@ use super::projects::{
     ProjectSettings,
 };
 use super::sessions::{
-    list_session_ids_for_workspace, persist_session, update_session_agent_mode,
-    update_session_last_activity, update_session_model, update_session_provider_conversation_id,
-    update_session_state, PersistSessionInput, SessionAgentModeInput, SessionModelInput,
-    SessionStateInput, UsageCounts,
+    list_session_ids_for_workspace, persist_session, session_resume_fork, set_session_resume_fork,
+    update_session_agent_mode, update_session_last_activity, update_session_model,
+    update_session_provider_conversation_id, update_session_state, PersistSessionInput,
+    SessionAgentModeInput, SessionModelInput, SessionStateInput, UsageCounts,
 };
 use super::usage::{get_session_cost_summary, insert_usage_event, InsertUsageEventInput};
 use super::workspaces::{
@@ -661,6 +661,28 @@ fn workspace_summaries_carry_latest_pr_on_every_read_path() {
     let found = find_workspace_by_id(&connection, "w1").expect("find workspace");
     assert_eq!(found.pr_state.as_deref(), Some("OPEN"));
     assert_eq!(found.pr_number, Some(12));
+}
+
+#[test]
+fn resume_fork_is_spent_by_a_new_provider_conversation_id() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+
+    // Fork creation order: conversation id first, then the flag — setting the
+    // id clears the flag, so the reverse order would silently lose the fork.
+    update_session_provider_conversation_id(&connection, "s1", "conv-original")
+        .expect("set conversation id");
+    set_session_resume_fork(&connection, "s1").expect("flag fork");
+    assert!(session_resume_fork(&connection, "s1").expect("read flag"));
+
+    // The forked launch reports its NEW conversation id → the flag is spent,
+    // and later resumes continue the fork's own conversation without forking.
+    update_session_provider_conversation_id(&connection, "s1", "conv-forked")
+        .expect("store forked conversation id");
+    assert!(!session_resume_fork(&connection, "s1").expect("flag cleared"));
 }
 
 #[test]

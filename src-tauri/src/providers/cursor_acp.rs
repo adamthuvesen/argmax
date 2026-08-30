@@ -716,6 +716,7 @@ mod tests {
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: None,
+            resume_fork: false,
             permission_mode: super::super::PermissionMode::AutoApprove,
             agent_mode: AgentMode::Auto,
             cols: 80,

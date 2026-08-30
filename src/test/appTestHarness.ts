@@ -386,6 +386,7 @@ export function setupAppTestMocks(): void {
     session: {
       eventsSince: sessionEventsSince,
       agentEvents: sessionAgentEvents,
+      fork: () => Promise.reject(new Error("session fork not stubbed")),
       costSummary: sessionCostSummary,
       search: () => Promise.resolve([])
     },

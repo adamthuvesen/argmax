@@ -1,6 +1,7 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Copy, GitFork } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { formatElapsedSeconds } from "../formatElapsed.js";
+import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
 import type { TurnToolItem } from "../lib/toolCalls.js";
 
@@ -117,7 +118,9 @@ export function TurnBlock({
   isTurnActive,
   toolsExpanded,
   onToggleTools,
-  headerTimestampIso
+  headerTimestampIso,
+  turnMarkdown,
+  onFork
 }: {
   toolItems: TurnToolItem[];
   assistantTimestamps: number[];
@@ -141,6 +144,11 @@ export function TurnBlock({
   // assistant event in the turn). Per-paragraph timestamps inside the body
   // are visually suppressed once a turn-level one is available.
   headerTimestampIso?: string;
+  // The turn's assistant prose, for the hover footer's Copy action. The
+  // footer renders only after the turn finishes and only while hovered.
+  turnMarkdown?: string;
+  // Fork the session this turn belongs to (provider-gated by the parent).
+  onFork?: () => void;
 }): JSX.Element {
   const toolRunning = useMemo(() => toolItems.some(isToolRunning), [toolItems]);
   // `running` controls the chip's "Working" label and live ticker —
@@ -268,6 +276,51 @@ export function TurnBlock({
       >
         {renderBody(body)}
       </div>
+      {!running && (turnMarkdown || onFork) ? (
+        <TurnFooter {...(turnMarkdown ? { turnMarkdown } : {})} {...(onFork ? { onFork } : {})} />
+      ) : null}
+    </div>
+  );
+}
+
+/** Hover-revealed actions under a finished turn: copy the reply, fork the session. */
+function TurnFooter({
+  turnMarkdown,
+  onFork
+}: {
+  turnMarkdown?: string;
+  onFork?: () => void;
+}): JSX.Element {
+  const [copyFlash, copy] = useCopyToClipboard();
+  return (
+    <div className="turn-block-footer">
+      {turnMarkdown ? (
+        <button
+          type="button"
+          className="turn-block-footer-action"
+          aria-label="Copy reply"
+          title={
+            copyFlash === "copied" ? "Copied!" : copyFlash === "failed" ? "Couldn't copy" : "Copy reply"
+          }
+          onClick={() => void copy(turnMarkdown)}
+        >
+          <Copy size={13} aria-hidden />
+        </button>
+      ) : null}
+      {onFork ? (
+        <button
+          type="button"
+          className="turn-block-footer-action"
+          aria-label="Fork session"
+          // Not a fork from THIS turn: `fork_session` copies the whole
+          // transcript and resumes the session's latest conversation, so
+          // "from here" would be a promise the backend does not keep.
+          title="Fork session — copy it into a new session and continue there"
+          onClick={onFork}
+        >
+          <GitFork size={13} aria-hidden />
+        </button>
+      ) : null}
     </div>
   );
 }

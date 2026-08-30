@@ -545,6 +545,12 @@ pub struct SessionAgentEventsInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionForkInput {
+    pub session_id: SessionId,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReviewListChangedFilesInput {
     pub kind: WorkspaceTargetKind,
     pub id: WorkspaceTargetId,

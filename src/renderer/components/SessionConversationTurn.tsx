@@ -1,5 +1,6 @@
 import { memo, useState, type JSX, type MutableRefObject } from "react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
+import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { parsePlan } from "../lib/parsePlan.js";
@@ -43,6 +44,7 @@ function SessionConversationTurnInner({
   onOpenFile,
   onOpenAgent,
   onTerminateSession,
+  onForkSession,
   onSendSessionInput,
   inputRef,
   shouldRefocusInput,
@@ -62,6 +64,7 @@ function SessionConversationTurnInner({
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onOpenAgent?: (tool: ToolCall) => void;
   onTerminateSession: (sessionId: string) => Promise<void>;
+  onForkSession?: (sessionId: string) => Promise<void>;
   onSendSessionInput: SessionConversationSendInput;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   shouldRefocusInput: MutableRefObject<boolean>;
@@ -357,6 +360,23 @@ function SessionConversationTurnInner({
     .map((c) => c.createdAt)
     .filter((t): t is string => typeof t === "string" && t.length > 0)
     .sort()[0];
+  // Hover footer content: the turn's assistant prose for Copy, and a fork
+  // handler when the provider supports forking a resumed conversation.
+  const turnMarkdown = item.assistantEvents
+    .map((event) => event.message)
+    .filter((message) => message.length > 0)
+    .join("\n\n");
+  // Mirror `fork_session`'s gate (orchestration.rs): a mid-turn fork would copy
+  // a partial transcript, so the backend refuses "running" and "waiting". The
+  // footer only hides itself on the *latest* live turn, so without this every
+  // earlier turn — and every turn of a waiting session — offered a button whose
+  // only possible outcome was an error toast.
+  const forkable =
+    session !== null &&
+    FORK_CAPABLE_PROVIDERS.has(session.provider) &&
+    session.state !== "running" &&
+    session.state !== "waiting" &&
+    onForkSession !== undefined;
   return (
     <TurnBlock
       key={item.id}
@@ -368,6 +388,8 @@ function SessionConversationTurnInner({
       onToggleTools={() => setToolsExpandOverride(!toolsExpanded)}
       body={bodyChildren}
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
+      {...(turnMarkdown ? { turnMarkdown } : {})}
+      {...(forkable && session ? { onFork: () => void onForkSession?.(session.id) } : {})}
     />
   );
 }

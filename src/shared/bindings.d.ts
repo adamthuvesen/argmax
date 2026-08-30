@@ -280,6 +280,14 @@ async sessionAgentEvents(input: SessionAgentEventsInput) : Promise<Result<Sessio
     else return { status: "error", error: e  as any };
 }
 },
+async sessionFork(input: SessionForkInput) : Promise<Result<SessionForkResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_fork", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async reviewListChangedFiles(input: ReviewListChangedFilesInput) : Promise<Result<ChangedFileSummary[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("review_list_changed_files", { input }) };
@@ -822,6 +830,8 @@ export type SessionCostSummary = { sessionId: string; modelId: string | null; to
 export type SessionCostSummaryInput = { sessionId: SessionId }
 export type SessionEventsSinceInput = { sessionId: SessionId; eventCursor: number | null; rawOutputCursor: number | null }
 export type SessionEventsSinceResult = { events: TimelineEvent[]; rawOutputs: RawProviderOutput[]; eventCursor: number; rawOutputCursor: number }
+export type SessionForkInput = { sessionId: SessionId }
+export type SessionForkResult = { workspace: WorkspaceSummary; session: SessionSummary }
 /**
  * A picker token (icon name or palette color name). The renderer owns the
  * catalog; Rust only guarantees the value is a short slug so nothing arbitrary

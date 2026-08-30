@@ -212,14 +212,14 @@ export interface WorkspaceContentSearchResult {
 }
 
 /**
- * Result of `workspace:writeFile`. `ok: false, reason: "stale"` means the file
- * on disk was mutated since the editor last observed it; the renderer should
- * surface the "changed on disk, reload?" banner with `currentMtimeMs` as the
- * new baseline if the user chooses to keep their edits.
+ * Result of `workspace:writeFile`. `ok: "false"` means the file on disk was
+ * mutated since the editor last observed it and nothing was written; the
+ * renderer surfaces the "changed on disk, reload?" banner with
+ * `currentMtimeMs` as the new baseline. The tag is a *string* — Rust serializes
+ * the enum with `#[serde(tag = "ok", rename = "true"/"false")]` — so compare it
+ * explicitly; a truthiness test passes for both variants.
  */
-export type WorkspaceFileWriteResult =
-  | { ok: true; mtimeMs: number; size: number }
-  | { ok: false; reason: "stale"; currentMtimeMs: number; size: number };
+export type WorkspaceFileWriteResult = Bindings.WorkspaceFileWriteResult;
 
 export type RunCheckInput = Bindings.ChecksRunInput;
 export type GitCommitInput = OptionalNullable<Bindings.GitCommitInput, "selectedFiles">;

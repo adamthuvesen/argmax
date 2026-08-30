@@ -328,7 +328,7 @@ export function useFilePreview(args: {
         }
         const result = await writePromise;
         if (workspaceSaveTokens.current.get(filePath) !== token) return "aborted";
-        if (!result.ok) {
+        if (result.ok === "false") {
           updateTab(filePath, (current) => ({
             ...current,
             saveState: "idle",

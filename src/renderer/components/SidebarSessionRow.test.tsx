@@ -877,4 +877,40 @@ describe("styles.css startup contract", () => {
     expect(keyframeStart).toBeGreaterThanOrEqual(0);
     expect(keyframe).not.toMatch(/translateY|transform/i);
   });
+
+  it("marks a synced session with the agent it came from", () => {
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        importedProvider="Claude"
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+      />
+    );
+    expect(screen.getByTitle("Synced from Claude")).toHaveTextContent("Claude");
+  });
+
+  it("leaves rows for sessions started in Argmax unmarked", () => {
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+      />
+    );
+    expect(screen.queryByTitle(/^Synced from/)).not.toBeInTheDocument();
+  });
+
 });

@@ -365,6 +365,9 @@ export interface SessionSummary {
   /** The model's context window when the provider reports it (Codex); the
    *  renderer otherwise falls back to a per-model table. */
   contextWindow?: number | null;
+  /** True when the session came from a provider CLI's own transcript store
+   *  (Settings → Agents → Session sync) rather than being launched here. */
+  imported?: boolean;
 }
 
 /**
@@ -462,8 +465,35 @@ export interface SessionEventsSinceResult {
   rawOutputCursor: number;
 }
 
+/** Settings → Agents → Session sync. */
+export interface SyncConfigInput {
+  claude: boolean;
+  codex: boolean;
+  cursor: boolean;
+  opencode: boolean;
+  /** 24 or 168; the backend clamps anything else. */
+  windowHours: number;
+}
+
+export interface SyncStatus {
+  config: SyncConfigInput;
+  /** Providers whose transcript format Argmax can read; the rest render disabled. */
+  supportedProviders: string[];
+  lastRunAt: string | null;
+  importedCount: number;
+  lastError: string | null;
+}
+
 export type DashboardDelta = {
   [K in keyof DashboardSnapshot]?: DashboardSnapshot[K];
+} & {
+  /**
+   * Rows to drop rather than merge. The rest of the delta is whole-object
+   * replacement, which cannot express "gone"; the session-sync pruner deletes
+   * in the background, so it needs an explicit removal signal.
+   */
+  removedSessionIds?: string[];
+  removedWorkspaceIds?: string[];
 };
 
 export interface ArgmaxApi {
@@ -571,6 +601,11 @@ export interface ArgmaxApi {
     getStatus: () => Promise<RemoteStatus>;
     setConfig: (input: { enabled: boolean; port: number; ntfyTopic: string }) => Promise<RemoteStatus>;
     testNotification: () => Promise<{ ok: true }>;
+  };
+  sync: {
+    getStatus: () => Promise<SyncStatus>;
+    setConfig: (input: SyncConfigInput) => Promise<SyncStatus>;
+    runNow: () => Promise<SyncStatus>;
   };
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;

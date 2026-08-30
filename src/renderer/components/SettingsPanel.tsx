@@ -17,6 +17,7 @@ import type { ChatWidth } from "../lib/chatWidth.js";
 import type { ReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { AgentsSettings } from "./settings/AgentsSettings.js";
 import { GeneralSettings } from "./settings/GeneralSettings.js";
+import { SessionSyncSettings } from "./settings/SessionSyncSettings.js";
 import { IntegrationsSettings } from "./settings/IntegrationsSettings.js";
 import {
   DEFAULT_SETTINGS_GROUP,
@@ -314,6 +315,8 @@ export function SettingsPanel({
               }}
             />
           ) : null}
+
+          {activeGroup === "agents" ? <SessionSyncSettings /> : null}
 
           {activeGroup === "projects" ? (
             <ProjectsSettings projects={projects} onProjectUpdated={onProjectUpdated} />

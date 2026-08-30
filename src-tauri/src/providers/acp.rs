@@ -33,13 +33,16 @@ use crate::util::sync::LockOrRecover;
 const SETUP_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<ArgmaxResult<Value>>>>>;
-type UpdateSubscribers = Arc<Mutex<HashMap<String, mpsc::UnboundedSender<Value>>>>;
+/// Each entry carries the token of the subscription that installed it, so a
+/// displaced turn cannot unsubscribe the turn that replaced it.
+type UpdateSubscribers = Arc<Mutex<HashMap<String, (u64, mpsc::UnboundedSender<Value>)>>>;
 
 pub struct AcpClient {
     writer_tx: mpsc::UnboundedSender<String>,
     pending: PendingMap,
     subscribers: UpdateSubscribers,
     next_id: AtomicU64,
+    next_subscription: AtomicU64,
     dead: Arc<AtomicBool>,
     child: Mutex<Option<tokio::process::Child>>,
 }
@@ -84,6 +87,7 @@ impl AcpClient {
             pending: Arc::new(Mutex::new(HashMap::new())),
             subscribers: Arc::new(Mutex::new(HashMap::new())),
             next_id: AtomicU64::new(0),
+            next_subscription: AtomicU64::new(0),
             dead: Arc::new(AtomicBool::new(false)),
             child: Mutex::new(Some(child)),
         });
@@ -164,7 +168,7 @@ impl AcpClient {
                     return;
                 };
                 let subscribers = self.subscribers.lock_or_recover("acp subscribers");
-                if let Some(sender) = subscribers.get(session_id) {
+                if let Some((_, sender)) = subscribers.get(session_id) {
                     let _ = sender.send(params.clone());
                 }
             }
@@ -230,19 +234,27 @@ impl AcpClient {
         self.dead.load(Ordering::SeqCst)
     }
 
-    /// Subscribe to `session/update` notifications for one ACP session.
-    pub fn subscribe(&self, acp_session_id: &str) -> mpsc::UnboundedReceiver<Value> {
+    /// Subscribe to `session/update` notifications for one ACP session. The
+    /// returned token identifies this subscription: a later subscribe on the
+    /// same session displaces it, and `unsubscribe` only tears down the entry
+    /// that still matches its token.
+    pub fn subscribe(&self, acp_session_id: &str) -> (u64, mpsc::UnboundedReceiver<Value>) {
+        let token = self.next_subscription.fetch_add(1, Ordering::SeqCst) + 1;
         let (tx, rx) = mpsc::unbounded_channel();
         self.subscribers
             .lock_or_recover("acp subscribers")
-            .insert(acp_session_id.to_string(), tx);
-        rx
+            .insert(acp_session_id.to_string(), (token, tx));
+        (token, rx)
     }
 
-    pub fn unsubscribe(&self, acp_session_id: &str) {
-        self.subscribers
-            .lock_or_recover("acp subscribers")
-            .remove(acp_session_id);
+    pub fn unsubscribe(&self, acp_session_id: &str, token: u64) {
+        let mut subscribers = self.subscribers.lock_or_recover("acp subscribers");
+        if subscribers
+            .get(acp_session_id)
+            .is_some_and(|(current, _)| *current == token)
+        {
+            subscribers.remove(acp_session_id);
+        }
     }
 
     pub async fn request(&self, method: &str, params: Value) -> ArgmaxResult<Value> {
@@ -320,6 +332,7 @@ mod tests {
             pending: Arc::new(Mutex::new(HashMap::new())),
             subscribers: Arc::new(Mutex::new(HashMap::new())),
             next_id: AtomicU64::new(0),
+            next_subscription: AtomicU64::new(0),
             dead: Arc::new(AtomicBool::new(false)),
             child: Mutex::new(None),
         });
@@ -359,7 +372,7 @@ mod tests {
     #[tokio::test]
     async fn updates_route_to_session_subscriber() {
         let (client, _writer_rx) = test_client();
-        let mut updates = client.subscribe("s1");
+        let (_token, mut updates) = client.subscribe("s1");
         client.handle_line(
             &json!({"jsonrpc": "2.0", "method": "session/update",
                     "params": {"sessionId": "s1", "update": {"sessionUpdate": "agent_message_chunk"}}})
@@ -396,10 +409,27 @@ mod tests {
     async fn death_fails_pending_and_closes_subscribers() {
         let (client, _writer_rx) = test_client();
         let future = client.request_future("session/prompt", json!({})).unwrap();
-        let mut updates = client.subscribe("s1");
+        let (_token, mut updates) = client.subscribe("s1");
         client.mark_dead();
         assert!(future.await.is_err());
         assert!(updates.recv().await.is_none());
         assert!(client.request_future("session/new", json!({})).is_err());
+    }
+
+    #[tokio::test]
+    async fn a_displaced_subscriber_cannot_unsubscribe_its_replacement() {
+        let (client, _writer_rx) = test_client();
+        let (first_token, mut first) = client.subscribe("s1");
+        let (_second_token, mut second) = client.subscribe("s1");
+        // The replaced turn observes end-of-stream and tears down its own
+        // subscription; the replacement's must survive.
+        assert!(first.recv().await.is_none());
+        client.unsubscribe("s1", first_token);
+        client.handle_line(
+            &json!({"jsonrpc": "2.0", "method": "session/update",
+                    "params": {"sessionId": "s1", "update": {"sessionUpdate": "agent_message_chunk"}}})
+            .to_string(),
+        );
+        assert_eq!(second.recv().await.unwrap()["sessionId"], "s1");
     }
 }

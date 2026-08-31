@@ -751,6 +751,12 @@ export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: Wo
 export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number }
 export type DetectedIde = { id: IdeId; label: string; appPath: string; hasCli: boolean }
 export type DiagnosticsReport = { appVersion: string; sqliteVersion: string; databasePath: string; platform: string; arch: string; generatedAt: string; startupPhases: StartupPhaseRecord[]; databaseStats: DatabaseStats; ipcStats: IpcChannelStats[]; recentLogs: LogEntry[]; sqlitePragmas: SqlitePragmas; runtime: RuntimeDiagnostics }
+/**
+ * Lines of unchanged context a review diff carries on each side of a hunk.
+ * Absent means "let git use its default", which keeps the untouched request
+ * byte-identical to what it was before context became adjustable.
+ */
+export type DiffContextLines = number
 export type EventSearchResult = { sessionId: string; eventId: string; snippet: string; rank: number }
 export type FileContent = string
 export type GhPrRecord = { sessionId: string; prNumber: number; headSha: string; lastSeenCheckState: string; updatedAt: string; prState: string | null; notifiedAt: string | null }
@@ -888,7 +894,12 @@ export type RepoPath = string
  */
 export type ReviewComparison = "workingTree" | "branch" | "committed"
 export type ReviewListChangedFilesInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; comparison?: ReviewComparison }
-export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath | null; comparison?: ReviewComparison }
+export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath | null; comparison?: ReviewComparison; 
+/**
+ * Only honored for a single-file request. The whole-workspace diff keeps
+ * git's default context so opening the review panel never pays for it.
+ */
+contextLines?: DiffContextLines | null }
 export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdAt: string; updatedAt: string }
 export type RoutinesDeleteInput = { id: NonEmptyString }
 export type RoutinesListInput = Record<string, never>

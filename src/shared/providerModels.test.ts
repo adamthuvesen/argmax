@@ -77,12 +77,29 @@ describe("reasoningEffortsForModel", () => {
     ]);
   });
 
-  it("caps Codex at Extra High", () => {
+  it("offers Max and Ultra for Codex Sol/Terra, Max only for Luna", () => {
     expect(reasoningEffortsForModel("codex", "gpt-5.6-sol")).toEqual([
       "low",
       "medium",
       "high",
-      "xhigh"
+      "xhigh",
+      "max",
+      "ultra"
+    ]);
+    expect(reasoningEffortsForModel("codex", "gpt-5.6-terra")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultra"
+    ]);
+    expect(reasoningEffortsForModel("codex", "gpt-5.6-luna")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ]);
   });
 

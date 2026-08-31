@@ -83,6 +83,8 @@ export type EventType =
   | "session.compacting"
   | "session.compacted"
   | "session.provider-changed"
+  | "session.move-requested"
+  | "session.moved"
   | "session.recovered-from-crash";
 
 export interface ProjectSettings {
@@ -606,7 +608,14 @@ export interface ArgmaxApi {
   };
   review: {
     listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
-    loadDiff: (target: WorkspaceTarget, filePath?: string, comparison?: ReviewComparison) => Promise<WorkspaceDiff>;
+    /** `contextLines` is only honored for a single-file request; omit it for
+     *  git's default context. See ReviewLoadDiffInput. */
+    loadDiff: (
+      target: WorkspaceTarget,
+      filePath?: string,
+      comparison?: ReviewComparison,
+      contextLines?: number
+    ) => Promise<WorkspaceDiff>;
   };
   workspace: {
     listFiles: (target: WorkspaceTarget) => Promise<WorkspaceFileEntry[]>;

@@ -289,11 +289,33 @@ export function BrowserPanel({ url, requestSeq, onClose, onResizeMouseDown }: Br
     return () => subscription();
   }, [browser, hideTabWebview, openTabWebview]);
 
+  const goBack = useCallback(
+    (tabId: string): void => {
+      void browser?.back(tabId).catch(reportError);
+    },
+    [browser, reportError]
+  );
+
+  const goForward = useCallback(
+    (tabId: string): void => {
+      void browser?.forward(tabId).catch(reportError);
+    },
+    [browser, reportError]
+  );
+
   // Shortcuts pressed while the page itself has focus never reach renderer
   // JS; the webview init script intercepts them and Rust relays them here.
   useEffect(() => {
     if (!browser) return;
     const subscription = browser.onPageCommand((event) => {
+      if (event.command === "back") {
+        goBack(event.tabId);
+        return;
+      }
+      if (event.command === "forward") {
+        goForward(event.tabId);
+        return;
+      }
       if (event.command === "close-tab") {
         closeTab(event.tabId);
         return;
@@ -308,7 +330,26 @@ export function BrowserPanel({ url, requestSeq, onClose, onResizeMouseDown }: Br
       }
     });
     return () => subscription();
-  }, [addTab, browser, closeTab]);
+  }, [addTab, browser, closeTab, goBack, goForward]);
+
+  // Mouse thumb buttons over the pane chrome (toolbar, tab strip). Clicks
+  // landing on the page itself go to the native webview instead and come back
+  // as browser:page-command events.
+  useEffect(() => {
+    if (!browser) return;
+    const onMouseUp = (event: MouseEvent): void => {
+      if (event.button !== 3 && event.button !== 4) return;
+      const panel = panelRef.current;
+      if (!panel || !(event.target instanceof Node) || !panel.contains(event.target)) return;
+      const active = getActiveBrowserTabId();
+      if (!active) return;
+      event.preventDefault();
+      if (event.button === 3) goBack(active);
+      else goForward(active);
+    };
+    document.addEventListener("mouseup", onMouseUp, true);
+    return () => document.removeEventListener("mouseup", onMouseUp, true);
+  }, [browser, goBack, goForward]);
 
   // Menu ⌘W with the pane open: App routes it here to close the active tab.
   useEffect(
@@ -546,7 +587,7 @@ export function BrowserPanel({ url, requestSeq, onClose, onResizeMouseDown }: Br
           type="button"
           title="Back"
           aria-label="Back"
-          onClick={() => activeTabId && void browser.back(activeTabId).catch(reportError)}
+          onClick={() => activeTabId && goBack(activeTabId)}
         >
           <ArrowLeft size={14} strokeWidth={1.75} />
         </button>
@@ -554,7 +595,7 @@ export function BrowserPanel({ url, requestSeq, onClose, onResizeMouseDown }: Br
           type="button"
           title="Forward"
           aria-label="Forward"
-          onClick={() => activeTabId && void browser.forward(activeTabId).catch(reportError)}
+          onClick={() => activeTabId && goForward(activeTabId)}
         >
           <ArrowRight size={14} strokeWidth={1.75} />
         </button>

@@ -352,6 +352,29 @@ describe("BrowserPanel", () => {
     expect(screen.getByRole("textbox", { name: "Address" })).toHaveFocus();
   });
 
+  it("navigates history from the page's mouse thumb buttons", () => {
+    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    const firstTab = activeTabId();
+
+    act(() => pageCommandListener?.({ tabId: firstTab, command: "back" }));
+    expect(browserStub.back).toHaveBeenCalledWith(firstTab);
+
+    act(() => pageCommandListener?.({ tabId: firstTab, command: "forward" }));
+    expect(browserStub.forward).toHaveBeenCalledWith(firstTab);
+  });
+
+  it("navigates history from thumb buttons clicked on the pane chrome", () => {
+    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    const tabId = activeTabId();
+    const toolbarTarget = screen.getByRole("textbox", { name: "Address" });
+
+    fireEvent.mouseUp(toolbarTarget, { button: 3 });
+    expect(browserStub.back).toHaveBeenCalledWith(tabId);
+
+    fireEvent.mouseUp(toolbarTarget, { button: 4 });
+    expect(browserStub.forward).toHaveBeenCalledWith(tabId);
+  });
+
   it("surfaces the 1Password fill result", async () => {
     render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
     fireEvent.click(screen.getByRole("button", { name: "Fill login from 1Password" }));

@@ -6,7 +6,13 @@
    element scrolls per screen — .mobile-list-scroll on the list, the
    conversation scroller inside SessionPane on a session — with overscroll
    contained so momentum never chains to the document and rubber-bands the
-   whole app. */
+   whole app.
+
+   Viewport: `100dvh` measures the layout viewport, which no phone shrinks for
+   the on-screen keyboard — iOS pans instead, hiding the composer under it.
+   `--mobile-viewport-*` carry the visual viewport's height and pan offset
+   (useVisualViewportInsets.ts); the `dvh` fallback is what a browser without
+   `visualViewport` gets. */
 
 html:has(.mobile-shell),
 html:has(.mobile-shell) body {
@@ -18,7 +24,8 @@ html:has(.mobile-shell) body {
 .mobile-shell {
   position: fixed;
   inset: 0;
-  height: 100dvh;
+  top: var(--mobile-viewport-offset, 0px);
+  height: var(--mobile-viewport-height, 100dvh);
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -50,6 +57,15 @@ html:has(.mobile-shell) body {
   font-weight: 650;
   letter-spacing: -0.01em;
   margin: 0;
+}
+
+/* Every phone tap target opts out of double-tap-to-zoom. iOS ignores the
+   viewport's `maximum-scale`, so without this each tap waits ~300ms for a
+   second one before it fires and the whole app feels a beat behind. */
+.mobile-shell button,
+.mobile-shell select,
+.mobile-sheet-backdrop button {
+  touch-action: manipulation;
 }
 
 .mobile-icon-button {
@@ -99,6 +115,7 @@ html:has(.mobile-shell) body {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   padding-bottom: calc(24px + env(safe-area-inset-bottom));
 }
@@ -353,7 +370,12 @@ html:has(.mobile-shell) body {
   flex: 1;
   min-height: 0;
   overscroll-behavior-y: contain;
-  touch-action: pan-y;
+  /* The transcript itself can't move sideways (`overflow-x: hidden`), so pan-x
+     here costs nothing and is the only way a wide block inside it — a table in
+     its `.markdown-table-scroll`, a long code line — can be dragged across:
+     touch-action intersects down the ancestor chain, so a pan-y lock up here
+     would veto the child's own sideways scroll. */
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -369,26 +391,17 @@ html:has(.mobile-shell) body {
 
 /* Desktop affordances the phone loop does not need: header actions, the
    terminal, the in-pane repo heading, the checks/changed-files cards, the
-   approvals jump banner (approvals are always pinned on screen here), the
-   file-attach button, and the "…" workspace-context trigger — changed files
-   live behind the header button and the rest is desktop-only. */
+   approvals jump banner (approvals are always pinned on screen here), and the
+   inline workspace chips — changed files live behind the header button and the
+   rest is desktop-only. The "…" trigger stays: on a phone it is the only way
+   to attach a file, since there is nothing to drag. */
 .mobile-shell .conversation-header-actions,
 .mobile-shell .terminal-panel,
 .mobile-shell .conversation-surface > .section-heading,
 .mobile-shell .session-meta-cards,
 .mobile-shell .composer-approvals-banner,
-.mobile-shell .session-input-toolbar .composer-tool,
-.mobile-shell .composer-compact-context,
-.mobile-shell .composer-chips-context,
-.mobile-shell .session-input-toolbar > .context-ring-anchor {
+.mobile-shell .composer-chips-context {
   display: none !important;
-}
-
-/* With the attach and context columns gone, give their toolbar tracks back
-   to the model picker (the compact grid reserves "attach" and "details"). */
-.mobile-shell .session-input-toolbar {
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  grid-template-areas: "model mode send";
 }
 
 /* Keep both mobile composers aligned with the agent output. The explicit
@@ -497,6 +510,10 @@ html:has(.mobile-shell) body {
 .mobile-sheet-backdrop {
   position: fixed;
   inset: 0;
+  /* Same visual-viewport frame as the shell: a sheet anchored to the layout
+     viewport's bottom edge sits behind a raised keyboard. */
+  top: var(--mobile-viewport-offset, 0px);
+  height: var(--mobile-viewport-height, 100dvh);
   z-index: 40;
   background: rgba(0, 0, 0, 0.45);
   display: flex;
@@ -507,6 +524,8 @@ html:has(.mobile-shell) body {
   width: 100%;
   max-height: 70dvh;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
   background: var(--panel);
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
@@ -672,7 +691,9 @@ html:has(.mobile-shell) body {
   position: fixed;
   left: 16px;
   right: 16px;
-  bottom: calc(16px + env(safe-area-inset-bottom));
+  /* Fixed elements measure the layout viewport, so a raised keyboard would
+     bury the toast; the inset lifts it clear of one. */
+  bottom: calc(16px + env(safe-area-inset-bottom) + var(--mobile-keyboard-inset, 0px));
   padding: 12px 14px;
   border-radius: 12px;
   background: var(--panel);
@@ -775,6 +796,7 @@ html:has(.mobile-shell) body {
 .mobile-review-scroll {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   padding: 0 10px calc(24px + env(safe-area-inset-bottom, 0px));
 }
@@ -793,6 +815,7 @@ html:has(.mobile-shell) body {
 
 .mobile-review-scroll .review-inline-diff {
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -806,6 +829,8 @@ html:has(.mobile-shell) body {
 .mobile-review-screen .workspace-tree {
   flex: 1;
   min-height: 0;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 4px 8px calc(16px + env(safe-area-inset-bottom, 0px));
 }
 
@@ -813,6 +838,7 @@ html:has(.mobile-shell) body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   padding: 0 12px calc(16px + env(safe-area-inset-bottom, 0px));
 }

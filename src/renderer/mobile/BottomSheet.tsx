@@ -17,6 +17,15 @@ export function BottomSheet({
   onClose: () => void;
   children: ReactNode;
 }): JSX.Element {
+  // A sheet is anchored to the bottom edge, so a keyboard still up from the
+  // screen behind it covers the options. iOS does not move focus when a button
+  // is tapped, so the composer keeps it — and the keyboard — unless the sheet
+  // takes it away.
+  useEffect(() => {
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement) focused.blur();
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;

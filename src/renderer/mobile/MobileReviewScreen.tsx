@@ -28,11 +28,18 @@ function statusGlyph(status: string): string {
 export function MobileReviewScreen({
   workspace,
   initialFilePath = null,
+  filePreviewOpen,
+  onFilePreviewOpenChange,
   onClose
 }: {
   workspace: WorkspaceSummary;
   /** Open straight into this file — set when a chat file reference was tapped. */
   initialFilePath?: string | null;
+  /** Whether the Files drill-down is showing a file rather than the tree.
+   *  Owned by MobileApp, like the new-session pickers, so a hardware back
+   *  gesture pops the preview instead of the whole review screen. */
+  filePreviewOpen: boolean;
+  onFilePreviewOpenChange: (open: boolean) => void;
   onClose: () => void;
 }): JSX.Element {
   const source = useMemo<ReviewSource>(() => ({ kind: "workspace", workspace }), [workspace]);
@@ -44,15 +51,13 @@ export function MobileReviewScreen({
   const review = useReviewState(source, null, { editable: false, initiallyOpen: true });
 
   const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
-  // Files mode drills down: tree first, then the tapped file full-screen.
-  const [fileOpen, setFileOpen] = useState(false);
 
   const { openInFilesView } = review;
   useEffect(() => {
     if (!initialFilePath) return;
     openInFilesView(initialFilePath);
-    setFileOpen(true);
-  }, [initialFilePath, openInFilesView]);
+    onFilePreviewOpenChange(true);
+  }, [initialFilePath, onFilePreviewOpenChange, openInFilesView]);
 
   const isChanges = review.mode === "changes";
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
@@ -70,20 +75,26 @@ export function MobileReviewScreen({
     review.openFile(filePath);
   };
 
-  const previewingFile = !isChanges && fileOpen && review.workspaceFiles.selectedPath !== null;
+  const previewingFile = !isChanges && filePreviewOpen;
   // Selecting a file in the tree pushes the full-screen preview.
   const treeState = {
     ...review.workspaceFiles,
     openFile: (path: string): void => {
       review.workspaceFiles.openFile(path);
-      setFileOpen(true);
+      onFilePreviewOpenChange(true);
     }
+  };
+  // Leaving Files mode takes the drill-down with it, so the screen depth the
+  // back gesture reads never claims a preview that isn't on screen.
+  const showMode = (mode: "changes" | "files"): void => {
+    if (mode === "changes") onFilePreviewOpenChange(false);
+    review.setMode(mode);
   };
 
   return (
     <div className="mobile-review-screen">
       <MobileScreenHeader
-        onBack={previewingFile ? () => setFileOpen(false) : onClose}
+        onBack={previewingFile ? () => onFilePreviewOpenChange(false) : onClose}
         backLabel={previewingFile ? "Back to files" : "Back to session"}
         title={
           <div className="mobile-review-tabs" role="tablist" aria-label="Review mode">
@@ -91,7 +102,7 @@ export function MobileReviewScreen({
               role="tab"
               type="button"
               aria-selected={isChanges}
-              onClick={() => review.setMode("changes")}
+              onClick={() => showMode("changes")}
             >
               Changes
             </button>
@@ -99,7 +110,7 @@ export function MobileReviewScreen({
               role="tab"
               type="button"
               aria-selected={!isChanges}
-              onClick={() => review.setMode("files")}
+              onClick={() => showMode("files")}
             >
               Files
             </button>

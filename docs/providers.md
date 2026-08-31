@@ -15,7 +15,7 @@ Argmax manages Claude Code, Codex, Cursor Agent, and OpenCode through Rust servi
 - [flush_queue.rs](../src-tauri/src/providers/flush_queue.rs): Batches event writes to SQLite and emits `dashboard:delta`. Complete JSONL lines flush immediately; non-newline trailing fragments are debounced for ~16 ms so interactive sessions surface output promptly.
 - [subagent_trace.rs](../src-tauri/src/providers/subagent_trace.rs): Imports trace-backed child activity and reconciles authoritative child lineage when a provider omits a launch row.
 - [pricing.rs](../src-tauri/src/providers/pricing.rs): Token pricing models matching `src/shared/providerModels.ts`.
-- [title.rs](../src-tauri/src/providers/title.rs): Generates short session titles using a cheap background CLI call (`PROVIDER_TITLE_MODEL` in `providerModels.ts`). Claude titles use `claude-sonnet-5 --effort low`. OpenCode titles stay on the free `opencode/big-pickle` model.
+- [one_shot.rs](../src-tauri/src/providers/one_shot.rs): One-shot helper calls to a provider CLI, all on the cheap `PROVIDER_TITLE_MODEL` (`providerModels.ts`) with tools and config loading off. Two callers: short session titles (`workspaces:autotitle`) and the composer's suggested follow-up (`session:suggest-follow-up`). Claude uses `claude-sonnet-5 --effort low`; OpenCode stays on the free `opencode/big-pickle` model.
 
 Raw provider output is saved for debugging, but only normalized timeline events are displayed in chat.
 

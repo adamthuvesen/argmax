@@ -35,11 +35,13 @@ The destination uses the shared checkout by default. `--worktree` creates an iso
 
 ## Sidebar Priority Section
 
-Workspaces with active attention (`approval-needed`, `blocked`, `failed`, or `review-ready`) appear in the Priority section beneath Pinned.
+Workspaces with active attention (`approval-needed`, `blocked`, `failed`, or `review-ready`) and workspaces with a live turn share the Priority section beneath Pinned.
 
 - Calculated client-side in [src/renderer/lib/priority.ts](../src/renderer/lib/priority.ts). Entries remain while working and for 30 minutes after the last message (`PRIORITY_IDLE_MS`).
+- Order: attention rows first (by severity, oldest waiting first), then running rows (newest activity first), then manual adds.
 - Pinned status takes precedence over Priority.
-- Right-click "Done" (`workspaces:set-priority-dismissed`) clears a priority item until new attention arrives. Manual adds (`workspaces:set-priority-added`) persist until cleared.
+- Right-click "Done" (`workspaces:set-priority-dismissed`) clears a priority item until new attention arrives. Manual adds (`workspaces:set-priority-added`) persist until cleared. A row that is only listed because its turn is running has no "Done" — it leaves when the turn ends — and the header's Clear skips it.
+- The "Priority section in sidebar" setting hides the whole section, running rows included; they fall back to their date bucket or project group.
 
 ## Custom Row Icons
 

@@ -31,19 +31,29 @@
    of the overflow and collapse, dragging the nav up under the buttons. */
 .window-controls {
   flex: 0 0 auto;
-  height: 36px;
+  height: 44px;
   margin-bottom: 2px;
 }
 
 /* ---- Sidebar toggle: single fixed button, parked right of the macOS traffic
    lights and vertically aligned with them, so it never moves between the
-   hide (expanded) and show (collapsed) states. `left` keeps the glyph about
-   1.2 traffic-light diameters clear of the green light, matching Cursor's
-   titlebar, without reaching into the native buttons. ---- */
+   hide (expanded) and show (collapsed) states.
+
+   `--titlebar-center` is the measured centreline of the native traffic lights,
+   in px from the window top. It is NOT simply trafficLightPosition.y: tao sizes
+   the titlebar container to `button height + y` and leaves each button's own
+   offset inside it, so the dots land a couple of px above y. Tuned by eye
+   against the rendered window -- adjust this one value if the glyph drifts off
+   the dots' line, and leave the calc alone.
+
+   `left` keeps the glyph about 1.2 traffic-light diameters clear of the green
+   light, matching Cursor's titlebar, without reaching into the native buttons;
+   it tracks trafficLightPosition.x in tauri.conf.json. ---- */
 .sidebar-toggle {
+  --titlebar-center: 22px;
   position: fixed;
-  top: 1px;
-  left: 78px;
+  top: calc(var(--titlebar-center) - 15px);
+  left: 85px;
   z-index: 62;
   display: inline-flex;
   align-items: center;

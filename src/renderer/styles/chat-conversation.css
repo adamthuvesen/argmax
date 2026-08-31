@@ -375,7 +375,7 @@
   .session-multigrid-cell:first-child
   .conversation-surface
   .section-heading {
-  padding-left: 124px;
+  padding-left: 131px;
 }
 
 /* Left-docked review panel in the top-left cell: the review toolbar, not the
@@ -396,7 +396,7 @@
   .session-grid.review-open
   > .review-panel
   .review-toolbar {
-  padding-left: 124px;
+  padding-left: 131px;
 }
 
 .section-heading > div {

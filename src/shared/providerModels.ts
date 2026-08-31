@@ -21,8 +21,10 @@ export interface ProviderModelOption {
   supportsReasoningEffort?: boolean;
   /**
    * Context-window size in tokens. Used to show window occupancy when the
-   * provider doesn't report it on the session (Codex does; Claude/Cursor fall
-   * back to this). Approximate — revisit when a provider changes its window.
+   * provider doesn't report it on the session — in practice that is every
+   * provider, including Codex, whose window rides only on the `token_count`
+   * rows `codex exec --json` no longer emits. Approximate — revisit when a
+   * provider changes its window.
    */
   contextWindow?: number;
   description?: string;
@@ -148,10 +150,13 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Sonnet 5", modelId: "claude-sonnet-5", supportsReasoningEffort: true, contextWindow: 200_000 },
     { label: "Haiku 4.5", modelId: "claude-haiku-4-5", contextWindow: 200_000 }
   ],
+  // 258_400, not the 272_000 the model card advertises: that is the figure
+  // Codex itself reports as `model_context_window` in its rollout, and the one
+  // the CLI measures occupancy against. Verified against codex-cli 0.149.0.
   codex: [
-    { label: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", supportsReasoningEffort: true, contextWindow: 272_000 },
-    { label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra", supportsReasoningEffort: true, contextWindow: 272_000 },
-    { label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna", supportsReasoningEffort: true, contextWindow: 272_000 }
+    { label: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", supportsReasoningEffort: true, contextWindow: 258_400 },
+    { label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra", supportsReasoningEffort: true, contextWindow: 258_400 },
+    { label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna", supportsReasoningEffort: true, contextWindow: 258_400 }
   ],
   cursor: [
     { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5", contextWindow: 1_000_000 },

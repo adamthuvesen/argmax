@@ -77,6 +77,7 @@ export function TurnBlock({
   onToggleTools,
   headerTimestampIso,
   turnMarkdown,
+  changes,
   onFork
 }: {
   toolItems: TurnToolItem[];
@@ -104,6 +105,10 @@ export function TurnBlock({
   // The turn's assistant prose, for the hover footer's Copy action. The
   // footer renders only after the turn finishes and only while hovered.
   turnMarkdown?: string;
+  // Summary of the files this turn wrote, rendered under the body once the
+  // turn settles. A summary of a turn still in progress would be a moving
+  // number, so the parent only supplies it for a finished turn.
+  changes?: JSX.Element | null;
   // Fork the session this turn belongs to (provider-gated by the parent).
   onFork?: () => void;
 }): JSX.Element {
@@ -233,6 +238,7 @@ export function TurnBlock({
       >
         {groupToolRuns(body)}
       </div>
+      {!running ? changes ?? null : null}
       {!running && (turnMarkdown || onFork) ? (
         <TurnFooter {...(turnMarkdown ? { turnMarkdown } : {})} {...(onFork ? { onFork } : {})} />
       ) : null}

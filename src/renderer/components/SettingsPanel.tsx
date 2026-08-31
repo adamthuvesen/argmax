@@ -52,6 +52,8 @@ export function SettingsPanel({
   reviewPanelSide,
   onReviewPanelSideChange,
   fastModeEnabled,
+  turnChangesExpanded,
+  onTurnChangesExpandedChange,
   onFastModeEnabledChange,
   fontFamily,
   onFontFamilyChange,
@@ -93,6 +95,8 @@ export function SettingsPanel({
   reviewPanelSide: ReviewPanelSide;
   onReviewPanelSideChange: (side: ReviewPanelSide) => void;
   fastModeEnabled: boolean;
+  turnChangesExpanded: boolean;
+  onTurnChangesExpandedChange: (v: boolean) => void;
   onFastModeEnabledChange: (v: boolean) => void;
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
@@ -294,6 +298,8 @@ export function SettingsPanel({
               chatVerbosity={chatVerbosity}
               onChatVerbosityChange={onChatVerbosityChange}
               fastModeEnabled={fastModeEnabled}
+              turnChangesExpanded={turnChangesExpanded}
+              onTurnChangesExpandedChange={onTurnChangesExpandedChange}
               onFastModeEnabledChange={onFastModeEnabledChange}
               permissionMode={permissionMode}
               onPermissionModeChange={onPermissionModeChange}

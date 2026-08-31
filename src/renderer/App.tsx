@@ -92,6 +92,7 @@ import {
 import {
   COMPOSER_PIXEL_FIELD_KEY,
   FAST_MODE_KEY,
+  TURN_CHANGES_EXPANDED_KEY,
   RANDOM_SESSION_ICON_KEY,
   SIDEBAR_COLLAPSED_KEY,
   SIDEBAR_PRIORITY_KEY,
@@ -175,6 +176,10 @@ export function App(): JSX.Element {
   }, [sidebarCollapsed, setSidebarCollapsed]);
   const [workspaceCardVisible, setWorkspaceCardVisible] = useBooleanUiPreference(WORKSPACE_CARD_KEY, true);
   const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
+  const [turnChangesExpanded, setTurnChangesExpanded] = useBooleanUiPreference(
+    TURN_CHANGES_EXPANDED_KEY,
+    true
+  );
   const [pixelFieldEnabled, setPixelFieldEnabled] = useBooleanUiPreference(COMPOSER_PIXEL_FIELD_KEY, false);
   const [randomSessionIconEnabled, setRandomSessionIconEnabled] = useBooleanUiPreference(
     RANDOM_SESSION_ICON_KEY,
@@ -1794,6 +1799,8 @@ export function App(): JSX.Element {
                 onReviewPanelSideChange={setReviewPanelSide}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={setFastModeEnabled}
+                turnChangesExpanded={turnChangesExpanded}
+                onTurnChangesExpandedChange={setTurnChangesExpanded}
                 fontFamily={fontFamily}
                 onFontFamilyChange={setFontFamily}
                 fontSize={fontSize}
@@ -1849,6 +1856,7 @@ export function App(): JSX.Element {
               defaultToolCallsDisplay={toolCallsDisplay}
               defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
               defaultThinkingExpanded={thinkingExpanded}
+              defaultTurnChangesExpanded={turnChangesExpanded}
               fastModeEnabled={fastModeEnabled}
               workspaceCardVisible={workspaceCardVisible}
               onWorkspaceCardVisibleChange={setWorkspaceCardVisible}

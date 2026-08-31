@@ -286,6 +286,19 @@
   font-weight: inherit;
 }
 
+/* Headings paint --prose-ink-strong on their own element, so the container's
+   `color: inherit` above never reaches them. Reasoning is secondary text; a
+   bright heading inside it would outrank the answer's own prose. Keep the
+   weight and spacing so the structure still reads. */
+.thought-block-body .markdown :where(h1, h2, h3),
+.thought-block-body .markdown ol > li:only-child {
+  color: inherit;
+}
+
+.thought-block-body .markdown h1 {
+  border-bottom-color: var(--line-soft);
+}
+
 /* The stable word carries personality while the shared WorkingNest carries
    activity. Keeping motion off the text makes long labels as calm as short ones. */
 .thinking-indicator {
@@ -373,14 +386,18 @@
 
 /* Compaction runs for minutes in complete silence, so the live marker is the
    pane's only progress cue (SessionConversation suppresses Thinking while it
-   runs). Reuse the Thinking pulse rather than inventing a second idiom. */
+   runs). A breath, not a blink: the curve is symmetric and flat at both ends,
+   so the ramp reads as a sine wave with no visible turn. `--ease` is an
+   ease-out — it snapped to full, coasted, then reversed at speed, which is
+   what made this look rough. Slow and wide so the pulse is legible from the
+   corner of the eye without pulling focus. */
 .conversation-notice[data-running="true"] .conversation-notice-text {
   color: var(--muted-strong);
-  animation: conversation-notice-pulse 1800ms var(--ease) infinite;
+  animation: conversation-notice-pulse 2600ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 @keyframes conversation-notice-pulse {
-  0%, 100% { opacity: 0.55; }
+  0%, 100% { opacity: 0.34; }
   50% { opacity: 1; }
 }
 
@@ -453,44 +470,182 @@
   }
 }
 
-.tool-call-section-label {
+/* Expanded detail is one soft fill per tool call: no border, no rail, one
+   radius. The fill is what says "this is not prose" — a hairline box around it
+   said the same thing twice, and two of them stacked (command, then output)
+   gave a single call four blocks and two scrollbars. */
+.tool-call-block {
+  --tool-call-block-pad: 11px;
   display: flex;
-  align-items: baseline;
-  gap: 4px;
-  margin: 0 0 4px;
-  font-size: var(--text-xs);
-  font-weight: 450;
-  letter-spacing: 0;
-  text-transform: none;
-  color: color-mix(in oklab, var(--muted) 88%, var(--text-soft) 12%);
+  flex-direction: column;
+  /* Hugs its content rather than stretching the column: a one-word `ok` in a
+     full-width fill read as an empty panel with a word in the corner. */
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--tool-call-block-pad) 0;
+  border-radius: var(--radius-md);
+  background: var(--tool-block-surface);
 }
 
-.tool-call-section-meta {
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
+/* One scroller, and it holds every part. */
+.tool-call-block-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: calc(16 * 1.65em);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted) 40%, transparent) transparent;
+}
+
+/* Padding lives on the parts, so a separator can run full-bleed across the
+   fill and the block still reads as one object rather than three. */
+.tool-call-block-body > *:not(.tool-call-block-rule) {
+  padding-left: 13px;
+  padding-right: 13px;
+}
+
+/* Arguments, payload and footer are separated inside the fill, full-bleed, so
+   the block still reads as one object. */
+.tool-call-block-rule {
+  flex: 0 0 auto;
+  height: 1px;
+  margin: 9px 0;
+  background: color-mix(in oklab, var(--line) 74%, transparent);
+}
+
+.tool-call-block > .tool-call-block-rule {
+  margin: var(--tool-call-block-pad) 0 9px;
+}
+
+/* Tool arguments as a key/value list, above the payload: the order the call
+   happened in. The old `+ Input` disclosure printed JSON.stringify below the
+   result, so you read the answer before the question. */
+.tool-call-args {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 1px 14px;
+  margin: 0;
+  min-width: 0;
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  font-feature-settings: var(--code-font-features);
+  line-height: 1.7;
+}
+
+.tool-call-args dt {
   color: var(--muted);
+}
+
+.tool-call-args dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text-soft);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Lines, size, duration, an envelope title, short arguments — one dim row, one
+   place to look. This replaced the floating "Output" label and its
+   `— showing first 3,000 of 41,208 chars` meta. */
+.tool-call-block-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 13px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.tool-call-block-facts {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-call-block-action {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted-strong);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.tool-call-block-action:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--muted) 50%, transparent);
+}
+
+.tool-call-block-action:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--radius-sm);
+}
+
+/* No payload, so no fill: the footer's own actions sit on the transcript
+   ground, flush with the row that opened them. */
+.tool-call-detail-actions {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tool-call-detail-actions > .tool-call-block-rule {
+  display: none;
+}
+
+.tool-call-detail-actions > .tool-call-block-foot {
+  padding: 0;
+}
+
+/* Error and Preview keep a label: rose text alone does not say what a block is
+   when the payload is a plain sentence, and a preview is input content, which
+   would otherwise read as output. Nothing else is labelled. */
+.tool-call-part {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tool-call-part-label {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 450;
+  color: color-mix(in oklab, var(--muted) 88%, var(--text-soft) 12%);
 }
 
 /* Mono in the transcript sits a notch under the prose scale, the same step the
    diff cards take: Geist Mono shares the sans x-height but spans 1.30em of ink
    against its 1.14em and carries a wider advance, so a block set to the prose
    size reads larger than the answer around it. */
+/* The payload carries no chrome of its own: the block's fill is the frame and
+   the block's body is the scroller. A box here meant a border inside a fill,
+   and one max-height nested inside another. */
 .tool-call-code {
   margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--code-surface) 46%, transparent);
-  border: 1px solid color-mix(in oklab, var(--line-soft) 64%, transparent);
+  padding: 0;
+  border: 0;
+  background: transparent;
   font-family: var(--font-code);
   font-size: var(--text-xs);
   font-feature-settings: var(--code-font-features);
   line-height: 1.7;
-  color: color-mix(in oklab, var(--text) 86%, var(--muted-strong) 14%);
+  /* A notch under the assistant's prose: a payload is something the transcript
+     reports, not something it says. Still 11:1 on the block fill. */
+  color: color-mix(in oklab, var(--text) 72%, var(--muted-strong) 28%);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 300px;
-  overflow: auto;
 }
 
 .tool-call-command-line {
@@ -517,55 +672,10 @@
   font: inherit;
 }
 
+/* A failure is rose text under its label, not a rose box: the row's verb has
+   already changed colour, and a second tinted surface said it twice. */
 .tool-call-code--error {
-  background: var(--code-surface);
-  border-color: var(--line);
-  color: var(--text);
-}
-
-.tool-call-code--terminal {
-  position: relative;
-  background: color-mix(in oklab, var(--code-surface) 52%, transparent);
-  border-color: color-mix(in oklab, var(--line) 58%, transparent);
-}
-
-.tool-call-code--terminal::before {
-  content: none;
-}
-
-.tool-call-raw-input {
-  margin: 0;
-  min-width: 0;
-}
-
-.tool-call-raw-input summary {
-  width: max-content;
-  max-width: 100%;
-  cursor: pointer;
-  color: var(--muted);
-  font-size: var(--text-xs);
-  font-weight: 450;
-  list-style: none;
-  user-select: none;
-}
-
-.tool-call-raw-input summary::-webkit-details-marker {
-  display: none;
-}
-
-.tool-call-raw-input summary::before {
-  content: "+";
-  display: inline-block;
-  width: 14px;
-  color: color-mix(in oklab, var(--muted) 72%, transparent);
-}
-
-.tool-call-raw-input[open] summary::before {
-  content: "−";
-}
-
-.tool-call-raw-input .tool-call-code {
-  margin-top: 6px;
+  color: color-mix(in oklab, var(--rose) 72%, var(--text));
 }
 
 .tool-call-agent-activity {
@@ -580,36 +690,6 @@
 
 .tool-call-agent-child-list .tool-call-row-button {
   padding-left: 14px;
-}
-
-.tool-call-open-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  justify-self: start;
-  align-self: flex-start;
-  width: auto;
-  max-width: 100%;
-  padding: 3px 9px;
-  border-radius: var(--radius-sm);
-  border: 1px solid color-mix(in oklab, var(--line-soft) 88%, transparent);
-  background: transparent;
-  color: var(--muted-strong);
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-  letter-spacing: 0.01em;
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
-}
-
-.tool-call-open-button:hover {
-  background: color-mix(in oklab, var(--panel-soft) 78%, transparent);
-  color: var(--text);
-  border-color: color-mix(in oklab, var(--line) 86%, transparent);
-}
-
-.tool-call-open-button svg {
-  flex: 0 0 auto;
 }
 
 /* Tool-call group — quiet transcript summary.
@@ -837,6 +917,20 @@
 
 .tool-call-row[data-tool-type="bash"] .tool-call-row-target {
   font-family: var(--font-code);
+  /* Ligatures off, same reason as every other surface showing text the app did
+     not author: Geist Mono fuses `===` into one solid bar, so a command read as
+     struck through in the row while the block under it rendered it cleanly. */
+  font-feature-settings: var(--code-font-features);
+}
+
+/* Expanding a row unwraps its target: a truncated bash command used to be
+   restated in full inside the detail, so the same string read twice in two
+   sizes. Collapsed rows stay one clipped line. */
+.tool-call-row-button[aria-expanded="true"] .tool-call-row-target {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 /* Hovering brightens what the row is about, which is the useful feedback —
@@ -1094,4 +1188,195 @@
 .agent-launch-row > .tool-call-detail {
   margin: 2px 0 0;
   padding: 4px 0 0;
+}
+
+/* Changed files a finished turn wrote. The one card in the activity surface
+   that carries chrome: it is a summary of the turn, not a row in it, and the
+   glyph column is what makes a stylesheet and a component tell apart at a
+   glance. Family ink reuses the syntax tokens — no new palette. */
+.turn-changes {
+  --turn-changes-family: var(--muted);
+  /* The card is a coda to the reply, not the reply's last paragraph — it needs
+     more air above it than the gap between two paragraphs. */
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  /* Sunken, not lifted, and only just: --panel reads as a gray slab against
+     the dark well, while the full sunken step reads as a hole in it. Half a
+     step below the page fill is where the card stops competing with either. */
+  background: color-mix(in oklab, var(--panel) 45%, var(--code-surface));
+  /* The conversation sets prose leading (1.55–1.9) on the body this card sits
+     in. Inheriting it stretches every row ~4px taller than the card is drawn
+     for, so the metrics are pinned here rather than left to the context. */
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+.turn-changes-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 12px;
+}
+
+.turn-changes-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 4px 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.turn-changes-toggle:hover {
+  color: var(--text);
+}
+
+.turn-changes-chevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.turn-changes-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.turn-changes-title {
+  color: var(--muted-strong);
+  font-size: var(--text-sm);
+}
+
+.turn-changes-review {
+  flex: none;
+  padding: 2px 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.turn-changes-review:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Subgrid, so the icon, name, directory and the two stat cells hold one set of
+   columns down the whole card: the digits line up instead of drifting with the
+   width of each number, and no row can push the stat out of its column. */
+.turn-changes-list {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 1px 0;
+  padding: 0 8px 9px;
+}
+
+.turn-changes-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.turn-changes-row:hover {
+  background: color-mix(in oklab, var(--text) 7%, transparent);
+}
+
+.turn-changes-row:hover .turn-changes-name {
+  color: var(--text);
+}
+
+.turn-changes-row[data-family="script"] {
+  --turn-changes-family: var(--syntax-type);
+}
+
+.turn-changes-row[data-family="style"] {
+  --turn-changes-family: var(--syntax-definition);
+}
+
+.turn-changes-row[data-family="test"] {
+  --turn-changes-family: var(--amber);
+}
+
+.turn-changes-row[data-family="rust"] {
+  --turn-changes-family: var(--session-icon-clay);
+}
+
+.turn-changes-row[data-family="data"] {
+  --turn-changes-family: var(--syntax-constant);
+}
+
+.turn-changes-row[data-family="shell"] {
+  --turn-changes-family: var(--syntax-string);
+}
+
+.turn-changes-icon {
+  color: var(--turn-changes-family);
+}
+
+/* The name leads, in the UI font every other activity row uses for a file name
+   (mono is reserved for bash). A path set in mono turns
+   `run_family_serving.py` into a wall of even-width glyphs and underscores. */
+.turn-changes-name {
+  min-width: 0;
+  margin-left: 9px;
+  overflow: hidden;
+  /* The name is what the row is for, so it sits on chrome ink rather than the
+     muted step the directory beside it takes. */
+  color: var(--text-soft);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A deleted file keeps its name legible but marks the outcome — the row still
+   opens the diff that removed it. */
+.turn-changes-row[data-kind="delete"] .turn-changes-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--muted);
+}
+
+.turn-changes-stat {
+  display: grid;
+  grid-column: 3 / 5;
+  grid-template-columns: subgrid;
+  gap: 6px;
+  margin-left: 14px;
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.turn-changes-toggle .turn-changes-stat {
+  display: inline-flex;
+  margin-left: 0;
+  gap: 5px;
+}
+
+.turn-changes-add {
+  color: var(--diff-add-gutter-fg);
+  text-align: right;
+}
+
+.turn-changes-del {
+  color: var(--diff-del-gutter-fg);
+  text-align: right;
 }

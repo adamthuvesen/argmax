@@ -76,6 +76,7 @@ interface SessionMultiGridProps {
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
+  defaultTurnChangesExpanded?: boolean;
   fastModeEnabled?: boolean;
   workspaceCardVisible?: boolean;
   onWorkspaceCardVisibleChange?: (visible: boolean) => void;
@@ -144,6 +145,7 @@ export function SessionMultiGrid({
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
+  defaultTurnChangesExpanded,
   fastModeEnabled,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
@@ -423,6 +425,7 @@ export function SessionMultiGrid({
                         defaultToolCallsDisplay={defaultToolCallsDisplay}
                         defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                         defaultThinkingExpanded={defaultThinkingExpanded}
+                        defaultTurnChangesExpanded={defaultTurnChangesExpanded}
                         events={events}
                         fastModeEnabled={fastModeEnabled}
                         workspaceCardVisible={workspaceCardVisible}

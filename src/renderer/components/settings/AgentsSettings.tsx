@@ -20,6 +20,8 @@ export function AgentsSettings({
   onChatVerbosityChange,
   fastModeEnabled,
   onFastModeEnabledChange,
+  turnChangesExpanded,
+  onTurnChangesExpandedChange,
   permissionMode,
   onPermissionModeChange,
   providers,
@@ -33,6 +35,8 @@ export function AgentsSettings({
   onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
   fastModeEnabled: boolean;
   onFastModeEnabledChange: (v: boolean) => void;
+  turnChangesExpanded: boolean;
+  onTurnChangesExpandedChange: (v: boolean) => void;
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
   providers: DiscoveredProvider[] | null;
@@ -80,6 +84,12 @@ export function AgentsSettings({
             value={String(chatVerbosity)}
             onChange={(v) => onChatVerbosityChange(Number(v) as ChatVerbosity)}
             options={CHAT_VERBOSITY_OPTIONS}
+          />
+          <ToggleRow
+            label="Changed files expanded"
+            description="Show the file list under each finished turn instead of just the header. Either way, clicking the header opens or closes it."
+            checked={turnChangesExpanded}
+            onChange={onTurnChangesExpandedChange}
           />
           <ToggleRow
             label="Fast mode for Claude and Codex"

@@ -8,6 +8,7 @@ export const THINKING_EXPANDED_KEY = "argmax.thinking.expanded";
 export const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
 export const TOOL_CALLS_DISPLAY_KEY = "argmax.toolCalls.display";
 export const TOOL_CALL_GROUPS_EXPANDED_KEY = "argmax.toolCalls.groups.expanded";
+export const TURN_CHANGES_EXPANDED_KEY = "argmax.turnChanges.expanded";
 export const FAST_MODE_KEY = "argmax.fastMode.enabled";
 export const COMPOSER_PIXEL_FIELD_KEY = "argmax.composer.pixelField.enabled";
 export const RANDOM_SESSION_ICON_KEY = "argmax.sessionIcon.random.enabled";

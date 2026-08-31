@@ -107,6 +107,7 @@ export function SessionConversation({
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
+  defaultTurnChangesExpanded,
   events,
   fastModeEnabled = false,
   isLogOpen,
@@ -149,6 +150,7 @@ export function SessionConversation({
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
+  defaultTurnChangesExpanded?: boolean;
   events: TimelineEvent[];
   fastModeEnabled?: boolean;
   isLogOpen: boolean;
@@ -872,6 +874,9 @@ export function SessionConversation({
                   defaultToolCallsDisplay={defaultToolCallsDisplay}
                   defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                   defaultThinkingExpanded={defaultThinkingExpanded}
+                  defaultTurnChangesExpanded={defaultTurnChangesExpanded}
+                  onOpenDiff={review.openFile}
+                  onOpenReview={review.openChangesPanel}
                 />
               );
             })

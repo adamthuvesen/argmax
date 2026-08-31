@@ -14,6 +14,7 @@ import { isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCa
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { codenameForTool } from "../lib/agentNames.js";
 import { visibleTurnToolItem } from "../lib/turnToolItems.js";
+import { collectTurnFileChanges } from "../lib/turnFileChanges.js";
 import { sessionAgentModeKey, writeStoredAgentMode } from "../lib/agentMode.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
 import type { AgentMode } from "../../shared/types.js";
@@ -25,6 +26,7 @@ import { QuestionCard } from "./QuestionCard.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
+import { TurnChangesCard } from "./TurnChangesCard.js";
 import { TurnBlock, type TurnBodyChild } from "./TurnBlock.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
 import {
@@ -47,6 +49,8 @@ function SessionConversationTurnInner({
   agentCodenames,
   onOpenFile,
   onOpenAgent,
+  onOpenDiff,
+  onOpenReview,
   onTerminateSession,
   onForkSession,
   onSendSessionInput,
@@ -56,7 +60,8 @@ function SessionConversationTurnInner({
   setAgentMode,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
-  defaultThinkingExpanded
+  defaultThinkingExpanded,
+  defaultTurnChangesExpanded
 }: {
   item: TurnRenderItem;
   priorItem: RenderItem | null;
@@ -67,6 +72,10 @@ function SessionConversationTurnInner({
   agentCodenames?: Map<string, string>;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onOpenAgent?: (tool: ToolCall) => void;
+  /** Open one file's diff in the review panel's Changes view. */
+  onOpenDiff?: (path: string) => void;
+  /** Open the review panel on the workspace's changes, from the top. */
+  onOpenReview?: () => void;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
   onSendSessionInput: SessionConversationSendInput;
@@ -77,6 +86,7 @@ function SessionConversationTurnInner({
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
+  defaultTurnChangesExpanded?: boolean;
 }): JSX.Element {
   const sessionIsLive = session?.state === "running";
   const turnView = buildTurnRenderState({
@@ -446,6 +456,20 @@ function SessionConversationTurnInner({
   // footer only hides itself on the *latest* live turn, so without this every
   // earlier turn — and every turn of a waiting session — offered a button whose
   // only possible outcome was an error toast.
+  // Files this turn wrote, folded one row per path. Derived from the same tool
+  // input the activity rows read, so the card cannot disagree with them.
+  const turnChanges = collectTurnFileChanges(visibleToolItems);
+  const changesCard =
+    turnChanges.length > 0 ? (
+      <TurnChangesCard
+        changes={turnChanges}
+        workspaceCwd={workspace?.path ?? null}
+        defaultExpanded={defaultTurnChangesExpanded ?? true}
+        {...(onOpenDiff ? { onOpenDiff } : {})}
+        {...(onOpenFile ? { onOpenFile } : {})}
+        {...(onOpenReview ? { onOpenReview } : {})}
+      />
+    ) : null;
   const forkable =
     session !== null &&
     FORK_CAPABLE_PROVIDERS.has(session.provider) &&
@@ -464,6 +488,7 @@ function SessionConversationTurnInner({
       body={bodyChildren}
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
       {...(turnMarkdown ? { turnMarkdown } : {})}
+      {...(changesCard ? { changes: changesCard } : {})}
       {...(forkable && session ? { onFork: () => void onForkSession?.(session.id) } : {})}
     />
   );

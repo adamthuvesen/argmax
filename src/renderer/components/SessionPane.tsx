@@ -77,6 +77,7 @@ export function SessionPane({
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
+  defaultTurnChangesExpanded,
   events,
   fastModeEnabled = false,
   isFocused = true,
@@ -115,6 +116,7 @@ export function SessionPane({
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
+  defaultTurnChangesExpanded?: boolean;
   events: TimelineEvent[];
   fastModeEnabled?: boolean;
   /** When false, the pane skips its document-level keyboard shortcuts so only the focused pane reacts. */
@@ -556,6 +558,7 @@ export function SessionPane({
           defaultToolCallsDisplay={defaultToolCallsDisplay}
           defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
           defaultThinkingExpanded={defaultThinkingExpanded}
+          defaultTurnChangesExpanded={defaultTurnChangesExpanded}
           events={visibleEvents}
           fastModeEnabled={fastModeEnabled}
           isLogOpen={isLogOpen}

@@ -18,10 +18,12 @@ const ATTENTION_SEVERITY: Record<PriorityAttention, number> = {
 
 export interface PriorityEntry {
   workspace: WorkspaceSummary;
-  /** Null for manually-added entries with no attention of their own. */
+  /** Null for working or manually-added entries with no attention of their own. */
   attention: PriorityAttention | null;
   /** When `attention` became current; null on sessions predating the column. */
   attentionChangedAt: string | null;
+  /** True while a session on the workspace is mid-turn. */
+  working: boolean;
   /**
    * Epoch ms when this row goes quiet long enough to leave the section on its
    * own. Null while it is working or when nothing ages it out (a manual add).
@@ -126,6 +128,16 @@ export function computeWorkspaceAttention(
 }
 
 /**
+ * Placement tier: what put the row in the section. Attention outranks a live
+ * turn — something waiting on you beats something you are only watching — and
+ * a manual add, which asks for nothing at all, sits last.
+ */
+function tier(entry: PriorityEntry): number {
+  if (entry.attention) return 2;
+  return entry.working ? 1 : 0;
+}
+
+/**
  * Workspaces that need the user right now, most urgent first. `archived` and
  * `kept` workspaces are excluded — keeping is an explicit "I'm done here" —
  * and so is anything quiet for longer than `PRIORITY_IDLE_MS` (or whose last
@@ -133,6 +145,10 @@ export function computeWorkspaceAttention(
  * for `PRIORITY_IDLE_MS` after the last message; opening it changes nothing,
  * and right-click → "Done" is how the user clears it early.
  * Ties within a severity sort oldest-waiting first (triage, not a feed).
+ *
+ * A workspace with a live turn joins the section too, below every row that
+ * wants judgment: an in-flight turn is transient like triage, but it needs
+ * watching rather than a decision. It leaves the moment the turn ends.
  *
  * A manual add (`priorityAddedAt`) floats the workspace regardless of
  * attention and never ages out; the backend guarantees add/dismiss are
@@ -158,25 +174,34 @@ export function computePriorityEntries(
       workspace.state === "archive-failed"
     ) continue;
     const found = attentionByWorkspace.get(workspace.id);
+    const working = isWorkspaceWorking(sessions, workspace.id);
     const manuallyAdded = Boolean(workspace.priorityAddedAt);
-    if (!found && !manuallyAdded) continue;
+    if (!found && !working && !manuallyAdded) continue;
     entries.push({
       workspace,
-      // A manual add still shows real attention when there is fresh,
-      // undismissed attention to show; otherwise it renders as a plain row.
+      // A working or manually-added row still shows real attention when there
+      // is fresh, undismissed attention to show; otherwise it renders plain.
       attention: found?.attention ?? null,
       attentionChangedAt: found?.changedAt ?? null,
-      idleAt:
-        found && !isWorkspaceWorking(sessions, workspace.id)
-          ? idleDeadline(found.lastActivityAt)
-          : null
+      working,
+      idleAt: found && !working ? idleDeadline(found.lastActivityAt) : null
     });
   }
 
   entries.sort((a, b) => {
-    const bySeverity =
-      (b.attention ? severity(b.attention) : 0) - (a.attention ? severity(a.attention) : 0);
-    if (bySeverity !== 0) return bySeverity;
+    const byTier = tier(b) - tier(a);
+    if (byTier !== 0) return byTier;
+    if (a.attention && b.attention) {
+      const bySeverity = severity(b.attention) - severity(a.attention);
+      if (bySeverity !== 0) return bySeverity;
+    }
+    if (tier(a) === 1) {
+      // Live turns are a status list, not a queue: newest activity on top.
+      if (a.workspace.lastActivityAt !== b.workspace.lastActivityAt) {
+        return a.workspace.lastActivityAt < b.workspace.lastActivityAt ? 1 : -1;
+      }
+      return a.workspace.id < b.workspace.id ? -1 : 1;
+    }
     // Oldest waiting first; manual entries (no stamp) sort by add time.
     const aChanged = a.attentionChangedAt ?? a.workspace.priorityAddedAt ?? "";
     const bChanged = b.attentionChangedAt ?? b.workspace.priorityAddedAt ?? "";

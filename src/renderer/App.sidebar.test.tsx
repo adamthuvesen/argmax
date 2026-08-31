@@ -43,11 +43,14 @@ describe("App sidebar", () => {
 
   it("expands the hosting date group when a workspace appears without being selected", async () => {
     window.localStorage.setItem("argmax.sidebar.viewMode", JSON.stringify("sessions"));
+    // The harness disables Priority by default; this test needs it on so the
+    // mid-turn seed floats out of the date buckets.
+    window.localStorage.setItem("argmax.sidebar.priority.visible", "true");
     render(<App />);
-    // The seeded workspace is mid-turn, so it floats into Working; the seeded
+    // The seeded workspace is mid-turn, so it floats into Priority; the seeded
     // snapshot has no Today activity, so that bucket isn't rendered yet — and
     // per-launch defaults would show it collapsed once it appears.
-    await screen.findByRole("button", { name: /Working sessions/ });
+    await screen.findByRole("button", { name: /Priority sessions/ });
     expect(screen.queryByRole("button", { name: /Today sessions/ })).not.toBeInTheDocument();
 
     // A fork (or an agent-launched session) lands as a delta with a fresh
@@ -93,6 +96,51 @@ describe("App sidebar", () => {
     expect(await screen.findByRole("button", { name: /Today sessions/ })).toHaveAttribute(
       "aria-expanded",
       "true"
+    );
+  });
+
+  it("opens the nth sidebar row on Cmd+1..9, in the order the rows are shown", async () => {
+    window.localStorage.setItem("argmax.sidebar.viewMode", JSON.stringify("sessions"));
+    // Pinned floats to the top of the sidebar, so the row the user sees first
+    // is not the first entry in the snapshot's session list.
+    const pinnedWorkspace: DashboardSnapshot["workspaces"][number] = {
+      ...snapshot.workspaces[0],
+      id: "workspace-pinned",
+      taskLabel: "Pinned work",
+      branch: "argmax/pinned",
+      path: "/tmp/worktrees/pinned",
+      state: "complete",
+      dirty: false,
+      changedFiles: 0,
+      pinned: true,
+      lastActivityAt: "2026-05-08T15:00:00.000Z"
+    };
+    const pinnedSession: DashboardSnapshot["sessions"][number] = {
+      ...snapshot.sessions[0],
+      id: "session-pinned",
+      workspaceId: "workspace-pinned",
+      prompt: "Pinned work",
+      state: "complete",
+      completedAt: "2026-05-08T15:00:00.000Z",
+      lastActivityAt: "2026-05-08T15:00:00.000Z"
+    };
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, pinnedWorkspace],
+      sessions: [...snapshot.sessions, pinnedSession]
+    });
+
+    render(<App />);
+    await screen.findByRole("button", { name: /Pinned work/ });
+
+    fireEvent.keyDown(document, { key: "1", metaKey: true });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Pinned work/ })).toHaveAttribute("aria-current", "true")
+    );
+
+    fireEvent.keyDown(document, { key: "2", metaKey: true });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Build dashboard/ })).toHaveAttribute("aria-current", "true")
     );
   });
 
@@ -503,8 +551,14 @@ describe("App sidebar", () => {
 
     const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" }, { timeout: 5000 });
     expect(reviewPanel).toBeInTheDocument();
-    expect(loadDiff).toHaveBeenCalledWith(
-      { kind: "workspace", id: "workspace-1" }, "src/renderer/App.tsx", "branch", undefined
+    // Every changed file starts collapsed: opening the panel loads no diff.
+    expect(loadDiff).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Expand src/renderer/App.tsx diff" }));
+    await waitFor(() =>
+      expect(loadDiff).toHaveBeenCalledWith(
+        { kind: "workspace", id: "workspace-1" }, "src/renderer/App.tsx", "branch", undefined
+      )
     );
     // shiki tokenizes lines into per-token <span> children, so getByText on
     // the full source line misses. toHaveTextContent matches concatenated

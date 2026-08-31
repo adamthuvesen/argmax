@@ -35,12 +35,15 @@ const session = (
   agentMode: "auto",
   providerConversationId: null,
   prompt: "Do the thing",
-  state: "running",
+  // Settled by default: a live turn is its own reason to be listed, so tests
+  // about attention opt into `state: "running"` explicitly.
+  state: "complete",
   attention,
   attentionChangedAt: "2026-05-12T15:00:00.000Z",
   startedAt: "2026-05-12T14:00:00.000Z",
   completedAt: null,
-  lastActivityAt: "2026-05-12T15:54:00.000Z",
+  // Inside the idle window, so a settled row is listed on its attention alone.
+  lastActivityAt: "2026-05-12T17:45:00.000Z",
   ...overrides
 });
 
@@ -197,6 +200,47 @@ describe("computePriorityEntries", () => {
       ["w-blocked", "blocked"],
       ["w-manual", null]
     ]);
+  });
+
+  it("floats a working workspace with no attention, under the triage rows", () => {
+    const entries = computePriorityEntries(
+      [workspace("w-live"), workspace("w-blocked")],
+      [
+        session("w-live", "normal", { state: "running" }),
+        session("w-blocked", "blocked", { attentionChangedAt: "2026-05-12T17:00:00.000Z" })
+      ],
+      NOW
+    );
+    expect(entries.map((entry) => [entry.workspace.id, entry.attention, entry.working])).toEqual([
+      ["w-blocked", "blocked", false],
+      ["w-live", null, true]
+    ]);
+  });
+
+  it("sorts working rows newest-first, above manual adds", () => {
+    const entries = computePriorityEntries(
+      [
+        workspace("w-manual", { priorityAddedAt: "2026-05-12T17:30:00.000Z" }),
+        workspace("w-older", { lastActivityAt: "2026-05-12T17:00:00.000Z" }),
+        workspace("w-newer", { lastActivityAt: "2026-05-12T17:50:00.000Z" })
+      ],
+      [
+        session("w-manual", "normal", { attentionChangedAt: undefined }),
+        session("w-older", "normal", { state: "running" }),
+        session("w-newer", "normal", { state: "running" })
+      ],
+      NOW
+    );
+    expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-newer", "w-older", "w-manual"]);
+  });
+
+  it("drops a working row the moment its turn ends", () => {
+    const entries = computePriorityEntries(
+      [workspace("w-live")],
+      [session("w-live", "normal", { state: "complete" })],
+      NOW
+    );
+    expect(entries).toEqual([]);
   });
 
   it("treats a missing attention stamp as stale", () => {

@@ -25,17 +25,17 @@
   background: var(--row-hover);
 }
 
-/* Open and active rows use the same gray pair as the model picker and agent
-   tabs (--panel-soft / --panel-sunken) instead of the accent color. */
-/* An open row is marked by its surface, not by ink: the selected row stays the
-   only bright label in the list. */
+/* Three steps, lightest for the row you are on: transparent, then the faint
+   hover wash for a row open in another pane, then the selection gray. An open
+   row is marked by its surface, not by ink — the selected row stays the only
+   bright label in the list. */
 .session-link[data-open="true"]:not(.active) {
-  background: var(--panel-soft);
+  background: var(--row-hover);
 }
 
 .session-link.active {
   color: var(--text);
-  background: var(--panel-sunken);
+  background: var(--row-selected);
 }
 
 /* Keyboard focus inside the sidebar — use an inset shadow instead of the

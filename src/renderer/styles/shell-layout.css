@@ -336,17 +336,21 @@
 }
 
 /* Without a title bar above it, the first group owns the breathing room under
-   the nav that the old header's top margin used to provide. */
+   the nav that the old header's top margin used to provide. One row-step of
+   air, no more: a wider gulf reads as two unrelated panels rather than one
+   rail. */
 .project-list > .project-group:first-child {
-  margin-top: 22px;
+  margin-top: 2px;
 }
 
 .project-group {
   position: relative;
   display: grid;
   gap: 0;
-  /* Room to breathe between groups — projects and date buckets share this. */
-  margin-bottom: 4px;
+  /* Room to breathe between groups — projects and date buckets share this.
+     Kept just under the nav's row rhythm so a column of collapsed section
+     headers steps at the same cadence as the nav rows above it. */
+  margin-bottom: 2px;
   padding-left: 0;
 }
 
@@ -386,7 +390,6 @@
    chrome, same chevron tucked inside the label, same pointer affordance. They
    just never host the … / + cluster, which stays on the lead recency header. */
 .project-group.session-pinned-group > .session-pinned-row,
-.project-group.session-working-group > .session-working-row,
 .project-group.session-priority-group > .session-priority-row {
   cursor: pointer;
 }
@@ -632,14 +635,15 @@
   color: var(--text);
 }
 
-/* Section headers become genuine labels: smaller, tracked-out small caps in
-   the register of the main pane's "Checks" heading, so the rail reads as
-   labeled groups of bright rows instead of a uniform gray column. */
+/* Section headers become genuine labels: smaller and quieter than the rows
+   they head, so the rail reads as labeled groups of bright rows instead of a
+   uniform gray column. Sentence case rather than small caps — the tracking
+   that carries uppercase only loosens normal text. */
 .project-name.session-date-label .project-name-text {
-  font-size: var(--text-2xs);
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--text-xs-plus);
+  font-weight: var(--weight-ui);
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
 
 .project-name-text {

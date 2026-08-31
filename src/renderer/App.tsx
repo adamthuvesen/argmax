@@ -550,11 +550,11 @@ export function App(): JSX.Element {
     setIsSettingsOpen,
     snapshot.sessions
   ]);
-  const selectSessionFromKeybinding = useCallback(
-    (session: { id: string; workspaceId: string }): void => {
+  const openWorkspaceFromKeybinding = useCallback(
+    (workspaceId: string): void => {
       // Cmd+1..9 always replaces the focused pane (no split modifier).
       setIsFullLauncherOpen(false);
-      openWorkspaceChat(session.workspaceId, { ctrlOrMeta: false, alt: false });
+      openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
     },
     [openWorkspaceChat]
   );
@@ -577,14 +577,13 @@ export function App(): JSX.Element {
     [setIsSettingsOpen]
   );
   useGlobalKeybindings({
-    sessions: snapshot.sessions,
     onMenuCommand: handleMenuCommand,
     onCloseFocusedPane: closeFocusedPane,
     onOpenFilePalette: openFilePalette,
     onOpenSearch: openMessagePalette,
     onOpenContentSearch: openContentPalette,
     onToggleTerminal: toggleIntegratedTerminal,
-    onSelectSession: selectSessionFromKeybinding,
+    onSelectWorkspace: openWorkspaceFromKeybinding,
     onCloseSettings: closeSettingsFromKeybinding
   });
 

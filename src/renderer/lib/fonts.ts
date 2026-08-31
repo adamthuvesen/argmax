@@ -257,8 +257,27 @@ const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = 
 };
 
 const loadedFonts = new Set<FontFamilyId>();
+let codeFontLoad: Promise<unknown> | null = null;
+
+/**
+ * Load Geist Mono, which `--font-code` names in every theme regardless of the
+ * picked font family. Without this, choosing any non-Geist font left every code
+ * surface — tool rows, diffs, file names, the changed-files card — silently
+ * rendering the ui-monospace fallback, because the bundle only shipped with the
+ * two Geist choices. Runs once and is shared by every caller.
+ */
+async function loadCodeFontAssets(): Promise<void> {
+  codeFontLoad ??= import("@fontsource-variable/geist-mono/wght.css").catch((error) => {
+    // A transient chunk failure must not poison the cache — clear it so the
+    // next appearance change retries.
+    codeFontLoad = null;
+    throw error;
+  });
+  await codeFontLoad;
+}
 
 export async function loadFontAssets(id: FontFamilyId): Promise<void> {
+  void loadCodeFontAssets().catch(() => undefined);
   if (loadedFonts.has(id)) return;
   const loader = FONT_CSS_LOADERS[id];
   if (!loader) return;

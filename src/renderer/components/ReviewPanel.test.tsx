@@ -64,6 +64,7 @@ function reviewStub(): ReviewState {
     },
     openFile: vi.fn(),
     expandDiffContext: vi.fn(),
+    openChangesPanel: vi.fn(),
     openPanelInFilesMode: vi.fn(),
     openInFilesView: vi.fn(),
     closePanel: vi.fn(),

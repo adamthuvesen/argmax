@@ -151,6 +151,10 @@ export interface ReviewState {
   expandDiffContext: () => void;
   openPanelInFilesMode: () => void;
   openInFilesView: (filePath: string) => void;
+  /** Open the panel on the Changes view. Unlike `toggleChangesPanel`, an
+   *  already-open panel stays open — a "Review" affordance in the chat is a
+   *  request to see the changes, never to hide them. */
+  openChangesPanel: () => void;
   closePanel: () => void;
   togglePanel: () => void;
   toggleChangesPanel: () => void;
@@ -221,7 +225,6 @@ export function useReviewState(
     changedFilesKey,
     comparison,
     dispatch,
-    isPanelOpen,
     onOpenChanges: openChangesMode
   });
 
@@ -250,11 +253,7 @@ export function useReviewState(
     rootPath: sourceRootPath
   });
 
-  const {
-    resetForSourceChange: resetDiff,
-    setSelectedFilePath,
-    ...diffState
-  } = reviewDiff;
+  const { resetForSourceChange: resetDiff, ...diffState } = reviewDiff;
   const { resetForSourceChange: resetFileList, ...fileListState } = fileList;
   const { resetForSourceChange: resetFilePreview, openFile: openWorkspaceFile, ...previewState } = filePreview;
 
@@ -304,17 +303,19 @@ export function useReviewState(
   const panelRef = useRef({ isPanelOpen, filesCount: 0, files: visibleFiles, mode });
   panelRef.current = { isPanelOpen, filesCount: visibleFiles.length, files: visibleFiles, mode };
 
+  // Opening the panel never expands a diff: the changed files start collapsed
+  // and stay that way until the reader picks one.
   const togglePanel = useCallback((): void => {
-    const opening = !panelRef.current.isPanelOpen;
-    if (opening && panelRef.current.filesCount === 0) {
+    if (!panelRef.current.isPanelOpen && panelRef.current.filesCount === 0) {
       setMode("files");
-    } else if (opening && panelRef.current.mode === "changes") {
-      // Warm the first file's diff the instant the panel opens (the list is
-      // already prefetched on focus), so there's no dead beat before content.
-      setSelectedFilePath((current) => current ?? panelRef.current.files[0]?.path ?? null);
     }
     setIsPanelOpen((open) => !open);
-  }, [setSelectedFilePath]);
+  }, []);
+
+  const openChangesPanel = useCallback((): void => {
+    setMode("changes");
+    setIsPanelOpen(true);
+  }, []);
 
   const toggleChangesPanel = useCallback((): void => {
     if (panelRef.current.isPanelOpen && panelRef.current.mode === "changes") {
@@ -323,8 +324,7 @@ export function useReviewState(
     }
     setMode("changes");
     setIsPanelOpen(true);
-    setSelectedFilePath((current) => current ?? panelRef.current.files[0]?.path ?? null);
-  }, [setSelectedFilePath]);
+  }, []);
 
   const workspaceFiles: WorkspaceFilesState = {
     entries: fileListState.entries,
@@ -377,6 +377,7 @@ export function useReviewState(
     expandDiffContext: diffState.expandDiffContext,
     openPanelInFilesMode,
     openInFilesView,
+    openChangesPanel,
     closePanel,
     togglePanel,
     toggleChangesPanel

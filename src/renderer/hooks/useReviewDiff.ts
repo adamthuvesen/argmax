@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangedFileSummary, ReviewComparison, WorkspaceDiff } from "../../shared/types.js";
 import type { ReviewIpcDispatch } from "../lib/reviewIpc.js";
 import type { ReviewSourceKind } from "../lib/reviewIpc.js";
@@ -11,7 +11,6 @@ export interface UseReviewDiffResult {
   filesState: AsyncState;
   filesError: string | null;
   selectedFilePath: string | null;
-  setSelectedFilePath: Dispatch<SetStateAction<string | null>>;
   diff: WorkspaceDiff | null;
   diffState: AsyncState;
   diffError: string | null;
@@ -27,10 +26,9 @@ export function useReviewDiff(args: {
   changedFilesKey: string | null;
   comparison: ReviewComparison;
   dispatch: ReviewIpcDispatch | null;
-  isPanelOpen: boolean;
   onOpenChanges: () => void;
 }): UseReviewDiffResult {
-  const { sourceId, sourceKind, changedFilesKey, comparison, dispatch, isPanelOpen, onOpenChanges } = args;
+  const { sourceId, sourceKind, changedFilesKey, comparison, dispatch, onOpenChanges } = args;
 
   const [files, setFiles] = useState<ChangedFileSummary[]>([]);
   const [filesState, setFilesState] = useState<AsyncState>("idle");
@@ -50,8 +48,6 @@ export function useReviewDiff(args: {
 
   const fileLoadToken = useRef(0);
   const diffLoadToken = useRef(0);
-  const isPanelOpenRef = useRef(isPanelOpen);
-  isPanelOpenRef.current = isPanelOpen;
 
   // Identifies which (source, comparison) the current list belongs to. A
   // re-fetch within the same context — the workspace's changed-files signature
@@ -118,12 +114,11 @@ export function useReviewDiff(args: {
         const sorted = [...result].sort((left, right) => left.path.localeCompare(right.path));
         setFiles(sorted);
         setFilesState("ready");
-        setSelectedFilePath((currentPath) => {
-          if (currentPath && sorted.some((file) => file.path === currentPath)) {
-            return currentPath;
-          }
-          return isPanelOpenRef.current ? sorted[0]?.path ?? null : null;
-        });
+        // Keep the open file selected if it survived the refresh; never pick
+        // one for the reader — changed files stay collapsed until clicked.
+        setSelectedFilePath((currentPath) =>
+          currentPath && sorted.some((file) => file.path === currentPath) ? currentPath : null
+        );
       })
       .catch((error) => {
         if (token !== fileLoadToken.current) {
@@ -211,7 +206,6 @@ export function useReviewDiff(args: {
     filesState,
     filesError,
     selectedFilePath,
-    setSelectedFilePath,
     diff,
     diffState,
     diffError,

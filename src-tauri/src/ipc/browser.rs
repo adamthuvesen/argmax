@@ -114,6 +114,29 @@ const BROWSER_INIT_SCRIPT: &str = r#"
     },
     true
   );
+  // Mouse thumb buttons: 3 = back, 4 = forward. The page's own history is the
+  // webview's, so relay them as commands and let the pane drive navigation —
+  // history.back() inside the page would skip the pane's toolbar state.
+  var historyCommand = function (button) {
+    return button === 3 ? "back" : button === 4 ? "forward" : null;
+  };
+  window.addEventListener(
+    "mousedown",
+    function (event) {
+      if (historyCommand(event.button)) event.preventDefault();
+    },
+    true
+  );
+  window.addEventListener(
+    "mouseup",
+    function (event) {
+      var command = historyCommand(event.button);
+      if (!command) return;
+      event.preventDefault();
+      window.location.href = "argmax-newtab://command?c=" + command;
+    },
+    true
+  );
 })();
 "#;
 
@@ -196,6 +219,8 @@ fn page_command(url: &Url) -> Option<&'static str> {
         "close-tab" => Some("close-tab"),
         "new-tab" => Some("new-tab"),
         "focus-address" => Some("focus-address"),
+        "back" => Some("back"),
+        "forward" => Some("forward"),
         _ => None,
     }
 }
@@ -656,6 +681,10 @@ mod tests {
     fn page_command_whitelists_known_commands() {
         let close = Url::parse("argmax-newtab://command?c=close-tab").unwrap();
         assert_eq!(page_command(&close), Some("close-tab"));
+        let back = Url::parse("argmax-newtab://command?c=back").unwrap();
+        assert_eq!(page_command(&back), Some("back"));
+        let forward = Url::parse("argmax-newtab://command?c=forward").unwrap();
+        assert_eq!(page_command(&forward), Some("forward"));
         let unknown = Url::parse("argmax-newtab://command?c=quit-app").unwrap();
         assert_eq!(page_command(&unknown), None);
         // `open` navigations carry URLs, never commands — and vice versa.

@@ -34,7 +34,14 @@ struct ReaderPool {
 
 /// A borrowed read connection. Derefs to `Connection`, so read call sites take
 /// `&connection` exactly as they did behind the writer guard.
-pub enum ReadGuard<'a> {
+///
+/// Variants stay private: `ReaderPool` is an implementation detail, and a
+/// public enum would leak it through `private_interfaces`.
+pub struct ReadGuard<'a> {
+    inner: ReadGuardInner<'a>,
+}
+
+enum ReadGuardInner<'a> {
     /// A pooled reader, returned to the pool on drop.
     Pooled {
         pool: &'a ReaderPool,
@@ -49,20 +56,20 @@ impl Deref for ReadGuard<'_> {
     type Target = Connection;
 
     fn deref(&self) -> &Connection {
-        match self {
+        match &self.inner {
             // `None` is only reachable after `Drop` has taken the connection,
             // and the guard is gone by then.
-            ReadGuard::Pooled { connection, .. } => connection
+            ReadGuardInner::Pooled { connection, .. } => connection
                 .as_ref()
                 .expect("reader taken while still borrowed"),
-            ReadGuard::Writer(guard) => guard,
+            ReadGuardInner::Writer(guard) => guard,
         }
     }
 }
 
 impl Drop for ReadGuard<'_> {
     fn drop(&mut self) {
-        let ReadGuard::Pooled { pool, connection } = self else {
+        let ReadGuardInner::Pooled { pool, connection } = &mut self.inner else {
             return;
         };
         let Some(connection) = connection.take() else {
@@ -148,7 +155,9 @@ impl Database {
     /// `VACUUM`) no longer stalls every reader in the app.
     pub fn read_connection(&self) -> ReadGuard<'_> {
         let Some(pool) = self.readers.as_ref() else {
-            return ReadGuard::Writer(self.connection());
+            return ReadGuard {
+                inner: ReadGuardInner::Writer(self.connection()),
+            };
         };
         let pooled = pool.idle.lock_or_recover("reader pool").pop();
         let connection = match pooled {
@@ -159,13 +168,17 @@ impl Database {
                 // that cannot open is a resource problem, not a data problem.
                 Err(error) => {
                     tracing::warn!(?error, "could not open a read connection; using the writer");
-                    return ReadGuard::Writer(self.connection());
+                    return ReadGuard {
+                        inner: ReadGuardInner::Writer(self.connection()),
+                    };
                 }
             },
         };
-        ReadGuard::Pooled {
-            pool,
-            connection: Some(connection),
+        ReadGuard {
+            inner: ReadGuardInner::Pooled {
+                pool,
+                connection: Some(connection),
+            },
         }
     }
 
@@ -367,7 +380,10 @@ mod tests {
     #[test]
     fn an_in_memory_database_reads_through_the_writer() {
         let database = Database::open_in_memory().expect("open db");
-        assert!(matches!(database.read_connection(), ReadGuard::Writer(_)));
+        assert!(
+            matches!(database.read_connection().inner, ReadGuardInner::Writer(_)),
+            "in-memory reads must use the writer connection"
+        );
     }
 
     #[test]

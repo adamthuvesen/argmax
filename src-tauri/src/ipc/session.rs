@@ -7,7 +7,7 @@ use crate::{
         learnings::{search_events, EventSearchResult},
         usage::{get_session_cost_summary, SessionCostSummary},
     },
-    providers::subagent_trace::import_subagent_trace_events,
+    providers::subagent_trace::{import_subagent_trace_events, reconcile_session_subagent_traces},
     state::AppState,
     workspaces::orchestration::SessionForkResult,
 };
@@ -32,7 +32,12 @@ pub(crate) async fn session_events_since_impl(
     let session_id = input.session_id.into_string();
     let event_cursor = input.event_cursor.map(|cursor| cursor as i64);
     let raw_output_cursor = input.raw_output_cursor.map(|cursor| cursor as i64);
-    read_off_main(move || {
+    tauri::async_runtime::spawn_blocking(move || {
+        // Reconcile only the initial backfill. Running panes call this command
+        // every 250 ms with a cursor, which must remain a cheap SQLite tail.
+        if event_cursor.is_none() {
+            reconcile_subagent_traces_with_warning(&database, &session_id);
+        }
         list_session_tail(
             &database.read_connection(),
             &session_id,
@@ -41,6 +46,7 @@ pub(crate) async fn session_events_since_impl(
         )
     })
     .await
+    .map_err(|error| ArgmaxError::service("SESSION_EVENTS_SINCE_JOIN", error.to_string()))?
 }
 
 #[tauri::command(rename = "session:agent-events")]
@@ -60,6 +66,7 @@ pub(crate) async fn session_agent_events_impl(
     let session_id = input.session_id.into_string();
     let parent_tool_use_id = input.parent_tool_use_id.into_string();
     tauri::async_runtime::spawn_blocking(move || {
+        reconcile_subagent_traces_with_warning(&database, &session_id);
         if let Err(error) =
             import_subagent_trace_events(&database, &session_id, &parent_tool_use_id)
         {
@@ -75,6 +82,19 @@ pub(crate) async fn session_agent_events_impl(
     })
     .await
     .map_err(|error| ArgmaxError::service("SESSION_AGENT_EVENTS_JOIN", error.to_string()))?
+}
+
+fn reconcile_subagent_traces_with_warning(
+    database: &crate::persistence::database::Database,
+    session_id: &str,
+) {
+    if let Err(error) = reconcile_session_subagent_traces(database, session_id) {
+        tracing::warn!(
+            error = %error,
+            session_id,
+            "failed to reconcile subagent trace events"
+        );
+    }
 }
 
 // `async` so the transcript copy (potentially thousands of row inserts) runs

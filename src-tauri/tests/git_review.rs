@@ -99,6 +99,7 @@ async fn lists_changed_files_and_loads_diffs() {
         "workspace-1",
         Some("src/index.ts"),
         ReviewBaseline::WorkingTree,
+        None,
     )
     .await
     .unwrap();
@@ -107,6 +108,7 @@ async fn lists_changed_files_and_loads_diffs() {
         "workspace-1",
         Some("src/staged.ts"),
         ReviewBaseline::WorkingTree,
+        None,
     )
     .await
     .unwrap();
@@ -115,6 +117,7 @@ async fn lists_changed_files_and_loads_diffs() {
         "workspace-1",
         Some("src/new.ts"),
         ReviewBaseline::WorkingTree,
+        None,
     )
     .await
     .unwrap();
@@ -123,6 +126,7 @@ async fn lists_changed_files_and_loads_diffs() {
         "workspace-1",
         Some("src/delete-me.ts"),
         ReviewBaseline::WorkingTree,
+        None,
     )
     .await
     .unwrap();
@@ -166,6 +170,7 @@ async fn loads_diff_for_leading_dash_file_name() {
         "workspace-1",
         Some("-notes.md"),
         ReviewBaseline::WorkingTree,
+        None,
     )
     .await
     .unwrap();
@@ -205,6 +210,7 @@ async fn branch_mode_single_file_diff_renders_committed_rename() {
         "workspace-1",
         Some("src/new-name.ts"),
         ReviewBaseline::Branch("base"),
+        None,
     )
     .await
     .unwrap();
@@ -231,6 +237,7 @@ async fn skips_untracked_directories_without_crashing() {
         "workspace-1",
         Some("src/untracked-dir/"),
         ReviewBaseline::WorkingTree,
+        None,
     )
     .await
     .unwrap();
@@ -249,6 +256,7 @@ async fn skips_oversized_untracked_file_content() {
         "workspace-1",
         Some("src/huge.txt"),
         ReviewBaseline::WorkingTree,
+        None,
     )
     .await
     .unwrap();
@@ -271,6 +279,7 @@ async fn untracked_symlink_diff_shows_target_not_contents() {
         "workspace-1",
         Some("src/link.txt"),
         ReviewBaseline::WorkingTree,
+        None,
     )
     .await
     .unwrap();
@@ -283,6 +292,48 @@ async fn untracked_symlink_diff_shows_target_not_contents() {
     let _ = std::fs::remove_file(outside_path);
 }
 
+/// The review panel's "expand unmodified lines" band asks for a wider `-U`, so
+/// two hunks far enough apart at the default context must fuse into one when
+/// the requested context spans the gap between them.
+#[tokio::test]
+async fn context_lines_widen_the_diff_until_hunks_merge() {
+    let original: String = (1..=40).map(|n| format!("line {n}\n")).collect();
+    let repo = seed_git_repo(&[("src/wide.ts", &original)]);
+    // Edit line 1 and line 40: at git's default 3 lines of context these are
+    // two separate hunks with 30-odd unchanged lines between them.
+    let edited = original
+        .replace("line 1\n", "LINE ONE\n")
+        .replace("line 40\n", "LINE FORTY\n");
+    std::fs::write(repo.path().join("src/wide.ts"), &edited).unwrap();
+
+    let hunk_count = |content: &str| content.lines().filter(|l| l.starts_with("@@ ")).count();
+
+    let default_context = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        Some("src/wide.ts"),
+        ReviewBaseline::WorkingTree,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(hunk_count(&default_context.content), 2);
+    assert!(!default_context.content.contains(" line 20"));
+
+    let wide_context = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        Some("src/wide.ts"),
+        ReviewBaseline::WorkingTree,
+        Some(25),
+    )
+    .await
+    .unwrap();
+    assert_eq!(hunk_count(&wide_context.content), 1);
+    // The previously hidden middle of the file is now context.
+    assert!(wide_context.content.contains(" line 20"));
+}
+
 #[tokio::test]
 async fn rejects_paths_that_escape_repo() {
     let repo = seed_git_repo(&[("src/index.ts", "export const ok = true;\n")]);
@@ -292,6 +343,7 @@ async fn rejects_paths_that_escape_repo() {
         "workspace-1",
         Some("../escape.txt"),
         ReviewBaseline::WorkingTree,
+        None,
     )
     .await
     .unwrap_err();

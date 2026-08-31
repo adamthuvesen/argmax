@@ -165,9 +165,10 @@ pub async fn load_diff(
     id: &str,
     file_path: Option<&str>,
     comparison: ReviewComparison,
+    context_lines: Option<u32>,
 ) -> ArgmaxResult<WorkspaceDiff> {
     if kind == WorkspaceTargetKind::Project {
-        return load_diff_for_project(database, id, file_path, comparison).await;
+        return load_diff_for_project(database, id, file_path, comparison, context_lines).await;
     }
     let workspace_id = id;
     let (workspace, default_branch) = load_workspace_with_default_branch(database, workspace_id)?;
@@ -183,6 +184,7 @@ pub async fn load_diff(
         workspace_id.to_owned(),
         file_path,
         baseline_for(comparison, base_ref.as_deref()),
+        context_lines,
     )
     .await
 }
@@ -216,6 +218,7 @@ async fn load_diff_for_project(
     project_id: &str,
     file_path: Option<&str>,
     comparison: ReviewComparison,
+    context_lines: Option<u32>,
 ) -> ArgmaxResult<WorkspaceDiff> {
     let project = {
         let connection = database.connection();
@@ -238,6 +241,7 @@ async fn load_diff_for_project(
         project_id.to_owned(),
         file_path,
         baseline_for(comparison, project_base.as_deref()),
+        context_lines,
     )
     .await
 }
@@ -388,6 +392,7 @@ pub async fn load_diff_at_path(
     diff_workspace_id: impl Into<String>,
     file_path: Option<&str>,
     baseline: ReviewBaseline<'_>,
+    context_lines: Option<u32>,
 ) -> ArgmaxResult<WorkspaceDiff> {
     let repo_path = validate_repo_path(repo_path.as_ref())?;
     let comparison = resolve_comparison(&repo_path, baseline).await?;
@@ -429,14 +434,20 @@ pub async fn load_diff_at_path(
                 None => None,
             };
             match file {
-                Some(file) => load_file_diff(&repo_path, &file, &comparison.diff_base).await?,
+                Some(file) => {
+                    load_file_diff(&repo_path, &file, &comparison.diff_base, context_lines).await?
+                }
                 None => {
-                    run_git_text(
-                        &repo_path,
-                        ["diff", comparison.diff_base.as_str(), "--", path],
-                        GIT_TIMEOUT,
-                    )
-                    .await?
+                    let mut args = vec!["diff".to_owned()];
+                    if let Some(context) = context_lines {
+                        args.push(format!("-U{context}"));
+                    }
+                    args.push(comparison.diff_base.clone());
+                    args.push("--".to_owned());
+                    args.push(path.to_owned());
+                    // Capped like every other diff branch. Uncapped, a large
+                    // file at full context would hand the renderer megabytes.
+                    cap_diff(run_git_text(&repo_path, args, GIT_TIMEOUT).await?)
                 }
             }
         }
@@ -521,7 +532,9 @@ async fn load_file_summaries(
                     format!("diff fanout closed: {error}"),
                 )
             })?;
-            let diff = load_file_diff(&repo_path, &file, &diff_base).await?;
+            // Only the +/- lines are counted, so extra context would be pure
+            // cost.
+            let diff = load_file_diff(&repo_path, &file, &diff_base, None).await?;
             let (additions, deletions) = count_diff_lines(&diff);
             Ok::<_, ArgmaxError>((
                 index,
@@ -556,7 +569,12 @@ async fn load_file_diffs(
                     format!("diff fanout closed: {error}"),
                 )
             })?;
-            Ok::<_, ArgmaxError>((index, load_file_diff(&repo_path, &file, &diff_base).await?))
+            // The whole-workspace diff keeps git's default context: it fans out
+            // over every changed file, and the renderer only ever expands one.
+            Ok::<_, ArgmaxError>((
+                index,
+                load_file_diff(&repo_path, &file, &diff_base, None).await?,
+            ))
         });
     }
 
@@ -581,13 +599,21 @@ async fn load_file_diff(
     repo_path: &Path,
     file: &ChangedFileSummary,
     diff_base: &str,
+    context_lines: Option<u32>,
 ) -> ArgmaxResult<String> {
     let raw = if file.status == "??" {
+        // An untracked file is entirely new, so git emits one hunk covering
+        // every line no matter the context setting.
         synthesize_untracked_diff(repo_path, &file.path).await?
     } else {
+        let mut args = vec!["diff".to_owned()];
+        if let Some(context) = context_lines {
+            args.push(format!("-U{context}"));
+        }
+        args.push(diff_base.to_owned());
+        args.push("--".to_owned());
         // Pass both sides of a rename/copy so git renders one rename diff
         // instead of an orphaned add (the old path is gone from the base side).
-        let mut args = vec!["diff".to_owned(), diff_base.to_owned(), "--".to_owned()];
         if let Some(old_path) = &file.old_path {
             args.push(old_path.clone());
         }

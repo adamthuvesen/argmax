@@ -69,12 +69,15 @@ fn title_command(provider: ProviderId, model_id: &str, instruction: &str) -> Tit
     match provider {
         // `--tools ""` disables built-in tools, and `--strict-mcp-config` with
         // an empty config skips MCP loading. Plain `--output-format text`
-        // returns the answer verbatim.
+        // returns the answer verbatim. `--effort low` is required for Sonnet:
+        // without it the title call spends thinking budget we do not need.
         ProviderId::Claude => TitleCommand {
             args: vec![
                 "-p".into(),
                 "--model".into(),
                 model_id.into(),
+                "--effort".into(),
+                "low".into(),
                 "--output-format".into(),
                 "text".into(),
                 "--tools".into(),
@@ -332,13 +335,15 @@ mod tests {
 
     #[test]
     fn claude_command_disables_tools_and_persistence() {
-        let command = title_command(ProviderId::Claude, "claude-haiku-4-5", "META");
+        let command = title_command(ProviderId::Claude, "claude-sonnet-5", "META");
         assert_eq!(
             command.args,
             vec![
                 "-p",
                 "--model",
-                "claude-haiku-4-5",
+                "claude-sonnet-5",
+                "--effort",
+                "low",
                 "--output-format",
                 "text",
                 "--tools",

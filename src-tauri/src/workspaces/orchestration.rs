@@ -76,6 +76,13 @@ pub struct SessionForkResult {
     pub session: SessionSummary,
 }
 
+#[derive(Debug, Clone)]
+pub struct SessionMoveResult {
+    pub workspace: WorkspaceSummary,
+    pub session: SessionSummary,
+    pub source_archive_state: String,
+}
+
 /// Trailing-edge coalescing window for fs.watch bursts (e.g. `npm install`).
 pub(super) const WATCH_DEBOUNCE_MS: u64 = 200;
 pub(super) const WATCH_MAX_DEBOUNCE_MS: u64 = 1_000;
@@ -754,6 +761,243 @@ impl WorkspaceService {
             tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
         }
         Ok(SessionForkResult { workspace, session })
+    }
+
+    pub async fn move_session_to_project(
+        self: &Arc<Self>,
+        source_session_id: &str,
+        destination_project_id: &str,
+        worktree: bool,
+        keep_source: bool,
+    ) -> ArgmaxResult<SessionMoveResult> {
+        let (source_session, source_workspace, source_project, destination_project) = {
+            let connection = self.database.connection();
+            let source_session = find_session_by_id(&connection, source_session_id)?;
+            if matches!(
+                source_session.state.as_str(),
+                "running" | "waiting" | "blocked"
+            ) {
+                return Err(invalid_workspace(
+                    "This session is still working. Moving now would copy a partial transcript.",
+                    "Wait for the turn to settle, then retry.",
+                ));
+            }
+            let source_workspace = find_workspace_by_id(&connection, &source_session.workspace_id)?;
+            if source_workspace.project_id == destination_project_id {
+                return Err(invalid_workspace(
+                    "The destination must be a different project.",
+                    "Choose another registered project.",
+                ));
+            }
+            let source_project = require_project(&connection, &source_workspace.project_id)?;
+            let destination_project = require_project(&connection, destination_project_id)?;
+            (
+                source_session,
+                source_workspace,
+                source_project,
+                destination_project,
+            )
+        };
+
+        let project_id =
+            crate::ipc::validation::ProjectId::try_from(destination_project.id.clone())
+                .map_err(ArgmaxError::invalid)?;
+        let task_label =
+            crate::ipc::validation::TaskLabel::try_from(source_workspace.task_label.clone())
+                .map_err(ArgmaxError::invalid)?;
+        let destination_workspace = if worktree {
+            let base_ref = crate::ipc::validation::BaseRef::try_from(
+                destination_project.current_branch.clone(),
+            )
+            .map_err(ArgmaxError::invalid)?;
+            self.create_isolated(WorkspacesCreateIsolatedInput {
+                project_id,
+                task_label,
+                base_ref: Some(base_ref),
+            })
+            .await?
+        } else {
+            self.create_current(WorkspacesCreateCurrentInput {
+                project_id,
+                task_label,
+            })?
+        };
+
+        let copied = (|| -> ArgmaxResult<(WorkspaceSummary, SessionSummary, TimelineEvent)> {
+            let mut connection = self.database.connection();
+            let transaction = connection
+                .transaction()
+                .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+            let destination_session = persist_session(
+                &transaction,
+                &PersistSessionInput {
+                    id: Uuid::new_v4().to_string(),
+                    workspace_id: destination_workspace.id.clone(),
+                    provider: source_session.provider.clone(),
+                    model_label: source_session.model_label.clone(),
+                    model_id: source_session.model_id.clone(),
+                    reasoning_effort: source_session.reasoning_effort.clone(),
+                    permission_mode: Some(source_session.permission_mode.clone()),
+                    agent_mode: source_session.agent_mode.clone(),
+                    prompt: source_session.prompt.clone(),
+                    state: "complete".to_string(),
+                    attention: "normal".to_string(),
+                },
+            )?;
+            for event in list_all_session_events(&transaction, source_session_id)? {
+                persist_timeline_event(
+                    &transaction,
+                    &PersistTimelineEventInput {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: destination_session.id.clone(),
+                        r#type: event.r#type,
+                        message: event.message,
+                        payload: event.payload,
+                        created_at: Some(event.created_at),
+                    },
+                )?;
+            }
+            let seam = persist_timeline_event(
+                &transaction,
+                &PersistTimelineEventInput {
+                    id: Uuid::new_v4().to_string(),
+                    session_id: destination_session.id.clone(),
+                    r#type: "session.moved".to_string(),
+                    message: format!(
+                        "Moved from {} to {}.",
+                        source_project.name, destination_project.name
+                    ),
+                    payload: json!({
+                        "direction": "destination",
+                        "sourceSessionId": source_session.id,
+                        "sourceWorkspaceId": source_workspace.id,
+                        "sourceProjectId": source_project.id,
+                        "sourceProjectName": source_project.name,
+                        "destinationSessionId": destination_session.id,
+                        "destinationWorkspaceId": destination_workspace.id,
+                        "destinationProjectId": destination_project.id,
+                        "destinationProjectName": destination_project.name,
+                        "destinationPath": destination_workspace.path,
+                        "checkoutMode": if worktree { "worktree" } else { "shared" },
+                        "sourceArchiveRequested": !keep_source,
+                    }),
+                    created_at: None,
+                },
+            )?;
+            let destination_workspace =
+                update_workspace_state(&transaction, &destination_workspace.id, "complete")?;
+            transaction
+                .commit()
+                .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+            Ok((destination_workspace, destination_session, seam))
+        })();
+        let (destination_workspace, destination_session, destination_seam) = match copied {
+            Ok(copied) => copied,
+            Err(error) => {
+                let _ = self
+                    .archive(WorkspacesArchiveInput {
+                        workspace_id: crate::ipc::validation::WorkspaceId::try_from(
+                            destination_workspace.id.clone(),
+                        )
+                        .map_err(ArgmaxError::invalid)?,
+                        force: Some(true),
+                    })
+                    .await;
+                return Err(error);
+            }
+        };
+
+        {
+            let connection = self.database.connection();
+            self.publish(DashboardDelta {
+                projects: list_projects(&connection)?,
+                workspaces: vec![destination_workspace.clone()],
+                sessions: vec![destination_session.clone()],
+                events: vec![destination_seam],
+                ..DashboardDelta::default()
+            });
+        }
+
+        let (source_archive_state, archive_error) = if keep_source {
+            (source_workspace.state.clone(), None)
+        } else {
+            match self
+                .archive(WorkspacesArchiveInput {
+                    workspace_id: crate::ipc::validation::WorkspaceId::try_from(
+                        source_workspace.id.clone(),
+                    )
+                    .map_err(ArgmaxError::invalid)?,
+                    force: Some(false),
+                })
+                .await
+            {
+                Ok(workspace) => (workspace.state, None),
+                Err(error) => ("error".to_string(), Some(error.to_string())),
+            }
+        };
+
+        let (source_session, source_event) = {
+            let connection = self.database.connection();
+            let source_session = find_session_by_id(&connection, source_session_id)?;
+            let source_event = persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: Uuid::new_v4().to_string(),
+                    session_id: source_session_id.to_string(),
+                    r#type: "session.moved".to_string(),
+                    message: format!("Moved to {}.", destination_project.name),
+                    payload: json!({
+                        "direction": "source",
+                        "sourceSessionId": source_session_id,
+                        "sourceWorkspaceId": source_workspace.id,
+                        "sourceProjectId": source_project.id,
+                        "sourceProjectName": source_project.name,
+                        "destinationSessionId": destination_session.id,
+                        "destinationWorkspaceId": destination_workspace.id,
+                        "destinationProjectId": destination_project.id,
+                        "destinationProjectName": destination_project.name,
+                        "destinationPath": destination_workspace.path,
+                        "checkoutMode": if worktree { "worktree" } else { "shared" },
+                        "sourceArchiveState": source_archive_state,
+                        "archiveError": archive_error,
+                    }),
+                    created_at: None,
+                },
+            )?;
+            (source_session, source_event)
+        };
+        self.publish_session_with_events(source_session, vec![source_event]);
+
+        Ok(SessionMoveResult {
+            workspace: destination_workspace,
+            session: destination_session,
+            source_archive_state,
+        })
+    }
+
+    pub fn record_session_move_failure(
+        &self,
+        source_session_id: &str,
+        error: &ArgmaxError,
+    ) -> ArgmaxResult<()> {
+        let (session, event) = {
+            let connection = self.database.connection();
+            let session = find_session_by_id(&connection, source_session_id)?;
+            let event = persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: Uuid::new_v4().to_string(),
+                    session_id: source_session_id.to_string(),
+                    r#type: "error".to_string(),
+                    message: format!("Could not move this session: {error}"),
+                    payload: json!({ "operation": "session.move" }),
+                    created_at: None,
+                },
+            )?;
+            (session, event)
+        };
+        self.publish_session_with_events(session, vec![event]);
+        Ok(())
     }
 
     /// Create a repo-less scratch workspace: an app-owned directory under

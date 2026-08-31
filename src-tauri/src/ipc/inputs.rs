@@ -5,7 +5,8 @@ use crate::{review::git_review::ReviewComparison, workspaces::WorkspaceTargetKin
 
 use super::validation::{
     AgentMode, AttachmentMimeType, AttachmentPath, Base64ImageData, BaseRef, BranchName,
-    CommandText, FileContent, GitCommitMessage, NonEmptyString, OpenPath, PermissionMode,
+    CommandText, DiffContextLines, FileContent, GitCommitMessage, NonEmptyString, OpenPath,
+    PermissionMode,
     ProjectId, Prompt, ProviderId, ReasoningEffort, RelativePath, RepoPath, SearchQuery, SessionId,
     StreamChunk, TaskLabel, TerminalId, ThemeMode, WorkspaceId, ATTACHMENT_BYTE_CAP,
 };
@@ -584,6 +585,10 @@ pub struct ReviewLoadDiffInput {
     pub file_path: Option<RelativePath>,
     #[serde(default)]
     pub comparison: ReviewComparison,
+    /// Only honored for a single-file request. The whole-workspace diff keeps
+    /// git's default context so opening the review panel never pays for it.
+    #[serde(default)]
+    pub context_lines: Option<DiffContextLines>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

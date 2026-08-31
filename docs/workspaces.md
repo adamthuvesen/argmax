@@ -16,9 +16,17 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
   - Shared checkouts mark `archived` immediately and drain child processes in the background.
   - Isolated worktrees mark `archiving`, cancel child processes, expire pending approvals, evict warm Cursor ACP instances, remove the git worktree, and persist `archived`. Dirty worktrees return to `kept` unless `force: true` is passed.
 
+### Session Moves
+
+`$ARGMAX_BIN session move --project <name-or-path>` schedules an explicit cross-project handoff from inside an active agent turn. When the turn settles, `WorkspaceService` creates a destination workspace, copies the timeline into a fresh session, and leaves the provider conversation id empty. The source workspace is never retargeted.
+
+The destination uses the shared checkout by default. `--worktree` creates an isolated workspace and runs its setup command. The source archives after a successful copy unless `--keep-source` was passed. Archive never uses `force`, so an isolated source with uncommitted changes returns to `kept`.
+
+`session.moved` marks the handoff in both timelines. The renderer follows the destination only when the source session is still selected.
+
 ## Scratch Workspaces
 
-`workspaces:create-scratch` initializes temporary workspaces in `local-state/side-chats/` with an empty git repository to support providers that require a git root.
+`workspaces:create-scratch` initializes temporary workspaces in `local-state/side-chats/` with an empty git repository to support providers that require a git root. The launcher selects this path through Chat on the Auto / Plan / Chat mode chip (Tab), which attaches no project.
 
 `workspaces.kind` supports three kinds (migration v15):
 - `git`: Standard repo checkouts (shared or isolated).
@@ -51,6 +59,14 @@ Right-click → "Edit Icon" saves `workspaces.icon` and `workspaces.icon_color` 
 | Last turn | `branch` (client-filtered) | File-writing tool calls in the most recent turn |
 
 Base ref resolution checks `workspace.base_ref`, then `origin/<default>`, then local `<default>`.
+
+### Diff Context
+
+Diffs carry git's default three lines of context. `parseUnifiedDiff` ([src/renderer/lib/diff.ts](../src/renderer/lib/diff.ts)) turns each between-hunk gap into an `omitted` block, which `DiffBlocks` renders as an "N unmodified lines" button. Clicking it re-requests the file with `contextLines` on `review:load-diff`, which becomes `git diff -U<n>`, climbing `DIFF_CONTEXT_STEPS` (25, then the whole file) until every gap is closed.
+
+Context is per open file and resets when a different file is selected. Only a single-file request honors `contextLines`; the whole-workspace diff and the additions/deletions counts stay on git's default. `MAX_DIFF_CONTEXT_LINES` in [validation.rs](../src-tauri/src/ipc/validation.rs) rejects anything larger, and the renderer's diff cache is keyed by path *and* context so a wider request is never served the narrower cached diff.
+
+Each per-file diff is capped at 1 MiB (`PER_FILE_DIFF_CAP_BYTES`). A capped diff loses whole trailing hunks, so the parser emits a `truncated` block for the marker `cap_diff` appends, `DiffBlocks` shows it as a warning row, and the expand buttons stop offering an action that would only drop more.
 
 ## Files
 

@@ -6,7 +6,7 @@
 
 fn main() {
     if let Some(exit_code) =
-        argmax_lib::session_control::try_run_session_launch_cli(std::env::args_os())
+        argmax_lib::session_control::try_run_session_control_cli(std::env::args_os())
     {
         std::process::exit(exit_code);
     }

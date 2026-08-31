@@ -8,6 +8,10 @@ use crate::error::InvalidInputIssue;
 pub const MAX_STREAM_CHUNK_BYTES: usize = 64 * 1024;
 pub const MAX_FILE_CONTENT_BYTES: usize = 4 * 1024 * 1024;
 pub const ATTACHMENT_BYTE_CAP: usize = 10 * 1024 * 1024;
+/// Upper bound for `git diff -U<n>`. High enough that the renderer can ask for
+/// "the whole file" by requesting the cap, low enough to reject a nonsense
+/// value instead of handing git an argument that makes it walk forever.
+pub const MAX_DIFF_CONTEXT_LINES: u32 = 100_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
@@ -25,8 +29,10 @@ pub enum ReasoningEffort {
     Medium,
     High,
     Xhigh,
-    // Claude-only levels above Extra High. Other providers' CLIs don't accept
-    // these; adapters clamp them down (see codex_reasoning_args).
+    // Levels above Extra High. Not every model accepts both. Claude and Codex
+    // Sol/Terra take max and ultra. Codex Luna and Cursor GPT-5.6/Opus take
+    // max only. Adapters clamp anything that slips through (see
+    // codex_effort_value / cursor_model_for).
     Max,
     Ultra,
 }
@@ -185,6 +191,43 @@ try_from_string!(GitCommitMessage, |value| validate_byte_cap(
     }
 }));
 try_from_string!(NonEmptyString, |value| non_empty("value", value));
+
+/// Lines of unchanged context a review diff carries on each side of a hunk.
+/// Absent means "let git use its default", which keeps the untouched request
+/// byte-identical to what it was before context became adjustable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(transparent)]
+pub struct DiffContextLines(u32);
+
+impl DiffContextLines {
+    pub fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl TryFrom<u32> for DiffContextLines {
+    type Error = InvalidInputIssue;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        if value > MAX_DIFF_CONTEXT_LINES {
+            return Err(issue(
+                "contextLines",
+                "NUMBER_TOO_LARGE",
+                format!("must not exceed {MAX_DIFF_CONTEXT_LINES}"),
+            ));
+        }
+        Ok(Self(value))
+    }
+}
+
+impl<'de> Deserialize<'de> for DiffContextLines {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        DiffContextLines::try_from(u32::deserialize(deserializer)?).map_err(de_error)
+    }
+}
 
 impl TryFrom<String> for Base64ImageData {
     type Error = InvalidInputIssue;
@@ -610,6 +653,23 @@ mod tests {
             validate_relative_path("filePath", "-flag".to_owned()).expect("dash path valid"),
             "-flag"
         );
+    }
+
+    #[test]
+    fn diff_context_lines_rejects_values_past_the_cap() {
+        assert_eq!(
+            DiffContextLines::try_from(MAX_DIFF_CONTEXT_LINES)
+                .expect("cap is valid")
+                .get(),
+            MAX_DIFF_CONTEXT_LINES
+        );
+        assert_eq!(DiffContextLines::try_from(0).expect("zero is valid").get(), 0);
+        assert!(matches!(
+            DiffContextLines::try_from(MAX_DIFF_CONTEXT_LINES + 1)
+                .unwrap_err()
+                .code,
+            "NUMBER_TOO_LARGE"
+        ));
     }
 
     #[test]

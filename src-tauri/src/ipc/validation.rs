@@ -663,7 +663,10 @@ mod tests {
                 .get(),
             MAX_DIFF_CONTEXT_LINES
         );
-        assert_eq!(DiffContextLines::try_from(0).expect("zero is valid").get(), 0);
+        assert_eq!(
+            DiffContextLines::try_from(0).expect("zero is valid").get(),
+            0
+        );
         assert!(matches!(
             DiffContextLines::try_from(MAX_DIFF_CONTEXT_LINES + 1)
                 .unwrap_err()

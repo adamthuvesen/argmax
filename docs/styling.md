@@ -19,6 +19,7 @@ Keep individual surface files under 1,000 lines. Aggregator files should only co
 
 - **Themes:** Light, Dark, and System modes. Dark is the default. Tokens are declared in `:root` (light) and `:root[data-theme="dark"]` in [tokens.css](../src/renderer/styles/tokens.css). Theme choice persists in `localStorage.argmax.theme.mode` and `userData/theme.json`.
   - In dark mode, `--bg` is dark charcoal (`#131312`), `--review-panel` sits just above it, `--sidebar` a step higher, and `--panel` is the elevated card surface.
+  - `--review-sidebar` (the review panel's file-tree column) steps *down* from `--review-panel` on paper and *up* in dark, the same inversion `--tool-block-surface` uses. Do not reach for `--panel-sunken` here: in dark it is the darkest surface in the app, and a column set from it reads as a hole punched in the panel.
   - Ink uses `#e3e0d8` rather than pure white to avoid bloom on dark backgrounds.
   - Rendered prose is the exception: `--prose-ink` / `--prose-ink-strong` (agent answers, plan cards, file previews) run *brighter* than `--text` in dark, because bloom is a weight problem at label size and prose already offsets it with `--weight-prose` and an open line box. `--prose-ink-strong` must stay on the far side of `--prose-ink` from the page in both themes, or bold prose reads dimmer than the body around it. Agent paragraphs are painted by `.chat-bubble p`, which beats the inherited `.markdown` ink, so both rules name the same token.
 - **Accent Tints:** Settings → Appearance allows selecting `green`, `purple`, `neutral`, `orange`, `blue`, or `coral` (`<html data-accent="...">`). `coral` sits at the same hue as the `--rose` error token, so it is the one tint where risk states read less distinctly from brand chrome. Use `--accent`, `--accent-soft`, and `--accent-deep` for interactive highlights, focus rings, brand chrome, and running indicators (`WorkingNest`). User-message bubbles read `--user-message-bg` / `--user-message-fg`: in dark, green/orange/blue/neutral use a deeper fill with white ink so `--accent` can stay lifted for chrome. Purple still fills the bubble with `--accent`.
@@ -43,7 +44,7 @@ Defined in [tokens.css](../src/renderer/styles/tokens.css):
 
 | Category | Tokens | Description |
 |---|---|---|
-| Surfaces | `--bg`, `--sidebar`, `--panel`, `--review-panel`, `--panel-soft`, `--panel-sunken` | Base backgrounds and elevated panels |
+| Surfaces | `--bg`, `--sidebar`, `--panel`, `--review-panel`, `--review-sidebar`, `--panel-soft`, `--panel-sunken` | Base backgrounds and elevated panels |
 | Lines | `--line`, `--line-soft`, `--line-strong` | Borders and dividers |
 | Text | `--text`, `--text-soft`, `--muted`, `--muted-strong` | Primary, secondary, and disabled text |
 | Fonts | `--font-ui`, `--font-prose`, `--font-mono`, `--font-code` | Font stacks |

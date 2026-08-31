@@ -1,11 +1,58 @@
+/* Column wrapper: action bar pinned, tree scrolling under it. Only surfaces
+   that ask for a toolbar get this — the mobile screen and the palette pop-out
+   render the scroller on its own. */
+.workspace-tree-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* No title and no rule under it: the strip's job at rest is to keep the first
+   row off the review toolbar's edge, and it only shows its buttons once the
+   pointer is in the column — the same restraint the file tabs' close ✕ uses. */
+.workspace-tree-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 6px;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.workspace-tree-col:hover .workspace-tree-toolbar,
+.workspace-tree-col:focus-within .workspace-tree-toolbar {
+  opacity: 1;
+}
+
+.workspace-tree-toolbar .small-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.workspace-tree-toolbar .small-icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .workspace-tree {
   display: block;
   flex: 1 1 0;
   min-height: 0;
   overflow: auto;
-  padding: 4px 0;
+  padding: 6px;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
+}
+
+/* Under the strip the scroller needs less of its own top gap; surfaces with no
+   strip (mobile, the palette pop-out) keep the full 6px. */
+.workspace-tree-col > .workspace-tree {
+  padding-top: 2px;
 }
 
 .workspace-tree-empty {
@@ -14,24 +61,46 @@
   justify-content: center;
 }
 
+/* Rows are inset pills rather than edge-to-edge bars — the same quiet-pill
+   language the file tabs use above the preview. The background-image is the
+   indent guide: one hairline per level the row sits under, sized off the
+   `--tree-depth` the component sets, so depth costs no extra DOM. */
 .workspace-tree-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
+  width: calc(100% - 4px);
   min-height: 24px;
-  padding-right: 12px;
-  color: var(--muted-strong);
+  margin: 0 2px;
+  padding-right: 10px;
   border: 0;
-  background: transparent;
+  border-radius: var(--radius-md);
+  color: var(--muted-strong);
+  background-color: transparent;
+  background-image: repeating-linear-gradient(
+    to right,
+    color-mix(in oklab, var(--review-sidebar) 88%, var(--text)) 0 1px,
+    transparent 1px var(--tree-indent-step, 12px)
+  );
+  background-position: left 15px top;
+  background-size: calc(var(--tree-depth, 0) * var(--tree-indent-step, 12px)) 100%;
+  background-repeat: no-repeat;
   cursor: pointer;
   text-align: left;
   font: inherit;
+  transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
 .workspace-tree-row:hover {
   color: var(--text);
-  background: var(--panel-soft);
+  background-color: color-mix(in oklab, var(--review-sidebar) 92%, var(--text));
+}
+
+.workspace-tree-row:focus-visible {
+  outline: none;
+  color: var(--text);
+  box-shadow: 0 0 0 2px var(--accent-soft), inset 0 0 0 1px color-mix(in oklab, var(--accent) 55%, transparent);
 }
 
 .workspace-tree-label {
@@ -67,10 +136,38 @@
   stroke: var(--accent);
 }
 
+/* The open file: a filled pill plus an accent rail on its leading edge, so it
+   stays findable at a glance in a long tree without shouting. */
 .workspace-tree-file[aria-pressed="true"] {
   color: var(--text);
-  background: var(--panel-soft);
+  background-color: color-mix(in oklab, var(--review-sidebar) 86%, var(--text));
   font-weight: 500;
+}
+
+.workspace-tree-file[aria-pressed="true"]::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  background: var(--accent);
+}
+
+/* Ancestor folders pinned over the scroll window. Opaque, hairline-footed, and
+   above the rows it covers — the tree's own answer to "where am I". */
+.workspace-tree-sticky {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  background: var(--review-sidebar);
+  box-shadow: 0 1px 0 var(--line-soft);
+}
+
+.workspace-tree-sticky .workspace-tree-row {
+  cursor: pointer;
 }
 
 .workspace-tree-chevron {
@@ -252,6 +349,94 @@
 .file-tab-close-prompt-actions button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+/* Resting state for the preview column. The old dashed chip was sized to its
+   own text and pinned top-left, which read as a stray tooltip once the panel
+   was wide; a centred block with the live shortcuts gives the area a job. */
+.file-preview-blank {
+  display: grid;
+  place-items: center;
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 24px;
+}
+
+.file-preview-blank-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 300px;
+}
+
+.file-preview-blank-mark {
+  color: var(--line-strong);
+}
+
+.file-preview-blank-title {
+  margin: 0;
+  color: var(--muted-strong);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+
+.file-preview-blank-keys {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  margin: 0;
+}
+
+.file-preview-blank-key {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.file-preview-blank-key dt {
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.file-preview-blank-key dd {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0;
+}
+
+.file-preview-blank kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  line-height: 1;
+}
+
+/* A preview column squeezed to a sliver keeps the title and drops the legend
+   rather than wrapping it into a ladder. */
+@container (max-width: 280px) {
+  .file-preview-blank-keys {
+    display: none;
+  }
+}
+
+@container (max-width: 210px) {
+  .file-preview-blank {
+    display: none;
+  }
 }
 
 .file-preview {

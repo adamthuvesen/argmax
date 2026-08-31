@@ -9,6 +9,10 @@ export interface UseWorkspaceFileListResult {
   entries: WorkspaceFileEntry[];
   listState: AsyncState;
   listError: string | null;
+  /** Re-list the source on demand. The automatic re-fetch keys off the
+   *  changed-files signature, which misses files an agent never touched
+   *  through git — a manual `mkdir`, an untracked scratch file. */
+  refresh: () => void;
   resetForSourceChange: () => void;
 }
 
@@ -25,12 +29,17 @@ export function useWorkspaceFileList(args: {
   const [entries, setEntries] = useState<WorkspaceFileEntry[]>([]);
   const [listState, setListState] = useState<AsyncState>("idle");
   const [listError, setListError] = useState<string | null>(null);
+  const [refreshCount, setRefreshCount] = useState(0);
   const workspaceListToken = useRef(0);
   // Identifies which source the current list belongs to. A re-fetch within the
   // same source — the workspace's changed-files signature moving as the agent
   // edits mid-turn — keeps the tree on screen instead of unmounting it behind
   // "Loading files…". Only a new source (or the first load) shows loading.
   const listContextRef = useRef<string | null>(null);
+
+  const refresh = useCallback((): void => {
+    setRefreshCount((count) => count + 1);
+  }, []);
 
   const resetForSourceChange = useCallback((): void => {
     setEntries([]);
@@ -71,12 +80,13 @@ export function useWorkspaceFileList(args: {
         setListState("error");
         setListError(errorMessage(error) || "Could not load files.");
       });
-  }, [mode, isPanelOpen, sourceId, sourceKind, changedFilesKey, dispatch]);
+  }, [mode, isPanelOpen, sourceId, sourceKind, changedFilesKey, dispatch, refreshCount]);
 
   return {
     entries,
     listState,
     listError,
+    refresh,
     resetForSourceChange
   };
 }

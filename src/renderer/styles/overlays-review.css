@@ -50,12 +50,18 @@
   flex-direction: column;
 }
 
+/* Sidebar, not "the same panel with a hairline in it". The column steps off
+   the preview surface (down on paper, up on charcoal — see --review-sidebar)
+   so a wide panel reads as two regions instead of one wash. */
 .review-list-col {
   display: flex;
   flex-direction: column;
   min-width: 200px;
   min-height: 0;
   overflow: hidden;
+  background: var(--review-sidebar);
+  border-right: 1px solid var(--line);
+  transition: border-color var(--duration-fast) var(--ease);
 }
 
 .review-changed-file-stack {
@@ -168,21 +174,12 @@
   background: transparent;
 }
 
-.review-resize-handle::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 1px;
-  transform: translateX(-50%);
-  background: var(--line-soft);
-  transition: background var(--duration-fast) var(--ease);
-}
-
-.review-resize-handle:hover::after,
-.review-resize-handle:active::after {
-  background: var(--line-strong);
+/* No hairline of its own: the column's own right border is the divider, and a
+   second line 3px away read as a double rule. The handle is the 5px grab strip
+   over it, and brightens that border on hover instead. */
+.review-list-col:has(+ .review-resize-handle:hover),
+.review-list-col:has(+ .review-resize-handle:active) {
+  border-right-color: var(--line-strong);
 }
 
 .review-diff {
@@ -210,18 +207,6 @@
   border: 1px dashed var(--line);
   border-radius: var(--radius-xl);
   background: var(--panel-soft);
-}
-
-.review-empty-preview {
-  box-sizing: border-box;
-  width: fit-content;
-  max-width: calc(100% - 32px);
-}
-
-@container (max-width: 210px) {
-  .review-empty-preview {
-    display: none;
-  }
 }
 
 .review-empty-mark {
@@ -577,6 +562,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   width: 24px;
   height: 24px;
   padding: 0;
@@ -596,6 +582,64 @@
 
 .review-mode-tabs button[aria-selected="true"] {
   color: var(--text);
+}
+
+/* Icon-only is right for a 280px sidebar and wasteful once the panel is half
+   the window, where two unlabelled glyphs float in an otherwise empty bar. */
+.review-mode-tab-label {
+  display: none;
+  font-size: var(--text-xs-plus);
+}
+
+.review-panel[data-wide="true"] .review-mode-tabs button {
+  width: auto;
+  padding: 0 9px;
+}
+
+.review-panel[data-wide="true"] .review-mode-tab-label {
+  display: inline;
+}
+
+/* Files-mode status strip. Sibling of the Changes summary footer and built to
+   the same recipe, so the panel reads with one anchored bottom edge either
+   way: mono metadata, tabular figures, quiet against a soft ground. */
+.review-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 3px 14px 3px 18px;
+  border-top: 1px solid var(--line);
+  background: var(--panel-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs-plus);
+  color: var(--muted);
+  font-feature-settings: "tnum", "zero";
+}
+
+.review-status-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-status-meta {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 12px;
+  white-space: nowrap;
+}
+
+.review-status-save {
+  color: var(--sage-deep);
+}
+
+.review-status-save[data-state="error"] {
+  color: var(--rose);
 }
 
 /* Changes-scope chip (Changes view only): the current scope plus a caret,

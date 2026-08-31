@@ -32,6 +32,7 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
       entries: [],
       listState: "idle",
       listError: null,
+      refreshList: () => undefined,
       tabs: [],
       activeTabPath: null,
       selectedPath: null,

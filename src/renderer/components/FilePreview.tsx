@@ -25,7 +25,7 @@ import {
 } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
-import { ChevronRight, Code, Eye, RotateCcw } from "lucide-react";
+import { ChevronRight, Code, Eye, FileText, RotateCcw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -93,7 +93,31 @@ function editorLanguageFor(path: string | null): Extension[] {
   }
 }
 
-export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Element {
+/** Where the caret sits in the open editor, 1-based, for the status bar. */
+export interface EditorCursor {
+  line: number;
+  column: number;
+}
+
+/** The shortcuts the blank preview advertises. Each one is live in Files mode:
+ *  ⌘P/⌘⇧F open the command palette (see RENDERER_ONLY_KEYBINDINGS), ⌘S and ⌘W
+ *  are handled by the review panel's own key handler. */
+const BLANK_SHORTCUTS: ReadonlyArray<{ keys: string[]; label: string }> = [
+  { keys: ["⌘", "P"], label: "Find a file" },
+  { keys: ["⌘", "⇧", "F"], label: "Search file contents" },
+  { keys: ["⌘", "S"], label: "Save changes" },
+  { keys: ["⌘", "W"], label: "Close file" }
+];
+
+export function FilePreview({
+  state,
+  onCursorChange
+}: {
+  state: WorkspaceFilesState;
+  /** Reports the caret position up to the panel status bar. Null when no
+   *  editor is mounted (blank preview, rendered markdown, unmount). */
+  onCursorChange?: (cursor: EditorCursor | null) => void;
+}): JSX.Element {
   const markdownFile = isMarkdownPath(state.selectedPath);
   // Per-file render mode. Default to rendered for markdown; non-markdown
   // files only ever show source so the state is inert there.
@@ -103,7 +127,26 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
   }, [state.selectedPath]);
 
   if (!state.selectedPath) {
-    return <p className="review-empty review-empty-preview">Select a file to preview.</p>;
+    return (
+      <div className="file-preview-blank" aria-label="No file selected">
+        <div className="file-preview-blank-inner">
+          <FileText className="file-preview-blank-mark" size={40} strokeWidth={1} aria-hidden="true" />
+          <p className="file-preview-blank-title">Select a file to preview</p>
+          <dl className="file-preview-blank-keys">
+            {BLANK_SHORTCUTS.map((shortcut) => (
+              <div className="file-preview-blank-key" key={shortcut.label}>
+                <dt>{shortcut.label}</dt>
+                <dd>
+                  {shortcut.keys.map((key) => (
+                    <kbd key={key}>{key}</kbd>
+                  ))}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </div>
+    );
   }
   if (state.previewState === "loading") {
     return <LinesSkeleton rows={18} label="Loading file" className="review-file-skeleton" />;
@@ -209,6 +252,7 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
           value={buffer}
           onChange={state.editFile}
           onSave={state.saveFile}
+          onCursorChange={onCursorChange}
           saving={state.saveState === "saving"}
           editable={state.canEdit}
         />
@@ -421,6 +465,7 @@ function SourceEditor({
   value,
   onChange,
   onSave,
+  onCursorChange,
   saving,
   editable
 }: {
@@ -428,6 +473,7 @@ function SourceEditor({
   value: string;
   onChange: (next: string) => void;
   onSave: () => Promise<void>;
+  onCursorChange?: (cursor: EditorCursor | null) => void;
   saving: boolean;
   editable: boolean;
 }): JSX.Element {
@@ -439,6 +485,24 @@ function SourceEditor({
     return true;
   }, [onSave]);
 
+  // Reports Ln/Col to the panel status bar. Gated on selection/doc changes so a
+  // pure scroll or focus ping doesn't re-render the panel.
+  const cursorReporter = useMemo<Extension>(
+    () =>
+      EditorView.updateListener.of((update) => {
+        if (!onCursorChange) return;
+        if (!update.selectionSet && !update.docChanged) return;
+        const head = update.state.selection.main.head;
+        const line = update.state.doc.lineAt(head);
+        onCursorChange({ line: line.number, column: head - line.from + 1 });
+      }),
+    [onCursorChange]
+  );
+
+  // Leaving the editor (file closed, markdown flipped to rendered) clears the
+  // stale position rather than leaving the last file's caret on screen.
+  useEffect(() => () => onCursorChange?.(null), [onCursorChange]);
+
   const extensions = useMemo<Extension[]>(
     () =>
       editable
@@ -449,6 +513,7 @@ function SourceEditor({
             search({ top: true }),
             editorTheme,
             editorSyntaxHighlighting,
+            cursorReporter,
             EditorView.lineWrapping
           ]
         : [
@@ -457,9 +522,10 @@ function SourceEditor({
             search({ top: true }),
             editorTheme,
             editorSyntaxHighlighting,
+            cursorReporter,
             EditorView.lineWrapping
           ],
-    [path, handleSave, editable]
+    [path, handleSave, editable, cursorReporter]
   );
 
   return (

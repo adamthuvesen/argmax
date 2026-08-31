@@ -76,6 +76,10 @@ Each per-file diff is capped at 1 MiB (`PER_FILE_DIFF_CAP_BYTES`). A capped diff
 
 Tree icons use `@react-symbols/icons` with folder icons styled using `var(--accent)`.
 
+The Files view is laid out as a sidebar plus an editor. [WorkspaceTree.tsx](../src/renderer/components/WorkspaceTree.tsx) virtualizes 24px rows and, given a `toolbar`, renders a titleless action strip above them holding collapse-all and refresh (`refreshList`, which re-lists the source — the automatic re-fetch only keys off the changed-files signature, so it misses files git never saw). The strip carries no label: the panel already names the source, and at rest its only job is keeping the first row off the review toolbar's edge. Rows carry a `--tree-depth` custom property that CSS turns into indent guides, and the folders enclosing the top visible row pin above the scroll window, sliding out as their subtree scrolls past.
+
+The tree column sits on `--review-sidebar`, which steps *under* the preview surface in light and *above* it in dark — `--panel-sunken` is the darkest surface in the app, so a dark column set from it reads as a hole rather than a sidebar. Its width is a share of the panel (`LEFT_COL_AUTO_RATIO`, clamped) until the user drags the divider, which pins a pixel width in `argmax.reviewPanel.leftColumnWidth`. Past `PANEL_WIDE_BREAKPOINT` the panel sets `data-wide`, which labels the Changes/Files tabs. A status bar under both columns carries the open path, save state, language, line count, and the caret position the editor reports up through `onCursorChange`.
+
 ## Git
 
 [src-tauri/src/git](../src-tauri/src/git) executes git commands via direct argv arguments for branching, commits, pushing, and pull request actions.

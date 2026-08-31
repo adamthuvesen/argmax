@@ -353,6 +353,76 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText(thinking)).toBeTruthy();
   });
 
+  // Reasoning is normalized as a `message.delta` (`thinking: true`), so before
+  // this the newest event during a reasoning pause looked like streaming answer
+  // text and suppressed the generic indicator. Post-answer that reasoning is a
+  // collapsed Thought, so nothing on screen said the agent was still working:
+  // observed as a 20 s dead transcript on a running Codex turn.
+  it.each([
+    { label: "balanced", display: "collapsed" as const },
+    { label: "single-line", display: "single-line" as const }
+  ])("shows the generic indicator while reasoning continues after an answer ($label)", ({ display }) => {
+    vi.useFakeTimers();
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("t2", "message.delta", "**Planning the next edit**", "2026-05-12T15:00:05.000Z", {
+          thinking: true
+        }),
+        event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:04.000Z", {
+          tool_use_id: "tu_git",
+          content: "main"
+        }),
+        event("c1", "command.started", "Bash", "2026-05-12T15:00:03.000Z", {
+          type: "tool_use",
+          id: "tu_git",
+          name: "Bash",
+          input: { command: "git status --short" }
+        }),
+        event("m1", "message.completed", "Agreed, I'll rework the board.", "2026-05-12T15:00:02.000Z"),
+        event("t1", "message.delta", "**Weighing the lanes**", "2026-05-12T15:00:01.000Z", {
+          thinking: true
+        }),
+        event("u1", "user.message", "reorder the lanes", "2026-05-12T15:00:00.000Z")
+      ],
+      { defaultToolCallsDisplay: display }
+    );
+
+    expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(screen.getByRole("article", { name: "Thinking" })).toBeInTheDocument();
+    // The reasoning is history here, not the cue: no live Thought block claims
+    // the beat alongside the generic line.
+    expect(screen.queryByRole("button", { name: "Thinking" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { label: "balanced", display: "collapsed" as const },
+    { label: "single-line", display: "single-line" as const }
+  ])("leaves the pre-answer beat to the live Thought block alone ($label)", ({ display }) => {
+    vi.useFakeTimers();
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("t1", "message.delta", "**Mapping the renderer**", "2026-05-12T15:00:01.000Z", {
+          thinking: true
+        }),
+        event("u1", "user.message", "map the renderer", "2026-05-12T15:00:00.000Z")
+      ],
+      { defaultToolCallsDisplay: display }
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    // Exactly one cue: the reasoning itself, expanded and labelled "Thinking".
+    expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
+  });
+
   it("renders a Thought block collapsed when the answer is already there on mount", () => {
     renderConversation(
       baseSession({ state: "running" }),
@@ -760,9 +830,9 @@ describe("SessionConversation — streaming & composer", () => {
 
   it("keeps the Thinking line's slot in the list whether or not the line is in it", () => {
     // The slot is the CSS contract itself (chat-conversation.css reserves
-    // `.conversation-tail`'s height): the Thinking line is the list's last row
-    // and it leaves the moment the answer starts, so the row has to hold its
-    // space or a transcript pinned to the bottom jumps by its height.
+    // `.conversation-tail`'s height): the Thinking line sits after the
+    // transcript and leaves the moment the answer starts, so the row has
+    // to hold its space or a transcript pinned to the bottom jumps by its height.
     const live = renderConversation(
       baseSession({ provider: "codex", state: "running" }),
       [event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")]
@@ -779,6 +849,20 @@ describe("SessionConversation — streaming & composer", () => {
     );
     expect(screen.queryByLabelText("Thinking")).toBeNull();
     expect(settled.container.querySelector(".conversation-tail")).not.toBeNull();
+  });
+
+  it("marks only the latest user message as the turn-start anchor", () => {
+    renderConversation(
+      baseSession({ provider: "codex", state: "complete" }),
+      [
+        event("u1", "user.message", "first prompt", "2026-05-12T15:00:00.000Z"),
+        event("m1", "message.completed", "First reply.", "2026-05-12T15:00:01.000Z"),
+        event("u2", "user.message", "follow-up", "2026-05-12T15:00:02.000Z")
+      ]
+    );
+
+    expect(screen.getByText("first prompt").closest("[data-turn-anchor]")).toBeNull();
+    expect(screen.getByText("follow-up").closest("[data-turn-anchor]")).not.toBeNull();
   });
 
   it("hides Thinking for Codex once a visible tool starts running", () => {
@@ -890,6 +974,64 @@ describe("SessionConversation — streaming & composer", () => {
       vi.advanceTimersByTime(1100);
     });
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("drops Thinking when an atomic answer lands, without waiting for the state flip", () => {
+    vi.useFakeTimers();
+    // Codex and OpenCode deliver an answer as a single `message.completed` —
+    // there are no answer deltas, so the reasoning gap before it is what puts
+    // the label up and nothing later arrives to take it down. The session stays
+    // `running` until the provider process exits about a second after the last
+    // message, so keying the hide on that flip left the label sitting under a
+    // finished answer for that whole second.
+    const reasoning = event("r1", "message.delta", "**Drafting the summary**", "2026-05-12T15:00:01.000Z", {
+      thinking: true
+    });
+    const userMessage = event("u1", "user.message", "summarize it", "2026-05-12T15:00:00.000Z");
+    const baseProps = {
+      isLogOpen: false,
+      onSendSessionInput: vi.fn().mockResolvedValue(undefined),
+      onTerminateSession: vi.fn().mockResolvedValue(undefined),
+      onToggleLog: vi.fn(),
+      project,
+      rawOutputs: [],
+      review: reviewStub(),
+      workspace
+    };
+    const running = baseSession({ provider: "codex", state: "running" });
+
+    const { rerender } = render(
+      <SessionConversation {...baseProps} events={[reasoning, userMessage]} session={running} />
+    );
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+
+    rerender(
+      <SessionConversation
+        {...baseProps}
+        events={[
+          event("m1", "message.completed", "Here is the summary.", "2026-05-12T15:00:03.000Z"),
+          reasoning,
+          userMessage
+        ]}
+        session={running}
+      />
+    );
+    // Past the minimum-visible clamp, which is all that may hold it on screen.
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    expect(screen.getByText("Here is the summary.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    // Still running, still silent — and still no tail label until the answer's
+    // window is spent and the pause is a genuine mid-turn one.
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
 
   it("shows generic Thinking after a completed tool row", () => {

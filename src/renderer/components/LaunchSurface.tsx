@@ -1,4 +1,4 @@
-import { ChevronDown, Folder, GitBranch, MessagesSquare, MoreHorizontal, Play, Plus, X } from "lucide-react";
+import { ChevronDown, Folder, GitBranch, MoreHorizontal, Play, Plus, X } from "lucide-react";
 import {
   Suspense,
   lazy,
@@ -38,7 +38,13 @@ import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { pickLauncherHeading } from "../lib/launcherHeadings.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { preferredLaunchModel, type ModelPickerSelection } from "../lib/models.js";
-import { AGENT_MODE_LABELS, toggleAgentMode } from "../lib/agentMode.js";
+import {
+  LAUNCHER_MODE_LABELS,
+  agentModeForLaunch,
+  cycleLauncherMode,
+  launcherModeTitle,
+  type LauncherMode
+} from "../lib/agentMode.js";
 import {
   readStoredWorkspaceMode,
   toggleWorkspaceMode,
@@ -64,7 +70,7 @@ const WelcomePane = lazy(async () => ({
   default: (await import("./WelcomePane.js")).WelcomePane
 }));
 
-const PROMPT_MAX_HEIGHT_PX = 140;
+const PROMPT_MAX_HEIGHT_PX = 168;
 
 function isOptionButtonTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("button.project-picker-item") !== null;
@@ -136,8 +142,9 @@ export function LaunchSurface({
     : project
       ? launcherDraftKey(project.id)
       : null;
-  // Picking another project (or side chat) from the context picker is how the
-  // user aims a prompt they are still writing, so the text follows the pick.
+  // Picking another project from the context picker is how the user aims a
+  // prompt they are still writing, so the text follows the pick. Switching
+  // to Chat uses the same carry so the draft survives the retarget.
   const [prompt, setPrompt, promptCarriedOnRetarget] = useComposerDraft(draftKey, {
     carryTextOnRetarget: true
   });
@@ -303,9 +310,19 @@ export function LaunchSurface({
     setCompactContextOpen(false);
   }, []);
 
+  const chatAvailable = Boolean(onLaunchSideChat && onSideChatModeChange);
+  const launcherMode: LauncherMode = chatMode ? "chat" : agentMode;
+
   const toggleMode = useCallback((): void => {
-    setAgentMode((mode) => toggleAgentMode(mode));
-  }, []);
+    const next = cycleLauncherMode(chatMode ? "chat" : agentMode, chatAvailable);
+    if (next === "chat") {
+      closeContextPickers();
+      onSideChatModeChange?.(true);
+      return;
+    }
+    onSideChatModeChange?.(false);
+    setAgentMode(next);
+  }, [agentMode, chatAvailable, chatMode, closeContextPickers, onSideChatModeChange]);
 
   const toggleWorkspace = useCallback((): void => {
     setWorkspaceMode((mode) => {
@@ -379,11 +396,6 @@ export function LaunchSurface({
     },
     [onSelectProject, onSideChatModeChange]
   );
-  const pickSideChat = useCallback((): void => {
-    onSideChatModeChange?.(true);
-    setProjectPickerOpen(false);
-    setCompactContextOpen(false);
-  }, [onSideChatModeChange]);
   const projectFilter = useTypeToFilter({
     open: projectPickerOpen,
     items: projects,
@@ -454,7 +466,13 @@ export function LaunchSurface({
     if (event.defaultPrevented) return;
     fileAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
-    if (event.key === "Tab" && event.shiftKey && !event.nativeEvent.isComposing) {
+    if (
+      event.key === "Tab" &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !event.nativeEvent.isComposing
+    ) {
       event.preventDefault();
       toggleMode();
       return;
@@ -480,7 +498,7 @@ export function LaunchSurface({
     try {
       const attachments = pendingAttachments.length > 0 ? pendingAttachments : undefined;
       if (chatMode && onLaunchSideChat) {
-        await onLaunchSideChat(finalPrompt, model, agentMode, attachments);
+        await onLaunchSideChat(finalPrompt, model, agentModeForLaunch(launcherMode), attachments);
       } else {
         await onLaunchTask(finalPrompt, model, agentMode, workspaceMode, attachments);
       }
@@ -507,13 +525,10 @@ export function LaunchSurface({
   }
 
   const isReviewOpen = reviewState.isPanelOpen && activeProject !== null;
-  // After the WelcomePane early-return, `project` is only null in chat mode.
-  const contextSummary =
-    !chatMode && project
-      ? `Project and branch: ${project.name}, ${project.currentBranch}`
-      : "Context: side chat, no repository";
-  const contextChipLabel = chatMode ? "Side chat" : project?.name ?? "";
-  const sideChatPickerRow = Boolean(onLaunchSideChat && onSideChatModeChange);
+  const contextSummary = project
+    ? `Project and branch: ${project.name}, ${project.currentBranch}`
+    : "";
+  const contextChipLabel = project?.name ?? "";
 
   return (
     <div
@@ -538,6 +553,8 @@ export function LaunchSurface({
       </header>
       <form
         className="composer"
+        // One step above app chrome, same as the session composer. See tokens.css.
+        data-type-scale="composer"
         ref={formRef}
         onSubmit={(event) => void submitPrompt(event)}
         onDragOver={onComposerDragOver}
@@ -638,6 +655,7 @@ export function LaunchSurface({
               onFastModeEnabledChange={onFastModeEnabledChange}
             />
           </div>
+          {chatMode ? null : (
           <div
             className="composer-context-group composer-context-group--workspace"
             data-compact-open={compactContextOpen ? "true" : undefined}
@@ -676,11 +694,7 @@ export function LaunchSurface({
               title={contextChipLabel}
               onClick={() => setProjectPickerOpen((o) => !o)}
             >
-              {chatMode ? (
-                <MessagesSquare size={14} aria-hidden="true" />
-              ) : (
-                <Folder size={14} aria-hidden="true" />
-              )}
+              <Folder size={14} aria-hidden="true" />
               <span className="composer-context-chip-label">{contextChipLabel}</span>
               <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
             </button>
@@ -707,13 +721,13 @@ export function LaunchSurface({
                   <li
                     key={p.id}
                     role="option"
-                    aria-selected={!chatMode && p.id === project?.id}
+                    aria-selected={p.id === project?.id}
                     data-active={index === projectFilter.activeIndex ? "true" : undefined}
                   >
                     <button
                       type="button"
                       className="project-picker-item"
-                      aria-pressed={!chatMode && p.id === project?.id}
+                      aria-pressed={p.id === project?.id}
                       onClick={() => pickProject(p)}
                     >
                       <Folder size={13} aria-hidden="true" />
@@ -727,19 +741,6 @@ export function LaunchSurface({
                   </li>
                 ) : null}
                 <li className="project-picker-divider" role="separator" />
-                {sideChatPickerRow ? (
-                  <li role="option" aria-selected={chatMode}>
-                    <button
-                      type="button"
-                      className="project-picker-item"
-                      aria-pressed={chatMode}
-                      onClick={pickSideChat}
-                    >
-                      <MessagesSquare size={13} aria-hidden="true" />
-                      Chat
-                    </button>
-                  </li>
-                ) : null}
                 <li role="option" aria-selected={false}>
                   <button
                     type="button"
@@ -757,7 +758,7 @@ export function LaunchSurface({
               </ul>
             )}
             </div>
-            {!chatMode && project ? (
+            {project ? (
             <div className="project-picker-anchor" ref={branchPickerRef}>
             <button
               className="composer-context-chip branch-chip"
@@ -823,6 +824,7 @@ export function LaunchSurface({
             ) : null}
             </div>
           </div>
+          )}
           <button
             className="composer-tool"
             type="button"
@@ -837,15 +839,11 @@ export function LaunchSurface({
               type="button"
               className="composer-context-chip agent-mode-toggle"
               aria-label="Agent mode"
-              aria-pressed={agentMode === "plan"}
-              title={
-                agentMode === "plan"
-                  ? "Plan — the agent drafts a plan before touching anything. Shift+Tab for Auto."
-                  : "Auto — the agent works and approves its own steps. Shift+Tab for Plan."
-              }
+              aria-pressed={launcherMode !== "auto"}
+              title={launcherModeTitle(launcherMode, chatAvailable)}
               onClick={toggleMode}
             >
-              {AGENT_MODE_LABELS[agentMode]}
+              {LAUNCHER_MODE_LABELS[launcherMode]}
             </button>
             {chatMode ? null : (
               <button

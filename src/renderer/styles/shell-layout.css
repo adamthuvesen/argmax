@@ -6,17 +6,6 @@
   min-height: 0;
   overflow: hidden;
   background: var(--bg);
-  /* Left edge of the work area, which is the shell minus the sidebar column. Overlays
-     that float over a session center on this instead of the window, otherwise
-     they sit half a sidebar left of the conversation they opened over. The
-     shell sets `--sidebar-width` inline from the drag-resize state. */
-  --work-area-left-inset: var(--sidebar-width, 272px);
-}
-
-/* Collapsed, the sidebar leaves the grid and floats on peek, so the work area
-   is the whole window again. */
-.app-shell[data-sidebar-collapsed="true"] {
-  --work-area-left-inset: 0px;
 }
 
 .sidebar {
@@ -138,7 +127,7 @@
   border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
@@ -185,11 +174,13 @@
 /* New Agent is the primary action but not a slab: it carries the same ghost
    row as its siblings and leads only through ink, keeping the masthead quiet.
    A filled, bordered button here reads as a modal dialog's confirm and drowns
-   out the session list underneath. */
+   out the session list underneath. Ink is the whole lead — weight stays on
+   --weight-ui, because Geist Sans ships static cuts, so a 500 here renders in
+   the Medium face and the row reads as a different, larger typeface than the
+   three under it rather than as the same row lit brighter. */
 .rail-nav-cta {
   position: relative;
   color: var(--text);
-  font-weight: 500;
 }
 
 .rail-nav-cta:active {

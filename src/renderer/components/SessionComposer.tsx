@@ -64,7 +64,7 @@ import { ProviderSwitchDialog } from "./ProviderSwitchDialog.js";
 import { SkillPopover } from "./SkillPopover.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
 
-const PROMPT_MAX_HEIGHT_PX = 140;
+const PROMPT_MAX_HEIGHT_PX = 168;
 
 /**
  * Feedback line floating above the composer. Pane-local actions surface their
@@ -278,7 +278,13 @@ export function SessionComposer({
     if (event.defaultPrevented) return;
     fileAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
-    if (event.key === "Tab" && event.shiftKey && !event.nativeEvent.isComposing) {
+    if (
+      event.key === "Tab" &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !event.nativeEvent.isComposing
+    ) {
       event.preventDefault();
       toggleMode();
       return;
@@ -288,6 +294,11 @@ export function SessionComposer({
       inputFormRef.current?.requestSubmit();
     }
   };
+
+  // An annotation is a message on its own: "Add to chat" and review comments
+  // already name what the agent should look at, so send stays available with
+  // an empty draft once a chip is attached.
+  const hasSendableContent = input.trim().length > 0 || pendingAnnotations.length > 0;
 
   /**
    * Build the prompt from the draft plus attachments and hand it to `deliver`.
@@ -302,7 +313,7 @@ export function SessionComposer({
     ) => Promise<void>
   ): Promise<void> => {
     const trimmedInput = input.trim();
-    if (!session || !trimmedInput || isSending || sendingQueuedMessageId) {
+    if (!session || !hasSendableContent || isSending || sendingQueuedMessageId) {
       return;
     }
 
@@ -344,9 +355,9 @@ export function SessionComposer({
       className="session-input"
       // The agent window carries its own type scale (Settings → chat font
       // size), which is about reading the transcript. The composer is chrome —
-      // model chip, repo, branch, changed files — so it holds the app-chrome
+      // model chip, repo, branch, changed files — so it holds the composer
       // scale instead, matching the launcher's composer. See tokens.css.
-      data-type-scale="chrome"
+      data-type-scale="composer"
       ref={inputFormRef}
       onSubmit={(event) => void submitInput(event)}
       onDragOver={onComposerDragOver}
@@ -737,7 +748,7 @@ export function SessionComposer({
               className="composer-context-chip agent-mode-toggle"
               aria-label="Agent mode"
               aria-pressed={agentMode === "plan"}
-              title="Toggle agent mode (Shift+Tab)"
+              title="Toggle agent mode (Tab)"
               disabled={!canSend || isSending}
               onClick={toggleMode}
             >
@@ -760,7 +771,7 @@ export function SessionComposer({
             <Square size={9} fill="currentColor" strokeWidth={0} />
           </button>
         ) : (() => {
-          const sendDisabled = !canSend || isSending || !input.trim();
+          const sendDisabled = !canSend || isSending || !hasSendableContent;
           const sendTitle = isQueueing
             ? "Queue follow-up — sent when the current turn finishes"
             : "Send follow-up";

@@ -4,7 +4,11 @@ import type { DiscoveredProvider } from "../../../shared/types.js";
 import type { ModelPickerSelection } from "../../lib/models.js";
 import type { PermissionMode } from "../../lib/permissionMode.js";
 import { PROVIDER_INSTALL_HINTS } from "../../lib/providerInstallHints.js";
-import type { ToolCallsDisplay } from "../../lib/uiPreferences.js";
+import {
+  CHAT_VERBOSITY_HINTS,
+  CHAT_VERBOSITY_OPTIONS,
+  type ChatVerbosity
+} from "../../lib/uiPreferences.js";
 import { CombinedModelSelector, type ProviderAvailability } from "../ModelSelector.js";
 import { WorkingNest } from "../WorkingNest.js";
 import { SectionHeader, Segmented, ToggleRow } from "./settingsPrimitives.js";
@@ -12,12 +16,8 @@ import { SectionHeader, Segmented, ToggleRow } from "./settingsPrimitives.js";
 export function AgentsSettings({
   defaultModel,
   onDefaultModelChange,
-  toolCallsDisplay,
-  onToolCallsDisplayChange,
-  toolCallGroupsExpanded,
-  onToolCallGroupsExpandedChange,
-  thinkingExpanded,
-  onThinkingExpandedChange,
+  chatVerbosity,
+  onChatVerbosityChange,
   fastModeEnabled,
   onFastModeEnabledChange,
   permissionMode,
@@ -29,12 +29,8 @@ export function AgentsSettings({
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
-  toolCallsDisplay: ToolCallsDisplay;
-  onToolCallsDisplayChange: (v: ToolCallsDisplay) => void;
-  toolCallGroupsExpanded: boolean;
-  onToolCallGroupsExpandedChange: (v: boolean) => void;
-  thinkingExpanded: boolean;
-  onThinkingExpandedChange: (v: boolean) => void;
+  chatVerbosity: ChatVerbosity;
+  onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
   fastModeEnabled: boolean;
   onFastModeEnabledChange: (v: boolean) => void;
   permissionMode: PermissionMode;
@@ -78,47 +74,12 @@ export function AgentsSettings({
             />
           </div>
           <Segmented
-            legend="Tool calls in chat"
-            hint={
-              toolCallsDisplay === "single-line"
-                ? "One self-updating line between replies; saved thoughts fold away too. Click the line for details."
-                : "The “Working for…” chip on each turn."
-            }
-            name="tool-calls-display"
-            value={toolCallsDisplay}
-            onChange={(v) => onToolCallsDisplayChange(v as ToolCallsDisplay)}
-            options={[
-              { value: "expanded", label: "Show expanded" },
-              { value: "collapsed", label: "Show collapsed" },
-              { value: "single-line", label: "Single line" }
-            ]}
-          />
-          <Segmented
-            legend="Tool call groups"
-            hint={
-              toolCallsDisplay === "single-line"
-                ? "Unused while Tool calls is set to Single line."
-                : "Inner bubbles like “Explored 6 files”."
-            }
-            name="tool-call-groups-expand"
-            value={toolCallGroupsExpanded ? "show" : "hide"}
-            onChange={(v) => onToolCallGroupsExpandedChange(v === "show")}
-            disabled={toolCallsDisplay === "single-line"}
-            options={[
-              { value: "show", label: "Show expanded" },
-              { value: "hide", label: "Show collapsed" }
-            ]}
-          />
-          <Segmented
-            legend="Thinking blocks"
-            hint="Saved “Thought” blocks after a turn answers. Live thinking still expands."
-            name="thinking-expand"
-            value={thinkingExpanded ? "show" : "hide"}
-            onChange={(v) => onThinkingExpandedChange(v === "show")}
-            options={[
-              { value: "show", label: "Show expanded" },
-              { value: "hide", label: "Show collapsed" }
-            ]}
+            legend="Chat detail & verbosity"
+            hint={CHAT_VERBOSITY_HINTS[chatVerbosity]}
+            name="chat-verbosity"
+            value={String(chatVerbosity)}
+            onChange={(v) => onChatVerbosityChange(Number(v) as ChatVerbosity)}
+            options={CHAT_VERBOSITY_OPTIONS}
           />
           <ToggleRow
             label="Fast mode for Claude and Codex"

@@ -26,6 +26,7 @@ import { FilePreview } from "./FilePreview.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 import { FileIcon } from "@react-symbols/icons/utils";
+import { registerReviewFileTabCloseHandler } from "../lib/reviewFilePanel.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 
 function fileBasename(path: string): string {
@@ -240,6 +241,28 @@ export function ReviewPanel({
   }, [review.mode]);
 
   useEffect(() => {
+    if (!isFocused) {
+      registerReviewFileTabCloseHandler(null);
+      return undefined;
+    }
+    if (review.mode !== "files") {
+      registerReviewFileTabCloseHandler(null);
+      return undefined;
+    }
+    const activePath = review.workspaceFiles.activeTabPath;
+    if (!activePath) {
+      registerReviewFileTabCloseHandler(null);
+      return undefined;
+    }
+    const closeActiveTab = (): void => {
+      const path = review.workspaceFiles.activeTabPath;
+      if (path) review.workspaceFiles.closeTab(path);
+    };
+    registerReviewFileTabCloseHandler(closeActiveTab);
+    return () => registerReviewFileTabCloseHandler(null);
+  }, [isFocused, review.mode, review.workspaceFiles]);
+
+  useEffect(() => {
     if (!isFocused) return undefined;
     if (review.mode !== "files") return undefined;
     const activePath = review.workspaceFiles.activeTabPath;
@@ -251,6 +274,8 @@ export function ReviewPanel({
       if (event.isComposing || event.repeat) return;
       // ⌘W inside the browser panel belongs to its tab strip, not ours.
       if (event.target instanceof Element && event.target.closest(".browser-panel")) return;
+      const panel = panelRef.current;
+      if (!panel || !(event.target instanceof Node) || !panel.contains(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       review.workspaceFiles.closeTab(activePath);
@@ -316,12 +341,20 @@ export function ReviewPanel({
   // tree are siblings of the preview, so a handler on the preview alone misses
   // them and the save silently never happens.
   const files = review.workspaceFiles;
-  const handleSaveShortcut = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+  const handleFilesModeKeyShortcut = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (isChanges) return;
-    if (event.key.toLowerCase() !== "s" || !(event.metaKey || event.ctrlKey)) return;
-    if (event.defaultPrevented || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    if (files.canEdit && files.isDirty && files.saveState !== "saving") void files.saveFile();
+    if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
+    if (event.defaultPrevented || event.nativeEvent.isComposing) return;
+    const key = event.key.toLowerCase();
+    if (key === "s") {
+      event.preventDefault();
+      if (files.canEdit && files.isDirty && files.saveState !== "saving") void files.saveFile();
+      return;
+    }
+    if (key === "w" && files.activeTabPath) {
+      event.preventDefault();
+      files.closeTab(files.activeTabPath);
+    }
   };
 
   return (
@@ -372,7 +405,7 @@ export function ReviewPanel({
       </div>
       <div
         className={isChanges ? "review-body review-body-changes" : "review-body"}
-        onKeyDown={handleSaveShortcut}
+        onKeyDown={handleFilesModeKeyShortcut}
       >
         {isChanges ? null : (
           <>
@@ -451,6 +484,7 @@ export function ReviewPanel({
                                 blocks={diffBlocks}
                                 filePath={file.path}
                                 onAddComment={onAddReviewComment}
+                                onExpandContext={review.expandDiffContext}
                               />
                             ) : null}
                           </div>

@@ -3,9 +3,12 @@ import { useMemo, useState, type JSX } from "react";
 import { codenameForTool } from "../lib/agentNames.js";
 import {
   buildGroupRows,
+  splitLeadingVerb,
+  summarizeToolChangeCounts,
   summarizeToolGroup,
   type ToolCall
 } from "../lib/toolCalls.js";
+import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 import { WorkingNest } from "./WorkingNest.js";
@@ -32,6 +35,8 @@ export function ActivitySummaryLine({
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const summary = useMemo(() => summarizeToolGroup(tools), [tools]);
+  const headline = useMemo(() => splitLeadingVerb(summary.headline), [summary.headline]);
+  const changeCounts = useMemo(() => summarizeToolChangeCounts(tools), [tools]);
   const rows = useMemo(() => buildGroupRows(tools), [tools]);
   const previewText =
     !expanded && summary.status === "running" && summary.currentAction
@@ -57,8 +62,12 @@ export function ActivitySummaryLine({
           className="tool-call-group-eyebrow activity-summary-headline"
           aria-hidden="true"
         >
-          <span className="tool-call-group-eyebrow-label">{summary.headline}</span>
+          <span className="tool-call-group-eyebrow-label">{headline.verb}</span>
+          {headline.rest ? (
+            <span className="tool-call-group-eyebrow-detail"> {headline.rest}</span>
+          ) : null}
         </span>
+        {changeCounts ? <ActivityStat counts={changeCounts} /> : null}
         {previewText ? (
           <span key={previewText} className="tool-call-group-preview" aria-hidden="true">
             {previewText}
@@ -66,14 +75,10 @@ export function ActivitySummaryLine({
         ) : null}
         {summary.status === "running" ? (
           <span className="tool-call-group-running" aria-label="running" title="Running">
-            <WorkingNest active size={11} />
+            <WorkingNest active size={13} />
           </span>
         ) : (
-          <ChevronRight
-            size={11}
-            className={`turn-block-chevron${expanded ? " expanded" : ""}`}
-            aria-hidden="true"
-          />
+          <ChevronRight size={11} className="tool-call-row-chevron" aria-hidden="true" />
         )}
       </button>
       {expanded ? (

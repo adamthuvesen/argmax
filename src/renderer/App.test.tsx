@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import { persistLaunchModel } from "./lib/launchModelPreference.js";
+import { SESSION_ICON_COLORS, SESSION_ICON_NAMES } from "./lib/sessionIcons.js";
 import { attachmentProtocolUrl } from "../shared/attachmentProtocol.js";
 import type { ArgmaxApi, DashboardSnapshot } from "../shared/types.js";
 import {
@@ -487,7 +488,7 @@ describe("App", () => {
       expect(autotitleWorkspace).toHaveBeenCalledWith({
         workspaceId: "workspace-1",
         provider: "claude",
-        modelId: "claude-haiku-4-5",
+        modelId: "claude-sonnet-5",
         prompt: "Implement PTY launch"
       })
     );
@@ -520,8 +521,11 @@ describe("App", () => {
       await waitFor(() =>
         expect(setWorkspaceIcon).toHaveBeenCalledWith({
           workspaceId: "workspace-1",
-          icon: "Activity",
-          iconColor: "pink"
+          // The mocked draws pin the launch flow, not the palette: 0 takes the
+          // first icon and 0.999 the last colour. Naming the entries here meant
+          // appending a colour failed this test.
+          icon: SESSION_ICON_NAMES[0],
+          iconColor: SESSION_ICON_COLORS[SESSION_ICON_COLORS.length - 1]
         })
       );
       expect(setWorkspaceIcon.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
@@ -613,12 +617,12 @@ describe("App", () => {
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
   });
 
-  it("toggles launcher agent mode with Shift+Tab and sends plan mode", async () => {
+  it("toggles launcher agent mode with Tab and sends plan mode", async () => {
     render(<App />);
 
     const input = await screen.findByLabelText("Task prompt");
     fireEvent.change(input, { target: { value: "Plan the migration" } });
-    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
+    fireEvent.keyDown(input, { key: "Tab" });
 
     expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
     fireEvent.click(screen.getByTitle("Start agent"));

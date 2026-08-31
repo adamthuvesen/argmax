@@ -21,6 +21,7 @@
    glance instead of dissolving into the surface. */
 .working-nest[data-active="true"] {
   --working-nest-lead: var(--accent-deep);
+  --working-nest-rest: color-mix(in oklab, var(--accent) 45%, var(--muted));
   color: var(--accent);
   animation: working-nest-enter var(--motion-fast) var(--ease-out) both;
 }
@@ -74,28 +75,28 @@
   0%, 5% {
     opacity: 1;
     fill: var(--working-nest-lead);
-    transform: scale(1.14);
+    transform: scale(1.2);
     animation-timing-function: var(--ease-in-out);
   }
 
   22% {
-    opacity: 0.82;
+    opacity: 0.72;
     fill: currentColor;
-    transform: scale(1);
+    transform: scale(0.98);
     animation-timing-function: var(--ease-out);
   }
 
   30%, 91.25% {
-    opacity: 0.52;
-    fill: currentColor;
-    transform: scale(0.86);
+    opacity: 0.3;
+    fill: var(--working-nest-rest);
+    transform: scale(0.78);
     animation-timing-function: var(--ease-out);
   }
 
   100% {
     opacity: 1;
     fill: var(--working-nest-lead);
-    transform: scale(1.14);
+    transform: scale(1.2);
   }
 }
 

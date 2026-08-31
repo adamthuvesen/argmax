@@ -188,10 +188,11 @@ type EffortPosStyle = CSSProperties & { "--effort-pos"?: string };
 
 /**
  * Standalone effort control shown beside the model chip: a chip that reads the
- * current effort and opens a slider spanning `efforts` (provider-specific — the
- * Claude list runs low→ultra, others stop at Extra High). The thumb tracks the
- * pointer 1:1 while dragging, then glides to the nearest stop; arrow/Home/End
- * keys step it. role="slider" carries the a11y semantics.
+ * current effort and opens a slider spanning `efforts`. The list is
+ * provider-specific (Claude and Codex Sol/Terra run low→ultra, others stop
+ * earlier). The thumb tracks the pointer 1:1 while dragging, then glides to
+ * the nearest stop; arrow/Home/End keys step it. role="slider" carries the
+ * a11y semantics.
  */
 function EffortSlider({
   value,
@@ -376,8 +377,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
   options: Array<ChipModelOption<T>>;
-  /** Effort levels for a given value's provider, low → high. Claude runs the
-   *  full low→ultra list; other providers stop at Extra High. */
+  /** Effort levels for a given value's provider, low → high. Claude and Codex
+   *  Sol/Terra run the full low→ultra list; other models stop earlier. */
   reasoningEffortsForValue: (value: T) => readonly ReasoningEffort[];
   /** Show a standalone effort slider beside the chip. Off in settings, which
    *  has no per-session effort control — the model's default effort applies. */
@@ -436,9 +437,9 @@ function ChipModelPicker<T extends ProviderModelSelection>({
 
   const selectionForOption = (option: ChipModelOption<T>): T => {
     // Fast/no-effort models carry no effort. Otherwise the current effort is
-    // carried onto the target and clamped to its range (e.g. Claude Max →
-    // Codex Extra High), never promoted (Codex Extra High → Claude stays
-    // Extra High). Falls back to the seeded default when there's none to carry.
+    // carried onto the target and clamped to its range (Claude Ultra → Codex
+    // Luna becomes Max), never promoted (Codex Extra High → Claude stays Extra
+    // High). Falls back to the seeded default when there's none to carry.
     if (!option.supportsReasoningEffort) return option.value;
     const carried = clampEffort(value.reasoningEffort, reasoningEffortsForValue(option.value));
     return { ...option.value, reasoningEffort: carried ?? DEFAULT_REASONING_EFFORT };

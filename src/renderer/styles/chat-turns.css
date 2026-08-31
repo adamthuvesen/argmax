@@ -317,17 +317,19 @@
 }
 
 .thinking-working-nest {
-  width: calc(var(--text-sm) + 2px);
-  height: calc(var(--text-sm) + 2px);
+  width: calc(var(--text-base) + 2px);
+  height: calc(var(--text-base) + 2px);
 }
 
+/* Sized and weighted like the answer that replaces it, so the label reads as
+   the same voice at the same pitch rather than as a smaller status chip. */
 .thinking-label {
-  font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  font-family: var(--font-prose);
+  font-size: var(--text-base);
   line-height: 1.2;
   letter-spacing: 0;
   color: var(--muted-strong);
-  font-weight: 500;
+  font-weight: var(--weight-prose);
 }
 
 .conversation-empty {
@@ -470,6 +472,10 @@
   color: var(--muted);
 }
 
+/* Mono in the transcript sits a notch under the prose scale, the same step the
+   diff cards take: Geist Mono shares the sans x-height but spans 1.30em of ink
+   against its 1.14em and carries a wider advance, so a block set to the prose
+   size reads larger than the answer around it. */
 .tool-call-code {
   margin: 0;
   padding: 10px 12px;
@@ -477,7 +483,8 @@
   background: color-mix(in oklab, var(--code-surface) 46%, transparent);
   border: 1px solid color-mix(in oklab, var(--line-soft) 64%, transparent);
   font-family: var(--font-code);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
+  font-feature-settings: var(--code-font-features);
   line-height: 1.7;
   color: color-mix(in oklab, var(--text) 86%, var(--muted-strong) 14%);
   white-space: pre-wrap;
@@ -496,7 +503,8 @@
   background: color-mix(in oklab, var(--code-surface) 28%, transparent);
   color: color-mix(in oklab, var(--text) 72%, var(--muted-strong) 28%);
   font-family: var(--font-code);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
+  font-feature-settings: var(--code-font-features);
   line-height: 1.55;
   white-space: pre;
 }
@@ -567,15 +575,11 @@
 .tool-call-agent-child-list {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 0;
 }
 
 .tool-call-agent-child-list .tool-call-row-button {
-  padding-left: 24px;
-}
-
-.tool-call-agent-child-list .tool-call-row-icon {
-  display: none;
+  padding-left: 14px;
 }
 
 .tool-call-open-button {
@@ -627,16 +631,18 @@
 .tool-call-group-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   width: 100%;
-  padding: 4px 4px 4px 0;
+  /* Same 1.9em pitch as the rows below, so a collapsed headline and an
+     expanded run of rows sit on one continuous rhythm. */
+  padding: 5px 4px 5px 0;
   text-align: left;
   border: 0;
   background: transparent;
   cursor: pointer;
   color: var(--muted);
   font-size: var(--text-sm);
-  line-height: 1.3;
+  line-height: 1.4;
   transition: color var(--duration-fast) var(--ease);
 }
 
@@ -646,16 +652,34 @@
 
 .tool-call-group-eyebrow {
   display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
+  align-items: baseline;
+  /* The word space lives in the detail span. A flex gap is not a space
+     character, and against a digit it read as "Ran2 commands". */
+  gap: 0;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .tool-call-group-eyebrow-label {
+  flex: 0 0 auto;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
+  color: var(--muted-strong);
+}
+
+/* Everything after the leading verb ("2 files, ran 1 command") steps back a
+   shade, the same way a row's target steps back from its verb. One grammar:
+   the verb says what happened, the dim remainder says to what. */
+.tool-call-group-eyebrow-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
   color: var(--muted);
 }
 
@@ -683,8 +707,10 @@
 .tool-call-group-body {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 2px 0 8px;
+  /* No gap: each row's own vertical padding sets the pitch, so grouped rows
+     and standalone rows land on the same rhythm. */
+  gap: 0;
+  padding: 0 0 6px;
 }
 
 .tool-call-group-row {
@@ -705,10 +731,11 @@
   animation: msg-in 180ms var(--ease) both;
 }
 
-/* Codex-style compact rows: one line per tool ("Read foo.ts", "Ran git
-   status"). Click to expand into the same Error/Open/Input/Output panel a
-   ToolCallBubble would show. No chip, no chevron — just the icon, verb,
-   and target. Used both inside groups and as a standalone turn-level row. */
+/* Compact activity rows: one line per tool, read as a sentence rather than a
+   table row — "Edited userBubbleTint.ts +29". No icon, no rail, no border, no
+   hover fill: the only chrome in this surface is the hairline around an
+   expanded diff. Click anywhere on the row to expand it. Used both inside
+   groups and as a standalone turn-level row. */
 .tool-call-row {
   display: flex;
   flex-direction: column;
@@ -732,10 +759,12 @@
 
 .tool-call-row-button {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: 6px;
   width: 100%;
-  padding: 2px 4px 2px 0;
+  /* ~1.9em pitch. Cramped rows read as a list widget; spaced rows read as
+     prose, which is the whole point of the surface. */
+  padding: 5px 4px 5px 0;
   margin: 0;
   text-align: left;
   border: 0;
@@ -743,9 +772,9 @@
   cursor: pointer;
   font-family: inherit;
   font-size: var(--text-sm);
-  line-height: 1.3;
+  line-height: 1.4;
   color: var(--muted);
-  transition: background var(--duration-fast) var(--ease);
+  transition: color var(--duration-fast) var(--ease);
 }
 
 .tool-call-row-button:hover {
@@ -780,77 +809,109 @@
   transform: rotate(90deg);
 }
 
+/* The verb/target step is a token step, not an opacity fade. Dimming `--muted`
+   with opacity dropped the file name to 2.4:1 in the light theme, and the file
+   name is the one thing on the row you scan for. */
 .tool-call-row-verb {
   flex: 0 0 auto;
-  color: inherit;
+  color: var(--muted-strong);
   font-weight: 400;
 }
 
+/* The target rides in the UI face, not monospace: a proportional file name
+   reads as the agent narrating what it touched, where a monospace one reads as
+   embedded code output. Monospace is reserved for the diff body and for shell
+   commands, which genuinely are code (see the bash override below). */
 .tool-call-row-target {
   min-width: 0;
-  flex: 1;
+  /* Hugs the verb instead of stretching, so the stat that follows travels with
+     the file name rather than right-aligning into a second column. */
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-code);
-  /* One token below the prose size: on sans-UI themes the monospace target
-     reads optically larger than the body font at the same px, so step it down
-     to sit level with the assistant prose and the sans verb beside it. */
+  font-family: inherit;
   font-size: var(--text-sm);
   color: var(--muted);
-  opacity: 0.86;
 }
 
-.tool-call-row-icon {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  color: var(--muted);
+.tool-call-row[data-tool-type="bash"] .tool-call-row-target {
+  font-family: var(--font-code);
 }
 
-.tool-call-row-icon svg {
-  width: 14px;
-  height: 14px;
-  stroke-width: 2;
+/* Hovering brightens what the row is about, which is the useful feedback —
+   the verb is already at rest where it belongs. */
+.tool-call-row-button:hover .tool-call-row-target,
+.tool-call-group-header:hover .tool-call-group-eyebrow-detail {
+  color: var(--muted-strong);
 }
 
-.tool-call-row[data-status="running"] .tool-call-row-icon {
-  color: var(--accent);
-}
-
-.tool-call-row[data-status="error"] .tool-call-row-icon {
+/* Errors move onto the verb now that there is no icon to tint — the left edge
+   stays put when a row fails, it just changes color. */
+.tool-call-row[data-status="error"] .tool-call-row-verb {
   color: var(--rose);
 }
 
 .tool-call-row-running {
   flex: 0 0 auto;
+  align-self: center;
   display: inline-flex;
   align-items: center;
   color: var(--accent);
 }
 
-.tool-call-row-counts {
+/* Hover-only disclosure hint. The whole row is the hit target, so the chevron
+   is an affordance reminder rather than the control itself; showing it on every
+   row at rest would rebuild the icon column this design just removed. */
+.tool-call-row-chevron {
+  flex: 0 0 auto;
+  align-self: center;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+/* A group headline is sometimes the only thing a turn shows (single-line
+   verbosity), so its chevron keeps a faint resting presence — invisible there
+   would make the whole run of tools undiscoverable. Individual rows sit inside
+   an already-open group, so they can stay clean until hovered. */
+.tool-call-group-header .tool-call-row-chevron {
+  opacity: 0.28;
+}
+
+.tool-call-row-button:hover .tool-call-row-chevron,
+.tool-call-group-header:hover .tool-call-row-chevron {
+  opacity: 0.55;
+}
+
+.tool-call-row-button[aria-expanded="true"] .tool-call-row-chevron,
+.tool-call-group[data-expanded="true"] > .tool-call-group-header .tool-call-row-chevron {
+  opacity: 0.55;
+  transform: rotate(90deg);
+}
+
+/* The `+29 −4` beside a row's target or a group headline. Tabular so the
+   digits stay put while a running row's count climbs. */
+.activity-stat {
   flex: 0 0 auto;
   display: inline-flex;
-  gap: 6px;
+  gap: 5px;
   font-family: var(--font-code);
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
 
-.tool-call-row-counts .adds {
+.activity-stat .adds {
   color: var(--diff-add-gutter-fg);
 }
 
-.tool-call-row-counts .dels {
+.activity-stat .dels {
   color: var(--diff-del-gutter-fg);
 }
 
-.tool-call-row-counts .files {
+.activity-stat .files {
   color: var(--muted);
 }
 
@@ -862,28 +923,24 @@
   letter-spacing: 0;
 }
 
-/* A sub-agent's description ("Map renderer surface") is prose, not a path or
-   command — render it in the body font, not the monospace target style, so it
-   reads naturally beside the sage "Agent" verb. */
+/* A sub-agent's description ("Map renderer surface") is the one target worth
+   reading at full strength — it is the task itself, not a path. */
 .tool-call-row[data-tool-type="agent"] .tool-call-row-target {
-  font-family: inherit;
-  font-size: inherit;
   color: var(--muted-strong);
 }
 
-.tool-call-row[data-tool-type="agent"] .tool-call-row-icon {
-  color: color-mix(in oklab, var(--accent) 34%, var(--muted));
-}
-
-/* Consecutive agent launches in a turn: a compact nested task row, with the
-   title and role on one line and a single quiet detail line under it.
-   Child tools stay in the activity pane, not nested under this list. */
+/* Consecutive agent launches in a turn: a bulleted task list. The agent's task
+   and codename sit on the first line, its state in words on a second line
+   indented to the task, not the bullet. Delegated work is the coarsest thing in
+   a turn, so the entries get real air between them rather than the tight pitch
+   the tool rows use. Child tools stay in the activity pane, not nested here. */
 .agent-launch-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 14px;
   min-width: 0;
   max-width: 100%;
+  padding: 4px 0 6px;
 }
 
 .agent-launch-row {
@@ -905,9 +962,12 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 1px;
-  flex: 1 1 auto;
-  width: 100%;
+  gap: 5px;
+  /* Hugs its text rather than filling the row, so the disclosure chevron sits
+     beside the task the way a tool row's chevron sits beside its target. A
+     full-width button parked the chevron against the far edge, which reads as a
+     detached second column. */
+  flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
   margin: 0;
@@ -921,7 +981,7 @@
   box-shadow: none;
   cursor: pointer;
   font-family: var(--font-ui);
-  line-height: 1.3;
+  line-height: 1.4;
   color: inherit;
 }
 
@@ -933,19 +993,45 @@
   box-shadow: none;
 }
 
-/* A sub-agent launch shows the shared working nest (styles/working-nest.css):
-   the same mark, motion and accent the sidebar gives its parent session, so a
-   running sub-agent reads the same in the transcript as the session does in the
-   list. Only the row's position is local. */
-.agent-launch-nest {
+/* A running launch uses the shared working nest (styles/working-nest.css); a
+   settled one uses a plain bullet. Both occupy the same box so the title never
+   shifts sideways when an agent lands. */
+.agent-launch-mark {
   /* The mark scales with the type ladder and is centered on the row's first
      line, which is `--text-base * 1.3` tall inside the button's 2px of top
      padding. A fixed 14px mark drifted off the text at the larger type sizes. */
-  --agent-launch-nest-size: calc(var(--text-base) + 2px);
-  width: var(--agent-launch-nest-size);
-  height: var(--agent-launch-nest-size);
-  margin-top: calc(2px + (var(--text-base) * 1.3 - var(--agent-launch-nest-size)) / 2);
+  --agent-launch-mark-size: calc(var(--text-base) + 2px);
+  flex: 0 0 auto;
+  width: var(--agent-launch-mark-size);
+  height: var(--agent-launch-mark-size);
+  margin-top: calc(2px + (var(--text-base) * 1.3 - var(--agent-launch-mark-size)) / 2);
   margin-right: 4px;
+}
+
+.agent-launch-bullet {
+  display: inline-grid;
+  place-items: center;
+  animation: working-nest-enter var(--motion-fast) var(--ease-out) both;
+}
+
+.agent-launch-bullet::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.55;
+}
+
+.agent-launch-row[data-status="error"] .agent-launch-bullet::before {
+  background: var(--rose);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-launch-bullet {
+    animation: none;
+  }
 }
 
 .agent-launch-headline {
@@ -966,13 +1052,26 @@
   font-weight: 400;
 }
 
-.agent-launch-status {
+/* The codename that also labels this agent's tab and activity pane. Dim, right
+   after the task, the way a byline follows a headline. */
+.agent-launch-identity {
   flex: 0 0 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
+}
+
+/* Second line, aligned to the task rather than the bullet: the agent's state in
+   words. This is what replaced the check glyph. */
+.agent-launch-status {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--text-base);
 }
 
 .agent-launch-row[data-status="error"] .agent-launch-status {

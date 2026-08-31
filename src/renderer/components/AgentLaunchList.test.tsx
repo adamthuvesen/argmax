@@ -21,14 +21,22 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
 }
 
 describe("AgentLaunchList", () => {
-  it("names a running launch so the animated nest mark is never the only signal", () => {
+  it("keeps the animated nest while running and names the state in words too", () => {
     const { container } = render(<AgentLaunchList tools={[tool({ status: "running", completedAt: null })]} />);
     expect(
       screen.getByRole("button", { name: startedAgentName("Map the renderer") })
     ).toBeInTheDocument();
     expect(screen.getByText("Running")).toBeInTheDocument();
-    expect(screen.getByText(/^Launched /)).toBeInTheDocument();
     expect(container.querySelector(".working-nest[data-active='true']")).not.toBeNull();
+    expect(container.querySelector(".agent-launch-bullet")).toBeNull();
+  });
+
+  it("leads with the agent's description and follows it with the codename", () => {
+    render(<AgentLaunchList tools={[tool()]} />);
+    expect(screen.getByText("Map the renderer")).toBeInTheDocument();
+    // The codename is drawn from the moon list, so assert the slot is filled
+    // rather than pinning whichever name this toolUseId hashes to.
+    expect(document.querySelector(".agent-launch-identity")?.textContent).toBeTruthy();
   });
 
   it("shows the codename instead of the launch prompt", () => {
@@ -50,10 +58,18 @@ describe("AgentLaunchList", () => {
     expect(screen.queryByText(/Inspect the repository/)).not.toBeInTheDocument();
   });
 
-  it("leaves a completed launch without a status hint", () => {
+  it("says Completed in words rather than drawing a check", () => {
     const { container } = render(<AgentLaunchList tools={[tool()]} />);
-    expect(screen.queryByText("Running")).not.toBeInTheDocument();
-    expect(screen.queryByText("Completed")).not.toBeInTheDocument();
-    expect(container.querySelector(".working-nest[data-active='true']")).toBeNull();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(container.querySelector(".working-nest")).toBeNull();
+    expect(container.querySelector('.agent-launch-bullet[data-launch-mark="done"]')).not.toBeNull();
+    expect(container.querySelector(".lucide-circle-check-big")).toBeNull();
+  });
+
+  it("marks a failed launch with the bullet and the word Failed", () => {
+    const { container } = render(<AgentLaunchList tools={[tool({ status: "error" })]} />);
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(container.querySelector(".working-nest")).toBeNull();
+    expect(container.querySelector('.agent-launch-bullet[data-launch-mark="error"]')).not.toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import type { ChangedFileSummary, GitCommitResult } from "../../shared/types.js";
@@ -125,7 +126,10 @@ export function CommitDialog({
     }
   };
 
-  return (
+  // Portaled to <body> so the overlay centers on the window rather than on the
+  // pane that raised it, and so no ancestor's stacking context or transform can
+  // clip it. The Esc/Tab handlers are document-level, so the move costs nothing.
+  return createPortal(
     <div
       className="commit-dialog-overlay"
       role="dialog"
@@ -234,6 +238,7 @@ export function CommitDialog({
           </button>
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

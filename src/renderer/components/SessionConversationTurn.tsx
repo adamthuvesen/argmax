@@ -9,7 +9,7 @@ import { parsePlan } from "../lib/parsePlan.js";
 import type { RenderItem } from "../lib/foldConversation.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { isSupportedImageMime } from "../lib/composerAttachments.js";
-import { buildTurnRenderState } from "../lib/sessionTurnView.js";
+import { buildTurnRenderState, liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
 import { isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { codenameForTool } from "../lib/agentNames.js";
@@ -104,10 +104,12 @@ function SessionConversationTurnInner({
   // explicit fold from the turn chip still wins, and the turn falls back to the
   // saved expanded-by-default setting for quiet, persistent "Thought" history
   // as soon as a newer turn starts.
-  const turnHasAnswerText = visibleAssistantGroups.some(
-    (group) => !group.thinking && group.text.trim().length > 0
-  );
-  const thinkingLive = isLatestTurn && sessionIsLive && !isPausedOnUserInput && !turnHasAnswerText;
+  const thinkingLive = liveThoughtOwnsProgress({
+    assistantEvents: item.assistantEvents,
+    isLatestTurn,
+    sessionRunning: sessionIsLive,
+    isPausedOnUserInput
+  });
   // Tool groups expand by default for the current turn (you're watching it
   // work, and it stays open through completion so nothing collapses out from
   // under the answer) and collapse to headers for older turns. The turn chip
@@ -353,11 +355,11 @@ function SessionConversationTurnInner({
     );
   }
   // Single-line mode: every consecutive run of tool children between two
-  // anchors (assistant text, agent launch, or a card) collapses into ONE
-  // self-updating summary line. Agent launches pass through untouched — they
-  // are the only extra row allowed between replies. The merged child anchors
-  // on the run's first tool id so the line mutates in place ("Read 1 file" →
-  // "Read 2 files, edited 1 file") as the run grows instead of appending.
+  // anchors (assistant text, agent launch, or a card) collapses into ONE line.
+  // Agent launches pass through untouched — they are the only extra row
+  // allowed between replies. The merged child anchors on the run's first tool
+  // id so the line mutates in place ("Read 1 file" → "Read 2 files, edited 1
+  // file") as the run grows instead of appending.
   let bodySource: AnnotatedChild[] = coalescedChildren;
   if (minimalActivity) {
     const activityChildren: AnnotatedChild[] = [];
@@ -367,12 +369,24 @@ function SessionConversationTurnInner({
       const { tools, anchor } = run;
       run = null;
       const first = tools[0];
+      // A run of one has nothing to summarize: the line and the row it hides
+      // are the same sentence with different pluralization ("Fetched 1 URL"
+      // over "Fetched URL"). Show the row, which opens straight to detail.
+      const only = tools.length === 1 ? first : undefined;
       activityChildren.push({
         kind: "tool",
         id: first ? `activity-${first.id}` : anchor.id,
         createdAt: anchor.createdAt,
         sortAt: anchor.sortAt,
-        node: (
+        node: only ? (
+          <ToolCallRow
+            tool={only}
+            workspaceCwd={workspace?.path ?? null}
+            agentCodename={codenameForTool(only, agentCodenames)}
+            onOpenFile={onOpenFile}
+            onOpenAgent={onOpenAgent}
+          />
+        ) : (
           <ActivitySummaryLine
             tools={tools}
             workspaceCwd={workspace?.path ?? null}
@@ -464,10 +478,12 @@ export const SessionConversationTurn = memo(SessionConversationTurnInner);
 /** User-message row from a render item (not a turn). */
 export function SessionConversationUserMessage({
   event,
-  attachments
+  attachments,
+  isTurnAnchor = false
 }: {
   event: Extract<RenderItem, { kind: "user-message" }>["event"];
   attachments: UserMessageAttachment[];
+  isTurnAnchor?: boolean;
 }): JSX.Element {
   let displayMessage = event.message;
   for (const a of attachments) {
@@ -476,7 +492,7 @@ export function SessionConversationUserMessage({
   displayMessage = displayMessage.replace(/[ \t]+(?=\n|$)/g, "").trim();
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   return (
-    <div className="user-message-group">
+    <div className="user-message-group" {...(isTurnAnchor ? { "data-turn-anchor": "true" } : {})}>
       {attachments.length > 0 ? (
         <div className="user-message-attachments" aria-label="Attachments">
           {attachments.map((a) => {

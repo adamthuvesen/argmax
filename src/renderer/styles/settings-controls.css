@@ -145,6 +145,12 @@
   margin-left: auto;
 }
 
+/* Stacked pickers share the resting z-index; the open one must outrank siblings
+   below it or their triggers paint over the menu. */
+.settings-picker:has(.settings-picker-trigger[aria-expanded="true"]) {
+  z-index: 50;
+}
+
 .settings-picker-trigger,
 .settings-model-picker .composer-context-chip {
   display: inline-flex;
@@ -450,6 +456,11 @@
 .accent-picker-chip[data-accent-id="blue"] .accent-picker-swatch {
   --accent-swatch-color: #30609a;
   --accent-swatch-soft: #e5eef9;
+}
+
+.accent-picker-chip[data-accent-id="coral"] .accent-picker-swatch {
+  --accent-swatch-color: #a64354;
+  --accent-swatch-soft: #fee6e8;
 }
 
 /* ---- Refresh button ---- */

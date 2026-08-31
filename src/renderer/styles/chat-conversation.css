@@ -503,15 +503,18 @@
   padding: var(--space-2) var(--session-inline-padding) var(--space-8);
 }
 
+/* Same corner as the composer and the user bubble: these are full-width
+   surfaces in the pane, not the tight chips --radius-md is for. Padding is
+   pulled out with the radius so the prose clears the curve at the corners. */
 .agent-activity-summary,
 .agent-activity-final {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 14px;
+  padding: 14px 18px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-2xl);
   background: var(--panel-soft);
 }
 
@@ -589,9 +592,9 @@
 }
 
 .agent-activity-empty {
-  padding: 12px 14px;
+  padding: 14px 18px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-2xl);
   background: var(--panel-soft);
   color: var(--muted);
   font-size: var(--text-sm);
@@ -821,10 +824,11 @@
 }
 
 .conversation-list {
+  --conversation-list-gap: var(--space-8);
   display: flex;
   min-height: 0;
   flex-direction: column;
-  gap: var(--space-8);
+  gap: var(--conversation-list-gap);
   overflow: auto;
   /* A constant tail gap keeps the newest streamed line clear of the bottom
      edge. It stays the same in the idle and live states on purpose: a gap
@@ -848,7 +852,17 @@
 }
 
 .conversation-tail:not(:first-child) {
-  margin-top: -16px;
+  margin-top: -10px;
+}
+
+/* Leftover viewport under the latest user message. Pinning to the bottom then
+   sits that message at the top of the pane until the new turn fills the space.
+   Negative margin cancels the list gap so a 0-height spacer adds no extra
+   room, and the constant tail padding stays the same at both ends of a turn. */
+.conversation-turn-spacer {
+  flex: 0 0 auto;
+  pointer-events: none;
+  margin-top: calc(-1 * var(--conversation-list-gap));
 }
 
 /* Base layout only. The fill is owned by the variants: .user paints the ink
@@ -872,7 +886,10 @@
   font-weight: var(--weight-prose);
   line-height: 1.68;
   font-size: var(--text-base);
-  color: var(--text);
+  /* Beats the inherited `.markdown` ink because it lands on the `p` directly,
+     so this — not the container rule — is what paints agent prose. User
+     bubbles override it with their own on-accent fg below. */
+  color: var(--prose-ink);
 }
 
 .terminal-transcript pre {
@@ -881,6 +898,7 @@
   word-break: break-word;
   font-family: var(--font-mono);
   font-size: var(--text-base);
+  font-feature-settings: var(--code-font-features);
   line-height: 1.55;
   color: var(--text);
 }
@@ -890,7 +908,7 @@
   font-size: var(--text-base);
   line-height: 1.9;
   font-weight: var(--weight-prose);
-  color: color-mix(in oklab, var(--text) 91%, var(--text-soft) 9%);
+  color: var(--prose-ink);
 }
 
 .markdown > *:first-child {
@@ -930,7 +948,7 @@
 
 .markdown strong {
   font-weight: 520;
-  color: color-mix(in oklab, var(--text) 96%, var(--text-soft) 4%);
+  color: var(--prose-ink-strong);
 }
 
 .markdown em {
@@ -961,7 +979,7 @@
   /* Mono stacks have no `wght` axis to shave, so pin regular instead of
      inheriting the prose weight token. */
   font-weight: 400;
-  font-variant-ligatures: none;
+  font-feature-settings: var(--code-font-features);
   color: var(--code-ink);
 }
 
@@ -1007,7 +1025,7 @@
   font-size: var(--text-base-plus);
   font-weight: 520;
   letter-spacing: 0;
-  color: var(--text);
+  color: var(--prose-ink-strong);
   margin: 22px 0 5px;
   line-height: 1.4;
 }
@@ -1171,6 +1189,9 @@
      empty space on the left only forced long prompts taller for no reading
      gain. `align-self: flex-end` still shrink-wraps short messages. */
   max-width: 100%;
+  /* Same corner as `.session-input` and `.composer`: a sent prompt should read
+     as the same surface the user just typed into, not a tighter chip. */
+  border-radius: var(--radius-2xl);
   color: var(--user-message-fg);
   background: var(--user-message-bg);
   box-shadow: var(--user-message-shadow);

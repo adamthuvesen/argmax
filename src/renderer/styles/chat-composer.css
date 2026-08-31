@@ -414,7 +414,7 @@
   line-height: 1.6;
   color: var(--text);
   overflow-x: auto;
-  font-variant-ligatures: none;
+  font-feature-settings: var(--code-font-features);
 }
 
 .code-block pre code {
@@ -467,7 +467,7 @@
   padding: 20px 24px 18px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-2xl);
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
 }
 
@@ -501,7 +501,7 @@
 .provider-switch-actions button {
   min-height: 30px;
   padding: 6px 14px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   border: 1px solid var(--line);
   background: var(--panel);
   font-size: var(--text-sm);

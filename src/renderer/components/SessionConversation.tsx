@@ -53,14 +53,16 @@ import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CompactionNotice } from "./CompactionNotice.js";
+import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
-import { CostPanel } from "./CostPanel.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
 import {
   hasOutstandingCardAsk as sessionHasOutstandingCardAsk,
   isAskUserQuestionToolName,
   isExitPlanModeToolName
 } from "../lib/turnInteractiveCards.js";
+import { liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
+import { isThinkingDelta } from "../lib/turnBoundaries.js";
 import { foldTurnToolItems } from "../lib/turnToolItems.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
@@ -94,6 +96,9 @@ const CONVERSATION_WINDOW = 120;
 const CONVERSATION_WINDOW_STEP = 240;
 
 const THINKING_SHOW_DELAY_MS = 700;
+/// How long a finished assistant message owns the beat it ended. The text is
+/// the progress cue for this window, so the indicator stays down whether or
+/// not it was already up when the message landed.
 const THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS = 1800;
 const THINKING_MIN_VISIBLE_MS = 600;
 
@@ -137,7 +142,6 @@ export function SessionConversation({
   rawOutputs,
   review,
   session,
-  showCostPanel = true,
   workspaceCardEnabled = true,
   workspace
 }: {
@@ -213,7 +217,6 @@ export function SessionConversation({
   rawOutputs: RawProviderOutput[];
   review: ReviewState;
   session: SessionSummary | null;
-  showCostPanel?: boolean;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const [status, setStatusState] = useState<ComposerStatus | null>(null);
@@ -360,6 +363,13 @@ export function SessionConversation({
     () => renderItems.slice(windowStart),
     [renderItems, windowStart]
   );
+  const lastUserMessageId = useMemo(() => {
+    for (let i = renderItems.length - 1; i >= 0; i -= 1) {
+      const item = renderItems[i];
+      if (item && item.kind === "user-message") return item.event.id;
+    }
+    return null;
+  }, [renderItems]);
 
   // The card is the ambient stand-in for a docked right-hand panel, so an open
   // review or debug-log panel takes its place rather than sitting beside it.
@@ -496,7 +506,14 @@ export function SessionConversation({
   // chat, so they are not visible progress either. While a turn is starting the
   // newest delta belongs to the *previous* turn, so it is history, not live
   // streaming.
-  const isStreamingText = !isTurnStarting && lastSignificantEvent?.type === "message.delta";
+  // Reasoning arrives as a `message.delta` too (`thinking: true`), and it is
+  // not visible answer text: after an answer it renders as a collapsed Thought,
+  // and at the lowest verbosity it is dropped from the turn. Counting it as
+  // streaming let a model reason silently for 20 s behind no cue at all.
+  const isStreamingText =
+    !isTurnStarting &&
+    lastSignificantEvent?.type === "message.delta" &&
+    !isThinkingDelta(lastSignificantEvent);
   const anyVisibleToolRunning = useMemo(
     () =>
       toolCalls.some(
@@ -524,26 +541,69 @@ export function SessionConversation({
   // `session.streaming` first-byte beacon is raw bytes, not user-visible
   // progress; it still suppresses the raw-stdout transcript via
   // `hasRenderableContent`.
+  // A pre-answer Thought block is already on screen, expanded and labelled
+  // "Thinking", so the generic line would be a second cue for one beat. Once
+  // the turn has answer text the block goes quiet and this releases.
+  const liveThoughtVisible = useMemo(() => {
+    if (isTurnStarting) return false;
+    const latest = renderItems[renderItems.length - 1];
+    if (latest?.kind !== "turn") return false;
+    return liveThoughtOwnsProgress({
+      assistantEvents: latest.assistantEvents,
+      isLatestTurn: true,
+      sessionRunning,
+      isPausedOnUserInput: hasOutstandingCardAsk
+    });
+  }, [hasOutstandingCardAsk, isTurnStarting, renderItems, sessionRunning]);
   const agentWorkingSilently =
     (sessionRunning || isTurnStarting) &&
     !anyVisibleToolRunning &&
     !hasOutstandingCardAsk &&
+    !liveThoughtVisible &&
     !isStreamingText;
   // Compaction is minutes of provider-side silence with its own live marker in
   // the transcript. A second "Thinking" line under it would say less, not more.
   const compacting = useMemo(() => isCompacting(events), [events]);
+  // A finished assistant message ends the beat that produced it: the text now
+  // on screen is the progress cue, so the indicator comes down and only claims
+  // the *next* silent gap, once this window elapses. Suppressing at the source
+  // rather than only delaying the first show is what makes it provider-shaped
+  // rather than Claude-shaped: Codex and OpenCode deliver an answer as one
+  // atomic `message.completed` with no answer deltas at all, so nothing ever
+  // arrived afterwards to hide a label already up from the reasoning gap
+  // before it, and it sat under the finished answer until the session state
+  // flipped — a second or so later, since that flip waits for the provider
+  // process to exit. Claude and Cursor stream deltas right up to their
+  // completion and so were only ever exposed to the same tail on a turn that
+  // ended silently.
+  const answerBeatId =
+    lastSignificantEvent?.type === "message.completed" ? lastSignificantEvent.id : null;
+  // Held as the id whose window has *expired*, not as a "settling" flag: a flag
+  // starts false, so the first render after the message lands would still claim
+  // the beat for one commit and flash the label before the effect could set it.
+  const [settledAnswerId, setSettledAnswerId] = useState<string | null>(null);
+  const isAnswerSettling = answerBeatId !== null && settledAnswerId !== answerBeatId;
+  useEffect(() => {
+    if (answerBeatId === null) return;
+    const timer = window.setTimeout(
+      () => setSettledAnswerId(answerBeatId),
+      THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, [answerBeatId]);
   // Show the generic indicator for any silent gap in a running turn. It stays
-  // hidden while text is actively streaming, a visible tool row is running, or
-  // the agent is waiting on an interactive card.
-  const isThinking = agentWorkingSilently && !compacting;
+  // hidden while text is actively streaming, a visible tool row is running, an
+  // answer is still settling, or the agent is waiting on an interactive card.
+  // A send starts a new beat outright, so it outranks a settling answer.
+  const isThinking = agentWorkingSilently && !compacting && !(isAnswerSettling && !isTurnStarting);
+  // Beats that have already served their wait: a turn the user just started,
+  // and a settled answer — reaching here with the answer still newest means
+  // its window is spent, so re-showing must not queue a second delay behind it.
   const isInitialThinkingBeat =
     isTurnStarting ||
     lastSignificantEvent === undefined ||
-    lastSignificantEvent.type === "user.message";
-  const thinkingShowDelayMs =
-    lastSignificantEvent?.type === "message.completed"
-      ? THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS
-      : THINKING_SHOW_DELAY_MS;
+    lastSignificantEvent.type === "user.message" ||
+    lastSignificantEvent.type === "message.completed";
   const [isThinkingVisible, setIsThinkingVisible] = useState(false);
   const thinkingVisibleSinceRef = useRef(0);
   const thinkingShowTimerRef = useRef<number | null>(null);
@@ -588,7 +648,7 @@ export function SessionConversation({
           thinkingShowTimerRef.current = null;
           thinkingVisibleSinceRef.current = performance.now();
           setIsThinkingVisible(true);
-        }, thinkingShowDelayMs);
+        }, THINKING_SHOW_DELAY_MS);
       }
       return;
     }
@@ -611,7 +671,7 @@ export function SessionConversation({
       thinkingVisibleSinceRef.current = 0;
       setIsThinkingVisible(false);
     }, hideDelay);
-  }, [isInitialThinkingBeat, isThinking, isThinkingVisible, thinkingShowDelayMs]);
+  }, [isInitialThinkingBeat, isThinking, isThinkingVisible]);
 
   useEffect(() => {
     return () => {
@@ -629,7 +689,13 @@ export function SessionConversation({
     scrollToBottom: scrollConversationToBottom,
     handleUserScrollIntent: handleConversationScrollIntent,
     handleScroll: handleConversationScroll
-  } = useSmartFollowScroll(sessionId, conversationItems, isThinkingVisible, inputRef);
+  } = useSmartFollowScroll(
+    sessionId,
+    conversationItems,
+    isThinkingVisible,
+    inputRef,
+    lastUserMessageId
+  );
   // Revealing earlier turns grows the list upward. The list is bottom-anchored,
   // so holding the distance from the bottom leaves what the user is reading
   // exactly where it was.
@@ -771,11 +837,15 @@ export function SessionConversation({
                     key={item.event.id}
                     event={item.event}
                     attachments={parseUserMessageAttachments(item)}
+                    isTurnAnchor={item.event.id === lastUserMessageId}
                   />
                 );
               }
               if (item.kind === "compaction") {
                 return <CompactionNotice key={item.id} notice={item.notice} />;
+              }
+              if (item.kind === "project-move") {
+                return <ProjectMoveNotice key={item.id} notice={item.notice} />;
               }
               if (item.kind === "provider-switch") {
                 return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
@@ -829,13 +899,14 @@ export function SessionConversation({
             </button>
           ) : null}
           {/* The Thinking line's slot stays in the layout whether the line is
-              in it or not. It is the list's last row, and it leaves at the
+              in it or not. It sits after the transcript, and it leaves at the
               moment the first answer token lands. Unmounting the row there
               would shorten the transcript under a reader pinned to the bottom
               and pull the view up by its height. */}
           <div className="conversation-tail">
             {isThinkingVisible ? <ThinkingLabel phaseKey={workspace?.id ?? session?.id} /> : null}
           </div>
+          <div className="conversation-turn-spacer" data-conversation-spacer="" aria-hidden="true" />
         </div>
       </div>
       <SelectionToolbar
@@ -844,17 +915,13 @@ export function SessionConversation({
         {...(askSideChat ? { onAskSideChat: askSideChat } : {})}
         {...(askDetails ? { onMoreDetails: askDetails } : {})}
       />
-      <div
-        className="session-meta-cards"
-        data-cost-visible={session && showCostPanel ? "true" : "false"}
-      >
+      <div className="session-meta-cards">
         <ChangedFilesCard
           workspaceId={workspace?.id}
           checkCommands={project?.settings.checkCommands ?? []}
           checks={checks ?? []}
           onRunCheck={onRunCheck}
         />
-        {session && showCostPanel ? <CostPanel session={session} /> : null}
       </div>
       {pendingApprovalCount > 0 ? (
         <div className="composer-approvals-banner" role="status" aria-live="polite">

@@ -9,6 +9,7 @@ vi.mock("../lib/highlighter.js", () => ({
 }));
 
 import type { ReviewState } from "../hooks/useReviewState.js";
+import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
 import { ReviewPanel } from "./ReviewPanel.js";
 
 function reviewStub(): ReviewState {
@@ -62,6 +63,7 @@ function reviewStub(): ReviewState {
       dismissExternalChange: vi.fn()
     },
     openFile: vi.fn(),
+    expandDiffContext: vi.fn(),
     openPanelInFilesMode: vi.fn(),
     openInFilesView: vi.fn(),
     closePanel: vi.fn(),
@@ -301,6 +303,8 @@ describe("ReviewPanel file tabs", () => {
     review.mode = "files";
     review.workspaceFiles = {
       ...review.workspaceFiles,
+      listState: "ready",
+      entries: [{ path: "src/index.ts" }],
       tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
       activeTabPath: "src/index.ts",
       selectedPath: "src/index.ts",
@@ -309,10 +313,57 @@ describe("ReviewPanel file tabs", () => {
 
     render(<ReviewPanel review={review} />);
 
-    const wasNotCanceled = fireEvent.keyDown(document, { key: "w", metaKey: true });
+    const wasNotCanceled = fireEvent.keyDown(
+      screen.getByRole("tab", { name: /index\.ts/ }),
+      { key: "w", metaKey: true }
+    );
 
     expect(wasNotCanceled).toBe(false);
     expect(closeTab).toHaveBeenCalledWith("src/index.ts");
+  });
+
+  it("routes Cmd+W from the file tree to the active tab", () => {
+    const review = reviewStub();
+    const closeTab = vi.fn();
+    review.mode = "files";
+    review.workspaceFiles = {
+      ...review.workspaceFiles,
+      listState: "ready",
+      entries: [{ path: "index.ts" }],
+      tabs: [{ path: "index.ts", isDirty: false, saveState: "idle", externalChange: false }],
+      activeTabPath: "index.ts",
+      selectedPath: "index.ts",
+      closeTab
+    };
+
+    render(<ReviewPanel review={review} />);
+
+    const tree = screen.getByRole("tree", { name: "Workspace files" });
+    const fileRow = within(tree).getByTitle("index.ts");
+    fireEvent.keyDown(fileRow, { key: "w", metaKey: true });
+
+    expect(closeTab).toHaveBeenCalledWith("index.ts");
+  });
+
+  it("registers a menu-level close handler while Files mode has a tab open", () => {
+    const review = reviewStub();
+    const closeTab = vi.fn();
+    review.mode = "files";
+    review.workspaceFiles = {
+      ...review.workspaceFiles,
+      tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
+      activeTabPath: "src/index.ts",
+      selectedPath: "src/index.ts",
+      closeTab
+    };
+
+    const { unmount } = render(<ReviewPanel review={review} />);
+
+    expect(requestCloseActiveReviewFileTab()).toBe(true);
+    expect(closeTab).toHaveBeenCalledWith("src/index.ts");
+
+    unmount();
+    expect(requestCloseActiveReviewFileTab()).toBe(false);
   });
 
   it("ignores Cmd+W while the pane holding the panel is unfocused", () => {

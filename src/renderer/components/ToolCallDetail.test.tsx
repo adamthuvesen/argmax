@@ -46,6 +46,39 @@ describe("ToolCallDetail", () => {
     expect(screen.queryByText("Raw input")).not.toBeInTheDocument();
   });
 
+  it("shows an MCP result's payload instead of its envelope", () => {
+    render(
+      <ToolCallDetail
+        tool={tool({
+          name: "mcp__claude_ai_Notion__notion-fetch",
+          inputPreview: "",
+          inputFull: { id: "28df6da7" },
+          output: JSON.stringify({
+            metadata: { type: "page" },
+            title: "Todo",
+            url: "https://app.notion.com/p/28df6da7",
+            text: "Prio\n- [ ] mpa"
+          })
+        })}
+      />
+    );
+
+    const body = screen.getByText(/- \[ \] mpa/);
+    expect(body.textContent).toBe("Prio\n- [ ] mpa");
+    expect(screen.getByText(/— Todo/)).toBeInTheDocument();
+  });
+
+  it("leaves a JSON file's own bytes alone when a read prints it", () => {
+    const contents = '{"name":"argmax","version":"0.4.0"}';
+    render(
+      <ToolCallDetail
+        tool={tool({ name: "Read", inputFull: { file_path: "/repo/package.json" }, output: contents })}
+      />
+    );
+
+    expect(screen.getByText(contents).textContent).toBe(contents);
+  });
+
   it("does not repeat an openable file row when read output is already shown", () => {
     render(
       <ToolCallDetail
@@ -64,7 +97,10 @@ describe("ToolCallDetail", () => {
     expect(screen.queryByRole("button", { name: "Open /repo/README.md" })).toBeNull();
   });
 
-  it("renders bash command input as a quiet command line instead of raw JSON", () => {
+  it("expands a short bash call straight to Output, with no Command or Input dump", () => {
+    // The row already reads "Ran find ./src -type f". Restating that under a
+    // Command label, then dumping {command, timeout_ms} as Input, was three
+    // copies of the same fact.
     render(
       <ToolCallDetail
         workspaceCwd="/Users/adam/dev/argmax"
@@ -80,12 +116,64 @@ describe("ToolCallDetail", () => {
       />
     );
 
-    expect(screen.getByText("Command")).toBeInTheDocument();
-    expect(screen.getByText("find ./src -type f")).toBeInTheDocument();
+    expect(screen.queryByText("Command")).toBeNull();
     expect(screen.getByText("Output")).toBeInTheDocument();
     expect(screen.getByText("ok")).toBeInTheDocument();
     expect(screen.queryByText("Input")).toBeNull();
     expect(screen.queryByText(/"command"/)).toBeNull();
     expect(screen.queryByText(/\/bin\/zsh/)).toBeNull();
+  });
+
+  it("hides Claude Bash description and timeout instead of dumping them as Input", () => {
+    render(
+      <ToolCallDetail
+        tool={tool({
+          name: "Bash",
+          inputPreview: "uv run python analysis/run.py --jobs 5",
+          inputFull: {
+            command: "uv run python analysis/run.py --jobs 5 --output /tmp/m",
+            description: "Confirm E12 reproduction and collect the human artifact hash",
+            timeout: 900000
+          },
+          output: "E12 default artifact still reproduces: True"
+        })}
+      />
+    );
+
+    expect(screen.queryByText("Input")).toBeNull();
+    expect(screen.queryByText(/"description"/)).toBeNull();
+    expect(screen.queryByText("Command")).toBeNull();
+    expect(screen.getByText(/E12 default artifact still reproduces/)).toBeInTheDocument();
+  });
+
+  it("shows a heredoc as a readable Command block, not escaped JSON", () => {
+    const heredoc = [
+      "python3 - <<'PY'",
+      "print('hello')",
+      "print('world')",
+      "PY"
+    ].join("\n");
+    render(
+      <ToolCallDetail
+        tool={tool({
+          name: "Bash",
+          inputPreview: heredoc.slice(0, 40),
+          inputFull: {
+            command: heredoc,
+            description: "print two lines",
+            timeout: 60000
+          },
+          output: "hello\nworld"
+        })}
+      />
+    );
+
+    expect(screen.queryByText("Command")).toBeNull();
+    const command = screen.getByText(/print\('hello'\)/);
+    expect(command.textContent).toBe(heredoc);
+    expect(command.textContent).not.toContain("\\n");
+    expect(screen.queryByText("Input")).toBeNull();
+    const outputLabel = screen.getByText("Output");
+    expect(outputLabel.nextElementSibling?.textContent).toBe("hello\nworld");
   });
 });

@@ -9,13 +9,14 @@ import type {
 import type { FontFamilyId, FontSize } from "../lib/fonts.js";
 import type { ThemeMode } from "../lib/theme.js";
 import type { AccentId } from "../lib/accent.js";
+import type { UserBubbleTint } from "../lib/userBubbleTint.js";
 import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { NewSessionMode } from "../lib/newSessionMode.js";
 import type { PermissionMode } from "../lib/permissionMode.js";
 import type { ChatWidth } from "../lib/chatWidth.js";
 import type { ReviewPanelSide } from "../lib/reviewPanelSide.js";
-import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
+import type { ChatVerbosity } from "../lib/uiPreferences.js";
 import { AgentsSettings } from "./settings/AgentsSettings.js";
 import { SessionSyncSettings } from "./settings/SessionSyncSettings.js";
 import { GeneralSettings } from "./settings/GeneralSettings.js";
@@ -38,14 +39,10 @@ export type SettingsNavigationTarget = {
 export function SettingsPanel({
   defaultModel,
   onDefaultModelChange,
-  toolCallsDisplay,
-  onToolCallsDisplayChange,
-  toolCallGroupsExpanded,
-  onToolCallGroupsExpandedChange,
+  chatVerbosity,
+  onChatVerbosityChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
-  chatCostVisible,
-  onChatCostVisibleChange,
   workspaceCardVisible,
   onWorkspaceCardVisibleChange,
   pixelFieldEnabled,
@@ -54,8 +51,6 @@ export function SettingsPanel({
   onChatWidthChange,
   reviewPanelSide,
   onReviewPanelSideChange,
-  thinkingExpanded,
-  onThinkingExpandedChange,
   fastModeEnabled,
   onFastModeEnabledChange,
   fontFamily,
@@ -68,6 +63,8 @@ export function SettingsPanel({
   onThemeModeChange,
   accentId,
   onAccentChange,
+  userBubbleTint,
+  onUserBubbleTintChange,
   detectedIdes,
   defaultIde,
   onDefaultIdeChange,
@@ -83,14 +80,10 @@ export function SettingsPanel({
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
-  toolCallsDisplay: ToolCallsDisplay;
-  onToolCallsDisplayChange: (v: ToolCallsDisplay) => void;
-  toolCallGroupsExpanded: boolean;
-  onToolCallGroupsExpandedChange: (v: boolean) => void;
+  chatVerbosity: ChatVerbosity;
+  onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
-  chatCostVisible: boolean;
-  onChatCostVisibleChange: (v: boolean) => void;
   workspaceCardVisible: boolean;
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
@@ -99,8 +92,6 @@ export function SettingsPanel({
   onChatWidthChange: (width: ChatWidth) => void;
   reviewPanelSide: ReviewPanelSide;
   onReviewPanelSideChange: (side: ReviewPanelSide) => void;
-  thinkingExpanded: boolean;
-  onThinkingExpandedChange: (v: boolean) => void;
   fastModeEnabled: boolean;
   onFastModeEnabledChange: (v: boolean) => void;
   fontFamily: FontFamilyId;
@@ -113,6 +104,8 @@ export function SettingsPanel({
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
   onAccentChange: (accentId: AccentId) => void;
+  userBubbleTint: UserBubbleTint;
+  onUserBubbleTintChange: (tint: UserBubbleTint) => void;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   onDefaultIdeChange: (ide: IdeId | null) => void;
@@ -275,10 +268,10 @@ export function SettingsPanel({
               onThemeModeChange={onThemeModeChange}
               accentId={accentId}
               onAccentChange={onAccentChange}
+              userBubbleTint={userBubbleTint}
+              onUserBubbleTintChange={onUserBubbleTintChange}
               sidebarPriorityVisible={sidebarPriorityVisible}
               onSidebarPriorityVisibleChange={onSidebarPriorityVisibleChange}
-              chatCostVisible={chatCostVisible}
-              onChatCostVisibleChange={onChatCostVisibleChange}
               workspaceCardVisible={workspaceCardVisible}
               onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
               pixelFieldEnabled={pixelFieldEnabled}
@@ -298,12 +291,8 @@ export function SettingsPanel({
             <AgentsSettings
               defaultModel={defaultModel}
               onDefaultModelChange={onDefaultModelChange}
-              toolCallsDisplay={toolCallsDisplay}
-              onToolCallsDisplayChange={onToolCallsDisplayChange}
-              toolCallGroupsExpanded={toolCallGroupsExpanded}
-              onToolCallGroupsExpandedChange={onToolCallGroupsExpandedChange}
-              thinkingExpanded={thinkingExpanded}
-              onThinkingExpandedChange={onThinkingExpandedChange}
+              chatVerbosity={chatVerbosity}
+              onChatVerbosityChange={onChatVerbosityChange}
               fastModeEnabled={fastModeEnabled}
               onFastModeEnabledChange={onFastModeEnabledChange}
               permissionMode={permissionMode}

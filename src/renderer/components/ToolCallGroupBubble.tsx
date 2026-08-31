@@ -1,11 +1,15 @@
+import { ChevronRight } from "lucide-react";
 import { memo, useMemo, useState, type JSX } from "react";
 import {
   buildGroupRows,
+  splitLeadingVerb,
+  summarizeToolChangeCounts,
   summarizeToolGroup,
   type ToolCall,
   type ToolCallGroup
 } from "../lib/toolCalls.js";
 import { codenameForTool } from "../lib/agentNames.js";
+import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 import { WorkingNest } from "./WorkingNest.js";
@@ -34,6 +38,8 @@ function ToolCallGroupBubbleInner({
 }: ToolCallGroupBubbleProps): JSX.Element {
   const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
   const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
+  const headline = useMemo(() => splitLeadingVerb(summary.headline), [summary.headline]);
+  const changeCounts = useMemo(() => summarizeToolChangeCounts(group.tools), [group.tools]);
   const rows = useMemo(() => buildGroupRows(group.tools), [group.tools]);
   // Collapsed by default to match Codex — the user clicks the chevron to reveal
   // per-tool rows. defaultExpanded (from Settings) overrides. Error state colors
@@ -64,14 +70,19 @@ function ToolCallGroupBubbleInner({
         onClick={() => setUserToggle({ value: !expanded, defaultExpanded })}
       >
         <span className="tool-call-group-eyebrow" aria-hidden="true">
-          <span className="tool-call-group-eyebrow-label">{summary.headline}</span>
+          <span className="tool-call-group-eyebrow-label">{headline.verb}</span>
+          {headline.rest ? (
+            <span className="tool-call-group-eyebrow-detail"> {headline.rest}</span>
+          ) : null}
         </span>
+        {changeCounts ? <ActivityStat counts={changeCounts} /> : null}
         {previewText ? (
           <span className="tool-call-group-preview" aria-hidden="true">{previewText}</span>
         ) : null}
+        <ChevronRight size={11} className="tool-call-row-chevron" aria-hidden="true" />
         {summary.status === "running" ? (
           <span className="tool-call-group-running" aria-label="running" title="Running">
-            <WorkingNest active size={11} />
+            <WorkingNest active size={13} />
           </span>
         ) : null}
       </button>

@@ -5,6 +5,7 @@ import type { DashboardSnapshot } from "../shared/types.js";
 import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
 import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
 import { FAST_MODE_KEY, RANDOM_SESSION_ICON_KEY } from "./lib/uiPreferences.js";
+import { USER_BUBBLE_TINT_STORAGE_KEY } from "./lib/userBubbleTint.js";
 import { APP_VERSION_LABEL } from "../shared/appVersion.js";
 import {
   launchProvider,
@@ -13,7 +14,6 @@ import {
   openInIde,
   providersDiscover,
   openSettings,
-  sessionCostSummary,
   setupAppTestMocks,
   snapshot
 } from "../test/appTestHarness.js";
@@ -160,33 +160,17 @@ describe("App settings", () => {
     expect(listbox).not.toHaveTextContent("GPT-5.3");
   });
 
-  it("settings Thinking blocks default persists to localStorage", async () => {
+  it("settings Chat detail & verbosity default persists to localStorage", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
     await openSettings("Agents");
 
-    const group = await screen.findByRole("radiogroup", { name: "Thinking blocks" });
-    fireEvent.click(within(group).getByRole("radio", { name: "Show expanded" }));
+    const group = await screen.findByRole("radiogroup", { name: "Chat detail & verbosity" });
+    fireEvent.click(within(group).getByRole("radio", { name: "1 · Minimal" }));
 
     await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.thinking.expanded")).toBe("true")
+      expect(window.localStorage.getItem("argmax.chat.verbosity")).toBe("1")
     );
-  });
-
-  it("settings Single line tool-call display persists and disables the groups row", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-    await openSettings("Agents");
-
-    const group = await screen.findByRole("radiogroup", { name: "Tool calls in chat" });
-    fireEvent.click(within(group).getByRole("radio", { name: "Single line" }));
-
-    await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.toolCalls.display")).toBe("single-line")
-    );
-
-    const groupsGroup = screen.getByRole("radiogroup", { name: "Tool call groups" });
-    expect(within(groupsGroup).getByRole("radio", { name: "Show expanded" })).toBeDisabled();
   });
 
   it("disables the composer pixel field by default and persists turning it on", async () => {
@@ -219,81 +203,6 @@ describe("App settings", () => {
     await waitFor(() =>
       expect(window.localStorage.getItem(RANDOM_SESSION_ICON_KEY)).toBe("true")
     );
-  });
-
-  it("renders the CostPanel rows and totals on session detail", async () => {
-    const costed: DashboardSnapshot = {
-      ...snapshot,
-      sessions: snapshot.sessions.map((session) =>
-        session.id === "session-1"
-          ? {
-              ...session,
-              costUsd: 4.32,
-              tokens: { input: 1200, output: 340, cacheRead: 100, cacheWrite: 0 }
-            }
-          : session
-      )
-    };
-    mockDashboardSnapshot(costed);
-
-    window.localStorage.setItem("argmax.chat.cost.visible", "true");
-    render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-
-    const panel = await screen.findByRole("region", { name: "Session cost summary" });
-    expect(panel).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(within(panel).getByLabelText(/Total cost:/)).toHaveTextContent("$4.32");
-    });
-
-    fireEvent.click(within(panel).getByRole("button", { name: "Toggle cost breakdown" }));
-
-    const inputRow = within(panel).getByRole("row", { name: "Input usage" });
-    expect(within(inputRow).getByTitle("Input tokens: 1,200")).toBeInTheDocument();
-
-    const outputRow = within(panel).getByRole("row", { name: "Output usage" });
-    expect(within(outputRow).getByTitle("Output tokens: 340")).toBeInTheDocument();
-
-    expect(within(panel).getByRole("row", { name: "Cache read usage" })).toBeInTheDocument();
-    expect(within(panel).getByRole("row", { name: "Cache write usage" })).toBeInTheDocument();
-
-    // Cost is projected from session.costUsd on the dashboard delta. The
-    // panel must not fire a separate session:costSummary IPC.
-    expect(sessionCostSummary).not.toHaveBeenCalled();
-  });
-
-  it("hides the chat cost card when disabled in Settings", async () => {
-    const costed: DashboardSnapshot = {
-      ...snapshot,
-      sessions: snapshot.sessions.map((session) =>
-        session.id === "session-1"
-          ? {
-              ...session,
-              costUsd: 4.32,
-              tokens: { input: 1200, output: 340, cacheRead: 100, cacheWrite: 0 }
-            }
-          : session
-      )
-    };
-    mockDashboardSnapshot(costed);
-
-    window.localStorage.setItem("argmax.chat.cost.visible", "true");
-    render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("region", { name: "Session cost summary" })).toBeInTheDocument();
-
-    await openSettings();
-    await screen.findByRole("heading", { name: "Appearance" });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Show cost in agent chat" }));
-
-    await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.chat.cost.visible")).toBe("false")
-    );
-    fireEvent.keyDown(document, { key: ",", metaKey: true });
-
-    await screen.findByRole("button", { name: "Build dashboard" });
-    expect(screen.queryByRole("region", { name: "Session cost summary" })).not.toBeInTheDocument();
   });
 
   it("disables the IDE chooser when the workspace has no path yet", async () => {
@@ -530,15 +439,15 @@ describe("App settings", () => {
     await openSettings();
     await screen.findByRole("heading", { name: "Appearance" });
 
-    const chatWidth = screen.getByRole("radiogroup", { name: "Chat width" });
-    expect(within(chatWidth).getByRole("radio", { name: "3" })).toBeChecked();
+    const chatWidth = screen.getByRole("slider", { name: "Chat width" });
+    expect(chatWidth).toHaveValue("3");
     expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "3");
 
-    fireEvent.click(within(chatWidth).getByRole("radio", { name: "1" }));
+    fireEvent.change(chatWidth, { target: { value: "1" } });
     await waitFor(() => expect(window.localStorage.getItem(CHAT_WIDTH_KEY)).toBe("1"));
     expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "1");
 
-    fireEvent.click(within(chatWidth).getByRole("radio", { name: "5" }));
+    fireEvent.change(chatWidth, { target: { value: "5" } });
     await waitFor(() => expect(window.localStorage.getItem(CHAT_WIDTH_KEY)).toBe("5"));
     expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "5");
   });
@@ -613,6 +522,31 @@ describe("App settings", () => {
       expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("blue")
     );
     expect(document.documentElement.getAttribute("data-accent")).toBe("blue");
+  });
+
+
+  it("settings Appearance section takes user bubbles off the accent and back", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Appearance" });
+
+    const tintPicker = screen.getByRole("radiogroup", { name: "Your message bubbles" });
+    expect(within(tintPicker).getByRole("radio", { name: "Accent" })).toBeChecked();
+    expect(document.documentElement.getAttribute("data-user-bubble")).toBe("accent");
+
+    fireEvent.click(within(tintPicker).getByRole("radio", { name: "Neutral" }));
+    await waitFor(() =>
+      expect(window.localStorage.getItem(USER_BUBBLE_TINT_STORAGE_KEY)).toBe("neutral")
+    );
+    expect(document.documentElement.getAttribute("data-user-bubble")).toBe("neutral");
+
+    fireEvent.click(within(tintPicker).getByRole("radio", { name: "Accent" }));
+    await waitFor(() =>
+      expect(window.localStorage.getItem(USER_BUBBLE_TINT_STORAGE_KEY)).toBe("accent")
+    );
+    expect(document.documentElement.getAttribute("data-user-bubble")).toBe("accent");
   });
 
 

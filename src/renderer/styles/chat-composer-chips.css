@@ -81,6 +81,13 @@
   padding-left: 3px;
 }
 
+/* Model + effort sit one step below the rest of the chip row: they are the
+   longest labels in the toolbar and read fine a notch smaller. */
+.composer-chips-model .composer-context-chip,
+.composer-context-group--model .composer-context-chip {
+  font-size: var(--text-2xs);
+}
+
 .launcher-surface .composer-context-group--model .model-picker-label {
   white-space: nowrap;
 }
@@ -157,7 +164,7 @@
   max-width: calc(100cqw - 24px);
   padding: 6px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xl);
   background: var(--panel);
   box-shadow: var(--shadow-2);
 }
@@ -353,7 +360,7 @@ button.composer-compact-context-row:hover,
     align-items: stretch;
     gap: 0;
     border: 1px solid var(--line);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-xl);
     background: var(--panel);
     box-shadow: var(--shadow-2);
   }
@@ -523,9 +530,9 @@ button.composer-compact-context-row:hover,
 .composer-queued-lane {
   display: flex;
   flex-direction: column;
-  margin: -10px -12px 4px;
+  margin: -12px -14px 4px;
   border-bottom: 1px solid var(--line);
-  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
   overflow: hidden;
 }
 
@@ -709,12 +716,12 @@ button.composer-compact-context-row:hover,
 .session-input textarea {
   min-width: 0;
   flex: 1;
-  min-height: 36px;
-  max-height: 100px;
+  min-height: 52px;
+  max-height: 168px;
   padding: 8px 8px;
   color: var(--text);
   border: 0;
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-2xl);
   outline: 0;
   background: transparent;
   font-family: var(--font-prose);
@@ -793,7 +800,7 @@ button.composer-compact-context-row:hover,
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-2);
   z-index: 30;
 }
@@ -857,7 +864,7 @@ button.composer-compact-context-row:hover,
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-2);
   z-index: 30;
 }
@@ -911,6 +918,7 @@ button.composer-compact-context-row:hover,
   display: grid;
   width: 28px;
   height: 28px;
+  margin-inline-start: 6px;
   padding: 0;
   flex: 0 0 auto;
   place-items: center;

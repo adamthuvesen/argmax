@@ -742,7 +742,7 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify([]));
   });
 
-  it("reveals every workspace that appears in one delta, across separate collapsed buckets", () => {
+  it("reveals a newly appeared Today session without unfolding Older", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
     window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["today", "older"]));
 
@@ -755,12 +755,50 @@ describe("Sidebar — date (sessions) view mode", () => {
 
     const { rerender } = render(<Sidebar {...baseProps} snapshot={seeded} />);
 
-    // One delta forks two sessions into two different collapsed buckets.
+    // One delta adds a Today row and an Older row. Only Today should open.
     rerender(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
 
     expect(screen.getByRole("button", { name: /Zebra task today/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Argmax task in april/ })).toBeInTheDocument();
-    expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify([]));
+    // Older is a history dump, not a launch confirmation. A stale row landing
+    // in the same delta must not unfold it.
+    expect(screen.queryByRole("button", { name: /Argmax task in april/ })).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toEqual([
+      "older"
+    ]);
+  });
+
+  it("does not auto-expand Older when its session is selected", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["older"]));
+
+    render(<Sidebar {...baseProps} selectedWorkspaceId="w-argmax" snapshot={viewSnapshot} />);
+
+    expect(screen.queryByRole("button", { name: /Argmax task in april/ })).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toEqual([
+      "older"
+    ]);
+  });
+
+  it("does not re-expand a group when a workspace drops out of the snapshot and returns", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["today"]));
+
+    const { rerender } = render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
+
+    expect(screen.queryByRole("button", { name: /Zebra task today/ })).toBeNull();
+
+    const withoutToday: DashboardSnapshot = {
+      ...viewSnapshot,
+      workspaces: viewSnapshot.workspaces.filter((row) => row.id !== "w-zebra"),
+      sessions: viewSnapshot.sessions.filter((row) => row.workspaceId !== "w-zebra")
+    };
+    rerender(<Sidebar {...baseProps} snapshot={withoutToday} />);
+    rerender(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
+
+    expect(screen.queryByRole("button", { name: /Zebra task today/ })).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toContain(
+      "today"
+    );
   });
 
   it("toggles a date bucket by clicking the row, not just the chevron", () => {

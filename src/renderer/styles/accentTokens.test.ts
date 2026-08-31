@@ -98,6 +98,16 @@ describe("accent CSS contract", () => {
     // Chrome labels sit on --text-soft, so it has to stay quieter than --text
     // while both clear body-copy contrast against the dark background.
     expect(relativeLuminance(darkTextSoft)).toBeLessThan(relativeLuminance(darkText));
+    // Rendered prose is the one thing in dark that runs brighter than chrome
+    // ink: the bloom that keeps labels off paper-white is a weight problem at
+    // label size, and prose pays for the luminance with --weight-prose and an
+    // open line box. Emphasis then has to clear the body it emphasizes, or
+    // bold reads dimmer than the sentence around it.
+    const darkProseInk = readHex(darkRule, "prose-ink");
+    expect(relativeLuminance(darkProseInk)).toBeGreaterThan(relativeLuminance(darkText));
+    expect(relativeLuminance(readHex(darkRule, "prose-ink-strong"))).toBeGreaterThan(
+      relativeLuminance(darkProseInk)
+    );
     expect(contrast(darkText, readHex(darkRule, "bg"))).toBeGreaterThan(10);
     expect(contrast(darkTextSoft, readHex(darkRule, "bg"))).toBeGreaterThan(7);
     expect(contrast(readHex(rootRule, "text"), readHex(rootRule, "bg"))).toBeGreaterThan(10);
@@ -168,19 +178,36 @@ describe("accent CSS contract", () => {
     const chatTools = readSource("src/renderer/styles/chat-tools.css");
     const labelRule = cssRuleBody(chatTurns, ".tool-call-group-eyebrow-label");
     const previewRule = cssRuleBody(chatTurns, ".tool-call-group-preview");
+    const detailRule = cssRuleBody(chatTurns, ".tool-call-group-eyebrow-detail");
+    const verbRule = cssRuleBody(chatTurns, ".tool-call-row-verb");
     const rowTargetRule = cssRuleBody(chatTurns, ".tool-call-row-target");
+    const bashTargetRule = cssRuleBody(
+      chatTurns,
+      '.tool-call-row[data-tool-type="bash"] .tool-call-row-target'
+    );
     const resourceRowRule = cssRuleBody(chatTools, ".tool-call-resource-row code");
 
     expect(labelRule).toContain("font-weight: 400;");
     expect(labelRule).toContain("letter-spacing: 0;");
     expect(labelRule).toContain("text-transform: none;");
-    expect(labelRule).toContain("color: var(--muted);");
     expect(labelRule).not.toContain("var(--accent-deep)");
     expect(previewRule).toContain("font-family: var(--font-code);");
     expect(previewRule).toContain("color: var(--muted);");
-    expect(rowTargetRule).toContain("font-family: var(--font-code);");
+    // One grammar for rows and headlines: the leading verb sits a token above
+    // what it acted on, and both stay below `--text` so the transcript reads
+    // quieter than the assistant prose beside it. The step is a token step, not
+    // an opacity fade — fading `--muted` put the file name at 2.4:1 in light.
+    expect(labelRule).toContain("color: var(--muted-strong);");
+    expect(verbRule).toContain("color: var(--muted-strong);");
+    expect(detailRule).toContain("color: var(--muted);");
+    expect(detailRule).not.toContain("opacity:");
     expect(rowTargetRule).toContain("color: var(--muted);");
+    expect(rowTargetRule).not.toContain("opacity:");
     expect(rowTargetRule).not.toContain("color: var(--text);");
+    // File names read in the UI face; monospace is reserved for the diff body
+    // and for shell commands, which really are code.
+    expect(rowTargetRule).toContain("font-family: inherit;");
+    expect(bashTargetRule).toContain("font-family: var(--font-code);");
     expect(resourceRowRule).toContain("color: var(--path-ink);");
   });
 
@@ -205,7 +232,9 @@ describe("accent CSS contract", () => {
 
     expect(detailRule).toContain("gap: 10px;");
     expect(detailRule).toContain("border-top: 1px solid color-mix(in oklab, var(--line-soft) 58%, transparent);");
-    expect(rowDetailRule).toContain("padding: 7px 0 8px;");
+    // Flush with the row's own left edge and with no rail of its own: the
+    // expanded diff's hairline is the only border in the transcript.
+    expect(rowDetailRule).toContain("margin: 2px 0 8px;");
     expect(rowDetailRule).not.toContain("border-left");
     expect(chatTools).not.toContain(".tool-call-row[data-status=\"error\"] > .tool-call-detail");
     expect(runningItemRule).not.toContain("box-shadow");
@@ -246,9 +275,42 @@ describe("accent CSS contract", () => {
     const chatTools = readSource("src/renderer/styles/chat-tools.css");
     const tokens = readSource("src/renderer/styles/tokens.css");
     expect(chatTools).toContain('file-change-card[data-kind="create"]');
-    expect(chatTools).toContain("border-left: 2px solid color-mix(in oklab, var(--sage-deep) 58%, var(--line-soft));");
+    // The create signal is the sage file icon plus the shared add wash, not a
+    // coloured rail: the transcript keeps exactly one border, the hairline
+    // around the diff itself.
+    expect(chatTools).toContain("color: var(--sage-deep);");
+    expect(chatTools).not.toContain("border-left: 2px solid");
     expect(tokens).toContain("--diff-add-bg:");
     expect(tokens).toContain("--diff-add-gutter-fg:");
+  });
+
+  it("turns programming ligatures off on every surface that renders machine text", () => {
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    // A run of `=` in a pytest banner ligates into one solid bar, which reads
+    // as struck-through output. `font-variant-ligatures: none` is not enough:
+    // the root enables `calt` through `font-feature-settings`, and that
+    // property outranks font-variant in font feature resolution, so the reset
+    // has to use the same property to reach calt-based fonts like Fira Code.
+    expect(cssRuleBody(tokens, ":root")).toContain(
+      '--code-font-features: "liga" 0, "clig" 0, "calt" 0;'
+    );
+
+    const surfaces: [string, string][] = [
+      ["src/renderer/styles/chat-turns.css", ".tool-call-code"],
+      ["src/renderer/styles/chat-turns.css", ".tool-call-command-line"],
+      ["src/renderer/styles/chat-conversation.css", ".markdown code"],
+      ["src/renderer/styles/chat-conversation.css", ".terminal-transcript pre"],
+      ["src/renderer/styles/chat-composer.css", ".code-block pre"],
+      ["src/renderer/styles/chat-tools.css", ".checks-row-log"],
+      ["src/renderer/styles/overlays-review-files.css", ".diff-blocks"],
+      ["src/renderer/styles/overlays-launcher-panels.css", ".log-output-content"]
+    ];
+    for (const [file, selector] of surfaces) {
+      expect(
+        cssRuleBody(readSource(file), selector),
+        `${selector} in ${file} must disable ligatures`
+      ).toContain("font-feature-settings: var(--code-font-features);");
+    }
   });
 
   it("keeps review file names on UI type and file contents on compact code type", () => {
@@ -333,12 +395,51 @@ describe("accent CSS contract", () => {
     expect(tokens).toContain(
       "--user-message-selection-bg: color-mix(in oklab, var(--user-message-fg) 26%, transparent);"
     );
+    const darkRule = cssRuleBody(tokens, ':root[data-theme="dark"]');
+    const darkPurpleRule = cssRuleBody(tokens, ':root[data-theme="dark"][data-accent="purple"]');
+    const darkOrangeRule = cssRuleBody(tokens, ':root[data-theme="dark"][data-accent="orange"]');
+    const darkBlueRule = cssRuleBody(tokens, ':root[data-theme="dark"][data-accent="blue"]');
+    const darkNeutralRule = cssRuleBody(tokens, ':root[data-theme="dark"][data-accent="neutral"]');
+    expect(darkRule).toContain("--user-message-bg: #3a664c;");
+    expect(darkRule).toContain("--user-message-fg: #ffffff;");
+    expect(darkPurpleRule).toContain("--user-message-bg: var(--accent);");
+    expect(darkPurpleRule).toContain("--user-message-fg: var(--on-accent);");
+    expect(darkOrangeRule).toContain("--user-message-bg: #89442e;");
+    expect(darkOrangeRule).toContain("--user-message-fg: #ffffff;");
+    expect(darkBlueRule).toContain("--user-message-bg: #3d5d83;");
+    expect(darkBlueRule).toContain("--user-message-fg: #ffffff;");
+    expect(darkNeutralRule).toContain("--user-message-bg: #4f4d47;");
+    expect(darkNeutralRule).toContain("--user-message-fg: #ffffff;");
+    const neutralRule = cssRuleBody(tokens, ':root[data-user-bubble="neutral"]');
+    const darkNeutralBubbleRule = cssRuleBody(
+      tokens,
+      ':root[data-theme="dark"][data-user-bubble="neutral"]'
+    );
+    expect(neutralRule).toContain("--user-message-bg: var(--panel-sunken);");
+    expect(neutralRule).toContain("--user-message-fg: var(--text);");
+    expect(darkNeutralBubbleRule).toContain("--user-message-bg: var(--panel-soft);");
+    expect(darkNeutralBubbleRule).toContain("--user-message-fg: #f4f2ec;");
+    // Same specificity as the dark per-accent blocks, so only source order
+    // keeps the opt-out from losing to whichever accent is selected.
+    for (const accent of ["purple", "neutral", "orange", "blue", "coral"]) {
+      expect(tokens.indexOf(':root[data-theme="dark"][data-user-bubble="neutral"]')).toBeGreaterThan(
+        tokens.indexOf(`:root[data-theme="dark"][data-accent="${accent}"]`)
+      );
+    }
     expect(tokens).not.toContain("--user-message-border:");
     expect(tokens).toContain(':root[data-theme="dark"]');
     expect(bubbleRule).toContain("box-sizing: border-box;");
     expect(bubbleRule).toContain("min-width: 0;");
     expect(userBubbleRule).toContain("background: var(--user-message-bg);");
     expect(userBubbleRule).toContain("box-shadow: var(--user-message-shadow);");
+    expect(userBubbleRule).toContain("border-radius: var(--radius-2xl);");
+    const planCardRule = cssRuleBody(
+      readSource("src/renderer/styles/overlays-launcher-cards.css"),
+      ".plan-card"
+    );
+    const agentCardRule = cssRuleBody(chatConversation, ".agent-activity-summary,\n.agent-activity-final");
+    expect(planCardRule).toContain("border-radius: var(--radius-2xl);");
+    expect(agentCardRule).toContain("border-radius: var(--radius-2xl);");
     expect(userBubbleRule).not.toContain("border:");
     expect(userBubbleBodyRule).toContain("padding-right: 4px;");
     expect(userBubbleBodyRule).toContain("margin-right: -4px;");
@@ -416,7 +517,7 @@ describe("accent CSS contract", () => {
     expect(groupRule).toContain("text-transform: none;");
     expect(countRule).toContain("text-transform: none;");
     expect(tabRule).toContain("font-weight: 400;");
-    expect(selectedTabRule).toContain("background: var(--panel-sunken);");
+    expect(selectedTabRule).toContain("background: var(--overlay-panel-raised);");
     expect(inkwell).not.toContain(".command-palette-result-hint");
     expect(palette).not.toContain("command-palette-result-hint");
   });
@@ -430,21 +531,12 @@ describe("accent CSS contract", () => {
     expect(backdropRule).not.toContain("place-items: start center;");
     expect(backdropRule).not.toContain("padding-top: 12vh;");
     // Capped height keeps a long result list scrolling inside the dialog rather
-    // than pushing a centered overlay past the window edges.
-    expect(paletteRule).toContain("max-height: 70vh;");
+    // than pushing a centered overlay past the window edges. The px cap holds
+    // the dialog short on a tall display, where 72vh alone would stretch a
+    // recents list down the whole screen.
+    expect(paletteRule).toContain("max-height: min(540px, 72vh);");
     // Every search chord opens this one dialog — no second search modal.
     expect(inkwell).not.toContain(".search-modal");
-  });
-
-  it("keeps the cost table bucket header aligned with bucket labels", () => {
-    const shellSessions = readSource("src/renderer/styles/shell-sessions.css");
-    const cellsRule = cssRuleBody(shellSessions, ".cost-panel-table th,\n.cost-panel-table td");
-    const rowHeaderRule = cssRuleBody(shellSessions, '.cost-panel-table th[scope="row"]');
-    const bucketHeaderRule = cssRuleBody(shellSessions, ".cost-panel-table thead th:first-child");
-
-    expect(cellsRule).toContain("text-align: right;");
-    expect(rowHeaderRule).toContain("text-align: left;");
-    expect(bucketHeaderRule).toContain("text-align: left;");
   });
 
   it("keeps chat content width modes wired to session padding", () => {
@@ -644,7 +736,12 @@ describe("accent CSS contract", () => {
     expect(markdownRule).toContain("font-family: var(--font-prose);");
     expect(markdownRule).toContain("font-size: var(--text-base);");
     expect(markdownRule).toContain("line-height: 1.9;");
-    expect(markdownRule).toContain("color: color-mix(in oklab, var(--text) 91%, var(--text-soft) 9%);");
+    expect(markdownRule).toContain("color: var(--prose-ink);");
+    // Agent paragraphs are painted by `.chat-bubble p`, not by the inherited
+    // `.markdown` ink — a rule landing on the element beats inheritance. The
+    // two have to name the same token or the paragraphs of an answer render
+    // at a different brightness than its lists, headings, and tables.
+    expect(bubbleParagraphRule).toContain("color: var(--prose-ink);");
     expect(readableMeasureRule).toContain("max-width: 780px;");
   });
 

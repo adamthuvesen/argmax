@@ -164,6 +164,38 @@ describe("SessionConversation selection annotations", () => {
     );
   });
 
+  it("sends a review comment with no typed message", async () => {
+    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    let sink: ((input: {
+      filePath: string;
+      line: number | null;
+      lineText: string;
+      comment: string;
+    }) => void) | null = null;
+    renderConversation(baseSession(), EVENTS, {
+      onSendSessionInput,
+      registerAnnotationSink: (next) => {
+        sink = next;
+      }
+    });
+
+    const send = screen.getByRole("button", { name: "Send follow-up" });
+    expect(send.hasAttribute("disabled")).toBe(true);
+
+    act(() => {
+      sink?.({ filePath: "src/x.ts", line: 9, lineText: "let y = 0;", comment: "why mutable?" });
+    });
+
+    expect(send.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(send);
+
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+    expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(
+      "Please address this review comment on the changes:\n\n" +
+        "`src/x.ts:9`\n> let y = 0;\nwhy mutable?"
+    );
+  });
+
   it("ignores selections outside the transcript", () => {
     renderConversation(baseSession(), EVENTS);
     const prompt = screen.getByLabelText("Session prompt");

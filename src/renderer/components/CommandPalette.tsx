@@ -10,6 +10,8 @@ import {
 } from "react";
 import { Command, FileSearch, FileText, Folder, MessageSquare, Quote, SlidersHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { FileIcon } from "@react-symbols/icons/utils";
+import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import {
   highlightSegments,
   searchFilePaths,
@@ -31,6 +33,10 @@ export type { PaletteGroup, PaletteItem } from "../lib/paletteSearch.js";
 export type PaletteCommand = PaletteItem;
 
 const MAX_PER_GROUP = 8;
+// With no query the palette is a recents list, not a result set. A mixed scope
+// stacks four or five of those lists, so each one keeps its top few and the
+// dialog stays short enough to read without scrolling. Typing lifts the cap.
+const MAX_RECENT_PER_GROUP = 5;
 const MESSAGE_DEBOUNCE_MS = 150;
 const MIN_MESSAGE_QUERY_LENGTH = 3;
 const CONTENT_DEBOUNCE_MS = 180;
@@ -419,10 +425,14 @@ export function CommandPalette({
   // Each row carries its group so we can insert headers without breaking the
   // index/option mapping.
   const flatRows = useMemo<PaletteRow[]>(() => {
+    const perGroup =
+      query.trim().length === 0 && visibleGroups.length > 1
+        ? MAX_RECENT_PER_GROUP
+        : MAX_PER_GROUP;
     const byGroup = new Map<PaletteGroup, PaletteHit[]>();
     for (const hit of localHits) {
       const list = byGroup.get(hit.item.group) ?? [];
-      if (list.length < MAX_PER_GROUP) {
+      if (list.length < perGroup) {
         list.push(hit);
         byGroup.set(hit.item.group, list);
       }
@@ -458,7 +468,7 @@ export function CommandPalette({
       }
     }
     return rows;
-  }, [contentResult.files, fileHits, localHits, messageHits, visibleGroups]);
+  }, [contentResult.files, fileHits, localHits, messageHits, query, visibleGroups]);
 
   // Every row commits the same way, whichever list it came from. Content rows
   // open their file: the file header and its match rows both land on the path,
@@ -678,6 +688,7 @@ export function CommandPalette({
                   role="option"
                   aria-selected={isSelected}
                   className={`command-palette-result${isSelected ? " selected" : ""}`}
+                  data-group={row.group}
                   data-content={
                     row.kind === "content-file"
                       ? "file"
@@ -694,6 +705,10 @@ export function CommandPalette({
                     <span className="command-palette-line" aria-hidden="true">
                       {row.file.matches[row.matchIndex]?.line}
                     </span>
+                  ) : row.kind === "content-file" ? (
+                    <FileTypeIcon name={basename(row.file.path)} />
+                  ) : row.kind === "hit" && row.group === "Files" ? (
+                    <FileTypeIcon name={row.hit.item.label} />
                   ) : (
                     <RowIcon
                       icon={
@@ -816,6 +831,15 @@ function RowIcon({ icon: Icon }: { icon: LucideIcon }): JSX.Element {
   return (
     <span className="command-palette-icon" aria-hidden="true">
       <Icon size={14} strokeWidth={1.5} />
+    </span>
+  );
+}
+
+/** File rows get the same type-colored glyph the review file tree uses. */
+function FileTypeIcon({ name }: { name: string }): JSX.Element {
+  return (
+    <span className="command-palette-icon command-palette-icon--file" aria-hidden="true">
+      <FileIcon fileName={name} autoAssign editFileNameData={SPECIAL_FILE_ICONS} width={14} height={14} />
     </span>
   );
 }

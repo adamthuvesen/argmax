@@ -776,19 +776,25 @@
   padding: 10px 8px 24px;
   font-family: var(--font-code);
   font-size: var(--text-sm);
+  font-feature-settings: var(--code-font-features);
   line-height: 1.65;
 }
 
-/* Diff code in the review panel reads one notch below the panel's scale;
-   chat file-change cards keep the base size. */
+/* Diff code in the review panel reads one notch below the panel's scale. Chat
+   file-change cards step down to the same size in `chat-tools.css`; the base
+   size here is what the mobile review reads at. */
 .review-panel .diff-blocks {
   font-size: var(--text-xs);
 }
 
 .diff-hunk {
+  --diff-gutter-width: 40px;
+  /* Clips the hunk header and the sticky line-number gutter to the corner
+     curve, so the block reads as one rounded card rather than a square table
+     behind a rounded outline. */
   overflow: hidden;
   border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
 }
 
 .diff-hunk + .diff-hunk,
@@ -804,15 +810,51 @@
   border-bottom: 1px solid var(--line-soft);
 }
 
+/* The unchanged lines git left out between two hunks. A plain band in chat
+   cards; in the review panel it is a full-width button that reloads the file
+   with more context. */
 .diff-omitted {
   margin: 8px 0;
   border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
+}
+
+.diff-omitted-expand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.diff-omitted-expand:hover {
+  background: var(--panel-sunken);
+  color: var(--text);
+}
+
+.diff-omitted-expand svg {
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
+/* The per-file diff cap dropped content. Loud on purpose: the lines it ate are
+   invisible by construction, so silence would read as a complete diff. */
+.diff-truncated {
+  margin: 8px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-lg);
+  background: var(--amber-soft);
+  color: var(--text);
+  font-family: var(--font-ui);
 }
 
 .diff-line {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-columns: var(--diff-gutter-width, 40px) minmax(0, 1fr);
   min-width: max-content;
 }
 
@@ -1047,18 +1089,19 @@
 }
 
 /* Inline comment form under the target line. Sticky-left so it stays visible
-   while the (max-content wide) diff scrolls horizontally. */
+   while the (max-content wide) diff scrolls horizontally, offset past the
+   line-number gutter so the numbers beside it stay readable. */
 .diff-comment-form {
   position: sticky;
-  left: 8px;
+  left: calc(var(--diff-gutter-width, 40px) + 8px);
   display: grid;
   gap: 8px;
-  width: min(440px, 60vw);
-  margin: 8px;
-  padding: 10px 12px 12px;
+  width: min(440px, 60vw, 100% - var(--diff-gutter-width, 40px) - 16px);
+  margin: 8px 8px 8px calc(var(--diff-gutter-width, 40px) + 8px);
+  padding: 12px 14px 14px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-2);
   /* The form sits inside the diff's monospace context; the UI chrome reads
      in the app face, only the file:line stays code. */
@@ -1079,7 +1122,7 @@
   min-height: 56px;
   resize: none;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   background: var(--panel-soft);
   color: var(--text);
   font-family: var(--font-ui);
@@ -1087,12 +1130,13 @@
   line-height: 1.45;
   padding: 8px 10px;
   white-space: pre-wrap;
-  transition: border-color var(--duration-fast) var(--ease);
+  transition: border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
 }
 
 .diff-comment-form textarea:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: color-mix(in oklab, var(--accent) 68%, var(--line-strong));
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 16%, transparent);
 }
 
 .diff-comment-form-actions {
@@ -1104,7 +1148,7 @@
 .diff-comment-cancel,
 .diff-comment-submit {
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font-family: var(--font-ui);
   font-size: var(--text-xs-plus);
   padding: 5px 12px;

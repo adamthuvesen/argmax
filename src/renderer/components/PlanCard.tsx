@@ -1,11 +1,9 @@
-import { ChevronDown, ChevronUp, Copy, Download } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, Download } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Plan, PlanItem } from "../lib/parsePlan.js";
+import type { Plan, PlanItem, PlanSubSection } from "../lib/parsePlan.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
-
-const SECTION_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 
 export type PlanCardProps = {
   plan: Plan;
@@ -74,6 +72,34 @@ function PlanChangeItem({ item, marker }: { item: PlanItem; marker: string }): J
         </ul>
       ) : null}
     </li>
+  );
+}
+
+function PlanSubSectionView({ subsection }: { subsection: PlanSubSection }): JSX.Element {
+  return (
+    <div className="plan-card-sub-block">
+      <div className="plan-card-sub-label">
+        <PlanInlineMarkdown>{subsection.label}</PlanInlineMarkdown>
+      </div>
+
+      {subsection.note ? (
+        <p className="plan-card-sub-text">
+          <PlanInlineMarkdown>{subsection.note}</PlanInlineMarkdown>
+        </p>
+      ) : null}
+
+      {subsection.items.length > 0 ? (
+        <ul className="plan-card-change-list">
+          {subsection.items.map((item, iIdx) => (
+            <PlanChangeItem
+              key={iIdx}
+              item={item}
+              marker={String(iIdx + 1)}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -256,54 +282,98 @@ function PlanCardInner({
           <h1 className="plan-card-title">
             <PlanInlineMarkdown>{plan.title}</PlanInlineMarkdown>
           </h1>
-          <div className="plan-card-title-rule" aria-hidden="true" />
         </div>
 
         {plan.summary.length > 0 ? (
-          <section className="plan-card-section">
-            <div className="plan-card-section-label">
-              <span className="plan-card-section-num">01</span>
-              <span className="plan-card-section-sep" aria-hidden="true">—</span>
+          <section className="plan-card-summary-section">
+            <div className="plan-card-summary-label">
               <span className="plan-card-section-name">Summary</span>
             </div>
-            {plan.summary.map((paragraph, idx) => (
-              <p key={idx} className={`plan-card-summary${idx > 0 ? " plan-card-summary-secondary" : ""}`}>
-                <PlanInlineMarkdown>{paragraph}</PlanInlineMarkdown>
-              </p>
-            ))}
+            <div className="plan-card-summary-body">
+              {plan.summary.map((paragraph, idx) => (
+                <p key={idx} className={`plan-card-summary${idx > 0 ? " plan-card-summary-secondary" : ""}`}>
+                  <PlanInlineMarkdown>{paragraph}</PlanInlineMarkdown>
+                </p>
+              ))}
+            </div>
           </section>
         ) : null}
 
-        {plan.sections.map((section, sIdx) => {
-          const sectionNum = String(sIdx + 2).padStart(2, "0");
-          return (
-            <section key={sIdx} className="plan-card-section">
-              <div className="plan-card-section-label">
-                <span className="plan-card-section-num">{sectionNum}</span>
-                <span className="plan-card-section-sep" aria-hidden="true">—</span>
-                <span className="plan-card-section-name">
-                  <PlanInlineMarkdown>{section.label}</PlanInlineMarkdown>
-                </span>
-              </div>
-              {section.note ? (
-                <p className="plan-card-section-note">
-                  <PlanInlineMarkdown>{section.note}</PlanInlineMarkdown>
-                </p>
-              ) : null}
-              {section.items.length > 0 ? (
-                <ul className="plan-card-change-list">
-                  {section.items.map((item, iIdx) => (
-                    <PlanChangeItem
-                      key={iIdx}
-                      item={item}
-                      marker={SECTION_LETTERS[iIdx] ?? String(iIdx + 1)}
-                    />
-                  ))}
-                </ul>
-              ) : null}
-            </section>
-          );
-        })}
+        <div className="plan-card-sections-container">
+          {plan.sections.map((section, sIdx) => {
+            const isPhaseCard = Boolean(section.badge) || (section.subsections && section.subsections.length > 0);
+
+            if (isPhaseCard) {
+              return (
+                <section key={sIdx} className="plan-card-phase-card">
+                  <div className="plan-card-phase-head">
+                    <h2 className="plan-card-phase-title">
+                      {section.badge ? (
+                        <>
+                          <span className="plan-card-phase-tag">{section.badge}</span>
+                          <span className="plan-card-phase-sep" aria-hidden="true"> · </span>
+                        </>
+                      ) : null}
+                      <PlanInlineMarkdown>{section.title ?? section.label}</PlanInlineMarkdown>
+                    </h2>
+                  </div>
+
+                  {section.note ? (
+                    <p className="plan-card-section-note">
+                      <PlanInlineMarkdown>{section.note}</PlanInlineMarkdown>
+                    </p>
+                  ) : null}
+
+                  {section.items.length > 0 ? (
+                    <ul className="plan-card-change-list">
+                      {section.items.map((item, iIdx) => (
+                        <PlanChangeItem
+                          key={iIdx}
+                          item={item}
+                          marker={String(iIdx + 1)}
+                        />
+                      ))}
+                    </ul>
+                  ) : null}
+
+                  {section.subsections && section.subsections.length > 0 ? (
+                    <div className="plan-card-subsections">
+                      {section.subsections.map((sub, subIdx) => (
+                        <PlanSubSectionView key={subIdx} subsection={sub} />
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            }
+
+            return (
+              <section key={sIdx} className="plan-card-section">
+                <div className="plan-card-section-label">
+                  <span className="plan-card-section-name">
+                    <PlanInlineMarkdown>{section.label}</PlanInlineMarkdown>
+                  </span>
+                </div>
+                {section.note ? (
+                  <p className="plan-card-section-note">
+                    <PlanInlineMarkdown>{section.note}</PlanInlineMarkdown>
+                  </p>
+                ) : null}
+                {section.items.length > 0 ? (
+                  <ul className="plan-card-change-list">
+                    {section.items.map((item, iIdx) => (
+                      <PlanChangeItem
+                        key={iIdx}
+                        item={item}
+                        marker={String(iIdx + 1)}
+                      />
+                    ))}
+                  </ul>
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
 
         <div className="plan-card-action-block">
           <p className="plan-card-action-q">
@@ -337,16 +407,32 @@ function PlanCardInner({
                   <span className="plan-card-option-label">
                     <PlanInlineMarkdown>{option.label}</PlanInlineMarkdown>
                   </span>
-                  <span className="plan-card-option-arrow" aria-hidden="true">→</span>
+                  <span className="plan-card-option-arrow" aria-hidden="true">
+                    {idx === 0 ? "↵" : "→"}
+                  </span>
                 </li>
               );
             })}
           </ul>
-          {submitted ? (
-            <div className="plan-card-action-foot">
-              <span className="plan-card-key-hint">Submitted</span>
-            </div>
-          ) : null}
+          <div className="plan-card-action-foot">
+            {submitted ? (
+              <span className="plan-card-key-hint">
+                <Check size={12} className="plan-card-submitted-icon" aria-hidden="true" /> Submitted
+              </span>
+            ) : (
+              <div className="plan-card-key-hints">
+                <span className="plan-card-key-hint">
+                  <kbd className="plan-card-key-cap">↵</kbd> Proceed
+                </span>
+                <span className="plan-card-key-hint">
+                  <kbd className="plan-card-key-cap">1</kbd>–<kbd className="plan-card-key-cap">{optionCount}</kbd> Select
+                </span>
+                <span className="plan-card-key-hint">
+                  <kbd className="plan-card-key-cap">↑</kbd><kbd className="plan-card-key-cap">↓</kbd> Navigate
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </article>

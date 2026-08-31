@@ -94,6 +94,7 @@ const PINNED_GROUP_KEY = "pinned";
 const WORKING_GROUP_KEY = "working";
 const PRIORITY_GROUP_KEY = "priority";
 const SIDE_CHATS_GROUP_KEY = "side-chats";
+const OLDER_GROUP_KEY = "older";
 
 // Per-launch behavior: every session group except Pinned starts collapsed, so a
 // fresh window opens on the standing pins and nothing else.
@@ -103,7 +104,7 @@ const BOOT_COLLAPSED_GROUP_KEYS: readonly string[] = [
   "today",
   "last-7",
   "last-30",
-  "older"
+  OLDER_GROUP_KEY
 ];
 
 const VIEW_MODE_OPTIONS: ReadonlyArray<{ value: SidebarViewMode; label: string; description: string }> = [
@@ -627,7 +628,11 @@ export function Sidebar({
                 ? dateGroups.find((group) => group.items.some((item) => item.id === workspace.id))
                     ?.key ?? null
                 : null;
-      if (groupKey) {
+      // Older is a history dump, often dozens of rows. Auto-opening it to
+      // confirm a launch (or because a stale session is selected in the grid)
+      // buries the recency list the user is actually using. They can still
+      // expand it by clicking the header.
+      if (groupKey && groupKey !== OLDER_GROUP_KEY) {
         setCollapsedDateGroups((current) => {
           if (!current.has(groupKey)) return current;
           const next = new Set(current);
@@ -643,9 +648,10 @@ export function Sidebar({
   );
 
   // A newly launched (or newly selected) session must not vanish into a
-  // collapsed section: expand the group that hosts the selected row. Keyed on
-  // the id *changing* — once revealed, the user may still collapse the group
-  // over a selected row without this snapping it back open.
+  // collapsed section: expand the group that hosts the selected row. Older is
+  // the exception (see revealWorkspaceGroup). Keyed on the id *changing* —
+  // once revealed, the user may still collapse the group over a selected row
+  // without this snapping it back open.
   const lastExpandedForWorkspaceId = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedWorkspaceId || lastExpandedForWorkspaceId.current === selectedWorkspaceId) return;
@@ -657,18 +663,27 @@ export function Sidebar({
 
   // A workspace that APPEARS without being selected — a fork, or a session an
   // agent launched from inside another session — must also surface, so the
-  // user sees the action succeeded. Diff against the previously seen ids; the
-  // first non-empty snapshot seeds silently so boot never unfolds everything.
+  // user sees the action succeeded. Diff against ids seen so far; the first
+  // non-empty snapshot seeds silently so boot never unfolds everything.
+  // The set only grows: replacing it with the current list forgot rows that
+  // briefly dropped out (a partial dashboard load, a prune, a 200-row cap
+  // shuffle) and treated their return as a brand-new launch.
   const knownWorkspaceIdsRef = useRef<Set<string> | null>(null);
   useEffect(() => {
     const known = knownWorkspaceIdsRef.current;
     if (sidebarWorkspaces.length === 0 && known === null) return;
-    knownWorkspaceIdsRef.current = new Set(sidebarWorkspaces.map((workspace) => workspace.id));
-    if (known === null) return;
+    if (known === null) {
+      knownWorkspaceIdsRef.current = new Set(sidebarWorkspaces.map((workspace) => workspace.id));
+      return;
+    }
+    const next = new Set(known);
     for (const workspace of sidebarWorkspaces) {
-      if (known.has(workspace.id) || workspace.state === "archived") continue;
+      if (next.has(workspace.id)) continue;
+      next.add(workspace.id);
+      if (workspace.state === "archived") continue;
       revealWorkspaceGroup(workspace);
     }
+    knownWorkspaceIdsRef.current = next;
   }, [revealWorkspaceGroup, sidebarWorkspaces]);
 
   const toggleDateGroupExpansion = useCallback(

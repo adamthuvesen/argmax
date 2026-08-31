@@ -77,7 +77,6 @@ interface SessionMultiGridProps {
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
   fastModeEnabled?: boolean;
-  showCostPanel?: boolean;
   workspaceCardVisible?: boolean;
   onWorkspaceCardVisibleChange?: (visible: boolean) => void;
   maxColumnsPerRow?: number;
@@ -146,7 +145,6 @@ export function SessionMultiGrid({
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
   fastModeEnabled,
-  showCostPanel = true,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
   maxColumnsPerRow = MAX_COLS,
@@ -427,7 +425,6 @@ export function SessionMultiGrid({
                         defaultThinkingExpanded={defaultThinkingExpanded}
                         events={events}
                         fastModeEnabled={fastModeEnabled}
-                        showCostPanel={showCostPanel}
                         workspaceCardVisible={workspaceCardVisible}
                         onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
                         isFocused={focused}

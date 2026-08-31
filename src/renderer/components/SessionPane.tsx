@@ -106,7 +106,6 @@ export function SessionPane({
   rightPanelToggleSignal,
   debugLogToggleSignal,
   session,
-  showCostPanel = true,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
   workspace
@@ -157,7 +156,6 @@ export function SessionPane({
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
   session: SessionSummary | null;
-  showCostPanel?: boolean;
   /** User preference for the floating workspace card. The pane still hides it
       whenever a right-hand panel is docked. */
   workspaceCardVisible?: boolean;
@@ -591,7 +589,6 @@ export function SessionPane({
           rawOutputs={rawOutputs}
           review={reviewState}
           session={session}
-          showCostPanel={showCostPanel}
           workspace={workspace}
         />
 

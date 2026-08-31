@@ -107,13 +107,13 @@ describe("SessionConversation — tools & chrome", () => {
       { defaultToolCallsDisplay: "expanded" }
     );
 
-    expect(screen.getByRole("button", { name: /mcp__engram__recall/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /Engram recall/ })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("Input")).toBeInTheDocument();
     expect(screen.getByText("Output")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
 
-    expect(screen.getByRole("button", { name: /mcp__engram__recall/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /Engram recall/ })).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Input")).toBeNull();
     expect(screen.queryByText("Output")).toBeNull();
   });
@@ -171,8 +171,8 @@ describe("SessionConversation — tools & chrome", () => {
 
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
     const agentRow = screen.getByRole("button", { name: startedAgentName("Audit renderer tools") });
-    expect(agentRow.textContent).toMatch(/^Launched \S+$/);
-    expect(agentRow).not.toHaveTextContent("Audit renderer tools");
+    expect(agentRow.textContent).toMatch(/^Audit renderer tools\S+Completed$/);
+    expect(agentRow).not.toHaveTextContent("Audit renderer tool-call grouping");
     expect(agentRow).not.toHaveTextContent("Reviewer");
     expect(agentRow).not.toHaveTextContent("🤖");
     expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
@@ -516,7 +516,10 @@ describe("SessionConversation — tools & chrome", () => {
       ]
     );
 
-    expect(screen.getByRole("button", { name: /Ran 2 commands/ })).toBeInTheDocument();
+    const twoCommands = screen.getByRole("button", { name: /Ran 2 commands/ });
+    // The verb and count live in separate spans. The space has to be real text,
+    // not a flex gap, or the headline reads "Ran2 commands".
+    expect(twoCommands.textContent).toMatch(/Ran 2 commands/);
     expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Ran 3 commands/ })).toBeNull();
   });
@@ -714,9 +717,10 @@ describe("SessionConversation — single-line activity mode", () => {
     // One aggregated line per gap, not per-tool rows or group bubbles.
     const exploreLines = screen.getAllByRole("button", { name: /Explored 1 file, 1 search/ });
     expect(exploreLines).toHaveLength(1);
-    expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /git status/ })).toBeNull();
+    // The second gap holds one tool, so its own row is the single line — a
+    // summary of one would only restate it as "Ran 1 command".
+    expect(screen.getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
     // Saved Thought blocks fold away too.
     expect(screen.queryByRole("button", { name: "Thought" })).toBeNull();
     expect(screen.queryByText("Weighing options.")).toBeNull();
@@ -767,11 +771,55 @@ describe("SessionConversation — single-line activity mode", () => {
       { defaultToolCallsDisplay: "single-line" }
     );
 
-    expect(screen.getByRole("button", { name: /Explored 1 file/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: startedAgentName("Audit renderer tools") })).toBeInTheDocument();
-    // The Task launch is not folded into either summary line.
+    // The Task launch is not folded in with the tools on either side of it.
     expect(screen.queryByRole("button", { name: /Started 1 agent|Explored 1 file, started/ })).toBeNull();
+  });
+
+  it("renders a run of one tool as the row itself, with a readable MCP result", () => {
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "read my todo page", "2026-05-12T15:00:00.000Z"),
+        event(
+          "fetch-start",
+          "command.started",
+          "mcp__claude_ai_Notion__notion-fetch",
+          "2026-05-12T15:00:01.000Z",
+          {
+            id: "fetch",
+            name: "mcp__claude_ai_Notion__notion-fetch",
+            input: { id: "28df6da7-abe0-8050-aeba-cb3b394247a3" }
+          }
+        ),
+        event("fetch-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "fetch",
+          content: [
+            {
+              text: JSON.stringify({
+                metadata: { type: "page" },
+                title: "Todo",
+                url: "https://app.notion.com/p/28df6da7",
+                text: "Prio\n- [ ] mpa\n- [x] docs"
+              })
+            }
+          ]
+        })
+      ],
+      { defaultToolCallsDisplay: "single-line" }
+    );
+
+    // No "Fetched 1 URL" summary line over a "Fetched URL" row: one row, named
+    // after the tool that actually ran.
+    expect(screen.queryByRole("button", { name: /Fetched/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Notion fetch" }));
+
+    const output = screen.getByText(/- \[ \] mpa/);
+    expect(output.textContent).not.toContain("\\n");
+    expect(output.textContent).not.toContain("metadata");
+    expect(screen.getByText(/— Todo/)).toBeInTheDocument();
   });
 
   it("keeps default rendering untouched when the display mode is not single-line", () => {

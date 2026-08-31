@@ -1763,7 +1763,7 @@ impl WorkspaceService {
     }
 
     pub async fn autotitle(self: &Arc<Self>, input: WorkspacesAutotitleInput) -> ArgmaxResult<()> {
-        let Some(task_label) = crate::providers::title::generate_title(
+        let Some(task_label) = crate::providers::one_shot::generate_title(
             input.provider,
             input.model_id.as_str(),
             input.prompt.as_str(),

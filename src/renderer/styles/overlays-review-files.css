@@ -914,7 +914,15 @@
   }
 }
 
+/* Line numbers read a step below the code and sit well off it. The line box is
+   pinned to the content's own (--text-sm x 1.65) rather than derived from the
+   smaller font, or the gutter rows would drift out of register with the lines
+   they number. */
 .file-preview-editor .cm-lineNumbers .cm-gutterElement {
+  padding: 0 12px 0 10px;
+  font-size: var(--text-xs);
+  line-height: calc(var(--text-sm) * 1.65);
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
 

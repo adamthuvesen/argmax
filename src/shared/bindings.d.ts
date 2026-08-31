@@ -288,6 +288,14 @@ async sessionFork(input: SessionForkInput) : Promise<Result<SessionForkResult, A
     else return { status: "error", error: e  as any };
 }
 },
+async sessionSuggestFollowUp(input: SessionSuggestFollowUpInput) : Promise<Result<FollowUpSuggestion, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_suggest_follow_up", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async reviewListChangedFiles(input: ReviewListChangedFilesInput) : Promise<Result<ChangedFileSummary[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("review_list_changed_files", { input }) };
@@ -759,6 +767,12 @@ export type DiagnosticsReport = { appVersion: string; sqliteVersion: string; dat
 export type DiffContextLines = number
 export type EventSearchResult = { sessionId: string; eventId: string; snippet: string; rank: number }
 export type FileContent = string
+/**
+ * A composer placeholder proposed by the cheap helper model. `suggestion` is
+ * `None` whenever the agent has not spoken yet or the helper call failed —
+ * both mean "keep the static placeholder".
+ */
+export type FollowUpSuggestion = { suggestion: string | null }
 export type GhPrRecord = { sessionId: string; prNumber: number; headSha: string; lastSeenCheckState: string; updatedAt: string; prState: string | null; notifiedAt: string | null }
 export type GitCommitInput = { workspaceId: WorkspaceId; message: GitCommitMessage; selectedFiles: RelativePath[] | null }
 export type GitCommitMessage = string
@@ -932,6 +946,7 @@ export type SessionIconToken = string
 export type SessionId = string
 export type SessionSearchInput = { query: SessionSearchQuery; limit: Limit200 | null }
 export type SessionSearchQuery = string
+export type SessionSuggestFollowUpInput = { sessionId: SessionId; provider: ProviderId; modelId: NonEmptyString }
 export type SessionSummary = { id: string; workspaceId: string; provider: string; modelLabel: string; modelId: string; reasoningEffort?: string | null; permissionMode: string; agentMode?: string | null; providerConversationId: string | null; prompt: string; state: string; attention: string; 
 /**
  * When `attention` last changed value. NULL on rows that predate the

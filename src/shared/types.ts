@@ -129,6 +129,8 @@ export type SessionEventsSinceInput = OptionalNullable<
 >;
 export type SessionAgentEventsInput = Bindings.SessionAgentEventsInput;
 export type SessionForkInput = Bindings.SessionForkInput;
+export type SessionSuggestFollowUpInput = Bindings.SessionSuggestFollowUpInput;
+export type FollowUpSuggestion = Bindings.FollowUpSuggestion;
 export type SessionForkResult = Bindings.SessionForkResult;
 export type SessionCostSummaryInput = Bindings.SessionCostSummaryInput;
 export type WorkspaceStatusInput = OptionalNullable<Bindings.WorkspaceStatusInput, "workspaceIds">;
@@ -598,6 +600,10 @@ export interface ArgmaxApi {
     eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;
     agentEvents: (input: SessionAgentEventsInput) => Promise<SessionEventsSinceResult>;
     fork: (input: SessionForkInput) => Promise<SessionForkResult>;
+    /** A composer placeholder proposed by the cheap helper model from the
+     *  agent's last message. `suggestion` is null when there is nothing to
+     *  reply to yet or the helper call failed. */
+    suggestFollowUp: (input: SessionSuggestFollowUpInput) => Promise<FollowUpSuggestion>;
     costSummary: (input: SessionCostSummaryInput) => Promise<SessionCostSummary>;
     search: (input: { query: string; limit?: number }) => Promise<Array<{
       sessionId: string;

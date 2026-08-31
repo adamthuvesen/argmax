@@ -48,6 +48,7 @@ import type {
   SessionAgentEventsInput,
   SessionForkInput,
   SessionForkResult,
+  FollowUpSuggestion,
   SessionCostSummary,
   SessionCostSummaryInput,
   SessionEventsSinceInput,
@@ -258,6 +259,8 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       agentEvents: (input: SessionAgentEventsInput) =>
         invokeCommand<SessionEventsSinceResult>("session:agent-events", input),
       fork: (input: SessionForkInput) => invokeCommand<SessionForkResult>("session:fork", input),
+      suggestFollowUp: (input) =>
+        invokeCommand<FollowUpSuggestion>("session:suggest-follow-up", input),
       costSummary: (input: SessionCostSummaryInput) =>
         invokeCommand<SessionCostSummary>("session:cost-summary", input),
       search: (input) => invokeCommand<SessionSearchResult>("session:search", input)

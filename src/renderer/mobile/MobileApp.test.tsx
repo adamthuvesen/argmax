@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChangedFileSummary, DashboardSnapshot } from "../../shared/types.js";
 import type { RemoteConnectionState } from "../lib/wsTransport.js";
+import { LAUNCHER_HEADINGS } from "../lib/launcherHeadings.js";
 import {
   archiveWorkspace,
   createCurrentWorkspace,
@@ -315,18 +316,47 @@ describe("MobileApp", () => {
     expect(await screen.findByRole("region", { name: "Session conversation" })).toBeInTheDocument();
   });
 
-  it("picks a model from the bottom sheet on the + screen", async () => {
+  it("shows the shared random new-chat heading on the + screen", async () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "All sessions" });
 
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
-    fireEvent.click(screen.getByRole("button", { name: "Model" }));
 
-    const sheet = await screen.findByRole("dialog", { name: "Choose model" });
-    fireEvent.click(within(sheet).getByRole("button", { name: "Big Pickle" }));
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(LAUNCHER_HEADINGS).toContain(heading.textContent ?? "");
+    expect(screen.getByText("New chat")).toBeInTheDocument();
+  });
 
-    expect(screen.queryByRole("dialog", { name: "Choose model" })).not.toBeInTheDocument();
-    expect(screen.getByText("OpenCode · Big Pickle")).toBeInTheDocument();
+  it("picks a model from the new-session composer", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
+
+    const picker = await screen.findByRole("listbox", { name: "Session model" });
+    fireEvent.click(within(picker).getByRole("button", { name: "Big Pickle" }));
+
+    expect(screen.queryByRole("listbox", { name: "Session model" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Session model" })).toHaveTextContent("Big Pickle");
+  });
+
+  it("changes reasoning effort from the new-session composer", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    const effortButton = screen.getByRole("button", { name: "Session model effort" });
+    expect(effortButton).toHaveTextContent("Medium");
+    fireEvent.click(effortButton);
+
+    const dialog = await screen.findByRole("dialog", { name: "Session model effort" });
+    const slider = within(dialog).getByRole("slider", { name: "Reasoning effort" });
+    fireEvent.keyDown(slider, { key: "End" });
+    expect(slider).toHaveAttribute("aria-valuetext", "Ultra");
+    fireEvent.click(effortButton);
+
+    expect(screen.getByRole("button", { name: "Session model effort" })).toHaveTextContent("Ultra");
   });
 
   it("picks the project from a bottom sheet on the + screen", async () => {
@@ -453,14 +483,14 @@ describe("MobileApp", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
     fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Half-written idea" } });
-    fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    await screen.findByRole("dialog", { name: "Choose model" });
+    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
+    await screen.findByRole("listbox", { name: "Session model" });
 
     act(() => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
 
-    expect(screen.queryByRole("dialog", { name: "Choose model" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "Session model" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Task")).toHaveValue("Half-written idea");
   });
 

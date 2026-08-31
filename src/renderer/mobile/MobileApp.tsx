@@ -10,6 +10,7 @@ import { NewSessionScreen, type PickerKind } from "./NewSessionScreen.js";
 import { useMobileBackNavigation } from "./useMobileBackNavigation.js";
 import { useDashboardSession } from "../hooks/useDashboardSession.js";
 import { useSessionCommands } from "../hooks/useSessionCommands.js";
+import { importChunk } from "../lib/importChunk.js";
 import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
 import { computeWorkspaceAttention, type PriorityAttention } from "../lib/priority.js";
 import {
@@ -31,9 +32,13 @@ import {
 // on every cold load for a screen reached only from the session header. Lazy
 // like the desktop's ReviewPanel (SessionPane.tsx), so mobile.html stops
 // preloading that chunk.
-const MobileReviewScreen = lazy(async () => ({
-  default: (await import("./MobileReviewScreen.js")).MobileReviewScreen
-}));
+// Through importChunk because a phone keeps a page alive across renderer
+// rebuilds, and the chunk hash it holds stops existing the moment one lands.
+const MobileReviewScreen = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("./MobileReviewScreen.js")).MobileReviewScreen
+  }))
+);
 
 const ATTENTION_LABEL: Record<PriorityAttention, string> = {
   "approval-needed": "needs approval",
@@ -384,8 +389,8 @@ export function MobileApp(): JSX.Element {
   );
 
   const [newSessionOpen, setNewSessionOpen] = useState(false);
-  // The New session screen's picker sheets live here, not inside that screen,
-  // so a back gesture can close the sheet without discarding the typed prompt.
+  // New-session picker state lives here, not inside that screen, so a back
+  // gesture can dismiss a picker without discarding the typed prompt.
   const [newSessionSheet, setNewSessionSheet] = useState<PickerKind | null>(null);
   const handleLaunched = useCallback(
     async (workspaceId: string): Promise<void> => {
@@ -533,7 +538,6 @@ export function MobileApp(): JSX.Element {
               setReviewFilePath(path);
               setReviewOpen(true);
             }}
-            showCostPanel={false}
             workspaceCardVisible={false}
           />
         </div>

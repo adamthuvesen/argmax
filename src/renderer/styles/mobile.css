@@ -391,6 +391,22 @@ html:has(.mobile-shell) body {
   grid-template-areas: "model mode send";
 }
 
+/* Keep both mobile composers aligned with the agent output. The explicit
+   sizes also neutralize the different inherited scales used by each view. */
+.mobile-shell .session-input textarea,
+.mobile-shell .mobile-new-prompt {
+  font-size: var(--text-md-plus);
+}
+
+.mobile-shell .session-input textarea {
+  line-height: 1.45;
+}
+
+.mobile-shell .session-input-toolbar .composer-context-chip,
+.mobile-shell .mobile-new-composer-toolbar .composer-context-chip {
+  font-size: var(--text-base-plus);
+}
+
 /* ---- New session ---- */
 
 .mobile-new-screen {
@@ -410,6 +426,15 @@ html:has(.mobile-shell) body {
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.mobile-new-hero {
+  padding: 0 4px;
+}
+
+.mobile-new-hero .launcher-hero-title {
+  font-size: var(--text-xl);
+  line-height: 1.2;
 }
 
 .mobile-new-context {
@@ -533,8 +558,9 @@ html:has(.mobile-shell) body {
 
 .mobile-new-composer {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -546,17 +572,45 @@ html:has(.mobile-shell) body {
 }
 
 .mobile-new-prompt {
-  flex: 1;
+  width: 100%;
   min-width: 0;
-  align-self: center;
   border: none;
   background: transparent;
   color: var(--text);
   font: inherit;
   /* 16px+ keeps iOS Safari from zooming the page on focus. */
-  font-size: var(--text-md-plus);
   line-height: 1.5;
   resize: none;
+}
+
+.mobile-new-composer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mobile-new-composer-toolbar .model-picker-anchor {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mobile-new-composer-toolbar .model-picker-anchor > .composer-context-chip {
+  width: 100%;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.mobile-new-composer-toolbar .model-picker-label {
+  min-width: 0;
+  max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-new-composer-toolbar .effort-slider-anchor {
+  flex: 0 0 auto;
 }
 
 .mobile-new-prompt:focus {

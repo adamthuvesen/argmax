@@ -189,7 +189,11 @@ export function MobileReviewScreen({
                             </p>
                           ) : null}
                           {review.diffState === "ready" && diffBlocks.length > 0 ? (
-                            <DiffBlocks blocks={diffBlocks} filePath={file.path} />
+                            <DiffBlocks
+                              blocks={diffBlocks}
+                              filePath={file.path}
+                              onExpandContext={review.expandDiffContext}
+                            />
                           ) : null}
                         </div>
                       ) : null}

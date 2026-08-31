@@ -1,12 +1,14 @@
 use super::{inputs::*, live_database, read_off_main};
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
+    persistence::events::latest_agent_message,
     persistence::{
         dashboard::{list_session_agent_tail, list_session_tail},
         events::SessionEventsSinceResult,
         learnings::{search_events, EventSearchResult},
         usage::{get_session_cost_summary, SessionCostSummary},
     },
+    providers::one_shot::suggest_follow_up,
     providers::subagent_trace::{import_subagent_trace_events, reconcile_session_subagent_traces},
     state::AppState,
     workspaces::orchestration::SessionForkResult,
@@ -14,6 +16,42 @@ use crate::{
 use tauri::State;
 
 const DEFAULT_SEARCH_LIMIT: u16 = 20;
+
+/// A composer placeholder proposed by the cheap helper model. `suggestion` is
+/// `None` whenever the agent has not spoken yet or the helper call failed —
+/// both mean "keep the static placeholder".
+#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FollowUpSuggestion {
+    pub suggestion: Option<String>,
+}
+
+#[tauri::command(rename = "session:suggest-follow-up")]
+#[specta::specta]
+pub async fn session_suggest_follow_up(
+    state: State<'_, AppState>,
+    input: SessionSuggestFollowUpInput,
+) -> ArgmaxResult<FollowUpSuggestion> {
+    session_suggest_follow_up_impl(&state, input).await
+}
+
+pub(crate) async fn session_suggest_follow_up_impl(
+    state: &AppState,
+    input: SessionSuggestFollowUpInput,
+) -> ArgmaxResult<FollowUpSuggestion> {
+    let database = live_database(state)?;
+    let session_id = input.session_id.into_string();
+    let Some(last_message) =
+        read_off_main(move || latest_agent_message(&database.read_connection(), &session_id))
+            .await?
+    else {
+        return Ok(FollowUpSuggestion { suggestion: None });
+    };
+
+    let suggestion =
+        suggest_follow_up(input.provider, input.model_id.as_str(), &last_message).await;
+    Ok(FollowUpSuggestion { suggestion })
+}
 
 #[tauri::command(rename = "session:events-since")]
 #[specta::specta]

@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Row};
+use rusqlite::{Connection, OptionalExtension, Row};
 use serde::Serialize;
 use serde_json::{json, Value};
 use specta::Type;
@@ -487,6 +487,44 @@ pub fn list_all_session_events(
         .collect::<Result<Vec<_>, _>>()
         .map_err(sqlite_error)?;
     Ok(rows)
+}
+
+/// The agent's most recent visible message in a session — what a suggested
+/// follow-up is a reply to. Applies the same child-agent exclusions as
+/// `compose_follow_up_prompt`: subagent prose never reaches the transcript, so
+/// it must not reach the suggestion either.
+pub fn latest_agent_message(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT message
+            FROM events
+            WHERE session_id = ?
+              AND type = 'message.completed'
+              AND trim(message) <> ''
+              AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+              AND json_extract(payload_json, '$.traceImported') IS NULL
+              AND NOT (
+                (json_extract(payload_json, '$.item_type') = 'agent_message'
+                  OR json_extract(payload_json, '$.item.type') = 'agent_message')
+                AND (json_extract(payload_json, '$.thread_id') IS NOT NULL
+                  OR json_extract(payload_json, '$.sender_thread_id') IS NOT NULL
+                  OR json_extract(payload_json, '$.item.thread_id') IS NOT NULL
+                  OR json_extract(payload_json, '$.item.sender_thread_id') IS NOT NULL)
+              )
+            ORDER BY rowid DESC
+            LIMIT 1
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let message = statement
+        .query_row((session_id,), |row| row.get::<_, String>(0))
+        .optional()
+        .map_err(sqlite_error)?;
+    Ok(message)
 }
 
 fn list_event_rows(

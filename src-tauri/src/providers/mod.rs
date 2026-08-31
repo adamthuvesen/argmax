@@ -6,13 +6,13 @@ pub mod environment;
 pub mod flush_queue;
 mod follow_up;
 pub mod normalizer;
+pub mod one_shot;
 mod opencode_isolation;
 mod orphan_cleanup;
 pub mod pricing;
 pub mod runtime;
 pub mod session_service;
 pub mod subagent_trace;
-pub mod title;
 
 use std::path::PathBuf;
 

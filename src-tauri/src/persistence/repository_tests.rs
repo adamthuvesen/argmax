@@ -5,7 +5,7 @@ use super::approvals::{
 use super::checks::{persist_check, update_check, PersistCheckInput, UpdateCheckInput};
 use super::database::Database;
 use super::events::{
-    list_session_agent_events, list_session_events_since, persist_raw_output,
+    latest_agent_message, list_session_agent_events, list_session_events_since, persist_raw_output,
     persist_timeline_event, PersistRawOutputInput, PersistTimelineEventInput,
 };
 use super::gh::{
@@ -243,6 +243,45 @@ fn workspace_custom_icon_persists_and_clears() {
     let missing = set_workspace_icon(&connection, "missing", Some("flag"), Some("blue"))
         .expect_err("missing workspace");
     assert!(matches!(missing, ArgmaxError::RecordNotFound { .. }));
+}
+
+#[test]
+fn latest_agent_message_skips_subagent_prose() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+
+    assert_eq!(latest_agent_message(&connection, "s1").expect("read"), None);
+
+    let mut persist = |id: &str, message: &str, payload: serde_json::Value| {
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: id.to_owned(),
+                session_id: "s1".to_owned(),
+                r#type: "message.completed".to_owned(),
+                message: message.to_owned(),
+                payload,
+                created_at: None,
+            },
+        )
+        .expect("persist event");
+    };
+    persist("e1", "Done, tests pass.", serde_json::json!({}));
+    // A child agent's own answer never reaches the visible transcript, so it is
+    // not what the user is replying to either.
+    persist(
+        "e2",
+        "child agent summary",
+        serde_json::json!({ "parent_tool_use_id": "toolu_1" }),
+    );
+
+    assert_eq!(
+        latest_agent_message(&connection, "s1").expect("read"),
+        Some("Done, tests pass.".to_owned())
+    );
 }
 
 #[test]

@@ -8,6 +8,7 @@ import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { matchFileChip } from "../lib/fileChipPath.js";
 import { CodeBlock } from "./CodeBlock.js";
 import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
+import { MarkdownTable } from "./MarkdownTable.js";
 import { StreamingCodeContext } from "./streamingCodeContext.js";
 
 const SMOOTH_STREAM_TICK_MS = 32;
@@ -264,6 +265,7 @@ const MarkdownBody = memo(function MarkdownBody({
             />
           );
         },
+        table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
         pre: ({ children }) => <>{children}</>
       }}
     >

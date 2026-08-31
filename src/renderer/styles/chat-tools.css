@@ -126,16 +126,17 @@
   max-height: calc(18 * 1.65em);
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: color-mix(in oklab, var(--code-surface) 66%, transparent);
+  background: var(--tool-block-surface);
 }
 
 .file-change-card-body .diff-blocks {
   border: 0;
   border-radius: 0;
   margin: 0;
-  /* The card's hairline is the frame; the diff sits close to it instead of
-     floating in the middle of its own padding. */
-  padding: 3px 0 4px;
+  /* No padding: the card's hairline is the frame, and a padded diff let the
+     body's own fill show above and below the wash, so a created file read as a
+     green slab with dark corners instead of one object. */
+  padding: 0;
   /* Same code size as the review panel's diff, a notch under the inline-code
      step. Geist Sans and Geist Mono share an x-height (0.53em), so matching the
      numbers does not match the impression: mono's ascender/descender span is
@@ -237,36 +238,8 @@
   margin-left: 14px;
 }
 
-.tool-call-resource-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 2px 0;
-  color: var(--muted);
-}
-
-.tool-call-resource-row > svg {
-  color: color-mix(in oklab, var(--muted) 82%, transparent);
-}
-
-.tool-call-resource-row code {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-code);
-  font-size: var(--text-sm);
-  color: var(--path-ink);
-}
-
 .tool-call-file-preview {
   min-width: 0;
-}
-
-.tool-call-code--file-preview {
-  max-height: calc(18 * 1.65em);
 }
 
 @keyframes tool-row-in {
@@ -352,28 +325,17 @@
 }
 
 /* Context-window ring — a compact gauge grouped with the model + effort it
-   describes (the "agent state" cluster). A hairline divider *after* it splits
-   that cluster from the git status (branch, changes) to its right, mirroring
-   the group separator between chip groups. Its popover is fixed-positioned so
-   it escapes any overflow-clipping ancestor. */
+   describes (the "agent state" cluster), set off from the git status to its
+   right by a wider gap. No hairline: the control shelf frames the row, and
+   rules inside a framed strip read as clutter. Its popover is fixed-positioned
+   so it escapes any overflow-clipping ancestor. */
 .context-ring-anchor {
   position: relative;
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  padding-right: 12px;
-  margin-right: 4px;
-}
-
-.context-ring-anchor::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  top: 25%;
-  bottom: 25%;
-  width: 1px;
-  background: var(--line);
-  opacity: 0.6;
+  padding-right: 10px;
+  margin-right: 2px;
 }
 
 .context-ring-trigger {
@@ -399,37 +361,40 @@
 
 /* Opens upward, left-aligned to the ring — same as the model/effort pickers in
    this toolbar (which aren't clipped opening up). */
+/* Left-aligned and two lines deep. Five centred lines read as a dialog asking
+   for a decision; this is a readout, so it gets a readout's shape — headroom,
+   the bar that proves it, and one muted line of detail. */
+/* Position comes from useAnchoredPopover (bottom-start + flip), like every
+   other composer popover: the panel's near edge lines up with the trigger's
+   near edge, and it flips to the far edge only when it would otherwise leave
+   the viewport. Hardcoding `left: 0` / `right: 0` here is what made four
+   popovers in one row disagree about which side they opened from. */
 .context-ring-popover {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
   z-index: 40;
-  width: 224px;
-  padding: 14px 16px;
-  text-align: center;
+  display: grid;
+  gap: 7px;
+  width: max-content;
+  min-width: 168px;
+  padding: 10px 12px 11px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-2);
 }
 
-.context-ring-title {
-  color: var(--muted);
-  font-size: var(--text-xs);
-}
-
-.context-ring-headline {
-  margin: 4px 0 10px;
-  color: var(--muted-strong);
-  font-size: var(--text-sm);
+.context-ring-headroom {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-base);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
 
 .context-ring-bar {
-  height: 6px;
-  margin-bottom: 10px;
+  height: 3px;
   border-radius: 999px;
-  background: var(--panel-sunken);
+  background: var(--line);
   overflow: hidden;
 }
 
@@ -439,17 +404,12 @@
   border-radius: 999px;
 }
 
-.context-ring-tokens {
-  color: var(--text);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.context-ring-model {
-  margin-top: 6px;
+.context-ring-meta {
+  margin: 0;
   color: var(--muted);
   font-size: var(--text-2xs-plus);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .checks-list {
@@ -601,16 +561,18 @@
   gap: 4px;
   margin-top: 16px;
   margin-inline: var(--session-inline-padding);
-  padding: 12px 14px 10px;
-  border: 1px solid var(--line);
+  /* Absorbs the 1px the removed border used to contribute, so the box keeps
+     its size. */
+  padding: 13px 15px 11px;
+  border: 0;
   /* Matches the launcher composer's corner radius so the two input surfaces
      read as the same component. */
   border-radius: var(--radius-2xl);
   background: var(--panel);
-  /* Quiet, single-layer lift — the field sits on the surface without the
-     heavy drop-shadow halo it had before. */
+  /* No outline: the panel fill and this quiet, single-layer lift seat the
+     field on the surface. Focus draws its own ring below. */
   box-shadow: 0 1px 2px rgba(31, 28, 24, 0.04), 0 8px 24px rgba(31, 28, 24, 0.05);
-  transition: border-color var(--duration-base) var(--ease), box-shadow var(--duration-base) var(--ease);
+  transition: box-shadow var(--duration-base) var(--ease);
 }
 
 .session-meta-cards + .session-input,
@@ -618,14 +580,22 @@
   margin-top: 10px;
 }
 
+/* Focus lifts the card instead of ringing it — an accent ring here reads as
+   the border this surface deliberately doesn't have. */
 .session-input:focus-within {
-  border-color: color-mix(in oklab, var(--accent) 68%, var(--line-strong));
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 16%, transparent),
-    0 8px 22px rgba(31, 28, 24, 0.055);
+  box-shadow: 0 1px 2px rgba(31, 28, 24, 0.05), 0 10px 28px rgba(31, 28, 24, 0.07);
 }
 
+/* One surface, like the launcher's .composer-context — the controls sit on the
+   card, not on a recessed shelf under a rule. A band here splits a small card
+   into two boxes and reads far heavier than the row deserves. Metrics are
+   deliberately the launcher's: same min-height, same gap, same type step, so
+   the new-session composer and the session composer are one component. */
 .session-input-toolbar {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-height: 34px;
+  color: var(--muted);
+  font-size: var(--text-sm-plus);
 }

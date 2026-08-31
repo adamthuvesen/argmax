@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ToolCallDetail } from "./ToolCallDetail.js";
@@ -65,7 +65,8 @@ describe("ToolCallDetail", () => {
 
     const body = screen.getByText(/- \[ \] mpa/);
     expect(body.textContent).toBe("Prio\n- [ ] mpa");
-    expect(screen.getByText(/— Todo/)).toBeInTheDocument();
+    // The envelope's title rides the footer facts, not a floating label.
+    expect(screen.getByText(/Todo · 2 lines/)).toBeInTheDocument();
   });
 
   it("leaves a JSON file's own bytes alone when a read prints it", () => {
@@ -91,7 +92,7 @@ describe("ToolCallDetail", () => {
       />
     );
 
-    expect(screen.getByText("Output")).toBeInTheDocument();
+    expect(screen.queryByText("Output")).toBeNull();
     expect(screen.getByText(/README body/)).toBeInTheDocument();
     expect(screen.queryByText("README.md")).toBeNull();
     expect(screen.queryByRole("button", { name: "Open /repo/README.md" })).toBeNull();
@@ -117,7 +118,7 @@ describe("ToolCallDetail", () => {
     );
 
     expect(screen.queryByText("Command")).toBeNull();
-    expect(screen.getByText("Output")).toBeInTheDocument();
+    expect(screen.queryByText("Output")).toBeNull();
     expect(screen.getByText("ok")).toBeInTheDocument();
     expect(screen.queryByText("Input")).toBeNull();
     expect(screen.queryByText(/"command"/)).toBeNull();
@@ -173,7 +174,62 @@ describe("ToolCallDetail", () => {
     expect(command.textContent).toBe(heredoc);
     expect(command.textContent).not.toContain("\\n");
     expect(screen.queryByText("Input")).toBeNull();
-    const outputLabel = screen.getByText("Output");
-    expect(outputLabel.nextElementSibling?.textContent).toBe("hello\nworld");
+    expect(screen.queryByText("Output")).toBeNull();
+    expect(screen.getByText(/^hello/).textContent).toBe("hello\nworld");
+  });
+  it("lists long arguments above the payload instead of dumping Input below it", () => {
+    render(
+      <ToolCallDetail
+        tool={tool({
+          name: "WebFetch",
+          inputPreview: "https://linear.app/docs/api/rate-limits",
+          inputFull: {
+            url: "https://linear.app/docs/api/rate-limits",
+            prompt: "What are the per-token request limits for the GraphQL API?"
+          },
+          output: "1,500 requests per hour per token."
+        })}
+      />
+    );
+
+    // No disclosure, no braces, and the question is above the answer.
+    expect(screen.queryByText("Input")).toBeNull();
+    expect(screen.queryByText(/^\{/)).toBeNull();
+    const args = screen.getByText("prompt").closest("dl") as HTMLElement;
+    expect(within(args).getByText(/per-token request limits/)).toBeInTheDocument();
+    const payload = screen.getByText("1,500 requests per hour per token.");
+    const order = args.compareDocumentPosition(payload) & Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(order).toBeTruthy();
+  });
+
+  it("puts short scalar arguments on the footer line and keeps the block to the payload", () => {
+    render(
+      <ToolCallDetail
+        tool={tool({
+          name: "Grep",
+          inputPreview: "buildSessionToolCalls",
+          inputFull: { pattern: "buildSessionToolCalls", glob: "*.ts", "-n": true },
+          output: "src/renderer/lib/toolCalls.ts:412"
+        })}
+      />
+    );
+
+    expect(screen.queryByRole("definition")).toBeNull();
+    expect(screen.getByText(/glob \*\.ts/)).toBeInTheDocument();
+    expect(screen.getByText(/pattern buildSessionToolCalls/)).toBeInTheDocument();
+  });
+
+  it("offers Show all instead of a truncation note when output is capped", () => {
+    const long = Array.from({ length: 400 }, (_, i) => `line ${i}`).join("\n");
+    render(<ToolCallDetail tool={tool({ name: "Bash", inputFull: { command: "ls" }, output: long })} />);
+
+    expect(screen.queryByText(/showing first/)).toBeNull();
+    const showAll = screen.getByRole("button", { name: "Show all" });
+    expect(screen.getByText(/line 0/).textContent).not.toBe(long);
+
+    fireEvent.click(showAll);
+
+    expect(screen.getByText(/line 399/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show all" })).toBeNull();
   });
 });

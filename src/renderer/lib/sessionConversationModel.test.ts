@@ -193,6 +193,148 @@ describe("buildSessionToolCalls", () => {
     });
   });
 
+  it("keeps two invocations that reuse a provider tool id as separate tool calls", () => {
+    // Claude restarts numbering at `toolu_1` on every run. Without the
+    // invocation id both runs collapsed onto one row with one output.
+    const events = [
+      event("second-end", "command.completed", "2026-05-12T15:10:02.000Z", "tool_result", {
+        tool_use_id: "toolu_1",
+        content: "second",
+        providerInvocationId: "inv-2"
+      }),
+      event("second-start", "command.started", "2026-05-12T15:10:01.000Z", "Read", {
+        id: "toolu_1",
+        name: "Read",
+        input: { file_path: "b.ts" },
+        providerInvocationId: "inv-2"
+      }),
+      event("first-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+        tool_use_id: "toolu_1",
+        content: "first",
+        providerInvocationId: "inv-1"
+      }),
+      event("first-start", "command.started", "2026-05-12T15:00:01.000Z", "Read", {
+        id: "toolu_1",
+        name: "Read",
+        input: { file_path: "a.ts" },
+        providerInvocationId: "inv-1"
+      })
+    ];
+
+    const tools = buildSessionToolCalls(events, false);
+
+    expect(tools.map((tool) => tool.id)).toEqual(["first-start", "second-start"]);
+    expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_1", "toolu_1"]);
+    expect(tools.map((tool) => tool.output)).toEqual(["first", "second"]);
+    expect(tools.map((tool) => tool.inputPreview)).toEqual(["a.ts", "b.ts"]);
+  });
+
+  it("leaves a start whose completion was lost running when a later invocation reuses its id", () => {
+    const events = [
+      event("second-end", "command.completed", "2026-05-12T15:10:02.000Z", "", {
+        id: "item_1",
+        content: "second",
+        providerInvocationId: "inv-2"
+      }),
+      event("second-start", "command.started", "2026-05-12T15:10:01.000Z", "", {
+        id: "item_1",
+        name: "Bash",
+        input: { command: "npm test" },
+        providerInvocationId: "inv-2"
+      }),
+      event("first-start", "command.started", "2026-05-12T15:00:01.000Z", "", {
+        id: "item_1",
+        name: "Bash",
+        input: { command: "npm run lint" },
+        providerInvocationId: "inv-1"
+      })
+    ];
+
+    const tools = buildSessionToolCalls(events, true);
+
+    expect(tools.map((tool) => tool.status)).toEqual(["running", "done"]);
+    expect(tools.map((tool) => tool.output)).toEqual([null, "second"]);
+  });
+
+  it("pairs legacy rows with no invocation id against the latest unmatched start", () => {
+    // Cursor and OpenCode both key on `call_id`, and rows persisted before the
+    // invocation stamp carry none — each completion still has to land on its
+    // own turn's start.
+    const events = [
+      event("second-end", "command.completed", "2026-05-12T15:10:02.000Z", "", {
+        call_id: "call_1",
+        content: "second"
+      }),
+      event("second-start", "command.started", "2026-05-12T15:10:01.000Z", "", {
+        call_id: "call_1",
+        name: "read",
+        input: { filePath: "b.ts" }
+      }),
+      event("first-end", "command.completed", "2026-05-12T15:00:02.000Z", "", {
+        call_id: "call_1",
+        content: "first"
+      }),
+      event("first-start", "command.started", "2026-05-12T15:00:01.000Z", "", {
+        call_id: "call_1",
+        name: "read",
+        input: { filePath: "a.ts" }
+      })
+    ];
+
+    const tools = buildSessionToolCalls(events, false);
+
+    expect(tools.map((tool) => tool.id)).toEqual(["first-start", "second-start"]);
+    expect(tools.map((tool) => tool.output)).toEqual(["first", "second"]);
+  });
+
+  it("does not cross-pair stamped and legacy rows that reuse an id", () => {
+    const events = [
+      event("legacy-end", "command.completed", "2026-05-12T15:00:04.000Z", "", {
+        id: "item_1",
+        content: "legacy"
+      }),
+      event("stamped-end", "command.completed", "2026-05-12T15:00:03.000Z", "", {
+        id: "item_1",
+        content: "stamped",
+        providerInvocationId: "inv-1"
+      }),
+      event("legacy-start", "command.started", "2026-05-12T15:00:02.000Z", "", {
+        id: "item_1",
+        name: "Bash"
+      }),
+      event("stamped-start", "command.started", "2026-05-12T15:00:01.000Z", "", {
+        id: "item_1",
+        name: "Bash",
+        providerInvocationId: "inv-1"
+      })
+    ];
+
+    const tools = buildSessionToolCalls(events, false);
+
+    expect(tools.map((tool) => tool.output)).toEqual(["stamped", "legacy"]);
+  });
+
+  it("orders same-timestamp rows by rowCursor when joining", () => {
+    const at = "2026-05-12T15:00:01.000Z";
+    const rows: TimelineEvent[] = [
+      { ...event("second-end", "command.completed", at, "", { call_id: "call_1", content: "second" }), rowCursor: 4 },
+      { ...event("first-end", "command.completed", at, "", { call_id: "call_1", content: "first" }), rowCursor: 2 },
+      {
+        ...event("first-start", "command.started", at, "", { call_id: "call_1", name: "read" }),
+        rowCursor: 1
+      },
+      {
+        ...event("second-start", "command.started", at, "", { call_id: "call_1", name: "read" }),
+        rowCursor: 3
+      }
+    ];
+
+    const tools = buildSessionToolCalls(rows, false);
+
+    expect(tools.map((tool) => tool.id)).toEqual(["first-start", "second-start"]);
+    expect(tools.map((tool) => tool.output)).toEqual(["first", "second"]);
+  });
+
   it("uses completion input as a fallback and preserves tool errors", () => {
     const events = [
       event("done", "command.completed", "2026-05-12T15:00:02.000Z", "", {
@@ -297,6 +439,56 @@ describe("buildSessionToolCalls", () => {
       status: "running",
       completedAt: null
     });
+  });
+
+  it("settles a synthetic Codex launch when the child trace completes", () => {
+    const tools = buildSessionToolCalls([
+      event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
+        id: "trace-spawn-child",
+        name: "spawn_agent",
+        traceSyntheticLaunch: true,
+        providerChildSessionId: "child"
+      }),
+      event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+        id: "trace-spawn-child",
+        name: "spawn_agent",
+        traceSyntheticLaunch: true,
+        providerChildSessionId: "child",
+        input: { receiver_thread_ids: ["child"] }
+      })
+    ], true);
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({
+      toolUseId: "trace-spawn-child",
+      status: "done",
+      completedAt: "2026-05-12T15:00:02.000Z"
+    });
+  });
+
+  it("hides a superseded synthetic launch after the real launch takes over", () => {
+    const tools = buildSessionToolCalls([
+      event("real-start", "command.started", "2026-05-12T15:00:03.000Z", "spawn_agent", {
+        id: "real-spawn",
+        name: "spawn_agent",
+        input: { receiver_thread_ids: ["child"] }
+      }),
+      event("synthetic-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
+        id: "trace-spawn-child",
+        name: "spawn_agent",
+        traceSyntheticSuperseded: true,
+        traceSupersededBy: "real-spawn"
+      }),
+      event("synthetic-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+        id: "trace-spawn-child",
+        name: "spawn_agent",
+        traceSyntheticSuperseded: true,
+        traceSupersededBy: "real-spawn"
+      })
+    ], true);
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0]?.toolUseId).toBe("real-spawn");
   });
 
   it("keeps a Claude Task row running when it completed with async launch metadata and the session is running", () => {
@@ -661,6 +853,65 @@ describe("buildSessionToolCalls", () => {
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_1", "toolu_2"]);
   });
 
+  it("hides discovery and bookkeeping while preserving the real external call", () => {
+    const tools = buildSessionToolCalls([
+      event("search", "command.started", "2026-05-12T15:00:01.000Z", "ToolSearch", {
+        id: "search",
+        name: "ToolSearch",
+        input: { query: "notion fetch" }
+      }),
+      event("todo", "command.started", "2026-05-12T15:00:02.000Z", "TodoWrite", {
+        id: "todo",
+        name: "TodoWrite",
+        input: { todos: [{ content: "Read page", status: "in_progress" }] }
+      }),
+      event("discover", "command.started", "2026-05-12T15:00:03.000Z", "getMcpToolsToolCall", {
+        call_id: "discover",
+        name: "getMcpToolsToolCall",
+        input: {
+          server: "plugin-notion-workspace-notion",
+          toolName: "notion-fetch"
+        }
+      }),
+      event("fetch", "command.started", "2026-05-12T15:00:04.000Z", "mcpToolCall", {
+        call_id: "fetch",
+        name: "mcpToolCall",
+        input: {
+          args: { id: "page-1" },
+          serverIdentifier: "plugin-notion-workspace-notion",
+          toolCallId: "fetch",
+          toolName: "notion-fetch"
+        }
+      })
+    ], false);
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({
+      name: "mcp__plugin-notion-workspace-notion__notion-fetch",
+      inputFull: { id: "page-1" }
+    });
+  });
+
+  it("turns Cursor's other wrapper back into an agent launch", () => {
+    const tools = buildSessionToolCalls([
+      event("task", "command.started", "2026-05-12T15:00:01.000Z", "other", {
+        call_id: "task",
+        name: "other",
+        input: {
+          _toolName: "task",
+          description: "Review code",
+          prompt: "Review the current changes."
+        }
+      })
+    ], true);
+
+    expect(tools[0]).toMatchObject({
+      name: "task",
+      inputPreview: "Review code",
+      status: "running"
+    });
+  });
+
   it("folds a linked Codex wait row into the spawn_agent row", () => {
     const tools = buildSessionToolCalls([
       event("wait-start", "command.started", "2026-05-12T15:00:03.000Z", "wait", {
@@ -697,6 +948,46 @@ describe("buildSessionToolCalls", () => {
       status: "running",
       completedAt: null
     });
+  });
+
+  it("hides Codex transport rows even when no spawn row exists to fold them into", () => {
+    // Codex can omit `spawn_agent` from structured stdout. The leftover `wait`
+    // used to be the turn's only visible activity, labelled with its raw tool
+    // name over two internal thread ids.
+    const tools = buildSessionToolCalls([
+      event("read-start", "command.started", "2026-05-12T15:00:01.000Z", "Read", {
+        id: "read-1",
+        name: "Read",
+        input: { file_path: "/repo/a.ts" }
+      }),
+      event("wait-start", "command.started", "2026-05-12T15:00:02.000Z", "wait", {
+        id: "wait-1",
+        name: "wait",
+        input: {
+          receiver_thread_ids: [],
+          sender_thread_id: "thread-parent"
+        }
+      }),
+      event("close-start", "command.started", "2026-05-12T15:00:03.000Z", "close_agent", {
+        id: "close-1",
+        name: "close_agent",
+        input: { receiver_thread_ids: ["thread-child"] }
+      })
+    ], true);
+
+    expect(tools.map((tool) => tool.name)).toEqual(["Read"]);
+  });
+
+  it("keeps a tool merely named wait when it carries no Codex thread plumbing", () => {
+    const tools = buildSessionToolCalls([
+      event("wait-start", "command.started", "2026-05-12T15:00:01.000Z", "wait", {
+        id: "wait-1",
+        name: "wait",
+        input: { seconds: 30 }
+      })
+    ], true);
+
+    expect(tools.map((tool) => tool.name)).toEqual(["wait"]);
   });
 
   it("keeps every Codex child running during an aggregate wait", () => {

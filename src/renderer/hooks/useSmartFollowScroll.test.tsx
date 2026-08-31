@@ -369,4 +369,69 @@ describe("useSmartFollowScroll", () => {
     expect(state.scrollTop).toBe(2000);
     expect(result.current.showScrollToBottom).toBe(false);
   });
+
+  it("sizes the leftover-viewport spacer from the latest user message through the tail", () => {
+    const state: ScrollBoxState = { scrollHeight: 1000, clientHeight: 200, scrollTop: 800 };
+    const el = makeScrollBox(state);
+    const user = document.createElement("div");
+    user.setAttribute("data-turn-anchor", "true");
+    Object.defineProperty(user, "offsetTop", { configurable: true, get: () => 5000 });
+    Object.defineProperty(user, "offsetHeight", { configurable: true, get: () => 80 });
+    const tail = document.createElement("div");
+    tail.className = "conversation-tail";
+    Object.defineProperty(tail, "offsetTop", { configurable: true, get: () => 5080 });
+    Object.defineProperty(tail, "offsetHeight", { configurable: true, get: () => 20 });
+    const spacer = document.createElement("div");
+    spacer.setAttribute("data-conversation-spacer", "");
+    el.append(user, tail, spacer);
+
+    const originalGetComputedStyle = window.getComputedStyle.bind(window);
+    const styleSpy = vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+      if (element === el) {
+        return { paddingTop: "32px", paddingBottom: "32px" } as CSSStyleDeclaration;
+      }
+      return originalGetComputedStyle(element);
+    });
+
+    const { result, rerender } = renderHook(
+      ({ items }: { items: readonly string[] }) =>
+        useSmartFollowScroll("session-a", items, false, undefined, "u1"),
+      { initialProps: { items: ["turn"] } }
+    );
+    attachListRef(result.current.conversationListRef, el);
+
+    act(() => {
+      rerender({ items: ["turn", "follow-up"] });
+    });
+
+    // 200px pane - 32px fades - 100px from user message through the tail.
+    expect(spacer.style.height).toBe("36px");
+    styleSpy.mockRestore();
+  });
+
+  it("reattaches when a new user message arrives", () => {
+    const state: ScrollBoxState = { scrollHeight: 1200, clientHeight: 200, scrollTop: 1000 };
+    const el = makeScrollBox(state);
+    const { result, rerender } = renderHook(
+      ({ lastUserMessageId }: { lastUserMessageId: string }) =>
+        useSmartFollowScroll("session-a", ["turn"], false, undefined, lastUserMessageId),
+      { initialProps: { lastUserMessageId: "u1" } }
+    );
+    attachListRef(result.current.conversationListRef, el);
+
+    act(() => {
+      result.current.handleUserScrollIntent();
+      state.scrollTop = 600;
+      result.current.handleScroll();
+    });
+    expect(result.current.showScrollToBottom).toBe(true);
+
+    act(() => {
+      state.scrollHeight = 1400;
+      rerender({ lastUserMessageId: "u2" });
+    });
+
+    expect(state.scrollTop).toBe(1200);
+    expect(result.current.showScrollToBottom).toBe(false);
+  });
 });

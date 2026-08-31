@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   FAB_VISIBLE_PX,
   NEAR_BOTTOM_PX,
-  decideSmartFollow
+  decideSmartFollow,
+  latestTurnSpacerPx
 } from "./smartFollow.js";
 
 describe("decideSmartFollow", () => {
@@ -73,5 +74,44 @@ describe("decideSmartFollow", () => {
     expect(d.distanceFromBottom).toBe(0);
     expect(d.pinToBottom).toBe(true);
     expect(d.showFab).toBe(false);
+  });
+});
+
+describe("latestTurnSpacerPx", () => {
+  it("fills the leftover viewport under a short latest user message", () => {
+    // 800px pane, 32px fades, 100px from user message through the tail.
+    expect(
+      latestTurnSpacerPx({
+        viewportHeight: 800,
+        paddingTop: 32,
+        paddingBottom: 32,
+        anchorOffsetTop: 5000,
+        contentEnd: 5100
+      })
+    ).toBe(636);
+  });
+
+  it("collapses once the latest turn is taller than the pane", () => {
+    expect(
+      latestTurnSpacerPx({
+        viewportHeight: 800,
+        paddingTop: 32,
+        paddingBottom: 32,
+        anchorOffsetTop: 100,
+        contentEnd: 1200
+      })
+    ).toBe(0);
+  });
+
+  it("is zero when measurements are not finite", () => {
+    expect(
+      latestTurnSpacerPx({
+        viewportHeight: Number.NaN,
+        paddingTop: 32,
+        paddingBottom: 32,
+        anchorOffsetTop: 0,
+        contentEnd: 80
+      })
+    ).toBe(0);
   });
 });

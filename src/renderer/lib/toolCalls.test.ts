@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGroupRows,
+  cleanToolInput,
   describeToolAction,
   extractCompletionCorrelationId,
   extractOpenablePath,
+  extractToolName,
   extractToolInputPreview,
   extractToolUseId,
+  formatToolOutput,
   getToolTypeBucket,
   isAgentToolName,
+  isHiddenToolName,
+  mcpToolLabel,
+  parseMcpToolName,
   summarizeToolGroup,
   type ToolCall
 } from "./toolCalls.js";
@@ -27,6 +33,157 @@ function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "name">): ToolCall {
     parentToolUseId: overrides.parentToolUseId ?? null
   };
 }
+
+describe("MCP tool names", () => {
+  it("parses the Claude/Cursor prefix and drops the client from the server", () => {
+    expect(parseMcpToolName("mcp__claude_ai_Notion__notion-fetch")).toEqual({
+      server: "Notion",
+      tool: "fetch"
+    });
+    expect(parseMcpToolName("mcp__engram__recall")).toEqual({ server: "engram", tool: "recall" });
+    expect(parseMcpToolName("mcp__linear__list_issues")).toEqual({
+      server: "linear",
+      tool: "list issues"
+    });
+  });
+
+  it("parses OpenCode's repeated server without swallowing snake_case names", () => {
+    expect(parseMcpToolName("notion_notion-fetch")).toEqual({ server: "notion", tool: "fetch" });
+    expect(parseMcpToolName("send_message_to_thread")).toBeNull();
+    expect(parseMcpToolName("file_change")).toBeNull();
+    expect(parseMcpToolName("WebFetch")).toBeNull();
+  });
+
+  it("parses Codex app names and Cursor plugin identifiers", () => {
+    expect(parseMcpToolName("linear.list_issues")).toEqual({
+      server: "linear",
+      tool: "list issues"
+    });
+    expect(parseMcpToolName("mcp__plugin-google-drive-google-drive__list_recent_files")).toEqual({
+      server: "google drive",
+      tool: "list recent files"
+    });
+    expect(parseMcpToolName("mcp__plugin-notion-workspace-notion__notion-fetch")).toEqual({
+      server: "notion",
+      tool: "fetch"
+    });
+    expect(parseMcpToolName("mcp__browser_use__browser_exec")).toEqual({
+      server: "browser use",
+      tool: "browser exec"
+    });
+    expect(parseMcpToolName("google-drive_google-drive-list_recent_files")).toEqual({
+      server: "google drive",
+      tool: "list recent files"
+    });
+  });
+
+  it("labels the tool by its own identity instead of a hijacked bucket verb", () => {
+    // `mcp__claude_ai_Notion__notion-fetch` contains "fetch", so substring
+    // bucketing used to render it as "Fetched URL" — a URL it never fetched.
+    expect(describeToolAction(tool({ name: "mcp__claude_ai_Notion__notion-fetch" }))).toBe("Notion fetch");
+    expect(mcpToolLabel("mcp__engram__recall")).toBe("Engram recall");
+    expect(mcpToolLabel("Read")).toBeNull();
+  });
+
+  it("keeps MCP tools out of the web and agent buckets", () => {
+    expect(getToolTypeBucket("mcp__claude_ai_Notion__notion-fetch")).toBe("other");
+    expect(getToolTypeBucket("mcp__linear__save_agent")).toBe("other");
+    expect(getToolTypeBucket("WebFetch")).toBe("web");
+  });
+
+  it("resolves Cursor and Codex wrappers before the UI sees them", () => {
+    expect(extractToolName({
+      name: "mcpToolCall",
+      input: {
+        serverIdentifier: "plugin-google-drive-google-drive",
+        toolName: "list_recent_files"
+      }
+    })).toBe("mcp__plugin-google-drive-google-drive__list_recent_files");
+    expect(extractToolName({
+      name: "recall",
+      server: "engram",
+      tool: "recall"
+    })).toBe("mcp__engram__recall");
+    expect(extractToolName({
+      name: "mcp_tool_call",
+      server: "codex_apps",
+      tool: "linear.list_issues"
+    })).toBe("linear.list_issues");
+    expect(extractToolName({
+      name: "other",
+      input: { _toolName: "task", description: "Review code" }
+    })).toBe("task");
+  });
+
+  it("removes Cursor wrapper metadata from the expandable input", () => {
+    expect(cleanToolInput("mcp__engram__recall", {
+      args: { query: "Argmax" },
+      providerIdentifier: "engram",
+      toolCallId: "tool-1",
+      toolName: "recall"
+    }, "mcpToolCall")).toEqual({ query: "Argmax" });
+  });
+
+  it("does not erase a direct MCP tool's legitimate metadata-shaped arguments", () => {
+    const input = { toolName: "child", serverIdentifier: "chosen-by-user" };
+    expect(cleanToolInput("mcp__custom__configure", input, "mcp__custom__configure")).toEqual(input);
+  });
+
+  it("humanizes direct provider aliases instead of leaking raw identifiers", () => {
+    expect(describeToolAction(tool({ name: "engram_remember" }))).toBe("Engram remember");
+    expect(describeToolAction(tool({ name: "trace_get_document" }))).toBe("Trace get document");
+    expect(describeToolAction(tool({ name: "linear.list_issues" }))).toBe("Linear list issues");
+  });
+
+  it("marks discovery and task bookkeeping as hidden transport", () => {
+    for (const name of ["ToolSearch", "getMcpToolsToolCall", "TodoWrite", "TaskCreate", "TaskUpdate"]) {
+      expect(isHiddenToolName(name)).toBe(true);
+    }
+    expect(isHiddenToolName("mcpToolCall")).toBe(false);
+    expect(isHiddenToolName("task")).toBe(false);
+  });
+});
+
+describe("formatToolOutput", () => {
+  it("lifts the payload out of an MCP envelope so newlines are real", () => {
+    const envelope = JSON.stringify({
+      metadata: { type: "page" },
+      title: "Todo",
+      url: "https://app.notion.com/p/28df6da7",
+      text: "Prio\n- [ ] mpa\n- [x] docs"
+    });
+
+    expect(formatToolOutput(envelope)).toEqual({
+      body: "Prio\n- [ ] mpa\n- [x] docs",
+      title: "Todo"
+    });
+  });
+
+  it("pretty-prints JSON that carries no single text field", () => {
+    expect(formatToolOutput('{"a":1,"b":[2]}')).toEqual({
+      body: '{\n  "a": 1,\n  "b": [\n    2\n  ]\n}',
+      title: null
+    });
+    expect(formatToolOutput('{"text":"a","result":"b"}').title).toBeNull();
+    expect(formatToolOutput('{"text":"a","result":"b"}').body).toContain('"text": "a"');
+  });
+
+  it("keeps structured result metadata instead of treating data as an envelope", () => {
+    const result = formatToolOutput('{"result":"page 1","next_cursor":"cursor-2","has_more":true}');
+    expect(result.title).toBeNull();
+    expect(result.body).toContain('"result": "page 1"');
+    expect(result.body).toContain('"next_cursor": "cursor-2"');
+    expect(result.body).toContain('"has_more": true');
+  });
+
+  it("leaves anything that is not JSON exactly as it arrived", () => {
+    expect(formatToolOutput("total 8\ndrwxr-xr-x")).toEqual({
+      body: "total 8\ndrwxr-xr-x",
+      title: null
+    });
+    expect(formatToolOutput("{not json")).toEqual({ body: "{not json", title: null });
+  });
+});
 
 describe("extractCompletionCorrelationId", () => {
   it("prefers tool_use_id (Claude)", () => {
@@ -344,9 +501,9 @@ describe("describeToolAction", () => {
     ).toBe("Fetched https://example.com");
   });
 
-  it("falls back to tool name + preview for unknown buckets", () => {
+  it("humanizes the tool name + preview for unknown buckets", () => {
     expect(describeToolAction(tool({ name: "custom_mcp_tool", inputPreview: "foo" }))).toBe(
-      "custom_mcp_tool foo"
+      "Custom mcp tool foo"
     );
   });
 });

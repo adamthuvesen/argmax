@@ -147,6 +147,8 @@ export interface ReviewState {
   comparisonBaseLabel: string | null;
   workspaceFiles: WorkspaceFilesState;
   openFile: (filePath: string) => void;
+  /** Reload the open file's diff with more unchanged context around its hunks. */
+  expandDiffContext: () => void;
   openPanelInFilesMode: () => void;
   openInFilesView: (filePath: string) => void;
   closePanel: () => void;
@@ -372,6 +374,7 @@ export function useReviewState(
     comparisonBaseLabel,
     workspaceFiles,
     openFile: diffState.openFile,
+    expandDiffContext: diffState.expandDiffContext,
     openPanelInFilesMode,
     openInFilesView,
     closePanel,

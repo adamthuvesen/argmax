@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
-import type { DashboardSnapshot, ProjectSummary, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import type {
+  DashboardSnapshot,
+  ProjectSummary,
+  SessionEventsSinceResult,
+  SessionSummary,
+  WorkspaceSummary
+} from "../../shared/types.js";
 import { SCRATCH_PROJECT_ID } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
@@ -11,6 +17,37 @@ import {
 } from "../lib/snapshot.js";
 
 type SessionCursor = { eventCursor?: number; rawOutputCursor?: number; seeded?: boolean };
+
+function mergeSessionEventTail(
+  current: DashboardSnapshot,
+  data: SessionEventsSinceResult
+): DashboardSnapshot {
+  const supersededIds = new Set(
+    data.events
+      .filter((event) => event.payload.traceSyntheticSuperseded === true)
+      .map((event) => event.id)
+  );
+  if (supersededIds.size === 0) {
+    return mergeDashboardDelta(current, {
+      events: data.events,
+      rawOutputs: data.rawOutputs
+    });
+  }
+  const merged = mergeDashboardDelta(current, {
+    rawOutputs: data.rawOutputs
+  });
+  return {
+    ...merged,
+    events: pruneSupersededDeltas(
+      mergeByCreatedAt(
+        current.events.filter((event) => !supersededIds.has(event.id)),
+        data.events.filter((event) => !supersededIds.has(event.id)),
+        500,
+        "desc"
+      )
+    )
+  };
+}
 
 export interface UseDashboardSessionOptions {
   onErrorToast?: (message: string) => void;
@@ -140,12 +177,7 @@ export function useDashboardSession(
       // eviction (empty snapshot + parked cursor) is recognised as recoverable.
       seeded: (latest?.seeded ?? false) || data.events.length > 0
     });
-    setSnapshot((current) =>
-      mergeDashboardDelta(current, {
-        events: data.events,
-        rawOutputs: data.rawOutputs
-      })
-    );
+    setSnapshot((current) => mergeSessionEventTail(current, data));
   }, []);
 
   const loadAgentEvents = useCallback(async (sessionId: string, parentToolUseId: string): Promise<void> => {
@@ -153,12 +185,7 @@ export function useDashboardSession(
       return;
     }
     const data = await window.argmax.session.agentEvents({ sessionId, parentToolUseId });
-    setSnapshot((current) =>
-      mergeDashboardDelta(current, {
-        events: data.events,
-        rawOutputs: data.rawOutputs
-      })
-    );
+    setSnapshot((current) => mergeSessionEventTail(current, data));
   }, []);
 
   const loadDashboard = useCallback(async (): Promise<void> => {

@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   agentLaunchAriaLabel,
-  agentLaunchStatusHint,
-  agentLaunchTitle,
+  agentLaunchLabel,
   agentStatusLabel,
   isInternalAgentLaunchMetadata
 } from "./agentLaunch.js";
@@ -25,19 +24,22 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
 }
 
 
-describe("agentLaunchTitle", () => {
-  it("names the launched agent and never the prompt", () => {
-    expect(agentLaunchTitle("Triton")).toBe("Launched Triton");
-    expect(agentLaunchTitle()).toBe("Launched subagent");
-    expect(agentLaunchTitle("  ")).toBe("Launched subagent");
+describe("agentLaunchLabel", () => {
+  it("leads with the agent's own description and follows it with the codename", () => {
+    const out = agentLaunchLabel(tool({ inputFull: { description: "Map the renderer" } }), "Triton");
+    expect(out).toEqual({ title: "Map the renderer", identity: "Triton" });
   });
-});
 
-describe("agentLaunchStatusHint", () => {
-  it("says nothing for a completed launch and keeps live or failed state", () => {
-    expect(agentLaunchStatusHint("done")).toBeNull();
-    expect(agentLaunchStatusHint("running")).toBe("Running");
-    expect(agentLaunchStatusHint("error")).toBe("Failed");
+  it("names the codename outright when the provider gave no description", () => {
+    expect(agentLaunchLabel(tool(), "Triton")).toEqual({ title: "Launched Triton", identity: null });
+    expect(agentLaunchLabel(tool())).toEqual({ title: "Launched subagent", identity: null });
+    expect(agentLaunchLabel(tool(), "  ")).toEqual({ title: "Launched subagent", identity: null });
+  });
+
+  it("never promotes the prompt into the title", () => {
+    const prompt = "Inspect the repository at /Users/adamthuvesen/dev/menti/revops-backoffice.";
+    const out = agentLaunchLabel(tool({ inputPreview: prompt.slice(0, 72), inputFull: { prompt } }), "Triton");
+    expect(out.title).toBe("Launched Triton");
   });
 });
 

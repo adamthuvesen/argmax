@@ -180,6 +180,41 @@ export function coalesceAssistantGroups(
   return assistantGroups;
 }
 
+/**
+ * Does the newest turn's own Thought block carry the live progress cue?
+ *
+ * Reasoning reaches the renderer as a `message.delta` carrying `thinking: true`,
+ * so it can be the newest event through a long silent stretch without any
+ * visible answer text arriving. Before a turn produces an answer, that
+ * reasoning renders expanded and labelled "Thinking" and is the progress cue.
+ * Once an answer lands the block settles into quiet "Thought" history, and in
+ * single-line verbosity it is dropped from the turn entirely, so it stops being
+ * a cue and the generic indicator has to take the beat over.
+ *
+ * `SessionConversation` reads this to decide whether to show that generic
+ * indicator and `SessionConversationTurn` reads it to decide whether to render
+ * the block as live. One definition, so the two can never both claim the beat
+ * or both leave it empty — the second of which left a running turn with no
+ * visible progress at all for as long as the model kept reasoning.
+ */
+export function liveThoughtOwnsProgress(params: {
+  assistantEvents: readonly TimelineEvent[];
+  isLatestTurn: boolean;
+  sessionRunning: boolean;
+  isPausedOnUserInput: boolean;
+}): boolean {
+  if (!params.isLatestTurn || !params.sessionRunning || params.isPausedOnUserInput) return false;
+  let hasThinkingText = false;
+  for (const event of params.assistantEvents) {
+    if (event.message.trim().length === 0) continue;
+    // Any visible answer text in the turn hands the beat back to the generic
+    // indicator, whichever order the events arrived in.
+    if (!isThinkingDelta(event)) return false;
+    hasThinkingText = true;
+  }
+  return hasThinkingText;
+}
+
 function toolStartTimes(toolItems: readonly TurnToolItem[]): string[] {
   const times: string[] = [];
   for (const item of toolItems) {

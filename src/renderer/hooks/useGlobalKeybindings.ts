@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import type { MenuCommand, SessionSummary } from "../../shared/types.js";
 
@@ -66,6 +67,10 @@ export function useGlobalKeybindings({
       // burst.
       if (event.key.toLowerCase() === "w" && !event.shiftKey && !event.altKey) {
         if (event.isComposing || event.repeat) return;
+        if (requestCloseActiveReviewFileTab()) {
+          event.preventDefault();
+          return;
+        }
         if (onCloseFocusedPane?.()) {
           event.preventDefault();
         }

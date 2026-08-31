@@ -623,6 +623,58 @@ describe("useDashboardSession — refresh / delta race", () => {
     });
   });
 
+  it("removes synthetic launch rows when cursor-visible tombstones arrive", async () => {
+    const syntheticRows: TimelineEvent[] = [
+      {
+        id: "synthetic-start",
+        sessionId: "session-existing",
+        type: "command.started",
+        message: "spawn_agent",
+        payload: { id: "trace-spawn-child", traceSyntheticLaunch: true },
+        createdAt: "2026-05-12T15:00:01.000Z",
+        rowCursor: 1
+      },
+      {
+        id: "synthetic-end",
+        sessionId: "session-existing",
+        type: "command.completed",
+        message: "spawn_agent",
+        payload: { id: "trace-spawn-child", traceSyntheticLaunch: true },
+        createdAt: "2026-05-12T15:00:02.000Z",
+        rowCursor: 2
+      }
+    ];
+    baseSnapshot = { ...baseSnapshot, events: syntheticRows };
+    const tombstoneResponse = {
+      events: syntheticRows.map((event, index) => ({
+        ...event,
+        payload: {
+          id: "trace-spawn-child",
+          traceSyntheticSuperseded: true,
+          traceSupersededBy: "real-spawn"
+        },
+        rowCursor: 10 + index
+      })),
+      rawOutputs: [],
+      eventCursor: 11,
+      rawOutputCursor: 0
+    };
+    (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mockResolvedValue(
+      tombstoneResponse
+    );
+
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    expect(result.current.snapshot.events).toHaveLength(2);
+
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+
+    await waitFor(() => expect(result.current.snapshot.events).toHaveLength(0));
+  });
+
   it("re-pulls a session's tail from scratch when its events were evicted from the global cap", async () => {
     // Repro of the empty-session bug: switch to a busy session, its stream
     // floods the global newest-N events cap and evicts the idle session's rows,

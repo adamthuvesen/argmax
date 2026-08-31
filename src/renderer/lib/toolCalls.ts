@@ -1,7 +1,10 @@
-import { Bot, FileText, Globe, Pencil, Search, Terminal, Wrench } from "lucide-react";
-import type { JSX } from "react";
-import { safeJsonParseRecord } from "../../shared/safeJson.js";
+import { safeJsonParse, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { TimelineEvent } from "../../shared/types.js";
+import {
+  interpretFileChange,
+  summarizeFileChanges,
+  type ChangeCounts
+} from "./fileChange.js";
 
 export type ToolCall = {
   id: string;
@@ -141,8 +144,86 @@ export function isAgentToolName(name: string): boolean {
     /(^|[_-])(sub-?agent|agent)$/.test(lower);
 }
 
+/**
+ * MCP servers namespace their tools on the wire, and the namespace carries
+ * words the bucket matchers key on: `mcp__claude_ai_Notion__notion-fetch`
+ * matched `fetch` and rendered as "Fetched URL", naming neither Notion nor the
+ * page it read. These are two literal protocol shapes rather than a guess —
+ * Claude and Cursor prefix with `mcp__`, OpenCode repeats the server, and the
+ * backreference is what keeps ordinary snake_case names out.
+ */
+export function parseMcpToolName(name: string): { server: string; tool: string } | null {
+  const match =
+    /^mcp__(.+?)__(.+)$/.exec(name) ??
+    /^([a-z0-9-]+)_\1-(.+)$/.exec(name) ??
+    /^([a-z][a-z0-9-]*)\.(.+)$/.exec(name);
+  if (!match) return null;
+  const [, namespace, toolSegment] = match;
+  if (!namespace || !toolSegment) return null;
+  // `claude_ai_Notion` names the client before the server; the user connected
+  // to the last segment.
+  // Claude's hosted namespace adds a client prefix. Other underscores belong
+  // to the server (`browser_use`) and must survive.
+  let server = namespace.startsWith("claude_ai_")
+    ? namespace.slice("claude_ai_".length)
+    : namespace;
+  if (server.startsWith("plugin-")) {
+    const parts = server.slice("plugin-".length).split("-").filter(Boolean);
+    const half = parts.length / 2;
+    server =
+      Number.isInteger(half) &&
+      parts.slice(0, half).join("-") === parts.slice(half).join("-")
+        ? parts.slice(0, half).join(" ")
+        : parts.at(-1) ?? server;
+  } else {
+    server = server.replace(/[-_]/g, " ");
+  }
+  const words = toolSegment.split(/[-_]+/).filter(Boolean);
+  if (words[0]?.toLowerCase() === server.toLowerCase()) words.shift();
+  if (words.length === 0) return null;
+  return { server, tool: words.join(" ") };
+}
+
+/** "Notion fetch" for `mcp__claude_ai_Notion__notion-fetch`, else null. */
+export function mcpToolLabel(name: string): string | null {
+  const parsed = parseMcpToolName(name);
+  if (!parsed) return null;
+  return `${parsed.server.charAt(0).toUpperCase()}${parsed.server.slice(1)} ${parsed.tool}`;
+}
+
+const HIDDEN_TOOL_NAMES = new Set([
+  // Provider-side discovery before the actual MCP call. The subsequent call
+  // names the external action; showing both is protocol leakage.
+  "getmcptoolstoolcall",
+  "toolsearch",
+  // Internal task-list bookkeeping. It changes no project file and creates no
+  // agent; the resulting plan is already visible through useful work.
+  "taskcreate",
+  "taskupdate",
+  "todowrite"
+]);
+
+export function isHiddenToolName(name: string): boolean {
+  return HIDDEN_TOOL_NAMES.has(name.toLowerCase());
+}
+
+function humanizeToolName(name: string): string {
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[._-]+|\s+/)
+    .filter(Boolean)
+    .map((word) => word.toLowerCase());
+  if (words.length === 0) return "Used tool";
+  const first = words[0] ?? "";
+  words[0] = `${first.charAt(0).toUpperCase()}${first.slice(1)}`;
+  return words.join(" ");
+}
+
 function getFineBucket(name: string): FineBucket {
   const lower = name.toLowerCase();
+  // Before the agent check too: an MCP tool ending in `-agent` is not a
+  // subagent launch and must not open an activity pane.
+  if (parseMcpToolName(name)) return "other";
   if (isAgentToolName(name)) return "agent";
   if (/bash|shell|exec|terminal|cmd/.test(lower)) return "bash";
   if (/write|edit|create|patch|file[_-]?change/.test(lower)) return "edit";
@@ -197,6 +278,39 @@ function clauseForBucket(bucket: FineBucket, n: number, first: boolean): string 
   }
 }
 
+/**
+ * Split an activity label into its leading verb and the rest ("Edited" +
+ * "userBubbleTint.ts", "Explored" + "2 files, ran 1 command"). Rows and group
+ * headlines share one visual grammar — bright verb, dim remainder — so they
+ * share one splitter.
+ */
+export function splitLeadingVerb(label: string): { verb: string; rest: string } {
+  const space = label.indexOf(" ");
+  if (space === -1) return { verb: label, rest: "" };
+  return { verb: label.slice(0, space), rest: label.slice(space + 1) };
+}
+
+/**
+ * Sum the line stat across a run of tool calls, for the `+N −N` a collapsed
+ * group headline shows. Reads the same per-tool input the expanded rows read,
+ * so the headline can never disagree with the rows underneath it.
+ */
+export function summarizeToolChangeCounts(tools: ToolCall[]): ChangeCounts | null {
+  let adds = 0;
+  let dels = 0;
+  let files = 0;
+  for (const tool of tools) {
+    const changes = interpretFileChange(tool.name, tool.inputFull);
+    if (!changes) continue;
+    const counts = summarizeFileChanges(changes);
+    adds += counts.adds;
+    dels += counts.dels;
+    files += counts.files;
+  }
+  if (adds === 0 && dels === 0) return null;
+  return { adds, dels, files };
+}
+
 export function describeToolAction(tool: ToolCall): string {
   // Claude's Skill tool fires when the agent activates a skill. The skill's
   // full body streams separately (and is dropped upstream as noise), so the
@@ -205,6 +319,8 @@ export function describeToolAction(tool: ToolCall): string {
   if (tool.name.toLowerCase() === "skill") {
     return tool.inputPreview ? `Activated skill ${tool.inputPreview}` : "Activated skill";
   }
+  const mcpLabel = mcpToolLabel(tool.name);
+  if (mcpLabel) return tool.inputPreview ? `${mcpLabel} ${tool.inputPreview}` : mcpLabel;
   const bucket = getFineBucket(tool.name);
   const preview = tool.inputPreview;
   const basename = (path: string): string => {
@@ -230,7 +346,7 @@ export function describeToolAction(tool: ToolCall): string {
     case "web":
       return preview ? `Fetched ${preview}` : "Fetched URL";
     case "other":
-      return preview ? `${tool.name} ${preview}` : tool.name;
+      return preview ? `${humanizeToolName(tool.name)} ${preview}` : humanizeToolName(tool.name);
   }
 }
 
@@ -239,11 +355,8 @@ export function describeToolAction(tool: ToolCall): string {
 // word, peeking through `zsh -lc '…'` / `bash -c '…'` wrappers and stripping
 // leading quotes so `'git status --short'` reads as `git`.
 
-export function displayBashCommand(input: string): string {
-  return unwrapShellCommand(input).slice(0, 72);
-}
-
-function unwrapShellCommand(input: string): string {
+/** Full command text for the expanded detail. Rows use `displayBashCommand`. */
+export function unwrapBashCommand(input: string): string {
   let s = stripOuterQuotes(input.trim());
   for (let i = 0; i < 2; i++) {
     const match = /^(?:[\w./-]+\/)?(?:zsh|bash|sh)\s+-l?c\s+(?<inner>[\s\S]+)$/i.exec(s);
@@ -253,6 +366,11 @@ function unwrapShellCommand(input: string): string {
     s = inner;
   }
   return s;
+}
+
+/** One-line preview for the row label. Truncates; the detail shows the rest. */
+export function displayBashCommand(input: string): string {
+  return unwrapBashCommand(input).slice(0, 72);
 }
 
 function stripOuterQuotes(input: string): string {
@@ -327,8 +445,59 @@ export function extractCompletionCorrelationId(payload: Record<string, unknown>)
   return null;
 }
 
+/**
+ * The provider process run an event came out of, stamped onto every payload by
+ * the flush queue. Provider-native tool ids (`call_1`, `item_2`) are only
+ * unique within one run, so this is what keeps a second run's reused id from
+ * being read as the first run's tool. Historical rows predate the stamp and
+ * return null.
+ */
+export function extractProviderInvocationId(payload: Record<string, unknown>): string | null {
+  const value = payload.providerInvocationId;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 export function extractToolName(payload: Record<string, unknown>): string {
-  if (typeof payload.name === "string" && payload.name) return payload.name;
+  const payloadName = typeof payload.name === "string" ? payload.name : null;
+  const input = inputRecord(payload.input, "toolCalls.name.input");
+
+  // Cursor ACP emits the wrapper kind as the name and keeps the real tool in
+  // the input. Resolve that identity before classification so `other` + task
+  // becomes an agent launch, and MCP calls name the server they actually used.
+  const embeddedName = input._toolName;
+  if (
+    payloadName?.toLowerCase() === "other" &&
+    typeof embeddedName === "string" &&
+    embeddedName.length > 0
+  ) {
+    return embeddedName;
+  }
+
+  const lower = payloadName?.toLowerCase();
+  if (lower === "mcptoolcall" || lower === "getmcptoolstoolcall") {
+    const server = input.serverIdentifier ?? input.providerIdentifier ?? input.server;
+    const tool = input.toolName;
+    if (typeof server === "string" && server.length > 0 && typeof tool === "string" && tool.length > 0) {
+      return `mcp__${server}__${tool}`;
+    }
+  }
+
+  // Codex normalizes the event name to `item.tool`, but preserves `server` and
+  // `tool` at the payload root. Recover the pair regardless of the wrapper
+  // name (`mcp_tool_call` may already be gone by this point).
+  const codexServer = payload.server;
+  const codexTool = payload.tool;
+  if (
+    typeof codexServer === "string" &&
+    codexServer.length > 0 &&
+    typeof codexTool === "string" &&
+    codexTool.length > 0
+  ) {
+    if (codexTool.includes(".")) return codexTool;
+    return `mcp__${codexServer}__${codexTool}`;
+  }
+
+  if (payloadName) return payloadName;
   if (typeof payload.type === "string" && payload.type !== "command.started") return payload.type;
   return "tool";
 }
@@ -351,6 +520,16 @@ export function extractToolInput(payload: Record<string, unknown>): Record<strin
   };
   const input = inputRecord(payload.input, "toolCalls.input");
   return { ...args, ...input };
+}
+
+export function cleanToolInput(
+  name: string,
+  input: Record<string, unknown>,
+  providerName?: string | null
+): Record<string, unknown> {
+  if (!parseMcpToolName(name) || providerName?.toLowerCase() !== "mcptoolcall") return input;
+  const args = inputRecord(input.args, "toolCalls.mcp.args");
+  return args;
 }
 
 export function extractToolInputPreview(name: string, input: Record<string, unknown>): string {
@@ -385,7 +564,7 @@ export function extractToolInputPreview(name: string, input: Record<string, unkn
     if (typeof cmd === "string") return cmd.split("\n")[0]?.slice(0, 72) ?? "";
   }
   if (/file[_-]?change/.test(lower)) {
-    const preview = summarizeFileChanges(input.changes);
+    const preview = previewChangedPaths(input.changes);
     if (preview) return preview;
   }
   const path = input.file_path ?? input.filePath ?? input.path ?? input.relative_path;
@@ -401,7 +580,10 @@ export function extractToolInputPreview(name: string, input: Record<string, unkn
   return "";
 }
 
-function summarizeFileChanges(changes: unknown): string {
+/** The path preview for a Codex `file_change` payload ("src/foo.ts +2" when it
+ *  touched three files). Paths, not line counts — the `+N` here is how many
+ *  more files the change covered. */
+function previewChangedPaths(changes: unknown): string {
   if (!Array.isArray(changes)) return "";
   const paths = changes
     .map((change) => {
@@ -427,6 +609,43 @@ export function extractToolOutput(payload: Record<string, unknown>): string | nu
   }
   if (typeof payload.output === "string") return payload.output;
   return null;
+}
+
+const OUTPUT_TEXT_KEYS = ["text", "content", "result", "output"] as const;
+const OUTPUT_ENVELOPE_KEYS = new Set([
+  ...OUTPUT_TEXT_KEYS,
+  "metadata",
+  "title",
+  "type",
+  "url"
+]);
+
+export type FormattedToolOutput = { body: string; title: string | null };
+
+/**
+ * An MCP result is a JSON envelope carrying its payload in one string field,
+ * so a `<pre>` shows the metadata first and then the real content with every
+ * newline as a literal `\n`. Re-serializing does not help — `JSON.stringify`
+ * escapes those newlines again — so lift the string out instead. Anything
+ * else that parses is pretty-printed; anything that does not is left alone.
+ */
+export function formatToolOutput(output: string): FormattedToolOutput {
+  const trimmed = output.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return { body: output, title: null };
+  const parsed = safeJsonParse(trimmed, "toolCalls.output");
+  if (parsed === undefined || parsed === null) return { body: output, title: null };
+  if (typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { body: JSON.stringify(parsed, null, 2), title: null };
+  }
+  const envelope = parsed as Record<string, unknown>;
+  const textKeys = OUTPUT_TEXT_KEYS.filter((key) => typeof envelope[key] === "string");
+  const [key] = textKeys;
+  const hasDataFields = Object.keys(envelope).some((field) => !OUTPUT_ENVELOPE_KEYS.has(field));
+  if (textKeys.length !== 1 || key === undefined || hasDataFields) {
+    return { body: JSON.stringify(envelope, null, 2), title: null };
+  }
+  const title = typeof envelope.title === "string" ? envelope.title.trim() : "";
+  return { body: envelope[key] as string, title: title.length > 0 ? title : null };
 }
 
 export function detectToolError(payload: Record<string, unknown>): boolean {
@@ -467,33 +686,11 @@ export function isBashLikeTool(name: string): boolean {
   return /bash|shell|exec|terminal|cmd/.test(lower);
 }
 
-export function getToolIcon(name: string): JSX.Element {
-  if (isAgentToolName(name)) {
-    return <Bot size={13} />;
-  }
-  const lower = name.toLowerCase();
-  if (lower.includes("bash") || lower.includes("shell") || lower.includes("terminal") || lower.includes("exec")) {
-    return <Terminal size={13} />;
-  }
-  if (lower.includes("write") || lower.includes("edit") || lower.includes("create") || lower.includes("patch") || /file[_-]?change/.test(lower)) {
-    return <Pencil size={13} />;
-  }
-  if (lower.includes("read") || lower.includes("view") || lower.includes("open") || lower.includes("cat") || lower.includes("list")) {
-    return <FileText size={13} />;
-  }
-  if (lower.includes("search") || lower.includes("grep") || lower.includes("find") || lower.includes("glob")) {
-    return <Search size={13} />;
-  }
-  if (lower.includes("web") || lower.includes("browser") || lower.includes("navigate") || lower.includes("fetch") || lower.includes("url") || lower.includes("http")) {
-    return <Globe size={13} />;
-  }
-  return <Wrench size={13} />;
-}
-
 export type ToolTypeBucket = "bash" | "edit" | "read" | "search" | "web" | "agent" | "other";
 
 export function getToolTypeBucket(name: string): ToolTypeBucket {
   const lower = name.toLowerCase();
+  if (parseMcpToolName(name)) return "other";
   if (isAgentToolName(name)) return "agent";
   if (/bash|shell|exec|terminal|cmd/.test(lower)) return "bash";
   if (/write|edit|create|patch|file[_-]?change/.test(lower)) return "edit";

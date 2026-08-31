@@ -5,6 +5,8 @@ export type ChatWidth = ScaleLevel;
 
 export const CHAT_WIDTH_KEY = "argmax.chat.width";
 export const DEFAULT_CHAT_WIDTH: ChatWidth = DEFAULT_SCALE_LEVEL;
+export const CHAT_WIDTH_MIN: ChatWidth = 1;
+export const CHAT_WIDTH_MAX: ChatWidth = 5;
 
 /** Widths stored by the three-way setting the 1–5 scale replaced. */
 const LEGACY_CHAT_WIDTHS: Readonly<Record<string, ChatWidth>> = {

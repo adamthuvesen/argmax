@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { decideSmartFollow } from "../lib/smartFollow.js";
+import { decideSmartFollow, latestTurnSpacerPx } from "../lib/smartFollow.js";
 
 const USER_SCROLL_INTENT_MS = 350;
 
@@ -38,13 +38,16 @@ export interface SmartFollowScroll {
  *
  * Item changes run in a layout effect so appended output is visible by the
  * next paint. Resize observers cover streamed growth inside an existing turn
- * and viewport changes caused by the composer or adjacent panels.
+ * and viewport changes caused by the composer or adjacent panels. A leftover
+ * spacer after the latest user message is sized first so pinning to the
+ * bottom puts that message at the top of the pane until the new turn fills it.
  */
 export function useSmartFollowScroll(
   sessionId: string | null | undefined,
   conversationItems: readonly unknown[],
   isThinking: boolean,
-  composerRef?: RefObject<HTMLElement | null>
+  composerRef?: RefObject<HTMLElement | null>,
+  lastUserMessageId?: string | null
 ): SmartFollowScroll {
   const conversationListRef = useRef<HTMLDivElement | null>(null);
   const isFollowingRef = useRef(true);
@@ -64,7 +67,29 @@ export function useSmartFollowScroll(
     }
   }, []);
 
+  const applyTurnSpacer = useCallback((el: HTMLDivElement): void => {
+    const spacer = el.querySelector("[data-conversation-spacer]");
+    const anchor = el.querySelector("[data-turn-anchor]");
+    const tail = el.querySelector(".conversation-tail");
+    if (!(spacer instanceof HTMLElement)) return;
+    if (!(anchor instanceof HTMLElement) || !(tail instanceof HTMLElement)) {
+      if (spacer.style.height !== "0px") spacer.style.height = "0px";
+      return;
+    }
+    const style = getComputedStyle(el);
+    const next = latestTurnSpacerPx({
+      viewportHeight: el.clientHeight,
+      paddingTop: Number.parseFloat(style.paddingTop) || 0,
+      paddingBottom: Number.parseFloat(style.paddingBottom) || 0,
+      anchorOffsetTop: anchor.offsetTop,
+      contentEnd: tail.offsetTop + tail.offsetHeight
+    });
+    const px = `${next}px`;
+    if (spacer.style.height !== px) spacer.style.height = px;
+  }, []);
+
   const scrollToFollowTarget = useCallback((el: HTMLDivElement, force = false): void => {
+    applyTurnSpacer(el);
     if (!force && !isFollowingRef.current) return;
     const top = Math.max(0, el.scrollHeight - el.clientHeight);
     // scrollHeight/clientHeight are rounded but iOS reports fractional
@@ -74,7 +99,7 @@ export function useSmartFollowScroll(
     if (Math.abs(el.scrollTop - top) > 1) {
       el.scrollTop = top;
     }
-  }, []);
+  }, [applyTurnSpacer]);
 
   const handleUserScrollIntent = useCallback((): void => {
     const el = conversationListRef.current;
@@ -133,6 +158,7 @@ export function useSmartFollowScroll(
   }, [clearUserScrollIntent, scrollToFollowTarget]);
 
   const reconcileScrollAffordance = useCallback((el: HTMLDivElement): void => {
+    applyTurnSpacer(el);
     const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
     if (isFollowingRef.current) {
       scrollToFollowTarget(el, true);
@@ -149,7 +175,7 @@ export function useSmartFollowScroll(
       return;
     }
     setShowScrollToBottom(decision.showFab);
-  }, [clearUserScrollIntent, scrollToFollowTarget]);
+  }, [applyTurnSpacer, clearUserScrollIntent, scrollToFollowTarget]);
 
   const scrollToBottom = useCallback((): void => {
     const el = conversationListRef.current;
@@ -171,13 +197,17 @@ export function useSmartFollowScroll(
     scrollToFollowTarget(el, true);
     setShowScrollToBottom(false);
     setNewBelowCount(0);
-  }, [clearUserScrollIntent, scrollToFollowTarget, sessionId]);
+  }, [clearUserScrollIntent, lastUserMessageId, scrollToFollowTarget, sessionId]);
 
   useLayoutEffect(() => {
     const el = conversationListRef.current;
-    if (!el || !isFollowingRef.current) return;
+    if (!el) return;
+    if (!isFollowingRef.current) {
+      applyTurnSpacer(el);
+      return;
+    }
     scrollToFollowTarget(el, true);
-  }, [conversationItems, isThinking, scrollToFollowTarget]);
+  }, [applyTurnSpacer, conversationItems, isThinking, scrollToFollowTarget]);
 
   useEffect(() => {
     const current = conversationItems.length;
@@ -229,6 +259,7 @@ export function useSmartFollowScroll(
     const present = new Set<HTMLElement>();
     for (const child of Array.from(el.children)) {
       if (!(child instanceof HTMLElement)) continue;
+      if (child.dataset.conversationSpacer !== undefined) continue;
       present.add(child);
       if (!observed.has(child)) observer.observe(child);
     }

@@ -265,8 +265,18 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     review: {
       listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) =>
         invokeCommand<ChangedFileSummary[]>("review:list-changed-files", { ...target, comparison }),
-      loadDiff: (target: WorkspaceTarget, filePath?: string, comparison?: ReviewComparison) =>
-        invokeCommand<WorkspaceDiff>("review:load-diff", { ...target, filePath, comparison })
+      loadDiff: (
+        target: WorkspaceTarget,
+        filePath?: string,
+        comparison?: ReviewComparison,
+        contextLines?: number
+      ) =>
+        invokeCommand<WorkspaceDiff>("review:load-diff", {
+          ...target,
+          filePath,
+          comparison,
+          contextLines
+        })
     },
     workspace: {
       listFiles: (target: WorkspaceTarget) =>

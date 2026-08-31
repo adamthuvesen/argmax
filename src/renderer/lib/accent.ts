@@ -1,4 +1,4 @@
-export type AccentId = "green" | "purple" | "neutral" | "orange" | "blue";
+export type AccentId = "green" | "purple" | "neutral" | "orange" | "blue" | "coral";
 
 export type AccentOption = {
   id: AccentId;
@@ -43,6 +43,12 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     label: "Blue",
     hint: "A cool blue accent for selection, focus, and transcript chrome.",
     swatch: { color: "#30609a", soft: "#e5eef9" }
+  },
+  {
+    id: "coral",
+    label: "Coral",
+    hint: "A hot pink-red accent. Shares a hue with the --rose error token, so risk states read less distinctly.",
+    swatch: { color: "#a64354", soft: "#fee6e8" }
   }
 ];
 

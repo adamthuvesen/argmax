@@ -31,6 +31,19 @@ describe("prependAnnotationsToPrompt", () => {
     );
   });
 
+  it("is the whole message when nothing was typed", () => {
+    const annotation = createReviewCommentAnnotation({
+      filePath: "src/x.ts",
+      line: 12,
+      lineText: "const x = 42;",
+      comment: "use a named constant"
+    });
+    expect(prependAnnotationsToPrompt("", [annotation])).toBe(
+      "Please address this review comment on the changes:\n\n" +
+        "`src/x.ts:12`\n> const x = 42;\nuse a named constant"
+    );
+  });
+
   it("assigns each annotation a distinct id", () => {
     const a = createAnnotation("x");
     const b = createAnnotation("x");

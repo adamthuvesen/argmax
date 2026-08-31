@@ -193,4 +193,67 @@ describe("parsePlan", () => {
     expect(plan?.summary).toHaveLength(2);
     expect(plan?.summary[1]).toMatch(/Second paragraph/);
   });
+
+  it("parses multi-phase plans with nested sub-sections (Deliverable, Files, Work, Success check)", () => {
+    const md = [
+      "# Plan: Make the Argmax README great",
+      "",
+      "## Scope",
+      "Rewrite only `README.md` for two audiences:",
+      "1. Users deciding whether Argmax fits their workflow",
+      "2. Contributors setting up the project locally",
+      "",
+      "## Phase 1: Establish the README's story",
+      "",
+      "### Deliverable",
+      "A sharper opening that explains Argmax's purpose.",
+      "",
+      "### Files",
+      "`README.md`",
+      "",
+      "### Work",
+      "1. Keep existing branding.",
+      "2. Replace generic opening.",
+      "",
+      "### Success check",
+      "A new reader can understand what Argmax is.",
+      "",
+      "## Phase 2: Add feature overview",
+      "",
+      "### Deliverable",
+      "A clear feature map.",
+      "",
+      "Proceed with this plan?"
+    ].join("\n");
+
+    const plan = parsePlan(md);
+    expect(plan).not.toBeNull();
+    if (!plan) return;
+    expect(plan.title).toBe("Plan: Make the Argmax README great");
+    expect(plan.sections).toHaveLength(3);
+
+    // Scope
+    expect(plan.sections[0]?.label).toBe("Scope");
+    expect(plan.sections[0]?.note).toMatch(/Rewrite only/);
+    expect(plan.sections[0]?.items).toHaveLength(2);
+
+    // Phase 1
+    expect(plan.sections[1]?.badge).toBe("Phase 1");
+    expect(plan.sections[1]?.title).toBe("Establish the README's story");
+    expect(plan.sections[1]?.subsections).toHaveLength(4);
+    expect(plan.sections[1]?.subsections?.[0]?.kind).toBe("deliverable");
+    expect(plan.sections[1]?.subsections?.[0]?.note).toMatch(/sharper opening/);
+    expect(plan.sections[1]?.subsections?.[1]?.kind).toBe("files");
+    expect(plan.sections[1]?.subsections?.[1]?.note).toBe("`README.md`");
+    expect(plan.sections[1]?.subsections?.[2]?.kind).toBe("work");
+    expect(plan.sections[1]?.subsections?.[2]?.items).toHaveLength(2);
+    expect(plan.sections[1]?.subsections?.[3]?.kind).toBe("check");
+    expect(plan.sections[1]?.subsections?.[3]?.note).toMatch(/new reader/);
+
+    // Phase 2
+    expect(plan.sections[2]?.badge).toBe("Phase 2");
+    expect(plan.sections[2]?.title).toBe("Add feature overview");
+    expect(plan.sections[2]?.subsections).toHaveLength(1);
+    expect(plan.sections[2]?.subsections?.[0]?.kind).toBe("deliverable");
+  });
 });

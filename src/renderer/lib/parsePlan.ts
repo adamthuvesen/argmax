@@ -15,11 +15,21 @@ export type PlanItem = {
   children?: PlanItem[];
 };
 
+export type PlanSubSection = {
+  label: string;
+  items: PlanItem[];
+  note?: string;
+  kind?: "files" | "deliverable" | "work" | "check" | "note" | "default";
+};
+
 export type PlanSection = {
   label: string;
   items: PlanItem[];
   /** Paragraph body shown beneath the section label when the section has no list. */
   note?: string;
+  subsections?: PlanSubSection[];
+  badge?: string;
+  title?: string;
 };
 
 export type PlanAction = {
@@ -37,12 +47,52 @@ export type Plan = {
 const DEFAULT_ACTION: PlanAction = {
   question: "Implement this plan?",
   options: [
-    { label: "Yes, implement this plan" },
-    { label: "No, and tell Claude what to do differently" }
+    { label: "Yes, implement the plan" },
+    { label: "No, update the plan" }
   ]
 };
 
 const ACTION_LABEL = /^(action|decide|next|implement)\b/i;
+
+function classifySubsectionKind(label: string): PlanSubSection["kind"] {
+  const clean = label.trim().toLowerCase().replace(/[*_`:#]/g, "").replace(/\s+/g, " ");
+  if (/^(files?(\s+to\s+(modify|touch|edit|change|update))?|target\s+files?)$/i.test(clean)) {
+    return "files";
+  }
+  if (/^(deliverables?|goal|goals|objective|objectives|outcome|outcomes|purpose)$/i.test(clean)) {
+    return "deliverable";
+  }
+  if (/^(work|tasks?|steps?|changes?|implementation|key\s+changes|actions?|to[\s-]do|scope\s+of\s+work)$/i.test(clean)) {
+    return "work";
+  }
+  if (/^(success\s*check|verification|acceptance\s*criteria|testing|validation|validation\s*steps?|checks?|testing\s*plan)$/i.test(clean)) {
+    return "check";
+  }
+  if (/^(notes?|context|why\s*this\s*matters|details?|background|rationale)$/i.test(clean)) {
+    return "note";
+  }
+  return "default";
+}
+
+function extractBadgeAndTitle(label: string): { badge?: string; title: string } {
+  const trimmed = label.trim();
+  // Phase 1: Title, Step 2: Title, Phase 1 — Title, etc.
+  const phaseMatch = trimmed.match(/^(Phase\s+\d+|Step\s+\d+)(?:\s*[:\u2014-]\s*(.*))?$/i);
+  if (phaseMatch) {
+    const rawBadge = phaseMatch[1];
+    const rest = phaseMatch[2]?.trim();
+    const badge = rawBadge ? rawBadge.charAt(0).toUpperCase() + rawBadge.slice(1) : undefined;
+    return {
+      badge,
+      title: rest && rest.length > 0 ? rest : trimmed
+    };
+  }
+  return { title: trimmed };
+}
+
+type InternalSection = PlanSection & {
+  source: "heading" | "bold";
+};
 
 export function parsePlan(markdown: string): Plan | null {
   if (typeof markdown !== "string" || markdown.trim().length === 0) return null;
@@ -72,25 +122,38 @@ export function parsePlan(markdown: string): Plan | null {
   }
   if (titleIdx === -1 || title.length === 0) return null;
 
-  // 2. Walk the rest, splitting at section markers. A section marker is:
-  //    (a) any heading with depth > titleDepth, OR
-  //    (b) a paragraph whose first phrasing child is a `strong` followed by ":"
-  //        (with or without inline body content after it).
+  // 2. Walk the rest, splitting at section markers.
   const summary: string[] = [];
   const sections: PlanSection[] = [];
   let trailingQuestionParagraph: string | null = null;
   let optionsList: List | null = null;
 
-  // openSection holds the "current" section being filled until the next marker.
-  let openSection: PlanSection | null = null;
+  let openSection: InternalSection | null = null;
+  let openSubSection: PlanSubSection | null = null;
   let preSectionPhase = true; // before we've seen any section marker
   let inActionBlock = false;
   let explicitActionQuestion: string | null = null;
   let explicitActionList: List | null = null;
 
-  const finalize = (): void => {
+  const finalizeSubSection = (): void => {
+    if (openSubSection && openSection) {
+      if (!openSection.subsections) openSection.subsections = [];
+      openSection.subsections.push(openSubSection);
+      openSubSection = null;
+    }
+  };
+
+  const finalizeSection = (): void => {
+    finalizeSubSection();
     if (openSection) {
-      sections.push(openSection);
+      sections.push({
+        label: openSection.label,
+        items: openSection.items,
+        note: openSection.note,
+        subsections: openSection.subsections,
+        badge: openSection.badge,
+        title: openSection.title
+      });
       openSection = null;
     }
   };
@@ -100,18 +163,36 @@ export function parsePlan(markdown: string): Plan | null {
     if (!node) continue;
 
     // (a) Heading marker
-    if (node.type === "heading" && node.depth > titleDepth) {
-      finalize();
-      preSectionPhase = false;
+    if (node.type === "heading") {
       const label = stringifyInlineFromHeadingOrParagraph(markdown, node);
       if (ACTION_LABEL.test(label.trim())) {
+        finalizeSection();
+        preSectionPhase = false;
         inActionBlock = true;
         explicitActionQuestion = null;
         explicitActionList = null;
         continue;
       }
-      inActionBlock = false;
-      openSection = { label, items: [] };
+
+      const isSub = openSection !== null && node.depth > titleDepth + 1;
+
+      if (isSub) {
+        finalizeSubSection();
+        const kind = classifySubsectionKind(label);
+        openSubSection = { label, items: [], kind };
+      } else {
+        finalizeSection();
+        preSectionPhase = false;
+        inActionBlock = false;
+        const { badge, title: sectionTitle } = extractBadgeAndTitle(label);
+        openSection = {
+          label,
+          items: [],
+          badge,
+          title: sectionTitle,
+          source: "heading"
+        };
+      }
       continue;
     }
 
@@ -119,18 +200,42 @@ export function parsePlan(markdown: string): Plan | null {
     if (node.type === "paragraph") {
       const labelInfo = boldLabelInfo(markdown, node);
       if (labelInfo) {
-        finalize();
-        preSectionPhase = false;
         if (ACTION_LABEL.test(labelInfo.label.trim())) {
+          finalizeSection();
+          preSectionPhase = false;
           inActionBlock = true;
-          // A bold-label action may carry the question inline as the note.
           if (labelInfo.note) explicitActionQuestion = labelInfo.note;
           explicitActionList = null;
           continue;
         }
-        inActionBlock = false;
-        openSection = { label: labelInfo.label, items: [] };
-        if (labelInfo.note) openSection.note = labelInfo.note;
+
+        const kind = classifySubsectionKind(labelInfo.label);
+        const treatAsSub = openSection !== null && (
+          (openSection.source === "heading" && (openSection.badge !== undefined || kind !== "default"))
+        );
+
+        if (treatAsSub && openSection) {
+          finalizeSubSection();
+          openSubSection = {
+            label: labelInfo.label,
+            items: [],
+            note: labelInfo.note,
+            kind
+          };
+        } else {
+          finalizeSection();
+          preSectionPhase = false;
+          inActionBlock = false;
+          const { badge, title: sectionTitle } = extractBadgeAndTitle(labelInfo.label);
+          openSection = {
+            label: labelInfo.label,
+            items: [],
+            note: labelInfo.note,
+            badge,
+            title: sectionTitle,
+            source: "bold"
+          };
+        }
         continue;
       }
     }
@@ -141,19 +246,23 @@ export function parsePlan(markdown: string): Plan | null {
         explicitActionList = node;
         continue;
       }
-      if (openSection) {
-        // First list inside a section fills its items.
-        if (openSection.items.length === 0) {
-          openSection.items = node.children
-            .filter((c): c is ListItem => c.type === "listItem")
-            .map((item) => parseListItem(markdown, item))
-            .filter((item): item is PlanItem => item !== null);
+      const parsedItems = node.children
+        .filter((c): c is ListItem => c.type === "listItem")
+        .map((item) => parseListItem(markdown, item))
+        .filter((item): item is PlanItem => item !== null);
+
+      if (openSubSection) {
+        if (openSubSection.items.length === 0) {
+          openSubSection.items = parsedItems;
         }
         continue;
       }
-      // A list outside any section may be the option list for the trailing
-      // question. We track it but only honor it later if the trailing
-      // question paragraph is right before it.
+      if (openSection) {
+        if (openSection.items.length === 0) {
+          openSection.items = parsedItems;
+        }
+        continue;
+      }
       if (trailingQuestionParagraph) {
         optionsList = node;
       }
@@ -167,11 +276,8 @@ export function parsePlan(markdown: string): Plan | null {
         if (text.length > 0 && !explicitActionQuestion) explicitActionQuestion = text;
         continue;
       }
-      // A "?"-ending paragraph anywhere outside an explicit action block is
-      // a candidate for the trailing question — that takes priority over
-      // attaching it as a section's note.
       if (text.endsWith("?")) {
-        finalize();
+        finalizeSection();
         trailingQuestionParagraph = text;
         optionsList = null;
         continue;
@@ -180,21 +286,21 @@ export function parsePlan(markdown: string): Plan | null {
         if (text.length > 0) summary.push(text);
         continue;
       }
+      if (openSubSection) {
+        if (!openSubSection.note && text.length > 0) openSubSection.note = text;
+        else if (text.length > 0) openSubSection.note += "\n\n" + text;
+        continue;
+      }
       if (openSection) {
-        // A paragraph inside a section becomes the note (only set the first one).
         if (!openSection.note && text.length > 0) openSection.note = text;
+        else if (text.length > 0) openSection.note += "\n\n" + text;
         continue;
       }
     }
-
-    // Anything else (code blocks, thematic breaks) is ignored — plans live in
-    // text + lists.
   }
-  finalize();
+  finalizeSection();
 
-  // 3. The action question. An explicit ## Action / **Action:** block beats
-  //    the trailing-paragraph heuristic; otherwise fall back to a "?"-ending
-  //    paragraph; otherwise synthesize defaults.
+  // 3. The action question.
   let action: PlanAction = DEFAULT_ACTION;
   const actionQuestion = explicitActionQuestion ?? trailingQuestionParagraph;
   const actionList = explicitActionList ?? optionsList;
@@ -211,11 +317,9 @@ export function parsePlan(markdown: string): Plan | null {
     };
   }
 
-  // 4. Plan must surface SOME structure beyond the title — at least one section
-  //    with items, or a section with a note, or a non-default action. Otherwise
-  //    fall back to ChatBubble (a one-sentence reply shouldn't become a card).
+  // 4. Plan must surface SOME structure beyond the title.
   const hasStructure =
-    sections.some((s) => s.items.length > 0 || s.note) ||
+    sections.some((s) => s.items.length > 0 || s.note || (s.subsections && s.subsections.length > 0)) ||
     Boolean(actionQuestion) ||
     summary.length > 1;
   if (!hasStructure) return null;

@@ -551,7 +551,8 @@ export const SESSION_ICON_COLORS: readonly string[] = [
   "plum",
   "clay",
   "amber",
-  "pink"
+  "pink",
+  "red"
 ];
 
 export const DEFAULT_SESSION_ICON_COLOR = "blue";

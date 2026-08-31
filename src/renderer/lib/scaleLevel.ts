@@ -13,6 +13,8 @@ export type ScaleLevel = 1 | 2 | 3 | 4 | 5;
 
 export const SCALE_LEVELS: readonly ScaleLevel[] = [1, 2, 3, 4, 5];
 export const DEFAULT_SCALE_LEVEL: ScaleLevel = 3;
+export const SCALE_LEVEL_MIN: ScaleLevel = 1;
+export const SCALE_LEVEL_MAX: ScaleLevel = 5;
 
 /** Radio options for a `Segmented` control. The level is its own label. */
 export const SCALE_LEVEL_CHOICES = SCALE_LEVELS.map((level) => ({
@@ -25,9 +27,9 @@ export function isScaleLevel(value: unknown): value is ScaleLevel {
 }
 
 /** Parse a stored/selected level. Returns `null` for anything off the scale. */
-export function toScaleLevel(raw: string | null | undefined): ScaleLevel | null {
-  if (!raw) return null;
-  const parsed = Number.parseInt(raw, 10);
+export function toScaleLevel(raw: string | number | null | undefined): ScaleLevel | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const parsed = typeof raw === "number" ? raw : Number.parseInt(raw, 10);
   return isScaleLevel(parsed) ? parsed : null;
 }
 

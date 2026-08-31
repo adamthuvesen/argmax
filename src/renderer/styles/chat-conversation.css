@@ -561,7 +561,9 @@
   line-height: 1.7;
 }
 
-.agent-activity-prompt .markdown > :where(p, ul, ol, blockquote, h1, h2, h3, h4, pre, table) {
+.agent-activity-prompt
+  .markdown
+  > :where(p, ul, ol, blockquote, h1, h2, h3, h4, pre, .markdown-table-scroll) {
   max-width: none;
 }
 
@@ -576,7 +578,7 @@
 }
 
 .agent-activity-prompt .markdown pre,
-.agent-activity-prompt .markdown table,
+.agent-activity-prompt .markdown .markdown-table-scroll,
 .agent-activity-prompt .markdown blockquote {
   margin-top: 8px;
   margin-bottom: 10px;
@@ -646,7 +648,7 @@
 }
 
 .agent-tab[data-active="true"] {
-  background: var(--panel-sunken);
+  background: var(--row-selected);
   color: var(--text);
 }
 
@@ -829,7 +831,12 @@
   min-height: 0;
   flex-direction: column;
   gap: var(--conversation-list-gap);
-  overflow: auto;
+  /* Vertical only. The transcript is a column, so anything wide enough to make
+     it scroll sideways (a markdown table before `.markdown-table-scroll` boxed
+     it) doesn't widen the reading column — it just makes every message drift
+     under the thumb. Wide blocks own their own sideways scroller instead. */
+  overflow-y: auto;
+  overflow-x: hidden;
   /* A constant tail gap keeps the newest streamed line clear of the bottom
      edge. It stays the same in the idle and live states on purpose: a gap
      that only appeared while streaming would be reclaimed the instant the
@@ -906,7 +913,10 @@
 .markdown {
   font-family: var(--font-prose);
   font-size: var(--text-base);
-  line-height: 1.9;
+  /* Book-column leading (1.9) floated headings so far from their first line
+     that they stopped reading as owning the section below them. 1.74 keeps the
+     transcript airy without breaking that attachment. */
+  line-height: 1.74;
   font-weight: var(--weight-prose);
   color: var(--prose-ink);
 }
@@ -924,7 +934,7 @@
 }
 
 .markdown p {
-  margin: 0 0 18px;
+  margin: 0 0 15px;
   white-space: normal;
 }
 
@@ -934,16 +944,17 @@
 
 /* A paragraph immediately followed by a list is a lead-in ("Three-layer
    structure:" → bullets). Pull it tight to its list so the two read as one
-   group, while ordinary paragraph-to-paragraph spacing stays open. This is the
+   group, while ordinary paragraph-to-paragraph spacing stays open — the
    tight-within / loose-between rhythm that lets the eye see what belongs to
-   what. Keep it only lightly lifted so it registers as a
-   section header when skimming a long answer, not just bold body text. */
+   what.
+
+   Proximity is the whole treatment. Lifting the weight as well used to make a
+   lead-in that ran past one line render as a two-line wall of semibold that
+   outweighed the real `h3` above it; now that headings carry their own ink and
+   weight, this doesn't need to imitate one. */
 .markdown p:has(+ ul),
 .markdown p:has(+ ol) {
-  margin-bottom: 10px;
-  font-size: var(--text-base);
-  font-weight: 520;
-  letter-spacing: 0;
+  margin-bottom: 8px;
 }
 
 .markdown strong {
@@ -984,7 +995,9 @@
 }
 
 .markdown pre {
-  margin: 14px 0;
+  /* pre, blockquote and table share one gap: they are all "not prose", and
+     three different values between unlike blocks reads as drift, not rhythm. */
+  margin: 18px 0;
   padding: 12px 14px;
   border-radius: var(--radius-sm);
   background: var(--panel-sunken);
@@ -1006,8 +1019,11 @@
 .markdown ol {
   /* Hug the lead-in above and leave a clear gap below so the bulleted group
      separates from the next section without becoming a ladder of rows. */
-  margin: 8px 0 20px;
-  padding-left: 24px;
+  margin: 6px 0 18px;
+  /* em, not px: the marker column has to widen with --type-step or a
+     double-digit marker ("11.") overflows it at the larger font sizes and
+     shunts the whole list left. */
+  padding-left: 1.65em;
 }
 
 .markdown ol {
@@ -1023,16 +1039,16 @@
 
 .markdown ol > li:only-child {
   font-size: var(--text-base-plus);
-  font-weight: 520;
-  letter-spacing: 0;
+  font-weight: 600;
+  letter-spacing: -0.004em;
   color: var(--prose-ink-strong);
-  margin: 22px 0 5px;
-  line-height: 1.4;
+  margin: 22px 0 6px;
+  line-height: 1.42;
 }
 
 .markdown ol > li:only-child::marker {
   color: var(--accent);
-  font-weight: 520;
+  font-weight: 600;
 }
 
 .markdown ol:has(> li:only-child) + ul {
@@ -1043,11 +1059,26 @@
 .markdown ol:last-child {
   margin-bottom: 0;
 }
-
+/* A row is tighter than the paragraphs around it (shorter measure, no
+   indent to re-find) and the gap between rows is wider than the row's own
+   leading. Get that backwards and a wrapped continuation line reads as a new
+   bullet — which is what a 21.8px line box above a 5px item gap did. */
 .markdown li {
-  margin: 5px 0;
+  margin: 0;
   padding-left: 2px;
   line-height: 1.6;
+}
+
+/* Between siblings only, so the first and last rows stay hugged to the list's
+   own margins and the group reads as one block. */
+.markdown li + li {
+  margin-top: 9px;
+}
+
+/* A nested list is one level tighter than its parent, so depth reads as
+   depth rather than as a second list of equals. */
+.markdown li li + li {
+  margin-top: 6px;
 }
 
 .markdown ul > li::marker {
@@ -1065,39 +1096,75 @@
 
 .markdown li > ul,
 .markdown li > ol {
-  margin: 3px 0;
+  /* No bottom margin: the nested list is the last thing in its row, so any
+     trailing space would land inside the parent item. */
+  margin: 7px 0 0;
 }
 
-.markdown h1,
-.markdown h2,
-.markdown h3,
-.markdown h4 {
-  margin: 28px 0 10px;
-  font-weight: 450;
-  letter-spacing: 0;
-  line-height: 1.3;
-  color: color-mix(in oklab, var(--text-soft) 82%, var(--muted) 18%);
-}
+/* The ink ladder has to stay monotonic: h1-h3 on --prose-ink-strong, `strong`
+   at 520 one step under them, body on --prose-ink. Painting headings from
+   --text-soft/--muted put them *behind* the paragraphs they introduce and let
+   bold body text win the page, which is what made a heading-heavy answer read
+   as one flat river.
 
+   Size does little of the work here — the range is one token wider than the
+   body, so an answer full of `##` never shouts inside a 780px prose column.
+   Weight, ink, and asymmetric space carry the hierarchy instead: generous
+   above (the previous section ends), tight below (this heading owns what
+   follows). */
 .markdown h1 {
   font-size: var(--text-lg);
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--line-soft);
+  font-weight: 580;
+  /* Optical tracking scales with the size — at 13px it would be invisible, at
+     18px an untracked line reads loose. */
+  letter-spacing: -0.014em;
+  line-height: 1.3;
+  color: var(--prose-ink-strong);
+  margin: 34px 0 10px;
+  padding-bottom: 7px;
+  /* Faint accent tint reads as a chapter break without shifting the hue of
+     the heading itself. */
+  border-bottom: 1px solid color-mix(in oklab, var(--accent) 26%, var(--line));
 }
 
 .markdown h2 {
   font-size: var(--text-md);
+  font-weight: 570;
+  letter-spacing: -0.009em;
+  line-height: 1.34;
+  color: var(--prose-ink-strong);
+  margin: 28px 0 8px;
 }
 
 .markdown h3 {
   font-size: var(--text-base-plus);
+  font-weight: 600;
+  letter-spacing: -0.004em;
+  line-height: 1.42;
+  color: var(--prose-ink-strong);
+  margin: 22px 0 6px;
 }
 
+/* The one small-caps step. Below body size it needs the tracking and the case
+   to register as a label rather than as shrunken prose. */
 .markdown h4 {
   font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 20px 0 6px;
   color: var(--muted-strong);
-  text-transform: none;
-  letter-spacing: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.085em;
+}
+
+/* Whatever follows a heading is its first line, so it never stacks its own
+   top margin on the heading's tight bottom one — an 18px code block or table
+   landing under a heading's 8px gap breaks the ownership the asymmetry buys.
+   `:is()` rather than `:where()`: zero-specificity would lose to `.markdown
+   pre` and the rule would silently do nothing. Headings are deliberately not
+   in the target list — a subheading under its parent keeps its own space. */
+.markdown :is(h1, h2, h3, h4) + :is(p, ul, ol, pre, blockquote, .markdown-table-scroll) {
+  margin-top: 0;
 }
 
 .markdown blockquote {
@@ -1108,7 +1175,6 @@
   border-left: 3px solid var(--accent);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   color: var(--text-soft);
-  font-style: italic;
 }
 
 .markdown blockquote > *:first-child {
@@ -1119,9 +1185,25 @@
   margin-bottom: 0;
 }
 
+/* The box a wide table scrolls inside (see MarkdownTable.tsx). It is a block,
+   so it never exceeds the column the table sits in. `touch-action` is an
+   intersection down the ancestor chain — a descendant can only narrow it — so
+   the surrounding scroller has to permit pan-x too; mobile.css does. */
+.markdown-table-scroll {
+  max-width: 100%;
+  /* Joins the shared not-prose gap with pre and blockquote. */
+  margin: 18px 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+}
+
 .markdown table {
   width: 100%;
-  margin: 20px 0;
+  /* No margin here on purpose. `.markdown-table-scroll` is a BFC (overflow-x),
+     so a margin on the table would add inside the wrapper rather than collapse
+     out of it — 18px here reads as 38px of gap plus dead space in the box. The
+     wrapper below owns the table's rhythm. */
   border-collapse: collapse;
   border-spacing: 0;
   font-size: var(--text-base);

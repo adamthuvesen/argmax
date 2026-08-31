@@ -108,14 +108,15 @@ describe("SessionConversation — tools & chrome", () => {
     );
 
     expect(screen.getByRole("button", { name: /Engram recall/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("Input")).toBeInTheDocument();
-    expect(screen.getByText("Output")).toBeInTheDocument();
+    // Arguments read as a key/value list, the payload needs no label at all.
+    expect(screen.getByText(/query Argmax project state/)).toBeInTheDocument();
+    expect(screen.getByText(/stored fact/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
 
     expect(screen.getByRole("button", { name: /Engram recall/ })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("Input")).toBeNull();
-    expect(screen.queryByText("Output")).toBeNull();
+    expect(screen.queryByText(/query Argmax project state/)).toBeNull();
+    expect(screen.queryByText(/stored fact/)).toBeNull();
   });
 
   it("renders agent launches as a list outside tool groups", () => {
@@ -289,16 +290,18 @@ describe("SessionConversation — tools & chrome", () => {
     );
 
     const agentRow = screen.getByRole("button", { name: startedAgentName("Explore repo quickly and report key files.") });
-    expect(screen.queryByText("Input")).not.toBeInTheDocument();
+    expect(screen.queryByText("prompt")).not.toBeInTheDocument();
 
     fireEvent.click(agentRow);
     expect(onOpenAgent).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("Input")).not.toBeInTheDocument();
+    expect(screen.queryByText("prompt")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", {
       name: toggleAgentDetailsName("Explore repo quickly and report key files.")
     }));
 
-    expect(screen.getByText("Input")).toBeInTheDocument();
+    // Codex spawn metadata is the only detail it gives us: shown as arguments,
+    // not as a JSON dump behind an Input disclosure.
+    expect(screen.getByText("prompt")).toBeInTheDocument();
     expect(screen.getByText(/receiver-thread/)).toBeInTheDocument();
   });
 
@@ -819,7 +822,8 @@ describe("SessionConversation — single-line activity mode", () => {
     const output = screen.getByText(/- \[ \] mpa/);
     expect(output.textContent).not.toContain("\\n");
     expect(output.textContent).not.toContain("metadata");
-    expect(screen.getByText(/— Todo/)).toBeInTheDocument();
+    // The envelope's title rides the footer facts instead of a floating label.
+    expect(screen.getByText(/Todo · /)).toBeInTheDocument();
   });
 
   it("keeps default rendering untouched when the display mode is not single-line", () => {

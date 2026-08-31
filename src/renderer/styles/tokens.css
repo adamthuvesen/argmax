@@ -27,6 +27,12 @@
   /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
      mode so output blocks read airier; dark reuses its sunken surface. */
   --code-surface: #f4f6f7;
+  /* The expanded tool-call block, and the diff card body under it. Paper sinks
+     into a well, charcoal lifts out of one: in light this sits just under the
+     page, in dark it sits just above it. A block set from --code-surface in
+     dark landed *below* the ground (--panel-sunken), so a payload read as a
+     hole punched in the transcript instead of a quiet raised surface. */
+  --tool-block-surface: #f5f6f7;
 
   --line: #e3e6e8;
   --line-soft: #eceeef;
@@ -212,6 +218,14 @@
      to register, never bright enough to read as a spotlight. */
   --row-hover: rgba(255, 255, 255, 0.6);
 
+  /* Selected-row fill, shared by the sidebar's sessions, the model picker, the
+     settings nav, and the agent tabs. Defined once so those four surfaces
+     cannot drift apart again. Each theme points it at the quiet gray one step
+     off its own ground: in light that is --panel-sunken, because --panel-soft
+     (#fafafa) is a single step from the sidebar's #fafbfb and disappears
+     there. See the dark override for why dark cannot use --panel-sunken. */
+  --row-selected: var(--panel-sunken);
+
   font-family: var(--font-ui);
   font-weight: var(--weight-ui);
   font-feature-settings: "calt", "ss01", "tnum";
@@ -362,6 +376,7 @@
   --panel-soft: #242422;
   --panel-sunken: #0e0e0d;
   --code-surface: var(--panel-sunken);
+  --tool-block-surface: #1a1a18;
 
   --line: #2b2b29;
   --line-soft: #212120;
@@ -493,6 +508,13 @@
      register, far below the glaring light-gray that rgba(255,255,255,0.6)
      resolves to against dark charcoal. */
   --row-hover: rgba(255, 250, 235, 0.06);
+
+  /* In dark, --panel-sunken (#0e0e0d) is darker than every surface a selected
+     row sits on, so selection read as a hole — disabled rather than chosen. A
+     selected row should be the brightest thing in its list, so dark takes the
+     hover gray instead. Selection is then separated from hover by ink, not
+     fill: the selected row keeps --text and, in the model picker, weight 500. */
+  --row-selected: var(--panel-soft);
 }
 
 /* Configurable chrome accent. These tokens are for brand/decorative tint:

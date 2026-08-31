@@ -175,7 +175,6 @@ describe("accent CSS contract", () => {
 
   it("keeps tool-summary labels neutral and quieter than assistant prose", () => {
     const chatTurns = readSource("src/renderer/styles/chat-turns.css");
-    const chatTools = readSource("src/renderer/styles/chat-tools.css");
     const labelRule = cssRuleBody(chatTurns, ".tool-call-group-eyebrow-label");
     const previewRule = cssRuleBody(chatTurns, ".tool-call-group-preview");
     const detailRule = cssRuleBody(chatTurns, ".tool-call-group-eyebrow-detail");
@@ -185,7 +184,6 @@ describe("accent CSS contract", () => {
       chatTurns,
       '.tool-call-row[data-tool-type="bash"] .tool-call-row-target'
     );
-    const resourceRowRule = cssRuleBody(chatTools, ".tool-call-resource-row code");
 
     expect(labelRule).toContain("font-weight: 400;");
     expect(labelRule).toContain("letter-spacing: 0;");
@@ -208,7 +206,6 @@ describe("accent CSS contract", () => {
     // and for shell commands, which really are code.
     expect(rowTargetRule).toContain("font-family: inherit;");
     expect(bashTargetRule).toContain("font-family: var(--font-code);");
-    expect(resourceRowRule).toContain("color: var(--path-ink);");
   });
 
   it("keeps expanded tool details quiet and preview-like", () => {
@@ -216,11 +213,18 @@ describe("accent CSS contract", () => {
     const chatTools = readSource("src/renderer/styles/chat-tools.css");
     const detailRule = cssRuleBody(chatTurns, ".tool-call-detail");
     const rowDetailRule = cssRuleBody(chatTools, ".tool-call-row > .tool-call-detail");
-    const labelRule = cssRuleBody(chatTurns, ".tool-call-section-label");
+    const blockRule = cssRuleBody(chatTurns, ".tool-call-block");
+    const blockBodyRule = cssRuleBody(chatTurns, ".tool-call-block-body");
+    const ruleRule = cssRuleBody(chatTurns, ".tool-call-block-rule");
+    const footRule = cssRuleBody(chatTurns, ".tool-call-block-foot");
+    const argsRule = cssRuleBody(chatTurns, ".tool-call-args");
+    const labelRule = cssRuleBody(chatTurns, ".tool-call-part-label");
     const codeRule = cssRuleBody(chatTurns, ".tool-call-code");
-    const commandLineRule = cssRuleBody(chatTurns, ".tool-call-command-line");
-    const terminalRule = cssRuleBody(chatTurns, ".tool-call-code--terminal");
-    const rawSummaryRule = cssRuleBody(chatTurns, ".tool-call-raw-input summary");
+    const errorRule = cssRuleBody(chatTurns, ".tool-call-code--error");
+    const bashTargetRule = cssRuleBody(
+      chatTurns,
+      ".tool-call-row[data-tool-type=\"bash\"] .tool-call-row-target"
+    );
     const runningItemRule = cssRuleBody(
       chatTurns,
       ".tool-call-item[data-status=\"running\"]:not(.tool-call-item--nested)"
@@ -231,26 +235,53 @@ describe("accent CSS contract", () => {
     );
 
     expect(detailRule).toContain("gap: 10px;");
-    expect(detailRule).toContain("border-top: 1px solid color-mix(in oklab, var(--line-soft) 58%, transparent);");
-    // Flush with the row's own left edge and with no rail of its own: the
-    // expanded diff's hairline is the only border in the transcript.
+    // Flush with the row's own left edge and with no rail of its own.
     expect(rowDetailRule).toContain("margin: 2px 0 8px;");
     expect(rowDetailRule).not.toContain("border-left");
     expect(chatTools).not.toContain(".tool-call-row[data-status=\"error\"] > .tool-call-detail");
     expect(runningItemRule).not.toContain("box-shadow");
     expect(errorItemRule).not.toContain("box-shadow");
+
+    // One soft fill per tool call: no border, no rail, one radius, hugging its
+    // own content instead of stretching the column.
+    expect(blockRule).toContain("width: fit-content;");
+    // Paper sinks, charcoal lifts: the fill is a token, because a single
+    // --code-surface mix put the dark block *below* the transcript ground.
+    expect(blockRule).toContain("background: var(--tool-block-surface);");
+    expect(blockRule).toContain("border-radius: var(--radius-md);");
+    expect(blockRule).not.toContain("border:");
+    expect(blockRule).not.toContain("border-left");
+
+    // One scroller, and it is the block's body — never a max-height per payload.
+    expect(blockBodyRule).toContain("max-height: calc(16 * 1.65em);");
+    expect(blockBodyRule).toContain("overflow: auto;");
+    expect(codeRule).not.toContain("max-height");
+    expect(codeRule).toContain("border: 0;");
+    expect(codeRule).toContain("background: transparent;");
+    expect(codeRule).toContain("line-height: 1.7;");
+    // The payload reads a notch under the assistant prose beside it.
+    expect(codeRule).toContain("color: color-mix(in oklab, var(--text) 72%, var(--muted-strong) 28%);");
+
+    // Parts are separated inside the fill by a hairline, not by a box each.
+    expect(ruleRule).toContain("background: color-mix(in oklab, var(--line) 74%, transparent);");
+    expect(ruleRule).toContain("height: 1px;");
+
+    // Arguments read as a key/value list; the footer is the one meta row.
+    expect(argsRule).toContain("font-feature-settings: var(--code-font-features);");
+    expect(argsRule).toContain("grid-template-columns: max-content minmax(0, 1fr);");
+    expect(footRule).toContain("font-size: var(--text-xs);");
+    expect(footRule).toContain("color: var(--muted);");
+
+    // Error and Preview are the only labelled parts, and a failure is rose text
+    // rather than a rose box.
     expect(labelRule).toContain("font-weight: 450;");
     expect(labelRule).toContain("color: color-mix(in oklab, var(--muted) 88%, var(--text-soft) 12%);");
-    expect(codeRule).toContain("background: color-mix(in oklab, var(--code-surface) 46%, transparent);");
-    expect(codeRule).toContain("border: 1px solid color-mix(in oklab, var(--line-soft) 64%, transparent);");
-    expect(codeRule).toContain("line-height: 1.7;");
-    expect(codeRule).toContain("max-height: 300px;");
-    expect(commandLineRule).toContain("background: color-mix(in oklab, var(--code-surface) 28%, transparent);");
-    expect(commandLineRule).toContain("line-height: 1.55;");
-    expect(commandLineRule).toContain("white-space: pre;");
-    expect(terminalRule).toContain("background: color-mix(in oklab, var(--code-surface) 52%, transparent);");
-    expect(terminalRule).toContain("border-color: color-mix(in oklab, var(--line) 58%, transparent);");
-    expect(rawSummaryRule).toContain("font-weight: 450;");
+    expect(errorRule).toContain("color: color-mix(in oklab, var(--rose) 72%, var(--text));");
+    expect(errorRule).not.toContain("background:");
+
+    // A bash row shows text the app did not author, so ligatures stay off or a
+    // run of `=` fuses into one bar and the command reads as struck through.
+    expect(bashTargetRule).toContain("font-feature-settings: var(--code-font-features);");
   });
 
   it("keeps inline markdown code and file refs quiet, colored, and unfilled", () => {
@@ -386,8 +417,10 @@ describe("accent CSS contract", () => {
     const bubbleRule = cssRuleBody(chatConversation, ".chat-bubble");
     const userBubbleRule = cssRuleBody(chatConversation, ".chat-bubble.user");
     const userBubbleBodyRule = cssRuleBody(chatConversation, ".chat-bubble.user .chat-bubble-body");
+    const composerRule = cssRuleBody(chatChrome, ".composer");
     const composerFocusRule = cssRuleBody(chatChrome, ".launcher-surface .composer:focus-within");
     const launchSendButtonRule = cssRuleBody(chatChrome, ".send-button");
+    const sessionInputRule = cssRuleBody(chatTools, ".session-input");
     const sessionInputFocusRule = cssRuleBody(chatTools, ".session-input:focus-within");
 
     expect(tokens).toContain("--user-message-bg: var(--accent);");
@@ -443,13 +476,19 @@ describe("accent CSS contract", () => {
     expect(userBubbleRule).not.toContain("border:");
     expect(userBubbleBodyRule).toContain("padding-right: 4px;");
     expect(userBubbleBodyRule).toContain("margin-right: -4px;");
-    expect(composerFocusRule).toContain("border-color: color-mix(in oklab, var(--accent) 68%, var(--line-strong));");
-    expect(composerFocusRule).toContain("0 0 0 2px color-mix(in oklab, var(--accent) 16%, transparent)");
+    // Both composers are borderless and share the same focus lift.
+    expect(composerRule).toContain("border: 0;");
+    expect(composerFocusRule).not.toContain("border-color:");
+    expect(composerFocusRule).not.toContain("var(--accent)");
     expect(launchSendButtonRule).toContain("width: 28px;");
     expect(launchSendButtonRule).toContain("height: 28px;");
     expect(launchSendButtonRule).toContain("border-radius: 999px;");
-    expect(sessionInputFocusRule).toContain("border-color: color-mix(in oklab, var(--accent) 68%, var(--line-strong));");
-    expect(sessionInputFocusRule).toContain("0 0 0 2px color-mix(in oklab, var(--accent) 16%, transparent)");
+    // The session composer is borderless too: its panel fill seats it on the
+    // surface, and focus deepens the lift rather than drawing an accent ring
+    // that would read as the border it doesn't have.
+    expect(sessionInputRule).toContain("border: 0;");
+    expect(sessionInputFocusRule).not.toContain("border-color:");
+    expect(sessionInputFocusRule).not.toContain("var(--accent)");
   });
 
   it("keeps session composer text aligned with assistant prose size", () => {
@@ -735,7 +774,7 @@ describe("accent CSS contract", () => {
     expect(bubbleParagraphRule).toContain("line-height: 1.68;");
     expect(markdownRule).toContain("font-family: var(--font-prose);");
     expect(markdownRule).toContain("font-size: var(--text-base);");
-    expect(markdownRule).toContain("line-height: 1.9;");
+    expect(markdownRule).toContain("line-height: 1.74;");
     expect(markdownRule).toContain("color: var(--prose-ink);");
     // Agent paragraphs are painted by `.chat-bubble p`, not by the inherited
     // `.markdown` ink — a rule landing on the element beats inheritance. The
@@ -775,34 +814,112 @@ describe("accent CSS contract", () => {
     expect(fullyDockedColumnRule).toContain("--session-inline-padding: clamp(20px, calc((100% - var(--chat-content-width-tight)) / 2), 2000px);");
   });
 
-  it("keeps markdown hierarchy restrained in chat", () => {
+  it("keeps the markdown ink and weight ladder monotonic in chat", () => {
     const chatConversation = readSource("src/renderer/styles/chat-conversation.css");
+    const markdownRule = cssRuleBody(chatConversation, ".markdown");
     const leadInRule = cssRuleBody(chatConversation, ".markdown p:has(+ ul),\n.markdown p:has(+ ol)");
     const strongRule = cssRuleBody(chatConversation, ".markdown strong");
     const listRule = cssRuleBody(chatConversation, ".markdown ul,\n.markdown ol");
     const listItemRule = cssRuleBody(chatConversation, ".markdown li");
     const singleItemHeadingRule = cssRuleBody(chatConversation, ".markdown ol > li:only-child");
-    const headingRule = cssRuleBody(
-      chatConversation,
-      ".markdown h1,\n.markdown h2,\n.markdown h3,\n.markdown h4"
-    );
     const h1Rule = cssRuleBody(chatConversation, ".markdown h1");
     const h2Rule = cssRuleBody(chatConversation, ".markdown h2");
+    const h3Rule = cssRuleBody(chatConversation, ".markdown h3");
+    const h4Rule = cssRuleBody(chatConversation, ".markdown h4");
 
-    expect(leadInRule).toContain("font-size: var(--text-base);");
-    expect(leadInRule).toContain("font-weight: 520;");
-    expect(strongRule).toContain("font-weight: 520;");
-    expect(listRule).toContain("margin: 8px 0 20px;");
-    expect(listRule).toContain("padding-left: 24px;");
-    expect(listItemRule).toContain("margin: 5px 0;");
-    expect(listItemRule).toContain("line-height: 1.6;");
-    expect(singleItemHeadingRule).toContain("font-size: var(--text-base-plus);");
-    expect(singleItemHeadingRule).toContain("font-weight: 520;");
-    expect(headingRule).toContain("font-weight: 450;");
-    expect(headingRule).toContain("letter-spacing: 0;");
+    const weightOf = (rule: string) =>
+      Number(/font-weight:\s*(?<weight>\d+);/.exec(rule)?.groups?.weight);
+    const marginsOf = (rule: string) => {
+      const margin = /margin:\s*(?<top>-?[\d.]+)px 0 (?<bottom>-?[\d.]+)px;/.exec(rule)?.groups;
+      return { top: Number(margin?.top), bottom: Number(margin?.bottom) };
+    };
+
+    // The bug this pins: headings used to be painted from --text-soft/--muted at
+    // weight 450, so every heading sat *behind* the paragraphs it introduced and
+    // `strong` outranked all of them. A heading-heavy answer then read as one
+    // flat river with bold body text as the de-facto heading. The ladder has to
+    // stay monotonic — headings at or above emphasis, emphasis above body.
+    expect(markdownRule).toContain("color: var(--prose-ink);");
+    expect(strongRule).toContain("color: var(--prose-ink-strong);");
+    for (const rule of [h1Rule, h2Rule, h3Rule]) {
+      expect(rule).toContain("color: var(--prose-ink-strong);");
+      expect(weightOf(rule)).toBeGreaterThanOrEqual(weightOf(strongRule));
+    }
+    expect(weightOf(strongRule)).toBeGreaterThan(400);
+
+    // Size does little of the work: one token wider than the body, so an answer
+    // full of `##` never shouts inside a 780px prose column.
     expect(h1Rule).toContain("font-size: var(--text-lg);");
     expect(h2Rule).toContain("font-size: var(--text-md);");
-    expect(chatConversation).toContain(".markdown h4 {\n  font-size: var(--text-sm);\n  color: var(--muted-strong);\n  text-transform: none;");
+    expect(h3Rule).toContain("font-size: var(--text-base-plus);");
+    // Proximity alone marks a lead-in. A weight or ink lift here made a
+    // lead-in that ran past one line render as a wall of semibold heavier than
+    // the real h3 above it, so the treatment is the tightened gap and nothing
+    // else.
+    expect(leadInRule).toContain("margin-bottom: 8px;");
+    expect(leadInRule).not.toContain("font-weight");
+    expect(leadInRule).not.toContain("color:");
+
+    // Space is asymmetric — generous above (the previous section ends), tight
+    // below (this heading owns what follows) — and the following block never
+    // stacks its own top margin on that tight gap.
+    for (const rule of [h1Rule, h2Rule, h3Rule, h4Rule]) {
+      const { top, bottom } = marginsOf(rule);
+      expect(top).toBeGreaterThan(bottom * 2);
+    }
+    // `:where()` contributes zero specificity, so `.markdown :where(h1, h2,
+    // h3, h4) + *` scores (0,1,0) and loses to `.markdown pre` (0,1,1) — the
+    // reset silently does nothing. `:is()` plus an explicit target list scores
+    // (0,1,2) and actually wins. Headings stay out of the target list so a
+    // subheading under its parent keeps its own space.
+    const headingResetRule = cssRuleBody(
+      chatConversation,
+      ".markdown :is(h1, h2, h3, h4) + :is(p, ul, ol, pre, blockquote, .markdown-table-scroll)"
+    );
+    expect(headingResetRule).toContain("margin-top: 0;");
+
+    // h4 is the only small-caps step; below body size it needs case and
+    // tracking to register as a label rather than as shrunken prose.
+    expect(h4Rule).toContain("font-size: var(--text-sm);");
+    expect(h4Rule).toContain("color: var(--muted-strong);");
+    expect(h4Rule).toContain("text-transform: uppercase;");
+    expect(h4Rule).toContain("letter-spacing: 0.085em;");
+
+    // The single-item ordered list is the LLM's pseudo-heading. It imitates an
+    // h3, so it has to match one rather than run a third parallel scale.
+    expect(singleItemHeadingRule).toContain("font-size: var(--text-base-plus);");
+    expect(weightOf(singleItemHeadingRule)).toBe(weightOf(h3Rule));
+
+    // The gutter is em-based: `--type-step` runs the body from 10px to 19px,
+    // and a px gutter that fits "11." at 13px is overflowed by it at 19px,
+    // which shunts the whole list left.
+    expect(listRule).toContain("margin: 6px 0 18px;");
+    expect(listRule).toMatch(/padding-left:\s*[\d.]+em;/);
+
+    // A row's gap has to beat its own leading or a wrapped continuation line
+    // reads as the next bullet — 21.8px of leading over a 5px item gap did
+    // exactly that. Nested rows sit one step tighter so depth reads as depth.
+    const listItemGapRule = cssRuleBody(chatConversation, ".markdown li + li");
+    const nestedListItemGapRule = cssRuleBody(chatConversation, ".markdown li li + li");
+    const gapOf = (rule: string) =>
+      Number(/margin-top:\s*(?<gap>[\d.]+)px;/.exec(rule)?.groups?.gap);
+    expect(listItemRule).toContain("margin: 0;");
+    expect(listItemRule).toContain("line-height: 1.6;");
+    expect(gapOf(listItemGapRule)).toBeGreaterThanOrEqual(8);
+    expect(gapOf(nestedListItemGapRule)).toBeLessThan(gapOf(listItemGapRule));
+
+    // pre, blockquote and the table's scroller are all "not prose" and share
+    // one gap; three different values between unlike blocks reads as drift,
+    // not rhythm. The gap belongs to `.markdown-table-scroll`, never to the
+    // table: the wrapper is a BFC (overflow-x), so a margin on the table adds
+    // inside it instead of collapsing out.
+    const blockGaps = [".markdown pre", ".markdown blockquote", ".markdown-table-scroll"].map(
+      (selector) => cssRuleBody(chatConversation, selector).match(/margin:\s*([^;]+);/)?.[1]
+    );
+    expect(blockGaps).toEqual(["18px 0", "18px 0", "18px 0"]);
+    expect(cssRuleBody(chatConversation, ".markdown table")).not.toMatch(
+      /(?:^|\n)\s*margin[a-z-]*:/
+    );
   });
 
   it("keeps turn metadata as a quiet reading separator", () => {
@@ -858,19 +975,10 @@ describe("accent CSS contract", () => {
     const compactContextRule = cssRuleBody(chatComposerChips, ".composer-compact-context");
     const compactContextTriggerRule = cssRuleBody(chatComposerChips, ".composer-compact-context-trigger");
     const compactContextPopoverRule = cssRuleBody(chatComposerChips, ".composer-compact-context-popover");
-    const compactContextRowRule = cssRuleBody(chatComposerChips, ".composer-compact-context-row--context");
-    const compactContextRingRule = cssRuleBody(
-      chatComposerChips,
-      ".composer-compact-context-row--context .context-ring-anchor"
-    );
     const footerRule = cssRuleBody(chatComposer, ".session-input-toolbar .composer-footer");
     const chipRule = cssRuleBody(chatComposer, ".session-input-toolbar .composer-footer-chip");
     const baseChipRule = cssRuleBody(chatComposer, ".composer-footer-chip");
     const baseChipHoverRule = cssRuleBody(chatComposer, ".composer-footer-chip:hover");
-    const branchRule = cssRuleBody(
-      chatComposer,
-      ".session-input-toolbar .composer-footer-chip--branch"
-    );
     const sessionSendButtonRule = cssRuleBody(chatComposerChips, ".session-send-button");
     const labelRule = cssRuleBody(
       chatComposer,
@@ -887,14 +995,17 @@ describe("accent CSS contract", () => {
     expect(contextRule).toContain("min-width: 0;");
     expect(contextRule).toContain("overflow: hidden;");
     expect(contextRule).toContain("flex: 0 1 auto;");
-    expect(compactContextRule).toContain("display: none;");
+    // The "…" trigger is permanent, not a compact-only fallback: it is the home
+    // for every secondary workspace action at every width.
+    expect(compactContextRule).toContain("display: inline-flex;");
     expect(compactContextRule).toContain("position: relative;");
     expect(compactContextTriggerRule).toContain("width: 28px;");
     expect(compactContextTriggerRule).toContain("color: var(--muted);");
-    expect(compactContextPopoverRule).toContain("bottom: calc(100% + 8px);");
+    // Placement is Floating UI's job now (bottom-start + flip), shared with the
+    // model, effort and context-ring popovers — the stylesheet only carries the
+    // panel's own surface.
+    expect(compactContextPopoverRule).not.toContain("position: absolute;");
     expect(compactContextPopoverRule).toContain("box-shadow: var(--shadow-2);");
-    expect(compactContextRowRule).toContain("justify-content: space-between;");
-    expect(compactContextRingRule).toContain("padding: 0;");
     expect(toolbarSpacerRule).toContain("flex: 1 1 0;");
     expect(toolbarSpacerRule).toContain("min-width: 0;");
     expect(footerRule).toContain("max-width: 100%;");
@@ -906,15 +1017,11 @@ describe("accent CSS contract", () => {
     expect(baseChipRule).toContain("color: var(--muted);");
     expect(baseChipHoverRule).toContain("background: transparent;");
     expect(baseChipHoverRule).toContain("color: var(--muted-strong);");
-    expect(branchRule).toContain("flex: 1 1 0;");
-    expect(branchRule).toContain("min-width: 0;");
-    expect(branchRule).toContain("max-width: 100%;");
     expect(labelRule).toContain("text-overflow: ellipsis;");
     expect(labelRule).toContain("white-space: nowrap;");
     expect(chatComposerChips).toContain("@container (max-width: 720px)");
-    expect(chatComposerChips).toContain('"attach model details mode send"');
+    expect(chatComposerChips).toContain('"model details mode send"');
     expect(chatComposerChips).toContain(".session-input-toolbar .composer-compact-context");
-    expect(chatComposerChips).toContain(".session-input-toolbar > .context-ring-anchor");
     expect(chatComposerChips).toContain(".session-input textarea");
     expect(chatComposerChips).toContain("min-height: 56px;");
     expect(chatComposerChips).toContain(".session-input-toolbar .session-send-button");
@@ -934,21 +1041,13 @@ describe("accent CSS contract", () => {
       chatComposer,
       ".session-input-toolbar .composer-footer-chip--changes .change-count"
     );
-    const changeSeparatorRule = cssRuleBody(
-      chatComposer,
-      ".session-input-toolbar .composer-footer-chip--changes::before"
-    );
-
-    expect(changeButtonRule).toContain("position: relative;");
     expect(changeButtonRule).toContain("flex: 0 0 auto;");
-    expect(changeButtonRule).toContain("margin-left: 10px;");
     expect(changeButtonRule).toContain("max-width: none;");
-    expect(changeButtonRule).toContain("overflow: visible;");
     expect(changeButtonRule).toContain("font-family: var(--font-mono);");
     expect(changeButtonRule).toContain("font-variant-numeric: tabular-nums;");
-    expect(changeSeparatorRule).toContain("width: 1px;");
-    expect(changeSeparatorRule).toContain("background: var(--line);");
-    expect(changeSeparatorRule).toContain("opacity: 0.6;");
+    // The counts group with the branch by spacing alone — the hairline that
+    // used to sit between them went out with the control shelf.
+    expect(chatComposer).not.toContain(".composer-footer-chip--changes::before");
     expect(changeCountRule).toContain("gap: 5px;");
     expect(chatComposerChips).toContain("@container (max-width: 720px)");
     expect(chatComposerChips).toContain(".composer-compact-context-row--changes");

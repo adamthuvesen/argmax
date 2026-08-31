@@ -123,16 +123,28 @@ describe("SessionConversation — streaming & composer", () => {
     ).toBeTruthy();
   });
 
-  it("marks the branch chip label as ellipsis-safe and leaves it out of the tab order", () => {
+  it("shows the agent-mode chip only in plan mode", () => {
     renderConversation(baseSession());
 
-    // A label, not a control — it must not be reachable as a button.
-    expect(screen.queryByRole("button", { name: /^Branch / })).toBeNull();
-    const branchChip = screen.getByTitle("Branch: argmax/dashboard");
-    expect(branchChip).toHaveClass("composer-footer-chip--branch");
-    expect(branchChip.querySelector(".composer-footer-chip-label")).toHaveTextContent(
-      "argmax/dashboard"
+    // Auto is the default, so the chip would be reporting the absence of a
+    // choice on every turn.
+    expect(screen.queryByRole("button", { name: "Agent mode" })).toBeNull();
+
+    fireEvent.keyDown(screen.getByPlaceholderText(/Reply to your agent/), { key: "Tab" });
+    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
+  });
+
+  it("keeps the branch out of the composer row and behind the details popover", () => {
+    renderConversation(baseSession());
+
+    // The agent view is one session on one branch: naming it on every turn is
+    // noise. It stays one click away, in the workspace details popover.
+    expect(screen.queryByTitle("Branch: argmax/dashboard")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Workspace details: branch argmax\/dashboard/ })
     );
+    const popover = screen.getByRole("dialog", { name: "Workspace details" });
+    expect(within(popover).getByText("argmax/dashboard")).toBeInTheDocument();
   });
 
   it("shows changed-file totals as a compact composer action and opens the review panel", () => {

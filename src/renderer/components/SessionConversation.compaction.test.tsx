@@ -33,7 +33,7 @@ describe("SessionConversation context compaction", () => {
       event("d1", "message.delta", "Working", "2026-05-12T15:00:01.000Z")
     ]);
 
-    const notice = screen.getByRole("status", { name: "Compacting context" });
+    const notice = screen.getByRole("status", { name: "Compacting" });
     expect(notice.getAttribute("data-running")).toBe("true");
     expect(screen.queryByTestId("thinking-label")).toBeNull();
   });

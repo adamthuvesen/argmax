@@ -1,4 +1,4 @@
-import { ChevronRight, Zap } from "lucide-react";
+import { ChevronDown, ChevronRight, Zap } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type JSX } from "react";
 import {
   clampEffort,
@@ -211,7 +211,9 @@ function EffortSlider({
   // chip that anchors this popover) underneath the cursor.
   const [draft, setDraft] = useState(value);
   const [dragging, setDragging] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
+  // Anchored like the model flyout beside it, so the two halves of one control
+  // open the same way instead of one being hand-positioned in CSS.
+  const flyout = useAnchoredPopover({ open, placement: "bottom-start", strategy: "absolute" });
   const trackRef = useRef<HTMLDivElement | null>(null);
 
   const maxIndex = efforts.length - 1;
@@ -226,7 +228,7 @@ function EffortSlider({
     setDragging(false);
     if (draft !== value) onChange(draft);
   };
-  useDismissOnOutsideOrEscape(anchorRef, open, commitAndClose);
+  useDismissOnOutsideOrEscape(flyout.anchorRef, open, commitAndClose);
 
   useEffect(() => {
     if (!dragging) setPos(index);
@@ -261,7 +263,7 @@ function EffortSlider({
   };
 
   return (
-    <div className="project-picker-anchor effort-slider-anchor" ref={anchorRef}>
+    <div className="project-picker-anchor effort-slider-anchor" ref={flyout.setAnchor}>
       <button
         type="button"
         className="composer-context-chip effort-slider-chip"
@@ -279,9 +281,16 @@ function EffortSlider({
         }}
       >
         <span className="model-picker-label">{effortLabel(value)}</span>
+        <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
       </button>
       {open && (
-        <div className="effort-slider-popover" role="dialog" aria-label={ariaLabel}>
+        <div
+          className="effort-slider-popover"
+          role="dialog"
+          aria-label={ariaLabel}
+          ref={flyout.setPopover}
+          style={flyout.floatingStyles}
+        >
           <div className="effort-slider-head">
             <span className="effort-slider-caption">Effort</span>
             <span className="effort-slider-current">{effortLabel(draft)}</span>
@@ -488,6 +497,11 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           <Zap size={14} aria-hidden="true" className="model-picker-speed-icon" />
         ) : null}
         <span className="model-picker-label">{value.label}</span>
+        {/* Without the standalone effort chip beside it, the model chip is the
+            end of the control and carries the caret itself. */}
+        {showEffortSlider ? null : (
+          <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
+        )}
       </button>
       {open && (
         <div

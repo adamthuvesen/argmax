@@ -83,7 +83,7 @@ export function saveExpandedProjectIds(projectIds: Set<string>): void {
 }
 
 // Session-group collapse/overflow state for the "sessions" view. Keyed by
-// bucket key ("today", "last-7", "last-30", "older") plus "pinned" and
+// bucket key ("today", "yesterday", "last-7", "older") plus "pinned" and
 // "priority". Like projects, every group except Pinned boots collapsed; the
 // Sidebar seeds that set once per launch.
 export function loadCollapsedDateGroupIds(): Set<string> {
@@ -184,8 +184,8 @@ export interface SidebarDateGroup<T> {
   items: T[];
 }
 
-// Buckets workspaces into four relative recency groups: Today, Last 7 Days,
-// Last 30 Days, Older. Every session lands in the first bucket it matches, so
+// Buckets workspaces into four relative recency groups: Today, Yesterday,
+// Last 7 Days, Older. Every session lands in the first bucket it matches, so
 // the list never repeats a row and never sprouts one header per calendar month.
 // Boundaries are computed on local-midnight day diffs against `now`. Only
 // non-empty groups are returned, ordered newest → oldest. `now` is a parameter
@@ -225,10 +225,10 @@ export function groupWorkspacesByDate<T extends { lastActivityAt: string }>(
 
     if (dayDiff <= 0) {
       push("today", "Today", workspace);
+    } else if (dayDiff === 1) {
+      push("yesterday", "Yesterday", workspace);
     } else if (dayDiff <= 7) {
       push("last-7", "Last 7 Days", workspace);
-    } else if (dayDiff <= 30) {
-      push("last-30", "Last 30 Days", workspace);
     } else {
       push("older", "Older", workspace);
     }

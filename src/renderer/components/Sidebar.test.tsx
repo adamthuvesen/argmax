@@ -585,15 +585,15 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(getProjectButtonOrder()).toEqual([]);
   });
 
-  it("orders recency buckets Today, Last 7 Days, Last 30 Days, Older", () => {
+  it("orders recency buckets Today, Yesterday, Last 7 Days, Older", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
 
+    const YESTERDAY = new Date(2026, 5, 4, 9, 0, 0).toISOString();
     const THIS_WEEK = new Date(2026, 5, 2, 9, 0, 0).toISOString();
-    const THIS_MONTH = new Date(2026, 4, 20, 9, 0, 0).toISOString();
     const workspaces = [
       workspace("w-today", "project-zebra", "Task today", TODAY),
+      workspace("w-yesterday", "project-zebra", "Task yesterday", YESTERDAY),
       workspace("w-week", "project-zebra", "Task this week", THIS_WEEK),
-      workspace("w-month", "project-zebra", "Task this month", THIS_MONTH),
       workspace("w-older", "project-zebra", "Task long ago", APRIL)
     ];
 
@@ -609,17 +609,17 @@ describe("Sidebar — date (sessions) view mode", () => {
     );
 
     const today = screen.getByText("Today");
+    const yesterday = screen.getByText("Yesterday");
     const week = screen.getByText("Last 7 Days");
-    const month = screen.getByText("Last 30 Days");
     const older = screen.getByText("Older");
-    expect(rendersAfter(today, week)).toBe(true);
-    expect(rendersAfter(week, month)).toBe(true);
-    expect(rendersAfter(month, older)).toBe(true);
+    expect(rendersAfter(today, yesterday)).toBe(true);
+    expect(rendersAfter(yesterday, week)).toBe(true);
+    expect(rendersAfter(week, older)).toBe(true);
 
     // Each bucket holds its own session, and no session is repeated.
     expect(screen.getAllByRole("button", { name: /Task today/ })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: /Task this week/ })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: /Task this month/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Task yesterday/ })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: /Task long ago/ })).toHaveLength(1);
   });
 
@@ -742,7 +742,7 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify([]));
   });
 
-  it("reveals every workspace that appears in one delta, across separate collapsed buckets", () => {
+  it("reveals a newly appeared Today session without unfolding Older", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
     window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["today", "older"]));
 
@@ -755,12 +755,50 @@ describe("Sidebar — date (sessions) view mode", () => {
 
     const { rerender } = render(<Sidebar {...baseProps} snapshot={seeded} />);
 
-    // One delta forks two sessions into two different collapsed buckets.
+    // One delta adds a Today row and an Older row. Only Today should open.
     rerender(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
 
     expect(screen.getByRole("button", { name: /Zebra task today/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Argmax task in april/ })).toBeInTheDocument();
-    expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify([]));
+    // Older is a history dump, not a launch confirmation. A stale row landing
+    // in the same delta must not unfold it.
+    expect(screen.queryByRole("button", { name: /Argmax task in april/ })).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toEqual([
+      "older"
+    ]);
+  });
+
+  it("does not auto-expand Older when its session is selected", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["older"]));
+
+    render(<Sidebar {...baseProps} selectedWorkspaceId="w-argmax" snapshot={viewSnapshot} />);
+
+    expect(screen.queryByRole("button", { name: /Argmax task in april/ })).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toEqual([
+      "older"
+    ]);
+  });
+
+  it("does not re-expand a group when a workspace drops out of the snapshot and returns", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["today"]));
+
+    const { rerender } = render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
+
+    expect(screen.queryByRole("button", { name: /Zebra task today/ })).toBeNull();
+
+    const withoutToday: DashboardSnapshot = {
+      ...viewSnapshot,
+      workspaces: viewSnapshot.workspaces.filter((row) => row.id !== "w-zebra"),
+      sessions: viewSnapshot.sessions.filter((row) => row.workspaceId !== "w-zebra")
+    };
+    rerender(<Sidebar {...baseProps} snapshot={withoutToday} />);
+    rerender(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
+
+    expect(screen.queryByRole("button", { name: /Zebra task today/ })).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toContain(
+      "today"
+    );
   });
 
   it("toggles a date bucket by clicking the row, not just the chevron", () => {
@@ -1347,7 +1385,7 @@ describe("Sidebar — Priority section", () => {
   });
 });
 
-describe("Sidebar — Working section", () => {
+describe("Sidebar — working rows in Priority", () => {
   const MINUTES_AGO_10 = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
   const workingWorkspace = (id: string, taskLabel: string, overrides: Record<string, unknown> = {}) => ({
@@ -1398,11 +1436,12 @@ describe("Sidebar — Working section", () => {
     window.localStorage.clear();
   });
 
-  it("floats a running session into Working, out of its date bucket", () => {
+  it("floats a running session into Priority, out of its date bucket", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
     render(
       <Sidebar
         {...baseProps}
+        showPriority
         snapshot={{
           ...snapshot,
           workspaces: [workingWorkspace("w-live", "Live task")],
@@ -1411,7 +1450,7 @@ describe("Sidebar — Working section", () => {
       />
     );
 
-    expect(screen.getByText("Working")).toBeInTheDocument();
+    expect(screen.getByText("Priority")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Live task/ })).toBeInTheDocument();
     // The row left its date bucket, so Today holds nothing and never renders.
     expect(screen.queryByText("Today")).toBeNull();
@@ -1422,6 +1461,7 @@ describe("Sidebar — Working section", () => {
     render(
       <Sidebar
         {...baseProps}
+        showPriority
         snapshot={{
           ...snapshot,
           workspaces: [workingWorkspace("w-live", "Live task")],
@@ -1430,12 +1470,12 @@ describe("Sidebar — Working section", () => {
       />
     );
 
-    expect(screen.queryByText("Working")).toBeNull();
+    expect(screen.queryByText("Priority")).toBeNull();
     expect(screen.getByText("Today")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Live task/ })).toBeInTheDocument();
   });
 
-  it("keeps Working above Priority and out of the project groups", () => {
+  it("sorts a working row under the attention rows and out of the project groups", () => {
     render(
       <Sidebar
         {...baseProps}
@@ -1458,10 +1498,12 @@ describe("Sidebar — Working section", () => {
       />
     );
 
-    expect(screen.getByText("Working")).toBeInTheDocument();
     expect(screen.getByText("Priority")).toBeInTheDocument();
     expect(
-      rendersAfter(screen.getByText("Working"), screen.getByText("Priority"))
+      rendersAfter(
+        screen.getByRole("button", { name: /Failed task/ }),
+        screen.getByRole("button", { name: /Live task/ })
+      )
     ).toBe(true);
     // Both rows left their project group: expanding it must not duplicate them.
     fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
@@ -1473,6 +1515,7 @@ describe("Sidebar — Working section", () => {
     render(
       <Sidebar
         {...baseProps}
+        showPriority
         snapshot={{
           ...snapshot,
           workspaces: [workingWorkspace("w-live", "Live task", { pinned: true })],
@@ -1481,7 +1524,7 @@ describe("Sidebar — Working section", () => {
       />
     );
 
-    expect(screen.queryByText("Working")).toBeNull();
+    expect(screen.queryByText("Priority")).toBeNull();
     expect(screen.getByRole("button", { name: /Live task/ })).toBeInTheDocument();
   });
 });
@@ -1585,7 +1628,7 @@ describe("Sidebar — boot collapse defaults", () => {
   });
 });
 
-describe("Sidebar — Side chats section", () => {
+describe("Sidebar — Side Chats section", () => {
   const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
 
   const session = (workspaceId: string) => ({
@@ -1630,7 +1673,7 @@ describe("Sidebar — Side chats section", () => {
 
   const scratchProject = {
     id: SCRATCH_PROJECT_ID,
-    name: "Side chats",
+    name: "Side Chats",
     repoPath: "/tmp/side-chats",
     currentBranch: "main",
     defaultBranch: "main",
@@ -1668,7 +1711,7 @@ describe("Sidebar — Side chats section", () => {
     // The hidden scratch project never renders as a project row.
     expect(getProjectButtonOrder()).toEqual(["Argmax"]);
 
-    const header = screen.getByText("Side chats");
+    const header = screen.getByText("Side Chats");
     expect(screen.getByRole("button", { name: /Explain quantization/ })).toBeInTheDocument();
     // Bottom of the list: after the project group rows.
     expect(
@@ -1682,15 +1725,15 @@ describe("Sidebar — Side chats section", () => {
     render(<Sidebar {...baseProps} snapshot={sideChatSnapshot} />);
 
     expect(screen.getByRole("button", { name: /Repo task/ })).toBeInTheDocument();
-    expect(rendersAfter(screen.getByText("Today"), screen.getByText("Side chats"))).toBe(true);
+    expect(rendersAfter(screen.getByText("Today"), screen.getByText("Side Chats"))).toBe(true);
     // The side chat lives in its own section, not in a date bucket, so the
     // date buckets hold exactly the repo session.
     expect(screen.getByRole("button", { name: /Explain quantization/ })).toBeInTheDocument();
   });
 
-  it("reveals a running side chat in Side chats, which the Working section never takes", () => {
-    // Working only floats git workspaces, so a running scratch row stays with
-    // the side chats — and the reveal has to expand that section, not Working.
+  it("reveals a running side chat in Side Chats, which Priority never takes", () => {
+    // Priority only floats git workspaces, so a running scratch row stays with
+    // the side chats — and the reveal has to expand that section, not Priority.
     window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["side-chats"]));
 
     render(
@@ -1704,7 +1747,7 @@ describe("Sidebar — Side chats section", () => {
       />
     );
 
-    expect(screen.queryByText("Working")).toBeNull();
+    expect(screen.queryByText("Priority")).toBeNull();
     expect(screen.getByRole("button", { name: /Explain quantization/ })).toBeInTheDocument();
     expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify([]));
   });
@@ -1719,6 +1762,6 @@ describe("Sidebar — Side chats section", () => {
 
   it("hides the section entirely without side chats or a launch handler", () => {
     render(<Sidebar {...baseProps} snapshot={snapshot} />);
-    expect(screen.queryByText("Side chats")).toBeNull();
+    expect(screen.queryByText("Side Chats")).toBeNull();
   });
 });

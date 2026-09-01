@@ -50,6 +50,7 @@ pub(crate) async fn review_load_diff_impl(
         input.id.as_str(),
         input.file_path.as_ref().map(|path| path.as_str()),
         input.comparison,
+        input.context_lines.map(|context| context.get()),
     )
     .await
 }
@@ -162,6 +163,7 @@ mod tests {
             "p1",
             Some("README.md"),
             ReviewComparison::Committed,
+            None,
         )
         .await
         .expect("committed diff");

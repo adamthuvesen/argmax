@@ -22,8 +22,8 @@ function samplePlan(overrides: Partial<Plan> = {}): Plan {
     action: {
       question: "Implement this plan?",
       options: [
-        { label: "Yes, implement this plan" },
-        { label: "No, and tell Claude what to do differently" }
+        { label: "Yes, implement the plan" },
+        { label: "No, update the plan" }
       ]
     },
     ...overrides
@@ -375,5 +375,78 @@ describe("PlanCard", () => {
     expect(container.textContent).not.toContain("**");
     // …and the leading "1." is kept as text (not consumed as an ordered-list marker).
     expect(container.textContent).toContain("1.");
+  });
+
+  it("renders structured phases with subsections (Deliverable, Files, Work, Success check)", () => {
+    const multiPhasePlan: Plan = {
+      title: "Plan: Make the Argmax README great",
+      summary: ["Rewrite README.md for clarity and impact."],
+      sections: [
+        {
+          label: "Scope",
+          note: "Rewrite only README.md",
+          items: [{ title: "Users deciding fit" }, { title: "Contributors setup" }]
+        },
+        {
+          label: "Phase 1: Establish the README's story",
+          badge: "Phase 1",
+          title: "Establish the README's story",
+          items: [],
+          subsections: [
+            {
+              label: "Deliverable",
+              kind: "deliverable",
+              items: [],
+              note: "A sharper opening that explains Argmax's purpose."
+            },
+            {
+              label: "Files",
+              kind: "files",
+              items: [],
+              note: "`README.md`"
+            },
+            {
+              label: "Work",
+              kind: "work",
+              items: [
+                { title: "Keep existing branding" },
+                { title: "Replace generic opening" }
+              ]
+            },
+            {
+              label: "Success check",
+              kind: "check",
+              items: [],
+              note: "A new reader can understand Argmax immediately."
+            }
+          ]
+        }
+      ],
+      action: {
+        question: "Implement this plan?",
+        options: [{ label: "Yes, implement the plan" }, { label: "No, update the plan" }]
+      }
+    };
+
+    render(
+      <PlanCard
+        plan={multiPhasePlan}
+        createdAt="2026-05-16T14:30:00.000Z"
+        rawMarkdown="raw"
+        onAccept={() => {}}
+        onReject={() => {}}
+      />
+    );
+
+    expect(screen.getByText("Phase 1")).toBeInTheDocument();
+    expect(screen.getByText("Establish the README's story")).toBeInTheDocument();
+    expect(screen.getByText("Deliverable")).toBeInTheDocument();
+    expect(screen.getByText("Files")).toBeInTheDocument();
+    expect(screen.getByText("Work")).toBeInTheDocument();
+    expect(screen.getByText("Success check")).toBeInTheDocument();
+    expect(screen.getByText("A sharper opening that explains Argmax's purpose.")).toBeInTheDocument();
+    expect(screen.getByText("Keep existing branding")).toBeInTheDocument();
+    expect(screen.getByText("Replace generic opening")).toBeInTheDocument();
+    expect(screen.getByText("A new reader can understand Argmax immediately.")).toBeInTheDocument();
   });
 });

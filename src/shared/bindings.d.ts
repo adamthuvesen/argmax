@@ -288,6 +288,14 @@ async sessionFork(input: SessionForkInput) : Promise<Result<SessionForkResult, A
     else return { status: "error", error: e  as any };
 }
 },
+async sessionSuggestFollowUp(input: SessionSuggestFollowUpInput) : Promise<Result<FollowUpSuggestion, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_suggest_follow_up", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async reviewListChangedFiles(input: ReviewListChangedFilesInput) : Promise<Result<ChangedFileSummary[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("review_list_changed_files", { input }) };
@@ -751,8 +759,20 @@ export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: Wo
 export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number }
 export type DetectedIde = { id: IdeId; label: string; appPath: string; hasCli: boolean }
 export type DiagnosticsReport = { appVersion: string; sqliteVersion: string; databasePath: string; platform: string; arch: string; generatedAt: string; startupPhases: StartupPhaseRecord[]; databaseStats: DatabaseStats; ipcStats: IpcChannelStats[]; recentLogs: LogEntry[]; sqlitePragmas: SqlitePragmas; runtime: RuntimeDiagnostics }
+/**
+ * Lines of unchanged context a review diff carries on each side of a hunk.
+ * Absent means "let git use its default", which keeps the untouched request
+ * byte-identical to what it was before context became adjustable.
+ */
+export type DiffContextLines = number
 export type EventSearchResult = { sessionId: string; eventId: string; snippet: string; rank: number }
 export type FileContent = string
+/**
+ * A composer placeholder proposed by the cheap helper model. `suggestion` is
+ * `None` whenever the agent has not spoken yet or the helper call failed —
+ * both mean "keep the static placeholder".
+ */
+export type FollowUpSuggestion = { suggestion: string | null }
 export type GhPrRecord = { sessionId: string; prNumber: number; headSha: string; lastSeenCheckState: string; updatedAt: string; prState: string | null; notifiedAt: string | null }
 export type GitCommitInput = { workspaceId: WorkspaceId; message: GitCommitMessage; selectedFiles: RelativePath[] | null }
 export type GitCommitMessage = string
@@ -888,7 +908,12 @@ export type RepoPath = string
  */
 export type ReviewComparison = "workingTree" | "branch" | "committed"
 export type ReviewListChangedFilesInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; comparison?: ReviewComparison }
-export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath | null; comparison?: ReviewComparison }
+export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath | null; comparison?: ReviewComparison; 
+/**
+ * Only honored for a single-file request. The whole-workspace diff keeps
+ * git's default context so opening the review panel never pays for it.
+ */
+contextLines?: DiffContextLines | null }
 export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdAt: string; updatedAt: string }
 export type RoutinesDeleteInput = { id: NonEmptyString }
 export type RoutinesListInput = Record<string, never>
@@ -921,6 +946,7 @@ export type SessionIconToken = string
 export type SessionId = string
 export type SessionSearchInput = { query: SessionSearchQuery; limit: Limit200 | null }
 export type SessionSearchQuery = string
+export type SessionSuggestFollowUpInput = { sessionId: SessionId; provider: ProviderId; modelId: NonEmptyString }
 export type SessionSummary = { id: string; workspaceId: string; provider: string; modelLabel: string; modelId: string; reasoningEffort?: string | null; permissionMode: string; agentMode?: string | null; providerConversationId: string | null; prompt: string; state: string; attention: string; 
 /**
  * When `attention` last changed value. NULL on rows that predate the

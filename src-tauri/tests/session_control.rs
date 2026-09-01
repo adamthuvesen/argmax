@@ -70,6 +70,7 @@ impl ProviderProcessLauncher for RecordingLauncher {
 #[tokio::test]
 async fn authenticated_request_launches_a_sidebar_session_with_inherited_settings() {
     let repo = tempfile::tempdir().expect("repo dir");
+    let destination_repo = tempfile::tempdir().expect("destination repo dir");
     let database = Arc::new(Database::open_in_memory().expect("database"));
     {
         let connection = database.connection();
@@ -92,6 +93,29 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
             },
         )
         .expect("project");
+        persist_project(
+            &connection,
+            &PersistProjectInput {
+                id: "project-2".to_string(),
+                name: "Destination".to_string(),
+                repo_path: destination_repo.path().display().to_string(),
+                current_branch: "main".to_string(),
+                default_branch: Some("main".to_string()),
+                settings: ProjectSettings {
+                    default_provider: "codex".to_string(),
+                    default_model_label: "GPT-5.6 Sol".to_string(),
+                    default_model_id: String::new(),
+                    worktree_location: destination_repo
+                        .path()
+                        .join("worktrees")
+                        .display()
+                        .to_string(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                },
+            },
+        )
+        .expect("destination project");
         persist_workspace(
             &connection,
             &PersistWorkspaceInput {
@@ -182,8 +206,10 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
         )
         .expect("start control socket");
 
+    let launch_socket = socket.clone();
+    let launch_token = token.clone();
     let response = tokio::task::spawn_blocking(move || {
-        let mut stream = UnixStream::connect(socket).expect("connect control socket");
+        let mut stream = UnixStream::connect(launch_socket).expect("connect control socket");
         stream
             .set_read_timeout(Some(Duration::from_secs(5)))
             .expect("read timeout");
@@ -193,7 +219,7 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
         std::thread::sleep(Duration::from_millis(150));
         let request = json!({
             "version": 1,
-            "token": token,
+            "token": launch_token,
             "project": null,
             "prompt": "Summarize this repository quickly",
             "worktree": false,
@@ -239,6 +265,83 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
     assert!(launches[0].fast_mode);
     assert_eq!(launches[0].permission_mode, PermissionMode::AutoApprove);
     assert_eq!(launches[0].agent_mode, AgentMode::Auto);
+    drop(launches);
+
+    {
+        let connection = database.connection();
+        connection
+            .execute(
+                "UPDATE sessions SET state = 'complete' WHERE id = 'session-parent'",
+                [],
+            )
+            .expect("settle parent session");
+        connection
+            .execute(
+                "UPDATE workspaces SET state = 'complete' WHERE id = 'workspace-parent'",
+                [],
+            )
+            .expect("settle parent workspace");
+    }
+    let move_response = tokio::task::spawn_blocking(move || {
+        let mut stream = UnixStream::connect(socket).expect("connect move socket");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("read timeout");
+        std::thread::sleep(Duration::from_millis(150));
+        let request = json!({
+            "version": 1,
+            "token": token,
+            "action": "move",
+            "project": "Destination",
+            "prompt": null,
+            "worktree": false,
+            "keepSource": true,
+        });
+        writeln!(stream, "{request}").expect("write move request");
+        stream
+            .shutdown(Shutdown::Write)
+            .expect("finish move request");
+        let mut response = String::new();
+        stream
+            .read_to_string(&mut response)
+            .expect("read move response");
+        serde_json::from_str::<serde_json::Value>(&response).expect("move response json")
+    })
+    .await
+    .expect("move client task");
+    assert_eq!(move_response["ok"], true, "move response: {move_response}");
+    assert_eq!(move_response["scheduled"], true);
+    assert_eq!(move_response["projectId"], "project-2");
+    assert!(registry.has_pending_move("session-parent"));
+    registry.settle_move("session-parent");
+    for _ in 0..100 {
+        let moved_count = {
+            let connection = database.connection();
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM sessions s JOIN workspaces w ON w.id = s.workspace_id WHERE w.project_id = 'project-2'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("moved session count")
+        };
+        if moved_count == 1 && !registry.has_pending_move("session-parent") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(!registry.has_pending_move("session-parent"));
+    {
+        let connection = database.connection();
+        let moved_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sessions s JOIN workspaces w ON w.id = s.workspace_id WHERE w.project_id = 'project-2' AND s.provider_conversation_id IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .expect("moved session");
+        assert_eq!(moved_count, 1);
+    }
 
     let deltas = deltas.lock().expect("deltas poisoned");
     assert!(deltas.iter().any(|delta| delta

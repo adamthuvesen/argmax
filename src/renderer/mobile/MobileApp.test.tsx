@@ -1,7 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChangedFileSummary, DashboardSnapshot } from "../../shared/types.js";
+import type { DashboardSnapshot } from "../../shared/types.js";
 import type { RemoteConnectionState } from "../lib/wsTransport.js";
+import { LAUNCHER_HEADINGS } from "../lib/launcherHeadings.js";
 import {
   archiveWorkspace,
   createCurrentWorkspace,
@@ -198,19 +199,9 @@ describe("MobileApp", () => {
   });
 
   it("browses changed diffs and the file tree from the session screen", async () => {
-    // The changed-file list is released by hand rather than resolved up front:
-    // the review screen opens its changes panel from a mount effect, and the
-    // first file only auto-expands when the list lands with the panel already
-    // open. A WS round trip always loses that race in the app; an instantly
-    // resolved mock wins it and leaves every file collapsed.
-    let releaseChangedFiles: (() => void) | null = null;
-    listChangedFiles.mockImplementation(
-      () =>
-        new Promise<ChangedFileSummary[]>((resolveFiles) => {
-          releaseChangedFiles = () =>
-            resolveFiles([{ path: "src/foo.ts", status: "modified", additions: 1, deletions: 0 }]);
-        })
-    );
+    listChangedFiles.mockResolvedValue([
+      { path: "src/foo.ts", status: "modified", additions: 1, deletions: 0 }
+    ]);
     loadDiff.mockResolvedValue({
       workspaceId: "workspace-1",
       filePath: "src/foo.ts",
@@ -233,20 +224,16 @@ describe("MobileApp", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
 
-    // Let the (lazily loaded) review screen mount and open its changes panel
-    // before the file list arrives.
     await screen.findByRole("tablist", { name: "Review mode" });
-    await act(async () => {});
-    await act(async () => {
-      releaseChangedFiles?.();
-      await Promise.resolve();
-    });
 
-    // Changes view: the changed file is listed with its diff expanded. Asserted
-    // on the list's text content, since an added line is one text node while
-    // the diff is plain and several once the highlighter has loaded.
+    // Changes view: files start collapsed, and tapping one expands its diff.
+    // Asserted on the list's text content, since an added line is one text node
+    // while the diff is plain and several once the highlighter has loaded.
     const changedFiles = await screen.findByLabelText("Changed files");
     expect(changedFiles).toHaveTextContent("src/foo.ts");
+    expect(changedFiles).not.toHaveTextContent("const b = 2;");
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand src/foo.ts diff" }));
     await waitFor(() => expect(changedFiles).toHaveTextContent("const b = 2;"));
 
     // Files view: the tree renders; tapping a file opens the preview and back
@@ -315,18 +302,47 @@ describe("MobileApp", () => {
     expect(await screen.findByRole("region", { name: "Session conversation" })).toBeInTheDocument();
   });
 
-  it("picks a model from the bottom sheet on the + screen", async () => {
+  it("shows the shared random new-chat heading on the + screen", async () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "All sessions" });
 
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
-    fireEvent.click(screen.getByRole("button", { name: "Model" }));
 
-    const sheet = await screen.findByRole("dialog", { name: "Choose model" });
-    fireEvent.click(within(sheet).getByRole("button", { name: "Big Pickle" }));
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(LAUNCHER_HEADINGS).toContain(heading.textContent ?? "");
+    expect(screen.getByText("New chat")).toBeInTheDocument();
+  });
 
-    expect(screen.queryByRole("dialog", { name: "Choose model" })).not.toBeInTheDocument();
-    expect(screen.getByText("OpenCode · Big Pickle")).toBeInTheDocument();
+  it("picks a model from the new-session composer", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
+
+    const picker = await screen.findByRole("listbox", { name: "Session model" });
+    fireEvent.click(within(picker).getByRole("button", { name: "Big Pickle" }));
+
+    expect(screen.queryByRole("listbox", { name: "Session model" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Session model" })).toHaveTextContent("Big Pickle");
+  });
+
+  it("changes reasoning effort from the new-session composer", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    const effortButton = screen.getByRole("button", { name: "Session model effort" });
+    expect(effortButton).toHaveTextContent("Medium");
+    fireEvent.click(effortButton);
+
+    const dialog = await screen.findByRole("dialog", { name: "Session model effort" });
+    const slider = within(dialog).getByRole("slider", { name: "Reasoning effort" });
+    fireEvent.keyDown(slider, { key: "End" });
+    expect(slider).toHaveAttribute("aria-valuetext", "Ultra");
+    fireEvent.click(effortButton);
+
+    expect(screen.getByRole("button", { name: "Session model effort" })).toHaveTextContent("Ultra");
   });
 
   it("picks the project from a bottom sheet on the + screen", async () => {
@@ -431,6 +447,35 @@ describe("MobileApp", () => {
     expect(await screen.findByRole("region", { name: "All sessions" })).toBeInTheDocument();
   });
 
+  it("pops the file preview on a back gesture, keeping the review screen open", async () => {
+    listWorkspaceFiles.mockResolvedValue([{ path: "README.md" }]);
+    readWorkspaceFile.mockResolvedValue({ kind: "text", content: "hello world", size: 11, mtimeMs: 1 });
+
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+    fireEvent.click(screen.getByRole("button", { name: /Build dashboard/ }));
+    await screen.findByRole("region", { name: "Session conversation" });
+    fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
+    await screen.findByRole("tablist", { name: "Review mode" });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Files" }));
+    const tree = await screen.findByRole("tree", { name: "Workspace files" });
+    fireEvent.click(within(tree).getByRole("treeitem", { name: "README.md" }));
+    await screen.findByLabelText("Preview of README.md");
+
+    // The drill-down is a screen of its own: back lands on the tree, not on
+    // the conversation the way it would if only the review screen counted.
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(await screen.findByRole("tree", { name: "Workspace files" })).toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(await screen.findByRole("region", { name: "Session conversation" })).toBeInTheDocument();
+  });
+
   it("closes the row actions sheet on a back gesture instead of leaving the list", async () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "All sessions" });
@@ -453,14 +498,14 @@ describe("MobileApp", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
     fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Half-written idea" } });
-    fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    await screen.findByRole("dialog", { name: "Choose model" });
+    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
+    await screen.findByRole("listbox", { name: "Session model" });
 
     act(() => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
 
-    expect(screen.queryByRole("dialog", { name: "Choose model" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "Session model" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Task")).toHaveValue("Half-written idea");
   });
 

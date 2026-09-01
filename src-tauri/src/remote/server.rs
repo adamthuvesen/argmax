@@ -111,33 +111,51 @@ async fn serve_asset(
     }
 }
 
-fn serve_embedded(app: &AppHandle, path: &str, if_none_match: Option<&str>) -> Response {
-    let resolver = app.asset_resolver();
+// Generic over the runtime so the tests can drive it with Tauri's mock app and
+// exercise the real resolver.
+fn serve_embedded<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    path: &str,
+    if_none_match: Option<&str>,
+) -> Response {
     let requested = normalize_request_path(path);
-    if let Some(asset) = resolver.get(requested.clone()) {
-        return asset_response(
-            &asset.mime_type,
-            asset.bytes,
-            cache_control_for(&requested),
-            if_none_match,
-        );
-    }
-    let Some(index) = resolver.get("/index.html".to_string()) else {
+    let Some(asset) = app.asset_resolver().get(requested.clone()) else {
         return (StatusCode::NOT_FOUND, MISSING_ASSETS_HINT).into_response();
     };
-    // SPA fallback, but only for client routes: a missing `.js`/`.css` must 404
-    // rather than quietly return HTML the browser cannot parse.
-    if Path::new(&requested).extension().is_some() {
+    if serves_shell_instead(&requested, &asset.mime_type) {
         return StatusCode::NOT_FOUND.into_response();
     }
-    // The fallback is the shell whatever path asked for it, so it is never
+    // The shell answers under whatever path asked for it, so it is never
     // immutable even when the request looked like an asset.
-    asset_response(
-        &index.mime_type,
-        index.bytes,
-        REVALIDATE_CACHE_CONTROL,
-        if_none_match,
-    )
+    let cache_control = if is_html(&asset.mime_type) {
+        REVALIDATE_CACHE_CONTROL
+    } else {
+        cache_control_for(&requested)
+    };
+    asset_response(&asset.mime_type, asset.bytes, cache_control, if_none_match)
+}
+
+/// Tauri's asset resolver never reports a miss: it falls back to `<path>.html`,
+/// then `<path>/index.html`, then `index.html`. That shell is the right answer
+/// for a client route and the wrong one for anything else, so the substitution
+/// has to be spotted here — every fallback lands on an `.html` asset, so HTML
+/// under a path that asked for something else is the resolver giving up.
+///
+/// Left unchecked, a chunk the running bundle no longer has comes back as
+/// `text/html` with a year of `immutable` caching, and the browser both refuses
+/// the module and keeps the HTML under that URL.
+fn serves_shell_instead(requested: &str, mime_type: &str) -> bool {
+    if !is_html(mime_type) {
+        return false;
+    }
+    match Path::new(requested).extension().and_then(|it| it.to_str()) {
+        None => false,
+        Some(extension) => !extension.eq_ignore_ascii_case("html"),
+    }
+}
+
+fn is_html(mime_type: &str) -> bool {
+    mime_type.starts_with("text/html")
 }
 
 async fn serve_from_directory(root: &Path, path: &str, if_none_match: Option<&str>) -> Response {
@@ -333,7 +351,85 @@ fn content_type_for_path(path: &Path) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Cow;
+    use tauri::test::{mock_builder, mock_context};
+    use tauri::utils::assets::{AssetKey, AssetsIter, CspHash};
     use tempfile::tempdir;
+
+    /// The two files the mobile bundle needs to answer a chunk request, so the
+    /// test runs against Tauri's real resolver instead of a stand-in for it.
+    struct BundleAssets;
+
+    impl BundleAssets {
+        const INDEX: &'static [u8] = b"<!doctype html><title>shell</title>";
+        const CHUNK: &'static [u8] = b"export const MobileReviewScreen = 0;";
+
+        /// `AssetKey` roots every path it is built from, so the keys the
+        /// resolver looks up carry a leading slash.
+        fn files() -> [(&'static str, &'static [u8]); 2] {
+            [
+                ("/index.html", Self::INDEX),
+                ("/assets/MobileReviewScreen-real.js", Self::CHUNK),
+            ]
+        }
+    }
+
+    impl<R: tauri::Runtime> tauri::Assets<R> for BundleAssets {
+        fn get(&self, key: &AssetKey) -> Option<Cow<'_, [u8]>> {
+            Self::files()
+                .into_iter()
+                .find(|(path, _)| *path == key.as_ref())
+                .map(|(_, bytes)| Cow::Borrowed(bytes))
+        }
+
+        fn iter(&self) -> Box<AssetsIter<'_>> {
+            Box::new(
+                Self::files()
+                    .into_iter()
+                    .map(|(path, bytes)| (Cow::Borrowed(path), Cow::Borrowed(bytes)))
+                    .collect::<Vec<_>>()
+                    .into_iter(),
+            )
+        }
+
+        fn csp_hashes(&self, _html_path: &AssetKey) -> Box<dyn Iterator<Item = CspHash<'_>> + '_> {
+            Box::new(std::iter::empty())
+        }
+    }
+
+    fn embedded_app() -> tauri::App<tauri::test::MockRuntime> {
+        mock_builder()
+            .build(mock_context(BundleAssets))
+            .expect("build mock app")
+    }
+
+    /// A phone that kept a page from an earlier build alive asks for a chunk
+    /// this bundle no longer has. Tauri's resolver answers that with the app
+    /// shell, and HTML under a `.js` URL is what the browser refuses to
+    /// execute — one `immutable` response would keep it refusing for a year.
+    #[test]
+    fn a_chunk_the_bundle_dropped_is_a_404_not_the_app_shell() {
+        let app = embedded_app();
+
+        let stale = serve_embedded(app.handle(), "/assets/MobileReviewScreen-stale.js", None);
+        assert_eq!(stale.status(), StatusCode::NOT_FOUND);
+
+        let present = serve_embedded(app.handle(), "/assets/MobileReviewScreen-real.js", None);
+        assert_eq!(present.status(), StatusCode::OK);
+        assert_eq!(
+            present.headers().get(header::CONTENT_TYPE),
+            Some(&HeaderValue::from_static("text/javascript"))
+        );
+
+        // Client routes still get the shell, and it revalidates so a new build
+        // reaches an already-paired phone.
+        let route = serve_embedded(app.handle(), "/sessions/abc", None);
+        assert_eq!(route.status(), StatusCode::OK);
+        assert_eq!(
+            route.headers().get(header::CACHE_CONTROL),
+            Some(&HeaderValue::from_static(REVALIDATE_CACHE_CONTROL))
+        );
+    }
 
     #[test]
     fn pwa_manifest_keeps_its_own_media_type() {
@@ -388,6 +484,31 @@ mod tests {
 
         let missing_asset = serve_from_directory(&root_path, "/assets/app.js", None).await;
         assert_eq!(missing_asset.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn the_resolvers_silent_shell_substitution_counts_as_a_miss() {
+        // A chunk the running bundle no longer carries: HTML here means the
+        // resolver fell back, and serving it would break the module load and
+        // then cache the HTML under the chunk's URL for a year.
+        assert!(serves_shell_instead(
+            "/assets/MobileReviewScreen-BgCjHRZt.js",
+            "text/html"
+        ));
+        assert!(serves_shell_instead(
+            "/assets/styles-CjAxbtq5.css",
+            "text/html"
+        ));
+
+        // Real assets and the shell itself are served as asked.
+        assert!(!serves_shell_instead(
+            "/assets/mobile-hlqfvghO.js",
+            "text/javascript"
+        ));
+        assert!(!serves_shell_instead("/mobile.html", "text/html"));
+        assert!(!serves_shell_instead("/index.html", "text/html"));
+        // Client routes have no extension, so the shell is the right answer.
+        assert!(!serves_shell_instead("/sessions/abc", "text/html"));
     }
 
     #[tokio::test]

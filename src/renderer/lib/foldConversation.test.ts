@@ -142,4 +142,37 @@ describe("foldRenderItems", () => {
 
     expect(notice?.kind === "compaction" ? notice.notice.running : null).toBe(true);
   });
+
+  it("renders a project move as a turn boundary", () => {
+    const items: ConversationItem[] = [
+      { kind: "message", event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Move it") },
+      { kind: "message", event: event("answer-1", "message.completed", "2026-05-12T15:00:01.000Z", "Moving") },
+      {
+        kind: "message",
+        event: event("move", "session.moved", "2026-05-12T15:00:02.000Z", "Moved.", {
+          direction: "destination",
+          sourceProjectName: "HQ",
+          destinationProjectName: "Argmax",
+          checkoutMode: "shared"
+        })
+      },
+      { kind: "message", event: event("user-2", "user.message", "2026-05-12T15:00:03.000Z", "Continue") }
+    ];
+
+    const out = foldRenderItems(items, null, keepToolItems);
+
+    expect(out.map((item) => item.kind)).toEqual([
+      "user-message",
+      "turn",
+      "project-move",
+      "user-message"
+    ]);
+    const move = out.find((item) => item.kind === "project-move");
+    expect(move?.kind === "project-move" ? move.notice : null).toEqual({
+      from: "HQ",
+      to: "Argmax",
+      checkoutMode: "shared",
+      sourceArchiveState: null
+    });
+  });
 });

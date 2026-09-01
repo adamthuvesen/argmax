@@ -89,6 +89,18 @@ describe("<StreamingMarkdown />", () => {
     expect(container.querySelector(".markdown")?.textContent).toBe("");
   });
 
+  it("boxes a table in its own sideways scroller", () => {
+    // A bare table grows past the column and hands the overflow to the
+    // transcript's scroller, so the whole conversation slides sideways.
+    const table = ["| a | b |", "| - | - |", "| 1 | 2 |"].join("\n");
+
+    const { container } = render(<StreamingMarkdown text={table} streaming={false} />);
+
+    const scroller = container.querySelector(".markdown > .markdown-table-scroll");
+    expect(scroller?.firstElementChild?.tagName).toBe("TABLE");
+    expect(screen.getByRole("table")).toBeInTheDocument();
+  });
+
   it("renders completed text immediately", () => {
     const text = "Completed answers should not be delayed.";
 

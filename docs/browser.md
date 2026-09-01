@@ -15,7 +15,7 @@ Native child webviews render on top of DOM elements. [BrowserPanel.tsx](../src/r
 ## IPC Channels
 
 - **Request:** `browser:open`, `browser:navigate`, `browser:back`, `browser:forward`, `browser:reload`, `browser:stop`, `browser:set-bounds`, `browser:close`, `browser:fill-credentials`.
-- **Push:** `browser:state` (`{ tabId, url, title, loading }`), `browser:new-tab` (popups routed via `argmax-newtab:` scheme), and `browser:page-command` (key shortcuts passed from webview).
+- **Push:** `browser:state` (`{ tabId, url, title, loading }`), `browser:new-tab` (popups routed via `argmax-newtab:` scheme), and `browser:page-command` (key shortcuts and mouse thumb-button history clicks passed from webview).
 
 Closing a tab (`browser:close`) disposes the webview. Hiding the panel sets `visible: false` to preserve page session state and scroll position.
 
@@ -27,6 +27,7 @@ Closing a tab (`browser:close`) disposes the webview. Hiding the panel sets `vis
 - `⌘R`: Reload (when focused in panel chrome).
 - `⌃Tab` / `⌃⇧Tab`: Next / previous tab.
 - `⌘W`: Closes the active tab when browser has focus.
+- Mouse thumb buttons: back (button 3) / forward (button 4), both over the pane chrome and inside a page.
 
 ## 1Password Autofill
 

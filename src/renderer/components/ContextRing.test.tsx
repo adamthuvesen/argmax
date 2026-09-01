@@ -29,11 +29,13 @@ describe("ContextRing", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders nothing for Codex without a reported context window", () => {
-    const { container } = render(
-      <ContextRing session={{ ...base, contextTokens: 501468, contextWindow: null }} />
-    );
-    expect(container.firstChild).toBeNull();
+  // Codex reports its window only on `token_count` rows, which `codex exec
+  // --json` no longer emits, so it falls back to the model table like every
+  // other provider. Occupancy past the window still pins the dial at full
+  // rather than overrunning it.
+  it("falls back to the model table for Codex, clamping occupancy at full", () => {
+    render(<ContextRing session={{ ...base, contextTokens: 501468, contextWindow: null }} />);
+    expect(screen.getByRole("button", { name: /Context window 100% full/ })).toBeTruthy();
   });
 
   it("renders nothing before any context is used", () => {
@@ -49,8 +51,10 @@ describe("ContextRing", () => {
 
     fireEvent.click(trigger);
     const dialog = screen.getByRole("dialog", { name: "Context window usage" });
-    expect(dialog).toHaveTextContent("79% full");
-    expect(dialog).toHaveTextContent("204,000 / 258,000 tokens used");
+    // Headroom first, detail second — the percentage and the exact counts stay
+    // on the trigger's label, where they don't compete with the answer.
+    expect(dialog).toHaveTextContent("54k left");
+    expect(dialog).toHaveTextContent("204k of 258k used");
   });
 
   it("falls back to the per-model table when the provider reports no window", () => {

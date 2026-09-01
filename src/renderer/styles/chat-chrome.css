@@ -106,19 +106,21 @@
   display: grid;
   position: relative;
   gap: 4px;
-  padding: 10px 12px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
+  /* Borderless, like `.session-input`: the panel fill and the quiet lift seat
+     the field on the surface. The extra 1px absorbs the removed border so the
+     box keeps its size. */
+  padding: 13px 15px 11px;
+  border: 0;
+  border-radius: var(--radius-2xl);
   background: var(--panel);
   box-shadow: 0 1px 2px rgba(31, 28, 24, 0.04), 0 8px 24px rgba(31, 28, 24, 0.05);
-  transition: border-color var(--duration-base) var(--ease),
-    box-shadow var(--duration-base) var(--ease);
+  transition: box-shadow var(--duration-base) var(--ease);
 }
 
+/* Focus lifts the card instead of ringing it — an accent ring reads as the
+   border this surface deliberately doesn't have. */
 .launcher-surface .composer:focus-within {
-  border-color: color-mix(in oklab, var(--accent) 68%, var(--line-strong));
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 16%, transparent),
-    0 8px 22px rgba(31, 28, 24, 0.055);
+  box-shadow: 0 1px 2px rgba(31, 28, 24, 0.05), 0 10px 28px rgba(31, 28, 24, 0.07);
 }
 
 /* The argmax field — an animated pixel canvas that fills the composer behind
@@ -153,7 +155,7 @@
 
 .composer-input {
   position: relative;
-  min-height: 44px;
+  min-height: 60px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-md);
@@ -169,8 +171,8 @@
 .composer-input textarea {
   min-width: 0;
   flex: 1;
-  min-height: 36px;
-  max-height: 140px;
+  min-height: 52px;
+  max-height: 168px;
   padding: 0 8px;
   color: var(--text);
   border: 0;
@@ -474,7 +476,7 @@
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-2);
 }
 
@@ -549,7 +551,7 @@
 }
 
 .model-picker-row[aria-selected="true"] {
-  background: var(--panel-sunken);
+  background: var(--row-selected);
 }
 
 .model-picker-divider {
@@ -640,21 +642,13 @@
 /* Effort popover — opens upward in-session (mirrors the model flyout); the
    launcher override below flips it downward. */
 .effort-slider-popover {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
   z-index: 30;
   width: 232px;
   padding: 12px 14px 14px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-2);
-}
-
-.composer-context .effort-slider-popover {
-  top: calc(100% + 6px);
-  bottom: auto;
 }
 
 .effort-slider-head {
@@ -1154,7 +1148,7 @@
   padding-top: 6px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-2);
   overflow: hidden;
 }

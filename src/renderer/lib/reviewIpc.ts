@@ -14,7 +14,11 @@ export type ReviewSourceKind = WorkspaceTarget["kind"];
 
 export interface ReviewIpcDispatch {
   listChangedFiles: (comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
-  loadDiff: (filePath: string, comparison?: ReviewComparison) => Promise<WorkspaceDiff>;
+  loadDiff: (
+    filePath: string,
+    comparison?: ReviewComparison,
+    contextLines?: number
+  ) => Promise<WorkspaceDiff>;
   listFiles: () => Promise<WorkspaceFileEntry[]>;
   readFile: (filePath: string) => Promise<WorkspaceFilePreview>;
   /** Returns null when the IPC bridge is unavailable (e.g. vitest). */
@@ -45,9 +49,9 @@ export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
       if (!window.argmax) return noBridge();
       return window.argmax.review.listChangedFiles({ kind, id }, comparison);
     },
-    loadDiff: (filePath, comparison) => {
+    loadDiff: (filePath, comparison, contextLines) => {
       if (!window.argmax) return noBridge();
-      return window.argmax.review.loadDiff({ kind, id }, filePath, comparison);
+      return window.argmax.review.loadDiff({ kind, id }, filePath, comparison, contextLines);
     },
     listFiles: () => {
       if (!window.argmax) return noBridge();

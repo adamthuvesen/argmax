@@ -2,10 +2,13 @@ import type { TimelineEvent } from "../../shared/types.js";
 import { stringValue } from "../../shared/typeGuards.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { COMPACTION_FINISHED, COMPACTION_STARTED } from "./compaction.js";
+import { SESSION_MOVED } from "./projectMove.js";
 import { PROVIDER_CHANGED } from "./providerSwitch.js";
 import {
+  cleanToolInput,
   detectToolError,
   extractCompletionCorrelationId,
+  extractProviderInvocationId,
   extractToolError,
   extractToolInput,
   extractToolInputPreview,
@@ -13,6 +16,7 @@ import {
   extractToolOutput,
   extractToolUseId,
   getToolTypeBucket,
+  isHiddenToolName,
   type ToolCall
 } from "./toolCalls.js";
 import {
@@ -30,6 +34,7 @@ function isConversationEventType(type: string): boolean {
     type === "error" ||
     type === COMPACTION_STARTED ||
     type === COMPACTION_FINISHED ||
+    type === SESSION_MOVED ||
     type === PROVIDER_CHANGED
   );
 }
@@ -52,11 +57,26 @@ function isToolBoundaryEvent(event: TimelineEvent): boolean {
   return event.type === "command.started";
 }
 
-function eventIsAfter(left: TimelineEvent, right: TimelineEvent): boolean {
+function isSupersededTraceEvent(event: TimelineEvent): boolean {
+  return event.payload.traceSyntheticSuperseded === true;
+}
+
+/** Persisted row order when both rows carry a cursor, wall-clock otherwise. */
+function compareEventOrder(left: TimelineEvent, right: TimelineEvent): number {
   if (left.rowCursor !== undefined && right.rowCursor !== undefined && left.rowCursor !== right.rowCursor) {
-    return left.rowCursor > right.rowCursor;
+    return left.rowCursor - right.rowCursor;
   }
-  return left.createdAt > right.createdAt;
+  return left.createdAt.localeCompare(right.createdAt);
+}
+
+function eventIsAfter(left: TimelineEvent, right: TimelineEvent): boolean {
+  return compareEventOrder(left, right) > 0;
+}
+
+/** Snapshot events arrive newest-first; reverse before the stable sort so rows
+ *  sharing a timestamp keep their persisted order. */
+function oldestFirst(events: readonly TimelineEvent[]): TimelineEvent[] {
+  return [...events].reverse().sort(compareEventOrder);
 }
 
 function stringArray(value: unknown): string[] {
@@ -157,9 +177,22 @@ function isSupersededAgentLaunchAttempt(tool: ToolCall, allTools: readonly ToolC
   );
 }
 
+// Codex's multi-agent transport: the parent blocking on, messaging, or closing
+// a child thread. None of it names work the user asked for, and its only input
+// is internal thread ids, so it never renders as its own row. Require the
+// thread plumbing so an unrelated MCP tool that happens to be called `wait`
+// still shows.
 function isCodexAgentControlTool(tool: ToolCall): boolean {
   const lower = tool.name.toLowerCase();
-  return lower === "wait" || lower === "close_agent" || lower === "send_message_to_thread";
+  if (lower !== "wait" && lower !== "close_agent" && lower !== "send_message_to_thread") {
+    return false;
+  }
+  return (
+    stringValue(tool.inputFull.sender_thread_id) !== null ||
+    stringValue(tool.inputFull.senderThreadId) !== null ||
+    tool.inputFull.receiver_thread_ids !== undefined ||
+    tool.inputFull.receiverThreadIds !== undefined
+  );
 }
 
 function hasMatchingCodexSender(spawn: ToolCall, control: ToolCall): boolean {
@@ -184,12 +217,6 @@ function matchingCodexSpawns(spawns: readonly ToolCall[], control: ToolCall): To
   }
   const senderMatches = candidates.filter((spawn) => hasMatchingCodexSender(spawn, control));
   return senderMatches.length === 1 ? senderMatches : [];
-}
-
-function hasCodexSpawnCorrelation(spawns: readonly ToolCall[], control: ToolCall): boolean {
-  return codexSpawnCandidates(spawns, control).some(
-    (spawn) => hasReceiverOverlap(spawn, control) || hasMatchingCodexSender(spawn, control)
-  );
 }
 
 function mergeCodexWaitIntoSpawn(spawn: ToolCall, wait: ToolCall): ToolCall {
@@ -221,26 +248,25 @@ function mergeCodexWaitIntoSpawn(spawn: ToolCall, wait: ToolCall): ToolCall {
   };
 }
 
+// Control rows always disappear. Whether one can be matched to a spawn decides
+// only whether its outcome settles that spawn, never whether the transport is
+// worth showing: a launch Codex omitted from stdout used to leave the bare
+// `wait` behind as the turn's only visible activity.
 function foldCodexAgentControlTools(tools: readonly ToolCall[]): ToolCall[] {
-  const spawns = tools.filter(isCodexSpawnAgentTool);
-  if (spawns.length === 0) return [...tools];
+  const controls = tools.filter(isCodexAgentControlTool);
+  if (controls.length === 0) return [...tools];
 
-  const hiddenIds = new Set<string>();
+  const spawns = tools.filter(isCodexSpawnAgentTool);
   const replacements = new Map<string, ToolCall>();
-  for (const control of tools) {
-    if (!isCodexAgentControlTool(control)) continue;
-    if (!hasCodexSpawnCorrelation(spawns, control)) continue;
-    hiddenIds.add(control.id);
-    if (control.name.toLowerCase() === "wait") {
-      for (const spawn of matchingCodexSpawns(spawns, control)) {
-        const current = replacements.get(spawn.id) ?? spawn;
-        replacements.set(spawn.id, mergeCodexWaitIntoSpawn(current, control));
-      }
+  for (const control of controls) {
+    if (control.name.toLowerCase() !== "wait") continue;
+    for (const spawn of matchingCodexSpawns(spawns, control)) {
+      const current = replacements.get(spawn.id) ?? spawn;
+      replacements.set(spawn.id, mergeCodexWaitIntoSpawn(current, control));
     }
   }
-  if (hiddenIds.size === 0 && replacements.size === 0) return [...tools];
   return tools
-    .filter((tool) => !hiddenIds.has(tool.id))
+    .filter((tool) => !isCodexAgentControlTool(tool))
     .map((tool) => replacements.get(tool.id) ?? tool);
 }
 
@@ -248,10 +274,13 @@ function isStillRunningAgentLaunch(
   name: string,
   input: Record<string, unknown>,
   output: string | null,
-  completion: TimelineEvent | undefined
+  completion: TimelineEvent | null
 ): boolean {
   if (getToolTypeBucket(name) !== "agent") return false;
   if (!completion || detectToolError(completion.payload)) return false;
+  // A trace-synthesized completion represents the child lifecycle itself,
+  // unlike Codex's normal spawn completion, which only says the child started.
+  if (completion.payload.traceSyntheticLaunch === true) return false;
   if (name.toLowerCase() === "spawn_agent") return true;
   const status = stringValue(completion.payload.status);
   if (status === "in_progress" || status === "running" || status === "started") return true;
@@ -270,7 +299,11 @@ function isStillRunningAgentLaunch(
  */
 export function buildConversationEvents(events: readonly TimelineEvent[]): TimelineEvent[] {
   const ascending = events
-    .filter((event) => isConversationVisible(event) || isToolBoundaryEvent(event))
+    .filter(
+      (event) =>
+        !isSupersededTraceEvent(event) &&
+        (isConversationVisible(event) || isToolBoundaryEvent(event))
+    )
     .reverse();
   // Right-to-left sweep tracking each session's next turn boundary — the same
   // rule the dashboard merge applies when pruning (see turnBoundaries.ts).
@@ -306,31 +339,86 @@ export function hasRenderableSessionContent(
   );
 }
 
+type StartedTool = {
+  event: TimelineEvent;
+  toolUseId: string;
+  invocationId: string | null;
+  completion: TimelineEvent | null;
+};
+
+/**
+ * The latest still-unpaired start a completion can belong to. Invocation
+ * identity is all-or-nothing: stamped rows pair only within their invocation,
+ * while historical rows pair only with other unstamped rows.
+ */
+function findJoinIndex(pending: readonly StartedTool[], invocationId: string | null): number {
+  for (let index = pending.length - 1; index >= 0; index -= 1) {
+    const candidate = pending[index];
+    if (!candidate) continue;
+    if (candidate.invocationId === invocationId) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Join `command.started` to `command.completed` in one oldest-first sweep.
+ * Each completion consumes its start, so two invocations that reuse a
+ * provider-native id stay two tools instead of collapsing into whichever row
+ * happened to be written last.
+ */
+function correlateToolEvents(events: readonly TimelineEvent[]): StartedTool[] {
+  const started: StartedTool[] = [];
+  const pendingByToolUseId = new Map<string, StartedTool[]>();
+  for (const event of oldestFirst(events)) {
+    if (isSupersededTraceEvent(event)) continue;
+    if (event.type === "command.started") {
+      const toolUseId = extractToolUseId(event.payload) ?? event.id;
+      const start: StartedTool = {
+        event,
+        toolUseId,
+        invocationId: extractProviderInvocationId(event.payload),
+        completion: null
+      };
+      started.push(start);
+      const pending = pendingByToolUseId.get(toolUseId);
+      if (pending) pending.push(start);
+      else pendingByToolUseId.set(toolUseId, [start]);
+      continue;
+    }
+    if (event.type !== "command.completed") continue;
+    const toolUseId = extractCompletionCorrelationId(event.payload);
+    if (!toolUseId) continue;
+    const pending = pendingByToolUseId.get(toolUseId);
+    if (!pending) continue;
+    const index = findJoinIndex(pending, extractProviderInvocationId(event.payload));
+    if (index === -1) continue;
+    const [match] = pending.splice(index, 1);
+    if (match) match.completion = event;
+  }
+  return started;
+}
+
 export function buildSessionToolCalls(
   events: readonly TimelineEvent[],
   sessionRunning = true
 ): ToolCall[] {
-  const starts = new Map<string, { event: TimelineEvent; toolUseId: string }>();
-  const completions = new Map<string, TimelineEvent>();
   const visibleProgressEvents = events.filter(isConversationVisible);
-  for (const event of events) {
-    if (event.type === "command.started") {
-      const toolUseId = extractToolUseId(event.payload) ?? event.id;
-      starts.set(toolUseId, { event, toolUseId });
-    } else if (event.type === "command.completed") {
-      const toolUseId = extractCompletionCorrelationId(event.payload);
-      if (toolUseId) completions.set(toolUseId, event);
-    }
-  }
-  const tools = [...starts.values()]
-    .map(({ event, toolUseId }) => {
+  const tools = correlateToolEvents(events)
+    .filter(({ event }) => {
+      const rawName = stringValue(event.payload.name);
+      return rawName === null || !isHiddenToolName(rawName);
+    })
+    .map(({ event, toolUseId, completion }) => {
+      const providerName = stringValue(event.payload.name);
       const name = extractToolName(event.payload);
-      const completion = completions.get(toolUseId);
       const startInput = extractToolInput(event.payload);
       const completionInput = completion ? extractToolInput(completion.payload) : {};
-      const input = Object.keys(completionInput).length > 0
+      const mergedInput = Object.keys(completionInput).length > 0
         ? { ...startInput, ...completionInput }
         : startInput;
+      const input = cleanToolInput(name, mergedInput, providerName);
       const output = completion ? extractToolOutput(completion.payload) : null;
       const isError = completion ? detectToolError(completion.payload) : false;
       const hasLaterVisibleProgress = visibleProgressEvents.some((progress) => eventIsAfter(progress, event));
@@ -382,11 +470,13 @@ export function buildSessionToolCalls(
         error: completion && isError ? extractToolError(completion.payload) : null,
         parentToolUseId
       };
-    })
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    });
   const folded = foldCodexAgentControlTools(tools);
   return folded.filter(
-    (tool) => !isNoOpCodexAgentLaunch(tool) && !isSupersededAgentLaunchAttempt(tool, folded)
+    (tool) =>
+      !isHiddenToolName(tool.name) &&
+      !isNoOpCodexAgentLaunch(tool) &&
+      !isSupersededAgentLaunchAttempt(tool, folded)
   );
 }
 

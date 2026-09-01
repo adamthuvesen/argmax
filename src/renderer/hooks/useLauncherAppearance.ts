@@ -18,6 +18,12 @@ import {
   writeStoredAccent,
   type AccentId
 } from "../lib/accent.js";
+import {
+  applyUserBubbleTintToDocument,
+  readStoredUserBubbleTint,
+  writeStoredUserBubbleTint,
+  type UserBubbleTint
+} from "../lib/userBubbleTint.js";
 import { DEFAULT_IDE_KEY, NO_DEFAULT_IDE, readStoredDefaultIde } from "../lib/ide.js";
 import type { DetectedIde, IdeId } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
@@ -36,6 +42,8 @@ export function useLauncherAppearance(): {
   setThemeMode: (mode: ThemeMode) => void;
   accentId: AccentId;
   setAccentId: (accentId: AccentId) => void;
+  userBubbleTint: UserBubbleTint;
+  setUserBubbleTint: (tint: UserBubbleTint) => void;
   fontFamily: FontFamilyId;
   setFontFamily: (font: FontFamilyId) => void;
   fontSize: FontSize;
@@ -48,6 +56,9 @@ export function useLauncherAppearance(): {
 } {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredTheme());
   const [accentId, setAccentId] = useState<AccentId>(() => readStoredAccent());
+  const [userBubbleTint, setUserBubbleTint] = useState<UserBubbleTint>(() =>
+    readStoredUserBubbleTint()
+  );
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
   const [fontSize, setFontSize] = useState<FontSize>(() => readStoredFontSize());
   const [chatFontSize, setChatFontSize] = useState<FontSize>(() => readStoredChatFontSize());
@@ -78,6 +89,12 @@ export function useLauncherAppearance(): {
     writeStoredAccent(accentId);
     applyAccentToDocument(accentId);
   }, [accentId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    writeStoredUserBubbleTint(userBubbleTint);
+    applyUserBubbleTintToDocument(userBubbleTint);
+  }, [userBubbleTint]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -135,6 +152,8 @@ export function useLauncherAppearance(): {
     setThemeMode,
     accentId,
     setAccentId,
+    userBubbleTint,
+    setUserBubbleTint,
     fontFamily,
     setFontFamily,
     fontSize,

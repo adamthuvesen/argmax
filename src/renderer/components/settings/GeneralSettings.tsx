@@ -1,6 +1,11 @@
 import { useState, type JSX } from "react";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
-import { CHAT_WIDTH_HINTS, type ChatWidth } from "../../lib/chatWidth.js";
+import {
+  CHAT_WIDTH_HINTS,
+  CHAT_WIDTH_MAX,
+  CHAT_WIDTH_MIN,
+  type ChatWidth
+} from "../../lib/chatWidth.js";
 import {
   FONT_OPTIONS,
   FONT_SIZE_MAX,
@@ -16,10 +21,11 @@ import {
   readStoredLinkTarget,
   type LinkTarget
 } from "../../lib/linkTarget.js";
-import { SCALE_LEVEL_CHOICES, toScaleLevel, type ScaleLevel } from "../../lib/scaleLevel.js";
+import { toScaleLevel } from "../../lib/scaleLevel.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
 import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
+import { isUserBubbleTint, type UserBubbleTint } from "../../lib/userBubbleTint.js";
 import {
   AccentPicker,
   FontFamilyPicker,
@@ -39,10 +45,10 @@ export function GeneralSettings({
   onThemeModeChange,
   accentId,
   onAccentChange,
+  userBubbleTint,
+  onUserBubbleTintChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
-  chatCostVisible,
-  onChatCostVisibleChange,
   workspaceCardVisible,
   onWorkspaceCardVisibleChange,
   pixelFieldEnabled,
@@ -70,10 +76,10 @@ export function GeneralSettings({
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
   onAccentChange: (accentId: AccentId) => void;
+  userBubbleTint: UserBubbleTint;
+  onUserBubbleTintChange: (tint: UserBubbleTint) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
-  chatCostVisible: boolean;
-  onChatCostVisibleChange: (v: boolean) => void;
   workspaceCardVisible: boolean;
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
@@ -87,11 +93,10 @@ export function GeneralSettings({
   randomSessionIconEnabled: boolean;
   onRandomSessionIconEnabledChange: (v: boolean) => void;
 }): JSX.Element {
-  // Chat width keeps the 1–5 scale: 1 narrowest, 3 what Argmax ships, 5
-  // widest. `Segmented` speaks strings, the setting speaks levels.
-  const pickLevel = (raw: string, apply: (level: ScaleLevel) => void): void => {
-    const level = toScaleLevel(raw);
-    if (level) apply(level);
+  // Chat width rides a 1–5 slider: 1 narrowest, 3 default, 5 widest.
+  const pickChatWidth = (raw: number, apply: (width: ChatWidth) => void): void => {
+    const width = toScaleLevel(raw);
+    if (width) apply(width);
   };
   // Font sizes ride a 1–10 slider: each level is 1px of body text, 8px at 1
   // through 17px at 10, with the shipped 13px default at 6.
@@ -176,6 +181,26 @@ export function GeneralSettings({
             </p>
           </div>
 
+          <Segmented
+            legend="Your message bubbles"
+            name="user-bubble-tint"
+            value={userBubbleTint}
+            onChange={(v) => {
+              if (isUserBubbleTint(v)) onUserBubbleTintChange(v);
+            }}
+            options={[
+              { value: "accent", label: "Accent" },
+              { value: "neutral", label: "Neutral" }
+            ]}
+          />
+          <div className="settings-card-sub">
+            <p className="settings-font-caption">
+              {userBubbleTint === "accent"
+                ? "Your messages fill with the accent above. The agent's replies stay unfilled either way."
+                : "Your messages fill with a quiet gray instead of the accent — dark gray at night, light gray on paper."}
+            </p>
+          </div>
+
           <div className="settings-row">
             <label htmlFor="settings-font-family">Font family</label>
             <FontFamilyPicker
@@ -238,13 +263,6 @@ export function GeneralSettings({
           />
 
           <ToggleRow
-            label="Show cost in agent chat"
-            description="Display the session cost card beside the active conversation."
-            checked={chatCostVisible}
-            onChange={onChatCostVisibleChange}
-          />
-
-          <ToggleRow
             label="Workspace card in agent view"
             description="A summary of the session's worktree in the top-right of the agent view: branch, changed lines, and one click into changes, files, terminal, commit, and the pull request. It yields to the review and debug panels, and needs a pane wide enough to sit beside the conversation."
             checked={workspaceCardVisible}
@@ -258,13 +276,14 @@ export function GeneralSettings({
             onChange={onPixelFieldEnabledChange}
           />
 
-          <Segmented
+          <SliderRow
             legend="Chat width"
             hint="1 narrowest · 3 default · 5 widest"
-            name="chat-width"
-            value={String(chatWidth)}
-            onChange={(v) => pickLevel(v, onChatWidthChange)}
-            options={SCALE_LEVEL_CHOICES}
+            min={CHAT_WIDTH_MIN}
+            max={CHAT_WIDTH_MAX}
+            value={chatWidth}
+            valueLabel={String(chatWidth)}
+            onChange={(v) => pickChatWidth(v, onChatWidthChange)}
           />
           <div className="settings-card-sub">
             <p className="settings-font-caption">

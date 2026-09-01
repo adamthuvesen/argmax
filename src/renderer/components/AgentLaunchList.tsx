@@ -3,13 +3,45 @@ import { useState, type JSX } from "react";
 import { codenameForTool } from "../lib/agentNames.js";
 import {
   agentLaunchAriaLabel,
-  agentLaunchStatusHint,
-  agentLaunchTitle
+  agentLaunchLabel,
+  agentStatusLabel
 } from "../lib/agentLaunch.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallDetail } from "./ToolCallDetail.js";
 import { WorkingNest } from "./WorkingNest.js";
+
+/**
+ * A running agent gets the animated nest; a settled one gets a plain bullet.
+ * The finished state is carried by the word "Completed" on the row's own status
+ * line, so a check glyph would only say it twice — and swapping the nest for a
+ * same-sized bullet keeps the text edge from shifting when an agent lands.
+ */
+function AgentLaunchMark({
+  status,
+  phaseKey
+}: {
+  status: ToolCall["status"];
+  phaseKey: string;
+}): JSX.Element {
+  if (status === "running") {
+    return (
+      <WorkingNest
+        active
+        className="agent-launch-mark"
+        size={14}
+        phaseKey={phaseKey}
+      />
+    );
+  }
+  return (
+    <span
+      className="agent-launch-mark agent-launch-bullet"
+      aria-hidden="true"
+      data-launch-mark={status === "error" ? "error" : "done"}
+    />
+  );
+}
 
 type UserToggle = {
   value: boolean;
@@ -35,8 +67,7 @@ function AgentLaunchRow({
   const localExpanded =
     userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
   const expanded = localExpanded ?? (tool.status === "error" || (defaultExpanded ?? false));
-  const title = agentLaunchTitle(agentCodename);
-  const statusHint = agentLaunchStatusHint(tool.status);
+  const { title, identity } = agentLaunchLabel(tool, agentCodename);
   const action = agentLaunchAriaLabel(tool, agentCodename);
   const toggleExpanded = (): void => {
     setUserToggle({ value: !expanded, defaultExpanded });
@@ -46,12 +77,7 @@ function AgentLaunchRow({
   return (
     <div className="agent-launch-row" data-status={tool.status}>
       <div className="agent-launch-row-main">
-        <WorkingNest
-          active={tool.status === "running"}
-          className="agent-launch-nest"
-          size={14}
-          phaseKey={tool.toolUseId}
-        />
+        <AgentLaunchMark status={tool.status} phaseKey={tool.toolUseId} />
         <button
           type="button"
           className="agent-launch-row-button"
@@ -60,8 +86,9 @@ function AgentLaunchRow({
         >
           <span className="agent-launch-headline">
             <span className="agent-launch-title">{title}</span>
-            {statusHint ? <span className="agent-launch-status">{statusHint}</span> : null}
+            {identity ? <span className="agent-launch-identity">{identity}</span> : null}
           </span>
+          <span className="agent-launch-status">{agentStatusLabel(tool.status)}</span>
         </button>
         <button
           className="tool-call-row-disclosure"

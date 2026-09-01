@@ -57,6 +57,18 @@ const UNKNOWN_HUNK: ParsedDiffBlock = {
   ]
 };
 
+const OMITTED: Extract<ParsedDiffBlock, { kind: "omitted" }> = {
+  id: "omitted-1",
+  kind: "omitted",
+  count: 16
+};
+
+const TRUNCATED: ParsedDiffBlock = {
+  id: "truncated",
+  kind: "truncated",
+  droppedBytes: 4096
+};
+
 describe("DiffBlocks", () => {
   beforeEach(() => {
     highlightLineMock.mockClear();
@@ -136,5 +148,47 @@ describe("DiffBlocks", () => {
 
     expect(screen.queryByRole("form", { name: "Comment on src/x.ts:1" })).toBeNull();
     expect(onAddComment).not.toHaveBeenCalled();
+  });
+
+  it("turns a between-hunk gap into an expand control", () => {
+    const onExpandContext = vi.fn();
+    render(
+      <DiffBlocks
+        blocks={[TS_HUNK, OMITTED, UNKNOWN_HUNK]}
+        filePath="src/x.ts"
+        onExpandContext={onExpandContext}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand 16 unmodified lines" }));
+    expect(onExpandContext).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a gap as a static label where expansion is unavailable", () => {
+    render(<DiffBlocks blocks={[TS_HUNK, OMITTED]} filePath="src/x.ts" />);
+
+    expect(screen.queryByRole("button", { name: /unmodified/ })).toBeNull();
+    expect(screen.getByText("16 unmodified lines")).toBeInTheDocument();
+  });
+
+  it("singularizes a one-line gap", () => {
+    render(<DiffBlocks blocks={[TS_HUNK, { ...OMITTED, count: 1 }]} filePath="src/x.ts" />);
+
+    expect(screen.getByText("1 unmodified line")).toBeInTheDocument();
+  });
+
+  it("announces a truncated diff and stops advertising expansion", () => {
+    const onExpandContext = vi.fn();
+    render(
+      <DiffBlocks
+        blocks={[TS_HUNK, OMITTED, TRUNCATED]}
+        filePath="src/x.ts"
+        onExpandContext={onExpandContext}
+      />
+    );
+
+    // Asking git for more context would only drop more content.
+    expect(screen.queryByRole("button", { name: /unmodified/ })).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("4 KB of changes were dropped");
   });
 });

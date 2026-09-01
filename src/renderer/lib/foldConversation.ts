@@ -1,6 +1,11 @@
 import type { SessionSummary, TimelineEvent } from "../../shared/types.js";
 import { compactionNoticeFor, isCompactionEvent, type CompactionNotice } from "./compaction.js";
 import {
+  isProjectMoveEvent,
+  projectMoveNoticeFor,
+  type ProjectMoveNotice
+} from "./projectMove.js";
+import {
   isProviderSwitchEvent,
   providerSwitchNoticeFor,
   type ProviderSwitchNotice
@@ -16,6 +21,7 @@ import {
 export type RenderItem =
   | { kind: "user-message"; event: TimelineEvent }
   | { kind: "compaction"; id: string; notice: CompactionNotice }
+  | { kind: "project-move"; id: string; notice: ProjectMoveNotice }
   | { kind: "provider-switch"; id: string; notice: ProviderSwitchNotice }
   | {
       kind: "turn";
@@ -131,6 +137,13 @@ export function foldRenderItems(
     return id;
   };
   for (const item of conversationItems) {
+    if (item.kind === "message" && isProjectMoveEvent(item.event)) {
+      flush();
+      const id = `project-move-${item.event.id}`;
+      out.push({ kind: "project-move", id, notice: projectMoveNoticeFor(item.event) });
+      activeTurnId = `turn-after-${id}`;
+      continue;
+    }
     // A provider handoff is the same shape of seam as a compaction: it ends the
     // turn it lands in, and the follow-up that triggered it opens a fresh one
     // under the new agent. Unlike compaction it is a single row, so there is no

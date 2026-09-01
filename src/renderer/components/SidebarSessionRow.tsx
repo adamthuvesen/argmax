@@ -471,7 +471,9 @@ function SidebarSessionRowInner({
     ) : null;
 
   return (
-    <div className="session-row">
+    // The workspace id is on the row so ⌘1..9 can read the on-screen order
+    // straight off the list (lib/sidebarOrder.ts).
+    <div className="session-row" data-workspace-id={workspace.id}>
       {isEditing ? (
         // The row keeps its glyph, layout, and subtitle; only the title text
         // swaps for an unboxed input, so renaming edits the label in place

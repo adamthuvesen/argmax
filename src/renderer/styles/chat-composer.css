@@ -52,41 +52,43 @@
   max-width: 180px;
 }
 
-.session-input-toolbar .composer-footer-chip--branch {
-  flex: 1 1 0;
-  min-width: 0;
-  max-width: 100%;
-  /* Reports the branch, does not switch it — the shared chip's pointer cursor
-     would advertise an action that isn't there. */
-  cursor: default;
-}
-
 .session-input-toolbar .composer-footer-chip--changes {
-  position: relative;
   flex: 0 0 auto;
-  margin-left: 10px;
   max-width: none;
   overflow: visible;
   font-family: var(--font-mono);
-  /* A step under the branch chip's --text-xs, which reads as the same size:
-     the mono face is wider with a taller x-height than the prose one beside
-     it, and the diff green/red carry far more contrast than the branch's
-     --muted. At matched pixels the counts dominate a row where they are the
-     secondary fact. */
+  /* A step under the model label beside it, which reads as the same size: the
+     mono face is wider with a taller x-height than the prose one, and the diff
+     green/red carry far more contrast than the model's --muted. At matched
+     pixels the counts dominate a row where they are the secondary fact. */
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
 
-.session-input-toolbar .composer-footer-chip--changes::before {
-  content: "";
-  position: absolute;
-  left: -8px;
-  top: 25%;
-  bottom: 25%;
-  width: 1px;
-  background: var(--line);
-  opacity: 0.6;
+/* Composer-only tint. Everything else in this row is grey, so at full
+   saturation the counts were the first thing the eye landed on — the loudest
+   ink doing the least important job. Mixing toward --muted keeps the hue,
+   which is real information (green added, red removed), at the row's own
+   volume. The review panel keeps them saturated: there they are the subject,
+   not ambient status. Full strength returns on hover and while the Changes
+   panel is open, when the counts are what you are acting on. */
+.session-input-toolbar .composer-footer-chip--changes .additions {
+  color: color-mix(in oklab, var(--diff-add-gutter-fg) 55%, var(--muted));
+}
+
+.session-input-toolbar .composer-footer-chip--changes .deletions {
+  color: color-mix(in oklab, var(--diff-del-gutter-fg) 55%, var(--muted));
+}
+
+.session-input-toolbar .composer-footer-chip--changes:hover .additions,
+.session-input-toolbar .composer-footer-chip--changes[aria-pressed="true"] .additions {
+  color: var(--diff-add-gutter-fg);
+}
+
+.session-input-toolbar .composer-footer-chip--changes:hover .deletions,
+.session-input-toolbar .composer-footer-chip--changes[aria-pressed="true"] .deletions {
+  color: var(--diff-del-gutter-fg);
 }
 
 .session-input-toolbar .composer-footer-chip--changes[aria-pressed="true"] {
@@ -414,7 +416,7 @@
   line-height: 1.6;
   color: var(--text);
   overflow-x: auto;
-  font-variant-ligatures: none;
+  font-feature-settings: var(--code-font-features);
 }
 
 .code-block pre code {
@@ -467,7 +469,7 @@
   padding: 20px 24px 18px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-2xl);
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
 }
 
@@ -489,19 +491,22 @@
 
 .provider-switch-actions {
   display: flex;
-  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 6px;
 }
 
-/* Labels set their own width and never wrap: a fixed height clipped the
-   descenders of any label that did. The row wraps instead when the pane is
-   too narrow to seat all three. */
+/* All three actions stay on one line — a lone button wrapped onto a second row
+   read as a mistake. Labels are short enough to fit even in a narrow pane, and
+   the ellipsis is only there so a longer one degrades quietly. A fixed height
+   clipped descenders, so the height is a minimum. */
 .provider-switch-actions button {
   min-height: 30px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 6px 14px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   border: 1px solid var(--line);
   background: var(--panel);
   font-size: var(--text-sm);

@@ -88,12 +88,12 @@ function markBootSeeded(key: string): void {
 }
 
 // Pinned and Priority collapse through the same persisted set as the recency
-// buckets. `groupWorkspacesByDate` only ever emits today / last-7 / last-30 /
+// buckets. `groupWorkspacesByDate` only ever emits today / yesterday / last-7 /
 // older, so these keys can't collide with a date bucket.
 const PINNED_GROUP_KEY = "pinned";
-const WORKING_GROUP_KEY = "working";
 const PRIORITY_GROUP_KEY = "priority";
 const SIDE_CHATS_GROUP_KEY = "side-chats";
+const OLDER_GROUP_KEY = "older";
 
 // Per-launch behavior: every session group except Pinned starts collapsed, so a
 // fresh window opens on the standing pins and nothing else.
@@ -101,9 +101,9 @@ const BOOT_COLLAPSED_GROUP_KEYS: readonly string[] = [
   PRIORITY_GROUP_KEY,
   SIDE_CHATS_GROUP_KEY,
   "today",
+  "yesterday",
   "last-7",
-  "last-30",
-  "older"
+  OLDER_GROUP_KEY
 ];
 
 const VIEW_MODE_OPTIONS: ReadonlyArray<{ value: SidebarViewMode; label: string; description: string }> = [
@@ -399,7 +399,8 @@ export function Sidebar({
   }, [snapshot.sessions]);
 
   // Workspaces that need the user right now (approval, blocked, failed,
-  // review-ready) float into the Priority section, directly under Pinned.
+  // review-ready) or are mid-turn float into the Priority section, directly
+  // under Pinned.
   // A row lives in exactly one section. Pinned wins: a pin keeps the row
   // in Pinned even when it would otherwise qualify for Priority. Unpinned
   // Priority rows leave their date/project group and drop back when
@@ -460,13 +461,18 @@ export function Sidebar({
     () => new Set(priorityEntries.map((entry) => entry.workspace.id)),
     [priorityEntries]
   );
+  // "Done" clears attention and manual adds. A row that is only there because
+  // a turn is running has nothing to dismiss — it leaves when the turn ends —
+  // so it gets no Done action and the header's Clear skips it.
+  const dismissablePriorityIds = useMemo(
+    () =>
+      priorityEntries
+        .filter((entry) => entry.attention !== null || entry.workspace.priorityAddedAt)
+        .map((entry) => entry.workspace.id),
+    [priorityEntries]
+  );
   // "Add to priority" only makes sense while the section exists.
   const addToPriority = showPriority ? onAddToPriority : undefined;
-
-  const workingWorkspaceIds = useMemo(
-    () => new Set(snapshot.sessions.filter((session) => session.state === "running").map((session) => session.workspaceId)),
-    [snapshot.sessions]
-  );
 
   // Pinned workspaces float into a dedicated section at the very top of the
   // list, above Priority, the date buckets (sessions view), and the project
@@ -489,36 +495,10 @@ export function Sidebar({
     [sidebarWorkspaces, workspaceIdsWithSessions]
   );
 
-  // Workspaces with a live turn float into a dedicated Working section, under
-  // Pinned and above Priority. Active agents are the thing the user most
-  // likely wants to watch, so they surface in both view modes and drop back
-  // into their date bucket or project group the moment the turn ends. Pinned
-  // wins (a row lives in exactly one section), and Priority wins over Working:
-  // a workspace that both runs and needs judgment is triage, not a spectator
-  // item, and Priority already floats it.
-  const workingWorkspaces = useMemo(
-    () =>
-      sidebarWorkspaces
-        .filter(
-          (workspace) =>
-            workspace.kind === "git" &&
-            !workspace.pinned &&
-            workspace.state !== "archived" &&
-            !priorityWorkspaceIds.has(workspace.id) &&
-            workingWorkspaceIds.has(workspace.id) &&
-            workspaceIdsWithSessions.has(workspace.id)
-        )
-        .sort((a, b) => {
-          if (a.lastActivityAt === b.lastActivityAt) return 0;
-          return a.lastActivityAt < b.lastActivityAt ? 1 : -1;
-        }),
-    [sidebarWorkspaces, priorityWorkspaceIds, workingWorkspaceIds, workspaceIdsWithSessions]
-  );
-
   // Flat, date-bucketed list for the "sessions" view mode — every non-archived,
   // unpinned workspace that has a session, regardless of project. Pinned ones
-  // live in the pinned section above instead, and actively working ones in the
-  // Working section.
+  // live in the pinned section above instead, and working or attention-worthy
+  // ones in Priority.
   const dateGroups = useMemo(
     () =>
       groupWorkspacesByDate(
@@ -528,11 +508,10 @@ export function Sidebar({
             !workspace.pinned &&
             workspace.state !== "archived" &&
             !priorityWorkspaceIds.has(workspace.id) &&
-            !workingWorkspaceIds.has(workspace.id) &&
             workspaceIdsWithSessions.has(workspace.id)
         )
       ),
-    [sidebarWorkspaces, priorityWorkspaceIds, workingWorkspaceIds, workspaceIdsWithSessions]
+    [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
   );
 
   // Side chats keep their own section at the very bottom, below the date
@@ -608,11 +587,10 @@ export function Sidebar({
   }, []);
 
   // Expand whichever section hosts the given row: its recency bucket (or
-  // Pinned / Priority / Side chats / Working) in the Sessions view, its project
-  // group in the Projects view. The order mirrors the render order above —
-  // Side chats before Working, because the Working section only takes git
-  // workspaces and a running side chat stays with the side chats. Shared by
-  // the two reveal effects below.
+  // Pinned / Priority / Side chats) in the Sessions view, its project group in
+  // the Projects view. The order mirrors the render order above — Priority
+  // only takes git workspaces, so a running side chat stays with the side
+  // chats. Shared by the two reveal effects below.
   const revealWorkspaceGroup = useCallback(
     (workspace: DashboardSnapshot["workspaces"][number]): void => {
       const groupKey = workspace.pinned
@@ -621,13 +599,15 @@ export function Sidebar({
           ? PRIORITY_GROUP_KEY
           : workspace.kind === "scratch"
             ? SIDE_CHATS_GROUP_KEY
-            : workingWorkspaceIds.has(workspace.id)
-              ? WORKING_GROUP_KEY
-              : viewMode === "sessions"
-                ? dateGroups.find((group) => group.items.some((item) => item.id === workspace.id))
-                    ?.key ?? null
-                : null;
-      if (groupKey) {
+            : viewMode === "sessions"
+              ? dateGroups.find((group) => group.items.some((item) => item.id === workspace.id))
+                  ?.key ?? null
+              : null;
+      // Older is a history dump, often dozens of rows. Auto-opening it to
+      // confirm a launch (or because a stale session is selected in the grid)
+      // buries the recency list the user is actually using. They can still
+      // expand it by clicking the header.
+      if (groupKey && groupKey !== OLDER_GROUP_KEY) {
         setCollapsedDateGroups((current) => {
           if (!current.has(groupKey)) return current;
           const next = new Set(current);
@@ -639,13 +619,14 @@ export function Sidebar({
         expandProjectVisibility(workspace.projectId);
       }
     },
-    [dateGroups, expandProjectVisibility, priorityWorkspaceIds, viewMode, workingWorkspaceIds]
+    [dateGroups, expandProjectVisibility, priorityWorkspaceIds, viewMode]
   );
 
   // A newly launched (or newly selected) session must not vanish into a
-  // collapsed section: expand the group that hosts the selected row. Keyed on
-  // the id *changing* — once revealed, the user may still collapse the group
-  // over a selected row without this snapping it back open.
+  // collapsed section: expand the group that hosts the selected row. Older is
+  // the exception (see revealWorkspaceGroup). Keyed on the id *changing* —
+  // once revealed, the user may still collapse the group over a selected row
+  // without this snapping it back open.
   const lastExpandedForWorkspaceId = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedWorkspaceId || lastExpandedForWorkspaceId.current === selectedWorkspaceId) return;
@@ -657,18 +638,27 @@ export function Sidebar({
 
   // A workspace that APPEARS without being selected — a fork, or a session an
   // agent launched from inside another session — must also surface, so the
-  // user sees the action succeeded. Diff against the previously seen ids; the
-  // first non-empty snapshot seeds silently so boot never unfolds everything.
+  // user sees the action succeeded. Diff against ids seen so far; the first
+  // non-empty snapshot seeds silently so boot never unfolds everything.
+  // The set only grows: replacing it with the current list forgot rows that
+  // briefly dropped out (a partial dashboard load, a prune, a 200-row cap
+  // shuffle) and treated their return as a brand-new launch.
   const knownWorkspaceIdsRef = useRef<Set<string> | null>(null);
   useEffect(() => {
     const known = knownWorkspaceIdsRef.current;
     if (sidebarWorkspaces.length === 0 && known === null) return;
-    knownWorkspaceIdsRef.current = new Set(sidebarWorkspaces.map((workspace) => workspace.id));
-    if (known === null) return;
+    if (known === null) {
+      knownWorkspaceIdsRef.current = new Set(sidebarWorkspaces.map((workspace) => workspace.id));
+      return;
+    }
+    const next = new Set(known);
     for (const workspace of sidebarWorkspaces) {
-      if (known.has(workspace.id) || workspace.state === "archived") continue;
+      if (next.has(workspace.id)) continue;
+      next.add(workspace.id);
+      if (workspace.state === "archived") continue;
       revealWorkspaceGroup(workspace);
     }
+    knownWorkspaceIdsRef.current = next;
   }, [revealWorkspaceGroup, sidebarWorkspaces]);
 
   const toggleDateGroupExpansion = useCallback(
@@ -822,7 +812,6 @@ export function Sidebar({
   // has no bucket to host it.
   const leadDateGroupKey = viewMode === "sessions" ? dateGroups[0]?.key ?? null : null;
   const pinnedCollapsed = collapsedDateGroups.has(PINNED_GROUP_KEY);
-  const workingCollapsed = collapsedDateGroups.has(WORKING_GROUP_KEY);
   const priorityCollapsed = collapsedDateGroups.has(PRIORITY_GROUP_KEY);
   const sidebarActions = (
     <div className="rail-actions" onClick={(event) => event.stopPropagation()}>
@@ -920,8 +909,8 @@ export function Sidebar({
           onClick={() => toggleDateGroupVisibility(SIDE_CHATS_GROUP_KEY)}
         >
           <span className="project-name session-date-label">
-            <span className="project-name-text">Side chats</span>
-            {renderCollapseButton(SIDE_CHATS_GROUP_KEY, "Side chats", sideChatsCollapsed)}
+            <span className="project-name-text">Side Chats</span>
+            {renderCollapseButton(SIDE_CHATS_GROUP_KEY, "Side Chats", sideChatsCollapsed)}
           </span>
           {onNewSideChat ? (
             <span className="rail-actions" onClick={(event) => event.stopPropagation()}>
@@ -1090,49 +1079,6 @@ export function Sidebar({
             ))}
           </div>
         ) : null}
-        {/* Working floats live agents under Pinned, above Priority: an
-            in-flight turn is transient like Priority triage, but it needs
-            watching rather than judgment. */}
-        {workingWorkspaces.length > 0 ? (
-          <div
-            className="project-group session-date-group session-working-group"
-            data-collapsed={workingCollapsed ? "true" : undefined}
-          >
-            <div
-              className="project-row session-date-row session-working-row"
-              onClick={() => toggleDateGroupVisibility(WORKING_GROUP_KEY)}
-            >
-              <span className="project-name session-date-label session-working-label">
-                <span className="project-name-text">Working</span>
-                {renderCollapseButton(WORKING_GROUP_KEY, "Working", workingCollapsed)}
-              </span>
-              <span aria-hidden="true" />
-            </div>
-            {workingCollapsed ? null : workingWorkspaces.map((workspace) => (
-              <div key={workspace.id} className="session-row-wrap">
-                <SidebarSessionRow
-                  workspace={workspace}
-                  subtitle={subtitleFor(workspace.projectId)}
-                  importedProvider={importedProviderByWorkspace.get(workspace.id)}
-                  isSelected={selectedWorkspaceId === workspace.id}
-                  isOpenInGrid={openWorkspaceIds.has(workspace.id)}
-                  canDragToGrid={canDragWorkspaceToGrid}
-                  onOpenWorkspaceChat={onOpenWorkspaceChat}
-                  onArchiveWorkspace={onArchiveWorkspace}
-                  onOpenInIde={onOpenInIde}
-                  onTogglePin={onToggleWorkspacePinned}
-                  onRename={onRenameWorkspace}
-                  onSetIcon={onSetWorkspaceIcon}
-                  onSyncNow={onSyncNowWorkspace}
-                  onWorkspaceDragStart={onWorkspaceDragStart}
-                  onWorkspaceDragEnd={onWorkspaceDragEnd}
-                  detectedIdes={detectedIdes}
-                  defaultIde={defaultIde}
-                />
-              </div>
-            ))}
-          </div>
-        ) : null}
         {priorityEntries.length > 0 ? (
           <div
             className="project-group session-date-group session-priority-group"
@@ -1146,7 +1092,7 @@ export function Sidebar({
                 <span className="project-name-text">Priority</span>
                 {renderCollapseButton(PRIORITY_GROUP_KEY, "Priority", priorityCollapsed)}
               </span>
-              {onClearPriority ? (
+              {onClearPriority && dismissablePriorityIds.length > 0 ? (
                 <button
                   className="session-priority-clear"
                   type="button"
@@ -1154,7 +1100,7 @@ export function Sidebar({
                   aria-label="Clear priority"
                   onClick={(event) => {
                     event.stopPropagation();
-                    onClearPriority(priorityEntries.map((entry) => entry.workspace.id));
+                    onClearPriority(dismissablePriorityIds);
                   }}
                 >
                   <X size={14} aria-hidden="true" />
@@ -1179,7 +1125,11 @@ export function Sidebar({
                   onRename={onRenameWorkspace}
                   onSetIcon={onSetWorkspaceIcon}
                   onSyncNow={onSyncNowWorkspace}
-                  onRemoveFromPriority={onRemoveFromPriority}
+                  onRemoveFromPriority={
+                    entry.attention !== null || entry.workspace.priorityAddedAt
+                      ? onRemoveFromPriority
+                      : undefined
+                  }
                   priorityAttention={entry.attention ?? undefined}
                   onWorkspaceDragStart={onWorkspaceDragStart}
                   onWorkspaceDragEnd={onWorkspaceDragEnd}
@@ -1291,7 +1241,6 @@ export function Sidebar({
                     workspace.projectId === project.id &&
                     workspace.state !== "archived" &&
                     !priorityWorkspaceIds.has(workspace.id) &&
-                    !workingWorkspaceIds.has(workspace.id) &&
                     workspaceIdsWithSessions.has(workspace.id)
                 ),
                 manualOrder

@@ -21,19 +21,20 @@ describe("App side chat launcher", () => {
     cleanup();
   });
 
-  it("launches a repo-less side chat from the launcher's context picker", async () => {
+  it("launches a repo-less side chat from Chat on the mode chip", async () => {
     render(<App />);
-    await screen.findByLabelText("Task prompt");
+    const input = await screen.findByLabelText("Task prompt");
 
-    fireEvent.click(screen.getByRole("button", { name: "Switch project" }));
-    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+    fireEvent.keyDown(input, { key: "Tab" });
+    fireEvent.keyDown(input, { key: "Tab" });
 
-    // Chat mode strips the repo chrome: branch and worktree controls go away.
+    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Chat");
     expect(await screen.findByText("New side chat")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Switch project" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Switch branch" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Worktree" })).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Task prompt"), {
+    fireEvent.change(input, {
       target: { value: "Explain vector clocks" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Start agent" }));
@@ -50,24 +51,30 @@ describe("App side chat launcher", () => {
     });
   });
 
-  it("returns to a project session when a repo is picked back", async () => {
+  it("returns to a project session when cycling Chat back to Auto", async () => {
+    render(<App />);
+    const input = await screen.findByLabelText("Task prompt");
+
+    fireEvent.keyDown(input, { key: "Tab" });
+    fireEvent.keyDown(input, { key: "Tab" });
+    await screen.findByText("New side chat");
+
+    fireEvent.keyDown(input, { key: "Tab" });
+
+    expect(await screen.findByText("New chat")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Auto");
+    expect(screen.getByRole("button", { name: "Switch project" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Switch branch" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Worktree" })).toBeInTheDocument();
+  });
+
+  it("keeps Chat out of the project picker", async () => {
     render(<App />);
     await screen.findByLabelText("Task prompt");
 
     fireEvent.click(screen.getByRole("button", { name: "Switch project" }));
-    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
-    await screen.findByText("New side chat");
-
-    fireEvent.click(screen.getByRole("button", { name: "Switch project" }));
-    fireEvent.click(
-      within(screen.getByRole("listbox", { name: "Select project" })).getByRole("button", {
-        name: "Argmax"
-      })
-    );
-
-    expect(await screen.findByText("New chat")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Switch branch" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Worktree" })).toBeInTheDocument();
+    const picker = screen.getByRole("listbox", { name: "Select project" });
+    expect(within(picker).queryByRole("button", { name: "Chat" })).toBeNull();
   });
 
   it("opens the launcher pre-set to chat mode from the sidebar's New side chat", async () => {
@@ -78,6 +85,7 @@ describe("App side chat launcher", () => {
     fireEvent.click(screen.getByRole("button", { name: "New side chat" }));
 
     expect(await screen.findByText("New side chat")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Chat");
   });
 
   it("archives stray details-popup workspaces on boot", async () => {

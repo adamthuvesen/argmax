@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Row};
+use rusqlite::{Connection, OptionalExtension, Row};
 use serde::Serialize;
 use serde_json::{json, Value};
 use specta::Type;
@@ -282,6 +282,157 @@ pub fn upgrade_trace_no_output_completion(
     Ok(rows > 0)
 }
 
+/// Every tool boundary row of a session, oldest first. The subagent trace
+/// reconciler reads them to learn which child threads already carry a launch
+/// row and which tool ids are taken.
+pub fn list_session_tool_events(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        SELECT rowid AS row_cursor, *
+        FROM events
+        WHERE session_id = ? AND type IN ('command.started', 'command.completed')
+        ORDER BY rowid ASC
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map((session_id,), event_row_to_timeline_event)
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+/// Imported child trace rows filed under one parent tool call, oldest first.
+pub fn list_imported_trace_events(
+    connection: &Connection,
+    session_id: &str,
+    parent_tool_use_id: &str,
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        SELECT rowid AS row_cursor, *
+        FROM events
+        WHERE session_id = ?
+          AND json_extract(payload_json, '$.traceImported') = 1
+          AND json_extract(payload_json, '$.parent_tool_use_id') = ?
+        ORDER BY rowid ASC
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(
+            (session_id, parent_tool_use_id),
+            event_row_to_timeline_event,
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+/// Re-files one imported trace row under a different parent tool call. The
+/// rewrite keeps the rowid, so cursors and timeline ordering are untouched.
+/// Returns false when the destination id already exists — the caller decides
+/// whether the row it was moving is now a duplicate.
+pub fn rewrite_trace_event(
+    connection: &Connection,
+    row_cursor: i64,
+    id: &str,
+    payload: &Value,
+) -> ArgmaxResult<bool> {
+    let payload_json = serde_json::to_string(payload).map_err(json_error)?;
+    let mut statement = connection
+        .prepare_cached("UPDATE OR IGNORE events SET id = ?, payload_json = ? WHERE rowid = ?")
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .execute((id, payload_json.as_str(), row_cursor))
+        .map_err(sqlite_error)?;
+    Ok(rows > 0)
+}
+
+pub fn delete_event_row(connection: &Connection, row_cursor: i64) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached("DELETE FROM events WHERE rowid = ?")
+        .map_err(sqlite_error)?
+        .execute((row_cursor,))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+/// Rewrites placeholder launch rows as cursor-visible tombstones after a real
+/// launch takes over. Re-inserting the same event ids gives them fresh rowids,
+/// so an incremental renderer replaces and hides its stale launch cards.
+pub fn supersede_synthetic_launch_events(
+    connection: &Connection,
+    session_id: &str,
+    tool_use_id: &str,
+    real_tool_use_id: &str,
+) -> ArgmaxResult<usize> {
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let rows = {
+        let mut statement = transaction
+            .prepare_cached(
+                r#"
+            SELECT rowid AS row_cursor, *
+            FROM events
+            WHERE session_id = ?
+              AND json_extract(payload_json, '$.traceSyntheticLaunch') = 1
+              AND json_extract(payload_json, '$.id') = ?
+            ORDER BY rowid ASC
+            "#,
+            )
+            .map_err(sqlite_error)?;
+        let rows = statement
+            .query_map((session_id, tool_use_id), event_row_to_timeline_event)
+            .map_err(sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sqlite_error)?;
+        rows
+    };
+    let deleted = transaction
+        .prepare_cached(
+            r#"
+        DELETE FROM events
+        WHERE session_id = ?
+          AND json_extract(payload_json, '$.traceSyntheticLaunch') = 1
+          AND json_extract(payload_json, '$.id') = ?
+        "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((session_id, tool_use_id))
+        .map_err(sqlite_error)?;
+    for row in rows {
+        let mut payload = row.payload;
+        if let Some(payload) = payload.as_object_mut() {
+            payload.remove("traceSyntheticLaunch");
+            payload.insert("traceSyntheticSuperseded".to_string(), Value::Bool(true));
+            payload.insert(
+                "traceSupersededBy".to_string(),
+                Value::String(real_tool_use_id.to_string()),
+            );
+        }
+        persist_timeline_event(
+            &transaction,
+            &PersistTimelineEventInput {
+                id: row.id,
+                session_id: row.session_id,
+                r#type: row.r#type,
+                message: row.message,
+                payload,
+                created_at: Some(row.created_at),
+            },
+        )?;
+    }
+    transaction.commit().map_err(sqlite_error)?;
+    Ok(deleted)
+}
+
 pub fn persist_raw_output(
     connection: &Connection,
     input: &PersistRawOutputInput,
@@ -336,6 +487,44 @@ pub fn list_all_session_events(
         .collect::<Result<Vec<_>, _>>()
         .map_err(sqlite_error)?;
     Ok(rows)
+}
+
+/// The agent's most recent visible message in a session — what a suggested
+/// follow-up is a reply to. Applies the same child-agent exclusions as
+/// `compose_follow_up_prompt`: subagent prose never reaches the transcript, so
+/// it must not reach the suggestion either.
+pub fn latest_agent_message(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT message
+            FROM events
+            WHERE session_id = ?
+              AND type = 'message.completed'
+              AND trim(message) <> ''
+              AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+              AND json_extract(payload_json, '$.traceImported') IS NULL
+              AND NOT (
+                (json_extract(payload_json, '$.item_type') = 'agent_message'
+                  OR json_extract(payload_json, '$.item.type') = 'agent_message')
+                AND (json_extract(payload_json, '$.thread_id') IS NOT NULL
+                  OR json_extract(payload_json, '$.sender_thread_id') IS NOT NULL
+                  OR json_extract(payload_json, '$.item.thread_id') IS NOT NULL
+                  OR json_extract(payload_json, '$.item.sender_thread_id') IS NOT NULL)
+              )
+            ORDER BY rowid DESC
+            LIMIT 1
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let message = statement
+        .query_row((session_id,), |row| row.get::<_, String>(0))
+        .optional()
+        .map_err(sqlite_error)?;
+    Ok(message)
 }
 
 fn list_event_rows(

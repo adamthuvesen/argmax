@@ -428,9 +428,20 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
    * the socket prove it still answers.
    */
   function handleWake(): void {
-    if (socket) {
+    if (socket && authed) {
       sendPing();
       return;
+    }
+    if (socket) {
+      // A socket still handshaking when the phone slept comes back neither
+      // authed nor closed, and the OS can sit on it for minutes before it
+      // fires `close` — leaving the banner up with nothing driving a retry.
+      // Nothing was ever flushed to it (`flushQueue` waits for auth), so
+      // `inFlight` is empty and the queue rides the replacement.
+      generation += 1;
+      socket.close();
+      socket = null;
+      stopHeartbeat();
     }
     attempt = 0;
     openSocket();

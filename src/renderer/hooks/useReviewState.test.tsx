@@ -232,7 +232,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
       result.current.openFile("src/a.ts");
     });
     await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
-      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "branch"
+      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "branch", undefined
     ));
 
     act(() => {
@@ -241,7 +241,73 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
     // The cached branch diff must not be served for the working-tree baseline.
     await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
-      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "workingTree"
+      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "workingTree", undefined
+    ));
+  });
+
+  it("climbs the context ladder and never serves the narrower cached diff", async () => {
+    listChangedFiles.mockResolvedValue([{ path: "src/a.ts", status: "M", additions: 1, deletions: 0 }]);
+    const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
+    loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff" });
+
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      result.current.openFile("src/a.ts");
+    });
+    await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "branch", undefined
+    ));
+
+    act(() => {
+      result.current.expandDiffContext();
+    });
+    await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "branch", 25
+    ));
+
+    act(() => {
+      result.current.expandDiffContext();
+    });
+    await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "branch", 100_000
+    ));
+
+    // Top of the ladder: another click must not fire a fourth fetch.
+    const callsAtFullContext = loadDiff.mock.calls.length;
+    act(() => {
+      result.current.expandDiffContext();
+    });
+    await waitFor(() => expect(loadDiff.mock.calls.length).toBe(callsAtFullContext));
+  });
+
+  it("drops back to the default context when a different file is opened", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 },
+      { path: "src/b.ts", status: "M", additions: 1, deletions: 0 }
+    ]);
+    const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
+    loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff" });
+
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      result.current.openFile("src/a.ts");
+    });
+    act(() => {
+      result.current.expandDiffContext();
+    });
+    await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "branch", 25
+    ));
+
+    act(() => {
+      result.current.openFile("src/b.ts");
+    });
+    await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/b.ts", "branch", undefined
     ));
   });
 

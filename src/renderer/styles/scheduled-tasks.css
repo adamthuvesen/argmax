@@ -64,7 +64,7 @@
   color: var(--text-soft);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   white-space: nowrap;
   transition:
@@ -108,7 +108,7 @@
   padding: 0;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   overflow: hidden;
 }
 
@@ -264,7 +264,7 @@
   color: var(--muted);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 
@@ -399,7 +399,7 @@
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   transition:
     border-color var(--motion-fast) var(--ease-out),
     box-shadow var(--motion-fast) var(--ease-out);
@@ -460,8 +460,7 @@
   line-height: 1.5;
   color: var(--muted-strong);
   background: var(--accent-soft);
-  border-radius: var(--radius-md);
-  box-shadow: inset 2px 0 0 var(--accent);
+  border-radius: var(--radius-lg);
 }
 
 .sched-readback strong {
@@ -480,6 +479,13 @@
    chips, toggles and menus. */
 .sched-picker {
   width: var(--sched-control-width);
+}
+
+/* The picker trigger is the settings primitive, which still carries the
+   settings page's tighter corner. Round it here so the pickers and the text
+   inputs above them share one edge down the column. */
+.sched-picker .settings-picker-trigger {
+  border-radius: var(--radius-lg);
 }
 
 /* ---------- Form footer ---------- */

@@ -1,5 +1,6 @@
 use super::runtime::sqlite_error;
 use crate::error::ArgmaxResult;
+use rusqlite::OptionalExtension;
 
 const FOLLOW_UP_CONTEXT_MAX_MESSAGES: usize = 12;
 const FOLLOW_UP_CONTEXT_MAX_CHARS: usize = 12_000;
@@ -62,8 +63,12 @@ pub(super) fn compose_follow_up_prompt(
         .collect::<Vec<_>>();
     transcript.reverse();
 
+    let handoff = pending_project_handoff(connection, session_id)?;
     if transcript.is_empty() {
-        return Ok(message.to_string());
+        return Ok(handoff.map_or_else(
+            || message.to_string(),
+            |note| format!("Project handoff:\n{note}\n\nNew user message:\n{message}"),
+        ));
     }
 
     let mut transcript_chars = transcript.iter().map(|line| line.len()).sum::<usize>()
@@ -73,11 +78,53 @@ pub(super) fn compose_follow_up_prompt(
         transcript.remove(0);
     }
 
+    let handoff = handoff
+        .map(|note| format!("\n\nProject handoff:\n{note}"))
+        .unwrap_or_default();
     Ok(format!(
-        "The user is continuing this Argmax chat session. Use the visible conversation transcript below as context for the new message. Continue naturally.\n\nConversation so far:\n{}\n\nNew user message:\n{}",
+        "The user is continuing this Argmax chat session. Use the visible conversation transcript below as context for the new message. Continue naturally.{handoff}\n\nConversation so far:\n{}\n\nNew user message:\n{}",
         transcript.join("\n"),
         message
     ))
+}
+
+fn pending_project_handoff(
+    connection: &rusqlite::Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    connection
+        .query_row(
+            r#"
+            SELECT
+              json_extract(moved.payload_json, '$.sourceProjectName'),
+              json_extract(moved.payload_json, '$.destinationProjectName'),
+              json_extract(moved.payload_json, '$.destinationPath')
+            FROM events moved
+            WHERE moved.session_id = ?
+              AND moved.type = 'session.moved'
+              AND json_extract(moved.payload_json, '$.direction') = 'destination'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM events later
+                WHERE later.session_id = moved.session_id
+                  AND later.rowid > moved.rowid
+                  AND later.type = 'user.message'
+              )
+            ORDER BY moved.rowid DESC
+            LIMIT 1
+            "#,
+            [session_id],
+            |row| {
+                let source: String = row.get(0)?;
+                let destination: String = row.get(1)?;
+                let path: String = row.get(2)?;
+                Ok(format!(
+                    "This chat moved from {source} to {destination}. Work in the destination checkout at {path}."
+                ))
+            },
+        )
+        .optional()
+        .map_err(sqlite_error)
 }
 
 fn clamp_context_text(text: &str) -> String {
@@ -207,6 +254,50 @@ mod tests {
         assert!(!prompt.contains("claude child prose"));
         assert!(!prompt.contains("imported child message"));
         assert!(!prompt.contains("codex child message"));
+    }
+
+    #[test]
+    fn project_handoff_is_injected_once_before_the_first_destination_turn() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_session(&connection);
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "move".to_string(),
+                session_id: "s1".to_string(),
+                r#type: "session.moved".to_string(),
+                message: "Moved from HQ to Argmax.".to_string(),
+                payload: json!({
+                    "direction": "destination",
+                    "sourceProjectName": "HQ",
+                    "destinationProjectName": "Argmax",
+                    "destinationPath": "/tmp/argmax",
+                }),
+                created_at: None,
+            },
+        )
+        .expect("move event");
+
+        let first = compose_follow_up_prompt(&connection, "s1", "continue").expect("first prompt");
+        assert!(first.contains("Project handoff:"));
+        assert!(first.contains("This chat moved from HQ to Argmax."));
+        assert!(first.contains("/tmp/argmax"));
+
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "destination-user-message".to_string(),
+                session_id: "s1".to_string(),
+                r#type: "user.message".to_string(),
+                message: "continue".to_string(),
+                payload: json!({}),
+                created_at: None,
+            },
+        )
+        .expect("destination user message");
+        let later = compose_follow_up_prompt(&connection, "s1", "again").expect("later prompt");
+        assert!(!later.contains("Project handoff:"));
     }
 
     fn seed_session(connection: &rusqlite::Connection) {

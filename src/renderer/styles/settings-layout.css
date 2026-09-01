@@ -108,11 +108,11 @@
   font-weight: 500;
 }
 
-/* Selected section uses the shared selection gray (--panel-sunken), matching
+/* Selected section uses the shared selection gray (--row-selected), matching
    the sidebar sessions, model picker, and agent tabs. */
 .settings-nav-item[data-active="true"] .settings-nav-link {
   color: var(--text);
-  background: var(--panel-sunken);
+  background: var(--row-selected);
 }
 
 /* ---- Main column ---- */
@@ -148,7 +148,7 @@
 /* Sidebar collapsed: the bar doubles as the titlebar strip, so pad past the
    macOS traffic lights (matches the chat header's collapsed inset). */
 .app-shell[data-sidebar-collapsed="true"] .settings-topbar-inner {
-  padding-left: 124px;
+  padding-left: 131px;
 }
 
 .settings-topbar-title {

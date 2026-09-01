@@ -77,6 +77,7 @@ export function SessionPane({
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
+  defaultTurnChangesExpanded,
   events,
   fastModeEnabled = false,
   isFocused = true,
@@ -106,7 +107,6 @@ export function SessionPane({
   rightPanelToggleSignal,
   debugLogToggleSignal,
   session,
-  showCostPanel = true,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
   workspace
@@ -116,6 +116,7 @@ export function SessionPane({
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
+  defaultTurnChangesExpanded?: boolean;
   events: TimelineEvent[];
   fastModeEnabled?: boolean;
   /** When false, the pane skips its document-level keyboard shortcuts so only the focused pane reacts. */
@@ -157,7 +158,6 @@ export function SessionPane({
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
   session: SessionSummary | null;
-  showCostPanel?: boolean;
   /** User preference for the floating workspace card. The pane still hides it
       whenever a right-hand panel is docked. */
   workspaceCardVisible?: boolean;
@@ -558,6 +558,7 @@ export function SessionPane({
           defaultToolCallsDisplay={defaultToolCallsDisplay}
           defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
           defaultThinkingExpanded={defaultThinkingExpanded}
+          defaultTurnChangesExpanded={defaultTurnChangesExpanded}
           events={visibleEvents}
           fastModeEnabled={fastModeEnabled}
           isLogOpen={isLogOpen}
@@ -591,7 +592,6 @@ export function SessionPane({
           rawOutputs={rawOutputs}
           review={reviewState}
           session={session}
-          showCostPanel={showCostPanel}
           workspace={workspace}
         />
 

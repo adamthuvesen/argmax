@@ -58,8 +58,9 @@ function quoteBlock(excerpt: string): string {
 /**
  * Serializes attached annotations ahead of the typed message, so the agent
  * reads the quoted excerpts and review comments first and the instruction
- * that refers to them second. No-op without annotations. The composer's send
- * gate requires typed text, so `prompt` is never empty here.
+ * that refers to them second. No-op without annotations. An empty `prompt` is
+ * expected: annotations can be sent on their own, and then they are the whole
+ * message.
  */
 export function prependAnnotationsToPrompt(
   prompt: string,
@@ -86,5 +87,6 @@ export function prependAnnotationsToPrompt(
     );
     sections.push(`${header}\n\n${blocks.join("\n\n")}`);
   }
-  return `${sections.join("\n\n")}\n\n${prompt}`;
+  const attached = sections.join("\n\n");
+  return prompt.length === 0 ? attached : `${attached}\n\n${prompt}`;
 }

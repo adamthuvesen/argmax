@@ -13,7 +13,10 @@ export function CompactionNotice({ notice }: { notice: Notice }): JSX.Element {
     notice.preTokens !== null && notice.postTokens !== null
       ? `${formatTokens(notice.preTokens)} → ${formatTokens(notice.postTokens)}`
       : null;
-  const label = notice.running ? "Compacting context" : "Compacted context";
+  // Running says only "Compacting…": it is the pane's one live line, and the
+  // shorter word carries the pulse better. The settled seam keeps the noun,
+  // where it sits beside the before/after sizes.
+  const label = notice.running ? "Compacting" : "Compacted context";
   return (
     <div
       className="conversation-notice"

@@ -4,6 +4,16 @@
   --font-prose: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
   --font-code: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", Menlo, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+  /* Programming ligatures off, for surfaces showing text the app did not
+     author: a pytest banner's run of `=` fuses into one solid bar, and a
+     diff's `--` / `==` do the same, so output reads as struck through. Every
+     code font offered here ligates, just through different features: Geist
+     Mono via `liga`, Fira Code / JetBrains Mono / Lilex via `calt`.
+     `font-variant-ligatures: none` cannot do this job alone — the root sets
+     `font-feature-settings: "calt", …` for the UI sans, and that property is
+     step 5 of CSS font feature resolution against font-variant's step 3, so
+     the inherited `calt` wins. It takes the same property to turn it off. */
+  --code-font-features: "liga" 0, "clig" 0, "calt" 0;
 
   --bg: #fdfdfd;
   --sidebar: #fafbfb;
@@ -17,6 +27,12 @@
   /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
      mode so output blocks read airier; dark reuses its sunken surface. */
   --code-surface: #f4f6f7;
+  /* The expanded tool-call block, and the diff card body under it. Paper sinks
+     into a well, charcoal lifts out of one: in light this sits just under the
+     page, in dark it sits just above it. A block set from --code-surface in
+     dark landed *below* the ground (--panel-sunken), so a payload read as a
+     hole punched in the transcript instead of a quiet raised surface. */
+  --tool-block-surface: #f5f6f7;
 
   --line: #e3e6e8;
   --line-soft: #eceeef;
@@ -28,6 +44,15 @@
   --text-soft: #3a3833;
   --muted: #8a857b;
   --muted-strong: #5d594f;
+
+  /* Ink for long-form rendered prose (`.markdown`): agent answers, plan cards,
+     file previews. Held a step off --text on paper so a wall of text doesn't
+     read as hard as a chrome label. Dark overrides it upward instead — see the
+     dark block. --prose-ink-strong is the emphasis step for bold and inline
+     headings, and has to stay on the far side of --prose-ink from the page in
+     both themes or bold prose reads dimmer than the body it emphasizes. */
+  --prose-ink: color-mix(in oklab, var(--text) 91%, var(--text-soft) 9%);
+  --prose-ink-strong: color-mix(in oklab, var(--text) 96%, var(--text-soft) 4%);
 
   /* Text weight. The default Geist Sans ships static weights (the browser
      clamps to the nearest), while Inter Variable exposes a `wght` axis, so
@@ -68,6 +93,7 @@
   --session-icon-clay: #b56a4a;
   --session-icon-amber: #b5872f;
   --session-icon-pink: #c4527d;
+  --session-icon-red: #c84151;
   --pr-merged: #8250df;
   --pr-open: var(--sage);
   --stop: #c4726c;
@@ -83,8 +109,9 @@
   --radius-xs: 3px;
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 10px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 20px;
 
   /* Sidebar row action icons — shared by the project row (… / chevron) and the
      session row (ide / pin / archive) so both stay one size and right-align on
@@ -108,7 +135,7 @@
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   /* One full relay around the four-dot working nest. Every live surface shares
      the same cadence while stable entity keys offset separate jobs. */
-  --working-nest-cycle: 1.2s;
+  --working-nest-cycle: 0.9s;
 
   /* Spacing tokens. Prefer these over raw pixel values. docs/styling.md
      documents the full scale. */
@@ -137,15 +164,22 @@
   --overlay-strong: rgba(31, 28, 24, 0.12);
   --modal-backdrop: rgba(31, 28, 24, 0.30);
   --modal-backdrop-gradient: linear-gradient(180deg, rgba(31, 28, 24, 0.10), rgba(31, 28, 24, 0.34));
+  /* Search dialog surfaces. On paper the dialog is the brightest thing on
+     screen, so it stays on --panel and marks its active row by sinking it. In
+     dark the pair inverts: the dialog sits *below* --panel and the active row
+     is the raised one, because a panel lit brighter than the app behind it
+     reads as a spotlight rather than a sheet of paper. */
+  --overlay-panel: var(--panel);
+  --overlay-panel-raised: var(--panel-sunken);
   --selection-bg: color-mix(in oklab, var(--accent) 24%, transparent);
   --selection-bg-on-ink: rgba(255, 255, 255, 0.28);
   --bubble-on-ink: #ffffff;
   --user-bubble-bg: var(--ink);
   --user-bubble-fg: var(--bubble-on-ink);
-  /* User message bubbles fill with the active accent. --bubble-on-ink inverts
-     per theme, which is exactly the fg each accent needs: light themes carry
-     mid-tone accents that want white ink, dark themes lift the accents to
-     pastels that want ink. */
+  /* User message bubbles fill with the active accent. Light accents are
+     mid-tone, so white ink from --bubble-on-ink is the readable pair. Dark
+     overrides the fill on --user-message-bg so chrome --accent can stay
+     lifted. */
   --user-message-bg: var(--accent);
   --user-message-fg: var(--bubble-on-ink);
   --user-message-shadow: none;
@@ -160,13 +194,17 @@
   --code-ink: color-mix(in oklab, var(--accent) 78%, var(--text-soft));
   --path-ink: color-mix(in oklab, var(--accent) 62%, var(--muted-strong));
 
-  /* Diff add/delete surfaces. Paired tokens so dark mode can keep the same
-     semantic green/red without the glaring near-white pastels. */
-  --diff-add-bg: #eaf7ef;
-  --diff-add-gutter-bg: #dcf2e4;
+  /* Diff add/delete surfaces. Both themes run the same two accent hues as a
+     low-alpha wash and only vary the alpha, so a diff reads as the same green
+     and red whichever theme is on. Alpha is lower here than in dark because
+     paper amplifies chroma, and the red sits under the green because red
+     carries more perceptual weight at equal alpha. The gutter wash stacks on
+     top of the line wash, so its alpha compounds. */
+  --diff-add-bg: rgba(63, 190, 120, 0.18);
+  --diff-add-gutter-bg: rgba(63, 190, 120, 0.2);
   --diff-add-gutter-fg: #007a35;
-  --diff-del-bg: #fdebea;
-  --diff-del-gutter-bg: #fbdedc;
+  --diff-del-bg: rgba(227, 74, 82, 0.16);
+  --diff-del-gutter-bg: rgba(227, 74, 82, 0.2);
   --diff-del-gutter-fg: #c91822;
 
   /* Atmospheric paper highlights. Bright white in light (mimics paper bias);
@@ -179,6 +217,14 @@
      paper. In dark it becomes a low-alpha warm-white film — present enough
      to register, never bright enough to read as a spotlight. */
   --row-hover: rgba(255, 255, 255, 0.6);
+
+  /* Selected-row fill, shared by the sidebar's sessions, the model picker, the
+     settings nav, and the agent tabs. Defined once so those four surfaces
+     cannot drift apart again. Each theme points it at the quiet gray one step
+     off its own ground: in light that is --panel-sunken, because --panel-soft
+     (#fafafa) is a single step from the sidebar's #fafbfb and disappears
+     there. See the dark override for why dark cannot use --panel-sunken. */
+  --row-selected: var(--panel-sunken);
 
   font-family: var(--font-ui);
   font-weight: var(--weight-ui);
@@ -271,6 +317,15 @@
   --type-step: var(--chrome-type-step);
 }
 
+/* Both composers — the launcher's and the session's — sit one step above the
+   chrome scale. They are the surfaces the user reads and types into most, and
+   at chrome size the prompt text and its chips (model, repo, branch) came out
+   a touch too small to be comfortable. Anchored to the chrome step, not the
+   surrounding container's, so the composer tracks the app font size. */
+[data-type-scale="composer"] {
+  --type-step: calc(var(--chrome-type-step) + 1px);
+}
+
 :root,
 [data-font-size],
 [data-type-scale] {
@@ -321,6 +376,7 @@
   --panel-soft: #242422;
   --panel-sunken: #0e0e0d;
   --code-surface: var(--panel-sunken);
+  --tool-block-surface: #1a1a18;
 
   --line: #2b2b29;
   --line-soft: #212120;
@@ -335,6 +391,14 @@
   --text-soft: #c5c1b8;
   --muted: #8a857b;
   --muted-strong: #aeaaa1;
+
+  /* Prose runs brighter than chrome ink in dark, not softer. The bloom that
+     rules out paper-white for labels is a weight problem at small sizes, and
+     rendered prose already pays for it with --weight-prose plus a 1.9 line
+     box, so it can afford the extra luminance a wall of text wants. Kept a
+     hair warm so it stays in family with the charcoal ground. */
+  --prose-ink: #f1efe9;
+  --prose-ink-strong: #fbf9f5;
 
   --weight-ui: 380;
   --weight-prose: 390;
@@ -362,6 +426,7 @@
   --session-icon-clay: #dd9a76;
   --session-icon-amber: #d9a566;
   --session-icon-pink: #ec8bad;
+  --session-icon-red: #f0707f;
   /* Lifted violet so the merged glyph glows on charcoal; open reuses sage. */
   --pr-merged: #b392f0;
   --pr-open: var(--sage);
@@ -376,14 +441,31 @@
   --bubble-on-ink: #131312;
   --user-bubble-bg: #2d2c27;
   --user-bubble-fg: #f4f2ec;
-  --user-message-bg: var(--accent);
-  --user-message-fg: var(--bubble-on-ink);
+  /* Default dark accent is sage. Mid-deep fill plus white ink, so the
+     lifted --accent stays on chrome (rings, selection, nests) and the
+     bubble recedes. Orange, blue, and neutral override the fill. Purple
+     keeps filling with --accent. */
+  --user-message-bg: #3a664c;
+  --user-message-fg: #ffffff;
   --user-message-shadow: none;
 
-  /* Charcoal swallows the accent, so code ink keeps more of the light prose
-     gray than it does on paper — the paper mix read as a dim slab down a long
-     file list. */
-  --code-ink: color-mix(in oklab, var(--accent) 55%, var(--text));
+  /* Mixing the accent toward the light prose gray lifts it off charcoal, but it
+     also halves the accent's chroma, so a long file list read as dim mauve. Set
+     the lightness outright instead and carry the accent's own hue at full
+     chroma. Fixed lightness also means no accent's code ink reads duller than
+     another's: dark purple starts three steps darker than dark orange, and the
+     mix passed that gap straight through. Paths stay a step quieter than code
+     so a file reference doesn't outshout the prose around it.
+
+     Lightness sits well above the accent itself because these tokens only ever
+     land on thin mono glyphs. Subpixel coverage blends most of a stem back into
+     the charcoal behind it, so a mid-lightness warm hue arrives on screen as
+     brown rather than as the accent. The chroma boost is mild for the same
+     reason: past ~1.1x the warm accents leave sRGB and get gamut-mapped back
+     anyway, trading lightness for saturation we cannot see at this stroke
+     width. */
+  --code-ink: oklch(from var(--accent) 0.8 calc(c * 1.05) h);
+  --path-ink: oklch(from var(--accent) 0.76 calc(c * 0.85) h);
 
   --shadow-1: inset 0 1px 0 rgba(255, 250, 235, 0.04), 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-2: inset 0 1px 0 rgba(255, 250, 235, 0.05), 0 8px 24px rgba(0, 0, 0, 0.55);
@@ -400,18 +482,22 @@
   --overlay-strong: rgba(255, 250, 235, 0.12);
   --modal-backdrop: rgba(10, 10, 8, 0.44);
   --modal-backdrop-gradient: linear-gradient(180deg, rgba(10, 10, 8, 0.2), rgba(10, 10, 8, 0.5));
+  --overlay-panel: #171716;
+  --overlay-panel-raised: #292926;
   --selection-bg: color-mix(in oklab, var(--accent) 30%, transparent);
   --selection-bg-on-ink: rgba(127, 180, 148, 0.34);
 
-  /* Diff palette tuned for charcoal: low-alpha sage/rose washes so the
-     code stays the focal point, not the background. The gutter values are
-     slightly stronger so the line numbers still register at a glance. */
-  --diff-add-bg: rgba(127, 180, 148, 0.12);
-  --diff-add-gutter-bg: rgba(127, 180, 148, 0.22);
-  --diff-add-gutter-fg: #9fc9af;
-  --diff-del-bg: rgba(224, 133, 145, 0.12);
-  --diff-del-gutter-bg: rgba(224, 133, 145, 0.22);
-  --diff-del-gutter-fg: #f0a3ad;
+  /* Same two accent hues as light, at higher alpha because charcoal swallows
+     chroma. The wash stays low-alpha so the code keeps the focal point, but
+     the hue runs at full chroma: the muted sage/rose mixes it replaced
+     resolved to a near-gray tint here, so added and removed lines read as
+     smudges rather than green and red. */
+  --diff-add-bg: rgba(63, 190, 120, 0.16);
+  --diff-add-gutter-bg: rgba(63, 190, 120, 0.3);
+  --diff-add-gutter-fg: #5fd095;
+  --diff-del-bg: rgba(227, 74, 82, 0.16);
+  --diff-del-gutter-bg: rgba(227, 74, 82, 0.3);
+  --diff-del-gutter-fg: #f4737e;
 
   /* Suppress the paper-mimic gradients in dark — they were paper-bias
      hints, not architecture. Dark mode keeps its surfaces flat-with-grain. */
@@ -422,6 +508,13 @@
      register, far below the glaring light-gray that rgba(255,255,255,0.6)
      resolves to against dark charcoal. */
   --row-hover: rgba(255, 250, 235, 0.06);
+
+  /* In dark, --panel-sunken (#0e0e0d) is darker than every surface a selected
+     row sits on, so selection read as a hole — disabled rather than chosen. A
+     selected row should be the brightest thing in its list, so dark takes the
+     hover gray instead. Selection is then separated from hover by ink, not
+     fill: the selected row keeps --text and, in the model picker, weight 500. */
+  --row-selected: var(--panel-soft);
 }
 
 /* Configurable chrome accent. These tokens are for brand/decorative tint:
@@ -454,14 +547,20 @@
   --accent-deep: #224878;
 }
 
+:root[data-accent="coral"] {
+  --accent: #a64354;
+  --accent-soft: #fee6e8;
+  --accent-deep: #862b3c;
+}
+
 :root[data-theme="dark"][data-accent="purple"] {
   --accent: #714fb0;
   --accent-soft: rgba(113, 79, 176, 0.16);
   --accent-deep: #8366b3;
-  /* Dark purple is the one accent deep enough that charcoal text on an
-     accent-filled surface (the user bubble) falls under AA — white clears it
-     at 6.1:1. The other dark accents stay light enough for --bubble-on-ink. */
+  /* Purple keeps the lifted accent as the bubble fill. Charcoal ink on
+     that fill is 3.05:1, so white stays. */
   --on-accent: #ffffff;
+  --user-message-bg: var(--accent);
   --user-message-fg: var(--on-accent);
 }
 
@@ -469,18 +568,54 @@
   --accent: #d6d2c7;
   --accent-soft: rgba(214, 210, 199, 0.14);
   --accent-deep: #f1ede3;
+  /* Lifted beige --accent stays on chrome; the bubble drops to the same
+     mid-deep warm gray as light-mode neutral so it reads as a slab, not
+     a paper card on charcoal. */
+  --user-message-bg: #4f4d47;
+  --user-message-fg: #ffffff;
 }
 
 :root[data-theme="dark"][data-accent="orange"] {
   --accent: #d97757;
   --accent-soft: rgba(217, 119, 87, 0.16);
   --accent-deep: #ec9878;
+  --user-message-bg: #89442e;
+  --user-message-fg: #ffffff;
 }
 
 :root[data-theme="dark"][data-accent="blue"] {
   --accent: #6693c9;
   --accent-soft: rgba(102, 147, 201, 0.16);
   --accent-deep: #8facd8;
+  --user-message-bg: #3d5d83;
+  --user-message-fg: #ffffff;
+}
+
+/* Coral runs hotter than the other accents (chroma 0.155 against blue's
+   0.095) because a muted coral reads as the dusty --rose it shares a hue
+   with. The bubble drops to the same mid-deep lightness as the rest. */
+:root[data-theme="dark"][data-accent="coral"] {
+  --accent: #e96c7f;
+  --accent-soft: rgba(233, 108, 127, 0.16);
+  --accent-deep: #f38a97;
+  --user-message-bg: #913948;
+  --user-message-fg: #ffffff;
+}
+
+/* Opting out of the accent fill (Settings → Appearance → Your message bubbles).
+   These have to sit after every accent block: they carry the same specificity
+   as the dark per-accent rules above, so source order is what decides. Light
+   drops to the sunken paper surface with prose ink; dark rises to the raised
+   panel surface. Both sit one surface step off the page rather than carrying a
+   fill of their own, so an un-tinted bubble reads as a card, not as a slab. */
+:root[data-user-bubble="neutral"] {
+  --user-message-bg: var(--panel-sunken);
+  --user-message-fg: var(--text);
+}
+
+:root[data-theme="dark"][data-user-bubble="neutral"] {
+  --user-message-bg: var(--panel-soft);
+  --user-message-fg: #f4f2ec;
 }
 
 /* Smooth crossfade when toggling themes. The .theme-transition class is added

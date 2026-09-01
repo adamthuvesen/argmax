@@ -17,6 +17,7 @@ use std::{
 };
 
 use crate::util::sync::LockOrRecover;
+use once_cell::sync::OnceCell;
 use serde_json::{json, Value};
 use specta::Type;
 use tokio::sync::watch;
@@ -34,6 +35,7 @@ use super::{
         ProviderProcessLauncher, ProviderRuntimeEvent, ProviderRuntimeEventType,
         ProviderRuntimeHandle, RealProviderProcessLauncher,
     },
+    subagent_trace::reconcile_session_subagent_traces,
     AgentMode, ApprovalSupport, PermissionMode, ProviderId, ProviderLaunchInput,
 };
 use crate::{
@@ -48,8 +50,8 @@ use crate::{
     persistence::{
         database::Database,
         events::{
-            persist_raw_output, persist_timeline_event, PersistRawOutputInput,
-            PersistTimelineEventInput,
+            list_session_events_since, persist_raw_output, persist_timeline_event,
+            PersistRawOutputInput, PersistTimelineEventInput,
         },
         projects::list_projects,
         sessions::{
@@ -61,6 +63,7 @@ use crate::{
         time::now_iso,
         workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
     },
+    session_control::SessionLaunchRegistry,
     workspaces::lifecycle::WorkspaceLifecycle,
 };
 
@@ -110,6 +113,10 @@ pub struct ProviderSessionService {
     /// the stream buffer (no newline delimiter yet).
     idle_flush_generation: Arc<Mutex<HashMap<String, u64>>>,
     idle_flush_tasks: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
+    /// Sessions being reconciled, with a queued-rescan flag. A control event
+    /// that lands during a scan requests one follow-up instead of starting a
+    /// concurrent walk or disappearing.
+    subagent_reconciliations: Arc<Mutex<HashMap<String, bool>>>,
     /// Sessions currently being torn down by `terminate`. The lifecycle
     /// handler skips its own state update when a session is in here so
     /// the user-initiated `cancelled` state isn't overwritten by the
@@ -121,6 +128,7 @@ pub struct ProviderSessionService {
     termination_jobs: Arc<Mutex<HashMap<String, TerminationJob>>>,
     lifecycle: Arc<WorkspaceLifecycle>,
     approvals: Option<Arc<ApprovalService>>,
+    session_control: OnceCell<Arc<SessionLaunchRegistry>>,
 }
 
 /// The result slot a termination job publishes to; `None` while the job runs.
@@ -208,11 +216,86 @@ impl ProviderSessionService {
             flush_queue: Arc::new(Mutex::new(ProviderEventFlushQueue::new())),
             idle_flush_generation: Arc::new(Mutex::new(HashMap::new())),
             idle_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
+            subagent_reconciliations: Arc::new(Mutex::new(HashMap::new())),
             terminating: Arc::new(Mutex::new(HashSet::new())),
             termination_jobs: Arc::new(Mutex::new(HashMap::new())),
             lifecycle,
             approvals,
+            session_control: OnceCell::new(),
         })
+    }
+
+    pub fn set_session_control(&self, registry: Arc<SessionLaunchRegistry>) {
+        if self.session_control.set(registry).is_err() {
+            tracing::warn!("session control registry was already installed");
+        }
+    }
+
+    pub fn ensure_move_schedulable(&self, session_id: &str) -> ArgmaxResult<()> {
+        if self
+            .queues
+            .lock_or_recover("queues")
+            .get(session_id)
+            .is_some_and(|queue| !queue.is_empty())
+        {
+            return Err(ArgmaxError::service(
+                "MOVE_HAS_QUEUED_MESSAGES",
+                "Send or cancel queued follow-ups before moving this session.",
+            ));
+        }
+        Ok(())
+    }
+
+    fn ensure_move_not_pending(&self, session_id: &str) -> ArgmaxResult<()> {
+        if self
+            .session_control
+            .get()
+            .is_some_and(|registry| registry.has_pending_move(session_id))
+        {
+            return Err(ArgmaxError::service(
+                "MOVE_ALREADY_PENDING",
+                "This session is moving after the current turn. New follow-ups are disabled.",
+            ));
+        }
+        Ok(())
+    }
+
+    fn settle_session_move(&self, session_id: &str) {
+        if let Some(registry) = self.session_control.get() {
+            registry.settle_move(session_id);
+        }
+    }
+
+    fn abort_session_move(&self, session_id: &str, message: &str) -> ArgmaxResult<()> {
+        let Some(registry) = self.session_control.get() else {
+            return Ok(());
+        };
+        if !registry.has_pending_move(session_id) {
+            return Ok(());
+        }
+        registry.cancel_move(session_id);
+        let (session, event) = {
+            let connection = self.database.connection();
+            let session = find_session_by_id(&connection, session_id)?;
+            let event = persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: Uuid::new_v4().to_string(),
+                    session_id: session_id.to_string(),
+                    r#type: "error".to_string(),
+                    message: message.to_string(),
+                    payload: json!({ "operation": "session.move" }),
+                    created_at: None,
+                },
+            )?;
+            (session, event)
+        };
+        self.publish(DashboardDelta {
+            sessions: vec![session],
+            events: vec![event],
+            ..DashboardDelta::default()
+        });
+        Ok(())
     }
 
     pub fn open_handle_count(&self) -> usize {
@@ -439,6 +522,7 @@ impl ProviderSessionService {
                 queued: false,
             });
         }
+        self.ensure_move_not_pending(&session_id)?;
 
         let (workspace_id, session_provider, session_permission_mode) = {
             let connection = self.database.connection();
@@ -913,8 +997,13 @@ impl ProviderSessionService {
             .lock_or_recover("terminating")
             .remove(session_id);
         if let Some(error) = first_error {
+            let _ = self.abort_session_move(
+                session_id,
+                "Could not move this session because the agent process did not stop safely.",
+            );
             Err(error)
         } else {
+            self.settle_session_move(session_id);
             Ok(())
         }
     }
@@ -1267,8 +1356,19 @@ impl ProviderSessionService {
                     && event.payload.get("cursorResultSuccess") == Some(&json!(true))
             })
         });
+        if let Some(delta) = result.delta.as_mut() {
+            if delta_has_terminal_event(delta) {
+                self.append_reconciled_subagent_events(&event.session_id, delta);
+            }
+        }
+        let reconcile_subagents = result.delta.as_ref().is_some_and(|delta| {
+            !delta_has_terminal_event(delta) && delta_has_subagent_control_event(delta)
+        });
         if let Some(delta) = result.delta {
             self.publish(delta);
+        }
+        if reconcile_subagents {
+            self.schedule_subagent_trace_reconciliation(&event.session_id);
         }
         if cursor_turn_finished {
             let service = Arc::clone(&self);
@@ -1378,18 +1478,21 @@ impl ProviderSessionService {
         if !succeeded {
             self.clear_queue(&event.session_id);
         }
-        self.publish(DashboardDelta {
+        let mut delta = DashboardDelta {
             projects: list_projects(&connection)?,
             workspaces: vec![workspace],
             sessions: vec![session],
             events: vec![timeline_event],
             raw_outputs: vec![raw_output],
             ..DashboardDelta::default()
-        });
+        };
         drop(connection);
+        self.append_reconciled_subagent_events(&event.session_id, &mut delta);
+        self.publish(delta);
         if let Some(approvals) = self.approvals.as_ref() {
             approvals.cancel_session_pending(&event.session_id)?;
         }
+        self.settle_session_move(&event.session_id);
         if succeeded {
             self.drain_queue_after_complete(event.session_id);
         }
@@ -1592,6 +1695,7 @@ impl ProviderSessionService {
             )
         };
         let mut queues = self.queues.lock_or_recover("queues");
+        self.ensure_move_not_pending(session_id)?;
         let queue = queues.entry(session_id.to_string()).or_default();
         if queue.len() >= MAX_PENDING_QUEUE {
             return Err(ArgmaxError::service(
@@ -1706,7 +1810,7 @@ impl ProviderSessionService {
     /// terminates pass `false` so they don't prematurely complete the turn.
     fn flush_trailing(&self, session_id: &str, synthesize_cursor_exit: bool) -> ArgmaxResult<()> {
         let mut connection = self.database.connection();
-        let delta = self
+        let mut delta = self
             .flush_queue
             .lock_or_recover("flush queue")
             .flush_trailing_fragments(
@@ -1716,8 +1820,19 @@ impl ProviderSessionService {
                 synthesize_cursor_exit,
             )?;
         drop(connection);
+        if let Some(delta) = delta.as_mut() {
+            if delta_has_terminal_event(delta) {
+                self.append_reconciled_subagent_events(session_id, delta);
+            }
+        }
+        let reconcile_subagents = delta.as_ref().is_some_and(|delta| {
+            !delta_has_terminal_event(delta) && delta_has_subagent_control_event(delta)
+        });
         if let Some(delta) = delta {
             self.publish(delta);
+        }
+        if reconcile_subagents {
+            self.schedule_subagent_trace_reconciliation(session_id);
         }
         Ok(())
     }
@@ -1784,8 +1899,15 @@ impl ProviderSessionService {
         });
 
         if let Some(HandleEntry::Resolved(handle)) = entry {
-            handle.terminate().await?;
+            if let Err(error) = handle.terminate().await {
+                let _ = self.abort_session_move(
+                    session_id,
+                    "Could not move this session because the Cursor turn did not stop safely.",
+                );
+                return Err(error);
+            }
         }
+        self.settle_session_move(session_id);
         self.drain_queue_after_complete(session_id.to_string());
         Ok(())
     }
@@ -1857,6 +1979,92 @@ impl ProviderSessionService {
             (self.publish_delta)(delta);
         }
     }
+
+    fn schedule_subagent_trace_reconciliation(&self, session_id: &str) {
+        let session_id = session_id.to_string();
+        {
+            let mut reconciliations = self
+                .subagent_reconciliations
+                .lock_or_recover("subagent reconciliations");
+            if let Some(rescan) = reconciliations.get_mut(&session_id) {
+                *rescan = true;
+                return;
+            }
+            reconciliations.insert(session_id.clone(), false);
+        }
+        let database = Arc::clone(&self.database);
+        let in_flight = Arc::clone(&self.subagent_reconciliations);
+        tauri::async_runtime::spawn_blocking(move || loop {
+            if let Err(error) = reconcile_session_subagent_traces(&database, &session_id) {
+                tracing::warn!(
+                    error = %error,
+                    session_id,
+                    "failed to reconcile live subagent trace events"
+                );
+            }
+            let should_rescan = {
+                let mut reconciliations = in_flight.lock_or_recover("subagent reconciliations");
+                match reconciliations.get_mut(&session_id) {
+                    Some(rescan) if *rescan => {
+                        *rescan = false;
+                        true
+                    }
+                    _ => {
+                        reconciliations.remove(&session_id);
+                        false
+                    }
+                }
+            };
+            if !should_rescan {
+                break;
+            }
+        });
+    }
+
+    fn append_reconciled_subagent_events(&self, session_id: &str, delta: &mut DashboardDelta) {
+        let cursor = delta
+            .events
+            .iter()
+            .filter_map(|event| event.row_cursor)
+            .max()
+            .unwrap_or(0);
+        if let Err(error) = reconcile_session_subagent_traces(&self.database, session_id) {
+            tracing::warn!(
+                error = %error,
+                session_id,
+                "failed to reconcile terminal subagent trace events"
+            );
+            return;
+        }
+        let connection = self.database.read_connection();
+        match list_session_events_since(&connection, session_id, Some(cursor), Some(i64::MAX)) {
+            Ok(result) => delta.events.extend(result.events),
+            Err(error) => tracing::warn!(
+                error = %error,
+                session_id,
+                "failed to read reconciled terminal subagent events"
+            ),
+        }
+    }
+}
+
+fn delta_has_terminal_event(delta: &DashboardDelta) -> bool {
+    delta
+        .events
+        .iter()
+        .any(|event| matches!(event.r#type.as_str(), "session.completed" | "error"))
+}
+
+fn delta_has_subagent_control_event(delta: &DashboardDelta) -> bool {
+    delta.events.iter().any(|event| {
+        matches!(
+            event.r#type.as_str(),
+            "command.started" | "command.completed"
+        ) && matches!(
+            event.message.to_ascii_lowercase().as_str(),
+            "spawn_agent" | "wait" | "close_agent" | "send_message_to_thread"
+        )
+    })
 }
 
 fn pending_message_to_send_input(
@@ -1985,6 +2193,34 @@ pub struct SendInputResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_agent_control_events_trigger_trace_reconciliation() {
+        let mut delta = DashboardDelta {
+            events: vec![crate::persistence::events::TimelineEvent {
+                id: "wait".to_string(),
+                session_id: "session".to_string(),
+                r#type: "command.started".to_string(),
+                message: "wait".to_string(),
+                payload: json!({}),
+                created_at: now_iso(),
+                row_cursor: Some(1),
+            }],
+            ..DashboardDelta::default()
+        };
+        assert!(delta_has_subagent_control_event(&delta));
+        assert!(!delta_has_terminal_event(&delta));
+
+        delta.events[0].message = "shell".to_string();
+        assert!(!delta_has_subagent_control_event(&delta));
+
+        delta.events[0].message = "spawn_agent".to_string();
+        delta.events[0].r#type = "message.completed".to_string();
+        assert!(!delta_has_subagent_control_event(&delta));
+
+        delta.events[0].r#type = "session.completed".to_string();
+        assert!(delta_has_terminal_event(&delta));
+    }
 
     #[test]
     fn ask_each_time_is_rejected_without_a_live_provider_responder() {

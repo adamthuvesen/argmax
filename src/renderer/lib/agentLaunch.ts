@@ -28,12 +28,23 @@ export function isInternalAgentLaunchMetadata(output: string): boolean {
 }
 
 /**
- * Visible parent-chat label. The prompt and description live in the activity
- * pane: dumping them here turned every spawn into a truncated path wall.
+ * The two-part label a launch row shows: what the agent was sent to do, plus
+ * the codename that identifies it in the tab strip and activity pane. When the
+ * provider gave no description (Codex `spawn_agent`), the codename becomes the
+ * title so the row is never anonymous.
+ *
+ * The prompt is deliberately never used. It is a multi-paragraph instruction,
+ * and truncating it into a title turned every spawn into a path wall — only the
+ * provider's own short `description` is short enough to be a title.
  */
-export function agentLaunchTitle(codename?: string): string {
+export function agentLaunchLabel(
+  tool: ToolCall,
+  codename?: string
+): { title: string; identity: string | null } {
   const name = trimmedString(codename);
-  return name ? `Launched ${name}` : "Launched subagent";
+  const description = trimmedString(tool.inputFull.description);
+  if (description) return { title: description, identity: name };
+  return { title: name ? `Launched ${name}` : "Launched subagent", identity: null };
 }
 
 function agentLaunchPreview(tool: ToolCall): string {
@@ -43,11 +54,8 @@ function agentLaunchPreview(tool: ToolCall): string {
     ?? "Agent";
 }
 
-/** Parent-row status hint. A completed launch says nothing: the pane owns status. */
-export function agentLaunchStatusHint(status: ToolCall["status"]): string | null {
-  return status === "done" ? null : agentStatusLabel(status);
-}
-
+/** Every launch row names its own state in words, done included: a finished
+ *  agent reads "Completed" rather than relying on a glyph to say so. */
 export function agentStatusLabel(status: ToolCall["status"]): string {
   switch (status) {
     case "running":

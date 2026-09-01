@@ -15,6 +15,23 @@ export type FileChange =
 
 const MAX_INLINE_CHARS = 200_000;
 
+export type ChangeCounts = { adds: number; dels: number; files: number };
+
+/** Roll a set of changes into the `+N −N` stat a chat row shows beside the
+ *  file name. Deletions of whole files contribute a file to the count but no
+ *  line stat: their content is unknown to us, so claiming a number would be a
+ *  guess. */
+export function summarizeFileChanges(changes: FileChange[]): ChangeCounts {
+  let adds = 0;
+  let dels = 0;
+  for (const change of changes) {
+    if (change.kind === "delete") continue;
+    adds += change.addCount;
+    if (change.kind === "edit") dels += change.delCount;
+  }
+  return { adds, dels, files: changes.length };
+}
+
 /** Which single-file edit family a tool name belongs to, or `null` for a tool
  *  that does not write files. Cursor uses camelCase like `writeToolCall`, so
  *  recognition is by substring and catches all three providers. */

@@ -11,17 +11,20 @@ export interface ProviderModelOption {
   label: string;
   modelId: string;
   /**
-   * When true, the model exposes an editable reasoning effort (Low → Extra
-   * High). Omit for fast / non-reasoning models (Haiku, Cursor Composer 2.5)
-   * which render without an effort control. This is the model's capability;
-   * whether a given picker surface renders the standalone slider is the
-   * separate `withEffortSlider` prop on the ModelSelector.
+   * When true, the model exposes an editable reasoning effort. The levels
+   * offered are model-specific (see reasoningEffortsForModel). Omit for
+   * fast / non-reasoning models (Haiku, Cursor Composer 2.5) which render
+   * without an effort control. This is the model's capability. Whether a
+   * given picker surface renders the standalone slider is the separate
+   * `withEffortSlider` prop on the ModelSelector.
    */
   supportsReasoningEffort?: boolean;
   /**
    * Context-window size in tokens. Used to show window occupancy when the
-   * provider doesn't report it on the session (Codex does; Claude/Cursor fall
-   * back to this). Approximate — revisit when a provider changes its window.
+   * provider doesn't report it on the session — in practice that is every
+   * provider, including Codex, whose window rides only on the `token_count`
+   * rows `codex exec --json` no longer emits. Approximate — revisit when a
+   * provider changes its window.
    */
   contextWindow?: number;
   description?: string;
@@ -51,22 +54,28 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
   opencode: "OpenCode"
 };
 
-/** All effort levels, low → high. Claude exposes the full list; other providers
- *  stop at Extra High — their CLIs don't accept Max/Ultra (the Rust adapters
- *  clamp any that slip through, e.g. after a provider switch). */
+/** All effort levels, low → high. Each model's picker list is a prefix or
+ *  discrete subset. Adapters clamp any level that slips through (provider
+ *  switch, resume, session-control) down to that model's ceiling. */
 export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"] as const;
 
 /**
  * Effort levels a given model offers in the picker, low → high. Claude's own
- * models run the full low→ultra list; Codex stops at Extra High; Cursor's
- * GPT-5.6 Luna/Terra/Sol and Opus 5 Thinking go one further to Max (their CLIs
- * expose that variant but not Ultra); Cursor Grok 4.6 and Gemini 3.7 Flash stop
- * at High. OpenCode Go (opencode-go/*) models ship non-prefix variant lists
- * because their CLI exposes only certain discrete levels (e.g. low/high/max).
- * Kept in sync with the Rust adapters' effort → model mapping.
+ * models run the full low→ultra list. Codex Sol/Terra match that (their CLI
+ * catalog lists max and ultra). Codex Luna stops at Max. Cursor's GPT-5.6
+ * Luna/Terra/Sol and Opus 5 Thinking go to Max (no Ultra suffix). Cursor Grok
+ * 4.6 and Gemini 3.7 Flash stop at High. OpenCode Go (opencode-go/*) models
+ * ship non-prefix variant lists because their CLI exposes only certain
+ * discrete levels (e.g. low/high/max). Kept in sync with the Rust adapters'
+ * effort → model mapping.
  */
 export function reasoningEffortsForModel(provider: ProviderId, modelId: string): readonly ReasoningEffort[] {
   if (provider === "claude") return REASONING_EFFORTS; // low → ultra
+  if (provider === "codex") {
+    if (modelId === "gpt-5.6-sol" || modelId === "gpt-5.6-terra") return REASONING_EFFORTS; // low → ultra
+    if (modelId === "gpt-5.6-luna") return REASONING_EFFORTS.slice(0, 5); // low → max
+    return REASONING_EFFORTS.slice(0, 4); // unknown/legacy: low → xhigh
+  }
   if (
     provider === "cursor" &&
     (modelId.startsWith("claude-opus-5-thinking") ||
@@ -141,10 +150,13 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Sonnet 5", modelId: "claude-sonnet-5", supportsReasoningEffort: true, contextWindow: 200_000 },
     { label: "Haiku 4.5", modelId: "claude-haiku-4-5", contextWindow: 200_000 }
   ],
+  // 258_400, not the 272_000 the model card advertises: that is the figure
+  // Codex itself reports as `model_context_window` in its rollout, and the one
+  // the CLI measures occupancy against. Verified against codex-cli 0.149.0.
   codex: [
-    { label: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", supportsReasoningEffort: true, contextWindow: 272_000 },
-    { label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra", supportsReasoningEffort: true, contextWindow: 272_000 },
-    { label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna", supportsReasoningEffort: true, contextWindow: 272_000 }
+    { label: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", supportsReasoningEffort: true, contextWindow: 258_400 },
+    { label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra", supportsReasoningEffort: true, contextWindow: 258_400 },
+    { label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna", supportsReasoningEffort: true, contextWindow: 258_400 }
   ],
   cursor: [
     { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5", contextWindow: 1_000_000 },
@@ -195,10 +207,12 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
 
 // Cheap, fast model per provider used only to mint a short sidebar title from
 // the launch prompt (see workspaces:autotitle). A title is a handful of tokens,
-// so picking the smallest model keeps it ~free and lets it snap in within a
-// second or two instead of blocking on the session's (possibly Opus-high) model.
+// so this path stays ~free and should snap in within a second or two instead of
+// blocking on the session's (possibly Opus-high) model. Claude uses Sonnet at
+// `--effort low` rather than Haiku: a local bake-off found it roughly twice as
+// fast for this prompt, with matching title quality.
 export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
-  claude: "claude-haiku-4-5",
+  claude: "claude-sonnet-5",
   codex: "gpt-5.6-luna",
   cursor: "composer-2.5",
   opencode: "opencode/big-pickle"

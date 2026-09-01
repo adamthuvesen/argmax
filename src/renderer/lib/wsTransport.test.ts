@@ -311,6 +311,23 @@ describe("wsTransport", () => {
     expect(sockets[1].pings()).toHaveLength(1);
   });
 
+  it("replaces a socket still handshaking when the page comes back", () => {
+    vi.useFakeTimers();
+    const { connect, sockets } = fakeTransportSeam();
+    createWsTransport({ connect });
+    // Never authed: the phone slept mid-handshake. The OS can hold a socket
+    // like this for minutes without ever firing `close`, so nothing else would
+    // start a retry and the banner would stay up.
+    expect(sockets).toHaveLength(1);
+
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(sockets[0].closed).toBe(true);
+    expect(sockets).toHaveLength(2);
+    sockets[1].authenticate();
+    expect(sockets[1].frames()[0]).toMatchObject({ type: "auth" });
+  });
+
   it("clears a rejected token and asks for a new one on the next connect", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => undefined);

@@ -95,8 +95,10 @@ function AgentResult({
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
 }): JSX.Element {
   return (
+    // No eyebrow: the brighter panel, the stronger border, and being last in
+    // the pane already say "this is the answer", and subagent output usually
+    // opens with its own heading. `aria-label` carries the name instead.
     <section className="agent-activity-final" aria-label="Agent result">
-      <p className="agent-activity-meta">Result</p>
       <StreamingMarkdown
         text={finalOutput}
         streaming={false}

@@ -446,7 +446,7 @@ describe("ModelSelector — standalone effort slider", () => {
     });
   });
 
-  it("caps the Codex effort slider at Extra High", () => {
+  it("caps the Codex Sol/Terra effort slider at Ultra", () => {
     const value: ModelPickerSelection = {
       provider: "codex",
       label: "GPT-5.6 Sol",
@@ -456,7 +456,20 @@ describe("ModelSelector — standalone effort slider", () => {
     render(<LaunchModelSelector ariaLabel="Session model" value={value} onChange={vi.fn()} withEffortSlider />);
     fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
     const dialog = screen.getByRole("dialog", { name: "Session model effort" });
-    expect(within(dialog).getByRole("slider", { name: "Reasoning effort" })).toHaveAttribute("aria-valuemax", "3");
+    expect(within(dialog).getByRole("slider", { name: "Reasoning effort" })).toHaveAttribute("aria-valuemax", "5");
+  });
+
+  it("caps the Codex Luna effort slider at Max", () => {
+    const value: ModelPickerSelection = {
+      provider: "codex",
+      label: "GPT-5.6 Luna",
+      modelId: "gpt-5.6-luna",
+      reasoningEffort: "medium"
+    };
+    render(<LaunchModelSelector ariaLabel="Session model" value={value} onChange={vi.fn()} withEffortSlider />);
+    fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
+    const dialog = screen.getByRole("dialog", { name: "Session model effort" });
+    expect(within(dialog).getByRole("slider", { name: "Reasoning effort" })).toHaveAttribute("aria-valuemax", "4");
   });
 
   it("caps the Cursor GPT-5.6 effort slider at Max, same as Opus", () => {
@@ -501,7 +514,7 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
     return onChange;
   }
 
-  it("clamps a Claude Max selection down to Extra High switching to Codex", () => {
+  it("keeps a Claude Max selection when switching to Codex Sol", () => {
     const onChange = openWith({
       provider: "claude",
       label: "Opus 5",
@@ -513,7 +526,39 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
       provider: "codex",
       label: "GPT-5.6 Sol",
       modelId: "gpt-5.6-sol",
-      reasoningEffort: "xhigh"
+      reasoningEffort: "max"
+    });
+  });
+
+  it("keeps a Claude Ultra selection when switching to Codex Sol", () => {
+    const onChange = openWith({
+      provider: "claude",
+      label: "Opus 5",
+      modelId: "claude-opus-5",
+      reasoningEffort: "ultra"
+    });
+    fireEvent.click(screen.getByText("GPT-5.6 Sol"));
+    expect(onChange).toHaveBeenCalledWith({
+      provider: "codex",
+      label: "GPT-5.6 Sol",
+      modelId: "gpt-5.6-sol",
+      reasoningEffort: "ultra"
+    });
+  });
+
+  it("clamps Claude Ultra to Max switching to Codex Luna (its ceiling)", () => {
+    const onChange = openWith({
+      provider: "claude",
+      label: "Opus 5",
+      modelId: "claude-opus-5",
+      reasoningEffort: "ultra"
+    });
+    fireEvent.click(screen.getByText("GPT-5.6 Luna"));
+    expect(onChange).toHaveBeenCalledWith({
+      provider: "codex",
+      label: "GPT-5.6 Luna",
+      modelId: "gpt-5.6-luna",
+      reasoningEffort: "max"
     });
   });
 

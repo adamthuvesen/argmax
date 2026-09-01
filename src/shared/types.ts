@@ -83,6 +83,8 @@ export type EventType =
   | "session.compacting"
   | "session.compacted"
   | "session.provider-changed"
+  | "session.move-requested"
+  | "session.moved"
   | "session.recovered-from-crash";
 
 export interface ProjectSettings {
@@ -127,6 +129,8 @@ export type SessionEventsSinceInput = OptionalNullable<
 >;
 export type SessionAgentEventsInput = Bindings.SessionAgentEventsInput;
 export type SessionForkInput = Bindings.SessionForkInput;
+export type SessionSuggestFollowUpInput = Bindings.SessionSuggestFollowUpInput;
+export type FollowUpSuggestion = Bindings.FollowUpSuggestion;
 export type SessionForkResult = Bindings.SessionForkResult;
 export type SessionCostSummaryInput = Bindings.SessionCostSummaryInput;
 export type WorkspaceStatusInput = OptionalNullable<Bindings.WorkspaceStatusInput, "workspaceIds">;
@@ -596,6 +600,10 @@ export interface ArgmaxApi {
     eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;
     agentEvents: (input: SessionAgentEventsInput) => Promise<SessionEventsSinceResult>;
     fork: (input: SessionForkInput) => Promise<SessionForkResult>;
+    /** A composer placeholder proposed by the cheap helper model from the
+     *  agent's last message. `suggestion` is null when there is nothing to
+     *  reply to yet or the helper call failed. */
+    suggestFollowUp: (input: SessionSuggestFollowUpInput) => Promise<FollowUpSuggestion>;
     costSummary: (input: SessionCostSummaryInput) => Promise<SessionCostSummary>;
     search: (input: { query: string; limit?: number }) => Promise<Array<{
       sessionId: string;
@@ -606,7 +614,14 @@ export interface ArgmaxApi {
   };
   review: {
     listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
-    loadDiff: (target: WorkspaceTarget, filePath?: string, comparison?: ReviewComparison) => Promise<WorkspaceDiff>;
+    /** `contextLines` is only honored for a single-file request; omit it for
+     *  git's default context. See ReviewLoadDiffInput. */
+    loadDiff: (
+      target: WorkspaceTarget,
+      filePath?: string,
+      comparison?: ReviewComparison,
+      contextLines?: number
+    ) => Promise<WorkspaceDiff>;
   };
   workspace: {
     listFiles: (target: WorkspaceTarget) => Promise<WorkspaceFileEntry[]>;

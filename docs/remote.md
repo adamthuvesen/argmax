@@ -16,7 +16,7 @@ Pairing is completed by scanning the QR code in settings or opening `http://<mac
 
 ## Architecture
 
-- **Server:** [src-tauri/src/remote](../src-tauri/src/remote) runs an `axum` HTTP server on `127.0.0.1:<port>`. `/api/ws` handles WebSocket connections; other routes serve frontend assets.
+- **Server:** [src-tauri/src/remote](../src-tauri/src/remote) runs an `axum` HTTP server on `127.0.0.1:<port>`. `/api/ws` handles WebSocket connections; other routes serve frontend assets. Tauri's asset resolver answers a miss with the app shell rather than reporting one, so [server.rs](../src-tauri/src/remote/server.rs) treats HTML under a non-HTML path as a 404 — otherwise a hashed chunk the bundle no longer has goes out as `text/html` and gets cached under that URL for a year.
 - **Protocol:** JSON frames over WebSocket.
   - Handshake: `{"type":"auth","token":"..."}` within 5 seconds.
   - RPC: `{"type":"request","id", "channel", "input"}` → `{"type":"response","id","ok"|"error"}`.
@@ -24,7 +24,8 @@ Pairing is completed by scanning the QR code in settings or opening `http://<mac
   - Heartbeat: `{"type":"ping"}` / `{"type":"pong"}` every 20s. Resync signals (`{"type":"resync"}`) indicate dropped connection recovery.
 - **Dispatcher:** [src-tauri/src/remote/dispatch.rs](../src-tauri/src/remote/dispatch.rs) maps incoming requests to existing IPC handlers. Desktop-only channels return `REMOTE_UNSUPPORTED`.
 - **Renderer Transport:** [wsTransport.ts](../src/renderer/lib/wsTransport.ts) implements `invoke` and `subscribe` over WebSocket when `argmax.remote` is set.
-- **Mobile UI:** [mobile.html](../mobile.html) and [src/renderer/mobile](../src/renderer/mobile) provide a touch-optimized view for session management, reviews, and launcher flows. Navigation history is synchronized with browser history in [useMobileBackNavigation.ts](../src/renderer/mobile/useMobileBackNavigation.ts).
+- **Mobile UI:** [mobile.html](../mobile.html) and [src/renderer/mobile](../src/renderer/mobile) provide a touch-optimized view for session management, reviews, and launcher flows. Navigation history is synchronized with browser history in [useMobileBackNavigation.ts](../src/renderer/mobile/useMobileBackNavigation.ts) — every screen a back gesture can pop counts toward the depth it mirrors, including sheets and the review screen's file drill-down, so screens whose open state lives in a child are lifted into `MobileApp`.
+- **Viewport:** the shell is a fixed frame, and `dvh` measures the layout viewport, which no phone shrinks for the on-screen keyboard. Chrome is handled by `interactive-widget=resizes-content` in the viewport meta; iOS has no equivalent, so [useVisualViewportInsets.ts](../src/renderer/mobile/useVisualViewportInsets.ts) publishes the visual viewport's height, pan offset, and keyboard inset as custom properties that [mobile.css](../src/renderer/styles/mobile.css) sizes the shell, sheets, and toast against. A paired phone keeps a page alive across renderer rebuilds, so the lazily-loaded review screen goes through [importChunk.ts](../src/renderer/lib/importChunk.ts), which reloads once when the chunk hash it holds is gone.
 
 ## Push Notifications (ntfy)
 

@@ -1,17 +1,13 @@
-import { ArrowUp, ChevronsUpDown, Folder, GitBranch, Zap } from "lucide-react";
+import { ArrowUp, ChevronsUpDown, Folder, GitBranch } from "lucide-react";
 import { useCallback, useMemo, useState, type JSX, type ReactNode } from "react";
 import { PROVIDER_TITLE_MODEL } from "../../shared/providerModels.js";
+import { LaunchModelSelector } from "../components/ModelSelector.js";
 import { BottomSheet, SheetOption } from "./BottomSheet.js";
 import { MobileScreenHeader } from "./MobileScreenHeader.js";
-import type { ProjectSummary, ProviderId } from "../../shared/types.js";
+import type { ProjectSummary } from "../../shared/types.js";
 import { persistLaunchModel, readStoredLaunchModel } from "../lib/launchModelPreference.js";
-import {
-  allModelOptions,
-  factoryLaunchModel,
-  providerModelKey,
-  type ModelPickerSelection
-} from "../lib/models.js";
-import { PROVIDER_SETUP, PROVIDER_SETUP_ORDER } from "../lib/providerSetup.js";
+import { factoryLaunchModel, type ModelPickerSelection } from "../lib/models.js";
+import { pickLauncherHeading } from "../lib/launcherHeadings.js";
 import { titleFromPrompt } from "../lib/projects.js";
 import {
   readStoredWorkspaceMode,
@@ -20,9 +16,7 @@ import {
 } from "../lib/workspaceMode.js";
 import { REMOTE_CONNECTION_LOST_MESSAGE } from "../lib/wsTransport.js";
 
-/** A quiet Codex-style context row: icon + current value + up/down chevron,
- *  with an invisible button stretched over it so tapping anywhere opens the
- *  matching bottom sheet. */
+/** A quiet context row for project and workspace choices. */
 function ContextRow({
   icon,
   value,
@@ -70,8 +64,8 @@ export function NewSessionScreen({
   /** Called with the new workspace id after refresh-worthy state exists. */
   onLaunched: (workspaceId: string) => Promise<void>;
   onError: (message: string) => void;
-  /** Which picker sheet is up. Owned by MobileApp so a back gesture can pop
-   *  the sheet instead of tearing down this screen and the typed prompt. */
+  /** Which picker is open. Owned by MobileApp so a back gesture can dismiss
+   *  it instead of tearing down this screen and the typed prompt. */
   openSheet: PickerKind | null;
   onOpenSheetChange: (kind: PickerKind | null) => void;
 }): JSX.Element {
@@ -79,6 +73,7 @@ export function NewSessionScreen({
   const [prompt, setPrompt] = useState("");
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
   const [launching, setLaunching] = useState(false);
+  const [heading] = useState(pickLauncherHeading);
 
   const project = useMemo(
     () => projects.find((candidate) => candidate.id === projectId) ?? projects[0] ?? null,
@@ -154,7 +149,6 @@ export function NewSessionScreen({
     }
   }, [launching, model, onError, onLaunched, project, prompt, workspaceMode]);
 
-  const modelValue = `${PROVIDER_SETUP[model.provider].displayName} · ${model.label}`;
   const workspaceValue =
     workspaceMode === "worktree"
       ? "New worktree"
@@ -171,10 +165,15 @@ export function NewSessionScreen({
         </div>
       ) : (
         <div className="mobile-new-body">
-          {/* Context rows sit directly above the composer, Codex-style: the
-              empty space above stays quiet and the thumb reaches everything.
-              Each row opens a bottom sheet — native selects anchor to the row
-              near the bottom edge on iOS and clip off-screen. */}
+          <div className="mobile-new-hero launcher-hero">
+            <div className="launcher-hero-meta">
+              <span className="launcher-hero-dot" aria-hidden="true" />
+              <span className="launcher-hero-eyebrow">New chat</span>
+            </div>
+            <h1 className="launcher-hero-title">{heading}</h1>
+          </div>
+          {/* Project and workspace stay above the composer. Model and effort
+              are composer controls so the launch choices stay together. */}
           <div className="mobile-new-context">
             <ContextRow
               icon={<Folder size={16} />}
@@ -190,13 +189,6 @@ export function NewSessionScreen({
               open={openSheet === "workspace"}
               onOpen={() => onOpenSheetChange("workspace")}
             />
-            <ContextRow
-              icon={<Zap size={16} />}
-              value={modelValue}
-              label="Model"
-              open={openSheet === "model"}
-              onOpen={() => onOpenSheetChange("model")}
-            />
           </div>
 
           <div className="mobile-new-composer">
@@ -211,15 +203,28 @@ export function NewSessionScreen({
               autoFocus
               onChange={(event) => setPrompt(event.target.value)}
             />
-            <button
-              type="button"
-              className="mobile-new-send"
-              aria-label="Launch session"
-              disabled={launching || prompt.trim().length === 0}
-              onClick={() => void launch()}
-            >
-              <ArrowUp size={18} aria-hidden="true" />
-            </button>
+            <div className="mobile-new-composer-toolbar">
+              <LaunchModelSelector
+                ariaLabel="Session model"
+                open={openSheet === "model"}
+                onOpenChange={(open) => onOpenSheetChange(open ? "model" : null)}
+                value={model}
+                withEffortSlider
+                onChange={(next) => {
+                  setModel(next);
+                  persistLaunchModel(next);
+                }}
+              />
+              <button
+                type="button"
+                className="mobile-new-send"
+                aria-label="Launch session"
+                disabled={launching || prompt.trim().length === 0}
+                onClick={() => void launch()}
+              >
+                <ArrowUp size={18} aria-hidden="true" />
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -265,32 +270,6 @@ export function NewSessionScreen({
         </BottomSheet>
       ) : null}
 
-      {openSheet === "model" ? (
-        <BottomSheet label="Choose model" onClose={() => onOpenSheetChange(null)}>
-          {PROVIDER_SETUP_ORDER.map((provider: ProviderId) => (
-            <div key={provider} className="mobile-sheet-group">
-              <p className="mobile-sheet-group-label">{PROVIDER_SETUP[provider].displayName}</p>
-              {allModelOptions
-                .filter((option) => option.provider === provider)
-                .map((option) => {
-                  const key = providerModelKey(option);
-                  return (
-                    <SheetOption
-                      key={key}
-                      label={option.label}
-                      selected={key === providerModelKey(model)}
-                      onSelect={() => {
-                        setModel(option);
-                        persistLaunchModel(option);
-                        onOpenSheetChange(null);
-                      }}
-                    />
-                  );
-                })}
-            </div>
-          ))}
-        </BottomSheet>
-      ) : null}
     </div>
   );
 }

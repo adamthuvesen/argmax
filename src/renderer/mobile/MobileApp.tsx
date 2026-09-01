@@ -8,8 +8,10 @@ import { takeDeepLinkSessionId } from "./deepLink.js";
 import { MobileScreenHeader } from "./MobileScreenHeader.js";
 import { NewSessionScreen, type PickerKind } from "./NewSessionScreen.js";
 import { useMobileBackNavigation } from "./useMobileBackNavigation.js";
+import { useVisualViewportInsets } from "./useVisualViewportInsets.js";
 import { useDashboardSession } from "../hooks/useDashboardSession.js";
 import { useSessionCommands } from "../hooks/useSessionCommands.js";
+import { importChunk } from "../lib/importChunk.js";
 import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
 import { computeWorkspaceAttention, type PriorityAttention } from "../lib/priority.js";
 import {
@@ -31,9 +33,13 @@ import {
 // on every cold load for a screen reached only from the session header. Lazy
 // like the desktop's ReviewPanel (SessionPane.tsx), so mobile.html stops
 // preloading that chunk.
-const MobileReviewScreen = lazy(async () => ({
-  default: (await import("./MobileReviewScreen.js")).MobileReviewScreen
-}));
+// Through importChunk because a phone keeps a page alive across renderer
+// rebuilds, and the chunk hash it holds stops existing the moment one lands.
+const MobileReviewScreen = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("./MobileReviewScreen.js")).MobileReviewScreen
+  }))
+);
 
 const ATTENTION_LABEL: Record<PriorityAttention, string> = {
   "approval-needed": "needs approval",
@@ -156,6 +162,7 @@ function SessionSection({
 }
 
 export function MobileApp(): JSX.Element {
+  useVisualViewportInsets();
   const [toast, setToast] = useState<ToastMessage | null>(null);
   // Backgrounding the phone kills the socket on every app switch, so requests
   // caught mid-flight fail with the connection-lost message as a matter of
@@ -275,12 +282,20 @@ export function MobileApp(): JSX.Element {
   // Set when a file reference in the transcript was tapped, so the review
   // screen lands on that file instead of the tree root.
   const [reviewFilePath, setReviewFilePath] = useState<string | null>(null);
+  // The review screen's Files drill-down (tree → file) is a screen of its own
+  // for a back gesture, so its open state lives here rather than inside it.
+  const [reviewFilePreviewOpen, setReviewFilePreviewOpen] = useState(false);
+
+  const closeReview = useCallback(() => {
+    setReviewOpen(false);
+    setReviewFilePreviewOpen(false);
+  }, []);
 
   const closeSession = useCallback(() => {
-    setReviewOpen(false);
+    closeReview();
     setSelectedSessionId(null);
     setSelectedWorkspaceId(null);
-  }, [setSelectedSessionId, setSelectedWorkspaceId]);
+  }, [closeReview, setSelectedSessionId, setSelectedWorkspaceId]);
 
   // Same dirty-worktree rules as the desktop sidebar: confirm before a
   // destructive force-archive, and re-prompt once when the backend's fresh
@@ -384,8 +399,8 @@ export function MobileApp(): JSX.Element {
   );
 
   const [newSessionOpen, setNewSessionOpen] = useState(false);
-  // The New session screen's picker sheets live here, not inside that screen,
-  // so a back gesture can close the sheet without discarding the typed prompt.
+  // New-session picker state lives here, not inside that screen, so a back
+  // gesture can dismiss a picker without discarding the typed prompt.
   const [newSessionSheet, setNewSessionSheet] = useState<PickerKind | null>(null);
   const handleLaunched = useCallback(
     async (workspaceId: string): Promise<void> => {
@@ -408,10 +423,13 @@ export function MobileApp(): JSX.Element {
   // on the New session screen tears the screen down under an open picker.
   const sheetOpen = actionsRow !== null || newSessionSheet !== null;
 
-  // Screen depth for the hardware back button: list → session/new → review,
-  // plus one for an open sheet.
+  const filePreviewShown = reviewShown && reviewFilePreviewOpen;
+
+  // Screen depth for the hardware back button: list → session/new → review →
+  // file preview, plus one for an open sheet.
   const screenDepth =
-    (sessionOpen ? (reviewShown ? 2 : 1) : newSessionOpen ? 1 : 0) + (sheetOpen ? 1 : 0);
+    (sessionOpen ? (reviewShown ? (filePreviewShown ? 3 : 2) : 1) : newSessionOpen ? 1 : 0) +
+    (sheetOpen ? 1 : 0);
   const goBackOneScreen = useCallback((): void => {
     if (actionsRow !== null) {
       setActionsRow(null);
@@ -421,8 +439,12 @@ export function MobileApp(): JSX.Element {
       setNewSessionSheet(null);
       return;
     }
+    if (filePreviewShown) {
+      setReviewFilePreviewOpen(false);
+      return;
+    }
     if (reviewShown) {
-      setReviewOpen(false);
+      closeReview();
       return;
     }
     if (newSessionOpen && !sessionOpen) {
@@ -430,7 +452,16 @@ export function MobileApp(): JSX.Element {
       return;
     }
     closeSession();
-  }, [actionsRow, closeSession, newSessionOpen, newSessionSheet, reviewShown, sessionOpen]);
+  }, [
+    actionsRow,
+    closeReview,
+    closeSession,
+    filePreviewShown,
+    newSessionOpen,
+    newSessionSheet,
+    reviewShown,
+    sessionOpen
+  ]);
   useMobileBackNavigation(screenDepth, goBackOneScreen);
 
   const empty = pinnedRows.length === 0 && activityRows.length === 0;
@@ -468,7 +499,9 @@ export function MobileApp(): JSX.Element {
           <MobileReviewScreen
             workspace={selectedWorkspace}
             initialFilePath={reviewFilePath}
-            onClose={() => setReviewOpen(false)}
+            filePreviewOpen={reviewFilePreviewOpen}
+            onFilePreviewOpenChange={setReviewFilePreviewOpen}
+            onClose={closeReview}
           />
         </Suspense>
       ) : sessionOpen ? (
@@ -533,7 +566,6 @@ export function MobileApp(): JSX.Element {
               setReviewFilePath(path);
               setReviewOpen(true);
             }}
-            showCostPanel={false}
             workspaceCardVisible={false}
           />
         </div>

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from "react";
 import { stableHash32 } from "../lib/stableHash.js";
 
-export const WORKING_NEST_CYCLE_MS = 1200;
+export const WORKING_NEST_CYCLE_MS = 900;
 const WORKING_NEST_SETTLE_MS = 180;
 
 /**

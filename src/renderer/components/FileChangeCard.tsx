@@ -3,14 +3,7 @@ import { useMemo, type JSX } from "react";
 import type { FileChange } from "../lib/fileChange.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { DiffBlocks } from "./DiffBlocks.js";
-
-function displayPath(path: string, cwd: string | null | undefined): string {
-  if (!cwd) return path;
-  const normalized = cwd.endsWith("/") ? cwd : `${cwd}/`;
-  if (path.startsWith(normalized)) return path.slice(normalized.length);
-  if (path === cwd) return path;
-  return path;
-}
+import { displayPath } from "../lib/displayPath.js";
 
 export function FileChangeCard({
   change,

@@ -1,4 +1,4 @@
-import { ChevronRight, Zap } from "lucide-react";
+import { ChevronDown, ChevronRight, Zap } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type JSX } from "react";
 import {
   clampEffort,
@@ -188,10 +188,11 @@ type EffortPosStyle = CSSProperties & { "--effort-pos"?: string };
 
 /**
  * Standalone effort control shown beside the model chip: a chip that reads the
- * current effort and opens a slider spanning `efforts` (provider-specific — the
- * Claude list runs low→ultra, others stop at Extra High). The thumb tracks the
- * pointer 1:1 while dragging, then glides to the nearest stop; arrow/Home/End
- * keys step it. role="slider" carries the a11y semantics.
+ * current effort and opens a slider spanning `efforts`. The list is
+ * provider-specific (Claude and Codex Sol/Terra run low→ultra, others stop
+ * earlier). The thumb tracks the pointer 1:1 while dragging, then glides to
+ * the nearest stop; arrow/Home/End keys step it. role="slider" carries the
+ * a11y semantics.
  */
 function EffortSlider({
   value,
@@ -210,7 +211,9 @@ function EffortSlider({
   // chip that anchors this popover) underneath the cursor.
   const [draft, setDraft] = useState(value);
   const [dragging, setDragging] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
+  // Anchored like the model flyout beside it, so the two halves of one control
+  // open the same way instead of one being hand-positioned in CSS.
+  const flyout = useAnchoredPopover({ open, placement: "bottom-start", strategy: "absolute" });
   const trackRef = useRef<HTMLDivElement | null>(null);
 
   const maxIndex = efforts.length - 1;
@@ -225,7 +228,7 @@ function EffortSlider({
     setDragging(false);
     if (draft !== value) onChange(draft);
   };
-  useDismissOnOutsideOrEscape(anchorRef, open, commitAndClose);
+  useDismissOnOutsideOrEscape(flyout.anchorRef, open, commitAndClose);
 
   useEffect(() => {
     if (!dragging) setPos(index);
@@ -260,7 +263,7 @@ function EffortSlider({
   };
 
   return (
-    <div className="project-picker-anchor effort-slider-anchor" ref={anchorRef}>
+    <div className="project-picker-anchor effort-slider-anchor" ref={flyout.setAnchor}>
       <button
         type="button"
         className="composer-context-chip effort-slider-chip"
@@ -278,9 +281,16 @@ function EffortSlider({
         }}
       >
         <span className="model-picker-label">{effortLabel(value)}</span>
+        <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
       </button>
       {open && (
-        <div className="effort-slider-popover" role="dialog" aria-label={ariaLabel}>
+        <div
+          className="effort-slider-popover"
+          role="dialog"
+          aria-label={ariaLabel}
+          ref={flyout.setPopover}
+          style={flyout.floatingStyles}
+        >
           <div className="effort-slider-head">
             <span className="effort-slider-caption">Effort</span>
             <span className="effort-slider-current">{effortLabel(draft)}</span>
@@ -376,8 +386,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
   options: Array<ChipModelOption<T>>;
-  /** Effort levels for a given value's provider, low → high. Claude runs the
-   *  full low→ultra list; other providers stop at Extra High. */
+  /** Effort levels for a given value's provider, low → high. Claude and Codex
+   *  Sol/Terra run the full low→ultra list; other models stop earlier. */
   reasoningEffortsForValue: (value: T) => readonly ReasoningEffort[];
   /** Show a standalone effort slider beside the chip. Off in settings, which
    *  has no per-session effort control — the model's default effort applies. */
@@ -436,9 +446,9 @@ function ChipModelPicker<T extends ProviderModelSelection>({
 
   const selectionForOption = (option: ChipModelOption<T>): T => {
     // Fast/no-effort models carry no effort. Otherwise the current effort is
-    // carried onto the target and clamped to its range (e.g. Claude Max →
-    // Codex Extra High), never promoted (Codex Extra High → Claude stays
-    // Extra High). Falls back to the seeded default when there's none to carry.
+    // carried onto the target and clamped to its range (Claude Ultra → Codex
+    // Luna becomes Max), never promoted (Codex Extra High → Claude stays Extra
+    // High). Falls back to the seeded default when there's none to carry.
     if (!option.supportsReasoningEffort) return option.value;
     const carried = clampEffort(value.reasoningEffort, reasoningEffortsForValue(option.value));
     return { ...option.value, reasoningEffort: carried ?? DEFAULT_REASONING_EFFORT };
@@ -487,6 +497,11 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           <Zap size={14} aria-hidden="true" className="model-picker-speed-icon" />
         ) : null}
         <span className="model-picker-label">{value.label}</span>
+        {/* Without the standalone effort chip beside it, the model chip is the
+            end of the control and carries the caret itself. */}
+        {showEffortSlider ? null : (
+          <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
+        )}
       </button>
       {open && (
         <div

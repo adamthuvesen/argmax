@@ -9,9 +9,9 @@ import type { ProviderId } from "../../shared/types.js";
  * The switch itself works for every provider pair, but the new agent starts
  * without the old one's native conversation — it reads the capped text
  * transcript `compose_follow_up_prompt` builds instead (providers/follow_up.rs).
- * That is a real loss of context, so the dialog says what goes missing and
- * offers the better path first: a new session, which starts the new provider
- * clean instead of half-informed.
+ * That is a real loss of context, so the dialog says so and offers the better
+ * path first: a new session, which starts the new provider clean instead of
+ * half-informed.
  */
 export function ProviderSwitchDialog({
   from,
@@ -69,7 +69,7 @@ export function ProviderSwitchDialog({
       <div className="provider-switch-dialog">
         <h2>Switch to {toName}?</h2>
         <p>
-          {`${toName} can't resume ${fromName}'s session. It starts fresh from a short summary of this chat — no tool calls, no file diffs.`}
+          {`${toName} can't resume ${fromName}'s session. It starts fresh from a short summary of this chat.`}
         </p>
         <p className="provider-switch-recommendation">A new session usually works better.</p>
         <div className="provider-switch-actions">
@@ -82,7 +82,7 @@ export function ProviderSwitchDialog({
             ref={onStartNewSession ? undefined : primaryRef}
             onClick={onSwitch}
           >
-            Switch anyway
+            Switch
           </button>
           {onStartNewSession ? (
             <button

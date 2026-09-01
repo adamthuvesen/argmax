@@ -35,8 +35,10 @@ import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useComposerDraft } from "../hooks/useComposerDraft.js";
+import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
+import { useFollowUpSuggestion } from "../hooks/useFollowUpSuggestion.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import {
   appendReferencesToPrompt,
@@ -64,7 +66,7 @@ import { ProviderSwitchDialog } from "./ProviderSwitchDialog.js";
 import { SkillPopover } from "./SkillPopover.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
 
-const PROMPT_MAX_HEIGHT_PX = 140;
+const PROMPT_MAX_HEIGHT_PX = 168;
 
 /**
  * Feedback line floating above the composer. Pane-local actions surface their
@@ -180,13 +182,26 @@ export function SessionComposer({
     { sessionId: string; model: ModelPickerSelection } | null
   >(null);
   const { availability: providerAvailability } = useProviderAvailability();
+  // The placeholder answers the agent's last message instead of repeating the
+  // same generic hint at every turn. Not gated on an empty draft: the
+  // placeholder is invisible once there is text, and re-running on every keypress
+  // would spend a CLI call each time the draft went back to empty.
+  const followUpSuggestion = useFollowUpSuggestion(session, canSend && !isQueueing);
   // Dismissing the open-files chip skips those paths until the set of open
   // tabs changes, at which point the new set rides along again.
   const [dismissedOpenFilesKey, setDismissedOpenFilesKey] = useState<string | null>(null);
   const openFilesKey = openFilePaths.join("\n");
   const openFilesAttached = openFilePaths.length > 0 && dismissedOpenFilesKey !== openFilesKey;
   const inputFormRef = useRef<HTMLFormElement | null>(null);
-  const workspaceDetailsRef = useRef<HTMLDivElement | null>(null);
+  // The "…" panel sits nearest the composer's right edge, so it is the one that
+  // most often flips to end-alignment. That flip is now derived from the space
+  // available rather than hardcoded as `right: 0`, which was right only for as
+  // long as the trigger stayed at the edge.
+  const workspaceDetails = useAnchoredPopover({
+    open: workspaceDetailsOpen,
+    placement: "bottom-start",
+    strategy: "absolute"
+  });
   const {
     pendingAttachments,
     attachmentInputRef,
@@ -249,7 +264,9 @@ export function SessionComposer({
         changeSummaryText ? `, ${changeSummaryText}` : ""
       }`
     : "Workspace details";
-  useDismissOnOutsideOrEscape(workspaceDetailsRef, workspaceDetailsOpen, () => setWorkspaceDetailsOpen(false));
+  useDismissOnOutsideOrEscape(workspaceDetails.anchorRef, workspaceDetailsOpen, () =>
+    setWorkspaceDetailsOpen(false)
+  );
 
   const toggleMode = useCallback((): void => {
     setAgentMode((mode) => toggleAgentMode(mode));
@@ -278,7 +295,13 @@ export function SessionComposer({
     if (event.defaultPrevented) return;
     fileAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
-    if (event.key === "Tab" && event.shiftKey && !event.nativeEvent.isComposing) {
+    if (
+      event.key === "Tab" &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !event.nativeEvent.isComposing
+    ) {
       event.preventDefault();
       toggleMode();
       return;
@@ -288,6 +311,11 @@ export function SessionComposer({
       inputFormRef.current?.requestSubmit();
     }
   };
+
+  // An annotation is a message on its own: "Add to chat" and review comments
+  // already name what the agent should look at, so send stays available with
+  // an empty draft once a chip is attached.
+  const hasSendableContent = input.trim().length > 0 || pendingAnnotations.length > 0;
 
   /**
    * Build the prompt from the draft plus attachments and hand it to `deliver`.
@@ -302,7 +330,7 @@ export function SessionComposer({
     ) => Promise<void>
   ): Promise<void> => {
     const trimmedInput = input.trim();
-    if (!session || !trimmedInput || isSending || sendingQueuedMessageId) {
+    if (!session || !hasSendableContent || isSending || sendingQueuedMessageId) {
       return;
     }
 
@@ -344,9 +372,9 @@ export function SessionComposer({
       className="session-input"
       // The agent window carries its own type scale (Settings → chat font
       // size), which is about reading the transcript. The composer is chrome —
-      // model chip, repo, branch, changed files — so it holds the app-chrome
+      // model chip, repo, branch, changed files — so it holds the composer
       // scale instead, matching the launcher's composer. See tokens.css.
-      data-type-scale="chrome"
+      data-type-scale="composer"
       ref={inputFormRef}
       onSubmit={(event) => void submitInput(event)}
       onDragOver={onComposerDragOver}
@@ -544,7 +572,7 @@ export function SessionComposer({
             canSend
               ? isQueueing
                 ? "Queue a follow-up"
-                : "Reply to your agent, or @-mention files"
+                : (followUpSuggestion ?? "Reply to your agent, or @-mention files")
               : ""
           }
           ref={inputRef}
@@ -603,29 +631,6 @@ export function SessionComposer({
         {session && !floating ? <ContextRing session={session} /> : null}
         {workspace && !floating ? (
           <div className="composer-footer composer-chips-group composer-chips-context" aria-label="Workspace context">
-            {workspace.sharedWorkspace ? null : (
-              <button
-                type="button"
-                className="composer-footer-chip"
-                title={`Open worktree: ${workspace.path}`}
-                aria-label={`Open worktree at ${workspace.path}`}
-                onClick={() => {
-                  if (!window.argmax) return;
-                  void window.argmax.system.openPath({ path: workspace.path }).catch(() => undefined);
-                }}
-              >
-                <Folder size={11} aria-hidden="true" />
-                <span className="composer-footer-chip-label">Worktree</span>
-              </button>
-            )}
-            {workspace.kind === "git" ? (
-              // A label, not a control: nothing happens on click, so it must
-              // not be tabbable or announced as a button.
-              <span className="composer-footer-chip composer-footer-chip--branch" title={`Branch: ${workspace.branch}`}>
-                <GitBranch size={11} aria-hidden="true" />
-                <span className="composer-footer-chip-label">{workspace.branch}</span>
-              </span>
-            ) : null}
             {changeSummary ? (
               <button
                 type="button"
@@ -641,7 +646,7 @@ export function SessionComposer({
           </div>
         ) : null}
         {workspace && !floating ? (
-          <div className="composer-compact-context" ref={workspaceDetailsRef}>
+          <div className="composer-compact-context" ref={workspaceDetails.setAnchor}>
             <button
               type="button"
               className="composer-compact-context-trigger"
@@ -655,7 +660,13 @@ export function SessionComposer({
               {changeSummary ? <span className="composer-compact-context-dot" aria-hidden="true" /> : null}
             </button>
             {workspaceDetailsOpen ? (
-              <div className="composer-compact-context-popover" role="dialog" aria-label="Workspace details">
+              <div
+                className="composer-compact-context-popover"
+                role="dialog"
+                aria-label="Workspace details"
+                ref={workspaceDetails.setPopover}
+                style={workspaceDetails.floatingStyles}
+              >
                 {session ? (
                   <div className="composer-compact-context-row composer-compact-context-row--context">
                     <span>Context</span>
@@ -717,27 +728,18 @@ export function SessionComposer({
             ) : null}
           </div>
         ) : null}
-        {floating ? null : (
-          <button
-            className="composer-tool"
-            type="button"
-            title="Attach file"
-            aria-label="Attach file"
-            disabled={!canSend || isSending}
-            onClick={openFilePicker}
-          >
-            <Plus size={14} />
-          </button>
-        )}
         <span className="session-toolbar-spacer" />
-        {session ? (
+        {session && agentMode !== "auto" ? (
+          // Auto is the default, so naming it on every turn tells the user
+          // nothing. Plan changes what the next send does, so it shows — and
+          // the chip is then how you get back out. Tab toggles either way.
           <div className="composer-chips-group composer-chips-mode">
             <button
               type="button"
               className="composer-context-chip agent-mode-toggle"
               aria-label="Agent mode"
-              aria-pressed={agentMode === "plan"}
-              title="Toggle agent mode (Shift+Tab)"
+              aria-pressed
+              title="Toggle agent mode (Tab)"
               disabled={!canSend || isSending}
               onClick={toggleMode}
             >
@@ -760,7 +762,7 @@ export function SessionComposer({
             <Square size={9} fill="currentColor" strokeWidth={0} />
           </button>
         ) : (() => {
-          const sendDisabled = !canSend || isSending || !input.trim();
+          const sendDisabled = !canSend || isSending || !hasSendableContent;
           const sendTitle = isQueueing
             ? "Queue follow-up — sent when the current turn finishes"
             : "Send follow-up";

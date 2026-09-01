@@ -59,6 +59,8 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
       dismissExternalChange: () => {}
     },
     openFile: () => {},
+    expandDiffContext: () => {},
+    openChangesPanel: () => {},
     openPanelInFilesMode: () => {},
     openInFilesView: () => {},
     closePanel: () => {},

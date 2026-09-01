@@ -413,7 +413,7 @@ pub fn run() {
                             let provider_launcher: Arc<dyn providers::runtime::ProviderProcessLauncher> =
                                 Arc::new(providers::runtime::RealProviderProcessLauncher::with_discovery(
                                     (*state.provider_discovery).clone(),
-                                    session_launch_registry,
+                                    session_launch_registry.clone(),
                                     Arc::clone(&cursor_acp),
                                 ));
                             let providers = providers::session_service::ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
@@ -423,6 +423,9 @@ pub fn run() {
                                 Arc::clone(&lifecycle),
                                 Some(Arc::clone(&approvals)),
                             );
+                            if let Some(registry) = session_launch_registry {
+                                providers.set_session_control(registry);
+                            }
                             if let Err(error) = providers.recover_orphaned_sessions() {
                                 tracing::warn!(?error, "failed to recover orphaned sessions");
                             }

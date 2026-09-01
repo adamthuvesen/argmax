@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangedFileSummary, ReviewComparison, WorkspaceDiff } from "../../shared/types.js";
 import type { ReviewIpcDispatch } from "../lib/reviewIpc.js";
 import type { ReviewSourceKind } from "../lib/reviewIpc.js";
 import { errorMessage } from "../../shared/error.js";
+import { nextDiffContext } from "../lib/diff.js";
 import type { AsyncState } from "./useReviewState.js";
 
 export interface UseReviewDiffResult {
@@ -10,12 +11,13 @@ export interface UseReviewDiffResult {
   filesState: AsyncState;
   filesError: string | null;
   selectedFilePath: string | null;
-  setSelectedFilePath: Dispatch<SetStateAction<string | null>>;
   diff: WorkspaceDiff | null;
   diffState: AsyncState;
   diffError: string | null;
   openFile: (filePath: string) => void;
   resetForSourceChange: () => void;
+  /** Ask git for more unchanged context around the open file's hunks. */
+  expandDiffContext: () => void;
 }
 
 export function useReviewDiff(args: {
@@ -24,10 +26,9 @@ export function useReviewDiff(args: {
   changedFilesKey: string | null;
   comparison: ReviewComparison;
   dispatch: ReviewIpcDispatch | null;
-  isPanelOpen: boolean;
   onOpenChanges: () => void;
 }): UseReviewDiffResult {
-  const { sourceId, sourceKind, changedFilesKey, comparison, dispatch, isPanelOpen, onOpenChanges } = args;
+  const { sourceId, sourceKind, changedFilesKey, comparison, dispatch, onOpenChanges } = args;
 
   const [files, setFiles] = useState<ChangedFileSummary[]>([]);
   const [filesState, setFilesState] = useState<AsyncState>("idle");
@@ -36,11 +37,17 @@ export function useReviewDiff(args: {
   const [diff, setDiff] = useState<WorkspaceDiff | null>(null);
   const [diffState, setDiffState] = useState<AsyncState>("idle");
   const [diffError, setDiffError] = useState<string | null>(null);
+  // Which file the expanded context belongs to, so selecting a different file
+  // drops back to git's default without a reset effect racing the load.
+  const [expandedContext, setExpandedContext] = useState<{
+    filePath: string;
+    lines: number;
+  } | null>(null);
+  const contextLines =
+    expandedContext && expandedContext.filePath === selectedFilePath ? expandedContext.lines : null;
 
   const fileLoadToken = useRef(0);
   const diffLoadToken = useRef(0);
-  const isPanelOpenRef = useRef(isPanelOpen);
-  isPanelOpenRef.current = isPanelOpen;
 
   // Identifies which (source, comparison) the current list belongs to. A
   // re-fetch within the same context — the workspace's changed-files signature
@@ -49,11 +56,13 @@ export function useReviewDiff(args: {
   // refresh. Only a new source/comparison (or the first load) shows loading.
   const filesContextRef = useRef<string | null>(null);
 
-  // Cache loaded diffs by file path so re-selecting a file you've already
-  // viewed is instant. Busted whenever the source changes, the workspace's
-  // changed-files signature moves (a new key means the diffs may have changed),
-  // or the comparison baseline flips (local ↔ branch produce different diffs
-  // for the same path), so a cache hit always reflects the current state.
+  // Cache loaded diffs by file path *and* context level so re-selecting a file
+  // you've already viewed is instant, and so expanding context can't be served
+  // the narrower diff already stored for that path. Busted whenever the source
+  // changes, the workspace's changed-files signature moves (a new key means the
+  // diffs may have changed), or the comparison baseline flips (local ↔ branch
+  // produce different diffs for the same path), so a hit always reflects the
+  // current state.
   const diffCache = useRef(new Map<string, WorkspaceDiff>());
   useEffect(() => {
     diffCache.current.clear();
@@ -105,12 +114,11 @@ export function useReviewDiff(args: {
         const sorted = [...result].sort((left, right) => left.path.localeCompare(right.path));
         setFiles(sorted);
         setFilesState("ready");
-        setSelectedFilePath((currentPath) => {
-          if (currentPath && sorted.some((file) => file.path === currentPath)) {
-            return currentPath;
-          }
-          return isPanelOpenRef.current ? sorted[0]?.path ?? null : null;
-        });
+        // Keep the open file selected if it survived the refresh; never pick
+        // one for the reader — changed files stay collapsed until clicked.
+        setSelectedFilePath((currentPath) =>
+          currentPath && sorted.some((file) => file.path === currentPath) ? currentPath : null
+        );
       })
       .catch((error) => {
         if (token !== fileLoadToken.current) {
@@ -132,11 +140,15 @@ export function useReviewDiff(args: {
       return;
     }
 
+    const cacheKey = `${selectedFilePath}@${contextLines ?? "default"}`;
+    // The context level is deliberately absent here: widening context is a
+    // revalidation of the same file, so the diff being read stays on screen
+    // until the wider one lands instead of blinking through the skeleton.
     const context = `${sourceKind}:${sourceId}:${comparison}:${selectedFilePath}`;
     const isNewContext = diffContextRef.current !== context;
     diffContextRef.current = context;
 
-    const cached = diffCache.current.get(selectedFilePath);
+    const cached = diffCache.current.get(cacheKey);
     if (cached) {
       setDiff(cached);
       setDiffState("ready");
@@ -153,12 +165,12 @@ export function useReviewDiff(args: {
     } else {
       setDiffState((prev) => (prev === "ready" ? prev : "loading"));
     }
-    void dispatch.loadDiff(selectedFilePath, comparison)
+    void dispatch.loadDiff(selectedFilePath, comparison, contextLines ?? undefined)
       .then((result) => {
         if (token !== diffLoadToken.current) {
           return;
         }
-        diffCache.current.set(selectedFilePath, result);
+        diffCache.current.set(cacheKey, result);
         setDiff(result);
         setDiffState("ready");
       })
@@ -170,7 +182,7 @@ export function useReviewDiff(args: {
         setDiffState("error");
         setDiffError(errorMessage(error) || "Could not load diff.");
       });
-  }, [sourceId, sourceKind, selectedFilePath, changedFilesKey, comparison, dispatch]);
+  }, [sourceId, sourceKind, selectedFilePath, changedFilesKey, comparison, contextLines, dispatch]);
 
   const openFile = useCallback(
     (filePath: string): void => {
@@ -180,16 +192,25 @@ export function useReviewDiff(args: {
     [onOpenChanges]
   );
 
+  const expandDiffContext = useCallback((): void => {
+    setExpandedContext((current) => {
+      if (!selectedFilePath) return current;
+      const currentLines = current?.filePath === selectedFilePath ? current.lines : null;
+      const next = nextDiffContext(currentLines);
+      return next === null ? current : { filePath: selectedFilePath, lines: next };
+    });
+  }, [selectedFilePath]);
+
   return {
     files,
     filesState,
     filesError,
     selectedFilePath,
-    setSelectedFilePath,
     diff,
     diffState,
     diffError,
     openFile,
-    resetForSourceChange
+    resetForSourceChange,
+    expandDiffContext
   };
 }

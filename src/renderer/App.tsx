@@ -45,6 +45,7 @@ import { Sidebar } from "./components/Sidebar.js";
 import { EMPTY_GRID, MAX_COLS, openWorkspaceInGrid, terminalWorkspaceId } from "./lib/gridState.js";
 import { toggleTerminalPanel } from "./lib/terminalTabs.js";
 import { onBrowserPanelRequest, requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
+import { requestCloseActiveReviewFileTab } from "./lib/reviewFilePanel.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
 // out of the production renderer bundle. Browser-preview mode (no Tauri
 // bridge) is the only consumer; packaged builds always have window.argmax.
@@ -89,17 +90,16 @@ import {
   type ReviewPanelSide
 } from "./lib/reviewPanelSide.js";
 import {
-  CHAT_COST_KEY,
   COMPOSER_PIXEL_FIELD_KEY,
   FAST_MODE_KEY,
+  TURN_CHANGES_EXPANDED_KEY,
   RANDOM_SESSION_ICON_KEY,
   SIDEBAR_COLLAPSED_KEY,
   SIDEBAR_PRIORITY_KEY,
-  THINKING_EXPANDED_KEY,
-  TOOL_CALL_GROUPS_EXPANDED_KEY,
   WORKSPACE_CARD_KEY,
+  resolveChatVerbosity,
   useBooleanUiPreference,
-  useToolCallsDisplayPreference
+  useChatVerbosityPreference
 } from "./lib/uiPreferences.js";
 import { randomSessionIcon } from "./lib/sessionIcons.js";
 import { loadDashboardSnapshot } from "./lib/loadDashboardSnapshot.js";
@@ -108,6 +108,7 @@ import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 import { isTauriRuntime } from "./lib/tauriBridge.js";
+import { sessionMoveDestination } from "./lib/projectMove.js";
 
 import { withToast, type ToastMessage } from "./lib/withToast.js";
 
@@ -159,10 +160,10 @@ export function App(): JSX.Element {
   const settingsNavigationRequestRef = useRef(0);
   const [settingsNavigationTarget, setSettingsNavigationTarget] = useState<SettingsNavigationTarget | null>(null);
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
-  const [toolCallsDisplay, setToolCallsDisplay] = useToolCallsDisplayPreference();
-  const [toolCallGroupsExpanded, setToolCallGroupsExpanded] = useBooleanUiPreference(
-    TOOL_CALL_GROUPS_EXPANDED_KEY,
-    false
+  const [chatVerbosity, setChatVerbosity] = useChatVerbosityPreference();
+  const { toolCallsDisplay, toolCallGroupsExpanded, thinkingExpanded } = useMemo(
+    () => resolveChatVerbosity(chatVerbosity),
+    [chatVerbosity]
   );
   const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
   const [sidebarCollapsed, setSidebarCollapsed] = useBooleanUiPreference(SIDEBAR_COLLAPSED_KEY, false);
@@ -173,10 +174,12 @@ export function App(): JSX.Element {
     setSidebarPeek(false);
     setSidebarCollapsed(!sidebarCollapsed);
   }, [sidebarCollapsed, setSidebarCollapsed]);
-  const [chatCostVisible, setChatCostVisible] = useBooleanUiPreference(CHAT_COST_KEY, false);
   const [workspaceCardVisible, setWorkspaceCardVisible] = useBooleanUiPreference(WORKSPACE_CARD_KEY, true);
-  const [thinkingExpanded, setThinkingExpanded] = useBooleanUiPreference(THINKING_EXPANDED_KEY, false);
   const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
+  const [turnChangesExpanded, setTurnChangesExpanded] = useBooleanUiPreference(
+    TURN_CHANGES_EXPANDED_KEY,
+    true
+  );
   const [pixelFieldEnabled, setPixelFieldEnabled] = useBooleanUiPreference(COMPOSER_PIXEL_FIELD_KEY, false);
   const [randomSessionIconEnabled, setRandomSessionIconEnabled] = useBooleanUiPreference(
     RANDOM_SESSION_ICON_KEY,
@@ -194,6 +197,8 @@ export function App(): JSX.Element {
     setThemeMode,
     accentId,
     setAccentId,
+    userBubbleTint,
+    setUserBubbleTint,
     fontFamily,
     setFontFamily,
     fontSize,
@@ -214,8 +219,8 @@ export function App(): JSX.Element {
   const [isFullLauncherOpen, setIsFullLauncherOpen] = useState<boolean>(false);
   const [launcherResetSignal, setLauncherResetSignal] = useState(0);
   // Launcher composes a repo-less side chat instead of a project session.
-  // Toggled from the launcher's context picker; armed by the sidebar's
-  // "New side chat", reset by every plain new-session entry point.
+  // Selected as Chat on the Auto/Plan/Chat mode chip (Tab). Armed by the
+  // sidebar's "New side chat", reset by every plain new-session entry point.
   const [launcherSideChatMode, setLauncherSideChatMode] = useState(false);
   const [isWorkspaceDropPreviewVisible, setIsWorkspaceDropPreviewVisible] = useState(false);
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
@@ -324,6 +329,26 @@ export function App(): JSX.Element {
     setSelectedProjectId,
     showErrorToast
   });
+  const seenSessionMoveEvents = useRef(new Set<string>());
+  useEffect(() => {
+    const newEvents = snapshot.events.filter((event) => {
+      if (seenSessionMoveEvents.current.has(event.id)) return false;
+      seenSessionMoveEvents.current.add(event.id);
+      return true;
+    });
+    if (!selectedSession) return;
+    for (const event of newEvents) {
+      const destination = sessionMoveDestination(event);
+      if (!destination || destination.sourceSessionId !== selectedSession.id) continue;
+      if (!sessionsById.has(destination.destinationSessionId)) continue;
+      if (!workspacesById.has(destination.destinationWorkspaceId)) continue;
+      openWorkspaceChat(destination.destinationWorkspaceId, {
+        ctrlOrMeta: false,
+        alt: false
+      });
+      break;
+    }
+  }, [openWorkspaceChat, selectedSession, sessionsById, snapshot.events, workspacesById]);
 
   const requiredGridColumns = useMemo(() => widestGridRowColumnCount(grid.rows), [grid.rows]);
   const requiredWorkspaceMinWidth = useMemo(() => {
@@ -465,6 +490,8 @@ export function App(): JSX.Element {
         case "close-surface":
           if (browserPanelRequest !== null) {
             requestCloseActiveBrowserTab();
+          } else if (requestCloseActiveReviewFileTab()) {
+            return;
           } else {
             closeFocusedPane();
           }
@@ -523,11 +550,11 @@ export function App(): JSX.Element {
     setIsSettingsOpen,
     snapshot.sessions
   ]);
-  const selectSessionFromKeybinding = useCallback(
-    (session: { id: string; workspaceId: string }): void => {
+  const openWorkspaceFromKeybinding = useCallback(
+    (workspaceId: string): void => {
       // Cmd+1..9 always replaces the focused pane (no split modifier).
       setIsFullLauncherOpen(false);
-      openWorkspaceChat(session.workspaceId, { ctrlOrMeta: false, alt: false });
+      openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
     },
     [openWorkspaceChat]
   );
@@ -550,14 +577,13 @@ export function App(): JSX.Element {
     [setIsSettingsOpen]
   );
   useGlobalKeybindings({
-    sessions: snapshot.sessions,
     onMenuCommand: handleMenuCommand,
     onCloseFocusedPane: closeFocusedPane,
     onOpenFilePalette: openFilePalette,
     onOpenSearch: openMessagePalette,
     onOpenContentSearch: openContentPalette,
     onToggleTerminal: toggleIntegratedTerminal,
-    onSelectSession: selectSessionFromKeybinding,
+    onSelectWorkspace: openWorkspaceFromKeybinding,
     onCloseSettings: closeSettingsFromKeybinding
   });
 
@@ -1758,14 +1784,10 @@ export function App(): JSX.Element {
               <SettingsPanel
                 defaultModel={launchModel}
                 onDefaultModelChange={handleLaunchModelChange}
-                toolCallsDisplay={toolCallsDisplay}
-                onToolCallsDisplayChange={setToolCallsDisplay}
-                toolCallGroupsExpanded={toolCallGroupsExpanded}
-                onToolCallGroupsExpandedChange={setToolCallGroupsExpanded}
+                chatVerbosity={chatVerbosity}
+                onChatVerbosityChange={setChatVerbosity}
                 sidebarPriorityVisible={sidebarPriorityVisible}
                 onSidebarPriorityVisibleChange={setSidebarPriorityVisible}
-                chatCostVisible={chatCostVisible}
-                onChatCostVisibleChange={setChatCostVisible}
                 workspaceCardVisible={workspaceCardVisible}
                 onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
                 pixelFieldEnabled={pixelFieldEnabled}
@@ -1774,10 +1796,10 @@ export function App(): JSX.Element {
                 onChatWidthChange={setChatWidth}
                 reviewPanelSide={reviewPanelSide}
                 onReviewPanelSideChange={setReviewPanelSide}
-                thinkingExpanded={thinkingExpanded}
-                onThinkingExpandedChange={setThinkingExpanded}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={setFastModeEnabled}
+                turnChangesExpanded={turnChangesExpanded}
+                onTurnChangesExpandedChange={setTurnChangesExpanded}
                 fontFamily={fontFamily}
                 onFontFamilyChange={setFontFamily}
                 fontSize={fontSize}
@@ -1793,6 +1815,11 @@ export function App(): JSX.Element {
                 onAccentChange={(id) => {
                   animateThemeChange();
                   setAccentId(id);
+                }}
+                userBubbleTint={userBubbleTint}
+                onUserBubbleTintChange={(tint) => {
+                  animateThemeChange();
+                  setUserBubbleTint(tint);
                 }}
                 detectedIdes={detectedIdes}
                 defaultIde={defaultIde}
@@ -1828,8 +1855,8 @@ export function App(): JSX.Element {
               defaultToolCallsDisplay={toolCallsDisplay}
               defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
               defaultThinkingExpanded={thinkingExpanded}
+              defaultTurnChangesExpanded={turnChangesExpanded}
               fastModeEnabled={fastModeEnabled}
-              showCostPanel={chatCostVisible}
               workspaceCardVisible={workspaceCardVisible}
               onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
               rightPanelToggleSignal={rightPanelToggleSignal}

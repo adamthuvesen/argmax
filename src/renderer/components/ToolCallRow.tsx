@@ -1,28 +1,17 @@
 import { ChevronRight } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
-import { interpretFileChange, type FileChange } from "../lib/fileChange.js";
+import { interpretFileChange, summarizeFileChanges, type FileChange } from "../lib/fileChange.js";
 import { shortenPathsInText } from "../lib/pathDisplay.js";
-import { describeToolAction, getToolIcon, getToolTypeBucket, type ToolCall } from "../lib/toolCalls.js";
+import {
+  describeToolAction,
+  getToolTypeBucket,
+  splitLeadingVerb,
+  type ToolCall
+} from "../lib/toolCalls.js";
+import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallDetail } from "./ToolCallDetail.js";
 import { WorkingNest } from "./WorkingNest.js";
-
-function splitVerbTarget(action: string): { verb: string; target: string } {
-  const space = action.indexOf(" ");
-  if (space === -1) return { verb: action, target: "" };
-  return { verb: action.slice(0, space), target: action.slice(space + 1) };
-}
-
-function summarizeChanges(changes: FileChange[]): { adds: number; dels: number; files: number } {
-  let adds = 0;
-  let dels = 0;
-  for (const c of changes) {
-    if (c.kind === "delete") continue;
-    adds += c.addCount;
-    if (c.kind === "edit") dels += c.delCount;
-  }
-  return { adds, dels, files: changes.length };
-}
 
 function verbForChanges(changes: FileChange[]): string | null {
   let creates = 0;
@@ -89,16 +78,16 @@ function ToolCallRowInner({
       ? `Started agent ${agentCodename} — ${tool.inputPreview}`
       : `Started agent ${agentCodename}`
     : describeToolAction(tool);
-  const baseSplit = splitVerbTarget(action);
+  const baseSplit = splitLeadingVerb(action);
 
   const changes = useMemo(
     () => interpretFileChange(tool.name, tool.inputFull),
     [tool.name, tool.inputFull]
   );
-  const counts = changes && changes.length > 0 ? summarizeChanges(changes) : null;
+  const counts = changes && changes.length > 0 ? summarizeFileChanges(changes) : null;
   const overrideVerb = changes && changes.length > 0 ? verbForChanges(changes) : null;
   const verb = overrideVerb ?? baseSplit.verb;
-  const target = baseSplit.target;
+  const target = baseSplit.rest;
   const toolTypeBucket = getToolTypeBucket(tool.name);
   const expanded = localExpanded ?? (autoExpandedOnError || (defaultExpanded ?? false));
   const opensAgentPane = toolTypeBucket === "agent" && onOpenAgent !== undefined;
@@ -129,23 +118,17 @@ function ToolCallRowInner({
       aria-label={action}
       onClick={opensAgentPane ? () => onOpenAgent(tool) : toggleExpanded}
     >
-      <span className="tool-call-row-icon" aria-hidden="true">
-        {getToolIcon(tool.name)}
-      </span>
       <span className="tool-call-row-verb">{verb}</span>
       {target ? (
         <span className="tool-call-row-target">{shortenPathsInText(target)}</span>
       ) : null}
-      {counts && (counts.adds > 0 || counts.dels > 0) ? (
-        <span className="tool-call-row-counts" aria-hidden="true">
-          {counts.adds > 0 ? <span className="adds">+{counts.adds}</span> : null}
-          {counts.dels > 0 ? <span className="dels">−{counts.dels}</span> : null}
-          {counts.files > 1 ? <span className="files">· {counts.files} files</span> : null}
-        </span>
-      ) : null}
+      {counts ? <ActivityStat counts={counts} /> : null}
+      {opensAgentPane ? null : (
+        <ChevronRight size={11} className="tool-call-row-chevron" aria-hidden="true" />
+      )}
       {tool.status === "running" ? (
         <span className="tool-call-row-running" aria-hidden="true">
-          <WorkingNest active size={11} />
+          <WorkingNest active size={13} />
         </span>
       ) : null}
     </button>

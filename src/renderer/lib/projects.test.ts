@@ -52,13 +52,13 @@ describe("groupWorkspacesByDate", () => {
     lastActivityAt: new Date(y, m, d, h).toISOString()
   });
 
-  it("buckets into Today / Last 7 Days / Last 30 Days / Older", () => {
+  it("buckets into Today / Yesterday / Last 7 Days / Older", () => {
     const groups = groupWorkspacesByDate(
       [
         at(2026, 5, 5), // today
-        at(2026, 5, 4), // yesterday → Last 7 Days
+        at(2026, 5, 4), // yesterday
         at(2026, 5, 1), // 4 days ago → Last 7 Days
-        at(2026, 4, 20), // 16 days ago → Last 30 Days
+        at(2026, 4, 20), // 16 days ago → Older
         at(2026, 3, 10), // April → Older
         at(2025, 11, 10) // Dec 2025 → Older, same bucket as April
       ],
@@ -66,23 +66,23 @@ describe("groupWorkspacesByDate", () => {
     );
     expect(groups.map((group) => [group.key, group.label])).toEqual([
       ["today", "Today"],
+      ["yesterday", "Yesterday"],
       ["last-7", "Last 7 Days"],
-      ["last-30", "Last 30 Days"],
       ["older", "Older"]
     ]);
-    // Everything past 30 days collapses into one Older bucket instead of one
+    // Everything past 7 days collapses into one Older bucket instead of one
     // header per calendar month.
-    expect(groups.at(-1)?.items).toHaveLength(2);
+    expect(groups.at(-1)?.items).toHaveLength(3);
   });
 
-  it("treats exactly 7 days ago as Last 7 Days and 8 days as Last 30 Days", () => {
+  it("treats exactly 7 days ago as Last 7 Days and 8 days as Older", () => {
     const groups = groupWorkspacesByDate([at(2026, 4, 29), at(2026, 4, 28)], NOW);
-    expect(groups.map((group) => group.key)).toEqual(["last-7", "last-30"]);
+    expect(groups.map((group) => group.key)).toEqual(["last-7", "older"]);
   });
 
-  it("treats exactly 30 days ago as Last 30 Days and 31 days as Older", () => {
-    const groups = groupWorkspacesByDate([at(2026, 4, 6), at(2026, 4, 5)], NOW);
-    expect(groups.map((group) => group.key)).toEqual(["last-30", "older"]);
+  it("treats exactly 1 day ago as Yesterday and 2 days as Last 7 Days", () => {
+    const groups = groupWorkspacesByDate([at(2026, 5, 4), at(2026, 5, 3)], NOW);
+    expect(groups.map((group) => group.key)).toEqual(["yesterday", "last-7"]);
   });
 
   it("sorts newest first and groups multiple sessions per bucket", () => {

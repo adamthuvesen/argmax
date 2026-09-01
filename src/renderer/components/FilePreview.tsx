@@ -31,6 +31,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
+import { MarkdownTable } from "./MarkdownTable.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
 
 function isMarkdownPath(path: string | null): boolean {
@@ -185,6 +186,7 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
+              table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
               img: ({ src, alt, ...rest }) => {
                 const resolved = resolveMarkdownImageSrc(
                   typeof src === "string" ? src : undefined,

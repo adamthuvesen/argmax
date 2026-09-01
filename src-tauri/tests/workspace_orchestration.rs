@@ -23,7 +23,9 @@ use argmax_lib::ipc::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
 use argmax_lib::persistence::{
     checks::list_checks,
     database::Database,
+    events::{list_all_session_events, persist_timeline_event, PersistTimelineEventInput},
     projects::{persist_project, PersistProjectInput, ProjectSettings},
+    sessions::{persist_session, update_session_provider_conversation_id, PersistSessionInput},
     workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
 };
 use argmax_lib::providers::flush_queue::DashboardDelta;
@@ -85,6 +87,35 @@ fn build_project_with_setup(
         },
     )
     .expect("persist project");
+}
+
+fn build_named_project(
+    db: &Database,
+    id: &str,
+    name: &str,
+    repo_path: &str,
+    worktree_location: &str,
+) {
+    let connection = db.connection();
+    persist_project(
+        &connection,
+        &PersistProjectInput {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            repo_path: repo_path.to_owned(),
+            current_branch: "main".to_owned(),
+            default_branch: Some("main".to_owned()),
+            settings: ProjectSettings {
+                default_provider: "claude".to_owned(),
+                default_model_label: "Sonnet".to_owned(),
+                default_model_id: String::new(),
+                worktree_location: worktree_location.to_owned(),
+                setup_command: String::new(),
+                check_commands: vec![],
+            },
+        },
+    )
+    .expect("persist named project");
 }
 
 /// WorkspaceService wired with a CheckService, as in the app, so the
@@ -1601,4 +1632,207 @@ async fn archive_keeps_the_worktree_when_provider_teardown_fails() {
     let connection = database.connection();
     let row = find_workspace_by_id(&connection, &workspace.id).expect("workspace row");
     assert_eq!(row.state, "archive-failed");
+}
+
+fn seed_completed_session(database: &Database, workspace_id: &str, session_id: &str) {
+    let connection = database.connection();
+    persist_session(
+        &connection,
+        &PersistSessionInput {
+            id: session_id.to_string(),
+            workspace_id: workspace_id.to_string(),
+            provider: "claude".to_string(),
+            model_label: "Sonnet".to_string(),
+            model_id: "claude-sonnet-5".to_string(),
+            reasoning_effort: Some("high".to_string()),
+            permission_mode: Some("auto-approve".to_string()),
+            agent_mode: Some("auto".to_string()),
+            prompt: "Move this chat".to_string(),
+            state: "complete".to_string(),
+            attention: "normal".to_string(),
+        },
+    )
+    .expect("source session");
+    update_session_provider_conversation_id(&connection, session_id, "native-conversation")
+        .expect("provider conversation id");
+    persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: format!("{session_id}-message"),
+            session_id: session_id.to_string(),
+            r#type: "message.completed".to_string(),
+            message: "Source answer".to_string(),
+            payload: serde_json::json!({}),
+            created_at: None,
+        },
+    )
+    .expect("source event");
+}
+
+#[tokio::test]
+async fn move_session_copies_history_without_native_resume_and_can_keep_source() {
+    let source_repo = seed_git_repo(&[("README.md", "source")]);
+    let destination_repo = seed_git_repo(&[("README.md", "destination")]);
+    ensure_main_branch(source_repo.path());
+    ensure_main_branch(destination_repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_named_project(
+        &database,
+        "source-project",
+        "Source",
+        &source_repo.path().display().to_string(),
+        &source_repo.path().join("worktrees").display().to_string(),
+    );
+    build_named_project(
+        &database,
+        "destination-project",
+        "Destination",
+        &destination_repo.path().display().to_string(),
+        &destination_repo
+            .path()
+            .join("worktrees")
+            .display()
+            .to_string(),
+    );
+    let service = WorkspaceService::new(Arc::clone(&database));
+    let source_workspace = service
+        .create_current(WorkspacesCreateCurrentInput {
+            project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Move this chat".to_string()).expect("task label"),
+        })
+        .expect("source workspace");
+    seed_completed_session(&database, &source_workspace.id, "source-session");
+
+    let moved = service
+        .move_session_to_project("source-session", "destination-project", false, true)
+        .await
+        .expect("move session");
+
+    assert_eq!(moved.workspace.project_id, "destination-project");
+    assert_eq!(
+        moved.workspace.path,
+        destination_repo.path().display().to_string()
+    );
+    assert!(moved.workspace.shared_workspace);
+    assert_eq!(moved.workspace.state, "complete");
+    assert_eq!(moved.session.provider_conversation_id, None);
+    let connection = database.connection();
+    let source = find_workspace_by_id(&connection, &source_workspace.id).expect("source workspace");
+    assert_ne!(source.state, "archived");
+    let copied = list_all_session_events(&connection, &moved.session.id).expect("copied events");
+    assert!(copied.iter().any(|event| event.message == "Source answer"));
+    let seam = copied
+        .iter()
+        .find(|event| event.r#type == "session.moved")
+        .expect("move seam");
+    assert_eq!(seam.payload["sourceProjectName"], "Source");
+    assert_eq!(seam.payload["destinationProjectName"], "Destination");
+}
+
+#[tokio::test]
+async fn move_session_archives_clean_source_and_can_create_isolated_destination() {
+    let source_repo = seed_git_repo(&[("README.md", "source")]);
+    let destination_repo = seed_git_repo(&[("README.md", "destination")]);
+    ensure_main_branch(source_repo.path());
+    ensure_main_branch(destination_repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_named_project(
+        &database,
+        "source-project",
+        "Source",
+        &source_repo.path().display().to_string(),
+        &source_repo.path().join("worktrees").display().to_string(),
+    );
+    build_named_project(
+        &database,
+        "destination-project",
+        "Destination",
+        &destination_repo.path().display().to_string(),
+        &destination_repo
+            .path()
+            .join("worktrees")
+            .display()
+            .to_string(),
+    );
+    let service = WorkspaceService::new(Arc::clone(&database));
+    let source_workspace = service
+        .create_current(WorkspacesCreateCurrentInput {
+            project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Move isolated".to_string()).expect("task label"),
+        })
+        .expect("source workspace");
+    seed_completed_session(&database, &source_workspace.id, "source-session");
+
+    let moved = service
+        .move_session_to_project("source-session", "destination-project", true, false)
+        .await
+        .expect("move session");
+
+    assert!(!moved.workspace.shared_workspace);
+    assert!(std::path::Path::new(&moved.workspace.path).exists());
+    assert_eq!(moved.source_archive_state, "archived");
+    let connection = database.connection();
+    assert_eq!(
+        find_workspace_by_id(&connection, &source_workspace.id)
+            .expect("source workspace")
+            .state,
+        "archived"
+    );
+}
+
+#[tokio::test]
+async fn move_session_keeps_dirty_isolated_source_without_forcing_archive() {
+    let source_repo = seed_git_repo(&[("README.md", "source")]);
+    let destination_repo = seed_git_repo(&[("README.md", "destination")]);
+    ensure_main_branch(source_repo.path());
+    ensure_main_branch(destination_repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_named_project(
+        &database,
+        "source-project",
+        "Source",
+        &source_repo.path().display().to_string(),
+        &source_repo.path().join("worktrees").display().to_string(),
+    );
+    build_named_project(
+        &database,
+        "destination-project",
+        "Destination",
+        &destination_repo.path().display().to_string(),
+        &destination_repo
+            .path()
+            .join("worktrees")
+            .display()
+            .to_string(),
+    );
+    let service = WorkspaceService::new(Arc::clone(&database));
+    let source_workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Dirty source".to_string()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_string()).expect("base ref")),
+        })
+        .await
+        .expect("source workspace");
+    seed_completed_session(&database, &source_workspace.id, "source-session");
+    std::fs::write(
+        std::path::Path::new(&source_workspace.path).join("dirty.txt"),
+        "keep me",
+    )
+    .expect("dirty file");
+
+    let moved = service
+        .move_session_to_project("source-session", "destination-project", false, false)
+        .await
+        .expect("move session");
+
+    assert_eq!(moved.source_archive_state, "kept");
+    assert!(std::path::Path::new(&source_workspace.path).exists());
+    let connection = database.connection();
+    assert_eq!(
+        find_workspace_by_id(&connection, &source_workspace.id)
+            .expect("source workspace")
+            .state,
+        "kept"
+    );
 }

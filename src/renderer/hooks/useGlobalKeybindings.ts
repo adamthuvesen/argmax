@@ -1,10 +1,10 @@
 import { useEffect } from "react";
+import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
+import { listVisibleSidebarWorkspaceIds } from "../lib/sidebarOrder.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
-import type { MenuCommand, SessionSummary } from "../../shared/types.js";
+import type { MenuCommand } from "../../shared/types.js";
 
 interface GlobalKeybindingArgs {
-  /** Most-recently-known sessions list. Cmd+1..9 jumps to the nth. */
-  sessions: SessionSummary[];
   /** Re-uses the menu-command dispatcher so keypresses share behavior with the native menu. */
   onMenuCommand: (command: MenuCommand) => void;
   /** Cmd+P opens the command palette with its Files filter pre-selected. */
@@ -15,8 +15,8 @@ interface GlobalKeybindingArgs {
   onOpenContentSearch: () => void;
   /** Cmd+J toggles the integrated terminal for the active session pane. */
   onToggleTerminal?: () => void;
-  /** Cmd+1..9 selects the nth session and closes the settings panel. */
-  onSelectSession: (session: SessionSummary) => void;
+  /** Cmd+1..9 opens the nth session row in the sidebar, top to bottom. */
+  onSelectWorkspace: (workspaceId: string) => void;
   /** Cmd+1..9 also closes the settings panel. */
   onCloseSettings: () => void;
   /**
@@ -31,7 +31,7 @@ interface GlobalKeybindingArgs {
  * Document-level keybinding handler for the app shell.
  *
  * Bindings:
- *   Cmd/Ctrl+1..9 → jump to the nth visible session
+ *   Cmd/Ctrl+1..9 → open the nth session row in the sidebar, top to bottom
  *   Cmd/Ctrl+,    → open-settings (menu command)
  *   Cmd/Ctrl+N    → new-session (menu command)
  *   Cmd/Ctrl+K    → open-command-palette (menu command), All filter
@@ -46,13 +46,12 @@ interface GlobalKeybindingArgs {
  * (settings, command palette, new session, pane close) run first.
  */
 export function useGlobalKeybindings({
-  sessions,
   onMenuCommand,
   onOpenFilePalette,
   onOpenSearch,
   onOpenContentSearch,
   onToggleTerminal,
-  onSelectSession,
+  onSelectWorkspace,
   onCloseSettings,
   onCloseFocusedPane
 }: GlobalKeybindingArgs): void {
@@ -66,6 +65,10 @@ export function useGlobalKeybindings({
       // burst.
       if (event.key.toLowerCase() === "w" && !event.shiftKey && !event.altKey) {
         if (event.isComposing || event.repeat) return;
+        if (requestCloseActiveReviewFileTab()) {
+          event.preventDefault();
+          return;
+        }
         if (onCloseFocusedPane?.()) {
           event.preventDefault();
         }
@@ -103,11 +106,11 @@ export function useGlobalKeybindings({
       if (isTypingTarget(event.target)) return;
       const digit = parseInt(event.key, 10);
       if (Number.isFinite(digit) && digit >= 1 && digit <= 9) {
-        const targetSession = sessions[digit - 1];
-        if (!targetSession) return;
+        const targetWorkspaceId = listVisibleSidebarWorkspaceIds()[digit - 1];
+        if (!targetWorkspaceId) return;
         event.preventDefault();
         onCloseSettings();
-        onSelectSession(targetSession);
+        onSelectWorkspace(targetWorkspaceId);
         return;
       }
       if (event.key === "/") {
@@ -128,13 +131,12 @@ export function useGlobalKeybindings({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [
-    sessions,
     onMenuCommand,
     onOpenFilePalette,
     onOpenSearch,
     onOpenContentSearch,
     onToggleTerminal,
-    onSelectSession,
+    onSelectWorkspace,
     onCloseSettings,
     onCloseFocusedPane
   ]);

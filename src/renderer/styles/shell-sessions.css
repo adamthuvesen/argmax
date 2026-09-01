@@ -25,17 +25,17 @@
   background: var(--row-hover);
 }
 
-/* Open and active rows use the same gray pair as the model picker and agent
-   tabs (--panel-soft / --panel-sunken) instead of the accent color. */
-/* An open row is marked by its surface, not by ink: the selected row stays the
-   only bright label in the list. */
+/* Three steps, lightest for the row you are on: transparent, then the faint
+   hover wash for a row open in another pane, then the selection gray. An open
+   row is marked by its surface, not by ink — the selected row stays the only
+   bright label in the list. */
 .session-link[data-open="true"]:not(.active) {
-  background: var(--panel-soft);
+  background: var(--row-hover);
 }
 
 .session-link.active {
   color: var(--text);
-  background: var(--panel-sunken);
+  background: var(--row-selected);
 }
 
 /* Keyboard focus inside the sidebar — use an inset shadow instead of the
@@ -299,75 +299,6 @@
 
 .session-row:has(.session-pin-btn):has(.session-archive-btn) .session-pin-btn {
   right: calc(var(--sidebar-action-step) + var(--sidebar-action-inset));
-}
-
-.cost-panel {
-  margin: 0;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.02);
-}
-
-.cost-panel-header {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-  font-size: var(--text-sm);
-}
-
-.cost-panel-title {
-  font-weight: 500;
-  color: var(--text);
-}
-
-.cost-panel-model {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.cost-panel-total {
-  margin-left: auto;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-}
-
-.cost-panel-table {
-  width: 100%;
-  margin-top: 6px;
-  border-collapse: collapse;
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-}
-
-.cost-panel-table th,
-.cost-panel-table td {
-  padding: 3px 6px;
-  text-align: right;
-  color: var(--muted);
-}
-
-.cost-panel-table th[scope="row"] {
-  text-align: left;
-  color: var(--text);
-  font-weight: 400;
-}
-
-.cost-panel-table thead th:first-child {
-  text-align: left;
-}
-
-.cost-panel-table thead th {
-  font-weight: 500;
-  border-bottom: 1px solid var(--line);
 }
 
 .sidebar-resizer {

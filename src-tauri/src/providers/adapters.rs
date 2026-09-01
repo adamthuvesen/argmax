@@ -496,18 +496,28 @@ fn codex_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
     let Some(reasoning_effort) = input.reasoning_effort else {
         return Vec::new();
     };
-
-    // Codex's CLI only accepts up to xhigh. Max/Ultra are Claude-only levels, so
-    // clamp them down to Codex's highest (xhigh) in case a switched-provider
-    // session carries one. The renderer clamps on switch too; this is a backstop.
-    let effort = match reasoning_effort {
-        ReasoningEffort::Max | ReasoningEffort::Ultra => "xhigh",
-        other => other.as_str(),
-    };
+    let effort = codex_effort_value(&input.model_id, reasoning_effort);
     vec![
         "-c".to_string(),
         format!("model_reasoning_effort=\"{effort}\""),
     ]
+}
+
+// Mirrors reasoningEffortsForModel (providerModels.ts). Sol/Terra accept the
+// full low→ultra list. Luna stops at max. Unknown/legacy models stop at xhigh.
+// Clamp is a backstop for provider-switch and resume paths that skip the picker.
+fn codex_effort_value(model_id: &str, effort: ReasoningEffort) -> &'static str {
+    match model_id {
+        "gpt-5.6-sol" | "gpt-5.6-terra" => effort.as_str(),
+        "gpt-5.6-luna" => match effort {
+            ReasoningEffort::Ultra => "max",
+            other => other.as_str(),
+        },
+        _ => match effort {
+            ReasoningEffort::Max | ReasoningEffort::Ultra => "xhigh",
+            other => other.as_str(),
+        },
+    }
 }
 
 fn codex_reasoning_summary_args(_input: &ProviderLaunchInput) -> Vec<String> {
@@ -715,11 +725,59 @@ mod tests {
     }
 
     #[test]
-    fn codex_clamps_claude_only_effort_down_to_xhigh() {
-        // A session switched from a Claude Max/Ultra selection must not send
-        // those Claude-only levels to Codex; clamp to its ceiling (xhigh).
+    fn codex_passes_max_and_ultra_for_sol_and_terra() {
+        for model_id in ["gpt-5.6-sol", "gpt-5.6-terra"] {
+            for (effort, expected) in [
+                (ReasoningEffort::Max, "model_reasoning_effort=\"max\""),
+                (ReasoningEffort::Ultra, "model_reasoning_effort=\"ultra\""),
+            ] {
+                let input = ProviderLaunchInput {
+                    model_id: model_id.to_string(),
+                    reasoning_effort: Some(effort),
+                    ..launch_input(ProviderId::Codex)
+                };
+                let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input);
+                assert!(
+                    args.iter().any(|arg| arg == expected),
+                    "{model_id} {effort:?} should send {expected}, got {args:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn codex_luna_clamps_ultra_to_max() {
+        let input = ProviderLaunchInput {
+            model_id: "gpt-5.6-luna".to_string(),
+            reasoning_effort: Some(ReasoningEffort::Ultra),
+            ..launch_input(ProviderId::Codex)
+        };
+        let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input);
+        assert!(
+            args.iter()
+                .any(|arg| arg == "model_reasoning_effort=\"max\""),
+            "luna ultra should clamp to max, got {args:?}"
+        );
+
+        let max = ProviderLaunchInput {
+            model_id: "gpt-5.6-luna".to_string(),
+            reasoning_effort: Some(ReasoningEffort::Max),
+            ..launch_input(ProviderId::Codex)
+        };
+        let max_args = (get_provider_definition(ProviderId::Codex).structured_args)(&max);
+        assert!(
+            max_args
+                .iter()
+                .any(|arg| arg == "model_reasoning_effort=\"max\""),
+            "luna max should pass through, got {max_args:?}"
+        );
+    }
+
+    #[test]
+    fn codex_unknown_model_clamps_max_and_ultra_to_xhigh() {
         for effort in [ReasoningEffort::Max, ReasoningEffort::Ultra] {
             let input = ProviderLaunchInput {
+                model_id: "gpt-5.4".to_string(),
                 reasoning_effort: Some(effort),
                 ..launch_input(ProviderId::Codex)
             };
@@ -727,7 +785,7 @@ mod tests {
             assert!(
                 args.iter()
                     .any(|arg| arg == "model_reasoning_effort=\"xhigh\""),
-                "effort {effort:?} should clamp to xhigh, got {args:?}"
+                "effort {effort:?} on an unknown model should clamp to xhigh, got {args:?}"
             );
         }
     }

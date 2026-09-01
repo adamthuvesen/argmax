@@ -21,7 +21,7 @@
   padding: var(--workspace-card-inset);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-2);
   animation: surface-in var(--motion-base) var(--ease-out) both;
 }
@@ -369,6 +369,12 @@
   color: var(--session-icon-pink);
   background: color-mix(in oklab, var(--session-icon-pink) 16%, transparent);
   border-color: color-mix(in oklab, var(--session-icon-pink) 45%, transparent);
+}
+
+.workspace-card-agent[data-icon-color="red"] {
+  color: var(--session-icon-red);
+  background: color-mix(in oklab, var(--session-icon-red) 16%, transparent);
+  border-color: color-mix(in oklab, var(--session-icon-red) 45%, transparent);
 }
 
 /* The chips carry identity, not liveness — the working nest beside the count

@@ -8,7 +8,7 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
-import { Plus } from "lucide-react";
+import { ChevronsUpDown, Plus } from "lucide-react";
 import { type ParsedDiffBlock } from "../lib/diff.js";
 import { highlightLine, langFromPath, useHighlighterReady } from "../lib/highlighter.js";
 import { themeAppearance } from "../lib/theme.js";
@@ -50,7 +50,8 @@ function useHighlightThemeAppearance(): "light" | "dark" {
 export const DiffBlocks = memo(function DiffBlocks({
   blocks,
   filePath,
-  onAddComment
+  onAddComment,
+  onExpandContext
 }: {
   blocks: ParsedDiffBlock[];
   filePath?: string | null;
@@ -58,6 +59,9 @@ export const DiffBlocks = memo(function DiffBlocks({
    *  hover "+" that opens an inline comment form. Submitted comments land on
    *  the session composer as annotations. */
   onAddComment?: (input: ReviewCommentInput) => void;
+  /** When provided, each between-hunk gap becomes a button that asks for more
+   *  context. Omit it (chat cards) and the gaps render as static labels. */
+  onExpandContext?: () => void;
 }): JSX.Element {
   // Subscribing to the ready signal re-renders the component as soon as the
   // shiki bundle finishes loading, swapping in highlighted tokens without
@@ -68,24 +72,86 @@ export const DiffBlocks = memo(function DiffBlocks({
   const effectiveLang = ready ? lang : null;
   // One open comment form across all hunks, keyed `${block.id}-${index}`.
   const [activeCommentKey, setActiveCommentKey] = useState<string | null>(null);
+  // A truncated diff already dropped content, so asking git for more context
+  // would only drop more. Show the gaps, but stop advertising the action.
+  const truncated = blocks.some((block) => block.kind === "truncated");
   return (
     <div className="diff-blocks">
-      {blocks.map((block) =>
-        block.kind === "omitted" ? null : (
-          <UnifiedHunk
-            key={block.id}
-            block={block}
-            lang={effectiveLang}
-            filePath={filePath ?? null}
-            onAddComment={onAddComment}
-            activeCommentKey={activeCommentKey}
-            onActiveCommentKeyChange={setActiveCommentKey}
-          />
-        )
-      )}
+      {blocks.map((block) => {
+        switch (block.kind) {
+          case "hunk":
+            return (
+              <UnifiedHunk
+                key={block.id}
+                block={block}
+                lang={effectiveLang}
+                filePath={filePath ?? null}
+                onAddComment={onAddComment}
+                activeCommentKey={activeCommentKey}
+                onActiveCommentKeyChange={setActiveCommentKey}
+              />
+            );
+          case "omitted":
+            return (
+              <OmittedLines
+                key={block.id}
+                count={block.count}
+                onExpand={truncated ? undefined : onExpandContext}
+              />
+            );
+          case "truncated":
+            return (
+              <p key={block.id} className="diff-truncated" role="status">
+                Diff too large to show in full — {formatBytes(block.droppedBytes)} of changes
+                were dropped. Open the file to see the rest.
+              </p>
+            );
+          default: {
+            const exhaustive: never = block;
+            return exhaustive;
+          }
+        }
+      })}
     </div>
   );
 });
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * The unchanged lines git left out between two hunks. Clicking asks for more
+ * context for the whole file, so every gap in the file opens at once — after
+ * the reload each remaining band reports its new, smaller count, and bands
+ * whose gap closed disappear.
+ */
+function OmittedLines({
+  count,
+  onExpand
+}: {
+  count: number;
+  onExpand?: () => void;
+}): JSX.Element {
+  const label = `${count} unmodified ${count === 1 ? "line" : "lines"}`;
+  if (!onExpand) {
+    return <div className="diff-omitted">{label}</div>;
+  }
+  return (
+    <button
+      type="button"
+      className="diff-omitted diff-omitted-expand"
+      aria-label={`Expand ${label}`}
+      title="Show more unchanged context"
+      onClick={onExpand}
+    >
+      <ChevronsUpDown size={12} aria-hidden="true" />
+      <span>{label}</span>
+    </button>
+  );
+}
 
 function UnifiedHunk({
   block,

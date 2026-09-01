@@ -48,7 +48,7 @@ describe("SessionComposer provider switch confirmation", () => {
     renderConversation(baseSession({ state: "complete", provider: "codex" }));
 
     pickModel("Sonnet 5");
-    fireEvent.click(screen.getByRole("button", { name: "Switch anyway" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch" }));
 
     expect(screen.queryByRole("dialog", { name: "Switch this session to Claude" })).toBeNull();
     expect(screen.getByRole("button", { name: "Session model" }).textContent).toContain("Sonnet 5");
@@ -92,7 +92,7 @@ describe("SessionComposer provider switch confirmation", () => {
     renderConversation(baseSession({ state: "complete", provider: "codex" }));
 
     pickModel("Sonnet 5");
-    fireEvent.click(screen.getByRole("button", { name: "Switch anyway" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch" }));
 
     const effortLabelBefore = screen.getByRole("button", { name: "Session model effort" }).textContent;
     fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));

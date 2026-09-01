@@ -15,6 +15,7 @@ import {
   menuCommandListener,
   mockDashboardSnapshot,
   primaryProject,
+  secondProject,
   readProjectFile,
   readWorkspaceFile,
   sendProviderInput,
@@ -42,11 +43,14 @@ describe("App sidebar", () => {
 
   it("expands the hosting date group when a workspace appears without being selected", async () => {
     window.localStorage.setItem("argmax.sidebar.viewMode", JSON.stringify("sessions"));
+    // The harness disables Priority by default; this test needs it on so the
+    // mid-turn seed floats out of the date buckets.
+    window.localStorage.setItem("argmax.sidebar.priority.visible", "true");
     render(<App />);
-    // The seeded workspace is mid-turn, so it floats into Working; the seeded
+    // The seeded workspace is mid-turn, so it floats into Priority; the seeded
     // snapshot has no Today activity, so that bucket isn't rendered yet — and
     // per-launch defaults would show it collapsed once it appears.
-    await screen.findByRole("button", { name: /Working sessions/ });
+    await screen.findByRole("button", { name: /Priority sessions/ });
     expect(screen.queryByRole("button", { name: /Today sessions/ })).not.toBeInTheDocument();
 
     // A fork (or an agent-launched session) lands as a delta with a fresh
@@ -93,6 +97,123 @@ describe("App sidebar", () => {
       "aria-expanded",
       "true"
     );
+  });
+
+  it("opens the nth sidebar row on Cmd+1..9, in the order the rows are shown", async () => {
+    window.localStorage.setItem("argmax.sidebar.viewMode", JSON.stringify("sessions"));
+    // Pinned floats to the top of the sidebar, so the row the user sees first
+    // is not the first entry in the snapshot's session list.
+    const pinnedWorkspace: DashboardSnapshot["workspaces"][number] = {
+      ...snapshot.workspaces[0],
+      id: "workspace-pinned",
+      taskLabel: "Pinned work",
+      branch: "argmax/pinned",
+      path: "/tmp/worktrees/pinned",
+      state: "complete",
+      dirty: false,
+      changedFiles: 0,
+      pinned: true,
+      lastActivityAt: "2026-05-08T15:00:00.000Z"
+    };
+    const pinnedSession: DashboardSnapshot["sessions"][number] = {
+      ...snapshot.sessions[0],
+      id: "session-pinned",
+      workspaceId: "workspace-pinned",
+      prompt: "Pinned work",
+      state: "complete",
+      completedAt: "2026-05-08T15:00:00.000Z",
+      lastActivityAt: "2026-05-08T15:00:00.000Z"
+    };
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, pinnedWorkspace],
+      sessions: [...snapshot.sessions, pinnedSession]
+    });
+
+    render(<App />);
+    await screen.findByRole("button", { name: /Pinned work/ });
+
+    fireEvent.keyDown(document, { key: "1", metaKey: true });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Pinned work/ })).toHaveAttribute("aria-current", "true")
+    );
+
+    fireEvent.keyDown(document, { key: "2", metaKey: true });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Build dashboard/ })).toHaveAttribute("aria-current", "true")
+    );
+  });
+
+  it("follows a moved session only while its source is selected", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /Build dashboard/ }));
+    await screen.findByText("Dashboard ready.");
+    const movedWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-moved",
+      projectId: "project-2",
+      taskLabel: "Build dashboard",
+      branch: "main",
+      baseRef: "main",
+      path: "/tmp/dotfiles",
+      state: "complete",
+      sharedWorkspace: true,
+      kind: "git",
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:00:00.000Z",
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
+    };
+    const movedSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-moved",
+      workspaceId: movedWorkspace.id,
+      provider: "codex",
+      modelLabel: "GPT-5.6 Terra",
+      modelId: "gpt-5.6-terra",
+      reasoningEffort: "medium",
+      permissionMode: "auto-approve",
+      providerConversationId: null,
+      prompt: "Build dashboard",
+      state: "complete",
+      attention: "normal",
+      startedAt: "2026-05-08T15:30:00.000Z",
+      completedAt: "2026-05-08T16:00:00.000Z",
+      lastActivityAt: "2026-05-08T16:00:00.000Z"
+    };
+    await act(async () => {
+      dashboardDeltaListener?.({
+        projects: [secondProject()],
+        workspaces: [movedWorkspace],
+        sessions: [movedSession],
+        events: [
+          {
+            id: "move-destination",
+            sessionId: movedSession.id,
+            type: "session.moved",
+            message: "Moved from Argmax to Dotfiles.",
+            payload: {
+              direction: "destination",
+              sourceSessionId: "session-1",
+              sourceWorkspaceId: "workspace-1",
+              sourceProjectName: "Argmax",
+              destinationSessionId: movedSession.id,
+              destinationWorkspaceId: movedWorkspace.id,
+              destinationProjectName: "Dotfiles",
+              checkoutMode: "shared"
+            },
+            createdAt: "2026-05-08T16:00:00.000Z"
+          }
+        ]
+      });
+      await Promise.resolve();
+    });
+
+    expect(
+      await screen.findByRole("status", {
+        name: "Argmax → Dotfiles, shared checkout"
+      })
+    ).toBeInTheDocument();
   });
 
   it("opens a sidebar session", async () => {
@@ -430,16 +551,30 @@ describe("App sidebar", () => {
 
     const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" }, { timeout: 5000 });
     expect(reviewPanel).toBeInTheDocument();
-    expect(loadDiff).toHaveBeenCalledWith(
-      { kind: "workspace", id: "workspace-1" }, "src/renderer/App.tsx", "branch"
+    // Every changed file starts collapsed: opening the panel loads no diff.
+    expect(loadDiff).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Expand src/renderer/App.tsx diff" }));
+    await waitFor(() =>
+      expect(loadDiff).toHaveBeenCalledWith(
+        { kind: "workspace", id: "workspace-1" }, "src/renderer/App.tsx", "branch", undefined
+      )
     );
-    // Omitted (unmodified) context blocks are not rendered — only changed hunks.
-    expect(screen.queryByText("16 unmodified lines")).not.toBeInTheDocument();
     // shiki tokenizes lines into per-token <span> children, so getByText on
     // the full source line misses. toHaveTextContent matches concatenated
     // textContent regardless of token carving (same workaround P6.01 used).
     expect(reviewPanel).toHaveTextContent("const oldValue = true;");
     expect(reviewPanel).toHaveTextContent("const newValue = true;");
+
+    // The gap between the two hunks (old lines 4–19) is an expand control, and
+    // clicking it refetches the file with a wider context.
+    const expandGap = screen.getByRole("button", { name: "Expand 16 unmodified lines" });
+    fireEvent.click(expandGap);
+    await waitFor(() =>
+      expect(loadDiff).toHaveBeenCalledWith(
+        { kind: "workspace", id: "workspace-1" }, "src/renderer/App.tsx", "branch", 25
+      )
+    );
 
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() =>
@@ -628,7 +763,7 @@ describe("App sidebar", () => {
     expect(launchProvider).not.toHaveBeenCalled();
   });
 
-  it("toggles active-session agent mode with Shift+Tab and sends plan mode", async () => {
+  it("toggles active-session agent mode with Tab and sends plan mode", async () => {
     const completeSnapshot = {
       ...snapshot,
       sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }))
@@ -640,7 +775,7 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     const input = await screen.findByLabelText("Session prompt");
     fireEvent.change(input, { target: { value: "Plan the follow-up" } });
-    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
+    fireEvent.keyDown(input, { key: "Tab" });
 
     expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
     fireEvent.click(screen.getByTitle("Send follow-up"));

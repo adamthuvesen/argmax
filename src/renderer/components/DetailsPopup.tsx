@@ -191,7 +191,6 @@ export function DetailsPopup({
         rawOutputs={visibleRawOutputs}
         review={review}
         session={popupSession}
-        showCostPanel={false}
         workspaceCardEnabled={false}
         workspace={workspace}
       />

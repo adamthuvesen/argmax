@@ -389,6 +389,45 @@ describe("useSmartFollowScroll", () => {
     expect(result.current.showScrollToBottom).toBe(false);
   });
 
+  it("stays detached when collapsing content drags the viewport to the bottom", () => {
+    const observers = installResizeObservers();
+    const state: ScrollBoxState = { scrollHeight: 2400, clientHeight: 800, scrollTop: 1600 };
+    const el = makeScrollBox(state);
+    const turn = document.createElement("article");
+    el.appendChild(turn);
+    const { result } = renderHook(() => {
+      const api = useSmartFollowScroll("session-a", ["turn"], false);
+      attachListRef(api.conversationListRef, el);
+      return api;
+    });
+    const childObserver = observers.find((observer) => observer.targets.includes(turn));
+
+    act(() => {
+      result.current.handleUserScrollIntent();
+      state.scrollTop = 1000;
+      result.current.handleScroll();
+    });
+    expect(result.current.showScrollToBottom).toBe(true);
+
+    // A finished tool row collapses: the document loses more height than the
+    // reader had below them, so the browser parks them at the new bottom.
+    act(() => {
+      state.scrollHeight = 1400;
+      state.scrollTop = 600;
+      childObserver?.callback([], {} as ResizeObserver);
+      result.current.handleScroll();
+    });
+
+    // The spacer after the latest user message grows back into the freed room.
+    act(() => {
+      state.scrollHeight = 2400;
+      childObserver?.callback([], {} as ResizeObserver);
+    });
+
+    expect(state.scrollTop).toBe(600);
+    expect(result.current.showScrollToBottom).toBe(true);
+  });
+
   it("snaps an asynchronously loaded first transcript batch to the bottom", () => {
     const state: ScrollBoxState = { scrollHeight: 200, clientHeight: 200, scrollTop: 0 };
     const el = makeScrollBox(state);

@@ -56,6 +56,10 @@ export function useSmartFollowScroll(
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [newBelowCount, setNewBelowCount] = useState(0);
   const lastSeenItemCountRef = useRef(0);
+  // Where the reader was when we last saw the list move. Content that shrinks
+  // above this point drags the viewport down on its own: the bottom comes to
+  // meet the reader rather than the reader scrolling to it.
+  const lastScrollTopRef = useRef(0);
   const childResizeObserverRef = useRef<ResizeObserver | null>(null);
   const observedChildrenRef = useRef<Set<HTMLElement>>(new Set());
 
@@ -98,6 +102,7 @@ export function useSmartFollowScroll(
     // caret-reveal pan into a visible per-keystroke bounce.
     if (Math.abs(el.scrollTop - top) > 1) {
       el.scrollTop = top;
+      lastScrollTopRef.current = el.scrollTop;
       // A gesture in flight is measured against where it started, but this
       // write moved the viewport underneath it. Growth streamed in between a
       // wheel event and its scroll event would otherwise read as movement
@@ -125,10 +130,20 @@ export function useSmartFollowScroll(
     }, USER_SCROLL_INTENT_MS);
   }, []);
 
+  // The reader's old position no longer exists and the viewport now sits at the
+  // new bottom: the browser clamped it there when content collapsed or was
+  // unmounted. Reaching the bottom that way is not a request to follow again.
+  const wasClampedByShrink = useCallback((el: HTMLDivElement): boolean => {
+    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    return lastScrollTopRef.current > maxTop + 1 && el.scrollTop >= maxTop - 1;
+  }, []);
+
   const handleScroll = useCallback((): void => {
     const el = conversationListRef.current;
     if (!el) return;
     const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
+    const clampedByShrink = wasClampedByShrink(el);
+    lastScrollTopRef.current = el.scrollTop;
     const intentStartTop = userScrollStartTopRef.current;
     const movedAwayAfterUserIntent = intentStartTop !== null &&
       el.scrollTop < intentStartTop;
@@ -154,7 +169,8 @@ export function useSmartFollowScroll(
     }
 
     const reachedBottom = decision.distanceFromBottom === 0;
-    if (reachedBottom || (movedTowardBottomAfterUserIntent && decision.pinToBottom)) {
+    if (!clampedByShrink &&
+      (reachedBottom || (movedTowardBottomAfterUserIntent && decision.pinToBottom))) {
       isFollowingRef.current = true;
       clearUserScrollIntent();
       scrollToFollowTarget(el, true);
@@ -164,7 +180,7 @@ export function useSmartFollowScroll(
     }
 
     setShowScrollToBottom(decision.showFab);
-  }, [clearUserScrollIntent, scrollToFollowTarget]);
+  }, [clearUserScrollIntent, scrollToFollowTarget, wasClampedByShrink]);
 
   const reconcileScrollAffordance = useCallback((el: HTMLDivElement): void => {
     applyTurnSpacer(el);
@@ -175,7 +191,9 @@ export function useSmartFollowScroll(
       setNewBelowCount(0);
       return;
     }
-    if (decision.distanceFromBottom === 0) {
+    // The scroll event for a clamp can arrive after this pass, so the same
+    // evidence is read here rather than left to `handleScroll`.
+    if (decision.distanceFromBottom === 0 && !wasClampedByShrink(el)) {
       isFollowingRef.current = true;
       clearUserScrollIntent();
       scrollToFollowTarget(el, true);
@@ -184,7 +202,7 @@ export function useSmartFollowScroll(
       return;
     }
     setShowScrollToBottom(decision.showFab);
-  }, [applyTurnSpacer, clearUserScrollIntent, scrollToFollowTarget]);
+  }, [applyTurnSpacer, clearUserScrollIntent, scrollToFollowTarget, wasClampedByShrink]);
 
   const scrollToBottom = useCallback((): void => {
     const el = conversationListRef.current;

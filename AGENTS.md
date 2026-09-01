@@ -69,6 +69,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Debug panel / diagnostics** → [debugging.md](docs/debugging.md)
 - **Styling** → [styling.md](docs/styling.md)
 - **Tests** → [testing.md](docs/testing.md)
+- **Verifying a change end to end** → [verification.md](docs/verification.md)
 - **Perf budgets** → [performance.md](docs/performance.md)
 - **Release** → [release.md](docs/release.md)
 

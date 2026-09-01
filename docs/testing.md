@@ -2,6 +2,9 @@
 
 Argmax has two test suites: Vitest for the frontend and Cargo for the Rust backend.
 
+The suites are the first rung of the verification ladder; driving the real app
+(scratch instance, bridge, screenshots) is covered in [verification.md](verification.md).
+
 ## Commands
 
 ```bash

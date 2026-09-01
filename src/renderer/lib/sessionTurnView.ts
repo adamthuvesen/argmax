@@ -1,6 +1,7 @@
 import type { TimelineEvent } from "../../shared/types.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import type { RenderItem } from "./foldConversation.js";
+import { isNoisyProviderTracing, matchTracingRecord, parseLogDump, splitLogSegments } from "./logDump.js";
 import { parsePlan } from "./parsePlan.js";
 import { isThinkingDelta } from "./turnBoundaries.js";
 import {
@@ -27,6 +28,9 @@ export type AssistantGroup = {
   // message.delta with payload.thinking === true. Rendered as a separate
   // collapsible "Thought" block rather than inline answer text.
   thinking?: boolean;
+  // Stderr and other `error` timeline events. Rendered as a log block, not
+  // an assistant bubble. Consecutive errors coalesce into one group.
+  error?: boolean;
 };
 
 function cursorAssistantSnapshot(event: TimelineEvent): string | null {
@@ -74,6 +78,36 @@ function appendThinking(current: string, incoming: string): string {
 }
 
 /**
+ * Grok (and sometimes Claude) closes a text block before a tool, then continues
+ * the same sentence in the next assistant envelope. Leading whitespace on the
+ * incoming fragment is the reliable join: `"I'll"` + `" read the docs."`.
+ * A fragment that starts lowercase after a line that did not end a sentence
+ * is the same split without the leading space.
+ */
+function isAnswerContinuation(previous: string, incoming: string): boolean {
+  if (incoming.length === 0) return false;
+  if (/^\s/.test(incoming)) return true;
+  const prev = previous.trimEnd();
+  if (prev.length === 0) return true;
+  const last = prev.charAt(prev.length - 1);
+  if (last === "\n" || ".!?…:".includes(last)) return false;
+  const start = incoming.trimStart().charAt(0);
+  return start.length > 0 && start === start.toLowerCase();
+}
+
+function joinAnswerFragments(previous: string, incoming: string): string {
+  if (incoming.length === 0) return previous;
+  if (previous.length === 0) return incoming;
+  if (/^\s/.test(incoming) || /\s$/.test(previous)) return previous + incoming;
+  return `${previous} ${incoming}`;
+}
+
+function isRawProviderStreamDelta(event: TimelineEvent): boolean {
+  const stream = event.payload.stream;
+  return event.type === "message.delta" && (stream === "stdout" || stream === "stderr" || stream === "pty");
+}
+
+/**
  * Fold streamed `message.delta` events into assistant groups. Answer fragments
  * and extended-thinking fragments are accumulated into SEPARATE growing groups
  * (thinking renders in the collapsible Thought block); the open buffer is
@@ -90,6 +124,10 @@ export function coalesceAssistantGroups(
   let previousEventCreatedAt: string | null = null;
   const splitAt = options.splitAt ?? [];
   const streaming = options.streaming ?? true;
+  // Raw PTY tracing that the renderer already dropped as noise can be followed
+  // by extra lines (apply_patch dumps the expected context). Keep dropping
+  // those until a real protocol event arrives.
+  let dropRawContinuations = false;
   let groupIndex = 0;
   const nextGroupId = (kind: "answer" | "thinking"): string => `assistant-${kind}-${groupIndex++}`;
   const flushAnswer = (): void => {
@@ -119,11 +157,60 @@ export function coalesceAssistantGroups(
     const previous = previousEventCreatedAt;
     return previous !== null && splitAt.some((time) => time >= previous && time < event.createdAt);
   };
+  const pushErrorLine = (event: TimelineEvent, message: string): void => {
+    const last = assistantGroups[assistantGroups.length - 1];
+    if (last?.error) {
+      last.text = `${last.text}\n${message}`;
+      last.lastActivityAt = event.createdAt;
+      return;
+    }
+    assistantGroups.push({
+      id: nextGroupId("answer"),
+      createdAt: event.createdAt,
+      lastActivityAt: event.createdAt,
+      text: message,
+      streaming: false,
+      error: true
+    });
+  };
   for (const event of assistantEvents) {
     if (splitBefore(event)) {
       flushThinking();
       flushAnswer();
     }
+    const tracing = matchTracingRecord(event.message);
+    if (event.type === "error" || (event.type === "message.delta" && tracing)) {
+      flushThinking();
+      flushAnswer();
+      if (tracing && isNoisyProviderTracing(tracing.target, tracing.message)) {
+        dropRawContinuations = true;
+        previousEventCreatedAt = event.createdAt;
+        continue;
+      }
+      dropRawContinuations = false;
+      const message = event.message.trim();
+      if (message.length === 0 || parseLogDump(message).length === 0) {
+        previousEventCreatedAt = event.createdAt;
+        continue;
+      }
+      pushErrorLine(event, message);
+      previousEventCreatedAt = event.createdAt;
+      continue;
+    }
+    if (event.type === "message.delta" && isRawProviderStreamDelta(event) && dropRawContinuations) {
+      previousEventCreatedAt = event.createdAt;
+      continue;
+    }
+    if (event.type === "message.delta" && isRawProviderStreamDelta(event)) {
+      const last = assistantGroups[assistantGroups.length - 1];
+      if (last?.error) {
+        const message = event.message.trim();
+        if (message.length > 0) pushErrorLine(event, message);
+        previousEventCreatedAt = event.createdAt;
+        continue;
+      }
+    }
+    dropRawContinuations = false;
     if (isThinkingDelta(event)) {
       flushAnswer();
       if (!thinkingBuffer) {
@@ -166,6 +253,19 @@ export function coalesceAssistantGroups(
       previousEventCreatedAt = event.createdAt;
       continue;
     }
+    if (
+      last &&
+      !last.streaming &&
+      !last.thinking &&
+      !last.error &&
+      event.type === "message.completed" &&
+      isAnswerContinuation(last.text, event.message)
+    ) {
+      last.text = joinAnswerFragments(last.text, event.message);
+      last.lastActivityAt = event.createdAt;
+      previousEventCreatedAt = event.createdAt;
+      continue;
+    }
     assistantGroups.push({
       id: nextGroupId("answer"),
       createdAt: event.createdAt,
@@ -178,6 +278,12 @@ export function coalesceAssistantGroups(
   flushThinking();
   flushAnswer();
   return assistantGroups;
+}
+
+export function assistantGroupHasVisibleChat(group: Pick<AssistantGroup, "text" | "error" | "thinking">): boolean {
+  if (group.thinking) return group.text.trim().length > 0;
+  if (group.error) return parseLogDump(group.text).length > 0;
+  return splitLogSegments(group.text).length > 0;
 }
 
 /**
@@ -307,9 +413,10 @@ export function buildTurnRenderState(params: {
     exitPlanCreatedAt: exitPlanHasPlan && exitPlanTool ? exitPlanTool.createdAt : null,
     questionCreatedAt: hasQuestionCard && askUserQuestionTool ? askUserQuestionTool.createdAt : null
   });
-  const visibleAssistantGroups = cardCutoff
+  const visibleAssistantGroups = (cardCutoff
     ? assistantGroups.filter((g) => g.createdAt < cardCutoff)
-    : assistantGroups;
+    : assistantGroups
+  ).filter(assistantGroupHasVisibleChat);
   const hiddenToolIds = new Set([...exitPlanHiddenToolIds, ...askUserQuestionHiddenToolIds]);
 
   // A plan produced in the same turn as a still-unanswered question was written

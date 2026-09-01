@@ -82,9 +82,8 @@ describe("AgentActivityPane", () => {
     );
 
     const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
-    const row = within(pane).getByRole("button", { name: "Ran git status --short" });
-
-    expect(row).toHaveAttribute("aria-expanded", "false");
+    expect(within(pane).getByText("git status --short")).toBeInTheDocument();
+    expect(within(pane).queryByRole("button", { name: "Ran git status --short" })).toBeNull();
     expect(within(pane).queryByText("Command")).toBeNull();
   });
 

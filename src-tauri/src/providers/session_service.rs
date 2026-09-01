@@ -735,7 +735,15 @@ impl ProviderSessionService {
                     resume_conversation_id = session.provider_conversation_id.clone();
                 }
             }
-            let launch_prompt = compose_follow_up_prompt(&connection, &session_id, &message)?;
+            // A provider switch NULLs the resume id, so this same flag also
+            // carries the switched-agent case: no rollout on the other side,
+            // rebuild the context from the visible transcript.
+            let launch_prompt = compose_follow_up_prompt(
+                &connection,
+                &session_id,
+                &message,
+                resume_conversation_id.is_some(),
+            )?;
             let user_message = self.persist_user_message_locked(
                 &connection,
                 &session_id,

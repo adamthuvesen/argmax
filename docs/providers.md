@@ -9,7 +9,7 @@ Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build throug
 - [discovery.rs](../src-tauri/src/providers/discovery.rs): Detects installed provider binaries and versions.
 - [runtime.rs](../src-tauri/src/providers/runtime.rs): Manages PTY process execution.
 - [session_service.rs](../src-tauri/src/providers/session_service.rs): Orchestrates launch, resume, user input, resize, cancellation, and orphan recovery.
-- [follow_up.rs](../src-tauri/src/providers/follow_up.rs): Generates the capped visible transcript for session resumes and provider switches.
+- [follow_up.rs](../src-tauri/src/providers/follow_up.rs): Composes the prompt a follow-up turn launches with. A session holding a native resume id sends the user's message alone — the CLI replays its own rollout, so a transcript prefix would hand it the same turns twice. Without one (a provider switch, which clears the id) the prompt carries a capped visible transcript: 12 messages, 12k chars, child-agent rows excluded. A pending project handoff note rides along either way.
 - [orphan_cleanup.rs](../src-tauri/src/providers/orphan_cleanup.rs): Terminates lingering provider processes during startup recovery.
 - [normalizer/](../src-tauri/src/providers/normalizer): Translates provider JSONL/stdout streams into normalized timeline events.
 - [flush_queue.rs](../src-tauri/src/providers/flush_queue.rs): Batches event writes to SQLite and emits `dashboard:delta`. Complete JSONL lines flush immediately; non-newline trailing fragments are debounced for ~16 ms so interactive sessions surface output promptly.

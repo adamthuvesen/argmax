@@ -23,7 +23,9 @@ use crate::{
             ProvidersLaunchInput, ProvidersSendInput, TerminalCols, TerminalRows,
             WorkspacesArchiveInput, WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput,
         },
-        validation::{BaseRef, NonEmptyString, ProjectId, Prompt, SessionId, TaskLabel, WorkspaceId},
+        validation::{
+            BaseRef, NonEmptyString, ProjectId, Prompt, SessionId, TaskLabel, WorkspaceId,
+        },
     },
     persistence::{
         dashboard::DASHBOARD_ROW_LIMIT,
@@ -808,7 +810,10 @@ async fn list_sessions_action(
     parent: ParentLaunchSettings,
     database: Arc<Database>,
 ) -> Result<SessionLaunchResponse, SessionLaunchProtocolError> {
-    if request.session_id.is_some() || request.prompt.is_some() || request.worktree || request.keep_source
+    if request.session_id.is_some()
+        || request.prompt.is_some()
+        || request.worktree
+        || request.keep_source
     {
         return Err(protocol_error(
             "ARGUMENT_INVALID",
@@ -1545,9 +1550,15 @@ fn run_session_control_cli_unix(
             None,
             false,
         ),
-        SessionControlCliInput::List { project, all } => {
-            (SessionControlAction::List, project, None, false, false, None, all)
-        }
+        SessionControlCliInput::List { project, all } => (
+            SessionControlAction::List,
+            project,
+            None,
+            false,
+            false,
+            None,
+            all,
+        ),
         SessionControlCliInput::Message { session_id, prompt } => (
             SessionControlAction::Message,
             None,
@@ -1637,9 +1648,7 @@ fn run_session_control_cli_unix(
                 && response.scheduled == Some(true)
         }
         SessionControlAction::List => response.sessions.is_some(),
-        SessionControlAction::Message => {
-            response.session_id.is_some() && response.queued.is_some()
-        }
+        SessionControlAction::Message => response.session_id.is_some() && response.queued.is_some(),
     };
     if !complete || response.error.is_some() {
         return Err(protocol_error(
@@ -1960,8 +1969,9 @@ mod tests {
         assert!(prompt.starts_with("Argmax session controls"));
         assert!(prompt.ends_with("\n\nDo the work"));
         assert!(prompt.contains("not subagents"));
-        assert!(prompt
-            .contains("Never launch, move, list, or message sessions on your own initiative"));
+        assert!(
+            prompt.contains("Never launch, move, list, or message sessions on your own initiative")
+        );
     }
 
     #[test]
@@ -1993,8 +2003,8 @@ mod tests {
             }
         );
 
-        let conflicting = ["argmax", "session", "list", "--all", "--project", "Argmax"]
-            .map(OsString::from);
+        let conflicting =
+            ["argmax", "session", "list", "--all", "--project", "Argmax"].map(OsString::from);
         assert!(parse_session_control_cli(&conflicting).is_err());
     }
 

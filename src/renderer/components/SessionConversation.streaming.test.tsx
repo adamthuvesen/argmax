@@ -920,6 +920,27 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
+  it("holds Thinking through a relaunch sent from a failed session", async () => {
+    // A session whose provider process died with the app is adopted back as
+    // `failed`; the next follow-up relaunches it with --resume, which can take
+    // twenty seconds to say anything. The pre-send state is not a dead turn, so
+    // the cue has to stay up rather than blink out after its minimum window.
+    const onSendSessionInput = vi.fn(() => Promise.resolve());
+    renderConversation(
+      baseSession({ provider: "claude", state: "failed" }),
+      [event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")],
+      { onSendSessionInput }
+    );
+
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "keep going" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
   it("renders a curated thinking word with the shared live-work mark", () => {
     const { container } = renderConversation(
       baseSession({ provider: "codex", state: "running" }),

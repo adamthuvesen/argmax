@@ -43,11 +43,11 @@ impl GhService {
     /// existing cached rows — historical rows are never deleted because the
     /// timeline still wants to render them.
     pub async fn refresh(&self, session_id: &str) -> ArgmaxResult<Vec<GhPrRecord>> {
-        let workspace_path = {
+        let (workspace_path, branch) = {
             let conn = self.database.connection();
             let session = find_session_by_id(&conn, session_id)?;
             let workspace = find_workspace_by_id(&conn, &session.workspace_id)?;
-            workspace.path
+            (workspace.path, workspace.branch)
         };
         if workspace_path.is_empty() {
             // A persisted workspace always has a path; an empty one signals
@@ -56,17 +56,19 @@ impl GhService {
             return self.list_for_session(session_id);
         }
 
-        let stdout = match (self.runner)(
-            workspace_path,
-            vec![
-                "pr".into(),
-                "view".into(),
-                "--json".into(),
-                "number,headRefOid,state,statusCheckRollup".into(),
-            ],
-        )
-        .await
-        {
+        // Pass the workspace's own branch so a shared checkout that has since
+        // moved still resolves the PR this session is sitting on — `gh pr view`
+        // with no ref uses whatever HEAD the directory currently has.
+        let mut args = vec!["pr".into(), "view".into()];
+        if !branch.is_empty() {
+            args.push(branch);
+        }
+        args.extend([
+            "--json".into(),
+            "number,headRefOid,headRefName,state,statusCheckRollup".into(),
+        ]);
+
+        let stdout = match (self.runner)(workspace_path, args).await {
             Ok(text) => text,
             Err(error) => {
                 let category = gh_error_category(&error);
@@ -107,6 +109,7 @@ impl GhService {
             updated_at: now_iso(),
             pr_state: normalize_pr_state(parsed.state.as_deref()),
             notified_at: None,
+            head_ref_name: parsed.head_ref_name.filter(|name| !name.is_empty()),
         };
         {
             let conn = self.database.connection();
@@ -126,6 +129,8 @@ struct PrViewResponse {
     number: Option<i64>,
     #[serde(default, rename = "headRefOid")]
     head_ref_oid: Option<String>,
+    #[serde(default, rename = "headRefName")]
+    head_ref_name: Option<String>,
     #[serde(default)]
     state: Option<String>,
     #[serde(default, rename = "statusCheckRollup")]
@@ -268,6 +273,7 @@ mod tests {
     struct StubRunner {
         responses: Mutex<Vec<ArgmaxResult<String>>>,
         calls: AtomicUsize,
+        last_args: Mutex<Vec<String>>,
     }
 
     impl StubRunner {
@@ -275,13 +281,15 @@ mod tests {
             Arc::new(Self {
                 responses: Mutex::new(responses),
                 calls: AtomicUsize::new(0),
+                last_args: Mutex::new(Vec::new()),
             })
         }
 
         fn runner(self: Arc<Self>) -> GhRunner {
-            Arc::new(move |_cwd, _args| {
+            Arc::new(move |_cwd, args| {
                 let next = {
                     let mut responses = self.responses.lock().expect("stub responses poisoned");
+                    *self.last_args.lock().expect("stub args poisoned") = args;
                     self.calls.fetch_add(1, Ordering::SeqCst);
                     if responses.is_empty() {
                         None
@@ -302,6 +310,10 @@ mod tests {
 
         fn call_count(&self) -> usize {
             self.calls.load(Ordering::SeqCst)
+        }
+
+        fn last_args(&self) -> Vec<String> {
+            self.last_args.lock().expect("stub args poisoned").clone()
         }
     }
 
@@ -374,6 +386,7 @@ mod tests {
             r#"{{
                 "number": {pr_number},
                 "headRefOid": "{head_sha}",
+                "headRefName": "feature/x",
                 "state": "OPEN",
                 "statusCheckRollup": [{{"conclusion": "{rollup_state}"}}]
             }}"#
@@ -397,6 +410,7 @@ mod tests {
                     updated_at: now_iso(),
                     pr_state: Some("OPEN".to_string()),
                     notified_at: None,
+                    head_ref_name: None,
                 },
             )
             .expect("seed gh_pr");
@@ -424,7 +438,18 @@ mod tests {
         assert_eq!(rows[0].head_sha, "feedface");
         assert_eq!(rows[0].last_seen_check_state, "success");
         assert_eq!(rows[0].pr_state.as_deref(), Some("OPEN"));
+        assert_eq!(rows[0].head_ref_name.as_deref(), Some("feature/x"));
         assert_eq!(stub.call_count(), 1);
+        assert_eq!(
+            stub.last_args(),
+            vec![
+                "pr",
+                "view",
+                "feature/x",
+                "--json",
+                "number,headRefOid,headRefName,state,statusCheckRollup",
+            ]
+        );
 
         // Subsequent gh call returns a failure rollup for a new head — same
         // pr_number, but state moves.
@@ -454,6 +479,7 @@ mod tests {
                     updated_at: now_iso(),
                     pr_state: Some("OPEN".to_string()),
                     notified_at: None,
+                    head_ref_name: None,
                 },
             )
             .expect("seed gh_pr");

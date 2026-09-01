@@ -241,6 +241,7 @@ html:has(.mobile-shell) body {
 .mobile-session-marker[data-running] {
   background: var(--accent);
   animation: mobile-live-pulse 1.6s ease-in-out infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 
 @keyframes mobile-live-pulse {

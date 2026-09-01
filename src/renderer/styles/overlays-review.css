@@ -258,6 +258,7 @@
   );
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.4s var(--ease) infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 
 .lines-skeleton-row:nth-child(3n) {

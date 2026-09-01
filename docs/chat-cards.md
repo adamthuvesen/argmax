@@ -10,6 +10,12 @@ The chat surface renders assistant bubbles, tools, and interactive cards: **Plan
 - **Composer:** [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx) handles prompt inputs, file attachments, model/mode chips, follow-up queues, send/stop, and `/clear`. The launcher composer in [LaunchSurface.tsx](../src/renderer/components/LaunchSurface.tsx) cycles Auto / Plan / Chat with Tab. Chat launches a scratch workspace with no repository attached, so the project picker hides and no longer offers a Chat row.
 - **Actions Menu:** [SessionActionsMenu.tsx](../src/renderer/components/SessionActionsMenu.tsx) handles workspace actions, PR refreshes, git shortcuts, and panel toggles.
 
+## Follow scroll
+
+The conversation list pins to the physical bottom while the reader is attached, and a leftover-viewport spacer after the latest user message makes that pin sit the prompt at the top of the pane until the turn fills it. Logic lives in [useSmartFollowScroll.ts](../src/renderer/hooks/useSmartFollowScroll.ts).
+
+The macOS app is WKWebView, which has no CSS `overflow-anchor`. While attached, JS pinning hides layout shifts. After the reader scrolls up, the next insertion above the viewport would slide older transcript into view, so a detached pass keeps the in-view node still by its content coordinate. The spacer is a follow layout and is frozen while detached: resizing it used to land the reader on the bottom, re-arm follow, grow the spacer back, and jump them to the latest user message. Re-attach only when the reader moves toward the bottom (including trackpad momentum), taps scroll-to-latest, sends a new message, or changes session. Collapse that brings the bottom to them is not a request to follow.
+
 ## The Sent Prompt
 
 A user bubble shows the text that was typed, not markdown: `SessionConversationUserMessage` renders it into a `<p>` with `white-space: pre-wrap` so a pasted snippet keeps its own line breaks and a `**bold**` stays two asterisks. Two things are marked up on top of that plain text, both in `markUserMessage`.

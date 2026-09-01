@@ -761,6 +761,10 @@ async fn handle_gh_check_failure(
                 updated_at: persistence::time::now_iso(),
                 pr_state: Some("OPEN".to_string()),
                 notified_at: None,
+                // Display-only fallback for a row that went missing between
+                // poll and notify; never persisted, so leave the branch unset
+                // rather than guessing it from the workspace's current one.
+                head_ref_name: None,
             });
         let input = build_check_failure_follow_up_input(&workspace.id, &project, &context)?;
         (session, pr, input)

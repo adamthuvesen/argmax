@@ -7,6 +7,8 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct GhPrRecord {
+    /// The session that observed this PR. Provenance only — sidebar markers
+    /// resolve by `head_ref_name`, not by this id.
     pub session_id: String,
     pub pr_number: i64,
     pub head_sha: String,
@@ -14,6 +16,10 @@ pub struct GhPrRecord {
     pub updated_at: String,
     pub pr_state: Option<String>,
     pub notified_at: Option<String>,
+    /// Branch the PR was opened from, per `gh pr view --json headRefName`.
+    /// Null on rows written before the branch was recorded; those still attach
+    /// to the observing workspace so a merged PR does not lose its marker.
+    pub head_ref_name: Option<String>,
 }
 
 pub fn upsert_gh_pr(connection: &Connection, input: &GhPrRecord) -> ArgmaxResult<GhPrRecord> {
@@ -21,13 +27,14 @@ pub fn upsert_gh_pr(connection: &Connection, input: &GhPrRecord) -> ArgmaxResult
     // as a fresh notification target; preserve it on a same-sha update so
     // unrelated metadata changes don't replay the notification.
     let mut statement = connection.prepare_cached(r#"
-        INSERT INTO gh_pr (session_id, pr_number, head_sha, last_seen_check_state, updated_at, pr_state)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO gh_pr (session_id, pr_number, head_sha, last_seen_check_state, updated_at, pr_state, head_ref_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(session_id, pr_number) DO UPDATE SET
           head_sha = excluded.head_sha,
           last_seen_check_state = excluded.last_seen_check_state,
           updated_at = excluded.updated_at,
           pr_state = excluded.pr_state,
+          head_ref_name = excluded.head_ref_name,
           notified_at = CASE
             WHEN excluded.head_sha = gh_pr.head_sha THEN gh_pr.notified_at
             ELSE NULL
@@ -43,6 +50,7 @@ pub fn upsert_gh_pr(connection: &Connection, input: &GhPrRecord) -> ArgmaxResult
             input.last_seen_check_state.as_str(),
             input.updated_at.as_str(),
             input.pr_state.as_deref(),
+            input.head_ref_name.as_deref(),
         ))
         .map_err(sqlite_error)?;
 
@@ -77,32 +85,73 @@ pub fn list_open_gh_pr_session_ids(connection: &Connection) -> ArgmaxResult<Vec<
     Ok(rows)
 }
 
-/// The most-recent PR for a single workspace: the `gh_pr` row with the latest
-/// `updated_at` across every session belonging to the workspace. Returns the
-/// `(pr_state, pr_number)` pair, or `None` when the workspace has no PR.
-pub fn latest_pr_for_workspace(
+/// The most-recent PR opened from `branch` in `project_id`, whichever session
+/// happened to observe it. A PR is a property of its head branch, so every
+/// workspace sitting on that branch resolves the same PR — including the ones
+/// whose own sessions were idle when the poller last looked.
+///
+/// Scoped by project because branch names are only unique within a repo:
+/// `adam/fix-thing` in two different repos are two different branches.
+pub fn latest_pr_for_branch(
     connection: &Connection,
-    workspace_id: &str,
-) -> ArgmaxResult<Option<(Option<String>, i64)>> {
-    let mut statement = connection
-        .prepare_cached(
-            r#"
-        SELECT gh_pr.pr_state AS pr_state, gh_pr.pr_number AS pr_number
+    project_id: &str,
+    branch: &str,
+) -> ArgmaxResult<Option<GhPrRecord>> {
+    if branch.is_empty() {
+        return Ok(None);
+    }
+    query_latest_pr(
+        connection,
+        r#"
+        SELECT gh_pr.*
         FROM gh_pr
         JOIN sessions ON sessions.id = gh_pr.session_id
-        WHERE sessions.workspace_id = ?
+        JOIN workspaces ON workspaces.id = sessions.workspace_id
+        WHERE workspaces.project_id = ?
+          AND gh_pr.head_ref_name = ?
         ORDER BY gh_pr.updated_at DESC, gh_pr.pr_number DESC
         LIMIT 1
         "#,
-        )
-        .map_err(sqlite_error)?;
-    match statement.query_row([workspace_id], |row| {
-        Ok((
-            row.get::<_, Option<String>>("pr_state")?,
-            row.get::<_, i64>("pr_number")?,
-        ))
-    }) {
-        Ok(pair) => Ok(Some(pair)),
+        (project_id, branch),
+    )
+}
+
+/// Sidebar marker for one workspace: the latest PR on this workspace's current
+/// branch in the same project, or — for rows recorded before the branch was
+/// stored — a PR this workspace's own sessions observed.
+pub fn latest_pr_for_workspace(
+    connection: &Connection,
+    workspace_id: &str,
+    project_id: &str,
+    branch: &str,
+) -> ArgmaxResult<Option<GhPrRecord>> {
+    query_latest_pr(
+        connection,
+        r#"
+        SELECT gh_pr.*
+        FROM gh_pr
+        JOIN sessions ON sessions.id = gh_pr.session_id
+        JOIN workspaces ON workspaces.id = sessions.workspace_id
+        WHERE workspaces.project_id = ?1
+          AND (
+            (?2 != '' AND gh_pr.head_ref_name = ?2)
+            OR (gh_pr.head_ref_name IS NULL AND sessions.workspace_id = ?3)
+          )
+        ORDER BY gh_pr.updated_at DESC, gh_pr.pr_number DESC
+        LIMIT 1
+        "#,
+        (project_id, branch, workspace_id),
+    )
+}
+
+fn query_latest_pr(
+    connection: &Connection,
+    sql: &str,
+    params: impl rusqlite::Params,
+) -> ArgmaxResult<Option<GhPrRecord>> {
+    let mut statement = connection.prepare_cached(sql).map_err(sqlite_error)?;
+    match statement.query_row(params, row_to_gh_pr) {
+        Ok(record) => Ok(Some(record)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(error) => Err(sqlite_error(error)),
     }
@@ -165,6 +214,7 @@ fn row_to_gh_pr(row: &Row<'_>) -> rusqlite::Result<GhPrRecord> {
         updated_at: row.get("updated_at")?,
         pr_state: row.get("pr_state")?,
         notified_at: row.get("notified_at")?,
+        head_ref_name: row.get("head_ref_name")?,
     })
 }
 

@@ -797,6 +797,7 @@
 .conversation-tail {
   flex: 0 0 auto;
   min-height: calc(var(--text-sm) * 1.2 + 6px);
+  overflow-anchor: none;
 }
 
 .conversation-tail:not(:first-child) {
@@ -811,6 +812,8 @@
   flex: 0 0 auto;
   pointer-events: none;
   margin-top: calc(-1 * var(--conversation-list-gap));
+  /* Chromium-only: never pick the leftover spacer as a scroll anchor. */
+  overflow-anchor: none;
 }
 
 /* Base layout only. The fill is owned by the variants: .user paints the ink

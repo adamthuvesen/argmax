@@ -60,10 +60,10 @@ pub struct WorkspaceSummary {
     /// Manual entries need no attention and never age out; cleared by an
     /// explicit remove or a dismissal.
     pub priority_added_at: Option<String>,
-    /// State of the most-recent PR across this workspace's sessions. Filled in
-    /// from `gh_pr` on every read path — the renderer merges workspace deltas
-    /// by whole-object replacement, so a summary published with `None` here
-    /// would erase the sidebar PR marker.
+    /// State of the most-recent PR on this workspace's current branch (same
+    /// project), filled in from `gh_pr` on every read path. The renderer merges
+    /// workspace deltas by whole-object replacement, so a summary published
+    /// with `None` here would erase the sidebar PR marker.
     pub pr_state: Option<String>,
     /// PR number paired with `pr_state`.
     pub pr_number: Option<i64>,
@@ -144,9 +144,14 @@ pub fn find_workspace_by_id(
 }
 
 fn attach_latest_pr(connection: &Connection, workspace: &mut WorkspaceSummary) -> ArgmaxResult<()> {
-    if let Some((pr_state, pr_number)) = latest_pr_for_workspace(connection, &workspace.id)? {
-        workspace.pr_state = pr_state;
-        workspace.pr_number = Some(pr_number);
+    if let Some(pr) = latest_pr_for_workspace(
+        connection,
+        &workspace.id,
+        &workspace.project_id,
+        &workspace.branch,
+    )? {
+        workspace.pr_state = pr.pr_state;
+        workspace.pr_number = Some(pr.pr_number);
     }
     Ok(())
 }

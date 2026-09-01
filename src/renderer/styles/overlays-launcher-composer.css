@@ -20,6 +20,7 @@
      sizes above ~64px read as levitating. `steps(1, end)` is what keeps it
      frames rather than a drift — an interpolated squash reads as a wobble. */
   animation: mascot-breathe 3.2s steps(1, end) infinite;
+  animation-play-state: var(--loop-play-state, running);
   /* The viewBox squares off under the sprite to leave room for the thinking
      rain, so the fox's feet sit at 40 of 56 rows, not at the bottom edge.
      Every mascot transform pivots there. */
@@ -61,6 +62,7 @@
   transform-origin: 40px 18px;
   transform-box: view-box;
   animation: mascot-blink 4.6s var(--ease) infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 
 /* On charcoal the reference outline is barely off the background, which loses
@@ -77,6 +79,7 @@
 
 .mascot[data-mood="happy"] {
   animation: mascot-hop 0.7s var(--ease) 1, mascot-breathe 3.2s steps(1, end) 0.7s infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 
 /* Rest state (empty composer → send disabled). The fox drains rather than
@@ -85,6 +88,7 @@
    floods back the moment there's text to send (mood flips sad → idle). */
 .mascot[data-mood="sad"] {
   animation: mascot-droop 2.6s var(--ease) infinite;
+  animation-play-state: var(--loop-play-state, running);
   filter: saturate(0.2) opacity(0.7);
   --mascot-rain: var(--muted);
 }
@@ -134,14 +138,17 @@
 
 .mascot[data-mood="thinking"] .mascot-rain-dot-1 {
   animation: mascot-rain 1.4s var(--ease) infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 
 .mascot[data-mood="thinking"] .mascot-rain-dot-2 {
   animation: mascot-rain 1.4s var(--ease) 0.4s infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 
 .mascot[data-mood="thinking"] .mascot-rain-dot-3 {
   animation: mascot-rain 1.4s var(--ease) 0.8s infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 
 /* Two poses, each held for half the cycle. Paired with `steps(1, end)` and

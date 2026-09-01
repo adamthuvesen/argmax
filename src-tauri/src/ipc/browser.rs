@@ -43,7 +43,8 @@ pub struct BrowserNewTabEvent {
 }
 
 /// A browser shortcut pressed while the page (not the panel chrome) had
-/// focus. `command` is one of `close-tab`, `new-tab`, `focus-address`.
+/// focus. `command` is one of `close-tab`, `new-tab`, `focus-address`,
+/// `back`, `forward`.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserPageCommandEvent {

@@ -375,8 +375,9 @@ export interface SessionSummary {
   tokens?: UsageCounts;
   /** Input-side tokens of the latest turn — the live context-window occupancy. */
   contextTokens?: number;
-  /** The model's context window when the provider reports it (Codex); the
-   *  renderer otherwise falls back to a per-model table. */
+  /** Set only when a provider reports a window on the session. No current
+   *  provider does, so the renderer falls back to the per-model table in
+   *  `providerModels.ts`. */
   contextWindow?: number | null;
   /** True when the session came from a provider CLI's own transcript store
    *  (Settings → Agents → Session sync) rather than being launched here. */

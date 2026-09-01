@@ -102,12 +102,7 @@ export function useLauncherAppearance(): {
       const resolved = resolveTheme(themeMode, prefersDarkSystem());
       applyThemeToDocument(resolved);
       writeStoredTheme(themeMode);
-      const argmax = (window as unknown as {
-        argmax?: { system?: { setTheme?: (m: ThemeMode) => Promise<unknown> } };
-      }).argmax;
-      if (argmax?.system?.setTheme) {
-        void argmax.system.setTheme(themeMode);
-      }
+      if (window.argmax) void window.argmax.system.setTheme(themeMode);
     };
     apply();
     if (themeMode !== "system" || !window.matchMedia) return;

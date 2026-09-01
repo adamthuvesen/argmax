@@ -524,6 +524,11 @@ pub fn list_all_session_events(
 /// follow-up is a reply to. Applies the same child-agent exclusions as
 /// `compose_follow_up_prompt`: subagent prose never reaches the transcript, so
 /// it must not reach the suggestion either.
+///
+/// Clamped like `compose_follow_up_prompt` clamps its own lines. The caller
+/// spends a model call on this text, and four of the five providers carry it
+/// in argv, where a pasted log would cost real tokens and eventually exceed
+/// `ARG_MAX`. The opening characters are all a follow-up needs to reply to.
 pub fn latest_agent_message(
     connection: &Connection,
     session_id: &str,
@@ -531,7 +536,7 @@ pub fn latest_agent_message(
     let mut statement = connection
         .prepare_cached(
             r#"
-            SELECT message
+            SELECT substr(message, 1, 4000)
             FROM events
             WHERE session_id = ?
               AND type = 'message.completed'

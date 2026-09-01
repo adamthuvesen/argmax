@@ -39,14 +39,6 @@ function transformProseMath(text: string): string {
     return `$${equation.trim()}$`;
   });
 
-  // 2b. Convert bare Greek letter commands in prose (\tau, \alpha) -> $\tau$, $\alpha$
-  result = result.replace(
-    GREEK_MATH_REGEX,
-    (_match, prefix: string, symbol: string, suffix: string) => {
-      return `${prefix}$\\${symbol}$${suffix}`;
-    }
-  );
-
   // 3. Wrap bare LaTeX environments (\begin{align}...\end{align}) in display math fences if not already wrapped
   result = result.replace(LATEX_ENV_REGEX, (_match, envBlock: string) => {
     return `\n\n$$\n${envBlock.trim()}\n$$\n\n`;
@@ -64,7 +56,30 @@ function transformProseMath(text: string): string {
     (_match, prefix: string, digit: string) => `${prefix}\\$${digit}`
   );
 
-  return result;
+  // 6. Mask every math region — the ones above just created and any the author
+  // already wrote — so the bare-symbol pass below only ever sees prose. Without
+  // this, a Greek letter inside `$$ ... $$` gets its own `$...$` wrapper and
+  // KaTeX is handed `$` characters in the middle of a math body.
+  // A private-use sentinel: markdown never contains it, and unlike NUL it is
+  // not a control character a regex lint would reject.
+  const mathSpans: string[] = [];
+  result = result.replace(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g, (span) => {
+    mathSpans.push(span);
+    return `\uE000${mathSpans.length - 1}\uE000`;
+  });
+
+  // 7. Convert bare Greek letter commands in prose (\tau, \alpha) -> $\tau$, $\alpha$
+  result = result.replace(
+    GREEK_MATH_REGEX,
+    (_match, prefix: string, symbol: string, suffix: string) => {
+      return `${prefix}$\\${symbol}$${suffix}`;
+    }
+  );
+
+  return result.replace(
+    /\uE000(\d+)\uE000/g,
+    (_match, index: string) => mathSpans[Number(index)]
+  );
 }
 
 /**

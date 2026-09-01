@@ -91,4 +91,18 @@ describe("normalizeMathDelimiters", () => {
     const output = normalizeMathDelimiters(input);
     expect(output).toContain("$$\n\\text{margin} = P(\\text{best family}) - P(\\text{second-best family})\n$$");
   });
+
+  it("leaves Greek letters inside existing display math alone", () => {
+    expect(normalizeMathDelimiters("$$\n\\alpha + \\beta\n$$")).toBe("$$\n\\alpha + \\beta\n$$");
+  });
+
+  it("leaves Greek letters inside existing inline math alone", () => {
+    expect(normalizeMathDelimiters("Given $x = \\alpha + 1$ we win.")).toBe(
+      "Given $x = \\alpha + 1$ we win."
+    );
+  });
+
+  it("does not re-wrap Greek letters in math it just converted", () => {
+    expect(normalizeMathDelimiters("\\[ \\alpha + \\beta \\]")).toContain("$$\n\\alpha + \\beta\n$$");
+  });
 });

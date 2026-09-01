@@ -44,7 +44,12 @@ export function DebugTraceTab({
   }, [label, labels]);
 
   return (
-    <div className="debug-tab">
+    <div
+      className="debug-tab"
+      role="tabpanel"
+      id="debug-panel-trace"
+      aria-labelledby="debug-tab-trace"
+    >
       <div className="debug-filters">
         <div className="debug-segmented" role="group" aria-label="Trace source">
           {(

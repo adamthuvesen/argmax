@@ -349,15 +349,16 @@ export function App(): JSX.Element {
   });
   const seenSessionMoveEvents = useRef(new Set<string>());
   useEffect(() => {
-    const newEvents = snapshot.events.filter((event) => {
-      if (seenSessionMoveEvents.current.has(event.id)) return false;
-      seenSessionMoveEvents.current.add(event.id);
-      return true;
-    });
+    // Guard before marking anything seen: consuming ids on a tick with no
+    // selected session would swallow the move and never redirect. Only move
+    // events are remembered, so the set cannot grow with streaming deltas.
     if (!selectedSession) return;
-    for (const event of newEvents) {
+    for (const event of snapshot.events) {
       const destination = sessionMoveDestination(event);
-      if (!destination || destination.sourceSessionId !== selectedSession.id) continue;
+      if (!destination) continue;
+      if (seenSessionMoveEvents.current.has(event.id)) continue;
+      seenSessionMoveEvents.current.add(event.id);
+      if (destination.sourceSessionId !== selectedSession.id) continue;
       if (!sessionsById.has(destination.destinationSessionId)) continue;
       if (!workspacesById.has(destination.destinationWorkspaceId)) continue;
       openWorkspaceChat(destination.destinationWorkspaceId, {

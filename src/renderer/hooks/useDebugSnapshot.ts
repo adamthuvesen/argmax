@@ -34,10 +34,14 @@ export function useDebugSnapshot(enabled: boolean): DebugSnapshotState {
   useEffect(() => {
     if (!enabled) return undefined;
     let alive = true;
+    // The cursor only advances after the await, so an overlapping tick would
+    // read the same rows again and append them twice.
+    let inFlight = false;
 
     const tick = async (): Promise<void> => {
       const api = typeof window === "undefined" ? undefined : window.argmax;
-      if (!api?.system?.debugSnapshot) return;
+      if (!api?.system?.debugSnapshot || inFlight) return;
+      inFlight = true;
       try {
         const snapshot = await api.system.debugSnapshot({ afterLogSeq: cursor.current });
         if (!alive) return;
@@ -50,6 +54,8 @@ export function useDebugSnapshot(enabled: boolean): DebugSnapshotState {
       } catch (cause) {
         if (!alive) return;
         setError(cause instanceof Error ? cause.message : "Debug snapshot failed.");
+      } finally {
+        inFlight = false;
       }
     };
 

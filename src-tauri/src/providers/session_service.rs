@@ -830,7 +830,17 @@ impl ProviderSessionService {
                     if provider == ProviderId::Codex
                         && launch_input.resume_conversation_id.is_some()
                     {
-                        let initial_usage = Some(CodexCumulativeUsage {
+                        // Only seed from usage we actually recorded. A session
+                        // that holds a resume id but no tokens — imported by
+                        // session sync, or a turn that died before its usage row
+                        // landed — must leave this `None` so the first
+                        // `turn.completed` establishes the baseline instead of
+                        // billing the whole pre-existing thread to one follow-up.
+                        let observed = session_tokens.input
+                            + session_tokens.cache_read
+                            + session_tokens.output
+                            > 0;
+                        let initial_usage = observed.then(|| CodexCumulativeUsage {
                             input_tokens: (session_tokens.input + session_tokens.cache_read) as u64,
                             cached_input_tokens: session_tokens.cache_read as u64,
                             output_tokens: session_tokens.output as u64,

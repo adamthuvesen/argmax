@@ -98,7 +98,7 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
     const bind = bindRef.current;
     if (!host || !bind || !svg) return;
     bind(host);
-  }, [svg, expanded]);
+  }, [svg, expanded, sourceOpen]);
 
   useLayoutEffect(() => {
     if (!svg || sourceOpen || expanded) {

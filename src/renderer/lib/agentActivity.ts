@@ -1,6 +1,8 @@
-import type { TimelineEvent } from "../../shared/types.js";
+import { modelLabelForReference, REASONING_EFFORTS } from "../../shared/providerModels.js";
+import type { ProviderId, TimelineEvent } from "../../shared/types.js";
 import { stringValue } from "../../shared/typeGuards.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
+import { effortLabel } from "./models.js";
 import { buildSessionToolCalls } from "./sessionConversationModel.js";
 import { type ToolCall } from "./toolCalls.js";
 
@@ -8,11 +10,20 @@ export type AgentActivityItem =
   | { kind: "message"; event: TimelineEvent }
   | { kind: "tool"; tool: ToolCall };
 
+/** What a subagent ran on, resolved for display. */
+export type AgentModel = {
+  /** Catalog label when the model is known, the provider's own id otherwise. */
+  label: string;
+  /** Display-ready effort, or null when the provider never reported one. */
+  effort: string | null;
+};
+
 export type AgentActivity = {
   parentTool: ToolCall | null;
   title: string;
   prompt: string | null;
   subagentType: string | null;
+  model: AgentModel | null;
   status: "running" | "done" | "error" | "missing";
   items: AgentActivityItem[];
   finalOutput: string | null;
@@ -82,6 +93,65 @@ function normalizedPromptEcho(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
+/**
+ * `xhigh` reads as "Extra High" everywhere else in the app, so route known
+ * efforts through the shared label. A provider is free to report one Argmax
+ * has no control for (Codex has a `minimal` tier); show it rather than swallow
+ * it, since it is the effort the subagent actually ran at.
+ */
+function effortText(raw: string): string {
+  const value = raw.trim();
+  const known = REASONING_EFFORTS.find((effort) => effort === value.toLowerCase());
+  return known ? effortLabel(known) : value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+/** The model and effort the child's own rows were produced by, newest first. */
+function reportedRunModel(
+  events: readonly TimelineEvent[],
+  parentToolUseId: string
+): { modelId: string; effort: string | null } | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const payload = events[index]?.payload;
+    if (!payload || payload.parent_tool_use_id !== parentToolUseId) continue;
+    const modelId = nonBlankText(payload.agentModelId);
+    if (!modelId) continue;
+    return { modelId, effort: nonBlankText(payload.agentReasoningEffort) };
+  }
+  return null;
+}
+
+/**
+ * What this subagent ran on. Providers say it two ways: the child's own rows
+ * carry it (Claude names the model on every child envelope, Codex records model
+ * and effort in the child rollout's `turn_context`), and a launch tool can pin
+ * one up front (Cursor's `taskToolCall` always does, Claude's `Agent` when the
+ * caller asked for it). What ran wins over what was asked for — it is also the
+ * only one of the two that is a real model id rather than an alias. Null when
+ * neither says, which is honest: a subagent may run a model of its own choosing
+ * and the parent session's model is not evidence of it.
+ */
+function agentModel(
+  events: readonly TimelineEvent[],
+  parentToolUseId: string,
+  parentTool: ToolCall | null,
+  provider: ProviderId | undefined
+): AgentModel | null {
+  const reported = reportedRunModel(events, parentToolUseId);
+  const requested = parentTool ? nonBlankText(parentTool.inputFull.model) : null;
+  const reference = reported?.modelId ?? requested;
+  if (!reference) return null;
+  const requestedEffort = parentTool
+    ? nonBlankText(parentTool.inputFull.reasoning_effort)
+      ?? nonBlankText(parentTool.inputFull.reasoningEffort)
+      ?? nonBlankText(parentTool.inputFull.effort)
+    : null;
+  const effort = reported?.effort ?? requestedEffort;
+  return {
+    label: (provider ? modelLabelForReference(provider, reference) : null) ?? reference.trim(),
+    effort: effort ? effortText(effort) : null
+  };
+}
+
 export function activityTitle(tool: ToolCall | null, parentToolUseId: string): string {
   if (!tool) return `Agent ${parentToolUseId}`;
   const description = nonBlankText(tool.inputFull.description);
@@ -96,8 +166,11 @@ export function buildAgentActivity(params: {
   parentToolUseId: string;
   events: readonly TimelineEvent[];
   sessionRunning?: boolean;
+  /** Parent session's provider, which the subagent shares. Without it a known
+   *  model id can't be resolved to its catalog label and shows as the id. */
+  provider?: ProviderId;
 }): AgentActivity {
-  const { parentToolUseId, events, sessionRunning = true } = params;
+  const { parentToolUseId, events, sessionRunning = true, provider } = params;
   const tools = buildSessionToolCalls(events, sessionRunning);
   const parentTool = tools.find((tool) => tool.toolUseId === parentToolUseId) ?? null;
   const receiverThreadIds = receiverThreadIdsFromTool(parentTool);
@@ -134,6 +207,7 @@ export function buildAgentActivity(params: {
     title: activityTitle(parentTool, parentToolUseId),
     prompt,
     subagentType,
+    model: agentModel(events, parentToolUseId, parentTool, provider),
     status,
     items,
     finalOutput,

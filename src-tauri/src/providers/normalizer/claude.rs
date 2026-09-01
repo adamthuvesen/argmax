@@ -73,6 +73,31 @@ pub fn extract_content_blocks(
         .or_else(|| array_value(payload.get("content")))?;
 
     let parent_tool_use_id = payload.get("parent_tool_use_id").and_then(Value::as_str);
+    // A sub-agent runs its own model, and every child assistant envelope names
+    // it. Stamped only on child rows — the parent session already stores its
+    // own model, and the subagent header has nowhere else to read this from.
+    let child_model_id = parent_tool_use_id.and_then(|_| {
+        object_value(payload.get("message")).and_then(|message| string_value(message.get("model")))
+    });
+
+    // `parent_tool_use_id` lives on the outer assistant-message payload (a
+    // sibling of `message`), but flattening the content blocks into per-block
+    // events would drop it. Copy it onto every block so the renderer can nest a
+    // sub-agent's rows under the Task that spawned them.
+    let stamp_child = |block: &mut Map<String, Value>| {
+        if let Some(parent) = parent_tool_use_id {
+            block.insert(
+                "parent_tool_use_id".to_string(),
+                Value::String(parent.to_string()),
+            );
+        }
+        if let Some(model_id) = child_model_id {
+            block.insert(
+                "agentModelId".to_string(),
+                Value::String(model_id.to_string()),
+            );
+        }
+    };
 
     let mut events = Vec::new();
     let mut pending_text: Option<(String, Map<String, Value>)> = None;
@@ -81,12 +106,7 @@ pub fn extract_content_blocks(
                       events: &mut Vec<PersistTimelineEventInput>| {
         if let Some((text, mut text_payload)) = pending.take() {
             if !text.is_empty() {
-                if let Some(parent) = parent_tool_use_id {
-                    text_payload.insert(
-                        "parent_tool_use_id".to_string(),
-                        Value::String(parent.to_string()),
-                    );
-                }
+                stamp_child(&mut text_payload);
                 events.push(timeline_event(
                     event,
                     "message.completed",
@@ -120,12 +140,7 @@ pub fn extract_content_blocks(
                         "synthesizedFromTool".to_string(),
                         Value::String("SendUserMessage".to_string()),
                     );
-                    if let Some(parent) = parent_tool_use_id {
-                        payload.insert(
-                            "parent_tool_use_id".to_string(),
-                            Value::String(parent.to_string()),
-                        );
-                    }
+                    stamp_child(&mut payload);
                     events.push(timeline_event(
                         event,
                         "message.completed",
@@ -134,18 +149,8 @@ pub fn extract_content_blocks(
                     ));
                     continue;
                 }
-                // `parent_tool_use_id` lives on the outer assistant-message
-                // payload (a sibling of `message`), but flattening the content
-                // blocks into per-tool `command.started` events would drop it.
-                // Copy it onto the block so the renderer can nest a sub-agent's
-                // tool calls under the Task that spawned them.
                 let mut tool_block = block.clone();
-                if let Some(parent) = parent_tool_use_id {
-                    tool_block.insert(
-                        "parent_tool_use_id".to_string(),
-                        Value::String(parent.to_string()),
-                    );
-                }
+                stamp_child(&mut tool_block);
                 events.push(timeline_event(
                     event,
                     "command.started",
@@ -156,12 +161,7 @@ pub fn extract_content_blocks(
             Some("tool_result") => {
                 flush_text(&mut pending_text, &mut events);
                 let mut result_block = block.clone();
-                if let Some(parent) = parent_tool_use_id {
-                    result_block.insert(
-                        "parent_tool_use_id".to_string(),
-                        Value::String(parent.to_string()),
-                    );
-                }
+                stamp_child(&mut result_block);
                 events.push(timeline_event(
                     event,
                     "command.completed",
@@ -180,12 +180,7 @@ pub fn extract_content_blocks(
                 if !text.trim().is_empty() {
                     let mut payload = block.clone();
                     payload.insert("thinking".to_string(), Value::Bool(true));
-                    if let Some(parent) = parent_tool_use_id {
-                        payload.insert(
-                            "parent_tool_use_id".to_string(),
-                            Value::String(parent.to_string()),
-                        );
-                    }
+                    stamp_child(&mut payload);
                     events.push(timeline_event(
                         event,
                         "message.delta",
@@ -744,6 +739,46 @@ mod tests {
             result.events[0].payload["parent_tool_use_id"],
             "toolu_parent_task"
         );
+    }
+
+    #[test]
+    fn claude_child_rows_carry_the_model_the_subagent_ran_on() {
+        // The subagent's own model rides on every child assistant envelope; the
+        // parent's rows must not gain the key, since the session already stores
+        // its own model.
+        let mut context = NormalizerSessionContext::default();
+        let child = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                &json!({
+                    "type": "assistant",
+                    "parent_tool_use_id": "toolu_parent_task",
+                    "message": {
+                        "model": "claude-opus-5",
+                        "content": [{ "type": "text", "text": "Mapped the renderer." }]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(child.events[0].payload["agentModelId"], "claude-opus-5");
+
+        let parent = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                &json!({
+                    "type": "assistant",
+                    "message": {
+                        "model": "claude-opus-5",
+                        "content": [{ "type": "text", "text": "I will delegate this." }]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert!(parent.events[0].payload.get("agentModelId").is_none());
     }
 
     #[test]

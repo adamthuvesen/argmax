@@ -894,7 +894,7 @@ impl WorkspaceService {
         let (destination_workspace, destination_session, destination_seam) = match copied {
             Ok(copied) => copied,
             Err(error) => {
-                let _ = self
+                let cleanup = self
                     .archive(WorkspacesArchiveInput {
                         workspace_id: crate::ipc::validation::WorkspaceId::try_from(
                             destination_workspace.id.clone(),
@@ -903,6 +903,15 @@ impl WorkspaceService {
                         force: Some(true),
                     })
                     .await;
+                if let Err(cleanup) = cleanup {
+                    // The caller only ever sees the copy failure, so without
+                    // this an orphaned worktree and branch leave no trace.
+                    tracing::warn!(
+                        ?cleanup,
+                        workspace_id = %destination_workspace.id,
+                        "could not tear down the half-built move destination"
+                    );
+                }
                 return Err(error);
             }
         };
@@ -936,7 +945,10 @@ impl WorkspaceService {
             }
         };
 
-        let (source_session, source_event) = {
+        // Past this point the move is committed: the destination is built and
+        // the source archived. A failure recording the source-side seam must
+        // not surface as "could not move this session" — the move happened.
+        let source_note = (|| -> ArgmaxResult<_> {
             let connection = self.database.connection();
             let source_session = find_session_by_id(&connection, source_session_id)?;
             let source_event = persist_timeline_event(
@@ -964,9 +976,18 @@ impl WorkspaceService {
                     created_at: None,
                 },
             )?;
-            (source_session, source_event)
-        };
-        self.publish_session_with_events(source_session, vec![source_event]);
+            Ok((source_session, source_event))
+        })();
+        match source_note {
+            Ok((source_session, source_event)) => {
+                self.publish_session_with_events(source_session, vec![source_event]);
+            }
+            Err(error) => tracing::warn!(
+                ?error,
+                session_id = source_session_id,
+                "session moved, but the source-side seam could not be recorded"
+            ),
+        }
 
         Ok(SessionMoveResult {
             workspace: destination_workspace,

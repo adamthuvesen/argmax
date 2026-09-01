@@ -29,8 +29,6 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "attachments:save-image",
     "system:open-path",
     "system:diagnostics",
-    // The debug panel is a desktop surface; the mobile client has no view for it.
-    "system:debug-snapshot",
     "system:set-theme",
     "system:set-notifications-enabled",
     "system:test-notification",
@@ -294,6 +292,10 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
             encode(skills::skills_list_impl(state, input)?)
         }
 
+        // The desktop debug panel polls this; over the bridge it is the
+        // machine-readable window into the log ring and IPC latency stats —
+        // how a script verifies behavior without eyes on the panel.
+        "system:debug-snapshot" => encode(system::system_debug_snapshot(parse(channel, input)?)),
         "system:list-detected-ides" => {
             encode(system::system_list_detected_ides(parse(channel, input)?).await)
         }

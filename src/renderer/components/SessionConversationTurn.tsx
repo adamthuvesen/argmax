@@ -93,13 +93,24 @@ function SessionConversationTurnInner({
   defaultTurnChangesExpanded?: boolean;
 }): JSX.Element {
   const sessionIsLive = session?.state === "running";
-  const turnView = buildTurnRenderState({
-    assistantEvents: item.assistantEvents,
-    toolItems: item.toolItems,
-    priorItem,
-    assistantTimestamps: item.assistantTimestamps,
-    isStreamingTurn: isLatestTurn && sessionIsLive
-  });
+  const isStreamingTurn = isLatestTurn && sessionIsLive;
+  // Memoized because the state it returns is the input to everything below:
+  // `hiddenToolIds` is a fresh Set per call, and it is the only dep of
+  // `visibleToolItems`, which is the only dep of `turnChanges`. Re-deriving it
+  // in the render body missed both of those memos on every streaming delta, so
+  // each mounted turn re-ran `coalesceAssistantGroups`, `parsePlan`, and a diff
+  // parse per Edit tool for every chunk that arrived anywhere in the session.
+  const turnView = useMemo(
+    () =>
+      buildTurnRenderState({
+        assistantEvents: item.assistantEvents,
+        toolItems: item.toolItems,
+        priorItem,
+        assistantTimestamps: item.assistantTimestamps,
+        isStreamingTurn
+      }),
+    [item.assistantEvents, item.toolItems, priorItem, item.assistantTimestamps, isStreamingTurn]
+  );
   const {
     visibleAssistantGroups,
     turnAgentMode,
@@ -273,9 +284,16 @@ function SessionConversationTurnInner({
             holdOpen={isLatestTurn && toolsExpandOverride !== false}
             durationMs={thoughtDurationMs(group.createdAt, group.lastActivityAt)}
           >
+            {/* `streaming` while the thought is live is what splits the
+                committed prefix off the tail. Rendering a growing reasoning
+                buffer as one non-streaming block re-parsed the whole thing per
+                delta, so a long thought cost O(n²) before it ever collapsed.
+                Unpaced: reasoning arrives in bursts the typewriter cadence
+                would trail by seconds, then snap when the thought ends. */}
             <StreamingMarkdown
               text={group.text}
-              streaming={false}
+              streaming={thinkingLive}
+              paced={false}
               workspace={workspace}
               onOpenFile={onOpenFile}
             />

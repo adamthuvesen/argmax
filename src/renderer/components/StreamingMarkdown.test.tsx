@@ -58,6 +58,19 @@ describe("<StreamingMarkdown />", () => {
     expect(screen.getByText(text)).toBeInTheDocument();
   });
 
+  it("shows an unpaced streaming block in full as it arrives", () => {
+    // `paced={false}` keeps the committed/tail split of a streaming block but
+    // drops the typewriter: the Thought block uses it so a reasoning burst
+    // neither trails the cadence nor re-parses the whole buffer per delta.
+    vi.useFakeTimers();
+    const text = "B".repeat(120);
+
+    const { container } = render(<StreamingMarkdown text={text} streaming paced={false} />);
+
+    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    vi.useRealTimers();
+  });
+
   it("keeps completed blocks formatted while a later block is still streaming", () => {
     vi.useFakeTimers();
     // A finished heading, then a paragraph still being typed. The committed

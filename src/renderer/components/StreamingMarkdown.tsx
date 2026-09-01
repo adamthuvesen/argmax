@@ -324,19 +324,24 @@ function MarkdownStream({
 export function StreamingMarkdown({
   text,
   streaming,
+  paced = true,
   revealKey,
   workspace,
   onOpenFile
 }: {
   text: string;
   streaming: boolean;
+  /** Reveal a streaming block at the typewriter cadence. Off, the block shows
+      every character as it arrives but still keeps the committed/tail split,
+      so a fast reasoning burst neither lags behind nor re-parses in full. */
+  paced?: boolean;
   /** Stable identity for this block of text, unique across sessions and turns.
       Without one, a streaming block restarts its reveal on every remount. */
   revealKey?: string | null;
   workspace?: WorkspaceSummary | null;
   onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
 }): JSX.Element | null {
-  const visibleText = useSmoothStreamingText(text, streaming, revealKey);
+  const visibleText = useSmoothStreamingText(text, streaming && paced, revealKey);
   const segments = useMemo(() => splitLogSegments(visibleText), [visibleText]);
   if (segments.length === 0 && visibleText.length > 0) return null;
   const hasLogs = segments.some((segment) => segment.kind === "log");

@@ -1,7 +1,7 @@
 .session-link {
   position: relative;
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
+  grid-template-columns: 18px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -55,9 +55,12 @@
 }
 
 /* Two-line rows (Priority mode): label on top, muted project name underneath.
-   The leading glyph centers on the whole two-line block. */
+   The leading glyph rides the title line rather than the block: the icon names
+   the session, and centering it against both lines floated it into the gap
+   where it belonged to neither. Aligning to the start also keeps the glyph
+   column steady between one- and two-line rows. */
 .session-link.session-link-stacked {
-  align-items: center;
+  align-items: start;
   padding-top: 7px;
   padding-bottom: 7px;
 }
@@ -65,12 +68,25 @@
 /* Calm rows draw no glyph, but they keep the marker column so every title in
    the list starts at the same x. */
 .session-link-lead-spacer {
-  width: 16px;
+  width: 18px;
 }
 
 .session-link-text {
   display: grid;
   gap: 2px;
+  /* Same 18px as the marker box, so a start-aligned glyph lands on the title
+     line's box without a per-row offset. */
+  line-height: 18px;
+}
+
+/* Optical, not geometric: a glyph box that matches the title's line box measures
+   centered but reads a hair high, because a mostly-lowercase title carries its
+   ink below the box's middle. One pixel down settles it. `top` rather than a
+   transform, because the working nest animates its own transform on enter. */
+.session-link > .status-marker,
+.session-link > .session-custom-icon {
+  position: relative;
+  top: 1px;
 }
 
 .session-link-subtitle {
@@ -130,16 +146,6 @@
    shared nest on specificity, so restate the accent at this depth. */
 .session-link[data-status] .status-marker[data-working="true"] {
   color: var(--accent);
-}
-
-/* The nest's dot cluster covers ~71% of its box where a Lucide glyph covers
-   ~83%, so at a shared 16px it reads a size below the markers it alternates
-   with. Oversizing the svg evens out the ink; it overflows the 16px cell by a
-   pixel on each side, which centering absorbs without moving the title. */
-.session-link .working-nest.status-marker {
-  width: 18px;
-  height: 18px;
-  justify-self: center;
 }
 
 .session-row {

@@ -217,37 +217,41 @@ pub fn merge_measured_diffs(payload: &mut Value, measured: &[MeasuredDiff]) -> b
         return false;
     }
     let mut merged = false;
-    for key in ["input", "changes"] {
-        let target = if key == "input" {
-            payload
-                .get_mut("input")
-                .and_then(|input| input.get_mut("changes"))
-        } else {
-            payload.get_mut("changes")
-        };
-        let Some(Value::Array(entries)) = target else {
+    if let Some(input) = payload
+        .get_mut("input")
+        .and_then(|input| input.get_mut("changes"))
+    {
+        merged |= write_diffs_into(input, measured);
+    }
+    if let Some(changes) = payload.get_mut("changes") {
+        merged |= write_diffs_into(changes, measured);
+    }
+    merged
+}
+
+/// Fill in `unified_diff` on every entry of one change list whose path was
+/// measured and that does not already carry one.
+fn write_diffs_into(entries: &mut Value, measured: &[MeasuredDiff]) -> bool {
+    let Some(entries) = entries.as_array_mut() else {
+        return false;
+    };
+    let mut merged = false;
+    for entry in entries.iter_mut() {
+        let Some(object) = entry.as_object_mut() else {
             continue;
         };
-        for entry in entries.iter_mut() {
-            let Some(object) = entry.as_object_mut() else {
-                continue;
-            };
-            let Some(path) = object
-                .get("path")
-                .and_then(Value::as_str)
-                .map(ToOwned::to_owned)
-            else {
-                continue;
-            };
-            if object.contains_key("unified_diff") {
-                continue;
-            }
-            let Some((_, diff)) = measured.iter().find(|(reported, _)| *reported == path) else {
-                continue;
-            };
-            object.insert("unified_diff".to_string(), Value::String(diff.clone()));
-            merged = true;
+        if object.contains_key("unified_diff") {
+            continue;
         }
+        let Some(path) = object.get("path").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some((_, diff)) = measured.iter().find(|(reported, _)| reported == path) else {
+            continue;
+        };
+        let diff = diff.clone();
+        object.insert("unified_diff".to_string(), Value::String(diff));
+        merged = true;
     }
     merged
 }

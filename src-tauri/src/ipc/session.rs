@@ -70,7 +70,7 @@ pub(crate) async fn session_events_since_impl(
     let session_id = input.session_id.into_string();
     let event_cursor = input.event_cursor.map(|cursor| cursor as i64);
     let raw_output_cursor = input.raw_output_cursor.map(|cursor| cursor as i64);
-    tauri::async_runtime::spawn_blocking(move || {
+    read_off_main(move || {
         // Reconcile only the initial backfill. Running panes call this command
         // every 250 ms with a cursor, which must remain a cheap SQLite tail.
         if event_cursor.is_none() {
@@ -84,7 +84,6 @@ pub(crate) async fn session_events_since_impl(
         )
     })
     .await
-    .map_err(|error| ArgmaxError::service("SESSION_EVENTS_SINCE_JOIN", error.to_string()))?
 }
 
 #[tauri::command(rename = "session:agent-events")]

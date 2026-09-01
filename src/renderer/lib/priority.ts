@@ -21,7 +21,6 @@ export interface PriorityEntry {
   /** Null for working or manually-added entries with no attention of their own. */
   attention: PriorityAttention | null;
   /** When `attention` became current; null on sessions predating the column. */
-  attentionChangedAt: string | null;
   /** True while a session on the workspace is mid-turn. */
   working: boolean;
   /**
@@ -173,7 +172,6 @@ export function computePriorityEntries(
       // A working or manually-added row still shows real attention when there
       // is fresh, undismissed attention to show; otherwise it renders plain.
       attention: found?.attention ?? null,
-      attentionChangedAt: found?.changedAt ?? null,
       working,
       idleAt: found && !working ? idleDeadline(found.lastActivityAt) : null
     });

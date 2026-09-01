@@ -151,18 +151,6 @@ impl<R: Runtime> TauriNotificationSink<R> {
     pub fn new(app: AppHandle<R>) -> Self {
         Self { app }
     }
-
-    pub fn request_permission(&self) -> ArgmaxResult<PermissionState> {
-        self.app
-            .notification()
-            .request_permission()
-            .map_err(|error| {
-                ArgmaxError::service(
-                    "NOTIFICATION_PERMISSION_FAILED",
-                    format!("requesting notification permission failed: {error}"),
-                )
-            })
-    }
 }
 
 impl<R: Runtime> NotificationSink for TauriNotificationSink<R> {

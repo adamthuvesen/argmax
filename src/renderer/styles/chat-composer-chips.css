@@ -838,9 +838,16 @@ button.composer-compact-context-row:hover,
   right: 0;
   max-height: 320px;
   margin: 0;
-  padding: 6px;
+  /* 4px of padding against a 14px panel radius is what makes the 10px row
+     radius below concentric with the corner it nests into — 14 - 4 = 10. Any
+     other pairing leaves the marked row's corner fighting the panel's. */
+  padding: 4px;
   list-style: none;
   overflow-y: auto;
+  /* Reserve the scrollbar's gutter so the thumb rides beside the rows instead
+     of on top of the marked row's rounded right edge. */
+  scrollbar-gutter: stable;
+  scroll-padding-block: 4px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
@@ -866,15 +873,18 @@ button.composer-compact-context-row:hover,
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   line-height: 1.5;
 }
 
+/* The quiet gray every other list in the app marks its chosen row with. The
+   accent is reserved for meaning; which row the arrow keys are parked on is
+   navigation, not a verdict. */
 .slash-menu-option.is-selected,
 .slash-menu-option[aria-selected="true"] {
-  background: var(--accent-soft);
+  background: var(--row-selected);
 }
 
 .slash-menu-icon {
@@ -915,50 +925,9 @@ button.composer-compact-context-row:hover,
 
 /* Section heading between the commands and the skills below them. */
 .slash-menu-section {
-  padding: 10px 10px 4px;
+  padding: 10px 12px 4px;
   color: var(--muted);
   font-size: var(--text-xs);
-}
-
-.file-popover {
-  left: -12px;
-  right: -12px;
-}
-
-/* Command-menu rows: one line each — mono command name, muted description
-   trailing on the same baseline. Dense on purpose; this is a picker the user
-   scans dozens of times a day, not content. */
-.skill-option {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding: 5px 9px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  line-height: 1.5;
-}
-
-.skill-option.is-selected,
-.skill-option[aria-selected="true"] {
-  background: var(--accent-soft);
-}
-
-.skill-option-name {
-  flex: 0 0 auto;
-  font-family: var(--font-code);
-  font-size: var(--text-xs-plus);
-  font-weight: 500;
-  color: var(--text);
-}
-
-.skill-option-description {
-  flex: 1 1 auto;
-  min-width: 0;
-  color: var(--muted-strong);
-  font-size: var(--text-xs);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .file-popover {
@@ -968,9 +937,13 @@ button.composer-compact-context-row:hover,
   right: 0;
   max-height: 280px;
   margin: 0;
-  padding: 6px;
+  /* Same 4px/14px/10px nesting as .slash-menu — the two open in the same slot
+     and must not disagree about their corners. */
+  padding: 4px;
   list-style: none;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  scroll-padding-block: 4px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
@@ -982,8 +955,8 @@ button.composer-compact-context-row:hover,
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 9px;
-  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
@@ -996,7 +969,7 @@ button.composer-compact-context-row:hover,
 
 .file-popover-item.is-selected,
 .file-popover-item[aria-selected="true"] {
-  background: var(--accent-soft);
+  background: var(--row-selected);
 }
 
 .file-popover-icon {
@@ -1011,7 +984,7 @@ button.composer-compact-context-row:hover,
 }
 
 .file-popover-empty {
-  padding: 6px 9px;
+  padding: 6px 12px;
   font-size: var(--text-sm);
   color: var(--text-soft, #6a6a6a);
   font-style: italic;

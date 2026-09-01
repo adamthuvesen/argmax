@@ -190,6 +190,9 @@ pub struct NormalizerSessionContext {
     pub codex_thread_id: Option<String>,
     /// Cached path to the active Codex rollout file on disk.
     pub codex_rollout_path: Option<std::path::PathBuf>,
+    /// Whether the rollout search already ran for this session. The search
+    /// walks the whole Codex sessions tree, so a miss must not repeat it.
+    pub codex_rollout_searched: bool,
     /// After a tracing-format PTY line, following non-JSON lines are the rest
     /// of that record. Codex dumps apply_patch expected context that way.
     pub raw_tracing_continuation: RawTracingContinuation,

@@ -300,7 +300,7 @@ pub fn find_rollout_in_dir(sessions_dir: &Path, thread_id: &str) -> Option<PathB
 }
 
 /// Read the latest `token_count` event from a Codex rollout JSONL file.
-pub fn read_latest_token_count_from_rollout(path: &Path) -> Option<(u64, u64)> {
+pub fn read_latest_token_count_from_rollout(path: &Path) -> Option<(u64, Option<u64>)> {
     let file = std::fs::File::open(path).ok()?;
     let reader = std::io::BufReader::new(file);
     use std::io::BufRead;
@@ -339,10 +339,13 @@ pub fn read_latest_token_count_from_rollout(path: &Path) -> Option<(u64, u64)> {
     }
 
     match (latest_context_tokens, latest_context_window) {
-        (Some(tokens), Some(window)) => Some((tokens, window)),
-        (Some(tokens), None) => Some((tokens, 258_400)),
-        (None, Some(window)) => Some((0, window)),
         (None, None) => None,
+        // Report only what the rollout actually said. A rollout that carries
+        // usage but no window used to yield a hardcoded 258_400 regardless of
+        // model, quietly measuring occupancy against the wrong denominator;
+        // `None` lets the renderer fall back to the per-model table that owns
+        // this number.
+        (tokens, window) => Some((tokens.unwrap_or(0), window)),
     }
 }
 
@@ -417,8 +420,13 @@ pub fn extract_usage(
     if from_token_count {
         context_tokens = Some(cumulative_input);
     } else {
-        if context.codex_rollout_path.is_none() {
+        if context.codex_rollout_path.is_none() && !context.codex_rollout_searched {
             if let Some(thread_id) = &context.codex_thread_id {
+                // The search is an unbounded walk of ~/.codex/sessions. Run it
+                // once per session: without this flag a miss repeats the whole
+                // walk on every `turn.completed`, on the thread that is meant
+                // to be draining the PTY.
+                context.codex_rollout_searched = true;
                 context.codex_rollout_path = find_codex_rollout_path(thread_id);
             }
         }
@@ -429,7 +437,7 @@ pub fn extract_usage(
                     context_tokens = Some(occ);
                 }
                 if context_window.is_none() {
-                    context_window = Some(window);
+                    context_window = window;
                 }
             }
         }

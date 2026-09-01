@@ -106,7 +106,34 @@ export function foldRenderItems(
     | { assistantEvents: TimelineEvent[]; toolItems: TurnToolItem[]; firstId: string | null }
     | null = null;
   let activeTurnId: string | null = null;
+  // A subagent's child rows belong to the launch that spawned them, not to
+  // whatever turn they land in. A backgrounded subagent keeps emitting rows
+  // after the user's follow-up has already opened the next turn, and there they
+  // find no launch to nest under: they rendered as top-level activity of a turn
+  // that never asked for them, and their writes were counted into that turn's
+  // Changed-files card. A child whose launch is in the same turn still nests
+  // under it (`attachAgentChildren`); one that outlives its turn is left to the
+  // subagent's own activity pane. A launch that fell out of the transcript
+  // window is not in this set, so its orphans keep rendering rather than
+  // vanishing.
+  const agentLaunchIds = new Set<string>();
+  for (const item of conversationItems) {
+    const tools = item.kind === "tool" ? [item.tool] : item.kind === "tool-group" ? item.group.tools : [];
+    for (const tool of tools) {
+      if (isAgentToolName(tool.name)) agentLaunchIds.add(tool.toolUseId);
+    }
+  }
+  let turnLaunchIds = new Set<string>();
+  const registerLaunch = (tool: ToolCall): void => {
+    if (isAgentToolName(tool.name)) turnLaunchIds.add(tool.toolUseId);
+  };
+  const belongsToThisTurn = (tool: ToolCall): boolean => {
+    const parent = tool.parentToolUseId;
+    if (typeof parent !== "string" || parent === tool.toolUseId) return true;
+    return !agentLaunchIds.has(parent) || turnLaunchIds.has(parent);
+  };
   const flush = (): void => {
+    turnLaunchIds = new Set();
     if (!pending) return;
     if (pending.assistantEvents.length === 0 && pending.toolItems.length === 0) {
       pending = null;
@@ -170,6 +197,11 @@ export function foldRenderItems(
       activeTurnId = `turn-${item.event.id}`;
       continue;
     }
+    if (item.kind === "tool") registerLaunch(item.tool);
+    else if (item.kind === "tool-group") item.group.tools.forEach(registerLaunch);
+    if (item.kind === "tool" && !belongsToThisTurn(item.tool)) continue;
+    const groupTools = item.kind === "tool-group" ? item.group.tools.filter(belongsToThisTurn) : [];
+    if (item.kind === "tool-group" && groupTools.length === 0) continue;
     if (!pending) pending = { assistantEvents: [], toolItems: [], firstId: activeTurnId };
     if (item.kind === "message") {
       pending.assistantEvents.push(item.event);
@@ -178,8 +210,19 @@ export function foldRenderItems(
       pending.toolItems.push({ kind: "tool", tool: item.tool });
       if (!pending.firstId) pending.firstId = `turn-${item.tool.id}`;
     } else {
-      pending.toolItems.push({ kind: "tool-group", group: item.group });
-      if (!pending.firstId) pending.firstId = `turn-${item.group.id}`;
+      const [only] = groupTools;
+      // A run reduced to one tool is that tool's own row, the same shape
+      // `foldConversationItems` produces for a run of one.
+      const kept: TurnToolItem =
+        groupTools.length === item.group.tools.length
+          ? { kind: "tool-group", group: item.group }
+          : only && groupTools.length === 1
+            ? { kind: "tool", tool: only }
+            : { kind: "tool-group", group: buildToolCallGroup(groupTools) };
+      pending.toolItems.push(kept);
+      if (!pending.firstId) {
+        pending.firstId = `turn-${kept.kind === "tool" ? kept.tool.id : kept.group.id}`;
+      }
     }
   }
   flush();

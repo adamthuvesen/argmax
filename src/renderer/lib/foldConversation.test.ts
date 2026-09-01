@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EventType, TimelineEvent } from "../../shared/types.js";
-import { foldConversationItems, foldRenderItems } from "./foldConversation.js";
+import { foldConversationItems, foldRenderItems, type RenderItem } from "./foldConversation.js";
+import { foldTurnToolItems } from "./turnToolItems.js";
 import type { ConversationItem, ToolCall, TurnToolItem } from "./toolCalls.js";
 
 function event(
@@ -22,7 +23,12 @@ function event(
 
 const keepToolItems = (items: TurnToolItem[]): TurnToolItem[] => items;
 
-function tool(id: string, name: string, createdAt: string): ToolCall {
+function tool(
+  id: string,
+  name: string,
+  createdAt: string,
+  parentToolUseId: string | null = null
+): ToolCall {
   return {
     id,
     toolUseId: id,
@@ -33,8 +39,16 @@ function tool(id: string, name: string, createdAt: string): ToolCall {
     status: "done",
     createdAt,
     completedAt: createdAt,
-    error: null
+    error: null,
+    parentToolUseId
   };
+}
+
+function topLevelToolIds(item: RenderItem | undefined): string[] {
+  if (item?.kind !== "turn") return [];
+  return item.toolItems.flatMap((toolItem) =>
+    toolItem.kind === "tool" ? [toolItem.tool.id] : toolItem.group.tools.map((t) => t.id)
+  );
 }
 
 describe("foldConversationItems", () => {
@@ -174,5 +188,42 @@ describe("foldRenderItems", () => {
       checkoutMode: "shared",
       sourceArchiveState: null
     });
+  });
+  it("leaves a background subagent's later rows out of the next turn", () => {
+    // The launch lands in turn 1; the child keeps working after the user has
+    // already sent a follow-up, so its rows arrive inside turn 2.
+    const launch = tool("launch", "Task", "2026-05-12T15:00:01.000Z");
+    const sameTurnChild = tool("child-1", "Bash", "2026-05-12T15:00:02.000Z", "launch");
+    const lateChild = tool("child-2", "Bash", "2026-05-12T15:00:05.000Z", "launch");
+    const ownWork = tool("own", "Read", "2026-05-12T15:00:06.000Z");
+    const items = foldConversationItems(
+      [
+        event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Delegate it"),
+        event("user-2", "user.message", "2026-05-12T15:00:04.000Z", "Meanwhile, read this")
+      ],
+      [launch, sameTurnChild, lateChild, ownWork]
+    );
+
+    const out = foldRenderItems(items, null, foldTurnToolItems);
+    const turns = out.filter((item) => item.kind === "turn");
+
+    expect(topLevelToolIds(turns[1])).toEqual(["own"]);
+    // The same-turn child still nests under the launch it belongs to.
+    const launchItem = turns[0]?.kind === "turn" ? turns[0].toolItems[0] : undefined;
+    expect(launchItem?.kind === "tool" ? launchItem.children?.map((t) => t.id) : null).toEqual([
+      "child-1"
+    ]);
+  });
+
+  it("keeps an orphaned child row when its launch is no longer in the transcript", () => {
+    const orphan = tool("orphan", "Bash", "2026-05-12T15:00:05.000Z", "evicted-launch");
+    const items = foldConversationItems(
+      [event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Go")],
+      [orphan]
+    );
+
+    const out = foldRenderItems(items, null, foldTurnToolItems);
+
+    expect(topLevelToolIds(out.find((item) => item.kind === "turn"))).toEqual(["orphan"]);
   });
 });

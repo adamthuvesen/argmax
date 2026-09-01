@@ -34,7 +34,7 @@ Key directories:
 - `ipc/`: Request/response command handlers.
 - `persistence/`: SQLite connection, migrations, and repository queries.
 - `providers/`: Adapter CLIs (Claude, Codex, Cursor, OpenCode, Grok Build), PTY runtime, normalizers, and the event flush queue.
-- `session_control.rs`: Private socket transport for agent-initiated session launches.
+- `session_control.rs`: Private socket transport for agent-initiated session launch, move, list, and message commands.
 - `sessions/`: Orchestration between IPC and providers.
 - `workspaces/`, `review/`, `files/`, `git/`: Worktree lifecycle, diffs, file operations, and git commands.
 - `approvals/`, `checks/`, `gh/`, `terminal/`, `attachments/`, `ide/`, `skills/`, `routines/`: Subsystem services.

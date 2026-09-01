@@ -98,13 +98,25 @@ pub async fn snapshot_worktree(
 /// untracked files. Renames are reported as their two sides (`--no-renames`)
 /// so a snapshot taken from this list drops the old path.
 pub async fn dirty_paths(repo_path: &Path) -> ArgmaxResult<Vec<String>> {
-    let tracked = run_git_text_with_options(
+    // An unborn HEAD has no commit to diff against, which is not a failure.
+    // Any other error must surface: passing it off as "nothing is dirty" would
+    // leave the baseline missing the user's own uncommitted work, and the
+    // turn's first measured diff would then bill that work to the agent.
+    let tracked = match run_git_text_with_options(
         repo_path,
         ["diff", "--no-renames", "--name-only", "-z", "HEAD"],
         snapshot_options(),
     )
     .await
-    .unwrap_or_default();
+    {
+        Ok(tracked) => tracked,
+        Err(error) => {
+            if head_exists(repo_path).await {
+                return Err(error);
+            }
+            String::new()
+        }
+    };
     let untracked = run_git_text_with_options(
         repo_path,
         ["ls-files", "--others", "--exclude-standard", "-z"],
@@ -148,6 +160,18 @@ pub async fn diff_path_between_trees(
         return Ok(None);
     }
     Ok(Some(diff))
+}
+
+/// Whether `HEAD` resolves to a commit. A fresh repo with no commits has an
+/// unborn HEAD, which several git plumbing commands report as an error.
+async fn head_exists(repo_path: &Path) -> bool {
+    run_git_text_with_options(
+        repo_path,
+        ["rev-parse", "--verify", "--quiet", "HEAD"],
+        snapshot_options(),
+    )
+    .await
+    .is_ok()
 }
 
 fn snapshot_options() -> GitExecOptions {

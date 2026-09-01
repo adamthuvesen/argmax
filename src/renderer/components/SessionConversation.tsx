@@ -81,6 +81,7 @@ import { SessionComposer, type ComposerStatus, type NewSessionSeed } from "./Ses
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
+import { recordChatCue, type ChatCueReason } from "../lib/chatCueLog.js";
 import { parseUserMessageAttachments } from "./sessionConversationHelpers.js";
 import {
   SessionConversationTurn,
@@ -587,7 +588,7 @@ export function SessionConversation({
     });
   }, [hasOutstandingCardAsk, isTurnStarting, renderItems, sessionRunning]);
   const agentWorkingSilently =
-    (sessionRunning || isTurnStarting) &&
+    sessionRunning &&
     !anyVisibleToolRunning &&
     !hasOutstandingCardAsk &&
     !liveThoughtVisible &&
@@ -625,8 +626,17 @@ export function SessionConversation({
   // Show the generic indicator for any silent gap in a running turn. It stays
   // hidden while text is actively streaming, a visible tool row is running, an
   // answer is still settling, or the agent is waiting on an interactive card.
-  // A send starts a new beat outright, so it outranks a settling answer.
-  const isThinking = agentWorkingSilently && !compacting && !(isAnswerSettling && !isTurnStarting);
+  //
+  // The window between a send and the provider's first visible event is a floor,
+  // not one more case for those rules to weigh: it shows the cue outright. Every
+  // suppressor above exists to stop this line doubling up with another live cue —
+  // streaming text, a spinning tool row, a live Thought, an outstanding card — and
+  // before the provider has said anything there is by definition none of that on
+  // screen to double up with. Consulting them there only created ways for the
+  // pane to go silent for the ten to thirty seconds a relaunched provider takes
+  // to speak, which is the one stretch that most needs a sign of life.
+  const isThinking =
+    isTurnStarting || (agentWorkingSilently && !compacting && !isAnswerSettling);
   // Beats that have already served their wait: a turn the user just started,
   // and a settled answer — reaching here with the answer still newest means
   // its window is spent, so re-showing must not queue a second delay behind it.
@@ -710,6 +720,47 @@ export function SessionConversation({
       if (thinkingHideTimerRef.current !== null) window.clearTimeout(thinkingHideTimerRef.current);
     };
   }, []);
+
+  // One breadcrumb per change in what the cue is doing, and why. A cue that
+  // fails to show leaves a blank pane and no evidence: the derivation that
+  // decided it is gone by the time anyone reads the transcript. Reading the
+  // reason off the same values the render uses keeps the record honest — this
+  // cannot drift from the behaviour it describes without the render changing
+  // too. Debug panel → Logs, scope `renderer::chat`.
+  const cueReason: ChatCueReason = isThinkingVisible
+    ? "shown"
+    : anyVisibleToolRunning
+      ? "tool-running"
+      : hasOutstandingCardAsk
+        ? "card-ask"
+        : liveThoughtVisible
+          ? "live-thought"
+          : isStreamingText
+            ? "streaming-text"
+            : compacting
+              ? "compacting"
+              : isAnswerSettling
+                ? "answer-settling"
+                : "show-delay";
+  const lastCueRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Only while a turn is live. An idle session has no cue to explain, and
+    // logging its steady state would bury the transitions that matter.
+    if (!sessionRunning && !isTurnStarting) {
+      lastCueRef.current = null;
+      return;
+    }
+    if (!sessionId) return;
+    const key = `${isThinkingVisible ? "shown" : "hidden"}:${cueReason}`;
+    if (lastCueRef.current === key) return;
+    lastCueRef.current = key;
+    recordChatCue({
+      sessionId,
+      provider: session?.provider ?? null,
+      visible: isThinkingVisible,
+      reason: cueReason
+    });
+  }, [cueReason, isThinkingVisible, isTurnStarting, session?.provider, sessionId, sessionRunning]);
 
   // Restored turns must not replay their entrance animation on every reopen.
   const restoringTranscript = useRestoreWithoutMotion();

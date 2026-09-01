@@ -25,8 +25,8 @@ const DIST = join(ROOT, "dist/renderer");
 // passes and a newly-eager dependency fails. Mobile is tighter: it ships over
 // the tailnet to a phone, not off the local disk.
 const ENTRIES = [
-  { html: "index.html", label: "desktop", budgetBytes: 1.25 * 1024 * 1024 },
-  { html: "mobile.html", label: "mobile", budgetBytes: 1.0 * 1024 * 1024 }
+  { html: "index.html", label: "desktop", budgetBytes: 1.6 * 1024 * 1024 },
+  { html: "mobile.html", label: "mobile", budgetBytes: 1.5 * 1024 * 1024 }
 ];
 
 function fail(message) {

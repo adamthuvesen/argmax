@@ -26,6 +26,7 @@ export default defineConfig({
         // main or in feature-lazy chunks emitted by B1–B5.
         manualChunks(id) {
           if (id.includes("node_modules")) {
+            if (id.includes("katex")) return "vendor-katex";
             if (id.includes("lucide-react")) return "vendor-lucide";
             if (id.includes("/react-dom/") || id.includes("/react/") || id.includes("scheduler")) {
               return "vendor-react";

@@ -27,25 +27,18 @@ function mergeSessionEventTail(
       .filter((event) => event.payload.traceSyntheticSuperseded === true)
       .map((event) => event.id)
   );
-  if (supersededIds.size === 0) {
-    return mergeDashboardDelta(current, {
-      events: data.events,
-      rawOutputs: data.rawOutputs
-    });
-  }
+  // Merge on the normal path either way. A superseded row is re-persisted under
+  // its original id, so the ordinary upsert replaces the old copy and a single
+  // filter drops it — where the hand-rolled merge this replaced re-capped the
+  // shared event array to 500 rows and silently ate earlier turns.
   const merged = mergeDashboardDelta(current, {
+    events: data.events,
     rawOutputs: data.rawOutputs
   });
+  if (supersededIds.size === 0) return merged;
   return {
     ...merged,
-    events: pruneSupersededDeltas(
-      mergeByCreatedAt(
-        current.events.filter((event) => !supersededIds.has(event.id)),
-        data.events.filter((event) => !supersededIds.has(event.id)),
-        500,
-        "desc"
-      )
-    )
+    events: merged.events.filter((event) => !supersededIds.has(event.id))
   };
 }
 

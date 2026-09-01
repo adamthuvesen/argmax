@@ -1030,11 +1030,16 @@ button.tool-call-row-button {
   color: var(--rose);
 }
 
+/* Parked at the right edge, the same way the group header's spinner is, so a
+   run of in-flight rows shows one still column of activity instead of a ragged
+   trail that jumps left and right as each target string changes length. */
 .tool-call-row-running {
   flex: 0 0 auto;
   align-self: center;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  margin-left: auto;
   color: var(--accent);
 }
 

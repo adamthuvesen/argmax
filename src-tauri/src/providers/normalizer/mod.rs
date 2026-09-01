@@ -168,6 +168,14 @@ pub struct NormalizerSessionContext {
     /// Set when Claude emits a `message.completed` for the current turn so a
     /// trailing `result` line does not synthesize a duplicate bubble.
     pub claude_turn_answer_emitted: bool,
+    /// Codex's running total of input tokens across the thread, as last seen on
+    /// a `turn.completed`. That figure is cumulative, not occupancy — the step
+    /// between two turns is what the model actually held. `None` means no
+    /// baseline yet, which is the state a resumed launch starts in: the counter
+    /// survives in the thread but not in this process, so the first turn after a
+    /// resume only records it and reports no occupancy. See `extract_usage` in
+    /// codex.rs.
+    pub codex_cumulative_input: Option<u64>,
     /// Set once OpenCode's `sessionID` has been reported for this launch.
     /// Every OpenCode envelope carries it, and each report costs a session
     /// UPDATE plus a re-read that ships a session row in the dashboard delta —
@@ -193,8 +201,23 @@ impl NormalizerSessionContext {
                 opencode_current_model: Some(model_id.into()),
                 ..Self::default()
             },
-            ProviderId::Claude | ProviderId::Codex | ProviderId::Grok => Self::default(),
+            // A fresh Codex thread starts its cumulative input counter at zero,
+            // so the first turn's total is already that turn's occupancy.
+            ProviderId::Codex => Self {
+                codex_cumulative_input: Some(0),
+                ..Self::default()
+            },
+            ProviderId::Claude | ProviderId::Grok => Self::default(),
         }
+    }
+
+    /// Mark this launch as continuing an existing provider conversation. Codex
+    /// keeps its cumulative input counter on the thread, so a resumed launch has
+    /// no baseline for it and must take one from the first turn it sees rather
+    /// than reading that turn's total as occupancy.
+    pub fn resuming(mut self) -> Self {
+        self.codex_cumulative_input = None;
+        self
     }
 }
 
@@ -835,7 +858,7 @@ fn extract_usage_from_payload(
     provider: ProviderId,
     payload: &Map<String, Value>,
     provider_type: Option<&str>,
-    context: &NormalizerSessionContext,
+    context: &mut NormalizerSessionContext,
 ) -> Option<NormalizedUsage> {
     match provider {
         ProviderId::Claude | ProviderId::Grok => extract_claude_usage(payload, provider_type),

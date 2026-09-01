@@ -803,7 +803,17 @@ impl ProviderSessionService {
                 session_id.clone(),
                 provider,
                 provider_invocation_id.clone(),
-                NormalizerSessionContext::for_provider(provider, launch_input.model_id.as_str()),
+                {
+                    let context = NormalizerSessionContext::for_provider(
+                        provider,
+                        launch_input.model_id.as_str(),
+                    );
+                    if launch_input.resume_conversation_id.is_some() {
+                        context.resuming()
+                    } else {
+                        context
+                    }
+                },
             );
         self.handles
             .lock_or_recover("handles")

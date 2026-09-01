@@ -252,10 +252,31 @@ fn is_tool_like_item(
         .is_some()
 }
 
+/// This turn's context occupancy, derived from the session's cumulative input.
+///
+/// `turn.completed` reports `total_token_usage` — every input token the thread
+/// has ever sent, which passes the context window and keeps climbing. The step
+/// since the previous turn is what the model actually held, and it matches the
+/// `last_token_usage.input_tokens` Codex records in its rollout exactly.
+/// Compaction shows up here as a smaller step, which is the point.
+///
+/// Returns `None` until there is a baseline to subtract from, so the first turn
+/// after a resume records the counter instead of reporting it as occupancy.
+fn occupancy_from_cumulative(
+    context: &mut NormalizerSessionContext,
+    cumulative_input: u64,
+) -> Option<u64> {
+    context
+        .codex_cumulative_input
+        .replace(cumulative_input)
+        .filter(|previous| *previous <= cumulative_input)
+        .map(|previous| cumulative_input - previous)
+}
+
 pub fn extract_usage(
     payload: &Map<String, Value>,
     provider_type: Option<&str>,
-    context: &NormalizerSessionContext,
+    context: &mut NormalizerSessionContext,
 ) -> Option<NormalizedUsage> {
     // token_count events also carry the model's context window in `info`; capture
     // it so the session can show window occupancy. turn.completed has no window.
@@ -272,6 +293,9 @@ pub fn extract_usage(
         .map(|info| number_value(info.get("model_context_window")))
         .filter(|window| *window > 0);
 
+    // `token_count` states this turn's input directly; `turn.completed` states
+    // the thread's running total, which has to be differenced below.
+    let from_token_count = info.is_some();
     let raw_usage = if let Some(info) = info {
         object_value(info.get("last_token_usage"))
     } else if provider_type == Some("turn.completed") {
@@ -287,6 +311,11 @@ pub fn extract_usage(
         return None;
     }
     let non_cached_input = input_tokens.saturating_sub(cached_input);
+    let context_tokens = if from_token_count {
+        Some(input_tokens)
+    } else {
+        occupancy_from_cumulative(context, input_tokens)
+    };
     let model_id = context
         .codex_current_model
         .clone()
@@ -300,7 +329,7 @@ pub fn extract_usage(
     Some(NormalizedUsage {
         cost_usd: cost_of(tokens.clone().into(), &model_id),
         model_id,
-        context_tokens: info.map(|_| input_tokens),
+        context_tokens,
         tokens,
         event_id: None,
         context_window,
@@ -784,22 +813,63 @@ mod tests {
         assert_eq!(result.usages[0].context_window, Some(272_000));
     }
 
+    /// `codex exec --json` stopped emitting `token_count`, so `turn.completed`
+    /// is the only usage row a live session sees. Its `input_tokens` is the
+    /// thread's running total — occupancy is the step between turns. Figures
+    /// here are a real two-turn codex-cli 0.149.0 run, checked against the
+    /// `last_token_usage` its rollout recorded for the same turns.
     #[test]
-    fn codex_cumulative_turn_usage_is_not_context_occupancy() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
+    fn codex_turn_usage_reports_the_step_between_cumulative_totals() {
+        let mut context =
+            NormalizerSessionContext::for_provider(ProviderId::Codex, "gpt-5.6-terra");
+        let first = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"turn.completed","usage":{"input_tokens":21130,"cached_input_tokens":6912,"output_tokens":5}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(first.usages[0].context_tokens, Some(21_130));
+
+        let second = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"turn.completed","usage":{"input_tokens":49129,"cached_input_tokens":27136,"output_tokens":10}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(second.usages[0].context_tokens, Some(27_999));
+        // Billing still counts the raw totals; only occupancy is differenced.
+        assert_eq!(second.usages[0].tokens.input, 21_993);
+        assert_eq!(second.usages[0].tokens.cache_read, 27_136);
+        assert_eq!(second.usages[0].context_window, None);
+    }
+
+    /// The counter lives on the Codex thread, not the process, so a resumed
+    /// launch opens without a baseline. Reading that first total as occupancy is
+    /// what once wrote 501,468 tokens against a 258,400 window.
+    #[test]
+    fn codex_resumed_launch_takes_a_baseline_before_reporting_occupancy() {
+        let mut context =
+            NormalizerSessionContext::for_provider(ProviderId::Codex, "gpt-5.6-terra").resuming();
+        let first = normalize_provider_event(
             ProviderId::Codex,
             &output_event(
                 r#"{"type":"turn.completed","usage":{"input_tokens":501468,"cached_input_tokens":437504,"output_tokens":1234}}"#,
             ),
             &mut context,
         );
+        assert_eq!(first.usages[0].context_tokens, None);
+        assert_eq!(first.usages[0].tokens.input, 63_964);
 
-        assert_eq!(result.usages[0].tokens.input, 63_964);
-        assert_eq!(result.usages[0].tokens.cache_read, 437_504);
-        assert_eq!(result.usages[0].tokens.output, 1_234);
-        assert_eq!(result.usages[0].context_tokens, None);
-        assert_eq!(result.usages[0].context_window, None);
+        let second = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"turn.completed","usage":{"input_tokens":531468,"cached_input_tokens":437504,"output_tokens":10}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(second.usages[0].context_tokens, Some(30_000));
     }
 
     #[test]

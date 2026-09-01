@@ -255,7 +255,7 @@ fn latest_agent_message_skips_subagent_prose() {
 
     assert_eq!(latest_agent_message(&connection, "s1").expect("read"), None);
 
-    let mut persist = |id: &str, message: &str, payload: serde_json::Value| {
+    let persist = |id: &str, message: &str, payload: serde_json::Value| {
         persist_timeline_event(
             &connection,
             &PersistTimelineEventInput {

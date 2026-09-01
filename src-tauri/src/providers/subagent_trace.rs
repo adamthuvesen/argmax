@@ -1396,7 +1396,42 @@ struct CodexTraceMeta {
 /// after a few lines rather than scanning a multi-MB transcript that has none.
 const CODEX_TRACE_HEADER_LINES: usize = 8;
 
+/// Headers already read, keyed by path with the `(len, modified)` stamp they
+/// were read at. `session_meta` is the immutable first record of a rollout, so
+/// an unchanged file cannot have a different header. Reconciliation walks up to
+/// three day directories plus `archived_sessions` on every sweep, and without
+/// this it opened and parsed the head of every rollout in them each time.
+///
+/// Dropped wholesale past the cap rather than growing for the process lifetime,
+/// the same as `IMPORTED_TRACE_FILES`.
+static CODEX_TRACE_META: LazyLock<Mutex<HashMap<PathBuf, RememberedCodexMeta>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+/// A rollout header as it was read, with the file stamp it was read at.
+type RememberedCodexMeta = (TraceFileStamp, Option<CodexTraceMeta>);
+const MAX_REMEMBERED_CODEX_TRACE_META: usize = 1024;
+
 fn codex_trace_file_meta(path: &Path) -> Option<CodexTraceMeta> {
+    let stamp = fs::metadata(path)
+        .and_then(|metadata| Ok((metadata.len(), metadata.modified()?)))
+        .ok()?;
+    if let Some((remembered, meta)) = CODEX_TRACE_META
+        .lock_or_recover("codex trace meta")
+        .get(path)
+    {
+        if *remembered == stamp {
+            return meta.clone();
+        }
+    }
+    let meta = read_codex_trace_file_meta(path);
+    let mut remembered = CODEX_TRACE_META.lock_or_recover("codex trace meta");
+    if remembered.len() >= MAX_REMEMBERED_CODEX_TRACE_META {
+        remembered.clear();
+    }
+    remembered.insert(path.to_path_buf(), (stamp, meta.clone()));
+    meta
+}
+
+fn read_codex_trace_file_meta(path: &Path) -> Option<CodexTraceMeta> {
     let file = fs::File::open(path).ok()?;
     for line in BufReader::new(file)
         .lines()
@@ -1453,11 +1488,24 @@ fn codex_trace_file_meta(path: &Path) -> Option<CodexTraceMeta> {
 fn find_cursor_trace_files(home: &Path, context: &AgentTraceContext) -> Vec<CursorTraceFile> {
     let mut files = Vec::new();
     let mut seen = HashSet::new();
+    let mut resolved_by_id: HashSet<&str> = HashSet::new();
     for child_id in &context.child_ids {
         for path in find_cursor_trace_files_by_id(home, context.workspace_path.as_deref(), child_id)
         {
+            resolved_by_id.insert(child_id.as_str());
             push_cursor_trace_file(&mut files, &mut seen, child_id.to_string(), path);
         }
+    }
+    // The prompt walk crawls every `~/.cursor/projects` root and reads the head
+    // of every transcript under it; the agent pane re-resolves on a 1.5 s poll,
+    // so it only runs when an id is still unaccounted for.
+    if !context.child_ids.is_empty()
+        && context
+            .child_ids
+            .iter()
+            .all(|child_id| resolved_by_id.contains(child_id.as_str()))
+    {
+        return files;
     }
     if let Some(prompt) = context.cursor_prompt.as_deref() {
         for path in find_cursor_trace_files_by_prompt(
@@ -1631,9 +1679,18 @@ fn cursor_trace_file_prompt_matches(path: &Path, prompt: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// The opening prompt of a Cursor transcript. Streamed and stopped at the first
+/// user row: the prompt match runs over every transcript in every project root,
+/// and reading whole multi-MB files to look at their first few lines was the
+/// bulk of that walk.
 fn cursor_first_user_text(path: &Path) -> Option<String> {
-    for line in read_trace_lines(path) {
-        let Some(object) = line.value.as_object() else {
+    let file = fs::File::open(path).ok()?;
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        let line = line.trim();
+        if line.is_empty() || line.len() > JSON_PARSE_LINE_CAP {
+            continue;
+        }
+        let Ok(Value::Object(object)) = serde_json::from_str::<Value>(line) else {
             continue;
         };
         if object.get("role").and_then(Value::as_str) != Some("user") {
@@ -2698,6 +2755,91 @@ mod tests {
         fs::remove_file(&path).expect("remove trace");
         assert!(matches!(trace_file_step(&key), TraceFileStep::Read(None)));
         assert!(!imported_trace_files().contains_key(&key));
+    }
+
+    #[test]
+    fn an_unchanged_codex_rollout_header_is_not_re_read() {
+        let dir = TempDir::new().expect("dir");
+        let path = dir.path().join("rollout-child.jsonl");
+        let header = |id: &str| {
+            format!(
+                r#"{{"timestamp":"2026-07-08T14:46:49.290Z","type":"session_meta","payload":{{"id":"{id}","parent_thread_id":"parent-thread"}}}}"#
+            ) + "\n"
+        };
+        fs::write(&path, header("child-aaa")).expect("write rollout");
+        let modified = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .expect("modified");
+        assert_eq!(
+            codex_trace_file_meta(&path).expect("meta").thread_id,
+            "child-aaa"
+        );
+
+        // Same byte length, same mtime: re-reading the file is the only way to
+        // see the new id, so the old one coming back proves it was not re-read.
+        fs::write(&path, header("child-bbb")).expect("rewrite rollout");
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .expect("open rollout")
+            .set_modified(modified)
+            .expect("restore mtime");
+        assert_eq!(
+            codex_trace_file_meta(&path).expect("meta").thread_id,
+            "child-aaa"
+        );
+
+        // A file that actually moved is read again.
+        fs::write(&path, header("child-bbb") + "{}\n").expect("grow rollout");
+        assert_eq!(
+            codex_trace_file_meta(&path).expect("meta").thread_id,
+            "child-bbb"
+        );
+    }
+
+    #[test]
+    fn cursor_trace_lookup_skips_the_prompt_walk_once_every_child_id_resolved() {
+        let home = TempDir::new().expect("home");
+        let transcripts = home
+            .path()
+            .join(".cursor/projects/tmp-repo/agent-transcripts");
+        let user_row =
+            r#"{"role":"user","message":{"content":[{"type":"text","text":"Inspect the renderer files."}]}}"#
+                .to_string()
+                + "\n";
+        for child in ["child-1", "unrelated-child"] {
+            fs::create_dir_all(transcripts.join(child)).expect("trace dir");
+            fs::write(
+                transcripts.join(child).join(format!("{child}.jsonl")),
+                &user_row,
+            )
+            .expect("write trace");
+        }
+
+        let context = |child_ids: Vec<String>| AgentTraceContext {
+            provider: TraceProvider::Cursor,
+            session_id: "s1".to_string(),
+            parent_tool_use_id: "call-task".to_string(),
+            parent_created_at: "2026-07-08T14:46:49.000Z".to_string(),
+            provider_conversation_id: None,
+            workspace_path: None,
+            cursor_prompt: Some("Inspect the renderer files.".to_string()),
+            child_ids,
+        };
+
+        // Both transcripts match the prompt, so the walk would pick one of them
+        // up; with the id already resolved it must not run at all.
+        let resolved = find_cursor_trace_files(home.path(), &context(vec!["child-1".to_string()]));
+        assert_eq!(
+            resolved
+                .iter()
+                .map(|file| file.child_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["child-1"]
+        );
+
+        // With no id to resolve, the prompt is still the only way in.
+        assert!(!find_cursor_trace_files(home.path(), &context(Vec::new())).is_empty());
     }
 
     #[test]

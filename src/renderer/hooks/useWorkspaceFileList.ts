@@ -3,7 +3,7 @@ import type { WorkspaceFileEntry } from "../../shared/types.js";
 import type { ReviewIpcDispatch } from "../lib/reviewIpc.js";
 import type { ReviewSourceKind } from "../lib/reviewIpc.js";
 import { errorMessage } from "../../shared/error.js";
-import type { AsyncState } from "./useReviewState.js";
+import type { AsyncState, ReviewPanelMode } from "./useReviewState.js";
 
 export interface UseWorkspaceFileListResult {
   entries: WorkspaceFileEntry[];
@@ -21,7 +21,7 @@ export function useWorkspaceFileList(args: {
   sourceKind: ReviewSourceKind | null;
   changedFilesKey: string | null;
   dispatch: ReviewIpcDispatch | null;
-  mode: "changes" | "files";
+  mode: ReviewPanelMode;
   isPanelOpen: boolean;
 }): UseWorkspaceFileListResult {
   const { sourceId, sourceKind, changedFilesKey, dispatch, mode, isPanelOpen } = args;

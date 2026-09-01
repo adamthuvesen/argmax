@@ -20,17 +20,18 @@ use crate::{
     error::ArgmaxError,
     ipc::{
         inputs::{
-            ProvidersLaunchInput, TerminalCols, TerminalRows, WorkspacesArchiveInput,
-            WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput,
+            ProvidersLaunchInput, ProvidersSendInput, TerminalCols, TerminalRows,
+            WorkspacesArchiveInput, WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput,
         },
-        validation::{BaseRef, NonEmptyString, ProjectId, Prompt, TaskLabel, WorkspaceId},
+        validation::{BaseRef, NonEmptyString, ProjectId, Prompt, SessionId, TaskLabel, WorkspaceId},
     },
     persistence::{
+        dashboard::DASHBOARD_ROW_LIMIT,
         database::Database,
         events::{persist_timeline_event, PersistTimelineEventInput},
         projects::{list_projects, ProjectSummary},
-        sessions::find_session_by_id,
-        workspaces::find_workspace_by_id,
+        sessions::{find_session_by_id, list_sessions_for_dashboard},
+        workspaces::{find_workspace_by_id, list_workspaces, WorkspaceSummary},
     },
     providers::{session_service::ProviderSessionService, ProviderLaunchInput},
     workspaces::WorkspaceService,
@@ -42,6 +43,7 @@ const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 const SERVER_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_IO_TIMEOUT: Duration = Duration::from_secs(75);
 const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const SESSION_LIST_LIMIT: usize = 40;
 const DEFAULT_TASK_LABEL: &str = "Local agent task";
 const MAX_TASK_LABEL_CHARS: usize = 64;
 const MAX_TASK_LABEL_BYTES: usize = 200;
@@ -53,7 +55,7 @@ pub const ARGMAX_BIN_ENV: &str = "ARGMAX_BIN";
 
 // `pub(crate)` so session sync can strip it back off an imported transcript's
 // first prompt: Argmax prepends it, so it must not become the session's title.
-pub(crate) const SESSION_LAUNCH_INSTRUCTION: &str = r#"Argmax session controls are available only when the user explicitly asks. To create a separate session, use "$ARGMAX_BIN" session launch --project <registered name or absolute repo path> --prompt '<task>'. Omit --project to use this session's project. To move this chat to another registered project, use "$ARGMAX_BIN" session move --project <registered name or absolute repo path>. Both commands use the shared checkout by default. Add --worktree for isolation. Moving archives the source workspace after this turn settles. Add --keep-source to keep it. These commands create top-level sidebar sessions, not subagents. Never move a chat or launch a session automatically."#;
+pub(crate) const SESSION_LAUNCH_INSTRUCTION: &str = r#"Argmax session controls are available only when the user explicitly asks. To create a separate session, use "$ARGMAX_BIN" session launch --project <registered name or absolute repo path> --prompt '<task>'. Omit --project to use this session's project. To move this chat to another registered project, use "$ARGMAX_BIN" session move --project <registered name or absolute repo path>. Both commands use the shared checkout by default. Add --worktree for isolation. Moving archives the source workspace after this turn settles. Add --keep-source to keep it. To see what other sessions exist before targeting one, use "$ARGMAX_BIN" session list [--project <name-or-path> | --all]; it prints each session's id, project, task label, provider, and state as JSON, newest activity first. To send a message into an existing session — for example one you just launched, or one the user names — use "$ARGMAX_BIN" session message --session <id> --prompt '<message>'; it queues if that session is mid-turn. These commands create and address top-level sidebar sessions, not subagents. Never launch, move, list, or message sessions on your own initiative — only when this turn's user request calls for it."#;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SessionLaunchError {
@@ -369,6 +371,10 @@ struct SessionLaunchRequest {
     worktree: bool,
     #[serde(default)]
     keep_source: bool,
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    all: bool,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -377,6 +383,8 @@ enum SessionControlAction {
     #[default]
     Launch,
     Move,
+    List,
+    Message,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -397,7 +405,25 @@ struct SessionLaunchResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     source_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    sessions: Option<Vec<SessionListEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    truncated: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    queued: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<SessionLaunchProtocolError>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionListEntry {
+    session_id: String,
+    project_id: String,
+    project_name: String,
+    task_label: String,
+    provider: String,
+    state: String,
+    last_activity_at: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -423,6 +449,9 @@ impl SessionLaunchResponse {
             project_name: Some(project_name),
             scheduled: None,
             source_session_id: None,
+            sessions: None,
+            truncated: None,
+            queued: None,
             error: None,
         }
     }
@@ -437,6 +466,43 @@ impl SessionLaunchResponse {
             project_name: Some(project_name),
             scheduled: Some(true),
             source_session_id: Some(source_session_id),
+            sessions: None,
+            truncated: None,
+            queued: None,
+            error: None,
+        }
+    }
+
+    fn sessions(entries: Vec<SessionListEntry>, truncated: bool) -> Self {
+        Self {
+            version: PROTOCOL_VERSION,
+            ok: true,
+            session_id: None,
+            workspace_id: None,
+            project_id: None,
+            project_name: None,
+            scheduled: None,
+            source_session_id: None,
+            sessions: Some(entries),
+            truncated: Some(truncated),
+            queued: None,
+            error: None,
+        }
+    }
+
+    fn messaged(session_id: String, queued: bool) -> Self {
+        Self {
+            version: PROTOCOL_VERSION,
+            ok: true,
+            session_id: Some(session_id),
+            workspace_id: None,
+            project_id: None,
+            project_name: None,
+            scheduled: None,
+            source_session_id: None,
+            sessions: None,
+            truncated: None,
+            queued: Some(queued),
             error: None,
         }
     }
@@ -451,6 +517,9 @@ impl SessionLaunchResponse {
             project_name: None,
             scheduled: None,
             source_session_id: None,
+            sessions: None,
+            truncated: None,
+            queued: None,
             error: Some(SessionLaunchProtocolError {
                 code: code.into(),
                 message: message.into(),
@@ -729,7 +798,139 @@ async fn handle_session_control(
         SessionControlAction::Move => {
             schedule_session_move(request, parent, database, workspaces, providers, registry).await
         }
+        SessionControlAction::List => list_sessions_action(request, parent, database).await,
+        SessionControlAction::Message => message_session(request, parent, providers).await,
     }
+}
+
+async fn list_sessions_action(
+    request: SessionLaunchRequest,
+    parent: ParentLaunchSettings,
+    database: Arc<Database>,
+) -> Result<SessionLaunchResponse, SessionLaunchProtocolError> {
+    if request.session_id.is_some() || request.prompt.is_some() || request.worktree || request.keep_source
+    {
+        return Err(protocol_error(
+            "ARGUMENT_INVALID",
+            "Session list accepts only --project and --all.",
+        ));
+    }
+    if request.all && request.project.is_some() {
+        return Err(protocol_error(
+            "ARGUMENT_INVALID",
+            "--all cannot be combined with --project.",
+        ));
+    }
+    let connection = database.connection();
+    let all_projects = list_projects(&connection).map_err(argmax_protocol_error)?;
+    let parent_project_id = {
+        let parent_session =
+            find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
+        find_workspace_by_id(&connection, &parent_session.workspace_id)
+            .map_err(argmax_protocol_error)?
+            .project_id
+    };
+    let scoped_projects = if request.all {
+        all_projects
+            .into_iter()
+            .filter(|project| project.id != crate::workspaces::SCRATCH_PROJECT_ID)
+            .collect::<Vec<_>>()
+    } else {
+        vec![resolve_project(
+            &all_projects,
+            request.project.as_deref(),
+            &parent_project_id,
+        )?]
+    };
+    let project_names: HashMap<String, String> = scoped_projects
+        .iter()
+        .map(|project| (project.id.clone(), project.name.clone()))
+        .collect();
+
+    let workspaces =
+        list_workspaces(&connection, None, DASHBOARD_ROW_LIMIT).map_err(argmax_protocol_error)?;
+    let workspaces_by_id: HashMap<String, &WorkspaceSummary> = workspaces
+        .iter()
+        .map(|workspace| (workspace.id.clone(), workspace))
+        .collect();
+    let workspace_ids: Vec<String> = workspaces
+        .iter()
+        .filter(|workspace| {
+            project_names.contains_key(&workspace.project_id)
+                && !matches!(workspace.state.as_str(), "archiving" | "archived")
+        })
+        .map(|workspace| workspace.id.clone())
+        .collect();
+
+    let sessions =
+        list_sessions_for_dashboard(&connection, Some(&workspace_ids), DASHBOARD_ROW_LIMIT)
+            .map_err(argmax_protocol_error)?;
+    let mut entries: Vec<SessionListEntry> = sessions
+        .into_iter()
+        .filter(|session| session.id != parent.session_id)
+        .filter_map(|session| {
+            let workspace = workspaces_by_id.get(&session.workspace_id)?;
+            let project_name = project_names.get(&workspace.project_id)?.clone();
+            Some(SessionListEntry {
+                session_id: session.id,
+                project_id: workspace.project_id.clone(),
+                project_name,
+                task_label: workspace.task_label.clone(),
+                provider: session.provider,
+                state: session.state,
+                last_activity_at: session.last_activity_at,
+            })
+        })
+        .collect();
+    entries.sort_by(|left, right| right.last_activity_at.cmp(&left.last_activity_at));
+    let truncated = entries.len() > SESSION_LIST_LIMIT;
+    entries.truncate(SESSION_LIST_LIMIT);
+    Ok(SessionLaunchResponse::sessions(entries, truncated))
+}
+
+async fn message_session(
+    request: SessionLaunchRequest,
+    parent: ParentLaunchSettings,
+    providers: Arc<ProviderSessionService>,
+) -> Result<SessionLaunchResponse, SessionLaunchProtocolError> {
+    if request.project.is_some() || request.worktree || request.keep_source || request.all {
+        return Err(protocol_error(
+            "ARGUMENT_INVALID",
+            "Session message accepts only --session and --prompt.",
+        ));
+    }
+    let session_id = request.session_id.ok_or_else(|| {
+        protocol_error("SESSION_ID_REQUIRED", "Session message requires --session.")
+    })?;
+    if session_id == parent.session_id {
+        return Err(protocol_error(
+            "MESSAGE_SELF",
+            "Session message must target a different session; this is the current session.",
+        ));
+    }
+    let prompt = request.prompt.ok_or_else(|| {
+        protocol_error(
+            "PROMPT_REQUIRED",
+            "Session message requires --prompt or --prompt-stdin.",
+        )
+    })?;
+    let target = SessionId::try_from(session_id.clone()).map_err(invalid_input_error)?;
+    let message = Prompt::try_from(prompt).map_err(invalid_input_error)?;
+    let result = providers
+        .send_input(ProvidersSendInput {
+            session_id: target,
+            input: message,
+            provider: None,
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            agent_mode: None,
+            attachments: None,
+        })
+        .await
+        .map_err(argmax_protocol_error)?;
+    Ok(SessionLaunchResponse::messaged(session_id, result.queued))
 }
 
 async fn schedule_session_move(
@@ -1018,6 +1219,14 @@ enum SessionControlCliInput {
         worktree: bool,
         keep_source: bool,
     },
+    List {
+        project: Option<String>,
+        all: bool,
+    },
+    Message {
+        session_id: String,
+        prompt: CliPrompt,
+    },
 }
 
 pub fn try_run_session_control_cli<I, S>(args: I) -> Option<i32>
@@ -1043,6 +1252,8 @@ fn parse_session_control_cli(args: &[OsString]) -> Result<SessionControlCliInput
     match args.get(2).and_then(|value| value.to_str()) {
         Some("launch") => parse_session_launch_cli(args),
         Some("move") => parse_session_move_cli(args),
+        Some("list") => parse_session_list_cli(args),
+        Some("message") => parse_session_message_cli(args),
         _ => Err(session_control_usage()),
     }
 }
@@ -1153,6 +1364,95 @@ fn parse_session_move_cli(args: &[OsString]) -> Result<SessionControlCliInput, S
     })
 }
 
+fn parse_session_list_cli(args: &[OsString]) -> Result<SessionControlCliInput, String> {
+    let mut project = None;
+    let mut all = false;
+    let mut index = 3;
+    while index < args.len() {
+        let flag = args[index]
+            .to_str()
+            .ok_or_else(|| "arguments must be valid UTF-8".to_string())?;
+        match flag {
+            "--project" => {
+                if project.is_some() {
+                    return Err("--project may be provided only once".to_string());
+                }
+                index += 1;
+                let value = args
+                    .get(index)
+                    .and_then(|value| value.to_str())
+                    .ok_or_else(|| "--project requires a value".to_string())?;
+                if value.is_empty() {
+                    return Err("--project must not be empty".to_string());
+                }
+                project = Some(value.to_string());
+            }
+            "--all" => {
+                if all {
+                    return Err("--all may be provided only once".to_string());
+                }
+                all = true;
+            }
+            _ => return Err(format!("unknown session list argument '{flag}'")),
+        }
+        index += 1;
+    }
+    if all && project.is_some() {
+        return Err("--all cannot be combined with --project".to_string());
+    }
+    Ok(SessionControlCliInput::List { project, all })
+}
+
+fn parse_session_message_cli(args: &[OsString]) -> Result<SessionControlCliInput, String> {
+    let mut session_id = None;
+    let mut prompt = None;
+    let mut index = 3;
+    while index < args.len() {
+        let flag = args[index]
+            .to_str()
+            .ok_or_else(|| "arguments must be valid UTF-8".to_string())?;
+        match flag {
+            "--session" => {
+                if session_id.is_some() {
+                    return Err("--session may be provided only once".to_string());
+                }
+                index += 1;
+                let value = args
+                    .get(index)
+                    .and_then(|value| value.to_str())
+                    .ok_or_else(|| "--session requires a value".to_string())?;
+                if value.is_empty() {
+                    return Err("--session must not be empty".to_string());
+                }
+                session_id = Some(value.to_string());
+            }
+            "--prompt" => {
+                if prompt.is_some() {
+                    return Err("provide exactly one of --prompt or --prompt-stdin".to_string());
+                }
+                index += 1;
+                let value = args
+                    .get(index)
+                    .and_then(|value| value.to_str())
+                    .ok_or_else(|| "--prompt requires a UTF-8 value".to_string())?;
+                prompt = Some(CliPrompt::Value(value.to_string()));
+            }
+            "--prompt-stdin" => {
+                if prompt.is_some() {
+                    return Err("provide exactly one of --prompt or --prompt-stdin".to_string());
+                }
+                prompt = Some(CliPrompt::Stdin);
+            }
+            _ => return Err(format!("unknown session message argument '{flag}'")),
+        }
+        index += 1;
+    }
+    Ok(SessionControlCliInput::Message {
+        session_id: session_id.ok_or_else(session_message_usage)?,
+        prompt: prompt.ok_or_else(session_message_usage)?,
+    })
+}
+
 fn session_launch_usage() -> String {
     "usage: argmax session launch [--project VALUE] [--worktree] (--prompt VALUE | --prompt-stdin)"
         .to_string()
@@ -1162,8 +1462,12 @@ fn session_move_usage() -> String {
     "usage: argmax session move --project VALUE [--worktree] [--keep-source]".to_string()
 }
 
+fn session_message_usage() -> String {
+    "usage: argmax session message --session VALUE (--prompt VALUE | --prompt-stdin)".to_string()
+}
+
 fn session_control_usage() -> String {
-    "usage: argmax session <launch|move> [arguments]".to_string()
+    "usage: argmax session <launch|move|list|message> [arguments]".to_string()
 }
 
 fn run_session_control_cli(input: SessionControlCliInput) -> i32 {
@@ -1211,7 +1515,7 @@ fn run_session_control_cli_unix(
             format!("{SESSION_LAUNCH_TOKEN_ENV} is not set. Run this command inside Argmax."),
         )
     })?;
-    let (action, project, prompt, worktree, keep_source) = match input {
+    let (action, project, prompt, worktree, keep_source, session_id, all) = match input {
         SessionControlCliInput::Launch {
             project,
             prompt,
@@ -1225,6 +1529,8 @@ fn run_session_control_cli_unix(
             }),
             worktree,
             false,
+            None,
+            false,
         ),
         SessionControlCliInput::Move {
             project,
@@ -1236,6 +1542,23 @@ fn run_session_control_cli_unix(
             None,
             worktree,
             keep_source,
+            None,
+            false,
+        ),
+        SessionControlCliInput::List { project, all } => {
+            (SessionControlAction::List, project, None, false, false, None, all)
+        }
+        SessionControlCliInput::Message { session_id, prompt } => (
+            SessionControlAction::Message,
+            None,
+            Some(match prompt {
+                CliPrompt::Value(value) => value,
+                CliPrompt::Stdin => read_bounded_stdin()?,
+            }),
+            false,
+            false,
+            Some(session_id),
+            false,
         ),
     };
     let request = SessionLaunchRequest {
@@ -1246,6 +1569,8 @@ fn run_session_control_cli_unix(
         prompt,
         worktree,
         keep_source,
+        session_id,
+        all,
     };
     let mut encoded = serde_json::to_vec(&request).map_err(|error| {
         protocol_error(
@@ -1310,6 +1635,10 @@ fn run_session_control_cli_unix(
                 && response.project_id.is_some()
                 && response.project_name.is_some()
                 && response.scheduled == Some(true)
+        }
+        SessionControlAction::List => response.sessions.is_some(),
+        SessionControlAction::Message => {
+            response.session_id.is_some() && response.queued.is_some()
         }
     };
     if !complete || response.error.is_some() {
@@ -1631,6 +1960,80 @@ mod tests {
         assert!(prompt.starts_with("Argmax session controls"));
         assert!(prompt.ends_with("\n\nDo the work"));
         assert!(prompt.contains("not subagents"));
-        assert!(prompt.contains("Never move a chat or launch a session automatically."));
+        assert!(prompt
+            .contains("Never launch, move, list, or message sessions on your own initiative"));
+    }
+
+    #[test]
+    fn cli_parser_accepts_list_flags_and_rejects_all_with_project() {
+        let args = ["argmax", "session", "list", "--project", "Argmax"].map(OsString::from);
+        assert_eq!(
+            parse_session_control_cli(&args).unwrap(),
+            SessionControlCliInput::List {
+                project: Some("Argmax".to_string()),
+                all: false,
+            }
+        );
+
+        let all_args = ["argmax", "session", "list", "--all"].map(OsString::from);
+        assert_eq!(
+            parse_session_control_cli(&all_args).unwrap(),
+            SessionControlCliInput::List {
+                project: None,
+                all: true,
+            }
+        );
+
+        let bare_args = ["argmax", "session", "list"].map(OsString::from);
+        assert_eq!(
+            parse_session_control_cli(&bare_args).unwrap(),
+            SessionControlCliInput::List {
+                project: None,
+                all: false,
+            }
+        );
+
+        let conflicting = ["argmax", "session", "list", "--all", "--project", "Argmax"]
+            .map(OsString::from);
+        assert!(parse_session_control_cli(&conflicting).is_err());
+    }
+
+    #[test]
+    fn cli_parser_accepts_message_flags_and_requires_session_and_prompt() {
+        let args = [
+            "argmax",
+            "session",
+            "message",
+            "--session",
+            "abc123",
+            "--prompt",
+            "Ping",
+        ]
+        .map(OsString::from);
+        assert_eq!(
+            parse_session_control_cli(&args).unwrap(),
+            SessionControlCliInput::Message {
+                session_id: "abc123".to_string(),
+                prompt: CliPrompt::Value("Ping".to_string()),
+            }
+        );
+
+        for args in [
+            vec!["argmax", "session", "message", "--prompt", "Ping"],
+            vec!["argmax", "session", "message", "--session", "abc123"],
+            vec![
+                "argmax",
+                "session",
+                "message",
+                "--session",
+                "abc123",
+                "--prompt",
+                "one",
+                "--prompt-stdin",
+            ],
+        ] {
+            let args = args.into_iter().map(OsString::from).collect::<Vec<_>>();
+            assert!(parse_session_control_cli(&args).is_err());
+        }
     }
 }

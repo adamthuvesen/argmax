@@ -152,13 +152,18 @@ async fn is_inside_any_root(canonical: &Path, roots: &[PathBuf]) -> bool {
     false
 }
 
+/// Extensions this handler will serve. Mirrored by the Files panel's own list
+/// in `src/renderer/components/FilePreview.tsx`; widening one without the
+/// other just means a file the panel offers and the handler refuses (or the
+/// reverse). SVG is safe here because every consumer draws it in an `<img>`,
+/// where scripts inside the document don't run.
 fn is_whitelisted_image(path: &Path) -> bool {
     matches!(
         path.extension()
             .and_then(|ext| ext.to_str())
             .map(|ext| ext.to_ascii_lowercase())
             .as_deref(),
-        Some("png" | "jpg" | "jpeg" | "gif" | "webp")
+        Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "avif" | "bmp" | "ico")
     )
 }
 
@@ -233,6 +238,20 @@ mod tests {
         let roots = vec![root.path().to_path_buf()];
         let response = serve_workspace_asset(&roots, &url_for(&traversal)).await;
         assert_eq!(response.status, AssetStatus::Forbidden);
+    }
+
+    #[tokio::test]
+    async fn serves_an_svg_as_an_image() {
+        // The Files panel renders repo SVGs (icons, mascot art) as pictures,
+        // which only works if the handler serves them with an image type.
+        let root = TempDir::new().unwrap();
+        let file = root.path().join("icon.svg");
+        std::fs::write(&file, b"<svg/>").unwrap();
+        let canonical = std::fs::canonicalize(&file).unwrap();
+        let roots = vec![root.path().to_path_buf()];
+        let response = serve_workspace_asset(&roots, &url_for(&canonical)).await;
+        assert_eq!(response.status, AssetStatus::Ok);
+        assert_eq!(response.content_type, Some("image/svg+xml"));
     }
 
     #[tokio::test]

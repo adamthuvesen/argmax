@@ -198,6 +198,65 @@ describe("useSmartFollowScroll", () => {
     expect(state.scrollTop).toBe(799.5);
   });
 
+  it("detaches when streamed growth lands between the gesture and its scroll event", () => {
+    const state: ScrollBoxState = { scrollHeight: 1000, clientHeight: 200, scrollTop: 800 };
+    const el = makeScrollBox(state);
+    const { result, rerender } = renderHook(
+      ({ items }: { items: readonly string[] }) =>
+        useSmartFollowScroll("session-a", items, false),
+      { initialProps: { items: ["turn"] } }
+    );
+    attachListRef(result.current.conversationListRef, el);
+
+    act(() => {
+      result.current.handleUserScrollIntent();
+      state.scrollHeight = 1100;
+      rerender({ items: ["turn", "streamed-chunk"] });
+    });
+    expect(state.scrollTop).toBe(900);
+
+    act(() => {
+      state.scrollTop = 860;
+      result.current.handleScroll();
+    });
+
+    expect(state.scrollTop).toBe(860);
+    expect(result.current.showScrollToBottom).toBe(false);
+  });
+
+  it("keeps a sub-pixel gesture alive through a reconcile that writes nothing", () => {
+    const observers = installResizeObservers();
+    const state: ScrollBoxState = { scrollHeight: 1000, clientHeight: 200, scrollTop: 800 };
+    const el = makeScrollBox(state);
+    const turn = document.createElement("article");
+    el.appendChild(turn);
+    const { result } = renderHook(() => {
+      const api = useSmartFollowScroll("session-a", ["turn"], false);
+      attachListRef(api.conversationListRef, el);
+      return api;
+    });
+    const childObserver = observers.find((observer) => observer.targets.includes(turn));
+
+    act(() => {
+      result.current.handleUserScrollIntent();
+      state.scrollTop = 799.75;
+      // Within the write tolerance, so this pass leaves the viewport alone and
+      // has no movement of its own to rebase the gesture against.
+      childObserver?.callback([], {} as ResizeObserver);
+      result.current.handleScroll();
+    });
+
+    expect(state.scrollTop).toBe(799.75);
+
+    act(() => {
+      state.scrollHeight = 1200;
+      childObserver?.callback([], {} as ResizeObserver);
+    });
+
+    expect(state.scrollTop).toBe(799.75);
+    expect(result.current.showScrollToBottom).toBe(true);
+  });
+
   it("resumes following when the reader clicks scroll to latest", () => {
     const state: ScrollBoxState = { scrollHeight: 1200, clientHeight: 200, scrollTop: 1000 };
     const el = makeScrollBox(state);
@@ -328,6 +387,45 @@ describe("useSmartFollowScroll", () => {
 
     expect(state.scrollTop).toBe(900);
     expect(result.current.showScrollToBottom).toBe(false);
+  });
+
+  it("stays detached when collapsing content drags the viewport to the bottom", () => {
+    const observers = installResizeObservers();
+    const state: ScrollBoxState = { scrollHeight: 2400, clientHeight: 800, scrollTop: 1600 };
+    const el = makeScrollBox(state);
+    const turn = document.createElement("article");
+    el.appendChild(turn);
+    const { result } = renderHook(() => {
+      const api = useSmartFollowScroll("session-a", ["turn"], false);
+      attachListRef(api.conversationListRef, el);
+      return api;
+    });
+    const childObserver = observers.find((observer) => observer.targets.includes(turn));
+
+    act(() => {
+      result.current.handleUserScrollIntent();
+      state.scrollTop = 1000;
+      result.current.handleScroll();
+    });
+    expect(result.current.showScrollToBottom).toBe(true);
+
+    // A finished tool row collapses: the document loses more height than the
+    // reader had below them, so the browser parks them at the new bottom.
+    act(() => {
+      state.scrollHeight = 1400;
+      state.scrollTop = 600;
+      childObserver?.callback([], {} as ResizeObserver);
+      result.current.handleScroll();
+    });
+
+    // The spacer after the latest user message grows back into the freed room.
+    act(() => {
+      state.scrollHeight = 2400;
+      childObserver?.callback([], {} as ResizeObserver);
+    });
+
+    expect(state.scrollTop).toBe(600);
+    expect(result.current.showScrollToBottom).toBe(true);
   });
 
   it("snaps an asynchronously loaded first transcript batch to the bottom", () => {

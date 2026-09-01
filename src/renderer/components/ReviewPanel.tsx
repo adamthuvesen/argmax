@@ -1,4 +1,4 @@
-import { ChevronDown, Folder, FolderOpen, GitBranch, PanelRightClose, X } from "lucide-react";
+import { Bot, ChevronDown, Folder, FolderOpen, GitBranch, PanelRightClose, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -13,9 +13,13 @@ import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscap
 import {
   REVIEW_SCOPE_LABELS,
   type ReviewChangesScope,
+  type ReviewPanelMode,
   type ReviewState,
   type WorkspaceFilesState
 } from "../hooks/useReviewState.js";
+import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
+import type { ToolCall } from "../lib/toolCalls.js";
+import { AgentsView } from "./AgentsView.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
@@ -29,6 +33,16 @@ import { WorkspaceTree } from "./WorkspaceTree.js";
 import { FileIcon } from "@react-symbols/icons/utils";
 import { registerReviewFileTabCloseHandler } from "../lib/reviewFilePanel.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
+
+/** What the Agents view needs from the pane that owns the panel. */
+export interface AgentsPanelContext {
+  events: TimelineEvent[];
+  parentSession: SessionSummary | null;
+  workspace: WorkspaceSummary | null;
+  onLoadAgentEvents?: (sessionId: string, parentToolUseId: string) => Promise<void>;
+  onLoadSessionEvents?: (sessionId: string) => Promise<void>;
+  onOpenAgent?: (tool: ToolCall) => void;
+}
 
 function fileBasename(path: string): string {
   const slash = path.lastIndexOf("/");
@@ -236,11 +250,15 @@ function countLines(text: string): number {
 }
 
 export function ReviewPanel({
+  agents,
   isFocused = true,
   onAddReviewComment,
   onResizePanelMouseDown,
   review
 }: {
+  /** Present only on a pane with a session behind it. Without it the panel has
+   *  no Agents tab — the launcher has no transcript to spawn subagents from. */
+  agents?: AgentsPanelContext;
   /** False for a panel in an unfocused pane: its document-level ⌘W must not
    *  close a tab in a panel the user isn't looking at. */
   isFocused?: boolean;
@@ -250,6 +268,11 @@ export function ReviewPanel({
   onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
   review: ReviewState;
 }): JSX.Element {
+  // The Agents tab only exists with `agents`, so a mode that outlived a source
+  // switch (session pane -> launcher) resolves back to Changes.
+  const mode: ReviewPanelMode = review.mode === "agents" && !agents ? "changes" : review.mode;
+  const isChanges = mode === "changes";
+  const isAgents = mode === "agents";
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
@@ -282,10 +305,25 @@ export function ReviewPanel({
     maxLeftColumnWidth(panelWidth)
   );
 
+  // ⌘W closes the active tab whichever strip owns it, so a subagent tab
+  // behaves like the file tab beside it.
+  const closeActiveAgentTab = useCallback((): void => {
+    const activeToolUseId = review.subagents.activeToolUseId;
+    if (activeToolUseId) review.subagents.closeTab(activeToolUseId);
+  }, [review.subagents]);
+
   useEffect(() => {
     if (!isFocused) {
       registerReviewFileTabCloseHandler(null);
       return undefined;
+    }
+    if (isAgents) {
+      if (!review.subagents.activeToolUseId) {
+        registerReviewFileTabCloseHandler(null);
+        return undefined;
+      }
+      registerReviewFileTabCloseHandler(closeActiveAgentTab);
+      return () => registerReviewFileTabCloseHandler(null);
     }
     if (review.mode !== "files") {
       registerReviewFileTabCloseHandler(null);
@@ -302,7 +340,7 @@ export function ReviewPanel({
     };
     registerReviewFileTabCloseHandler(closeActiveTab);
     return () => registerReviewFileTabCloseHandler(null);
-  }, [isFocused, review.mode, review.workspaceFiles]);
+  }, [closeActiveAgentTab, isAgents, isFocused, review.mode, review.subagents.activeToolUseId, review.workspaceFiles]);
 
   useEffect(() => {
     if (!isFocused) return undefined;
@@ -371,7 +409,6 @@ export function ReviewPanel({
     dragCleanupRef.current = cleanup;
   };
 
-  const isChanges = review.mode === "changes";
   const summaryStrip = isChanges && review.files.length > 0
     ? `${review.files.length} file${review.files.length === 1 ? "" : "s"} · +${totals.additions} −${totals.deletions}`
     : null;
@@ -454,13 +491,29 @@ export function ReviewPanel({
               role="tab"
               type="button"
               aria-label="Files"
-              aria-selected={!isChanges}
+              aria-selected={mode === "files"}
               title="Files"
               onClick={() => review.setMode("files")}
             >
               <Folder size={14} aria-hidden="true" />
               <span className="review-mode-tab-label">Files</span>
             </button>
+            {agents ? (
+              <button
+                role="tab"
+                type="button"
+                aria-label="Agents"
+                aria-selected={isAgents}
+                title="Agents"
+                onClick={() => review.setMode("agents")}
+              >
+                <Bot size={14} aria-hidden="true" />
+                <span className="review-mode-tab-label">Agents</span>
+                {review.subagents.toolUseIds.length > 1 ? (
+                  <span className="review-mode-tab-count">{review.subagents.toolUseIds.length}</span>
+                ) : null}
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="review-toolbar-actions">
@@ -471,10 +524,29 @@ export function ReviewPanel({
         </div>
       </div>
       <div
-        className={isChanges ? "review-body review-body-changes" : "review-body"}
+        className={
+          isChanges
+            ? "review-body review-body-changes"
+            : isAgents
+              ? "review-body review-body-agents"
+              : "review-body"
+        }
         onKeyDown={handleFilesModeKeyShortcut}
       >
-        {isChanges ? null : (
+        {isAgents && agents ? (
+          <AgentsView
+            events={agents.events}
+            isFocused={isFocused}
+            parentSession={agents.parentSession}
+            subagents={review.subagents}
+            workspace={agents.workspace}
+            onLoadAgentEvents={agents.onLoadAgentEvents}
+            onLoadSessionEvents={agents.onLoadSessionEvents}
+            onOpenAgent={agents.onOpenAgent}
+            onOpenFile={review.openInFilesView}
+          />
+        ) : null}
+        {isChanges || isAgents ? null : (
           <>
             <div className="review-list-col" style={{ width: effectiveLeftColumnWidth }}>
               <WorkspaceTree state={files} toolbar={{ onRefresh: files.refreshList }} />
@@ -488,6 +560,7 @@ export function ReviewPanel({
             />
           </>
         )}
+        {isAgents ? null : (
         <div className={isChanges ? "review-diff" : "review-diff review-diff-files"}>
           {isChanges ? (
             <>
@@ -569,6 +642,7 @@ export function ReviewPanel({
             </>
           )}
         </div>
+        )}
       </div>
       {summaryStrip ? (
         <footer className="review-footer" aria-hidden="true">
@@ -576,7 +650,7 @@ export function ReviewPanel({
           <span className="review-footer-text">{summaryStrip}</span>
         </footer>
       ) : null}
-      {isChanges ? null : (
+      {isChanges || isAgents ? null : (
         <footer className="review-status-bar" aria-label="File status">
           <span className="review-status-path" title={files.selectedPath ?? sourceLabel}>
             {files.selectedPath ?? entryCountLabel}

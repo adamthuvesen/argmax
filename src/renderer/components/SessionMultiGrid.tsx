@@ -27,13 +27,11 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
-import type { AgentPaneRequest, GridCell, GridCoord, GridState, SplitPosition } from "../lib/gridState.js";
-import { isAgentCell, isSessionCell, MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
+import type { GridCell, GridCoord, GridState, SplitPosition } from "../lib/gridState.js";
+import { isSessionCell, MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
-import type { ToolCall } from "../lib/toolCalls.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
-import { AgentTabsPane } from "./AgentTabsPane.js";
 import { SessionPane } from "./SessionPane.js";
 
 /** Minimum pane width for side-by-side grid splits and divider drags. */
@@ -50,11 +48,6 @@ function clampNumber(value: number, min: number, max: number): number {
 
 function gridCellKey(cell: GridCell, rowIndex: number, colIndex: number): string {
   if (cell.kind === "launcher") return `launcher-${cell.projectId}-${rowIndex}-${colIndex}`;
-  if (cell.kind === "agent") {
-    // Key on the parent session, never the active tab — switching or adding a
-    // tab must not remount the cell (which would restart every pane's loads).
-    return `agent-${cell.parentSessionId}-${rowIndex}-${colIndex}`;
-  }
   return `${cell.sessionId}-${rowIndex}-${colIndex}`;
 }
 
@@ -96,7 +89,6 @@ interface SessionMultiGridProps {
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
   onLoadAgentEvents: (sessionId: string, parentToolUseId: string) => Promise<void>;
-  onOpenAgentPane: (request: AgentPaneRequest) => void;
   /** Opens a launcher cell beside the focused pane. */
   onNewSession: (seed?: NewSessionSeed) => void;
   /** Launches a repo-less side chat seeded with the given first message. */
@@ -108,8 +100,6 @@ interface SessionMultiGridProps {
   defaultIde?: IdeId | null;
   detectedIdes?: DetectedIde[];
   onOpenWorkspaceInIde?: (workspaceId: string, ide: IdeId) => void;
-  onActivateAgentTab: (parentSessionId: string, parentToolUseId: string) => void;
-  onCloseAgentTab: (parentSessionId: string, parentToolUseId: string) => void;
   onWorkspaceMinWidthChange?: (width: number) => void;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onSendSessionInput: (
@@ -160,17 +150,14 @@ export function SessionMultiGrid({
   onClosePane,
   onDropWorkspace,
   onFastModeEnabledChange,
-  onLoadSessionEvents,
   onLoadAgentEvents,
-  onOpenAgentPane,
+  onLoadSessionEvents,
   onNewSession,
   onOpenSideChat,
   onOpenDetails,
   defaultIde = null,
   detectedIdes = [],
   onOpenWorkspaceInIde,
-  onActivateAgentTab,
-  onCloseAgentTab,
   onWorkspaceMinWidthChange,
   onResolveApproval,
   onSendSessionInput,
@@ -365,27 +352,14 @@ export function SessionMultiGrid({
           >
             {row.map((cell, c) => {
               const isLauncher = cell.kind === "launcher";
-              const isAgent = isAgentCell(cell);
               const session = isSessionCell(cell) ? sessionsById.get(cell.sessionId) ?? null : null;
-              const parentSession = isAgent ? sessionsById.get(cell.parentSessionId) ?? null : null;
               const workspace = !isLauncher ? workspacesById.get(cell.workspaceId) ?? null : null;
               const project = workspace ? projectsById.get(workspace.projectId) ?? null : null;
               const launcherProject = isLauncher ? projectsById.get(cell.projectId) ?? null : null;
               const focused = grid.focused?.row === r && grid.focused.col === c;
               const paneLabel = isLauncher
                 ? `New session${launcherProject ? ` for ${launcherProject.name}` : ""}`
-                : isAgent
-                  ? `Agent activity${workspace ? ` for ${workspace.taskLabel}` : ""}`
-                  : workspace?.taskLabel || workspace?.branch || "Session pane";
-              const openChildAgent = (tool: ToolCall): void => {
-                const baseSession = isAgent ? parentSession : session;
-                if (!baseSession || !workspace) return;
-                onOpenAgentPane({
-                  parentSessionId: baseSession.id,
-                  workspaceId: workspace.id,
-                  parentToolUseId: tool.toolUseId
-                });
-              };
+                : workspace?.taskLabel || workspace?.branch || "Session pane";
               const allowedDropPositions: EdgeDropPosition[] = [
                 ...(canAddGridCell && grid.rows.length < MAX_ROWS ? (["above", "below"] as const) : []),
                 ...(canAddGridCell && row.length < rowColumnCap ? (["left", "right"] as const) : [])
@@ -403,24 +377,6 @@ export function SessionMultiGrid({
                   >
                     {isLauncher ? (
                       renderLauncher(launcherProject)
-                    ) : isAgent ? (
-                      <AgentTabsPane
-                        cell={cell}
-                        events={events}
-                        isFocused={focused}
-                        parentSession={parentSession}
-                        workspace={workspace}
-                        onLoadAgentEvents={onLoadAgentEvents}
-                        onLoadSessionEvents={onLoadSessionEvents}
-                        onOpenAgent={openChildAgent}
-                        onCloseCell={() => onClosePane({ row: r, col: c })}
-                        onActivateTab={(parentToolUseId) =>
-                          onActivateAgentTab(cell.parentSessionId, parentToolUseId)
-                        }
-                        onCloseTab={(parentToolUseId) =>
-                          onCloseAgentTab(cell.parentSessionId, parentToolUseId)
-                        }
-                      />
                     ) : (
                       <SessionPane
                         approvals={approvals}
@@ -436,6 +392,7 @@ export function SessionMultiGrid({
                         isFocused={focused}
                         onClose={() => onClosePane({ row: r, col: c })}
                         onFastModeEnabledChange={onFastModeEnabledChange}
+                        onLoadAgentEvents={onLoadAgentEvents}
                         onLoadSessionEvents={onLoadSessionEvents}
                         onNewSession={onNewSession}
                         onOpenSideChat={onOpenSideChat}
@@ -443,7 +400,6 @@ export function SessionMultiGrid({
                         defaultIde={defaultIde}
                         detectedIdes={detectedIdes}
                         onOpenWorkspaceInIde={onOpenWorkspaceInIde}
-                        onOpenAgent={openChildAgent}
                         onRightPanelWidthChange={(width) => setCellRightPanelWidth(cellKey, width)}
                         onResolveApproval={onResolveApproval}
                         onRunCheck={onRunCheck}

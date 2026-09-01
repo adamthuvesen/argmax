@@ -5,6 +5,7 @@ import type { ReviewSourceKind } from "../lib/reviewIpc.js";
 import { errorMessage } from "../../shared/error.js";
 import type {
   AsyncState,
+  ReviewPanelMode,
   WorkspaceFileDirtyClosePrompt,
   WorkspaceFileSaveState,
   WorkspaceFileTab,
@@ -49,7 +50,7 @@ export function useFilePreview(args: {
   sourceKind: ReviewSourceKind | null;
   dispatch: ReviewIpcDispatch | null;
   canEdit: boolean;
-  mode: "changes" | "files";
+  mode: ReviewPanelMode;
   isPanelOpen: boolean;
   rootPath: string | null;
 }): WorkspaceFilesState & { resetForSourceChange: () => void } {

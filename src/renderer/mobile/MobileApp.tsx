@@ -13,7 +13,11 @@ import { useDashboardSession } from "../hooks/useDashboardSession.js";
 import { useSessionCommands } from "../hooks/useSessionCommands.js";
 import { importChunk } from "../lib/importChunk.js";
 import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
-import { computeWorkspaceAttention, type PriorityAttention } from "../lib/priority.js";
+import {
+  computePriorityEntries,
+  computeWorkspaceAttention,
+  type PriorityAttention
+} from "../lib/priority.js";
 import {
   applyThemeToDocument,
   readStoredTheme,
@@ -41,11 +45,12 @@ const MobileReviewScreen = lazy(() =>
   }))
 );
 
-const ATTENTION_LABEL: Record<PriorityAttention, string> = {
+// Spoken names for the row's leading marker, matching the desktop row's
+// title suffix. The marker replaces the old text chips: which kind of
+// attention a row has is the Priority section's job to say, not the row's.
+const AWAITING_LABEL: Record<"approval-needed" | "blocked", string> = {
   "approval-needed": "needs approval",
-  blocked: "waiting on you",
-  failed: "failed",
-  "review-ready": "review ready"
+  blocked: "waiting for input"
 };
 
 interface SessionListRow {
@@ -82,6 +87,10 @@ function MobileSessionRow({
 }): JSX.Element {
   const { workspace, session, attention } = row;
   const running = workspace.state === "running";
+  // Same precedence as the desktop row's status marker: an input-starved
+  // session outranks a running one, since the whole point of the row is that
+  // the agent is stalled on you and approvals arrive mid-turn.
+  const awaiting = attention === "approval-needed" || attention === "blocked" ? attention : null;
   const age = relativeAge(session?.lastActivityAt ?? workspace.lastActivityAt, nowMs);
   return (
     // The actions button is a sibling of the open button, not nested inside
@@ -96,15 +105,18 @@ function MobileSessionRow({
       >
         <span className="mobile-session-text">
           <span className="mobile-session-title-line">
-            {running ? <span className="mobile-session-live" aria-label="running" /> : null}
+            {awaiting ? (
+              <span
+                className="mobile-session-marker"
+                data-attention={awaiting}
+                aria-label={AWAITING_LABEL[awaiting]}
+              />
+            ) : running ? (
+              <span className="mobile-session-marker" data-running aria-label="running" />
+            ) : null}
             <span className="mobile-session-title">{workspace.taskLabel}</span>
           </span>
           <span className="mobile-session-subtitle">
-            {attention ? (
-              <span className="mobile-session-chip" data-attention={attention}>
-                {ATTENTION_LABEL[attention]}
-              </span>
-            ) : null}
             {projectName ? <span className="mobile-session-project">{projectName}</span> : null}
           </span>
         </span>
@@ -256,24 +268,44 @@ export function MobileApp(): JSX.Element {
     [snapshot.projects]
   );
 
-  // One flat list, newest activity first, pinned floated on top. Attention
-  // still marks rows with a chip; it just doesn't reorder them.
-  const { pinnedRows, activityRows } = useMemo(() => {
+  // Three sections, same shape and precedence as the desktop sidebar: Pinned
+  // on top, then Priority (working rows first, then the rest by last message),
+  // then everything else newest-activity first. A row lives in exactly one of
+  // them. Priority ages rows out 30 minutes after their last message, which
+  // the shared minute clock below is close enough to notice.
+  const { pinnedRows, priorityRows, activityRows } = useMemo(() => {
     const sessionsByWorkspace = new Map(snapshot.sessions.map((session) => [session.workspaceId, session]));
     const attentionByWorkspace = computeWorkspaceAttention(snapshot.workspaces, snapshot.sessions, nowMs);
-    const rows: SessionListRow[] = snapshot.workspaces
-      .filter((workspace) => workspace.state !== "archived" && workspace.kind !== "popup")
-      .map((workspace) => ({
-        workspace,
-        session: sessionsByWorkspace.get(workspace.id) ?? null,
-        attention: attentionByWorkspace.get(workspace.id)?.attention ?? null
-      }));
+    const visible = snapshot.workspaces.filter(
+      (workspace) => workspace.state !== "archived" && workspace.kind !== "popup"
+    );
+    const rowsById = new Map<string, SessionListRow>(
+      visible.map((workspace) => [
+        workspace.id,
+        {
+          workspace,
+          session: sessionsByWorkspace.get(workspace.id) ?? null,
+          attention: attentionByWorkspace.get(workspace.id)?.attention ?? null
+        }
+      ])
+    );
+    // Side chats are conversational by nature and never escalate into triage,
+    // the same rule the desktop sidebar applies.
+    const priorityRows = computePriorityEntries(
+      visible.filter((workspace) => workspace.kind === "git"),
+      snapshot.sessions,
+      nowMs
+    ).flatMap((entry) => rowsById.get(entry.workspace.id) ?? []);
+    const promoted = new Set(priorityRows.map((row) => row.workspace.id));
     const activityOf = (row: SessionListRow): string =>
       row.session?.lastActivityAt ?? row.workspace.lastActivityAt ?? "";
-    rows.sort((a, b) => activityOf(b).localeCompare(activityOf(a)));
+    const rest = [...rowsById.values()]
+      .filter((row) => !promoted.has(row.workspace.id))
+      .sort((a, b) => activityOf(b).localeCompare(activityOf(a)));
     return {
-      pinnedRows: rows.filter((row) => row.workspace.pinned),
-      activityRows: rows.filter((row) => !row.workspace.pinned)
+      pinnedRows: rest.filter((row) => row.workspace.pinned),
+      priorityRows,
+      activityRows: rest.filter((row) => !row.workspace.pinned)
     };
   }, [nowMs, snapshot.sessions, snapshot.workspaces]);
 
@@ -464,7 +496,7 @@ export function MobileApp(): JSX.Element {
   ]);
   useMobileBackNavigation(screenDepth, goBackOneScreen);
 
-  const empty = pinnedRows.length === 0 && activityRows.length === 0;
+  const empty = pinnedRows.length === 0 && priorityRows.length === 0 && activityRows.length === 0;
   // Slim enough to sit under either header without displacing the screen it
   // belongs to; the list and the conversation stay usable while it shows.
   const connectionBanner =
@@ -592,7 +624,9 @@ export function MobileApp(): JSX.Element {
             </button>
           </header>
           {connectionBanner}
-          <div className="mobile-list-scroll">
+          {/* The scroller is the list landmark: sections come and go with
+              triage, so this is the one stable handle on "the sessions". */}
+          <div className="mobile-list-scroll" role="region" aria-label="Session list">
             {loadState === "error" ? (
               <div className="mobile-empty" role="alert">
                 <p>Could not reach Argmax.</p>
@@ -616,7 +650,15 @@ export function MobileApp(): JSX.Element {
                   onOpenActions={setActionsRow}
                 />
                 <SessionSection
-                  label={pinnedRows.length > 0 ? "Sessions" : "All sessions"}
+                  label="Priority"
+                  rows={priorityRows}
+                  projectNamesById={projectNamesById}
+                  nowMs={nowMs}
+                  onOpen={openWorkspaceChat}
+                  onOpenActions={setActionsRow}
+                />
+                <SessionSection
+                  label={pinnedRows.length > 0 || priorityRows.length > 0 ? "Sessions" : "All sessions"}
                   rows={activityRows}
                   projectNamesById={projectNamesById}
                   nowMs={nowMs}

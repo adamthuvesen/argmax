@@ -153,5 +153,5 @@ _Avoid_: API, IPC layer
 Importing sessions that were started in a provider CLI directly, by reading that CLI's own transcript store. An **imported session** is one that arrived this way rather than being launched here.
 
 **Cell**:
-One pane in the session grid. A **session cell** shows a session, a **launcher cell** composes a new one and owns its own project selection, and an **agent cell** shows a subagent's activity and dies with the parent session's pane.
+One pane in the session grid. A **session cell** shows a session and a **launcher cell** composes a new one and owns its own project selection. Subagents are not cells: they open as tabs in the session's review panel (its **Agents view**).
 _Avoid_: Pane, tile, window

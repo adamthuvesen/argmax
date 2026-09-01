@@ -84,6 +84,7 @@ export function SessionPane({
   isFocused = true,
   onClose,
   onFastModeEnabledChange,
+  onLoadAgentEvents,
   onLoadSessionEvents,
   onNewSession,
   onOpenFile,
@@ -98,7 +99,6 @@ export function SessionPane({
   onSendSessionInput,
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
-  onOpenAgent,
   pendingMessages,
   onTerminateSession,
   onClearSession,
@@ -129,6 +129,8 @@ export function SessionPane({
   onFastModeEnabledChange?: (enabled: boolean) => void;
   /** Called on mount and on session.id change to backfill timeline events for this pane's session. */
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
+  /** Backfills one subagent's child rows, for the review panel's Agents view. */
+  onLoadAgentEvents?: (sessionId: string, parentToolUseId: string) => Promise<void>;
   /** Opens a launcher pane beside this one. Absent outside the grid. */
   onNewSession?: (seed?: NewSessionSeed) => void;
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
@@ -142,7 +144,6 @@ export function SessionPane({
   onRightPanelWidthChange?: (width: number | null) => void;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
-  onOpenAgent?: (tool: ToolCall) => void;
   onSendSessionInput: (
     sessionId: string,
     input: string,
@@ -299,6 +300,17 @@ export function SessionPane({
       onRightPanelWidthChangeRef.current?.(null);
     },
     []
+  );
+
+  // A launch row in the transcript opens the subagent in this pane's review
+  // panel — the same dock that holds Changes and Files, so delegated work reads
+  // beside the work it came from instead of taking a column of the grid.
+  const openAgentInPanel = reviewState.openAgent;
+  const handleOpenAgent = useCallback(
+    (tool: ToolCall): void => {
+      openAgentInPanel(tool.toolUseId);
+    },
+    [openAgentInPanel]
   );
 
   const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
@@ -584,7 +596,7 @@ export function SessionPane({
           onForkSession={onForkSession}
           onRunCheck={onRunCheck}
           onOpenFile={handleOpenFile}
-          onOpenAgent={onOpenAgent}
+          onOpenAgent={handleOpenAgent}
           onToggleLog={toggleLog}
           isTerminalOpen={terminalOpen}
           onToggleTerminal={toggleTerminal}
@@ -674,6 +686,14 @@ export function SessionPane({
       {reviewState.isPanelOpen ? (
         <Suspense fallback={null}>
           <ReviewPanel
+            agents={{
+              events: visibleEvents,
+              parentSession: session,
+              workspace,
+              onLoadAgentEvents,
+              onLoadSessionEvents,
+              onOpenAgent: handleOpenAgent
+            }}
             review={reviewState}
             isFocused={isFocused}
             onAddReviewComment={session ? handleAddReviewComment : undefined}

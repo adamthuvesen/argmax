@@ -164,6 +164,78 @@ describe("FilePreview", () => {
     expect(src).toContain("logo.png");
   });
 
+  it("shows an image file instead of the binary message", () => {
+    render(
+      <FilePreview
+        state={makeState({
+          selectedPath: "docs/design/fox.png",
+          activeTabPath: "docs/design/fox.png",
+          rootPath: "/Users/me/repo",
+          preview: { kind: "skipped", reason: "binary", size: 4096 },
+          buffer: null
+        })}
+      />
+    );
+    const img = screen.getByRole("img", { name: "docs/design/fox.png" });
+    expect(img.getAttribute("src")).toBe(
+      `${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/Users/me/repo/docs/design/fox.png`
+    );
+    expect(screen.queryByText(/Binary file/)).not.toBeInTheDocument();
+    expect(screen.getByText("4.0 KB")).toBeInTheDocument();
+  });
+
+  it("shows an image that was skipped for size, and toggles it to actual size", () => {
+    render(
+      <FilePreview
+        state={makeState({
+          selectedPath: "sheet.png",
+          activeTabPath: "sheet.png",
+          preview: { kind: "skipped", reason: "too-large", size: 4_000_000 },
+          buffer: null
+        })}
+      />
+    );
+    expect(screen.queryByText(/File too large/)).not.toBeInTheDocument();
+    const frame = screen.getByLabelText("View image at actual size");
+    fireEvent.click(frame);
+    expect(screen.getByLabelText("Fit image to the panel")).toBeInTheDocument();
+  });
+
+  it("keeps the not-a-regular-file message for an image path that is a symlink", () => {
+    render(
+      <FilePreview
+        state={makeState({
+          selectedPath: "link.png",
+          activeTabPath: "link.png",
+          preview: { kind: "skipped", reason: "not-a-file" },
+          buffer: null
+        })}
+      />
+    );
+    expect(screen.getByText("Not a regular file.")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("renders an SVG as a picture by default and swaps to its source on demand", () => {
+    render(
+      <FilePreview
+        state={makeState({
+          selectedPath: "assets/icon.svg",
+          activeTabPath: "assets/icon.svg",
+          rootPath: "/Users/me/repo",
+          preview: { kind: "text", content: "<svg/>", size: 6, mtimeMs: 1 },
+          buffer: "<svg/>"
+        })}
+      />
+    );
+    expect(screen.getByRole("img", { name: "assets/icon.svg" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Editor for assets/icon.svg")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("View SVG source"));
+    expect(screen.getByLabelText("Editor for assets/icon.svg")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "assets/icon.svg" })).not.toBeInTheDocument();
+  });
+
   it("caps every markdown preview block at one centered measure", () => {
     const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
     const css = readBundledCss(cssPath);

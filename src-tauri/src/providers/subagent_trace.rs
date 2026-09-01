@@ -79,6 +79,44 @@ struct TraceLine {
     timestamp: Option<String>,
 }
 
+/// What the child thread is running on, read from the rollout's `turn_context`
+/// records. A subagent picks its own model and effort, and nothing in the
+/// parent's stdout reports them, so the imported rows carry them instead.
+#[derive(Debug, Clone, Default)]
+struct CodexRunModel {
+    model_id: Option<String>,
+    reasoning_effort: Option<String>,
+}
+
+impl CodexRunModel {
+    fn absorb(&mut self, object: &Map<String, Value>) {
+        if object.get("type").and_then(Value::as_str) != Some("turn_context") {
+            return;
+        }
+        let Some(payload) = object.get("payload").and_then(Value::as_object) else {
+            return;
+        };
+        if let Some(model_id) = payload.get("model").and_then(Value::as_str) {
+            self.model_id = Some(model_id.to_string());
+        }
+        if let Some(effort) = payload.get("effort").and_then(Value::as_str) {
+            self.reasoning_effort = Some(effort.to_string());
+        }
+    }
+
+    fn stamp(&self, payload: &mut Map<String, Value>) {
+        if let Some(model_id) = &self.model_id {
+            payload.insert("agentModelId".to_string(), Value::String(model_id.clone()));
+        }
+        if let Some(effort) = &self.reasoning_effort {
+            payload.insert(
+                "agentReasoningEffort".to_string(),
+                Value::String(effort.clone()),
+            );
+        }
+    }
+}
+
 /// Size and modified time of a child trace file when it was last imported.
 type TraceFileStamp = (u64, SystemTime);
 
@@ -859,10 +897,14 @@ fn codex_child_events(
     let mut seen_messages = HashSet::new();
     let mut seen_thinking = HashSet::new();
     let mut sequence = 0;
+    let mut run_model = CodexRunModel::default();
     for line in lines {
         let Some(object) = line.value.as_object() else {
             continue;
         };
+        // A rollout opens with `turn_context` and repeats it per turn, so the
+        // model and effort are known before the first row they get stamped on.
+        run_model.absorb(object);
         let Some((kind, message, mut payload)) = codex_trace_event_payload(object) else {
             continue;
         };
@@ -874,6 +916,7 @@ fn codex_child_events(
         let event_sequence = sequence;
         sequence += 1;
         stamp_trace_payload(&mut payload, context, child_id, &source, event_sequence);
+        run_model.stamp(&mut payload);
         events.push(trace_event(
             context,
             child_id,
@@ -2009,6 +2052,54 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn codex_child_trace_stamps_the_model_and_effort_the_child_ran_with() {
+        // A subagent picks its own model and effort, and nothing in the
+        // parent's stdout reports them — only the child rollout's turn_context.
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        seed_session(&connection, "codex", "s1");
+        update_session_provider_conversation_id(&connection, "s1", "parent-thread")
+            .expect("provider id");
+        seed_parent_agent(
+            &connection,
+            "spawn-1",
+            json!({
+                "id": "spawn-1",
+                "name": "spawn_agent",
+                "input": { "prompt": "Inspect directory", "receiver_thread_ids": ["child-thread"] }
+            }),
+            json!({ "id": "spawn-1", "input": { "receiver_thread_ids": ["child-thread"] } }),
+        );
+        let home = TempDir::new().expect("home");
+        let trace_dir = home.path().join(".codex/sessions/2026/07/08");
+        fs::create_dir_all(&trace_dir).expect("trace dir");
+        fs::write(
+            trace_dir.join("rollout-2026-07-08T16-46-49-child-thread.jsonl"),
+            r#"{"timestamp":"2026-07-08T14:46:49.290Z","type":"session_meta","payload":{"id":"child-thread","parent_thread_id":"parent-thread"}}"#
+                .to_string()
+                + "\n"
+                + r#"{"timestamp":"2026-07-08T14:46:49.300Z","type":"turn_context","payload":{"model":"gpt-5.5","effort":"xhigh"}}"#
+                + "\n"
+                + r#"{"timestamp":"2026-07-08T14:46:58.064Z","type":"event_msg","payload":{"type":"agent_message","message":"Looking around."}}"#
+                + "\n",
+        )
+        .expect("write trace");
+
+        import_subagent_trace_events_from_home(&connection, "s1", "spawn-1", home.path())
+            .expect("import");
+
+        let events = list_session_agent_events(&connection, "s1", "spawn-1")
+            .expect("agent events")
+            .events;
+        let message = events
+            .iter()
+            .find(|event| event.r#type == "message.completed")
+            .expect("child message");
+        assert_eq!(message.payload["agentModelId"], "gpt-5.5");
+        assert_eq!(message.payload["agentReasoningEffort"], "xhigh");
     }
 
     #[test]

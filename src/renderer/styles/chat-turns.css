@@ -811,17 +811,19 @@
 }
 
 .tool-call-group-eyebrow {
-  display: inline-flex;
-  align-items: baseline;
-  /* The word space lives in the detail span. A flex gap is not a space
-     character, and against a digit it read as "Ran2 commands". */
-  gap: 0;
+  /* The word space lives in the detail span, so verb and detail must share one
+     line box: as flex items the detail's leading space starts a line and the
+     engine drops it, and the headline reads "Ran68 commands". Block box here,
+     inline children, and the truncation lives on this element. */
+  display: block;
   min-width: 0;
   flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tool-call-group-eyebrow-label {
-  flex: 0 0 auto;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
   font-weight: 400;
@@ -834,10 +836,6 @@
    shade, the same way a row's target steps back from its verb. One grammar:
    the verb says what happened, the dim remainder says to what. */
 .tool-call-group-eyebrow-detail {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
   color: var(--muted);
@@ -887,7 +885,6 @@
    span remounts on every text change so the fade replays — that replay is the
    "it's updating" affordance. Clicking reveals the per-tool rows. */
 .activity-summary-line .activity-summary-headline {
-  display: inline-block;
   animation: msg-in 180ms var(--ease) both;
 }
 
@@ -1030,11 +1027,16 @@ button.tool-call-row-button {
   color: var(--rose);
 }
 
+/* Parked at the right edge, the same way the group header's spinner is, so a
+   run of in-flight rows shows one still column of activity instead of a ragged
+   trail that jumps left and right as each target string changes length. */
 .tool-call-row-running {
   flex: 0 0 auto;
   align-self: center;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  margin-left: auto;
   color: var(--accent);
 }
 

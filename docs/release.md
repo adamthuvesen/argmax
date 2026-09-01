@@ -19,7 +19,9 @@ The updater public key is committed to `src-tauri/tauri.conf.json` under `plugin
 
 ## App Icons
 
-`npm run build:icons` generates icon files from [scripts/build-icons.mjs](../scripts/build-icons.mjs):
+`npm run build:icons` generates icon files from [scripts/build-icons.mjs](../scripts/build-icons.mjs),
+which draws the pixel fox in [assets/fox-mascot.txt](../assets/fox-mascot.txt) — the same
+sprite [Mascot.tsx](../src/renderer/components/Mascot.tsx) renders in the app:
 
 | Artifact | Usage |
 |---|---|

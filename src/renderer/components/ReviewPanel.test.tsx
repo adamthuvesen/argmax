@@ -32,6 +32,13 @@ function reviewStub(): ReviewState {
     setChangesScope: vi.fn(),
     availableScopes: ["branch", "committed", "uncommitted", "lastTurn"],
     comparisonBaseLabel: "main",
+    subagents: {
+      toolUseIds: [],
+      activeToolUseId: null,
+      selectTab: vi.fn(),
+      closeTab: vi.fn()
+    },
+    openAgent: vi.fn(),
     workspaceFiles: {
       entries: [],
       listState: "idle",

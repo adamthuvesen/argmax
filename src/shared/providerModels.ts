@@ -404,6 +404,24 @@ export function modelLabelFor(provider: ProviderId, modelId: string): string | n
   return match?.label ?? null;
 }
 
+/**
+ * Display label for a model *reference*: a catalog id, or the short alias a
+ * provider's own spawn tool takes — Claude's `Agent` launches a subagent with
+ * `model: "opus"`, never `claude-opus-5`. An alias resolves only when exactly
+ * one of the provider's models carries it as an id segment, so a catalog with
+ * two Opus entries reports nothing rather than picking one.
+ */
+export function modelLabelForReference(provider: ProviderId, reference: string): string | null {
+  const direct = modelLabelFor(provider, reference);
+  if (direct) return direct;
+  const alias = reference.trim().toLowerCase();
+  if (!alias) return null;
+  const matches = PROVIDER_MODELS[provider]?.filter((model) =>
+    normalizeModelId(model.modelId).split("-").includes(alias)
+  ) ?? [];
+  return matches.length === 1 ? matches[0]?.label ?? null : null;
+}
+
 // Bounded so a runaway caller passing dynamic ids can't leak this dedup set.
 const loggedUnknownModels = new BoundedSet<string>(100);
 

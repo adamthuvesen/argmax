@@ -129,7 +129,23 @@ They can also move the current chat to a different registered project:
 
 The move is scheduled because the command runs inside the active turn. It executes after that turn settles, uses the destination project's shared checkout by default, and archives the source workspace without forcing dirty-worktree deletion. `--worktree` creates an isolated destination. `--keep-source` leaves the source workspace open.
 
-The CLI communicates with Argmax over a private local Unix socket using bearer credentials ([session_control.rs](../src-tauri/src/session_control.rs)). The instruction forbids automatic launches and moves. Warm Cursor ACP sessions do not receive this control because their shared process cannot safely hold a per-session credential.
+They can list other sessions to find a target — scoped to the current project by default, or across every registered project:
+
+```bash
+"$ARGMAX_BIN" session list [--project <name-or-path> | --all]
+```
+
+This prints a JSON object with a `sessions` array (id, project, task label, provider, state, last activity — newest first, the caller's own session excluded, capped at 40 rows with `truncated: true` if more exist).
+
+And they can send a follow-up message into an existing session, whether it's idle or mid-turn:
+
+```bash
+"$ARGMAX_BIN" session message --session <id> --prompt '<message>'
+```
+
+The message is delivered immediately to an idle session, queued for one that's still running, or used to relaunch a session with no live process. The response's `queued` field says which happened.
+
+The CLI communicates with Argmax over a private local Unix socket using bearer credentials ([session_control.rs](../src-tauri/src/session_control.rs)). The instruction forbids running any of these on the agent's own initiative — only when the user's current request calls for it. Warm Cursor ACP sessions do not receive this control because their shared process cannot safely hold a per-session credential.
 
 ## Default Model Selection
 

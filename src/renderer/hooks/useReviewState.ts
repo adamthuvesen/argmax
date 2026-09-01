@@ -12,11 +12,12 @@ import { filterToLastTurn } from "../lib/lastTurnFiles.js";
 import { reviewIpcDispatch } from "../lib/reviewIpc.js";
 import { usePersistedSetting } from "./usePersistedSetting.js";
 import { useFilePreview } from "./useFilePreview.js";
+import { useSubagentTabs, type SubagentTabsState } from "./useSubagentTabs.js";
 import { useReviewDiff } from "./useReviewDiff.js";
 import { useWorkspaceFileList } from "./useWorkspaceFileList.js";
 
 export type AsyncState = "idle" | "loading" | "ready" | "error";
-export type ReviewPanelMode = "changes" | "files";
+export type ReviewPanelMode = "changes" | "files" | "agents";
 
 /**
  * Which slice of the work the Changes view shows.
@@ -148,6 +149,11 @@ export interface ReviewState {
    *  is active. */
   comparisonBaseLabel: string | null;
   workspaceFiles: WorkspaceFilesState;
+  /** Subagents open in the Agents view. Empty until one is opened from the
+   *  transcript, which is also the only way one gets here. */
+  subagents: SubagentTabsState;
+  /** Open the panel on a subagent, adding its tab if it is not open yet. */
+  openAgent: (parentToolUseId: string) => void;
   openFile: (filePath: string) => void;
   /** Reload the open file's diff with more unchanged context around its hunks. */
   expandDiffContext: () => void;
@@ -259,12 +265,19 @@ export function useReviewState(
   const { resetForSourceChange: resetFileList, ...fileListState } = fileList;
   const { resetForSourceChange: resetFilePreview, openFile: openWorkspaceFile, ...previewState } = filePreview;
 
+  const {
+    openTab: openSubagentTab,
+    resetForSourceChange: resetSubagents,
+    ...subagents
+  } = useSubagentTabs();
+
   useEffect(() => {
     if (previousSourceId.current !== sourceId) {
       previousSourceId.current = sourceId;
       resetDiff();
       resetFileList();
       resetFilePreview();
+      resetSubagents();
       // An open panel survives a source switch (picking another project from
       // the palette while browsing its files re-targets the view in place);
       // the resets above already swap the content. A closed panel drops back
@@ -275,7 +288,7 @@ export function useReviewState(
     if (!sourceId || !sourceKind || !window.argmax) {
       setIsPanelOpen(false);
     }
-  }, [sourceId, sourceKind, resetDiff, resetFileList, resetFilePreview]);
+  }, [sourceId, sourceKind, resetDiff, resetFileList, resetFilePreview, resetSubagents]);
 
   const openInFilesView = useCallback(
     (filePath: string): void => {
@@ -284,6 +297,15 @@ export function useReviewState(
       openWorkspaceFile(filePath);
     },
     [openWorkspaceFile]
+  );
+
+  const openAgent = useCallback(
+    (parentToolUseId: string): void => {
+      setMode("agents");
+      setIsPanelOpen(true);
+      openSubagentTab(parentToolUseId);
+    },
+    [openSubagentTab]
   );
 
   const openPanelInFilesMode = useCallback((): void => {
@@ -376,6 +398,8 @@ export function useReviewState(
     availableScopes,
     comparisonBaseLabel,
     workspaceFiles,
+    subagents,
+    openAgent,
     openFile: diffState.openFile,
     expandDiffContext: diffState.expandDiffContext,
     openPanelInFilesMode,

@@ -533,8 +533,9 @@
 
 /* Configurable chrome accent. These tokens are for brand/decorative tint:
    focus rings, selection, picker states, command palette affordances, launcher
-   ornament, transcript metadata, and the live-work marks (mascot, sidebar
-   working nest, running sub-agent nest). The remaining semantic status colors
+   ornament, transcript metadata, and the live-work marks (the mascot's thinking
+   rain, sidebar working nest, running sub-agent nest). The mascot itself is a
+   fox and keeps its own palette. The remaining semantic status colors
    stay on --sage, --amber, --rose, and the diff tokens so code additions
    remain green. */
 :root[data-accent="purple"] {

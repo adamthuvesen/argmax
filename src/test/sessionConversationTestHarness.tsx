@@ -28,6 +28,13 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     setChangesScope: () => {},
     availableScopes: ["branch", "committed", "uncommitted", "lastTurn"],
     comparisonBaseLabel: "main",
+    subagents: {
+      toolUseIds: [],
+      activeToolUseId: null,
+      selectTab: () => {},
+      closeTab: () => {}
+    },
+    openAgent: () => {},
     workspaceFiles: {
       entries: [],
       listState: "idle",

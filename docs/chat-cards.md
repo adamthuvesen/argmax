@@ -176,7 +176,7 @@ Subagent tool calls (Claude `Task`/`Agent`, Codex `spawn_agent`, OpenCode `task`
 
 Clicking the text opens the activity pane; the trailing chevron expands the raw tool detail inline. The button hugs its text so that chevron sits beside the task instead of against the far edge.
 
-- **Grid isolation:** Clicking the row opens [AgentActivityPane.tsx](../src/renderer/components/AgentActivityPane.tsx) as a dependent grid cell keyed by `parentSessionId` and `parentToolUseId`. Closing the parent session closes its agent panes.
+- **The right dock, not a grid column:** Clicking the row opens the subagent in that session's review panel — a third mode beside Changes and Files ([AgentsView.tsx](../src/renderer/components/AgentsView.tsx)), so delegated work reads next to the work it came from. Each open subagent is a tab in the same strip Files mode uses; the transcript itself is [AgentActivity.tsx](../src/renderer/components/AgentActivity.tsx) and carries no chrome of its own. Every tab stays mounted, so a backgrounded subagent keeps polling. ⌘W closes the active tab, as it does for a file. The panel's status bar names the state (`Working` / `Done`) and the model the subagent ran on (`Opus 5 · Extra High`); a tab whose launch row leaves the timeline (a superseded Codex spawn) is dropped.
 - **Trace imports:** `session:agent-events` fetches and parses trace files on demand. Parsed rows are saved with deterministic IDs (`trace:<provider>:<sessionId>:<parentToolUseId>:<childId>:<seq>:<kind>`) and hidden from the main chat view.
 
 ## Chat Verbosity & Single-Line Activity Mode

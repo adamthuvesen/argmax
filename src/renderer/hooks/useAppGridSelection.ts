@@ -18,44 +18,20 @@ import {
 import type { WorkspaceClickModifiers } from "../components/SidebarSessionRow.js";
 import {
   EMPTY_GRID,
-  closeAgentTab as closeAgentTabInGrid,
   closeCell,
   dropWorkspaceInGrid,
-  findAgentCellForParent,
   findLauncherCell,
-  findSessionCell,
   focusedCell,
-  isAgentCell,
   isSessionCell,
-  isWorkspaceBackedCell,
-  openAgentInGrid,
   openLauncherInGrid,
   openWorkspaceInGrid,
-  setActiveAgentTab,
   setFocus,
   setLauncherProject,
-  type AgentPaneRequest,
   type GridCell,
   type GridCoord,
   type GridState,
   type SplitPosition
 } from "../lib/gridState.js";
-import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
-
-/** When some subagent tabs are pruned, keep the active tab if it survived,
-    else fall to the nearest surviving neighbour (right first, then left). */
-function nearestSurvivingId(originalIds: string[], liveIds: string[], activeId: string): string {
-  const live = new Set(liveIds);
-  const activeIndex = originalIds.indexOf(activeId);
-  if (activeIndex === -1) return liveIds[0] ?? activeId;
-  for (let offset = 1; offset < originalIds.length; offset++) {
-    const right = originalIds[activeIndex + offset];
-    if (right && live.has(right)) return right;
-    const left = originalIds[activeIndex - offset];
-    if (left && live.has(left)) return left;
-  }
-  return liveIds[0] ?? activeId;
-}
 
 export interface UseAppGridSelectionParams {
   snapshot: DashboardSnapshot;
@@ -82,9 +58,6 @@ export interface UseAppGridSelectionResult {
   closePane: (coord: GridCoord) => void;
   focusPane: (coord: GridCoord) => void;
   closeFocusedPane: () => boolean;
-  openAgentPane: (request: AgentPaneRequest) => void;
-  activateAgentTab: (parentSessionId: string, parentToolUseId: string) => void;
-  closeAgentTab: (parentSessionId: string, parentToolUseId: string) => void;
   handleDropWorkspace: (workspaceId: string, target: GridCoord & { position: SplitPosition }) => void;
   handleWorkspaceDragStart: (workspaceId: string) => void;
   handleWorkspaceDragEnd: () => void;
@@ -132,7 +105,7 @@ export function useAppGridSelection({
   }, [snapshot.events]);
 
   const openWorkspaceIds = useMemo(
-    () => new Set(grid.rows.flatMap((row) => row.filter(isWorkspaceBackedCell).map((cell) => cell.workspaceId))),
+    () => new Set(grid.rows.flatMap((row) => row.filter(isSessionCell).map((cell) => cell.workspaceId))),
     [grid.rows]
   );
   const canDragWorkspaceToGrid = snapshot.sessions.length > 0;
@@ -151,55 +124,6 @@ export function useAppGridSelection({
         .map((row) => {
           const next: GridCell[] = [];
           for (const cell of row) {
-            if (isAgentCell(cell)) {
-              const parentSession = sessionsById.get(cell.parentSessionId);
-              const parentSessionIsVisible = current.rows.some((candidateRow) =>
-                candidateRow.some(
-                  (candidateCell) =>
-                    isSessionCell(candidateCell) &&
-                    candidateCell.sessionId === cell.parentSessionId
-                )
-              );
-              const workspace = workspacesById.get(cell.workspaceId);
-              if (
-                !parentSessionIsVisible ||
-                !parentSession ||
-                !workspace ||
-                workspace.state === "archived"
-              ) {
-                mutated = true;
-                continue;
-              }
-              const sessionEvents = eventsBySessionId.get(cell.parentSessionId) ?? [];
-              const sessionRunning = parentSession.state === "running";
-              // Prune subagent tabs whose launch tool is no longer in the
-              // timeline (dropped completion, folded or superseded launch);
-              // keep the cell as long as one tab survives. Build the tool-call
-              // model once per cell rather than once per tab.
-              const sessionTools = buildSessionToolCalls(sessionEvents, sessionRunning);
-              const liveIds = cell.parentToolUseIds.filter((id) =>
-                sessionTools.some((tool) => tool.toolUseId === id)
-              );
-              if (liveIds.length === 0) {
-                mutated = true;
-                continue;
-              }
-              if (liveIds.length === cell.parentToolUseIds.length) {
-                // Referential stability: nothing changed, reuse the same object
-                // so the effect doesn't churn the grid on every snapshot.
-                next.push(cell);
-                continue;
-              }
-              mutated = true;
-              next.push({
-                ...cell,
-                parentToolUseIds: liveIds,
-                activeParentToolUseId: liveIds.includes(cell.activeParentToolUseId)
-                  ? cell.activeParentToolUseId
-                  : nearestSurvivingId(cell.parentToolUseIds, liveIds, cell.activeParentToolUseId)
-              });
-              continue;
-            }
             if (!isSessionCell(cell)) {
               if (projectsById.has(cell.projectId)) next.push(cell);
               else mutated = true;
@@ -244,13 +168,6 @@ export function useAppGridSelection({
     const cell = focusedCell(grid);
     if (cell && isSessionCell(cell)) {
       setSelectedSessionId(cell.sessionId);
-      setSelectedWorkspaceId(cell.workspaceId);
-      const workspace = workspacesById.get(cell.workspaceId);
-      if (workspace) setSelectedProjectId(workspace.projectId);
-      return;
-    }
-    if (cell && isAgentCell(cell)) {
-      setSelectedSessionId(cell.parentSessionId);
       setSelectedWorkspaceId(cell.workspaceId);
       const workspace = workspacesById.get(cell.workspaceId);
       if (workspace) setSelectedProjectId(workspace.projectId);
@@ -302,40 +219,6 @@ export function useAppGridSelection({
     closePane(focused);
     return true;
   }, [grid.focused, closePane]);
-
-  const openAgentPane = useCallback(
-    (request: AgentPaneRequest): void => {
-      // A parent that already has an agent cell absorbs the request as a tab,
-      // so it can never hit the pane limit — only the first subagent can.
-      const hasParentCell = findAgentCellForParent(grid, request.parentSessionId) !== null;
-      const nextForCurrent = openAgentInGrid(grid, request, { maxColumns: maxColumnsPerRow });
-      const blocked = nextForCurrent === grid && !hasParentCell;
-      setGrid((current) => openAgentInGrid(current, request, { maxColumns: maxColumnsPerRow }));
-      if (!blocked) return;
-      // openAgentInGrid also no-ops when the parent session pane is missing
-      // or nothing is focused — only a full grid is a pane-limit failure.
-      if (!findSessionCell(grid, request.parentSessionId)) {
-        showErrorToast("Open the agent's parent session in the grid first.");
-      } else if (grid.focused !== null) {
-        showErrorToast("Pane limit reached — close a pane before opening this agent.");
-      }
-    },
-    [grid, maxColumnsPerRow, showErrorToast]
-  );
-
-  const activateAgentTab = useCallback(
-    (parentSessionId: string, parentToolUseId: string): void => {
-      setGrid((current) => setActiveAgentTab(current, parentSessionId, parentToolUseId));
-    },
-    []
-  );
-
-  const closeAgentTab = useCallback(
-    (parentSessionId: string, parentToolUseId: string): void => {
-      setGrid((current) => closeAgentTabInGrid(current, parentSessionId, parentToolUseId));
-    },
-    []
-  );
 
   const handleDropWorkspace = useCallback(
     (workspaceId: string, target: GridCoord & { position: SplitPosition }): void => {
@@ -392,7 +275,7 @@ export function useAppGridSelection({
         repoProjectId(selectedWorkspace?.projectId) ??
         snapshot.projects.find((project) => project.id !== SCRATCH_PROJECT_ID)?.id ??
         null;
-      if (focused && isWorkspaceBackedCell(focused)) {
+      if (focused && isSessionCell(focused)) {
         projectId = repoProjectId(workspacesById.get(focused.workspaceId)?.projectId) ?? projectId;
       } else if (focused?.kind === "launcher") {
         projectId = focused.projectId;
@@ -436,9 +319,6 @@ export function useAppGridSelection({
     closePane,
     focusPane,
     closeFocusedPane,
-    openAgentPane,
-    activateAgentTab,
-    closeAgentTab,
     handleDropWorkspace,
     handleWorkspaceDragStart,
     handleWorkspaceDragEnd,

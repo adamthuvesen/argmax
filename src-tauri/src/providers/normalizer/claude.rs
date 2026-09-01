@@ -304,7 +304,7 @@ pub fn extract_usage(
 /// - reading an image emits the downscale note ("original 2086x1075, displayed
 ///   at 2000x1031…"), a coordinate-mapping hint for the model. The screenshot
 ///   itself never renders in chat, so the note reads as a stray line.
-const HIDDEN_SYNTHETIC_PREFIXES: [&str; 3] = [
+pub(crate) const HIDDEN_SYNTHETIC_PREFIXES: [&str; 3] = [
     "Base directory for this skill:",
     "This session is being continued from a previous conversation",
     "[Image:",
@@ -312,23 +312,37 @@ const HIDDEN_SYNTHETIC_PREFIXES: [&str; 3] = [
 
 /// True when this payload is one of the model-facing synthetic `user` rows
 /// listed in `HIDDEN_SYNTHETIC_PREFIXES`. Those never render as chat.
+///
+/// The gate is the row's own shape, not the `isSynthetic` flag: the flag rides
+/// the stdout stream only, and Claude's transcript store never writes it, so a
+/// synced session matched on the flag alone would show whole `SKILL.md` bodies
+/// as prose. A flagged row still counts whatever its `type`.
 pub fn is_hidden_synthetic_body(payload: &Map<String, Value>) -> bool {
-    if payload.get("isSynthetic") != Some(&Value::Bool(true)) {
+    let flagged = payload.get("isSynthetic") == Some(&Value::Bool(true));
+    if !flagged && string_value(payload.get("type")) != Some("user") {
         return false;
     }
-    let Some(content) = object_value(payload.get("message"))
-        .and_then(|message| array_value(message.get("content")))
+    let Some(content) =
+        object_value(payload.get("message")).and_then(|message| message.get("content"))
     else {
         return false;
     };
-    content.iter().any(|block| {
-        string_value(block.get("text")).is_some_and(|text| {
-            let text = text.trim_start();
-            HIDDEN_SYNTHETIC_PREFIXES
-                .iter()
-                .any(|prefix| text.starts_with(prefix))
-        })
-    })
+    match content {
+        // A transcript writes a one-shot body as a bare string; the stdout
+        // stream always wraps it in content blocks.
+        Value::String(text) => has_hidden_synthetic_prefix(text),
+        Value::Array(blocks) => blocks
+            .iter()
+            .any(|block| string_value(block.get("text")).is_some_and(has_hidden_synthetic_prefix)),
+        _ => false,
+    }
+}
+
+fn has_hidden_synthetic_prefix(text: &str) -> bool {
+    let text = text.trim_start();
+    HIDDEN_SYNTHETIC_PREFIXES
+        .iter()
+        .any(|prefix| text.starts_with(prefix))
 }
 
 /// Timeline row for a context-compaction phase, or `None` for any other
@@ -478,6 +492,92 @@ mod tests {
         assert!(
             result.events.is_empty(),
             "synthetic skill body should not surface as a chat message"
+        );
+    }
+
+    #[test]
+    fn a_skill_body_without_the_synthetic_flag_is_still_dropped() {
+        // Claude's transcript store writes no `isSynthetic`, so a synced
+        // session's skill activations reach the normalizer bare.
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                &json!({
+                    "type": "user",
+                    "isSidechain": false,
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Base directory for this skill: /repo/.claude/skills/brain-curate\n\n# Brain Curate"
+                            }
+                        ]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert!(
+            result.events.is_empty(),
+            "an unflagged skill body should not surface as a chat message: {:#?}",
+            result.events
+        );
+    }
+
+    #[test]
+    fn an_unflagged_string_body_is_dropped_too() {
+        // Transcript rows carry a one-shot body as a bare string rather than
+        // content blocks.
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                &json!({
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": "This session is being continued from a previous conversation that ran out of context…"
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert!(
+            result.events.is_empty(),
+            "an unflagged compaction summary should not surface as a chat message: {:#?}",
+            result.events
+        );
+    }
+
+    #[test]
+    fn an_ordinary_assistant_message_is_not_mistaken_for_a_synthetic_body() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                &json!({
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "model": "claude-opus-5",
+                        "content": [{ "type": "text", "text": "Base directory for this skill: is a phrase I am quoting." }]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert!(
+            result
+                .events
+                .iter()
+                .any(|event| event.message.contains("I am quoting")),
+            "only `user` rows are model-facing bodies: {:#?}",
+            result.events
         );
     }
 

@@ -24,7 +24,7 @@ Events use deterministic IDs (`sync:<provider>:<external id>:<line>:<index>`) wi
 
 ## Provider Support
 
-- **Claude Code:** Supported ([sync/claude.rs](../src-tauri/src/sync/claude.rs)). Reads `~/.claude/projects/<slug>/<sessionId>.jsonl`. The `cwd` is parsed from the JSON lines rather than decoded from the directory slug. Events pass through the existing Claude normalizer.
+- **Claude Code:** Supported ([sync/claude.rs](../src-tauri/src/sync/claude.rs)). Reads `~/.claude/projects/<slug>/<sessionId>.jsonl`. The `cwd` is parsed from the JSON lines rather than decoded from the directory slug. Assistant and tool rows pass through the existing Claude normalizer; the sweep itself writes `user.message` rows for the human's prompts (the stdout normalizer has no such row — a live `type:"user"` line only carries tool results) and `session.compacted` for `isCompactSummary` rows, each stamped with the transcript line's own timestamp.
 - **Codex, Cursor, OpenCode, Grok Build:** Currently unsupported in transcript sync.
 
 ## Data Storage

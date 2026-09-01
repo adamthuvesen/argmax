@@ -73,10 +73,23 @@ pub fn list_gh_pr_for_session(
     Ok(rows)
 }
 
+/// Sessions the poller should keep asking `gh` about: an open (or not yet
+/// classified) PR whose workspace is still live. Archived workspaces are
+/// excluded — their worktree is gone, so every poll fails and `pr_state`
+/// never advances past OPEN, which would keep the row in this set forever.
 pub fn list_open_gh_pr_session_ids(connection: &Connection) -> ArgmaxResult<Vec<String>> {
-    let mut statement = connection.prepare_cached("SELECT DISTINCT session_id AS id FROM gh_pr WHERE pr_state IS NULL OR pr_state = 'OPEN'",
-    )
-    .map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        SELECT DISTINCT gh_pr.session_id AS id
+        FROM gh_pr
+        JOIN sessions ON sessions.id = gh_pr.session_id
+        JOIN workspaces ON workspaces.id = sessions.workspace_id
+        WHERE (gh_pr.pr_state IS NULL OR gh_pr.pr_state = 'OPEN')
+          AND workspaces.state NOT IN ('archiving', 'archive-failed', 'archived')
+        "#,
+        )
+        .map_err(sqlite_error)?;
     let rows = statement
         .query_map([], |row| row.get::<_, String>("id"))
         .map_err(sqlite_error)?

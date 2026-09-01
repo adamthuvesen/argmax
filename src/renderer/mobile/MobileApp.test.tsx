@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardSnapshot } from "../../shared/types.js";
 import type { RemoteConnectionState } from "../lib/wsTransport.js";
-import { LAUNCHER_HEADINGS } from "../lib/launcherHeadings.js";
+import { LAUNCHER_TITLE } from "../lib/launcherTitle.js";
 import {
   archiveWorkspace,
   createCurrentWorkspace,
@@ -306,15 +306,14 @@ describe("MobileApp", () => {
     expect(await screen.findByRole("region", { name: "Session conversation" })).toBeInTheDocument();
   });
 
-  it("shows the shared random new-chat heading on the + screen", async () => {
+  it("shows the shared fixed new-chat title on the + screen", async () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Session list" });
 
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
 
-    const heading = screen.getByRole("heading", { level: 1 });
-    expect(LAUNCHER_HEADINGS).toContain(heading.textContent ?? "");
-    expect(screen.getByText("New chat")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(LAUNCHER_TITLE);
+    expect(screen.getByRole("img", { name: "Fox mascot" })).toBeInTheDocument();
   });
 
   it("picks a model from the new-session composer", async () => {

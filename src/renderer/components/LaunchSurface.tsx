@@ -48,7 +48,7 @@ import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
-import { pickLauncherHeading } from "../lib/launcherHeadings.js";
+import { LAUNCHER_TITLE, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { preferredLaunchModel, type ModelPickerSelection } from "../lib/models.js";
 import {
@@ -68,6 +68,7 @@ import {
 import { ComposerPixelField } from "./ComposerPixelField.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
+import { Mascot } from "./Mascot.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
 // launcher's first paint doesn't ship the highlighter.
@@ -235,9 +236,6 @@ export function LaunchSurface({
   const reviewClosePanel = reviewState.closePanel;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
   const reviewMode = reviewState.mode;
-  // Drawn once per visit to the surface, so the line stays put while the user
-  // types instead of changing on every render.
-  const [heading, setHeading] = useState(pickLauncherHeading);
   const lastResetSignal = useRef(resetSignal);
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
 
@@ -291,7 +289,6 @@ export function LaunchSurface({
   useEffect(() => {
     if (resetSignal === lastResetSignal.current) return;
     lastResetSignal.current = resetSignal;
-    setHeading(pickLauncherHeading());
     reviewClosePanel();
     if (draftKey) setPrompt(readDraft(draftKey).text);
   }, [draftKey, resetSignal, reviewClosePanel, setPrompt]);
@@ -669,11 +666,8 @@ export function LaunchSurface({
         document.body
       )}
       <header className="launcher-hero">
-        <div className="launcher-hero-meta">
-          <span className="launcher-hero-dot" aria-hidden="true" />
-          <span className="launcher-hero-eyebrow">{chatMode ? "New side chat" : "New chat"}</span>
-        </div>
-        <h1 className="launcher-hero-title">{heading}</h1>
+        <Mascot className="launcher-hero-mascot" size={104} />
+        <h1 className="launcher-hero-title">{chatMode ? SIDE_CHAT_TITLE : LAUNCHER_TITLE}</h1>
       </header>
       <form
         className="composer"

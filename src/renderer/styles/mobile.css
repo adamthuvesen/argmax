@@ -432,8 +432,11 @@ html:has(.mobile-shell) body {
 }
 
 .mobile-new-hero .launcher-hero-title {
-  font-size: var(--text-xl);
   line-height: 1.2;
+}
+
+.mobile-new-hero .launcher-hero-mascot {
+  margin-block-end: -18px;
 }
 
 .mobile-new-context {

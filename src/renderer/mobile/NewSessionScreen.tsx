@@ -1,6 +1,7 @@
 import { ArrowUp, ChevronsUpDown, Folder, GitBranch } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { PROVIDER_TITLE_MODEL } from "../../shared/providerModels.js";
+import { Mascot } from "../components/Mascot.js";
 import { LaunchModelSelector } from "../components/ModelSelector.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { BottomSheet, SheetOption } from "./BottomSheet.js";
@@ -8,7 +9,7 @@ import { MobileScreenHeader } from "./MobileScreenHeader.js";
 import type { ProjectSummary } from "../../shared/types.js";
 import { persistLaunchModel, readStoredLaunchModel } from "../lib/launchModelPreference.js";
 import { factoryLaunchModel, type ModelPickerSelection } from "../lib/models.js";
-import { pickLauncherHeading } from "../lib/launcherHeadings.js";
+import { LAUNCHER_TITLE } from "../lib/launcherTitle.js";
 import { titleFromPrompt } from "../lib/projects.js";
 import {
   readStoredWorkspaceMode,
@@ -77,7 +78,6 @@ export function NewSessionScreen({
   const [prompt, setPrompt] = useState("");
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
   const [launching, setLaunching] = useState(false);
-  const [heading] = useState(pickLauncherHeading);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
   useAutoGrowTextArea(promptRef, prompt, PROMPT_MAX_HEIGHT_PX);
 
@@ -172,11 +172,8 @@ export function NewSessionScreen({
       ) : (
         <div className="mobile-new-body">
           <div className="mobile-new-hero launcher-hero">
-            <div className="launcher-hero-meta">
-              <span className="launcher-hero-dot" aria-hidden="true" />
-              <span className="launcher-hero-eyebrow">New chat</span>
-            </div>
-            <h1 className="launcher-hero-title">{heading}</h1>
+            <Mascot className="launcher-hero-mascot" size={64} />
+            <h1 className="launcher-hero-title">{LAUNCHER_TITLE}</h1>
           </div>
           {/* Project and workspace stay above the composer. Model and effort
               are composer controls so the launch choices stay together. */}

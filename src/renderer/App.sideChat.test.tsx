@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import type { SessionSummary, WorkspaceSummary } from "../shared/types.js";
+import { LAUNCHER_TITLE, SIDE_CHAT_TITLE } from "./lib/launcherTitle.js";
 import {
   archiveWorkspace,
   createScratchWorkspace,
@@ -29,7 +30,7 @@ describe("App side chat launcher", () => {
     fireEvent.keyDown(input, { key: "Tab" });
 
     expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Chat");
-    expect(await screen.findByText("New side chat")).toBeInTheDocument();
+    expect(await screen.findByText(SIDE_CHAT_TITLE)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Switch project" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Switch branch" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Worktree" })).toBeNull();
@@ -57,11 +58,11 @@ describe("App side chat launcher", () => {
 
     fireEvent.keyDown(input, { key: "Tab" });
     fireEvent.keyDown(input, { key: "Tab" });
-    await screen.findByText("New side chat");
+    await screen.findByText(SIDE_CHAT_TITLE);
 
     fireEvent.keyDown(input, { key: "Tab" });
 
-    expect(await screen.findByText("New chat")).toBeInTheDocument();
+    expect(await screen.findByText(LAUNCHER_TITLE)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Auto");
     expect(screen.getByRole("button", { name: "Switch project" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Switch branch" })).toBeInTheDocument();
@@ -80,11 +81,11 @@ describe("App side chat launcher", () => {
   it("opens the launcher pre-set to chat mode from the sidebar's New side chat", async () => {
     render(<App />);
     await screen.findByLabelText("Task prompt");
-    expect(screen.queryByText("New side chat")).toBeNull();
+    expect(screen.queryByText(SIDE_CHAT_TITLE)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "New side chat" }));
 
-    expect(await screen.findByText("New side chat")).toBeInTheDocument();
+    expect(await screen.findByText(SIDE_CHAT_TITLE)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Chat");
   });
 

@@ -1,77 +1,33 @@
 /* ============================================================
    Launch surface — "First Light"
-   A composed-print opening page: editorial meta line, one quiet
-   typographic moment and a hand-built composer slab.
+   A composed-print opening page: the fox as standing mark, one
+   quiet fixed line and a hand-built composer slab.
    ============================================================ */
 
 .launcher-hero {
   display: grid;
-  gap: 10px;
+  justify-items: center;
+  gap: 18px;
   padding: 0 10px;
+  text-align: center;
 }
 
-.launcher-hero-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  justify-self: start;
+/* The fox is the headline. Its viewBox squares off below the sprite to leave
+   room for the thinking-mood rain, so a 104px mascot carries ~30px of empty
+   rows under its feet — pulled back up here so the gap above the title is the
+   gap set on .launcher-hero and not that plus the sprite's padding. */
+.launcher-hero-mascot {
+  margin-block-end: -30px;
 }
 
-.launcher-hero-dot {
-  position: relative;
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-  flex: 0 0 auto;
-}
-
-/* The pulse rides a pseudo-element's transform and opacity, both of which the
-   compositor animates without repainting. It used to animate `box-shadow`,
-   which is not composited: every frame re-rastered the layer the dot sits in,
-   and this one 7px dot measured ~5% of a CPU core at idle — more than the rest
-   of the app's animations combined. The resting ring stays a static
-   `box-shadow`, which costs nothing because it never changes. */
-.launcher-hero-dot::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: rgba(90, 143, 114, 0.18);
-  animation: status-pulse-ring 2.4s var(--ease) infinite;
-}
-
-@keyframes status-pulse-ring {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0;
-  }
-
-  50% {
-    transform: scale(2.14);
-    opacity: 1;
-  }
-}
-
-.launcher-hero-eyebrow {
-  font-size: var(--text-2xs-plus);
-  font-weight: 500;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--muted);
-  font-feature-settings: "tnum", "zero";
-}
-
-/* The one typographic moment: gives the empty canvas an anchor so the
-   composer reads as a composed opening page, not a floating input. */
+/* The line under the fox holds still on every visit, so it sits back a step
+   from --text: the mascot carries the greeting and this names the job. */
 .launcher-hero-title {
   margin: 0;
-  font-size: var(--text-display);
-  font-weight: 500;
-  letter-spacing: -0.015em;
-  color: var(--text);
+  font-size: var(--text-xl);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--muted-strong);
 }
 
 /* ============================================================

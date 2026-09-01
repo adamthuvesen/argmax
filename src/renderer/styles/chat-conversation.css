@@ -70,8 +70,16 @@
 }
 
 .session-multigrid-cell .launcher-hero {
-  gap: 8px;
+  gap: 10px;
   padding: 0;
+}
+
+/* A grid cell is a fraction of the window, so the standing mark scales down
+   with it. Width and height stay equal — the sprite's viewBox is square. */
+.session-multigrid-cell .launcher-hero-mascot {
+  width: 64px;
+  height: 64px;
+  margin-block-end: -18px;
 }
 
 .session-multigrid-resizer {

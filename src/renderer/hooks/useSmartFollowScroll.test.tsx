@@ -257,6 +257,36 @@ describe("useSmartFollowScroll", () => {
     expect(result.current.showScrollToBottom).toBe(true);
   });
 
+  it("resumes following when the reader scrolls back to the physical bottom", () => {
+    const state: ScrollBoxState = { scrollHeight: 1200, clientHeight: 200, scrollTop: 1000 };
+    const el = makeScrollBox(state);
+    const { result, rerender } = renderHook(
+      ({ items }: { items: readonly string[] }) =>
+        useSmartFollowScroll("session-a", items, false),
+      { initialProps: { items: ["first"] } }
+    );
+    attachListRef(result.current.conversationListRef, el);
+
+    act(() => {
+      result.current.handleUserScrollIntent();
+      state.scrollTop = 700;
+      result.current.handleScroll();
+    });
+    expect(result.current.showScrollToBottom).toBe(true);
+
+    act(() => {
+      state.scrollTop = 1000;
+      result.current.handleScroll();
+    });
+    expect(result.current.showScrollToBottom).toBe(false);
+
+    act(() => {
+      state.scrollHeight = 1400;
+      rerender({ items: ["first", "second"] });
+    });
+    expect(state.scrollTop).toBe(1200);
+  });
+
   it("resumes following when the reader clicks scroll to latest", () => {
     const state: ScrollBoxState = { scrollHeight: 1200, clientHeight: 200, scrollTop: 1000 };
     const el = makeScrollBox(state);
@@ -360,17 +390,20 @@ describe("useSmartFollowScroll", () => {
     expect(result.current.showScrollToBottom).toBe(true);
   });
 
-  it("re-attaches when collapsing content brings the bottom into view", () => {
+  it("does not resume following when collapsing content brings the bottom into view", () => {
     const observers = installResizeObservers();
     const state: ScrollBoxState = { scrollHeight: 1400, clientHeight: 200, scrollTop: 1200 };
     const el = makeScrollBox(state);
     const turn = document.createElement("article");
     el.appendChild(turn);
-    const { result } = renderHook(() => {
-      const api = useSmartFollowScroll("session-a", ["turn"], false);
-      attachListRef(api.conversationListRef, el);
-      return api;
-    });
+    const { result, rerender } = renderHook(
+      ({ items }: { items: readonly string[] }) => {
+        const api = useSmartFollowScroll("session-a", items, false);
+        attachListRef(api.conversationListRef, el);
+        return api;
+      },
+      { initialProps: { items: ["turn"] } }
+    );
     const childObserver = observers.find((observer) => observer.targets.includes(turn));
 
     act(() => {
@@ -387,6 +420,17 @@ describe("useSmartFollowScroll", () => {
 
     expect(state.scrollTop).toBe(900);
     expect(result.current.showScrollToBottom).toBe(false);
+
+    act(() => {
+      state.scrollHeight = 1600;
+      rerender({ items: ["turn", "more-output"] });
+      childObserver?.callback([], {} as ResizeObserver);
+    });
+
+    // The bottom arrived on its own. New output must not pin the reader, or
+    // the turn spacer would jump them to the latest user message.
+    expect(state.scrollTop).toBe(900);
+    expect(result.current.showScrollToBottom).toBe(true);
   });
 
   it("stays detached when collapsing content drags the viewport to the bottom", () => {
@@ -531,5 +575,62 @@ describe("useSmartFollowScroll", () => {
 
     expect(state.scrollTop).toBe(1200);
     expect(result.current.showScrollToBottom).toBe(false);
+  });
+
+  it("keeps a detached reader on the in-view node when content is inserted above it", () => {
+    const observers = installResizeObservers();
+    const state: ScrollBoxState = { scrollHeight: 1200, clientHeight: 200, scrollTop: 1000 };
+    const el = makeScrollBox(state);
+    const turn = document.createElement("article");
+    el.appendChild(turn);
+    const emptyRect = {
+      left: 0,
+      width: 400,
+      right: 400,
+      x: 0,
+      toJSON: () => ({})
+    };
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
+      ...emptyRect,
+      top: 0,
+      y: 0,
+      height: 200,
+      bottom: 200
+    } as DOMRect);
+    let nodeContentTop = 800;
+    vi.spyOn(turn, "getBoundingClientRect").mockImplementation(
+      () =>
+        ({
+          ...emptyRect,
+          top: nodeContentTop - state.scrollTop,
+          y: nodeContentTop - state.scrollTop,
+          height: 40,
+          bottom: nodeContentTop - state.scrollTop + 40
+        }) as DOMRect
+    );
+    document.elementFromPoint = () => turn;
+
+    const { result } = renderHook(() => {
+      const api = useSmartFollowScroll("session-a", ["turn"], false);
+      attachListRef(api.conversationListRef, el);
+      return api;
+    });
+    const childObserver = observers.find((observer) => observer.targets.includes(turn));
+
+    act(() => {
+      result.current.handleUserScrollIntent();
+      state.scrollTop = 600;
+      result.current.handleScroll();
+    });
+    expect(result.current.showScrollToBottom).toBe(true);
+
+    act(() => {
+      nodeContentTop = 1100;
+      state.scrollHeight = 1700;
+      childObserver?.callback([], {} as ResizeObserver);
+    });
+
+    expect(state.scrollTop).toBe(900);
+    expect(result.current.showScrollToBottom).toBe(true);
   });
 });

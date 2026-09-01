@@ -2,6 +2,32 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObje
 import { decideSmartFollow, latestTurnSpacerPx } from "../lib/smartFollow.js";
 
 const USER_SCROLL_INTENT_MS = 350;
+/** How far into the list to sample an in-view node for scroll anchoring. */
+const VIEWPORT_ANCHOR_INSET_PX = 48;
+
+type ViewportAnchor = {
+  node: Element;
+  contentTop: number;
+};
+
+function nodeContentTop(scroller: HTMLElement, node: Element): number {
+  return node.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+}
+
+/**
+ * The in-view element whose content-coordinate we keep still while detached.
+ * WKWebView has no CSS overflow-anchor, so streamed insertions above this
+ * node would otherwise slide older transcript into the viewport.
+ */
+function readViewportAnchor(scroller: HTMLDivElement): ViewportAnchor | null {
+  const rect = scroller.getBoundingClientRect();
+  if (rect.height < 2 || rect.width < 2) return null;
+  const x = rect.left + Math.min(40, Math.max(8, rect.width / 2));
+  const y = rect.top + Math.min(VIEWPORT_ANCHOR_INSET_PX, rect.height / 3);
+  const node = document.elementFromPoint(x, y);
+  if (!(node instanceof Element) || node === scroller || !scroller.contains(node)) return null;
+  return { node, contentTop: nodeContentTop(scroller, node) };
+}
 
 /** Keys that scroll the list a reader has focus inside. */
 export const SCROLL_INTENT_KEYS = new Set([
@@ -41,6 +67,12 @@ export interface SmartFollowScroll {
  * and viewport changes caused by the composer or adjacent panels. A leftover
  * spacer after the latest user message is sized first so pinning to the
  * bottom puts that message at the top of the pane until the new turn fills it.
+ *
+ * The spacer is a follow layout, so it is frozen while the reader is away.
+ * Re-attach only when the reader moves toward the bottom (including trackpad
+ * momentum) or uses scroll-to-latest / a new user message / a session change.
+ * Landing on the bottom because content collapsed under them is not a request
+ * to follow, and would pin the latest user message to the top of the pane.
  */
 export function useSmartFollowScroll(
   sessionId: string | null | undefined,
@@ -60,6 +92,8 @@ export function useSmartFollowScroll(
   // above this point drags the viewport down on its own: the bottom comes to
   // meet the reader rather than the reader scrolling to it.
   const lastScrollTopRef = useRef(0);
+  const lastMaxTopRef = useRef(0);
+  const viewportAnchorRef = useRef<ViewportAnchor | null>(null);
   const childResizeObserverRef = useRef<ResizeObserver | null>(null);
   const observedChildrenRef = useRef<Set<HTMLElement>>(new Set());
 
@@ -96,6 +130,7 @@ export function useSmartFollowScroll(
     applyTurnSpacer(el);
     if (!force && !isFollowingRef.current) return;
     const top = Math.max(0, el.scrollHeight - el.clientHeight);
+    lastMaxTopRef.current = top;
     // scrollHeight/clientHeight are rounded but iOS reports fractional
     // scrollTop, so exact equality never settles there — each write fires a
     // scroll event whose handler writes again, fighting the keyboard's
@@ -103,6 +138,7 @@ export function useSmartFollowScroll(
     if (Math.abs(el.scrollTop - top) > 1) {
       el.scrollTop = top;
       lastScrollTopRef.current = el.scrollTop;
+      viewportAnchorRef.current = null;
       // A gesture in flight is measured against where it started, but this
       // write moved the viewport underneath it. Growth streamed in between a
       // wheel event and its scroll event would otherwise read as movement
@@ -130,20 +166,38 @@ export function useSmartFollowScroll(
     }, USER_SCROLL_INTENT_MS);
   }, []);
 
-  // The reader's old position no longer exists and the viewport now sits at the
-  // new bottom: the browser clamped it there when content collapsed or was
-  // unmounted. Reaching the bottom that way is not a request to follow again.
-  const wasClampedByShrink = useCallback((el: HTMLDivElement): boolean => {
-    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
-    return lastScrollTopRef.current > maxTop + 1 && el.scrollTop >= maxTop - 1;
+  const rememberViewportAnchor = useCallback((el: HTMLDivElement): void => {
+    viewportAnchorRef.current = readViewportAnchor(el);
   }, []);
+
+  const restoreViewportAnchor = useCallback((el: HTMLDivElement): void => {
+    const anchor = viewportAnchorRef.current;
+    if (!anchor || !el.contains(anchor.node)) {
+      rememberViewportAnchor(el);
+      return;
+    }
+    const nextTop = nodeContentTop(el, anchor.node);
+    const delta = nextTop - anchor.contentTop;
+    if (Math.abs(delta) > 1) {
+      el.scrollTop += delta;
+      lastScrollTopRef.current = el.scrollTop;
+    }
+    // Content-coordinate is independent of scrollTop, so a second pass in the
+    // same frame (layout effect + ResizeObserver) sees a zero delta.
+    anchor.contentTop = nextTop;
+  }, [rememberViewportAnchor]);
 
   const handleScroll = useCallback((): void => {
     const el = conversationListRef.current;
     if (!el) return;
     const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
-    const clampedByShrink = wasClampedByShrink(el);
+    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    const previousTop = lastScrollTopRef.current;
+    const previousMax = lastMaxTopRef.current;
+    const movedTowardBottom = el.scrollTop > previousTop + 1;
+    const contentShrunk = maxTop < previousMax - 1;
     lastScrollTopRef.current = el.scrollTop;
+    lastMaxTopRef.current = maxTop;
     const intentStartTop = userScrollStartTopRef.current;
     const movedAwayAfterUserIntent = intentStartTop !== null &&
       el.scrollTop < intentStartTop;
@@ -157,6 +211,7 @@ export function useSmartFollowScroll(
     if (movedAwayAfterUserIntent) {
       isFollowingRef.current = false;
       clearUserScrollIntent();
+      rememberViewportAnchor(el);
       setShowScrollToBottom(decision.showFab);
       return;
     }
@@ -169,9 +224,16 @@ export function useSmartFollowScroll(
     }
 
     const reachedBottom = decision.distanceFromBottom === 0;
-    if (!clampedByShrink &&
-      (reachedBottom || (movedTowardBottomAfterUserIntent && decision.pinToBottom))) {
+    // Re-attach only when the reader moved toward the bottom. Collapse that
+    // brings the bottom to them, or a clamp after a shrink, is not a request
+    // to follow: pinning would grow the turn spacer and jump them to the
+    // latest user message.
+    const readerMovedToBottom = !contentShrunk &&
+      ((movedTowardBottom && reachedBottom) ||
+        (movedTowardBottomAfterUserIntent && decision.pinToBottom));
+    if (readerMovedToBottom) {
       isFollowingRef.current = true;
+      viewportAnchorRef.current = null;
       clearUserScrollIntent();
       scrollToFollowTarget(el, true);
       setShowScrollToBottom(false);
@@ -179,36 +241,33 @@ export function useSmartFollowScroll(
       return;
     }
 
+    rememberViewportAnchor(el);
     setShowScrollToBottom(decision.showFab);
-  }, [clearUserScrollIntent, scrollToFollowTarget, wasClampedByShrink]);
+  }, [clearUserScrollIntent, rememberViewportAnchor, scrollToFollowTarget]);
 
   const reconcileScrollAffordance = useCallback((el: HTMLDivElement): void => {
-    applyTurnSpacer(el);
-    const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
     if (isFollowingRef.current) {
       scrollToFollowTarget(el, true);
       setShowScrollToBottom(false);
       setNewBelowCount(0);
       return;
     }
-    // The scroll event for a clamp can arrive after this pass, so the same
-    // evidence is read here rather than left to `handleScroll`.
-    if (decision.distanceFromBottom === 0 && !wasClampedByShrink(el)) {
-      isFollowingRef.current = true;
-      clearUserScrollIntent();
-      scrollToFollowTarget(el, true);
-      setShowScrollToBottom(false);
-      setNewBelowCount(0);
-      return;
-    }
+    // Spacer is a follow layout. Mutating it while detached changes
+    // scrollHeight and is what used to yank a near-bottom reader to the
+    // latest user message once the bottom arrived on its own.
+    restoreViewportAnchor(el);
+    lastMaxTopRef.current = Math.max(0, el.scrollHeight - el.clientHeight);
+    lastScrollTopRef.current = el.scrollTop;
+    const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
     setShowScrollToBottom(decision.showFab);
-  }, [applyTurnSpacer, clearUserScrollIntent, scrollToFollowTarget, wasClampedByShrink]);
+  }, [restoreViewportAnchor, scrollToFollowTarget]);
 
   const scrollToBottom = useCallback((): void => {
     const el = conversationListRef.current;
     if (!el) return;
     clearUserScrollIntent();
     isFollowingRef.current = true;
+    viewportAnchorRef.current = null;
     scrollToFollowTarget(el, true);
     setShowScrollToBottom(false);
     setNewBelowCount(0);
@@ -221,6 +280,7 @@ export function useSmartFollowScroll(
     if (!el) return;
     clearUserScrollIntent();
     isFollowingRef.current = true;
+    viewportAnchorRef.current = null;
     scrollToFollowTarget(el, true);
     setShowScrollToBottom(false);
     setNewBelowCount(0);
@@ -230,11 +290,11 @@ export function useSmartFollowScroll(
     const el = conversationListRef.current;
     if (!el) return;
     if (!isFollowingRef.current) {
-      applyTurnSpacer(el);
+      restoreViewportAnchor(el);
       return;
     }
     scrollToFollowTarget(el, true);
-  }, [applyTurnSpacer, conversationItems, isThinking, scrollToFollowTarget]);
+  }, [conversationItems, isThinking, restoreViewportAnchor, scrollToFollowTarget]);
 
   useEffect(() => {
     const current = conversationItems.length;

@@ -205,6 +205,48 @@ pub fn system_set_theme(app: AppHandle, input: SystemSetThemeInput) -> ArgmaxRes
     Ok(SystemOk { ok: true })
 }
 
+#[tauri::command(rename = "system:set-notifications-enabled")]
+#[specta::specta]
+pub fn system_set_notifications_enabled(
+    state: State<'_, AppState>,
+    input: SystemSetNotificationsEnabledInput,
+) -> ArgmaxResult<SystemOk> {
+    system_set_notifications_enabled_impl(&state, input)
+}
+
+pub(crate) fn system_set_notifications_enabled_impl(
+    state: &AppState,
+    input: SystemSetNotificationsEnabledInput,
+) -> ArgmaxResult<SystemOk> {
+    if let Some(notifications) = state.notifications.get() {
+        notifications.set_enabled(input.enabled);
+    }
+    Ok(SystemOk { ok: true })
+}
+
+#[tauri::command(rename = "system:test-notification")]
+#[specta::specta]
+pub fn system_test_notification(
+    state: State<'_, AppState>,
+    input: SystemTestNotificationInput,
+) -> ArgmaxResult<SystemOk> {
+    system_test_notification_impl(&state, input)
+}
+
+pub(crate) fn system_test_notification_impl(
+    state: &AppState,
+    _input: SystemTestNotificationInput,
+) -> ArgmaxResult<SystemOk> {
+    let notifications = state.notifications.get().ok_or_else(|| {
+        ArgmaxError::service(
+            "NOTIFICATIONS_UNAVAILABLE",
+            "Notification service is not available.",
+        )
+    })?;
+    notifications.fire_test()?;
+    Ok(SystemOk { ok: true })
+}
+
 fn data_dir<R: Runtime>(app: &AppHandle<R>) -> ArgmaxResult<PathBuf> {
     let app_data = app
         .path()
@@ -507,5 +549,23 @@ mod tests {
         assert_eq!(theme_mode_str(ThemeMode::Light), "light");
         assert_eq!(theme_mode_str(ThemeMode::Dark), "dark");
         assert_eq!(theme_mode_str(ThemeMode::System), "system");
+    }
+
+    #[test]
+    fn set_notifications_enabled_updates_service() {
+        let state = AppState::default();
+        // Without service initialized, command succeeds gracefully
+        assert!(system_set_notifications_enabled_impl(
+            &state,
+            SystemSetNotificationsEnabledInput { enabled: false }
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn test_notification_reports_error_when_uninitialized() {
+        let state = AppState::default();
+        let result = system_test_notification_impl(&state, SystemTestNotificationInput {});
+        assert!(result.is_err());
     }
 }

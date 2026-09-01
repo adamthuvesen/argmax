@@ -4,7 +4,7 @@ import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
 import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
-import { FAST_MODE_KEY, RANDOM_SESSION_ICON_KEY } from "./lib/uiPreferences.js";
+import { FAST_MODE_KEY, RANDOM_SESSION_ICON_KEY, DESKTOP_NOTIFICATIONS_KEY } from "./lib/uiPreferences.js";
 import { USER_BUBBLE_TINT_STORAGE_KEY } from "./lib/userBubbleTint.js";
 import { APP_VERSION_LABEL } from "../shared/appVersion.js";
 import {
@@ -15,8 +15,10 @@ import {
   providersDiscover,
   closeSettings,
   openSettings,
+  setNotificationsEnabledStub,
   setupAppTestMocks,
-  snapshot
+  snapshot,
+  testNotificationStub
 } from "../test/appTestHarness.js";
 
 async function openArgmaxMenu(): Promise<HTMLElement> {
@@ -52,6 +54,7 @@ describe("App settings", () => {
     expect(await screen.findByRole("complementary", { name: "Settings groups" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "General" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Startup" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Handoff" })).toBeInTheDocument();
     // The app sidebar yields its column to the settings rail.
     expect(screen.queryByRole("button", { name: "Build dashboard" })).not.toBeInTheDocument();
@@ -209,6 +212,37 @@ describe("App settings", () => {
     await waitFor(() =>
       expect(window.localStorage.getItem(RANDOM_SESSION_ICON_KEY)).toBe("true")
     );
+  });
+
+  it("enables desktop notifications by default and persists turning them off", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Notifications" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Notify when agent finishes" });
+    expect(toggle).toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(window.localStorage.getItem(DESKTOP_NOTIFICATIONS_KEY)).toBe("false")
+    );
+    expect(setNotificationsEnabledStub).toHaveBeenCalledWith(false);
+  });
+
+  it("sends a test desktop notification and displays confirmation status", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Notifications" });
+
+    const testBtn = screen.getByRole("button", { name: "Send test notification" });
+    fireEvent.click(testBtn);
+
+    expect(testNotificationStub).toHaveBeenCalled();
+    expect(await screen.findByRole("status")).toHaveTextContent("Test notification sent");
   });
 
   it("disables the IDE chooser when the workspace has no path yet", async () => {

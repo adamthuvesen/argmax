@@ -22,6 +22,8 @@ const IPC_DIR = join(process.cwd(), "src-tauri/src/ipc");
 const MAIN_THREAD_ALLOWLIST = new Map([
   ["health:ping", "returns a constant; no IO"],
   ["system:set-theme", "sets window appearance, which must happen on the main thread"],
+  ["system:set-notifications-enabled", "in-memory setting update"],
+  ["system:test-notification", "fires an in-memory desktop notification toast"],
   ["system:open-path", "hands the path to the system opener"],
   ["system:diagnostics", "small fixed-size reads for the Settings pane"],
   ["system:debug-snapshot", "reads two in-memory ring buffers; no IO"],

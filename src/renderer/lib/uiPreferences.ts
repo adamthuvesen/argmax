@@ -12,6 +12,7 @@ export const TURN_CHANGES_EXPANDED_KEY = "argmax.turnChanges.expanded";
 export const FAST_MODE_KEY = "argmax.fastMode.enabled";
 export const COMPOSER_PIXEL_FIELD_KEY = "argmax.composer.pixelField.enabled";
 export const RANDOM_SESSION_ICON_KEY = "argmax.sessionIcon.random.enabled";
+export const DESKTOP_NOTIFICATIONS_KEY = "argmax.desktopNotifications.enabled";
 
 function readBooleanPreference(key: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;
@@ -91,7 +92,7 @@ export const CHAT_VERBOSITY_LABELS: Record<ChatVerbosity, string> = {
 };
 
 export const CHAT_VERBOSITY_HINTS: Record<ChatVerbosity, string> = {
-  1: "One self-updating summary line per turn. Completed thoughts and tool lists fold away.",
+  1: "One live summary line while the agent works. A finished turn keeps only the answer. Click Worked for to expand the work.",
   2: "Turn chips with collapsed group headers. No raw tool lists or reasoning blocks.",
   3: "Live tools and reasoning expand while running, then collapse to tidy group headers on answer.",
   4: "Tool groups and touched files stay expanded on recent turns for quick inspection.",

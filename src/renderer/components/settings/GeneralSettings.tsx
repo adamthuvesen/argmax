@@ -22,6 +22,8 @@ export function GeneralSettings({
   onNewSessionModeChange,
   randomSessionIconEnabled,
   onRandomSessionIconEnabledChange,
+  desktopNotificationsEnabled,
+  onDesktopNotificationsEnabledChange,
   detectedIdes,
   defaultIde,
   onDefaultIdeChange,
@@ -31,6 +33,8 @@ export function GeneralSettings({
   onNewSessionModeChange: (mode: NewSessionMode) => void;
   randomSessionIconEnabled: boolean;
   onRandomSessionIconEnabledChange: (v: boolean) => void;
+  desktopNotificationsEnabled: boolean;
+  onDesktopNotificationsEnabledChange: (v: boolean) => void;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   onDefaultIdeChange: (ide: IdeId | null) => void;
@@ -39,10 +43,29 @@ export function GeneralSettings({
   // Read at click time by the chat's link handler, so localStorage is the
   // source of truth and no App-level state is needed.
   const [linkTarget, setLinkTarget] = useState<LinkTarget>(readStoredLinkTarget);
+  const [testNotificationStatus, setTestNotificationStatus] = useState<string | null>(null);
+  const [isTestingNotification, setIsTestingNotification] = useState(false);
+
   const pickLinkTarget = (raw: string): void => {
     if (!isLinkTarget(raw)) return;
     setLinkTarget(raw);
     persistLinkTarget(raw);
+  };
+
+  const handleTestNotification = async (): Promise<void> => {
+    if (!window.argmax?.system?.testNotification) return;
+    setIsTestingNotification(true);
+    setTestNotificationStatus(null);
+    try {
+      await window.argmax.system.testNotification();
+      setTestNotificationStatus("Test notification sent");
+    } catch (error) {
+      setTestNotificationStatus(
+        error instanceof Error ? error.message : "Failed to send notification"
+      );
+    } finally {
+      setIsTestingNotification(false);
+    }
   };
 
   return (
@@ -75,6 +98,38 @@ export function GeneralSettings({
             />
           }
         />
+      </SettingGroup>
+
+      <SettingGroup id="settings-notifications" label="Notifications">
+        <SettingRow
+          label="Notify when agent finishes"
+          description="Show a desktop notification when an agent completes or fails in the background."
+          control={
+            <Toggle
+              ariaLabel="Notify when agent finishes"
+              checked={desktopNotificationsEnabled}
+              onChange={onDesktopNotificationsEnabledChange}
+            />
+          }
+        />
+        <SettingRow
+          label="Test notification"
+          description="Send a sample desktop notification to check permissions and appearance."
+          control={
+            <button
+              type="button"
+              className="settings-button"
+              onClick={() => void handleTestNotification()}
+              disabled={isTestingNotification}
+              aria-label="Send test notification"
+            >
+              <span>{isTestingNotification ? "Sending…" : "Send test notification"}</span>
+            </button>
+          }
+        />
+        {testNotificationStatus ? (
+          <SettingNote role="status">{testNotificationStatus}</SettingNote>
+        ) : null}
       </SettingGroup>
 
       <SettingGroup id="settings-handoff" label="Handoff">

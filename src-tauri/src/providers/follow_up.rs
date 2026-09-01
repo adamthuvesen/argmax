@@ -35,6 +35,11 @@ pub(super) fn compose_follow_up_prompt(
             WHERE session_id = ?
               AND type IN ('user.message', 'message.completed', 'error')
               AND trim(message) <> ''
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = events.session_id
+                  AND cleared.type = 'session.cleared'
+              ), 0)
               AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
               AND json_extract(payload_json, '$.traceImported') IS NULL
               AND NOT (
@@ -272,6 +277,56 @@ mod tests {
         assert!(!prompt.contains("claude child prose"));
         assert!(!prompt.contains("imported child message"));
         assert!(!prompt.contains("codex child message"));
+    }
+
+    #[test]
+    fn follow_up_prompt_drops_transcript_before_a_clear() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_session(&connection);
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "old-user".to_string(),
+                session_id: "s1".to_string(),
+                r#type: "user.message".to_string(),
+                message: "secret prior turn".to_string(),
+                payload: json!({}),
+                created_at: Some("2026-05-24T10:00:00.000Z".to_string()),
+            },
+        )
+        .expect("old user");
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "old-assistant".to_string(),
+                session_id: "s1".to_string(),
+                r#type: "message.completed".to_string(),
+                message: "secret prior answer".to_string(),
+                payload: json!({}),
+                created_at: Some("2026-05-24T10:00:01.000Z".to_string()),
+            },
+        )
+        .expect("old assistant");
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "clear".to_string(),
+                session_id: "s1".to_string(),
+                r#type: "session.cleared".to_string(),
+                message: "Cleared conversation.".to_string(),
+                payload: json!({}),
+                created_at: Some("2026-05-24T10:00:02.000Z".to_string()),
+            },
+        )
+        .expect("clear");
+
+        let prompt =
+            compose_follow_up_prompt(&connection, "s1", "fresh start", false).expect("prompt");
+
+        assert!(!prompt.contains("secret prior"));
+        assert!(!prompt.contains("Conversation so far:"));
+        assert_eq!(prompt, "fresh start");
     }
 
     #[test]

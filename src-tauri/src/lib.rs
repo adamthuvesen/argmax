@@ -258,6 +258,9 @@ pub fn run() {
                                 notifications::main_window_focus_probe(app.handle().clone()),
                                 notifications::TauriNotificationSink::new(app.handle().clone()),
                             ));
+                            if state.notifications.set(Arc::clone(&notifications)).is_err() {
+                                tracing::warn!("notifications state was already initialized");
+                            }
                             // Single FIFO channel for every `dashboard:delta`
                             // emit (providers + gh poller + workspaces). One
                             // worker task pulls from it and emits in order.

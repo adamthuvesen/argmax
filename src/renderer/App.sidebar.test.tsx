@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { ArgmaxApi, DashboardSnapshot } from "../shared/types.js";
+import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../shared/assetProtocol.js";
 import {
   createCurrentWorkspace,
   dashboardDeltaListener,
@@ -738,6 +739,22 @@ describe("App sidebar", () => {
 
   it("shows a placeholder when a previewed file is binary or too large", async () => {
     listChangedFiles.mockResolvedValue([]);
+    listWorkspaceFiles.mockResolvedValue([{ path: "assets/model.bin" }]);
+    readWorkspaceFile.mockResolvedValue({ kind: "skipped", reason: "binary", size: 2048 });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Browse files" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^assets$/ }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^model\.bin$/ }));
+
+    expect(await screen.findByText(/Binary file/i)).toBeInTheDocument();
+  });
+
+  it("previews an image file that the read reported as binary", async () => {
+    listChangedFiles.mockResolvedValue([]);
     listWorkspaceFiles.mockResolvedValue([{ path: "assets/logo.png" }]);
     readWorkspaceFile.mockResolvedValue({ kind: "skipped", reason: "binary", size: 2048 });
 
@@ -749,7 +766,10 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("treeitem", { name: /^assets$/ }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^logo\.png$/ }));
 
-    expect(await screen.findByText(/Binary file/i)).toBeInTheDocument();
+    const image = await screen.findByRole("img", { name: "assets/logo.png" });
+    expect(image.getAttribute("src")).toContain(`${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file`);
+    expect(image.getAttribute("src")).toContain("assets/logo.png");
+    expect(screen.queryByText(/Binary file/i)).not.toBeInTheDocument();
   });
 
   it("opens slash autocomplete in the launcher composer without a workspace id", async () => {

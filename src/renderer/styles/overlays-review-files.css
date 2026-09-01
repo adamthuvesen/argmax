@@ -963,6 +963,72 @@
   overflow: visible;
 }
 
+/* Image files. Centering is `margin: auto` on the image rather than
+   `justify-content`, because a 1:1 image wider than the frame must stay
+   scrollable from its left edge — centered flex content clips the start side
+   out of the scroll range. */
+.image-file-preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.image-file-preview-frame {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 24px;
+  overflow: auto;
+}
+
+/* Checkerboard so a transparent PNG reads as transparent rather than as the
+   panel's own background, which is usually the thing being checked. */
+.image-file-preview-frame img {
+  margin: auto;
+  border-radius: var(--radius-sm);
+  outline: 1px solid var(--line-soft);
+  background-color: var(--panel-sunken);
+  background-image: conic-gradient(
+    from 90deg,
+    color-mix(in oklab, var(--line) 60%, transparent) 25%,
+    transparent 0 50%,
+    color-mix(in oklab, var(--line) 60%, transparent) 0 75%,
+    transparent 0
+  );
+  background-size: 16px 16px;
+  cursor: zoom-in;
+}
+
+/* Fit mode caps the image at the frame and never upscales, so a 16px favicon
+   stays 16px instead of turning into a blurred poster. */
+.image-file-preview[data-zoom="fit"] .image-file-preview-frame img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.image-file-preview[data-zoom="actual"] .image-file-preview-frame img {
+  cursor: zoom-out;
+}
+
+.image-file-preview-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  padding: 4px 12px 4px 18px;
+  border-top: 1px solid var(--line);
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.image-file-preview-meta .small-icon {
+  width: 24px;
+  height: 24px;
+}
+
 .diff-blocks {
   display: grid;
   gap: 0;

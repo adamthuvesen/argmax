@@ -25,7 +25,7 @@ import {
 } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
-import { ChevronRight, Code, Eye, FileText, RotateCcw } from "lucide-react";
+import { ChevronRight, Code, Eye, FileText, Image as ImageIcon, RotateCcw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -33,15 +33,40 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
+import { ImageFilePreview } from "./ImageFilePreview.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
 import { MarkdownTable } from "./MarkdownTable.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
 import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters.js";
+import { isRemoteBridge } from "../lib/tauriBridge.js";
 
 function isMarkdownPath(path: string | null): boolean {
   if (!path) return false;
   const ext = path.split(".").pop()?.toLowerCase();
   return ext === "md" || ext === "markdown";
+}
+
+/** Extensions the image preview can show. Mirrors `is_whitelisted_image` in
+ *  `src-tauri/src/workspace_assets/protocol.rs` — that handler refuses anything
+ *  else, so a wider list here would only ever paint a broken image. SVG is not
+ *  in it because an SVG reads back as text: it gets the same rendered/source
+ *  toggle markdown does, rather than replacing the editor. */
+const RASTER_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "ico"]);
+
+function isRasterImagePath(path: string | null): boolean {
+  if (!path) return false;
+  return RASTER_IMAGE_EXTENSIONS.has(path.split(".").pop()?.toLowerCase() ?? "");
+}
+
+function isSvgPath(path: string | null): boolean {
+  return path !== null && path.split(".").pop()?.toLowerCase() === "svg";
+}
+
+/** Absolute on-disk path for a file the panel has open, or null when the
+ *  source root is unknown (the mobile bridge, which can't serve asset URLs). */
+function absoluteFilePath(rootPath: string | null, relativePath: string | null): string | null {
+  if (!rootPath || !relativePath) return null;
+  return `${rootPath.replace(/\/+$/, "")}/${relativePath}`;
 }
 
 /**
@@ -123,8 +148,14 @@ export function FilePreview({
   onCursorChange?: (cursor: EditorCursor | null) => void;
 }): JSX.Element {
   const markdownFile = isMarkdownPath(state.selectedPath);
-  // Per-file render mode. Default to rendered for markdown; non-markdown
-  // files only ever show source so the state is inert there.
+  // Absolute path for the asset protocol, which only the desktop webview can
+  // reach — over the mobile bridge there is no scheme to serve the bytes, so
+  // images stay on the "not previewable" message rather than a broken frame.
+  const assetPath = isRemoteBridge() ? null : absoluteFilePath(state.rootPath, state.selectedPath);
+  const rasterImageFile = assetPath !== null && isRasterImagePath(state.selectedPath);
+  const svgFile = assetPath !== null && isSvgPath(state.selectedPath);
+  // Per-file render mode. Default to rendered for markdown and SVG; every
+  // other text file only shows source, so the state is inert there.
   const [mode, setMode] = useState<"rendered" | "source">("rendered");
   useEffect(() => {
     setMode("rendered");
@@ -162,7 +193,14 @@ export function FilePreview({
   if (!preview) {
     return <p className="review-empty">No preview available.</p>;
   }
-  if (preview.kind === "skipped") {
+  const showRendered = (markdownFile || svgFile) && mode === "rendered";
+  // A raster image never has a text side to fall back to, so it replaces the
+  // editor outright; an SVG is text and only becomes a picture when rendered.
+  const showImage =
+    (rasterImageFile && preview.kind === "skipped" && preview.reason !== "not-a-file") ||
+    (svgFile && showRendered);
+
+  if (preview.kind === "skipped" && !showImage) {
     const message =
       preview.reason === "binary"
         ? "Binary file — not previewable."
@@ -172,14 +210,23 @@ export function FilePreview({
     return <p className="review-empty">{message}</p>;
   }
 
-  const showRendered = markdownFile && mode === "rendered";
-  const buffer = state.buffer ?? preview.content;
+  const buffer = preview.kind === "text" ? state.buffer ?? preview.content : "";
   const dirtyMarker = state.isDirty ? "•" : "";
+  // Only the two file kinds with both a source and a picture get a toggle.
+  const toggleLabel = svgFile
+    ? showRendered
+      ? "View SVG source"
+      : "Render SVG image"
+    : markdownFile
+      ? showRendered
+        ? "View markdown source"
+        : "Render markdown preview"
+      : null;
 
   return (
     <div
       className="file-preview"
-      data-mode={showRendered ? "rendered" : "source"}
+      data-mode={showImage ? "image" : showRendered ? "rendered" : "source"}
       aria-label={`Preview of ${state.selectedPath}`}
     >
       <div className="file-preview-heading">
@@ -202,16 +249,16 @@ export function FilePreview({
           ) : null}
         </strong>
         <div className="file-preview-heading-meta">
-          {markdownFile ? (
+          {toggleLabel ? (
             <button
               type="button"
               className="small-icon"
               aria-pressed={mode === "source"}
-              aria-label={showRendered ? "View markdown source" : "Render markdown preview"}
-              title={showRendered ? "View markdown source" : "Render markdown preview"}
+              aria-label={toggleLabel}
+              title={toggleLabel}
               onClick={() => setMode((m) => (m === "rendered" ? "source" : "rendered"))}
             >
-              {showRendered ? <Code size={14} /> : <Eye size={14} />}
+              {showRendered ? <Code size={14} /> : svgFile ? <ImageIcon size={14} /> : <Eye size={14} />}
             </button>
           ) : null}
         </div>
@@ -228,7 +275,13 @@ export function FilePreview({
           {state.saveError}
         </p>
       ) : null}
-      {showRendered ? (
+      {showImage && assetPath ? (
+        <ImageFilePreview
+          absolutePath={assetPath}
+          label={state.selectedPath}
+          sizeBytes={preview.size ?? null}
+        />
+      ) : showRendered ? (
         <div className="file-preview-markdown markdown">
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath]}

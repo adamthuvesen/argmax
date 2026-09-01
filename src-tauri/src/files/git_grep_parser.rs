@@ -1,14 +1,13 @@
-// Parse `git grep -n --null -z` output into the renderer's
+// Parse `git grep -n --null` output into the renderer's
 // `WorkspaceContentSearchResult` shape.
 //
-// With `-z --null`, git emits NUL between every output field AND between
-// match records. One match looks like:
+// `--null` only NUL-separates the fields *within* a record; each record is
+// still terminated by a newline. One match looks like:
 //
-//     <path>\0<lineNumber>\0<lineContent>\0
+//     <path>\0<lineNumber>\0<lineContent>\n
 //
-// Earlier git versions used `\0<line>\0:<content>` with a leading colon on
-// the content field; modern git ≥2.43 drops it. We defensively strip a
-// leading colon to cover both shapes.
+// Some git versions prefix the content field with a colon. We defensively
+// strip a leading colon to cover both shapes.
 
 use serde::Serialize;
 use specta::Type;
@@ -47,49 +46,33 @@ pub fn parse_git_grep_output(
     raw: &str,
     options: &GrepParseOptions,
 ) -> WorkspaceContentSearchResult {
-    if raw.is_empty() {
-        return WorkspaceContentSearchResult {
-            files: Vec::new(),
-            truncated: false,
-        };
-    }
-    let mut fields: Vec<&str> = raw.split('\0').collect();
-    // Trailing NUL adds one trailing empty string; drop it.
-    if matches!(fields.last(), Some(&"")) {
-        fields.pop();
-    }
-
     // Preserve emit order: git emits matches in path-sorted order with
     // multiple matches per file contiguous. We rely on insertion order
-    // when building the result, so a Vec<(path, file)> keyed lookup is
-    // fine.
+    // when building the result, so a Vec keyed by a linear scan is fine.
     let mut files: Vec<WorkspaceContentSearchFile> = Vec::new();
     let mut truncated = false;
 
-    let mut i = 0;
-    while i + 2 < fields.len() {
-        let path = fields[i];
-        let line_raw = fields[i + 1];
-        let preview_raw = fields[i + 2];
-
-        let line = match line_raw.parse::<i64>() {
-            Ok(line) => line,
-            Err(_) => {
-                // Not a valid record — skip one field and try again.
-                i += 1;
-                continue;
-            }
+    for record in raw.split('\n') {
+        if record.is_empty() {
+            continue;
+        }
+        let mut fields = record.splitn(3, '\0');
+        let (Some(path), Some(line_raw), Some(preview_raw)) =
+            (fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        let Ok(line) = line_raw.parse::<i64>() else {
+            continue;
         };
         let preview = preview_raw.strip_prefix(':').unwrap_or(preview_raw);
         let preview: String = preview.chars().take(MAX_PREVIEW_CHARS).collect();
 
-        let bucket_index = files.iter().position(|file| file.path == path);
-        let bucket_index = match bucket_index {
+        let bucket_index = match files.iter().position(|file| file.path == path) {
             Some(index) => index,
             None => {
                 if files.len() >= options.max_files {
                     truncated = true;
-                    i += 3;
                     continue;
                 }
                 files.push(WorkspaceContentSearchFile {
@@ -106,7 +89,6 @@ pub fn parse_git_grep_output(
         } else {
             truncated = true;
         }
-        i += 3;
     }
 
     WorkspaceContentSearchResult { files, truncated }
@@ -132,7 +114,7 @@ mod tests {
 
     #[test]
     fn parses_single_match() {
-        let raw = "src/foo.rs\0\x31\x32\0fn hello() {\0";
+        let raw = "src/foo.rs\x0012\x00fn hello() {\n";
         let parsed = parse_git_grep_output(raw, &options());
         assert_eq!(parsed.files.len(), 1);
         assert_eq!(parsed.files[0].path, "src/foo.rs");
@@ -142,9 +124,41 @@ mod tests {
         assert!(!parsed.truncated);
     }
 
+    // Real `git grep -n --null` output: NUL between the fields of a record,
+    // newline between records. Getting this backwards let one record's
+    // content swallow the next record's path.
+    #[test]
+    fn keeps_records_separate_across_files_and_matches() {
+        let raw = "a.txt\x001\x00hello a\na.txt\x002\x00hello b\nb.txt\x001\x00hello c\n";
+        let parsed = parse_git_grep_output(raw, &options());
+        assert_eq!(parsed.files.len(), 2);
+        assert_eq!(parsed.files[0].path, "a.txt");
+        assert_eq!(
+            parsed.files[0]
+                .matches
+                .iter()
+                .map(|m| (m.line, m.preview.as_str()))
+                .collect::<Vec<_>>(),
+            vec![(1, "hello a"), (2, "hello b")]
+        );
+        assert_eq!(parsed.files[1].path, "b.txt");
+        assert_eq!(parsed.files[1].matches[0].preview, "hello c");
+        assert!(!parsed.truncated);
+    }
+
+    // A matched line may itself contain NULs only in binary files, which
+    // `-I` skips, but it can contain colons and separators; everything past
+    // the second NUL is content.
+    #[test]
+    fn content_may_contain_nul_separators() {
+        let raw = "a.txt\x003\x00let x = a\x00b;\n";
+        let parsed = parse_git_grep_output(raw, &options());
+        assert_eq!(parsed.files[0].matches[0].preview, "let x = a\u{0}b;");
+    }
+
     #[test]
     fn strips_leading_colon_from_match_preview() {
-        let raw = "src/foo.rs\0\x31\0:matched content\0";
+        let raw = "src/foo.rs\x001\x00:matched content\n";
         let parsed = parse_git_grep_output(raw, &options());
         assert_eq!(parsed.files[0].matches[0].preview, "matched content");
     }
@@ -155,7 +169,7 @@ mod tests {
             max_files: 1,
             max_matches_per_file: 10,
         };
-        let raw = "a.rs\x00\x31\x00aa\x00b.rs\x00\x31\x00bb\x00";
+        let raw = "a.rs\x001\x00aa\nb.rs\x001\x00bb\n";
         let parsed = parse_git_grep_output(raw, &opts);
         assert_eq!(parsed.files.len(), 1);
         assert!(parsed.truncated);
@@ -167,7 +181,7 @@ mod tests {
             max_files: 50,
             max_matches_per_file: 1,
         };
-        let raw = "a.rs\x00\x31\x00first\x00a.rs\x00\x32\x00second\x00";
+        let raw = "a.rs\x001\x00first\na.rs\x002\x00second\n";
         let parsed = parse_git_grep_output(raw, &opts);
         assert_eq!(parsed.files[0].matches.len(), 1);
         assert!(parsed.truncated);
@@ -176,7 +190,7 @@ mod tests {
     #[test]
     fn long_preview_is_capped() {
         let long = "x".repeat(1000);
-        let raw = format!("a.rs\x00\x31\x00{long}\x00");
+        let raw = format!("a.rs\x001\x00{long}\n");
         let parsed = parse_git_grep_output(&raw, &options());
         assert_eq!(parsed.files[0].matches[0].preview.chars().count(), 320);
     }

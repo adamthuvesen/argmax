@@ -98,6 +98,15 @@ export function useSmartFollowScroll(
     // caret-reveal pan into a visible per-keystroke bounce.
     if (Math.abs(el.scrollTop - top) > 1) {
       el.scrollTop = top;
+      // A gesture in flight is measured against where it started, but this
+      // write moved the viewport underneath it. Growth streamed in between a
+      // wheel event and its scroll event would otherwise read as movement
+      // toward the bottom and swallow the reader's scroll away from it. Only
+      // a write rebases: a pass that leaves the viewport alone must not
+      // consume a user delta smaller than the tolerance above.
+      if (userScrollStartTopRef.current !== null) {
+        userScrollStartTopRef.current = el.scrollTop;
+      }
     }
   }, [applyTurnSpacer]);
 

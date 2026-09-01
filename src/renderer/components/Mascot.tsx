@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type JSX, type MouseEvent } from "react";
+import sprite from "../../../assets/fox-mascot.txt?raw";
 
 export type MascotMood = "idle" | "thinking" | "happy" | "sad";
 
@@ -15,32 +16,80 @@ interface MascotProps {
 }
 
 const MOOD_LABEL: Record<MascotMood, string> = {
-  idle: "Invader mascot",
-  thinking: "Invader mascot, thinking",
-  happy: "Invader mascot, cheering",
-  sad: "Invader mascot, looking concerned"
+  idle: "Fox mascot",
+  thinking: "Fox mascot, thinking",
+  happy: "Fox mascot, cheering",
+  sad: "Fox mascot, looking concerned"
 };
 
-// 16 cols × 12 rows. X = body, E = eye, . = transparent.
-// Rectangular head, straight antennae, arms protruding 1px gap from body,
-// four splayed legs with pointy feet — silhouette inspired by 👾.
-const BODY: ReadonlyArray<string> = [
-  "....X......X....",
-  "....X......X....",
-  "..XXXXXXXXXXXX..",
-  "..XXXXXXXXXXXX..",
-  "..XEE.XXXX.EEX..",
-  "..XEE.XXXX.EEX..",
-  "..XXXXXXXXXXXX..",
-  "XX.XXXXXXXXXX.XX",
-  "XX.XXXXXXXXXX.XX",
-  "..XXXXXXXXXXXX..",
-  ".XX..XX..XX..XX.",
-  ".X....X..X....X."
+const GRID: ReadonlyArray<string> = sprite.split("\n").filter((row) => row !== "" && !row.startsWith("#"));
+const GRID_W = GRID[0].length;
+const GRID_H = GRID.length;
+
+// The sprite is wide and short, so the viewBox is squared off below it: the fox
+// keeps the top, and the thinking-mood rain falls into the space underneath.
+// Callers size the mascot with one number, same as they always have.
+const VIEW = GRID_W;
+const RAIN_Y = GRID_H + 4;
+const RAIN_SIZE = 3;
+
+// Each palette character becomes one <g>, and CSS owns the colours from there.
+// `w` is grouped last so the eye highlights paint over the outline blocks.
+const LAYERS: ReadonlyArray<{ cell: string; className: string }> = [
+  { cell: "K", className: "mascot-line" },
+  { cell: "o", className: "mascot-fur" },
+  { cell: "d", className: "mascot-fur-shade" },
+  { cell: "c", className: "mascot-cream" },
+  { cell: "t", className: "mascot-cream-shade" },
+  { cell: "x", className: "mascot-nose" },
+  { cell: "w", className: "mascot-eyes" }
 ];
 
-const GRID_W = 16;
-const GRID_H = 16;
+interface SpriteRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Greedy maximal-rectangle cover of every cell holding `cell`. The sprite is
+ * drawn at 2x, so merging vertically as well as horizontally more than halves
+ * the geometry: 128 rects across all seven layers instead of 316 runs.
+ */
+function coverCells(cell: string): SpriteRect[] {
+  const taken = GRID.map(() => new Array<boolean>(GRID_W).fill(false));
+  const rects: SpriteRect[] = [];
+
+  const free = (x: number, y: number): boolean => !taken[y][x] && GRID[y].charAt(x) === cell;
+  const rowFree = (y: number, from: number, to: number): boolean => {
+    for (let x = from; x <= to; x += 1) {
+      if (!free(x, y)) return false;
+    }
+    return true;
+  };
+
+  for (let y = 0; y < GRID_H; y += 1) {
+    for (let x = 0; x < GRID_W; x += 1) {
+      if (!free(x, y)) continue;
+      let right = x;
+      while (right + 1 < GRID_W && free(right + 1, y)) right += 1;
+      let bottom = y;
+      while (bottom + 1 < GRID_H && rowFree(bottom + 1, x, right)) bottom += 1;
+      for (let row = y; row <= bottom; row += 1) {
+        for (let col = x; col <= right; col += 1) taken[row][col] = true;
+      }
+      rects.push({ x, y, width: right - x + 1, height: bottom - y + 1 });
+    }
+  }
+  return rects;
+}
+
+// Built once at module load, not per render: the sprite never changes.
+const LAYER_RECTS: ReadonlyArray<{ className: string; rects: SpriteRect[] }> = LAYERS.map(
+  ({ cell, className }) => ({ className, rects: coverCells(cell) })
+);
+
 const PET_DURATION_MS = 700;
 
 export function Mascot({
@@ -54,20 +103,6 @@ export function Mascot({
   disabled,
   title
 }: MascotProps): JSX.Element {
-  const bodyRects: JSX.Element[] = [];
-  const eyeRects: JSX.Element[] = [];
-
-  BODY.forEach((row, y) => {
-    for (let x = 0; x < row.length; x += 1) {
-      const cell = row.charAt(x);
-      if (cell === "X") {
-        bodyRects.push(<rect key={`b-${x}-${y}`} x={x} y={y} width={1} height={1} />);
-      } else if (cell === "E") {
-        eyeRects.push(<rect key={`e-${x}-${y}`} x={x} y={y} width={1} height={1} />);
-      }
-    }
-  });
-
   const ariaLabel = label ?? MOOD_LABEL[mood];
   const classes = ["mascot", className].filter(Boolean).join(" ");
 
@@ -92,16 +127,45 @@ export function Mascot({
       aria-label={ariaLabel}
       width={size}
       height={size}
-      viewBox={`0 0 ${GRID_W} ${GRID_H}`}
+      viewBox={`0 0 ${VIEW} ${VIEW}`}
       shapeRendering="crispEdges"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <g className="mascot-fill">{bodyRects}</g>
-      <g className="mascot-eyes">{eyeRects}</g>
+      {LAYER_RECTS.map(({ className: layerClass, rects }) => (
+        <g className={layerClass} key={layerClass}>
+          {rects.map((rect) => (
+            <rect
+              key={`${rect.x}-${rect.y}`}
+              x={rect.x}
+              y={rect.y}
+              width={rect.width}
+              height={rect.height}
+            />
+          ))}
+        </g>
+      ))}
       <g className="mascot-rain" aria-hidden="true">
-        <rect className="mascot-rain-dot mascot-rain-dot-1" x={4} y={13} width={1} height={1} />
-        <rect className="mascot-rain-dot mascot-rain-dot-2" x={8} y={13} width={1} height={1} />
-        <rect className="mascot-rain-dot mascot-rain-dot-3" x={12} y={13} width={1} height={1} />
+        <rect
+          className="mascot-rain-dot mascot-rain-dot-1"
+          x={16}
+          y={RAIN_Y}
+          width={RAIN_SIZE}
+          height={RAIN_SIZE}
+        />
+        <rect
+          className="mascot-rain-dot mascot-rain-dot-2"
+          x={26}
+          y={RAIN_Y}
+          width={RAIN_SIZE}
+          height={RAIN_SIZE}
+        />
+        <rect
+          className="mascot-rain-dot mascot-rain-dot-3"
+          x={36}
+          y={RAIN_Y}
+          width={RAIN_SIZE}
+          height={RAIN_SIZE}
+        />
       </g>
     </svg>
   );

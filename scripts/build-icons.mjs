@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 // Builds every app-icon artifact from one pixel grid and one palette.
 //
-// The mark is the same invader silhouette the in-app mascot draws
-// (src/renderer/components/Mascot.tsx), with the eyes left open so the field
-// colour shows through. Two appearances:
+// The mark is the pixel fox the in-app mascot draws
+// (src/renderer/components/Mascot.tsx); both read assets/fox-mascot.txt, so an
+// edit to the sprite moves the icon and the mascot together. The fox keeps one
+// palette across both appearances — it reads as a fox because cream separates
+// from orange, and only the field changes:
 //
-//   light: near-white field, mid purple mark
-//   dark:  warm charcoal field, lifted purple mark (the shades the dark theme
-//           already uses for --bg and --accent, so the icon and the app agree)
+//   light: near-white field
+//   dark:  warm charcoal field (the shade the dark theme uses for --bg, so the
+//          icon and the app agree)
 //
 // Outputs:
 //   assets/icon.svg, assets/icon-dark.svg     browsable squircle artwork
@@ -41,31 +43,35 @@ const PUBLIC = path.join(ROOT, "public");
 const ICON_PACKAGE = path.join(ASSETS, "Argmax.icon");
 
 const APPEARANCES = {
-  light: { field: "#fefefe", mark: "#9b6dd4" },
-  dark: { field: "#1b1b18", mark: "#b894ff" }
+  light: { field: "#fefefe" },
+  dark: { field: "#1b1b18" }
 };
 
-// 16 × 12. X = mark, . = open (eyes and the gaps under the arms).
-const GRID = [
-  "....X......X....",
-  "....X......X....",
-  "..XXXXXXXXXXXX..",
-  "..XXXXXXXXXXXX..",
-  "..X...XXXX...X..",
-  "..X...XXXX...X..",
-  "..XXXXXXXXXXXX..",
-  "XX.XXXXXXXXXX.XX",
-  "XX.XXXXXXXXXX.XX",
-  "..XXXXXXXXXXXX..",
-  ".XX..XX..XX..XX.",
-  ".X....X..X....X."
+// One entry per sprite character. Painted in this order so the eye highlights
+// land over the outline blocks that hold them.
+const PALETTE = [
+  ["K", "#592718"],
+  ["o", "#c6663a"],
+  ["d", "#99442d"],
+  ["c", "#ebe1cf"],
+  ["t", "#bca595"],
+  ["x", "#110b0f"],
+  ["w", "#ffffff"]
 ];
 
+const GRID = readFileSync(path.join(ASSETS, "fox-mascot.txt"), "utf8")
+  .split("\n")
+  .filter((row) => row !== "" && !row.startsWith("#"));
+const INK = new Map(PALETTE);
+const GRID_W = GRID[0].length;
+const GRID_H = GRID.length;
+
 const CANVAS = 1024;
-const CELL = 51;
-// Centred on the canvas: 16 × 51 wide, 12 × 51 tall.
-const MARK_X = (CANVAS - GRID[0].length * CELL) / 2;
-const MARK_Y = (CANVAS - GRID.length * CELL) / 2;
+// 56 × 16 wide, 40 × 16 tall: the sprite is wide and short, so the cell is
+// picked off the width and the fox sits band-centred on the square.
+const CELL = 16;
+const MARK_X = (CANVAS - GRID_W * CELL) / 2;
+const MARK_Y = (CANVAS - GRID_H * CELL) / 2;
 // macOS reserves the outer ~10% of a legacy icon as breathing room, so the
 // squircle sits at 80% of the canvas. Icon Composer draws the icon shape
 // itself, which is why the .icon layer uses the same mark on the full canvas.
@@ -74,37 +80,58 @@ const SQUIRCLE_SIZE = 820;
 const SQUIRCLE_RADIUS = 232;
 
 /**
- * The mark as SVG rects in grid coordinates. The enclosing <g> carries the
- * translate/scale. Each row collapses to horizontal runs so the artwork stays a
- * couple of dozen rects instead of one per cell.
+ * Greedy maximal-rectangle cover of every cell holding `cell`. The sprite is
+ * drawn at 2x, so merging vertically as well as horizontally more than halves
+ * the geometry: 128 rects across all seven layers instead of 316 runs.
  */
-function markRects() {
+function coverCells(cell) {
+  const taken = GRID.map(() => new Array(GRID_W).fill(false));
   const rects = [];
-  GRID.forEach((row, y) => {
-    let runStart = null;
-    for (let x = 0; x <= row.length; x += 1) {
-      const filled = row.charAt(x) === "X";
-      if (filled && runStart === null) {
-        runStart = x;
-      } else if (!filled && runStart !== null) {
-        rects.push(`      <rect x="${runStart}" y="${y}" width="${x - runStart}" height="1"/>`);
-        runStart = null;
-      }
+
+  const free = (x, y) => !taken[y][x] && GRID[y].charAt(x) === cell;
+  const rowFree = (y, from, to) => {
+    for (let x = from; x <= to; x += 1) {
+      if (!free(x, y)) return false;
     }
-  });
-  return rects.join("\n");
+    return true;
+  };
+
+  for (let y = 0; y < GRID_H; y += 1) {
+    for (let x = 0; x < GRID_W; x += 1) {
+      if (!free(x, y)) continue;
+      let right = x;
+      while (right + 1 < GRID_W && free(right + 1, y)) right += 1;
+      let bottom = y;
+      while (bottom + 1 < GRID_H && rowFree(bottom + 1, x, right)) bottom += 1;
+      for (let row = y; row <= bottom; row += 1) {
+        for (let col = x; col <= right; col += 1) taken[row][col] = true;
+      }
+      rects.push({ x, y, width: right - x + 1, height: bottom - y + 1 });
+    }
+  }
+  return rects;
+}
+
+/** One <g> per palette entry, in grid coordinates; the caller scales them. */
+function markGroups() {
+  return PALETTE.map(([cell, hex]) => {
+    const rects = coverCells(cell)
+      .map(({ x, y, width, height }) => `        <rect x="${x}" y="${y}" width="${width}" height="${height}"/>`)
+      .join("\n");
+    return `      <g fill="${hex}">\n${rects}\n      </g>`;
+  }).join("\n");
 }
 
 /** Squircle artwork: the app icon as it ships to macOS < 26 and to the README. */
-function squircleSvg({ field, mark }) {
+function squircleSvg({ field }) {
   // The inner <svg> carries the 80% inset so the squircle rect stays at the
   // origin. qlmanage silently drops rounded rects with a non-zero x/y.
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CANVAS} ${CANVAS}" width="${CANVAS}" height="${CANVAS}">
-  <!-- Generated by scripts/build-icons.mjs. Edit the grid or palette there. -->
+  <!-- Generated by scripts/build-icons.mjs from assets/fox-mascot.txt. -->
   <svg x="${SQUIRCLE_INSET}" y="${SQUIRCLE_INSET}" width="${SQUIRCLE_SIZE}" height="${SQUIRCLE_SIZE}" viewBox="0 0 ${CANVAS} ${CANVAS}">
     <rect width="${CANVAS}" height="${CANVAS}" rx="${SQUIRCLE_RADIUS}" fill="${field}"/>
-    <g transform="translate(${MARK_X} ${MARK_Y}) scale(${CELL})" fill="${mark}" shape-rendering="crispEdges">
-${markRects()}
+    <g transform="translate(${MARK_X} ${MARK_Y}) scale(${CELL})" shape-rendering="crispEdges">
+${markGroups()}
     </g>
   </svg>
 </svg>
@@ -116,7 +143,7 @@ function srgb(hex) {
   return `srgb:${channels.join(",")},1.00000`;
 }
 
-/** Icon Composer document: one shared mark layer, recoloured per appearance. */
+/** Icon Composer document: one full-colour mark layer over a tinted field. */
 function iconDocument() {
   return {
     "fill-specializations": [
@@ -127,12 +154,12 @@ function iconDocument() {
       {
         layers: [
           {
+            // No fill-specializations: a solid tint is for monochrome marks,
+            // and flattening the fox to one colour is exactly what stops it
+            // reading as a fox. The layer ships its own palette instead, and
+            // only the field behind it changes with the appearance.
             name: "mark",
-            "image-name": "mark.png",
-            "fill-specializations": [
-              { value: { solid: srgb(APPEARANCES.light.mark) } },
-              { appearance: "dark", value: { solid: srgb(APPEARANCES.dark.mark) } }
-            ]
+            "image-name": "mark.png"
           }
         ],
         // No shadow, specular or translucency: Liquid Glass's default bevel
@@ -173,34 +200,44 @@ function fieldCoverage(x, y) {
 }
 
 /**
- * Exact coverage of the mark over the pixel at (x, y): the grid cells are
+ * Exact coverage of the mark over the pixel at (x, y). The grid cells are
  * axis-aligned, so this is the overlapping area of the (at most four) cells the
- * pixel touches. Computing the union area rather than per-rect alpha is what
- * keeps seams from showing between adjacent filled cells.
+ * pixel touches, accumulated as an area-weighted colour. Blending the union
+ * rather than compositing per-rect alpha is what keeps seams from showing
+ * between adjacent cells of different colours.
  */
-function markCoverage(x, y, cell, originX, originY) {
+function markSample(x, y, cell, originX, originY) {
   const left = (x - originX) / cell;
   const top = (y - originY) / cell;
   const right = left + 1 / cell;
   const bottom = top + 1 / cell;
 
-  let area = 0;
+  let covered = 0;
+  const colour = [0, 0, 0];
   for (let row = Math.floor(top); row < Math.ceil(bottom); row += 1) {
-    if (row < 0 || row >= GRID.length) continue;
+    if (row < 0 || row >= GRID_H) continue;
     const height = Math.min(bottom, row + 1) - Math.max(top, row);
     for (let col = Math.floor(left); col < Math.ceil(right); col += 1) {
-      if (col < 0 || col >= GRID[row].length || GRID[row].charAt(col) !== "X") continue;
-      area += (Math.min(right, col + 1) - Math.max(left, col)) * height;
+      if (col < 0 || col >= GRID_W) continue;
+      const hex = INK.get(GRID[row].charAt(col));
+      if (!hex) continue;
+      const area = (Math.min(right, col + 1) - Math.max(left, col)) * height * cell * cell;
+      covered += area;
+      const [r, g, b] = rgb(hex);
+      colour[0] += r * area;
+      colour[1] += g * area;
+      colour[2] += b * area;
     }
   }
-  return clamp01(area * cell * cell);
+  if (covered <= 0) return { coverage: 0, colour };
+  return { coverage: clamp01(covered), colour: colour.map((channel) => channel / covered) };
 }
 
 /**
  * Draws the icon at CANVAS×CANVAS. Without a field the mark is rendered alone
- * on transparency, which is the layer the .icon package tints per appearance.
+ * on transparency, which is the layer the .icon package composites.
  */
-function render({ field, mark }) {
+function render({ field }) {
   const pixels = Buffer.alloc(CANVAS * CANVAS * 4);
   const inset = field !== undefined;
   const scale = inset ? SQUIRCLE_SIZE / CANVAS : 1;
@@ -208,16 +245,15 @@ function render({ field, mark }) {
   const originX = inset ? SQUIRCLE_INSET + MARK_X * scale : MARK_X;
   const originY = inset ? SQUIRCLE_INSET + MARK_Y * scale : MARK_Y;
   const fieldRgb = inset ? rgb(field) : null;
-  const markRgb = rgb(mark);
 
   for (let y = 0; y < CANVAS; y += 1) {
     for (let x = 0; x < CANVAS; x += 1) {
-      const onMark = markCoverage(x, y, cell, originX, originY);
-      const alpha = inset ? fieldCoverage(x, y) : onMark;
+      const { coverage, colour } = markSample(x, y, cell, originX, originY);
+      const alpha = inset ? fieldCoverage(x, y) : coverage;
       const at = (y * CANVAS + x) * 4;
       for (let channel = 0; channel < 3; channel += 1) {
-        const base = fieldRgb ? fieldRgb[channel] : markRgb[channel];
-        pixels[at + channel] = Math.round(base + (markRgb[channel] - base) * onMark);
+        const base = fieldRgb ? fieldRgb[channel] : colour[channel];
+        pixels[at + channel] = Math.round(base + (colour[channel] - base) * coverage);
       }
       pixels[at + 3] = Math.round(alpha * 255);
     }
@@ -382,9 +418,10 @@ try {
     writePng(render(palette), path.join(ASSETS, `${stem}.png`));
   }
 
-  // The .icon layer is a white silhouette. icon.json supplies both purples, so
-  // the package carries one asset instead of one per appearance.
-  writePng(render({ mark: "#ffffff" }), path.join(ICON_PACKAGE, "Assets", "mark.png"));
+  // The .icon layer is the fox on transparency, at full colour. icon.json
+  // supplies both fields, so the package carries one asset rather than one per
+  // appearance.
+  writePng(render({}), path.join(ICON_PACKAGE, "Assets", "mark.png"));
   writeFileSync(path.join(ICON_PACKAGE, "icon.json"), `${JSON.stringify(iconDocument(), null, 2)}\n`);
 
   // The PWA icon has to live in public/: Vite hashes anything referenced from

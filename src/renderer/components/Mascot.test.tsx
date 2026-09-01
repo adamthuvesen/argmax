@@ -11,7 +11,7 @@ describe("Mascot", () => {
     render(<Mascot />);
     const svg = screen.getByRole("img");
     expect(svg.getAttribute("data-mood")).toBe("idle");
-    expect(svg.getAttribute("aria-label")).toBe("Invader mascot");
+    expect(svg.getAttribute("aria-label")).toBe("Fox mascot");
   });
 
   it.each(["idle", "thinking", "happy", "sad"] as const)(
@@ -20,7 +20,7 @@ describe("Mascot", () => {
       render(<Mascot mood={mood} />);
       const svg = screen.getByRole("img");
       expect(svg.getAttribute("data-mood")).toBe(mood);
-      expect(svg.getAttribute("aria-label")).toMatch(/^Invader mascot/);
+      expect(svg.getAttribute("aria-label")).toMatch(/^Fox mascot/);
     }
   );
 
@@ -40,7 +40,7 @@ describe("Mascot", () => {
   it("renders a clickable button when onClick is provided and fires the handler", () => {
     const onClick = vi.fn();
     render(<Mascot onClick={onClick} />);
-    const button = screen.getByRole("button", { name: "Invader mascot" });
+    const button = screen.getByRole("button", { name: "Fox mascot" });
     fireEvent.click(button);
     expect(onClick).toHaveBeenCalledTimes(1);
   });

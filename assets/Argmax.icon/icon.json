@@ -17,20 +17,7 @@
       "layers": [
         {
           "name": "mark",
-          "image-name": "mark.png",
-          "fill-specializations": [
-            {
-              "value": {
-                "solid": "srgb:0.60784,0.42745,0.83137,1.00000"
-              }
-            },
-            {
-              "appearance": "dark",
-              "value": {
-                "solid": "srgb:0.72157,0.58039,1.00000,1.00000"
-              }
-            }
-          ]
+          "image-name": "mark.png"
         }
       ],
       "lighting": "individual",

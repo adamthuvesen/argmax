@@ -1,9 +1,14 @@
 .mascot {
-  /* The mascot wears the app's chosen accent, so it recolors with the accent
-     picked in settings (sage default, purple/orange/blue/neutral, per theme)
-     everywhere it appears. The rain dots are a softer wash of the same accent. */
-  --mascot-body: var(--accent);
-  --mascot-eye: #1c1b18;
+  /* The fox carries its own palette rather than the chosen accent: it reads as
+     a fox because cream separates from orange, and tinting the whole sprite one
+     accent collapses that back into a blob. Only the thinking rain stays on the
+     accent, so the live-work signal still matches the rest of the chrome. */
+  --fox-fur: #c6663a;
+  --fox-fur-shade: #99442d;
+  --fox-line: #592718;
+  --fox-cream: #ebe1cf;
+  --fox-cream-shade: #bca595;
+  --fox-nose: #110b0f;
   --mascot-rain: color-mix(in oklab, var(--accent) 58%, var(--panel));
 
   display: inline-block;
@@ -13,18 +18,48 @@
   transform-origin: 50% 100%;
 }
 
-.mascot .mascot-fill rect {
-  fill: var(--mascot-body);
+.mascot .mascot-fur rect {
+  fill: var(--fox-fur);
+}
+
+.mascot .mascot-fur-shade rect {
+  fill: var(--fox-fur-shade);
+}
+
+.mascot .mascot-line rect {
+  fill: var(--fox-line);
+}
+
+.mascot .mascot-cream rect {
+  fill: var(--fox-cream);
+}
+
+.mascot .mascot-cream-shade rect {
+  fill: var(--fox-cream-shade);
+}
+
+.mascot .mascot-nose rect {
+  fill: var(--fox-nose);
 }
 
 .mascot .mascot-eyes rect {
-  fill: var(--mascot-eye);
+  fill: #ffffff;
 }
 
+/* Blinking scales down the eye highlights alone. The dark eye blocks underneath
+   stay put, so a blink reads as the shine going out rather than as a hole
+   opening in the face. */
 .mascot .mascot-eyes {
-  transform-origin: 8px 6px;
+  transform-origin: 40px 18px;
   transform-box: view-box;
   animation: mascot-blink 4.6s var(--ease) infinite;
+}
+
+/* On charcoal the reference outline is barely off the background, which loses
+   the sprite's edges. Warming it up keeps the silhouette without touching the
+   fur, so the fox stays the same colour in both themes. */
+:root[data-theme="dark"] .mascot {
+  --fox-line: #75381f;
 }
 
 .mascot .mascot-rain-dot {
@@ -36,13 +71,13 @@
   animation: mascot-hop 0.7s var(--ease) 1, mascot-bob 2.4s var(--ease) 0.7s infinite;
 }
 
-/* Rest state (empty composer → send disabled). Muted and theme-aware so the
-   mascot recedes into the palette instead of blaring near-white on the dark
-   canvas; it blooms to the accent --mascot-body the moment there's text to
-   send (mood flips sad → idle). */
+/* Rest state (empty composer → send disabled). The fox drains rather than
+   recolors — desaturating the whole sprite keeps its shading intact, where
+   flattening it to --muted would erase the fox and leave a grey blob. Colour
+   floods back the moment there's text to send (mood flips sad → idle). */
 .mascot[data-mood="sad"] {
   animation: mascot-droop 2.6s var(--ease) infinite;
-  --mascot-body: var(--muted);
+  filter: saturate(0.2) opacity(0.7);
   --mascot-rain: var(--muted);
 }
 

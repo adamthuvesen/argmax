@@ -1,7 +1,8 @@
 import { ArrowUp, ChevronsUpDown, Folder, GitBranch } from "lucide-react";
-import { useCallback, useMemo, useState, type JSX, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { PROVIDER_TITLE_MODEL } from "../../shared/providerModels.js";
 import { LaunchModelSelector } from "../components/ModelSelector.js";
+import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { BottomSheet, SheetOption } from "./BottomSheet.js";
 import { MobileScreenHeader } from "./MobileScreenHeader.js";
 import type { ProjectSummary } from "../../shared/types.js";
@@ -15,6 +16,9 @@ import {
   type WorkspaceMode
 } from "../lib/workspaceMode.js";
 import { REMOTE_CONNECTION_LOST_MESSAGE } from "../lib/wsTransport.js";
+
+// The ceiling the session and launcher composers already use.
+const PROMPT_MAX_HEIGHT_PX = 168;
 
 /** A quiet context row for project and workspace choices. */
 function ContextRow({
@@ -74,6 +78,8 @@ export function NewSessionScreen({
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
   const [launching, setLaunching] = useState(false);
   const [heading] = useState(pickLauncherHeading);
+  const promptRef = useRef<HTMLTextAreaElement | null>(null);
+  useAutoGrowTextArea(promptRef, prompt, PROMPT_MAX_HEIGHT_PX);
 
   const project = useMemo(
     () => projects.find((candidate) => candidate.id === projectId) ?? projects[0] ?? null,
@@ -191,13 +197,16 @@ export function NewSessionScreen({
             />
           </div>
 
-          <div className="mobile-new-composer">
+          {/* Same type scale as the session composer, so both prompts and both
+              chip rows land on the same sizes — see mobile.css. */}
+          <div className="mobile-new-composer" data-type-scale="composer">
             <textarea
+              ref={promptRef}
               className="mobile-new-prompt"
               aria-label="Task"
               placeholder="What are we building?"
               value={prompt}
-              rows={2}
+              rows={1}
               // The screen opens from a deliberate "+" tap, so raising the
               // keyboard immediately is the expected next step, not a theft.
               autoFocus

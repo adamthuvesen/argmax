@@ -385,14 +385,19 @@ html:has(.mobile-shell) body {
   display: none !important;
 }
 
-/* Keep both mobile composers aligned with the agent output. The explicit
-   sizes also neutralize the different inherited scales used by each view. */
+/* Keep both mobile composers aligned with the agent output (.markdown, which
+   reads --text-base off the shell's own scale).
+
+   These tokens only resolve to the same pixels because both composer cards
+   carry `data-type-scale="composer"`. The shell hosts `data-font-size` on
+   itself rather than on :root, so --chrome-type-step — which only :root ever
+   writes — stays at the desktop step here, and a composer that skips the
+   scale reads the shell's step instead. That is a 3px gap the shared token
+   hides: the new-session prompt used to render at 20px against the session
+   prompt's 17px. */
 .mobile-shell .session-input textarea,
 .mobile-shell .mobile-new-prompt {
   font-size: var(--text-md-plus);
-}
-
-.mobile-shell .session-input textarea {
   line-height: 1.45;
 }
 
@@ -571,16 +576,22 @@ html:has(.mobile-shell) body {
   border-color: var(--accent);
 }
 
+/* The session composer's field metrics, so the two grow the same way: a 52px
+   floor, a 168px ceiling, 8px padding. The height between them is driven by
+   useAutoGrowTextArea, not by `rows`. The inherited font-size is >=16px, which
+   is what keeps iOS Safari from zooming the page on focus. */
 .mobile-new-prompt {
   width: 100%;
   min-width: 0;
+  min-height: 52px;
+  max-height: 168px;
+  padding: 8px;
   border: none;
   background: transparent;
   color: var(--text);
-  font: inherit;
-  /* 16px+ keeps iOS Safari from zooming the page on focus. */
-  line-height: 1.5;
+  font-family: var(--font-prose);
   resize: none;
+  overflow-y: hidden;
 }
 
 .mobile-new-composer-toolbar {

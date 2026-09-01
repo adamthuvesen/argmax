@@ -600,6 +600,98 @@
   display: inline;
 }
 
+/* Agents view: the panel's third mode. Same skeleton as Files — a tab strip
+   on top, one scrolling body, a status strip anchored at the bottom — so
+   switching modes moves content, not furniture. */
+.review-body-agents {
+  flex-direction: column;
+}
+
+.review-agents {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Every open subagent stays mounted so it keeps loading in the background;
+   only the active one is laid out. */
+.review-agents-body {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.review-agents-transcript {
+  display: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.review-agents-transcript[data-active="true"] {
+  display: flex;
+}
+
+/* A running subagent's nest sits in the tab; a settled one shows the bot mark,
+   rose when the run failed. */
+.file-tab-icon[data-status="error"] {
+  color: var(--rose);
+}
+
+.review-agents-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.review-agents-state[data-status="running"] {
+  color: var(--accent);
+}
+
+.review-agents-state[data-status="error"] {
+  color: var(--rose);
+}
+
+.review-agents-model {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The model is the fact, the effort qualifies it. */
+.review-agents-effort {
+  color: color-mix(in oklab, var(--muted) 78%, transparent);
+}
+
+/* A count only earns its space once a session has fanned out — and only where
+   the tabs carry labels; an icon-only 24px tab has no room for it. */
+.review-mode-tab-count {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-sunken);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs-plus);
+  font-feature-settings: "tnum";
+}
+
+.review-panel[data-wide="true"] .review-mode-tab-count {
+  display: inline-flex;
+}
+
+.review-mode-tabs button[aria-selected="true"] .review-mode-tab-count {
+  color: var(--text-soft);
+}
+
 /* Files-mode status strip. Sibling of the Changes summary footer and built to
    the same recipe, so the panel reads with one anchored bottom edge either
    way: mono metadata, tabular figures, quiet against a soft ground. */

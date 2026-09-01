@@ -333,9 +333,6 @@ export function App(): JSX.Element {
     handleWorkspaceDragEnd,
     openLauncherPaneInGrid,
     setLauncherPaneProject,
-    openAgentPane,
-    activateAgentTab,
-    closeAgentTab
   } = useAppGridSelection({
     snapshot,
     selectedProject,
@@ -1977,9 +1974,6 @@ export function App(): JSX.Element {
               defaultIde={defaultIde}
               detectedIdes={detectedIdes}
               onOpenWorkspaceInIde={onOpenWorkspaceInIdePane}
-              onOpenAgentPane={openAgentPane}
-              onActivateAgentTab={activateAgentTab}
-              onCloseAgentTab={closeAgentTab}
               onWorkspaceMinWidthChange={setSessionGridRequiredWorkspaceMinWidth}
               onResolveApproval={resolveApproval}
               onSendSessionInput={sendSessionInput}

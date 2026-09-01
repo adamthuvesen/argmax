@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
-import { AgentActivityPane } from "./AgentActivityPane.js";
+import { AgentActivity } from "./AgentActivity.js";
 
 function event(
   id: string,
@@ -54,14 +54,14 @@ const workspace: WorkspaceSummary = {
   priorityAddedAt: null
 };
 
-describe("AgentActivityPane", () => {
+describe("AgentActivity", () => {
   afterEach(() => {
     cleanup();
   });
 
   it("keeps running child tool rows compact instead of flashing expanded details", () => {
     render(
-      <AgentActivityPane
+      <AgentActivity
         events={[
           event("child-bash", "command.started", "2026-05-12T15:00:02.000Z", "Bash", {
             id: "child-bash",
@@ -87,9 +87,9 @@ describe("AgentActivityPane", () => {
     expect(within(pane).queryByText("Command")).toBeNull();
   });
 
-  it("shows only the codename in the kicker and includes it in the section label when provided", () => {
+  it("names the agent in the region label so the panel's tab and body agree", () => {
     render(
-      <AgentActivityPane
+      <AgentActivity
         events={[
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
             id: "task-1",
@@ -104,15 +104,14 @@ describe("AgentActivityPane", () => {
       />
     );
 
-    const pane = screen.getByRole("region", { name: "Agent activity: Callisto — Explore repo" });
-    const kicker = pane.querySelector(".agent-activity-kicker");
-    expect(kicker).toHaveTextContent("Callisto");
-    expect(kicker).not.toHaveTextContent("Subagent");
+    expect(
+      screen.getByRole("region", { name: "Agent activity: Callisto — Explore repo" })
+    ).toBeInTheDocument();
   });
 
-  it("keeps the plain Subagent kicker when no codename is provided", () => {
+  it("labels the region without a codename when none is assigned", () => {
     render(
-      <AgentActivityPane
+      <AgentActivity
         events={[
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
             id: "task-1",
@@ -126,7 +125,6 @@ describe("AgentActivityPane", () => {
       />
     );
 
-    const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
-    expect(pane.querySelector(".agent-activity-kicker")).toHaveTextContent("Subagent");
+    expect(screen.getByRole("region", { name: "Agent activity: Explore repo" })).toBeInTheDocument();
   });
 });

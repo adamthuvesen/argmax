@@ -111,4 +111,4 @@ session re-reconciled thousands of live subtrees on every streaming delta.
 
 To prevent IPC bottlenecks:
 - General timeline polling uses `session:events-since`.
-- `session:agent-events` is only invoked when an agent activity pane is mounted, bounded by `SESSION_AGENT_EVENT_SCAN_LIMIT` (2,000 rows).
+- `session:agent-events` is only invoked when a subagent tab is open in a review panel's Agents view, bounded by `SESSION_AGENT_EVENT_SCAN_LIMIT` (2,000 rows).

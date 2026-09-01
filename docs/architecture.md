@@ -51,10 +51,10 @@ Dashboard state is SQLite-first: UI reads (`dashboard:list`, `session:events-sin
 
 React 19 + Vite. [App.tsx](../src/renderer/App.tsx) renders the shell; [tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) handles IPC via `window.argmax`. Direct Tauri API usage is limited to window chrome in [windowChrome.ts](../src/renderer/lib/windowChrome.ts) and min-size constraints in [App.tsx](../src/renderer/App.tsx). In standalone browser previews, the renderer falls back to [demoSnapshot.ts](../src/renderer/demoSnapshot.ts).
 
-[SessionMultiGrid.tsx](../src/renderer/components/SessionMultiGrid.tsx) manages three pane types:
+[SessionMultiGrid.tsx](../src/renderer/components/SessionMultiGrid.tsx) manages two pane types:
 - **Session panes**: Primary conversation views.
 - **Launcher panes**: In-grid session creation. Each launcher has its own `projectId` via `setLauncherProject` ([gridState.ts](../src/renderer/lib/gridState.ts)), so launching in another repo does not change the global app selection.
-- **Agent activity panes**: Subagent traces linked to a parent session and tool use ID. These close when the parent session pane closes.
+- **Agents view**: Subagent traces linked to a parent session and tool use ID, shown as the third mode of that session's review panel (Changes / Files / Agents). They live and die with the session's pane.
 
 "New session here" in the pane menu opens a launcher adjacent to the active pane without replacing the grid.
 

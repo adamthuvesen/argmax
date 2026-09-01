@@ -2,16 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_GRID,
   MAX_CELLS,
-  closeAgentTab,
   closeCell,
   dropWorkspaceInGrid,
   focusedCell,
   openLauncherInGrid,
   setLauncherProject,
-  openAgentInGrid,
   openWorkspaceInGrid,
   revertSessionToLauncher,
-  setActiveAgentTab,
   setFocus,
   terminalWorkspaceId,
   type GridState
@@ -19,19 +16,6 @@ import {
 
 const cell = (n: number) => ({ sessionId: `s${n}`, workspaceId: `w${n}` });
 const launcher = (n = 1) => ({ kind: "launcher" as const, projectId: `p${n}` });
-const agentReq = (n = 1, tool = `tool-${n}`) => ({
-  parentSessionId: `s${n}`,
-  workspaceId: `w${n}`,
-  parentToolUseId: tool
-});
-const agentCell = (n = 1, tools: string[] = [`tool-${n}`], active = tools[0]) => ({
-  kind: "agent" as const,
-  parentSessionId: `s${n}`,
-  workspaceId: `w${n}`,
-  parentToolUseIds: tools,
-  activeParentToolUseId: active
-});
-
 describe("openWorkspaceInGrid", () => {
   it("creates the first cell when the grid is empty", () => {
     const next = openWorkspaceInGrid(EMPTY_GRID, cell(1), { ctrlOrMeta: false, alt: false });
@@ -41,20 +25,6 @@ describe("openWorkspaceInGrid", () => {
 
   it("replaces the focused cell with no modifiers", () => {
     const start: GridState = { rows: [[cell(1)]], focused: { row: 0, col: 0 } };
-    const next = openWorkspaceInGrid(start, cell(2), { ctrlOrMeta: false, alt: false });
-    expect(next.rows).toEqual([[cell(2)]]);
-    expect(next.focused).toEqual({ row: 0, col: 0 });
-  });
-
-  it("drops dependent agent panes when replacing their parent session", () => {
-    const start: GridState = { rows: [[cell(1), agentCell(1)]], focused: { row: 0, col: 0 } };
-    const next = openWorkspaceInGrid(start, cell(2), { ctrlOrMeta: false, alt: false });
-    expect(next.rows).toEqual([[cell(2)]]);
-    expect(next.focused).toEqual({ row: 0, col: 0 });
-  });
-
-  it("replaces the parent session context when navigation starts from an agent pane", () => {
-    const start: GridState = { rows: [[cell(1), agentCell(1)]], focused: { row: 0, col: 1 } };
     const next = openWorkspaceInGrid(start, cell(2), { ctrlOrMeta: false, alt: false });
     expect(next.rows).toEqual([[cell(2)]]);
     expect(next.focused).toEqual({ row: 0, col: 0 });
@@ -201,176 +171,6 @@ describe("openLauncherInGrid", () => {
   });
 });
 
-describe("openAgentInGrid", () => {
-  it("opens an agent pane to the right of the focused pane", () => {
-    const start: GridState = { rows: [[cell(1)]], focused: { row: 0, col: 0 } };
-    const next = openAgentInGrid(start, agentReq(1));
-    expect(next.rows).toEqual([[cell(1), agentCell(1)]]);
-    expect(next.focused).toEqual({ row: 0, col: 1 });
-  });
-
-  it("does not open an agent pane when the parent session pane is not visible", () => {
-    const start: GridState = { rows: [[cell(2)]], focused: { row: 0, col: 0 } };
-    expect(openAgentInGrid(start, agentReq(1))).toBe(start);
-  });
-
-  it("refocuses an existing agent tab instead of duplicating it", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1)]],
-      focused: { row: 0, col: 0 }
-    };
-    const next = openAgentInGrid(start, agentReq(1));
-    expect(next.rows).toEqual([[cell(1), agentCell(1)]]);
-    expect(next.focused).toEqual({ row: 0, col: 1 });
-  });
-
-  it("appends a second subagent as a tab instead of a new column", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1, ["tool-1"])]],
-      focused: { row: 0, col: 1 }
-    };
-    const next = openAgentInGrid(start, agentReq(1, "tool-2"));
-    expect(next.rows).toEqual([[cell(1), agentCell(1, ["tool-1", "tool-2"], "tool-2")]]);
-    expect(next.focused).toEqual({ row: 0, col: 1 });
-    expect(next.rows[0]).toHaveLength(2);
-  });
-
-  it("activates and focuses an already-open tab without changing the tab list", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1, ["tool-1", "tool-2"], "tool-1")]],
-      focused: { row: 0, col: 0 }
-    };
-    const next = openAgentInGrid(start, agentReq(1, "tool-2"));
-    expect(next.rows).toEqual([[cell(1), agentCell(1, ["tool-1", "tool-2"], "tool-2")]]);
-    expect(next.focused).toEqual({ row: 0, col: 1 });
-  });
-
-  it("returns the same grid when the requested tab is already active and focused", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1, ["tool-1", "tool-2"], "tool-2")]],
-      focused: { row: 0, col: 1 }
-    };
-    expect(openAgentInGrid(start, agentReq(1, "tool-2"))).toBe(start);
-  });
-
-  it("appends a tab even when the grid is full", () => {
-    const full: GridState = {
-      rows: [
-        [cell(1), agentCell(1, ["tool-1"]), cell(3)],
-        [cell(4), cell(5), cell(6)],
-        [cell(7), cell(8), cell(9)]
-      ],
-      focused: { row: 0, col: 1 }
-    };
-    const next = openAgentInGrid(full, agentReq(1, "tool-2"));
-    expect(next.rows[0]).toEqual([cell(1), agentCell(1, ["tool-1", "tool-2"], "tool-2"), cell(3)]);
-  });
-
-  it("does not open the first subagent of a parent when the grid is full", () => {
-    const full: GridState = {
-      rows: [
-        [cell(1), cell(2), cell(3)],
-        [cell(4), cell(5), cell(6)],
-        [cell(7), cell(8), cell(9)]
-      ],
-      focused: { row: 0, col: 0 }
-    };
-    expect(openAgentInGrid(full, agentReq(1))).toBe(full);
-  });
-
-  it("does not open an agent for a session that is not in the grid", () => {
-    const full: GridState = {
-      rows: [
-        [cell(1), cell(2), cell(3)],
-        [cell(4), cell(5), cell(6)],
-        [cell(7), cell(8), cell(9)]
-      ],
-      focused: { row: 1, col: 1 }
-    };
-    expect(openAgentInGrid(full, agentReq(99))).toBe(full);
-  });
-});
-
-describe("setActiveAgentTab", () => {
-  it("activates an open tab", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1, ["tool-1", "tool-2"], "tool-1")]],
-      focused: { row: 0, col: 1 }
-    };
-    const next = setActiveAgentTab(start, "s1", "tool-2");
-    expect(next.rows).toEqual([[cell(1), agentCell(1, ["tool-1", "tool-2"], "tool-2")]]);
-    expect(next.focused).toEqual({ row: 0, col: 1 });
-  });
-
-  it("is a no-op when the tab is already active", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1, ["tool-1", "tool-2"], "tool-2")]],
-      focused: { row: 0, col: 1 }
-    };
-    expect(setActiveAgentTab(start, "s1", "tool-2")).toBe(start);
-  });
-
-  it("is a no-op for an unknown tab id", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1, ["tool-1"], "tool-1")]],
-      focused: { row: 0, col: 1 }
-    };
-    expect(setActiveAgentTab(start, "s1", "tool-9")).toBe(start);
-  });
-});
-
-describe("closeAgentTab", () => {
-  it("removes a non-active tab and keeps the active tab", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1, ["tool-1", "tool-2"], "tool-1")]],
-      focused: { row: 0, col: 1 }
-    };
-    const next = closeAgentTab(start, "s1", "tool-2");
-    expect(next.rows).toEqual([[cell(1), agentCell(1, ["tool-1"], "tool-1")]]);
-  });
-
-  it("activates the right neighbour when the active tab is closed", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1, ["a", "b", "c"], "b")]],
-      focused: { row: 0, col: 1 }
-    };
-    const next = closeAgentTab(start, "s1", "b");
-    expect(next.rows).toEqual([[cell(1), agentCell(1, ["a", "c"], "c")]]);
-  });
-
-  it("falls back to the left neighbour when the active last tab is closed", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1, ["a", "b"], "b")]],
-      focused: { row: 0, col: 1 }
-    };
-    const next = closeAgentTab(start, "s1", "b");
-    expect(next.rows).toEqual([[cell(1), agentCell(1, ["a"], "a")]]);
-  });
-
-  it("removes the whole cell when the last tab is closed", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1, ["tool-1"], "tool-1")]],
-      focused: { row: 0, col: 1 }
-    };
-    const next = closeAgentTab(start, "s1", "tool-1");
-    expect(next.rows).toEqual([[cell(1)]]);
-    expect(next.focused).toEqual({ row: 0, col: 0 });
-  });
-
-  it("is a no-op for an unknown tab id", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1, ["tool-1"], "tool-1")]],
-      focused: { row: 0, col: 1 }
-    };
-    expect(closeAgentTab(start, "s1", "tool-9")).toBe(start);
-  });
-
-  it("is a no-op when the parent session has no agent cell", () => {
-    const start: GridState = { rows: [[cell(1)]], focused: { row: 0, col: 0 } };
-    expect(closeAgentTab(start, "s1", "tool-1")).toBe(start);
-  });
-});
-
 describe("dropWorkspaceInGrid", () => {
   const start: GridState = {
     rows: [[cell(1), cell(2)], [cell(3)]],
@@ -466,16 +266,6 @@ describe("closeCell", () => {
     const next = closeCell(start, 0, 1);
     expect(next.rows).toEqual([[cell(1), cell(3)]]);
     expect(next.focused).toEqual({ row: 0, col: 1 });
-  });
-
-  it("drops dependent agent panes when closing their parent session", () => {
-    const start: GridState = {
-      rows: [[cell(1), agentCell(1), cell(2)]],
-      focused: { row: 0, col: 0 }
-    };
-    const next = closeCell(start, 0, 0);
-    expect(next.rows).toEqual([[cell(2)]]);
-    expect(next.focused).toEqual({ row: 0, col: 0 });
   });
 
   it("drops the row when its last cell is removed", () => {
@@ -576,13 +366,6 @@ describe("revertSessionToLauncher", () => {
     const start: GridState = { rows: [[cell(1), cell(2)]], focused: { row: 0, col: 0 } };
     const next = revertSessionToLauncher(start, "s1", "p1");
     expect(next.rows).toEqual([[launcher(1), cell(2)]]);
-    expect(next.focused).toEqual({ row: 0, col: 0 });
-  });
-
-  it("prunes dependent subagent panes when reverting the parent session", () => {
-    const start: GridState = { rows: [[cell(1), agentCell(1)]], focused: { row: 0, col: 0 } };
-    const next = revertSessionToLauncher(start, "s1", "p1");
-    expect(next.rows).toEqual([[launcher(1)]]);
     expect(next.focused).toEqual({ row: 0, col: 0 });
   });
 

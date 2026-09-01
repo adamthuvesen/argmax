@@ -419,88 +419,19 @@
   gap: 4px;
 }
 
-.agent-activity-pane {
-  --session-inline-padding: clamp(28px, calc((100% - var(--chat-content-width)) / 2), 2000px);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
-  height: 100%;
+/* The subagent transcript, rendered inside the review panel's Agents view.
+   It owns no chrome of its own: the tab strip above it names the agent and the
+   status bar below it carries state and model, exactly as Files mode does. */
+.agent-activity {
+  --session-inline-padding: clamp(14px, calc((100% - var(--chat-content-width)) / 2), 2000px);
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  padding: 14px 0 24px;
+  padding: 10px 0 16px;
   background: transparent;
-  animation: fade-in 280ms var(--ease) both;
-}
-
-/* Match the collapsed-sidebar lift on .conversation-surface so the subagent
-   header title/buttons align with the session pane's. */
-.app-shell[data-sidebar-collapsed="true"] .agent-activity-pane {
-  padding-top: 5px;
-}
-
-.agent-activity-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 0 20px 16px;
-}
-
-.agent-activity-title {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  gap: 8px;
-  color: var(--muted);
-}
-
-.agent-activity-kicker {
-  margin: 0;
-  overflow: hidden;
-  color: var(--muted-strong);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: 0;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-activity-actions {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 6px;
-}
-
-/* Match the 22px header buttons in .conversation-surface — the default 30px
-   .small-icon makes this row taller and drops the title/buttons ~4px below
-   the session pane's header. */
-.agent-activity-actions .small-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-md);
-}
-
-.agent-activity-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 22px;
-  padding: 0 8px;
-  border-radius: var(--radius-md);
-  background: var(--panel-soft);
-  color: var(--muted);
-  font-size: var(--text-xs);
-  font-weight: 500;
-}
-
-.agent-activity-status[data-status="running"] {
-  color: var(--accent);
-}
-
-.agent-activity-status[data-status="error"] {
-  color: var(--rose);
+  animation: fade-in 200ms var(--ease) both;
 }
 
 .agent-activity-scroll {

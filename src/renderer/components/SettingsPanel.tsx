@@ -236,11 +236,13 @@ export function SettingsPanel({
 
   return (
     <div className="settings-page" ref={surfaceRef}>
-      <header className="settings-topbar" data-window-drag>
-        <h1 className="settings-page-title">{activeGroupMeta.label}</h1>
-      </header>
+      {/* An empty opaque strip: it is the window drag region, and it masks the
+          content scrolling underneath. The page title belongs to the column,
+          so it scrolls away like any other heading. */}
+      <div className="settings-topbar" data-window-drag />
 
       <div className="settings-main">
+        <h1 className="settings-page-title">{activeGroupMeta.label}</h1>
         {activeGroup === "general" ? (
           <GeneralSettings
             newSessionMode={newSessionMode}

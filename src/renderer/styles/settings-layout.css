@@ -198,21 +198,18 @@
 }
 
 /* A slim opaque bar pinned to the top of the scroll area, so groups scroll
-   underneath it instead of clipping raw against the window titlebar. */
+   underneath it instead of clipping raw against the window titlebar. It holds
+   nothing: it is the drag region, and the mask. */
 .settings-topbar {
   position: sticky;
   top: 0;
   z-index: 6;
-  display: flex;
-  align-items: center;
-  min-height: 46px;
+  height: 46px;
   background: var(--bg);
 }
 
 .settings-page-title {
-  width: min(100%, var(--settings-measure));
-  margin-inline: auto;
-  padding-inline: clamp(24px, 3vw, 40px);
+  margin: 0;
   font-size: var(--text-lg-tight);
   font-weight: 500;
   letter-spacing: -0.014em;
@@ -226,7 +223,15 @@
   width: min(100%, var(--settings-measure));
   min-width: 0;
   margin-inline: auto;
-  padding: 6px clamp(24px, 3vw, 40px) 96px;
+  /* The page opens well below the titlebar rather than tight under it — the
+     title is the first thing read, and it needs room above to read as one. */
+  padding: 34px clamp(24px, 3vw, 40px) 96px;
+}
+
+/* The title introduces the first group, so it sits closer to it than the
+   groups sit to each other. */
+.settings-main > .settings-page-title {
+  margin-bottom: -6px;
 }
 
 /* ---- Group: a label and a card of rows ---- */

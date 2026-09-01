@@ -94,6 +94,48 @@ describe("perf budgets", () => {
     expect(percentile(durations, 0.95)).toBeLessThan(5);
   });
 
+  it("a 1-event delta onto a 5 000-event snapshot stays p95 < 1 ms", () => {
+    // The shape of every streamed chunk: one new row on top of a long
+    // transcript, which the renderer pays for once per delta. Measured p95 is
+    // 0.23 ms with the append fast path in mergeEventsBounded and 0.47 ms
+    // without it, so this budget bounds the cost rather than telling the two
+    // apart — the fast path's own behaviour is pinned in snapshot.test.ts.
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: Array.from({ length: 5_000 }, (_, i): TimelineEvent => ({
+        id: `e${4_999 - i}`,
+        sessionId: "s",
+        type: "command.started",
+        message: "",
+        payload: {},
+        createdAt: new Date(2026, 0, 1, 0, 0, 4_999 - i).toISOString(),
+        rowCursor: 5_000 - i
+      }))
+    };
+
+    const durations: number[] = [];
+    for (let i = 0; i < 50; i++) {
+      const delta = {
+        events: [
+          {
+            id: `live-${i}`,
+            sessionId: "s",
+            type: "message.delta" as const,
+            message: "tok",
+            payload: {},
+            createdAt: new Date(2026, 0, 1, 1, 0, i).toISOString(),
+            rowCursor: 10_000 + i
+          }
+        ]
+      };
+      const start = performance.now();
+      mergeDashboardDelta(base, delta);
+      durations.push(performance.now() - start);
+    }
+    durations.sort((a, b) => a - b);
+    expect(percentile(durations, 0.95)).toBeLessThan(1);
+  });
+
   it("buildFileTree over 10 000 entries completes < 75 ms", () => {
     const entries = [];
     for (let dir = 0; dir < 100; dir++) {

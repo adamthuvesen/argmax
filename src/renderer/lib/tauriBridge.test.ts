@@ -93,6 +93,40 @@ describe("tauriBridge", () => {
     expect(unlisten).toHaveBeenCalledTimes(1);
   });
 
+  it("fans one dashboard:delta subscription out to every listener", async () => {
+    // The burst diagnostic counts arrivals; a wrapper per listener made the
+    // count depend on how many panes were mounted and warned about a delivery
+    // stall that had not happened.
+    window.__TAURI_INTERNALS__ = {};
+    const unlisten = vi.fn();
+    mocks.listen.mockResolvedValue(unlisten);
+    const { installTauriBridge } = await import("./tauriBridge.js");
+
+    installTauriBridge();
+    const first = vi.fn();
+    const second = vi.fn();
+    const offFirst = window.argmax!.dashboard.onDelta(first);
+    const offSecond = window.argmax!.dashboard.onDelta(second);
+    await Promise.resolve();
+
+    expect(mocks.listen).toHaveBeenCalledTimes(1);
+    const emit = mocks.listen.mock.calls[0][1] as (event: { payload: unknown }) => void;
+    emit({ payload: { sessions: [] } });
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+
+    // The transport subscription outlives the first consumer and is dropped
+    // only when the last one leaves.
+    offFirst();
+    expect(unlisten).not.toHaveBeenCalled();
+    emit({ payload: { sessions: [] } });
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(2);
+
+    offSecond();
+    expect(unlisten).toHaveBeenCalledTimes(1);
+  });
+
   it("exposes listener registration failures through the ready promise", async () => {
     window.__TAURI_INTERNALS__ = {};
     const error = new Error("event.listen not allowed");

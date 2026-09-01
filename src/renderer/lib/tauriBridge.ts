@@ -190,14 +190,38 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
   const subscribe = <T>(channel: string, listener: (payload: T) => void): EventSubscription =>
     transport.subscribe<T>(channel, listener);
 
+  // One transport subscription fans out to every consumer, so the burst
+  // diagnostic counts deltas rather than deliveries. Counting inside the
+  // per-listener wrapper made the threshold depend on how many panes happened
+  // to be mounted: with the dashboard hook and the file preview both listening
+  // it tripped after four real deltas and reported an upstream delivery stall
+  // that had not happened.
+  const deltaListeners = new Set<(delta: DashboardDelta) => void>();
+  let deltaSubscription: EventSubscription | null = null;
+  const onDelta = (listener: (delta: DashboardDelta) => void): EventSubscription => {
+    deltaListeners.add(listener);
+    const shared =
+      deltaSubscription ??
+      (deltaSubscription = subscribe<DashboardDelta>("dashboard:delta", (delta) => {
+        trackDeltaArrival();
+        // Copied: a consumer may unsubscribe from inside its own handler.
+        for (const each of [...deltaListeners]) each(delta);
+      }));
+    const off = (): void => {
+      if (!deltaListeners.delete(listener)) return;
+      if (deltaListeners.size === 0 && deltaSubscription) {
+        deltaSubscription();
+        deltaSubscription = null;
+      }
+    };
+    if (shared.ready) off.ready = shared.ready;
+    return off;
+  };
+
   return {
     dashboard: {
       list: () => invokeCommand<DashboardListSnapshot>("dashboard:list"),
-      onDelta: (listener: (delta: DashboardDelta) => void) =>
-        subscribe<DashboardDelta>("dashboard:delta", (delta) => {
-          trackDeltaArrival();
-          listener(delta);
-        })
+      onDelta
     },
     projects: {
       list: () => invokeCommand<ProjectSummary[]>("projects:list"),

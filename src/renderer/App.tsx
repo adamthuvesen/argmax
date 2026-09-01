@@ -1532,10 +1532,29 @@ export function App(): JSX.Element {
     }
   }, [loadState, popupSweepEpoch, snapshot.workspaces]);
 
+  // The palette reads three slices of the snapshot and nothing else, so keying
+  // its memos on the whole object rebuilt every command and every session label
+  // on each streamed event delta. The other slices are handed over empty rather
+  // than threaded through, which would leak the palette's appetite into the
+  // shape everything else passes around.
+  const paletteSnapshot = useMemo(
+    () => ({
+      projects: snapshot.projects,
+      workspaces: snapshot.workspaces,
+      sessions: snapshot.sessions,
+      events: [],
+      rawOutputs: [],
+      approvals: [],
+      checks: [],
+      pendingMessages: {}
+    }),
+    [snapshot.projects, snapshot.workspaces, snapshot.sessions]
+  );
+
   const paletteCommands = useMemo(
     () =>
       buildPaletteCommands({
-        snapshot,
+        snapshot: paletteSnapshot,
         selectedSession,
         onNewSession: () => handleMenuCommand("new-session"),
         onOpenSettings: () => openSettingsTarget("general"),
@@ -1552,7 +1571,7 @@ export function App(): JSX.Element {
         onCloseOverlays: () => setIsSettingsOpen(false)
       }),
     [
-      snapshot,
+      paletteSnapshot,
       selectedSession,
       handleMenuCommand,
       onOpenScheduledTasksRow,
@@ -1566,7 +1585,10 @@ export function App(): JSX.Element {
     ]
   );
 
-  const sessionLabelById = useMemo(() => buildSessionLabelById(snapshot), [snapshot]);
+  const sessionLabelById = useMemo(
+    () => buildSessionLabelById(paletteSnapshot),
+    [paletteSnapshot]
+  );
 
   const loadPaletteFiles = useCallback(
     async (source: { kind: "workspace" | "project"; id: string }): Promise<string[]> => {

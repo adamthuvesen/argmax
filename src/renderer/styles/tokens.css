@@ -29,6 +29,12 @@
      and the column would read as a hole rather than a sidebar). */
   --review-sidebar: #f6f7f8;
   --panel-soft: #fafafa;
+  /* The two composers (.composer in the launcher, .session-input in a session).
+     They are cards, but the one card the user types into, so dark lifts them a
+     step off --panel to mark them as the live surface. On paper --panel is
+     already the brightest thing on screen, so there is nothing to lift toward
+     and they stay on it. */
+  --composer-surface: var(--panel);
   --panel-sunken: #eef0f1;
   /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
      mode so output blocks read airier; dark reuses its sunken surface. */
@@ -365,25 +371,26 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  /* Main view is the well. Sidebar sits a half step above it and cards stay on
-     --panel so they still lift. The well sits at deep neutral charcoal (~#131312),
-     only a whisper warm — Cursor-dark, not brown-dark: the old yellow-leaning
-     charcoal read lighter than its hex. The bg-to-sidebar gap is deliberately
-     tight — the chrome seam is carried by the sidebar's 1px --line border, so
-     the fills only need to differ enough to hint at depth. Any change here has
-     to move the first-paint mirrors with it — Tauri's window backgroundColor,
-     DARK_BG in ipc/system.rs, the xterm theme, and the theme-picker swatch — or
+  /* Two-tone charcoal, neutral rather than yellow-leaning. The main view is
+     the well at #141414; every chrome surface that reads as "the lighter
+     gray" — left sidebar, composer, cards, review panel — shares one fill at
+     #1a1a1a, so the app has a background and a surface, not a staircase. The
+     bg-to-surface gap is deliberately tight: the chrome seam is carried by the
+     sidebar's 1px --line border, so the fills only need to hint at depth. Any
+     change to --bg has to move the first-paint mirrors with it — Tauri's
+     window backgroundColor, DARK_BG in ipc/system.rs, and the xterm theme — or
      the app flashes a different black on cold start. */
 
-  --bg: #131312;
-  --sidebar: #171716;
-  --panel: #1e1e1c;
-  --review-panel: #151514;
-  --review-sidebar: #1a1a18;
-  --panel-soft: #242422;
-  --panel-sunken: #0e0e0d;
+  --bg: #141414;
+  --sidebar: #1a1a1a;
+  --panel: #1a1a1a;
+  --review-panel: #1a1a1a;
+  --review-sidebar: #202020;
+  --panel-soft: #212121;
+  --composer-surface: #202020;
+  --panel-sunken: #0f0f0f;
   --code-surface: var(--panel-sunken);
-  --tool-block-surface: #1a1a18;
+  --tool-block-surface: #181818;
 
   --line: #2b2b29;
   --line-soft: #212120;

@@ -334,7 +334,7 @@ describe("accent CSS contract", () => {
       ["src/renderer/styles/chat-composer.css", ".code-block pre"],
       ["src/renderer/styles/chat-tools.css", ".checks-row-log"],
       ["src/renderer/styles/overlays-review-files.css", ".diff-blocks"],
-      ["src/renderer/styles/overlays-launcher-panels.css", ".log-output-content"]
+      ["src/renderer/styles/overlays-launcher-panels.css", ".debug-rows"]
     ];
     for (const [file, selector] of surfaces) {
       expect(

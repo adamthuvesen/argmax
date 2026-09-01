@@ -49,7 +49,7 @@ function ContextRow({
   );
 }
 
-export type PickerKind = "project" | "workspace" | "model";
+export type PickerKind = "project" | "workspace" | "model" | "model-effort";
 
 export function NewSessionScreen({
   projects,
@@ -208,6 +208,8 @@ export function NewSessionScreen({
                 ariaLabel="Session model"
                 open={openSheet === "model"}
                 onOpenChange={(open) => onOpenSheetChange(open ? "model" : null)}
+                effortOpen={openSheet === "model-effort"}
+                onEffortOpenChange={(open) => onOpenSheetChange(open ? "model-effort" : null)}
                 value={model}
                 withEffortSlider
                 onChange={(next) => {

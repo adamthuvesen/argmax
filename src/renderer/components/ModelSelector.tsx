@@ -131,6 +131,8 @@ export function LaunchModelSelector({
   onFastModeEnabledChange,
   open,
   withEffortSlider = false,
+  effortOpen,
+  onEffortOpenChange,
   value
 }: {
   ariaLabel: string;
@@ -144,6 +146,8 @@ export function LaunchModelSelector({
   onFastModeEnabledChange?: (enabled: boolean) => void;
   open?: boolean;
   withEffortSlider?: boolean;
+  effortOpen?: boolean;
+  onEffortOpenChange?: (open: boolean) => void;
   value: ModelPickerSelection;
 }): JSX.Element {
   const options: Array<ChipModelOption<ModelPickerSelection>> = allModelOptions.map((model) => ({
@@ -175,6 +179,8 @@ export function LaunchModelSelector({
       options={options}
       reasoningEffortsForValue={(model) => reasoningEffortsForModel(model.provider, model.modelId)}
       withEffortSlider={withEffortSlider}
+      effortOpen={effortOpen}
+      onEffortOpenChange={onEffortOpenChange}
       supportsFastModeForValue={modelSupportsFastMode}
       value={value}
     />
@@ -199,14 +205,26 @@ function EffortSlider({
   value,
   efforts,
   onChange,
-  ariaLabel
+  ariaLabel,
+  open: controlledOpen,
+  onOpenChange
 }: {
   value: ReasoningEffort;
   efforts: readonly ReasoningEffort[];
   onChange: (value: ReasoningEffort) => void;
   ariaLabel: string;
+  /** Lift the popover's open state when a host needs to see it — the mobile
+   *  back gesture counts an open picker as a screen, and cannot count one it
+   *  does not know about. Uncontrolled everywhere else. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }): JSX.Element {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (next: boolean): void => {
+    if (controlledOpen === undefined) setInternalOpen(next);
+    onOpenChange?.(next);
+  };
   // Draft effort while the picker is open. It's committed to the parent only on
   // dismiss, so dragging back and forth doesn't reflow the composer toolbar (the
   // chip that anchors this popover) underneath the cursor.
@@ -371,6 +389,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   options,
   reasoningEffortsForValue,
   withEffortSlider = false,
+  effortOpen,
+  onEffortOpenChange,
   supportsFastModeForValue = alwaysSupportsFastMode,
   value
 }: {
@@ -393,6 +413,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   /** Show a standalone effort slider beside the chip. Off in settings, which
    *  has no per-session effort control — the model's default effort applies. */
   withEffortSlider?: boolean;
+  effortOpen?: boolean;
+  onEffortOpenChange?: (open: boolean) => void;
   supportsFastModeForValue?: (value: T) => boolean;
   value: T;
 }): JSX.Element {
@@ -632,6 +654,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           value={value.reasoningEffort}
           efforts={reasoningEffortsForValue(value)}
           ariaLabel={`${ariaLabel} effort`}
+          open={effortOpen}
+          onOpenChange={onEffortOpenChange}
           onChange={(reasoningEffort) => onChange({ ...value, reasoningEffort })}
         />
       ) : null}

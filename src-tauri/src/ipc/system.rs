@@ -248,9 +248,7 @@ pub(crate) fn system_test_notification_impl(
 }
 
 fn data_dir<R: Runtime>(app: &AppHandle<R>) -> ArgmaxResult<PathBuf> {
-    let app_data = app
-        .path()
-        .app_data_dir()
+    let app_data = crate::util::data_dir::app_data_dir(app)
         .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
     Ok(app_data.join("local-state"))
 }
@@ -291,9 +289,7 @@ fn resolve_open_target(path: &str, cwd: Option<&str>) -> ArgmaxResult<PathBuf> {
 }
 
 fn persist_theme<R: Runtime>(app: &AppHandle<R>, mode: ThemeMode) -> ArgmaxResult<()> {
-    let app_data = app
-        .path()
-        .app_data_dir()
+    let app_data = crate::util::data_dir::app_data_dir(app)
         .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
     fs::create_dir_all(&app_data)
         .map_err(|error| ArgmaxError::service("THEME_DIR", error.to_string()))?;

@@ -4,7 +4,7 @@ use crate::{
     error::{ArgmaxError, ArgmaxResult},
 };
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Runtime};
 
 #[tauri::command(rename = "attachments:save-image")]
 #[specta::specta]
@@ -19,9 +19,7 @@ pub fn attachments_save_image(
 }
 
 fn data_dir<R: Runtime>(app: &AppHandle<R>) -> ArgmaxResult<PathBuf> {
-    let app_data = app
-        .path()
-        .app_data_dir()
+    let app_data = crate::util::data_dir::app_data_dir(app)
         .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
     Ok(app_data.join("local-state"))
 }

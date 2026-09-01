@@ -86,7 +86,7 @@ pub fn run() {
                 let app = ctx.app_handle().clone();
                 let uri = request.uri().to_string();
                 tauri::async_runtime::spawn(async move {
-                    let built = match tauri::Manager::path(&app).app_data_dir() {
+                    let built = match util::data_dir::app_data_dir(&app) {
                         Ok(app_data) => {
                             let base_dir = app_data.join("local-state").join("attachments");
                             let response =
@@ -163,7 +163,7 @@ pub fn run() {
             // Tracing init is deferred to setup() because `app.path()` is
             // only valid here — that's how we resolve the user_data_dir
             // the release-mode rolling-file appender writes into.
-            let user_data = tauri::Manager::path(app).app_data_dir().ok();
+            let user_data = util::data_dir::app_data_dir(app).ok();
             if let Err(e) = util::tracing_init::init(user_data.as_deref()) {
                 eprintln!("argmax: tracing init failed: {e}");
             }
@@ -669,7 +669,7 @@ async fn sync_sweep_loop(app: tauri::AppHandle) {
     use crate::util::sync::LockOrRecover;
     use tauri::Manager;
 
-    let Ok(app_data_dir) = app.path().app_data_dir() else {
+    let Ok(app_data_dir) = crate::util::data_dir::app_data_dir(&app) else {
         tracing::warn!("session sync disabled: no app data dir");
         return;
     };

@@ -10,6 +10,16 @@ The chat surface renders assistant bubbles, tools, and interactive cards: **Plan
 - **Composer:** [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx) handles prompt inputs, file attachments, model/mode chips, follow-up queues, send/stop, and `/clear`. The launcher composer in [LaunchSurface.tsx](../src/renderer/components/LaunchSurface.tsx) cycles Auto / Plan / Chat with Tab. Chat launches a scratch workspace with no repository attached, so the project picker hides and no longer offers a Chat row.
 - **Actions Menu:** [SessionActionsMenu.tsx](../src/renderer/components/SessionActionsMenu.tsx) handles workspace actions, PR refreshes, git shortcuts, and panel toggles.
 
+## The Sent Prompt
+
+A user bubble shows the text that was typed, not markdown: `SessionConversationUserMessage` renders it into a `<p>` with `white-space: pre-wrap` so a pasted snippet keeps its own line breaks and a `**bold**` stays two asterisks. Two things are marked up on top of that plain text, both in `markUserMessage`.
+
+- **`/skill` invocations** keep the tint the composer gave them while they were typed ([slashHighlight.ts](../src/renderer/lib/slashHighlight.ts)). A leading invocation names the whole message and gets the icon chip; a token further in is only tinted. Shape is the whole guard — the transcript has no skills list to check against.
+- **Pasted URLs become links** ([messageLinks.ts](../src/renderer/lib/messageLinks.ts)). Assistant prose gets this free from `remark-gfm`, and a bubble that is deliberately not markdown had no way to click a URL the user had just pasted. The match is `http(s)` runs only: no `www.`, no bare domains, no `mailto:`. Guessing a scheme in text the user did not write as a link is how a sentence ending in "menti.com." becomes a broken one. Trailing sentence punctuation goes back to the sentence, and a closing bracket is kept only when the URL opened it, so a Wikipedia path survives being wrapped in prose parens.
+- **Links resolve before skill tokens,** so the path segments in `https://host/plan` are not read as invocations.
+
+Every `http(s)` link in the surface is one component, [WebLink.tsx](../src/renderer/components/WebLink.tsx), shared with the assistant markdown anchor. It owns the whole routing decision: plain click follows the Settings → General link target, ⌘/Ctrl-click opens the other one, and the system browser needs an explicit `system:open-path` because the Tauri webview swallows `target="_blank"`. Over the remote bridge both desktop routes stand down and the anchor's own target carries the link into the reader's browser.
+
 ## Card Architecture
 
 In headless structured mode (`-p --output-format stream-json`), tools like `ExitPlanMode` and `AskUserQuestion` return tool results with status errors to signal pause for input. Argmax extracts the structured payload (`input.plan` or `input.questions`) and displays it as an interactive card instead of a failed tool call.

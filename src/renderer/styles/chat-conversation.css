@@ -1545,13 +1545,20 @@
 
 /* Links and inline code inside the bubble drop their accent-deep ink — it was
    tuned for panel surfaces and disappears on an accent background — for the
-   bubble fg, keeping the underline as the affordance. */
-.chat-bubble.user .markdown a {
+   bubble fg, keeping the underline as the affordance. A pasted URL in a sent
+   prompt is a bare anchor rather than a markdown one (user text is shown as
+   typed, not parsed), so the underline is spelled out here instead of
+   inherited from `.markdown a`. */
+.chat-bubble.user a {
   color: var(--user-message-fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
   text-decoration-color: color-mix(in oklab, var(--user-message-fg) 55%, transparent);
+  transition: text-decoration-color var(--duration-fast) var(--ease);
 }
 
-.chat-bubble.user .markdown a:hover {
+.chat-bubble.user a:hover {
   text-decoration-color: var(--user-message-fg);
 }
 

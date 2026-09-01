@@ -1,7 +1,8 @@
-import { memo, useState, type JSX, type MutableRefObject, type ReactNode } from "react";
+import { Fragment, memo, useState, type JSX, type MutableRefObject, type ReactNode } from "react";
 import { Sparkles } from "lucide-react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
+import { splitLinkSegments } from "../lib/messageLinks.js";
 import { leadingSkillInvocation, splitSkillTokens } from "../lib/slashHighlight.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
@@ -30,6 +31,7 @@ import { ToolCallRow } from "./ToolCallRow.js";
 import { TurnChangesCard } from "./TurnChangesCard.js";
 import { TurnBlock, type TurnBodyChild } from "./TurnBlock.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
+import { WebLink } from "./WebLink.js";
 import {
   sendAfterTerminate,
   type SessionConversationSendInput,
@@ -541,28 +543,18 @@ function SessionConversationTurnInner({
 export const SessionConversationTurn = memo(SessionConversationTurnInner);
 
 /**
- * Mark the `/skill` invocations in a sent message the way the composer tinted
- * them while it was typed, so a skill still reads as a skill after send. A
- * leading invocation names the whole message and keeps the icon chip; every
+ * Mark up a sent message the way the composer showed it while it was typed:
+ * `/skill` invocations tinted, and pasted URLs clickable.
+ *
+ * A leading invocation names the whole message and keeps the icon chip; every
  * other token is only tinted. Shape is the whole guard — the transcript has no
  * skills list to check against — so the worst a false positive costs here is
  * one tinted word, never a chip that claims a skill ran.
  */
-function markSkillInvocations(message: string): ReactNode {
+function markUserMessage(message: string): ReactNode {
   const leading = leadingSkillInvocation(message);
   const rest = leading ? leading.rest : message;
-  const segments = splitSkillTokens(rest, () => true);
-  const body: ReactNode = segments
-    ? segments.map((segment, index) =>
-        segment.skill ? (
-          <span key={index} className="user-skill-token">
-            {segment.text}
-          </span>
-        ) : (
-          segment.text
-        )
-      )
-    : rest;
+  const body = markLinks(rest);
   if (!leading) return body;
   const label = leading.name.charAt(0).toUpperCase() + leading.name.slice(1);
   return (
@@ -573,6 +565,38 @@ function markSkillInvocations(message: string): ReactNode {
       </span>
       {leading.rest ? <> {body}</> : null}
     </>
+  );
+}
+
+/**
+ * A URL is linked before its text is scanned for skill tokens, so a path
+ * segment inside `https://host/plan` never renders as an invocation.
+ */
+function markLinks(text: string): ReactNode {
+  const segments = splitLinkSegments(text);
+  if (!segments) return markSkillTokens(text);
+  return segments.map((segment, index) =>
+    segment.link ? (
+      <WebLink key={index} href={segment.text}>
+        {segment.text}
+      </WebLink>
+    ) : (
+      <Fragment key={index}>{markSkillTokens(segment.text)}</Fragment>
+    )
+  );
+}
+
+function markSkillTokens(text: string): ReactNode {
+  const segments = splitSkillTokens(text, () => true);
+  if (!segments) return text;
+  return segments.map((segment, index) =>
+    segment.skill ? (
+      <span key={index} className="user-skill-token">
+        {segment.text}
+      </span>
+    ) : (
+      segment.text
+    )
   );
 }
 
@@ -641,7 +665,7 @@ export function SessionConversationUserMessage({
         >
           {/* The raw text (with the slashes) stays in rawMarkdown so copy
               keeps the real message. */}
-          <p>{markSkillInvocations(displayMessage)}</p>
+          <p>{markUserMessage(displayMessage)}</p>
         </ChatBubble>
       ) : null}
       <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />

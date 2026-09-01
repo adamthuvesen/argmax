@@ -5,9 +5,6 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import type { WorkspaceSummary } from "../../shared/types.js";
-import { openInBrowserPanel } from "../lib/browserPanel.js";
-import { readStoredLinkTarget } from "../lib/linkTarget.js";
-import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { matchFileChip } from "../lib/fileChipPath.js";
 import { splitLogSegments } from "../lib/logDump.js";
 import { isMermaidFenceClass } from "../lib/mermaidFence.js";
@@ -17,6 +14,7 @@ import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
 import { LogBlock } from "./LogBlock.js";
 import { MarkdownTable } from "./MarkdownTable.js";
 import { StreamingCodeContext } from "./streamingCodeContext.js";
+import { WebLink } from "./WebLink.js";
 
 const MermaidDiagram = lazy(async () => ({
   default: (await import("./MermaidDiagram.js")).MermaidDiagram
@@ -248,37 +246,10 @@ const MarkdownBody = memo(function MarkdownBody({
             );
           }
           if (/^https?:/.test(href)) {
-            // Plain click follows the configured link target (Settings →
-            // General); ⌘/Ctrl-click opens in the other one. The system
-            // browser needs an explicit `system:open-path` — the Tauri
-            // webview swallows target="_blank" navigation, so an unhandled
-            // click would do nothing. The anchor default stays only for the
-            // browser demo, where window.argmax is absent.
             return (
-              <a
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(event) => {
-                  // Over the remote bridge both routes are desktop-only: the
-                  // browser pane and system:open-path would open the link on
-                  // the host, not in the reader's hand. Let the anchor's own
-                  // target="_blank" carry it into the phone's browser.
-                  if (isRemoteBridge()) return;
-                  const flipped = event.metaKey || event.ctrlKey;
-                  if ((readStoredLinkTarget() === "argmax") !== flipped) {
-                    event.preventDefault();
-                    openInBrowserPanel(href);
-                    return;
-                  }
-                  if (!window.argmax) return;
-                  event.preventDefault();
-                  void window.argmax.system.openPath({ path: href }).catch(() => undefined);
-                }}
-                {...rest}
-              >
+              <WebLink href={href} {...rest}>
                 {children}
-              </a>
+              </WebLink>
             );
           }
           if (/^mailto:/.test(href)) {

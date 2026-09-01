@@ -95,20 +95,16 @@ export function CodeBlock({
   };
 
   // "```text" and friends mean "no highlighting", not a language worth
-  // naming — a TEXT label over plain output is noise, so those render the
-  // same blank header as an untagged fence.
+  // naming. Untagged and plaintext fences overlay the copy button instead
+  // of reserving a blank header strip.
   const labelTag =
     fenceTag && !["text", "plaintext", "plain", "txt"].includes(fenceTag.toLowerCase())
       ? fenceTag
       : null;
   return (
-    <div className="code-block" data-lang={lang ?? undefined}>
+    <div className="code-block" data-lang={lang ?? undefined} data-label={labelTag ?? undefined}>
       <div className="code-block-header">
-        {labelTag ? (
-          <span className="code-block-lang">{labelTag}</span>
-        ) : (
-          <span className="code-block-lang code-block-lang--blank" aria-hidden="true" />
-        )}
+        {labelTag ? <span className="code-block-lang">{labelTag}</span> : null}
         <button
           type="button"
           className="code-block-copy"

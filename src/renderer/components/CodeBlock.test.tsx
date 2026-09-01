@@ -14,11 +14,16 @@ describe("CodeBlock", () => {
   it("renders the language label when className declares one", () => {
     render(<CodeBlock className="language-ts">const x = 1;</CodeBlock>);
     expect(screen.getByText("ts")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy code" }).closest("[data-label]")).toHaveAttribute(
+      "data-label",
+      "ts"
+    );
   });
 
   it("hides the label for plain-text fences — TEXT over plain output is noise", () => {
     render(<CodeBlock className="language-text">plain output</CodeBlock>);
     expect(screen.queryByText("text")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy code" }).closest("[data-label]")).toBeNull();
   });
 
   it("copies the raw text content to the clipboard", async () => {

@@ -29,10 +29,14 @@ import { ChevronRight, Code, Eye, FileText, RotateCcw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
 import { MarkdownTable } from "./MarkdownTable.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
+import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters.js";
 
 function isMarkdownPath(path: string | null): boolean {
   if (!path) return false;
@@ -227,7 +231,8 @@ export function FilePreview({
       {showRendered ? (
         <div className="file-preview-markdown markdown">
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
             components={{
               table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
               img: ({ src, alt, ...rest }) => {
@@ -243,7 +248,7 @@ export function FilePreview({
               }
             }}
           >
-            {buffer}
+            {normalizeMathDelimiters(buffer)}
           </ReactMarkdown>
         </div>
       ) : (

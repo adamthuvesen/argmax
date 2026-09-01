@@ -1,15 +1,26 @@
-import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { openInBrowserPanel } from "../lib/browserPanel.js";
 import { readStoredLinkTarget } from "../lib/linkTarget.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { matchFileChip } from "../lib/fileChipPath.js";
+import { splitLogSegments } from "../lib/logDump.js";
+import { isMermaidFenceClass } from "../lib/mermaidFence.js";
+import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters.js";
 import { CodeBlock } from "./CodeBlock.js";
 import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
+import { LogBlock } from "./LogBlock.js";
 import { MarkdownTable } from "./MarkdownTable.js";
 import { StreamingCodeContext } from "./streamingCodeContext.js";
+
+const MermaidDiagram = lazy(async () => ({
+  default: (await import("./MermaidDiagram.js")).MermaidDiagram
+}));
 
 const SMOOTH_STREAM_TICK_MS = 32;
 const SMOOTH_STREAM_CHARS_PER_TICK = 5;
@@ -136,22 +147,42 @@ function splitStreamingMarkdown(text: string): { committed: string; tail: string
   // an agent is in for as long as it is emitting a code block — rejects every
   // boundary inside it, so the cost grew with the square of the block.
   let insideFence = false;
+  let insideMath = false;
   let cut = -1;
   let lineStart = 0;
   for (let i = 0; i <= text.length; i += 1) {
     if (i !== text.length && text.charCodeAt(i) !== 10) continue;
+    const line = text.slice(lineStart, i).trim();
     if (i === lineStart) {
       // A blank line: the second "\n" of a paragraph break. End of text is not
       // one, only an unterminated last line, so it can never commit the tail.
-      if (i !== text.length && lineStart > 0 && !insideFence) cut = lineStart + 1;
-    } else if (text.startsWith("```", lineStart)) {
+      if (i !== text.length && lineStart > 0 && !insideFence && !insideMath) cut = lineStart + 1;
+    } else if (line.startsWith("```") || line.startsWith("~~~")) {
       insideFence = !insideFence;
+    } else if (line.startsWith("$$") || line.startsWith("\\[")) {
+      if (line.length > 2 && (line.endsWith("$$") || line.endsWith("\\]"))) {
+        // Opened and closed on the same line
+      } else {
+        insideMath = !insideMath;
+      }
+    } else if (insideMath && (line.endsWith("$$") || line.endsWith("\\]"))) {
+      insideMath = false;
     }
     lineStart = i + 1;
   }
   return cut < 0
     ? { committed: "", tail: text }
     : { committed: text.slice(0, cut), tail: text.slice(cut) };
+}
+
+function MermaidDiagramFallback(): JSX.Element {
+  return (
+    <figure className="mermaid-diagram" data-state="pending" aria-label="Diagram">
+      <p className="mermaid-diagram-pending" role="status">
+        Drawing diagram
+      </p>
+    </figure>
+  );
 }
 
 // One markdown render root. Memoized on its props so a stable `text` (the
@@ -166,9 +197,12 @@ const MarkdownBody = memo(function MarkdownBody({
   workspace?: WorkspaceSummary | null;
   onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
 }): JSX.Element {
+  const normalizedText = useMemo(() => normalizeMathDelimiters(text), [text]);
+
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
       components={{
         code: ({ className, children, ...rest }) => {
           const hasLanguage = typeof className === "string" && className.includes("language-");
@@ -177,6 +211,13 @@ const MarkdownBody = memo(function MarkdownBody({
             : typeof children === "string"
               ? children
               : "";
+          if (isMermaidFenceClass(className)) {
+            return (
+              <Suspense fallback={<MermaidDiagramFallback />}>
+                <MermaidDiagram source={codeText.replace(/\n$/, "")} />
+              </Suspense>
+            );
+          }
           if (hasLanguage || codeText.includes("\n")) {
             return <CodeBlock className={className}>{children}</CodeBlock>;
           }
@@ -269,10 +310,45 @@ const MarkdownBody = memo(function MarkdownBody({
         pre: ({ children }) => <>{children}</>
       }}
     >
-      {text}
+      {normalizedText}
     </ReactMarkdown>
   );
 });
+
+function MarkdownStream({
+  text,
+  streaming,
+  workspace,
+  onOpenFile
+}: {
+  text: string;
+  streaming: boolean;
+  workspace?: WorkspaceSummary | null;
+  onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
+}): JSX.Element {
+  // Only split while actively revealing. A completed message (or reduced-motion)
+  // renders as a single root — byte-identical to the non-streaming path.
+  const split = useMemo(
+    () => (streaming ? splitStreamingMarkdown(text) : null),
+    [streaming, text]
+  );
+  return (
+    <>
+      {split ? (
+        <>
+          {split.committed ? (
+            <MarkdownBody text={split.committed} workspace={workspace} onOpenFile={onOpenFile} />
+          ) : null}
+          {split.tail ? (
+            <MarkdownBody text={split.tail} workspace={workspace} onOpenFile={onOpenFile} />
+          ) : null}
+        </>
+      ) : (
+        <MarkdownBody text={text} workspace={workspace} onOpenFile={onOpenFile} />
+      )}
+    </>
+  );
+}
 
 export function StreamingMarkdown({
   text,
@@ -288,30 +364,40 @@ export function StreamingMarkdown({
   revealKey?: string | null;
   workspace?: WorkspaceSummary | null;
   onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
-}): JSX.Element {
+}): JSX.Element | null {
   const visibleText = useSmoothStreamingText(text, streaming, revealKey);
-  // Only split while actively revealing. A completed message (or reduced-motion)
-  // renders as a single root — byte-identical to the non-streaming path.
-  const split = useMemo(
-    () => (streaming ? splitStreamingMarkdown(visibleText) : null),
-    [streaming, visibleText]
-  );
+  const segments = useMemo(() => splitLogSegments(visibleText), [visibleText]);
+  if (segments.length === 0 && visibleText.length > 0) return null;
+  const hasLogs = segments.some((segment) => segment.kind === "log");
+  const markdownText = hasLogs ? visibleText : segments.map((segment) => segment.text).join("");
 
   return (
-    <div className={`markdown${streaming ? " markdown-streaming" : ""}`}>
+    <div
+      className={
+        hasLogs
+          ? `markdown-with-logs${streaming ? " markdown-streaming" : ""}`
+          : `markdown${streaming ? " markdown-streaming" : ""}`
+      }
+    >
       <StreamingCodeContext.Provider value={streaming}>
-        {split ? (
-          <>
-            {split.committed ? (
-              <MarkdownBody text={split.committed} workspace={workspace} onOpenFile={onOpenFile} />
-            ) : null}
-            {split.tail ? (
-              <MarkdownBody text={split.tail} workspace={workspace} onOpenFile={onOpenFile} />
-            ) : null}
-          </>
-        ) : (
-          <MarkdownBody text={visibleText} workspace={workspace} onOpenFile={onOpenFile} />
-        )}
+        {hasLogs
+          ? segments.map((segment, index) =>
+              segment.kind === "log" ? (
+                <LogBlock key={`log-${index}`} text={segment.text} />
+              ) : (
+                <div key={`md-${index}`} className="markdown">
+                  <MarkdownBody text={segment.text} workspace={workspace} onOpenFile={onOpenFile} />
+                </div>
+              )
+            )
+          : (
+            <MarkdownStream
+              text={markdownText}
+              streaming={streaming}
+              workspace={workspace}
+              onOpenFile={onOpenFile}
+            />
+          )}
       </StreamingCodeContext.Provider>
     </div>
   );

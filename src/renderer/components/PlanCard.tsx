@@ -2,7 +2,11 @@ import { Check, ChevronDown, ChevronUp, Copy, Download } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import type { Plan, PlanItem, PlanSubSection } from "../lib/parsePlan.js";
+import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 
 export type PlanCardProps = {
@@ -27,7 +31,8 @@ function escapeLeadingListMarker(text: string): string {
 function PlanInlineMarkdown({ children }: { children: string }): JSX.Element {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
       components={{
         // Render the wrapping paragraph as a span so this stays inline-safe
         // when nested inside list items, headings, etc.
@@ -46,7 +51,7 @@ function PlanInlineMarkdown({ children }: { children: string }): JSX.Element {
         }
       }}
     >
-      {escapeLeadingListMarker(children)}
+      {escapeLeadingListMarker(normalizeMathDelimiters(children))}
     </ReactMarkdown>
   );
 }

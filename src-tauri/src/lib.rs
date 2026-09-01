@@ -177,8 +177,11 @@ pub fn run() {
             |ctx, request, responder| {
                 let app = ctx.app_handle().clone();
                 let uri = request.uri().to_string();
-                let roots = workspace_assets::protocol::known_roots(&app);
                 tauri::async_runtime::spawn(async move {
+                    // Resolved inside the task, not in the callback: the
+                    // callback runs on the webview's thread, and the root
+                    // lookup is a SQLite read.
+                    let roots = workspace_assets::protocol::known_roots(&app);
                     let response =
                         workspace_assets::protocol::serve_workspace_asset(&roots, &uri).await;
                     let mut builder =

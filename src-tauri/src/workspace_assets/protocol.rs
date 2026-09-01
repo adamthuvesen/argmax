@@ -83,16 +83,38 @@ pub fn known_roots(app: &tauri::AppHandle) -> Vec<PathBuf> {
     let Some(db) = state.db.get() else {
         return Vec::new();
     };
-    let conn = db.connection();
-    let mut roots = Vec::new();
-    if let Ok(projects) = crate::persistence::projects::list_projects(&conn) {
-        roots.extend(projects.into_iter().map(|p| PathBuf::from(p.repo_path)));
-    }
-    if let Ok(workspaces) = crate::persistence::workspaces::list_workspaces(&conn, None, MAX_ROOTS)
-    {
-        roots.extend(workspaces.into_iter().map(|w| PathBuf::from(w.path)));
-    }
+    let conn = db.read_connection();
+    let mut roots = collect_root_paths(&conn, "SELECT repo_path FROM projects LIMIT ?");
+    roots.extend(collect_root_paths(
+        &conn,
+        "SELECT path FROM workspaces LIMIT ?",
+    ));
     roots
+}
+
+/// One column of root paths, capped at `MAX_ROOTS`.
+///
+/// Deliberately not `list_projects` / `list_workspaces`: those build full
+/// summaries — the workspace one runs a PR lookup per row — and this runs once
+/// per image the webview asks for. A failed read serves nothing rather than
+/// widening the allowed set.
+fn collect_root_paths(connection: &rusqlite::Connection, sql: &str) -> Vec<PathBuf> {
+    let query = || -> rusqlite::Result<Vec<PathBuf>> {
+        let mut statement = connection.prepare_cached(sql)?;
+        let rows = statement.query_map([MAX_ROOTS as i64], |row| row.get::<_, String>(0))?;
+        Ok(rows
+            .filter_map(Result::ok)
+            .filter(|path| !path.is_empty())
+            .map(PathBuf::from)
+            .collect())
+    };
+    match query() {
+        Ok(paths) => paths,
+        Err(error) => {
+            tracing::warn!(?error, sql, "asset protocol: failed to read known roots");
+            Vec::new()
+        }
+    }
 }
 
 /// Serve a request URL like `argmax-asset://file/<absolute-path>`. The path is

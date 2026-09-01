@@ -44,6 +44,7 @@ Spawned sessions run in the workspace worktree. Project-scoped `.mcp.json` or `.
 - **Startup cleanup:** Sessions left in `running`, `waiting`, or `blocked` states are marked failed on startup. Matching background provider processes are terminated and pending approvals cancelled.
 - **Follow-up prompts:** Follow-up turns use the provider resume ID when available, passing a capped transcript of visible `user.message`, `message.completed`, and `error` events. Hidden subagent rows are excluded.
 - **Provider switching:** Changing the provider on an idle session clears `provider_conversation_id`, starts a new provider process with the capped transcript, and records a `session.provider-changed` marker.
+- **Clear:** `/clear` in the session composer drops `provider_conversation_id`, writes a `session.cleared` watermark, and hides the existing transcript. The next message starts a fresh provider conversation in the same workspace. A running session is stopped first. Headless provider CLIs do not honor `/clear` as a prompt, so Argmax owns the command for every provider.
 - **Forking:** `session:fork` creates a new session flagged with `resume_fork`. The next turn invokes the provider's fork flag (`--fork-session` for Claude and Grok, `exec fork` for Codex, `--fork` for OpenCode). Cursor does not support session forking.
 - **Project moves:** An agent-requested move waits for the current turn to settle, copies the transcript into a fresh session in the destination project, and clears `provider_conversation_id`. The first destination turn receives the capped transcript plus the project handoff.
 - **Fast mode & reasoning effort:** Claude uses `--settings {"fastMode": ...}` and `--append-system-prompt` for effort (including Max/Ultra). Codex uses `-c service_tier="priority"` and `-c model_reasoning_effort=...` (Sol/Terra through ultra, Luna through max). Cursor encodes effort and fast mode into the model string (e.g. `gpt-5.6-sol-max-fast`). Grok takes `--reasoning-effort` and has no fast mode; its CLI accepts only low/medium/high/xhigh, so Max and Ultra clamp to xhigh.
@@ -87,6 +88,20 @@ Subagent tool calls (`Task`, `spawn_agent`, `taskToolCall`) open an activity pan
 Trace recovery requires authoritative lineage. Argmax does not attach a transcript to a parent by time or repository alone. Claude and OpenCode stay stream-native. Cursor uses its streamed launch plus an agent ID or the existing prompt match. Codex may synthesize a launch from the child trace because the trace names its parent conversation directly. If the real Codex launch arrives later, reconciliation keeps the real row, reparents the imported child rows, and emits hidden tombstones that remove the synthetic row from open chats.
 
 Initial session backfill and open agent panes run reconciliation off the main thread. Live agent-control events queue one serialized scan per session. A terminal provider event waits for the final serialized scan and includes its new launch or tombstone rows in the same dashboard delta, so completion cannot stop the renderer poll before recovery arrives.
+
+## Measured File-Change Diffs
+
+Codex reports a file write as a `file_change` item carrying a path and a kind (`add` / `update` / `delete`) and nothing else — no diff, no before/after, no line counts — on both `item.started` and `item.completed`. `codex exec` has no flag that adds one, and in auto-approve mode the approval path that would carry `fileChanges` never fires, so the chat had no line stat and no inline diff for a Codex edit. Claude and Cursor send edit content, so their stats come from the tool input as usual.
+
+The provider stream can't be made to supply it either. Timed against a real run, `item.started` lands 0.4 ms before the write reaches disk and `item.completed` 1.4 ms after it, so there is no moment at which Argmax could read the file's "before" state on receiving an event.
+
+[measured_diffs.rs](../src-tauri/src/providers/measured_diffs.rs) measures it from git instead, using [tree_snapshot.rs](../src-tauri/src/git/tree_snapshot.rs):
+
+- **Mark at each turn boundary.** Every prompt send (launch, relaunch, and a live handle's follow-up) marks the worktree as a git tree object, written through a scratch `GIT_INDEX_FILE` so the user's index and worktree are untouched. Only already-dirty paths are staged (`git diff --name-only HEAD` plus `ls-files --others`); everything else matches the seed tree, which on a 1900-file repo is 140 ms instead of 570 ms. The mark is taken off the send path, since the agent's first write is a model round-trip away.
+- **Re-mark per write.** A `command.completed` for a file change re-marks only the paths it reported, so `before → after` is that write's own diff. The mark then advances, which is what keeps two edits to one file two diffs instead of one counted twice — and keeps work that was already uncommitted when the turn began attributed to nobody.
+- **Written back onto the tool row.** The measured diff goes into the tool's own `command.completed` payload as `unified_diff` per change entry, and the row is republished under its existing id and rowid. The renderer already reads a unified diff there, so the stat and the inline diff both come from one artifact and no new event type exists.
+- **Absent on every failure.** No git repo, a lost mark, a path outside the workspace, a path that is no longer a file, a diff over 128 KB, or a turn that predates the feature: the row keeps its name and shows no stat. Deletions are skipped by design — the content never reached us. Nothing is backfilled for old sessions.
+- Blobs and trees land in the repo's object database unreferenced, which `git gc` collects.
 
 ## Tool Event Identity
 

@@ -64,30 +64,68 @@ pub fn detect_permission_gate(payload: &Map<String, Value>) -> Option<Permission
     })
 }
 
-pub fn extract_inline_tool_blocks(
+pub fn extract_content_blocks(
     event: &ProviderOutputEvent,
     payload: &Map<String, Value>,
-) -> Vec<PersistTimelineEventInput> {
+) -> Option<Vec<PersistTimelineEventInput>> {
     let content = object_value(payload.get("message"))
         .and_then(|message| array_value(message.get("content")))
-        .or_else(|| array_value(payload.get("content")));
-    let Some(content) = content else {
-        return Vec::new();
-    };
+        .or_else(|| array_value(payload.get("content")))?;
+
+    let parent_tool_use_id = payload.get("parent_tool_use_id").and_then(Value::as_str);
 
     let mut events = Vec::new();
+    let mut pending_text: Option<(String, Map<String, Value>)> = None;
+
+    let flush_text = |pending: &mut Option<(String, Map<String, Value>)>,
+                      events: &mut Vec<PersistTimelineEventInput>| {
+        if let Some((text, mut text_payload)) = pending.take() {
+            if !text.is_empty() {
+                if let Some(parent) = parent_tool_use_id {
+                    text_payload.insert(
+                        "parent_tool_use_id".to_string(),
+                        Value::String(parent.to_string()),
+                    );
+                }
+                events.push(timeline_event(
+                    event,
+                    "message.completed",
+                    text,
+                    Value::Object(text_payload),
+                ));
+            }
+        }
+    };
+
     for block in content {
         let Some(block) = object_value(Some(block)) else {
             continue;
         };
         match string_value(block.get("type")) {
+            Some("text") => {
+                let text = string_value(block.get("text")).unwrap_or("");
+                if !text.is_empty() {
+                    if let Some((ref mut current_text, _)) = pending_text {
+                        current_text.push_str(text);
+                    } else {
+                        pending_text = Some((text.to_string(), block.clone()));
+                    }
+                }
+            }
             Some("tool_use") => {
+                flush_text(&mut pending_text, &mut events);
                 if let Some(text) = send_user_message_text(block) {
                     let mut payload = block.clone();
                     payload.insert(
                         "synthesizedFromTool".to_string(),
                         Value::String("SendUserMessage".to_string()),
                     );
+                    if let Some(parent) = parent_tool_use_id {
+                        payload.insert(
+                            "parent_tool_use_id".to_string(),
+                            Value::String(parent.to_string()),
+                        );
+                    }
                     events.push(timeline_event(
                         event,
                         "message.completed",
@@ -102,10 +140,11 @@ pub fn extract_inline_tool_blocks(
                 // Copy it onto the block so the renderer can nest a sub-agent's
                 // tool calls under the Task that spawned them.
                 let mut tool_block = block.clone();
-                if let Some(parent) = payload.get("parent_tool_use_id") {
-                    if parent.is_string() {
-                        tool_block.insert("parent_tool_use_id".to_string(), parent.clone());
-                    }
+                if let Some(parent) = parent_tool_use_id {
+                    tool_block.insert(
+                        "parent_tool_use_id".to_string(),
+                        Value::String(parent.to_string()),
+                    );
                 }
                 events.push(timeline_event(
                     event,
@@ -114,22 +153,39 @@ pub fn extract_inline_tool_blocks(
                     Value::Object(tool_block),
                 ));
             }
-            Some("tool_result") => events.push(timeline_event(
-                event,
-                "command.completed",
-                "tool_result",
-                Value::Object(block.clone()),
-            )),
+            Some("tool_result") => {
+                flush_text(&mut pending_text, &mut events);
+                let mut result_block = block.clone();
+                if let Some(parent) = parent_tool_use_id {
+                    result_block.insert(
+                        "parent_tool_use_id".to_string(),
+                        Value::String(parent.to_string()),
+                    );
+                }
+                events.push(timeline_event(
+                    event,
+                    "command.completed",
+                    "tool_result",
+                    Value::Object(result_block),
+                ));
+            }
             // Extended-thinking blocks arrive as visible reasoning content.
             // Emit them as message.delta rows with a `thinking: true` payload
             // flag so the renderer can style or hide them.
             Some("thinking") => {
+                flush_text(&mut pending_text, &mut events);
                 let text = string_value(block.get("thinking"))
                     .unwrap_or("")
                     .to_string();
                 if !text.trim().is_empty() {
                     let mut payload = block.clone();
                     payload.insert("thinking".to_string(), Value::Bool(true));
+                    if let Some(parent) = parent_tool_use_id {
+                        payload.insert(
+                            "parent_tool_use_id".to_string(),
+                            Value::String(parent.to_string()),
+                        );
+                    }
                     events.push(timeline_event(
                         event,
                         "message.delta",
@@ -141,7 +197,8 @@ pub fn extract_inline_tool_blocks(
             _ => {}
         }
     }
-    events
+    flush_text(&mut pending_text, &mut events);
+    Some(events)
 }
 
 fn send_user_message_text(block: &Map<String, Value>) -> Option<String> {
@@ -538,6 +595,36 @@ mod tests {
         assert_eq!(result.events[0].r#type, "permission.blocked");
         assert_eq!(result.events[0].message, "rm -rf dist");
         assert_eq!(result.events[0].payload["riskLevel"], "high");
+    }
+
+    #[test]
+    fn claude_assistant_message_preserves_content_block_order_with_narration_before_tools() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(&json!({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        { "type": "thinking", "thinking": "Let me reason first." },
+                        { "type": "text", "text": "I will inspect the PR." },
+                        { "type": "tool_use", "name": "read_file", "input": { "target_file": "PR.md" } }
+                    ]
+                }
+            }).to_string()),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 3);
+        assert_eq!(result.events[0].r#type, "message.delta");
+        assert_eq!(result.events[0].message, "Let me reason first.");
+        assert_eq!(result.events[0].payload["thinking"], json!(true));
+
+        assert_eq!(result.events[1].r#type, "message.completed");
+        assert_eq!(result.events[1].message, "I will inspect the PR.");
+
+        assert_eq!(result.events[2].r#type, "command.started");
+        assert_eq!(result.events[2].message, "read_file");
+        assert_eq!(result.events[2].payload["input"]["target_file"], "PR.md");
     }
 
     #[test]

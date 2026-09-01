@@ -199,6 +199,51 @@ describe("interpretFileChange — Codex file_change", () => {
     expect(interpretFileChange("file_change", {})).toBeNull();
     expect(interpretFileChange("file_change", { changes: [] })).toBeNull();
   });
+
+  // Codex reports a path and a kind and nothing else, so these diffs are the
+  // ones Argmax measured from git at the write's own turn boundary
+  // (providers/measured_diffs.rs) and wrote back onto the tool row.
+  it("counts a measured diff on an update Codex sent bare", () => {
+    const { change } = firstChange("file_change", {
+      changes: [
+        {
+          path: "/repo/model.sql",
+          kind: "update",
+          unified_diff:
+            "diff --git a/model.sql b/model.sql\nindex 111..222 100644\n--- a/model.sql\n+++ b/model.sql\n@@ -1,3 +1,4 @@\n one\n-two\n+two CHANGED\n+four\n three\n"
+        }
+      ]
+    });
+    if (change.kind !== "edit") throw new Error("bad kind");
+    expect(change.addCount).toBe(2);
+    expect(change.delCount).toBe(1);
+  });
+
+  it("keeps a measured create a create", () => {
+    const { change } = firstChange("file_change", {
+      changes: [
+        {
+          path: "/repo/new.yml",
+          kind: "add",
+          unified_diff:
+            "diff --git a/new.yml b/new.yml\nnew file mode 100644\n--- /dev/null\n+++ b/new.yml\n@@ -0,0 +1,2 @@\n+alpha\n+beta\n"
+        }
+      ]
+    });
+    if (change.kind !== "create") throw new Error("bad kind");
+    expect(change.addCount).toBe(2);
+    expect(change.hunks.length).toBeGreaterThan(0);
+  });
+
+  it("prefers the content Codex did send over a measured diff", () => {
+    const { change } = firstChange("file_change", {
+      changes: [
+        { path: "/repo/new.yml", kind: "add", content: "alpha\n", unified_diff: "@@ -0,0 +1,9 @@" }
+      ]
+    });
+    if (change.kind !== "create") throw new Error("bad kind");
+    expect(change.addCount).toBe(2);
+  });
 });
 
 describe("interpretFileChange — Cursor", () => {

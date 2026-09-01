@@ -1,6 +1,6 @@
 # Providers
 
-Argmax manages Claude Code, Codex, Cursor Agent, and OpenCode through Rust services in [src-tauri/src/providers](../src-tauri/src/providers).
+Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build through Rust services in [src-tauri/src/providers](../src-tauri/src/providers).
 
 ## Architecture
 
@@ -15,14 +15,14 @@ Argmax manages Claude Code, Codex, Cursor Agent, and OpenCode through Rust servi
 - [flush_queue.rs](../src-tauri/src/providers/flush_queue.rs): Batches event writes to SQLite and emits `dashboard:delta`. Complete JSONL lines flush immediately; non-newline trailing fragments are debounced for ~16 ms so interactive sessions surface output promptly.
 - [subagent_trace.rs](../src-tauri/src/providers/subagent_trace.rs): Imports trace-backed child activity and reconciles authoritative child lineage when a provider omits a launch row.
 - [pricing.rs](../src-tauri/src/providers/pricing.rs): Token pricing models matching `src/shared/providerModels.ts`.
-- [one_shot.rs](../src-tauri/src/providers/one_shot.rs): One-shot helper calls to a provider CLI, all on the cheap `PROVIDER_TITLE_MODEL` (`providerModels.ts`) with tools and config loading off. Two callers: short session titles (`workspaces:autotitle`) and the composer's suggested follow-up (`session:suggest-follow-up`). Claude uses `claude-sonnet-5 --effort low`; OpenCode stays on the free `opencode/big-pickle` model.
+- [one_shot.rs](../src-tauri/src/providers/one_shot.rs): One-shot helper calls to a provider CLI, all on the cheap `PROVIDER_TITLE_MODEL` (`providerModels.ts`) with tools and config loading off. Two callers: short session titles (`workspaces:autotitle`) and the composer's suggested follow-up (`session:suggest-follow-up`). Claude uses `claude-sonnet-5 --effort low`; OpenCode stays on the free `opencode/big-pickle` model; Grok uses `grok-4.6` (the cheaper of its two SKUs) with `--tools ""`.
 
 Raw provider output is saved for debugging, but only normalized timeline events are displayed in chat.
 
 ## Permissions and Approvals
 
 Native permission gates are reported in `ProviderCapabilityReport.approvalSupport`.
-- Claude and Codex: Observable-only in structured PTY mode. Gate events become `permission.blocked` notifications.
+- Claude, Codex, and Grok: Observable-only in structured PTY mode. Gate events become `permission.blocked` notifications.
 - Cursor and OpenCode: Native gate detection is unsupported.
 - Approval rows store provider correlation fields as opaque payload data without mocking user approval responses.
 
@@ -33,6 +33,7 @@ Model Context Protocol (MCP) servers are configured in each provider's native CL
 - **Codex:** `codex mcp add <name> -- <command>` or `~/.codex/config.toml`.
 - **Cursor:** Settings > Tools & MCP or `~/.cursor/mcp.json`.
 - **OpenCode:** `opencode mcp add` or `~/.config/opencode/opencode.json`.
+- **Grok Build:** `grok mcp add <name> -- <command>` or `~/.grok/config.toml`.
 
 Spawned sessions run in the workspace worktree. Project-scoped `.mcp.json` or `.cursor/mcp.json` files must be committed to git to appear inside isolated worktrees.
 
@@ -43,9 +44,9 @@ Spawned sessions run in the workspace worktree. Project-scoped `.mcp.json` or `.
 - **Startup cleanup:** Sessions left in `running`, `waiting`, or `blocked` states are marked failed on startup. Matching background provider processes are terminated and pending approvals cancelled.
 - **Follow-up prompts:** Follow-up turns use the provider resume ID when available, passing a capped transcript of visible `user.message`, `message.completed`, and `error` events. Hidden subagent rows are excluded.
 - **Provider switching:** Changing the provider on an idle session clears `provider_conversation_id`, starts a new provider process with the capped transcript, and records a `session.provider-changed` marker.
-- **Forking:** `session:fork` creates a new session flagged with `resume_fork`. The next turn invokes the provider's fork flag (`--fork-session` for Claude, `exec fork` for Codex, `--fork` for OpenCode). Cursor does not support session forking.
+- **Forking:** `session:fork` creates a new session flagged with `resume_fork`. The next turn invokes the provider's fork flag (`--fork-session` for Claude and Grok, `exec fork` for Codex, `--fork` for OpenCode). Cursor does not support session forking.
 - **Project moves:** An agent-requested move waits for the current turn to settle, copies the transcript into a fresh session in the destination project, and clears `provider_conversation_id`. The first destination turn receives the capped transcript plus the project handoff.
-- **Fast mode & reasoning effort:** Claude uses `--settings {"fastMode": ...}` and `--append-system-prompt` for effort (including Max/Ultra). Codex uses `-c service_tier="priority"` and `-c model_reasoning_effort=...` (Sol/Terra through ultra, Luna through max). Cursor encodes effort and fast mode into the model string (e.g. `gpt-5.6-sol-max-fast`).
+- **Fast mode & reasoning effort:** Claude uses `--settings {"fastMode": ...}` and `--append-system-prompt` for effort (including Max/Ultra). Codex uses `-c service_tier="priority"` and `-c model_reasoning_effort=...` (Sol/Terra through ultra, Luna through max). Cursor encodes effort and fast mode into the model string (e.g. `gpt-5.6-sol-max-fast`). Grok takes `--reasoning-effort` and has no fast mode; its CLI accepts only low/medium/high/xhigh, so Max and Ultra clamp to xhigh.
 
 ## Cursor Warm ACP Runtime
 
@@ -60,6 +61,18 @@ To avoid startup overhead, `composer-2.5` launches run over Agent Client Protoco
 OpenCode runs via `opencode run --dir <workspace> --format json --thinking -m <provider/model>`.
 - The `--dir` flag ensures tools execute in the workspace directory rather than the root directory.
 - OpenCode uses a SQLite store at `~/.local/share/opencode/opencode.db`. Discovery probes and title generation use temporary `XDG_DATA_HOME` directories to prevent database lock contention with active sessions.
+
+## Grok Build
+
+Grok Build runs via `grok "--single=<prompt>" --cwd <workspace> --output-format streaming-messages-json --include-partial-messages`.
+
+- **It speaks Claude Code's wire format.** `system/init`, Anthropic `stream_event` content blocks, whole `assistant` messages, and a closing `result` are byte-identical to `claude --output-format stream-json`. Grok therefore has no normalizer of its own: `speaks_claude_stream_json` in [normalizer/mod.rs](../src-tauri/src/providers/normalizer/mod.rs) routes it down Claude's path. If Grok ever forks that format, the fixture test in that file is what fails.
+- **The prompt must ride the `=` form.** `-p`/`--single` takes the prompt as a flag *value*, not the trailing positional Claude and Cursor use. Passed as two argv entries, the CLI rejects any prompt starting with `-` with a bare usage error — a pasted diff or a "- do this" bullet trips it. `--single=<prompt>` is the only form clap always reads as a value.
+- **`--cwd` is passed explicitly** even though the child is already spawned in the worktree: with `[cli] use_leader` enabled the turn runs inside a shared leader process whose cwd is not the child's. Same trap OpenCode's `--dir` covers.
+- **Plan mode** maps to the bundled read-only `plan` agent (`--agent plan`, `permission_mode: plan`, no edit tools) rather than a prompt prefix.
+- **Skills** come from `.grok/skills`, `.agents/skills`, and — by Grok's own compatibility rules — `.claude/skills`, plus `~/.grok/installed-plugins/<plugin>/skills` and the bundled cache at `~/.grok/bundled/skills`.
+- **Pricing** is the `grok-4.6-build` / `grok-4.5-build` SKU rate, not xAI's published API list price. The rates in `MODEL_PRICING` were solved from the CLI's own `total_cost_usd` and reproduce it exactly; note 4.5 costs twice 4.6, so the default and title model both stay on 4.6.
+- **Session sync is not supported.** Grok stores transcripts under `~/.grok/sessions/<percent-encoded-cwd>/<uuid>/`, which is a lossless cwd mapping, but Argmax has no reader for it yet — the Settings toggle renders disabled.
 
 ## Subagent Activity
 
@@ -110,4 +123,5 @@ Defaults are configured in Settings → Agents → Default model (`localStorage.
 2. Codex (GPT-5.6 Sol)
 3. Cursor (Grok 4.6)
 4. OpenCode (GLM-5.3-Flash)
-5. Fallback: Big Pickle
+5. Grok Build (Grok 4.6)
+6. Fallback: Big Pickle

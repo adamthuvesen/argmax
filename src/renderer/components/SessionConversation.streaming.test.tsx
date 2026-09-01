@@ -130,7 +130,10 @@ describe("SessionConversation — streaming & composer", () => {
     // choice on every turn.
     expect(screen.queryByRole("button", { name: "Agent mode" })).toBeNull();
 
-    fireEvent.keyDown(screen.getByPlaceholderText(/Reply to your agent/), { key: "Tab" });
+    fireEvent.keyDown(screen.getByPlaceholderText(/Reply to your agent/), {
+      key: "Tab",
+      shiftKey: true
+    });
     expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
   });
 

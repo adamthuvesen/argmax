@@ -1,8 +1,13 @@
 import {
+  Bot,
   CornerDownRight,
+  FileDiff,
   Folder,
+  FolderOpen,
   GitBranch,
+  ListChecks,
   MoreHorizontal,
+  Paperclip,
   Play,
   Plus,
   Send,
@@ -53,6 +58,7 @@ import {
   AGENT_MODE_LABELS,
   toggleAgentMode
 } from "../lib/agentMode.js";
+import type { ComposerCommand } from "../lib/composerCommands.js";
 import { clearDraft } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
@@ -63,7 +69,7 @@ import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import { LaunchModelSelector, ModelSelector } from "./ModelSelector.js";
 import { ProviderSwitchDialog } from "./ProviderSwitchDialog.js";
-import { SkillPopover } from "./SkillPopover.js";
+import { SlashCommandMenu } from "./SlashCommandMenu.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
 
 const PROMPT_MAX_HEIGHT_PX = 168;
@@ -221,11 +227,78 @@ export function SessionComposer({
     setStatus: (message) => setStatus(message === null ? null : { kind: "error", message })
   });
 
+  const toggleMode = useCallback((): void => {
+    setAgentMode((mode) => toggleAgentMode(mode));
+  }, [setAgentMode]);
+
+  // Composer actions offered above the skills in the `/` menu. Every entry is
+  // a control that already exists in this toolbar — the menu is a keyboard
+  // route to them, not a second set of features. Entries that would be a
+  // no-op right now (no changes to review, nothing running) are left out
+  // rather than shown disabled: a menu you can only reach by typing should
+  // never answer with a dead row.
+  const nextMode = toggleAgentMode(agentMode);
+  const composerCommands = useMemo<ComposerCommand[]>(() => {
+    const commands: ComposerCommand[] = [
+      {
+        name: nextMode,
+        label: AGENT_MODE_LABELS[nextMode],
+        hint:
+          nextMode === "plan"
+            ? "Draft a plan before touching anything"
+            : "Work and approve each step",
+        icon: nextMode === "plan" ? ListChecks : Bot,
+        run: toggleMode
+      }
+    ];
+    if (session?.state === "running") {
+      commands.push({
+        name: "stop",
+        label: "Stop",
+        hint: "Stop the agent mid-turn",
+        icon: Square,
+        run: () => void onTerminateSession(session.id)
+      });
+    }
+    commands.push({
+      name: "attach",
+      label: "Attach file",
+      hint: "Add an image or file to the prompt",
+      icon: Paperclip,
+      run: openFilePicker
+    });
+    if (changeSummary) {
+      commands.push({
+        name: "changes",
+        label: "Changes",
+        hint: `Open ${changeSummary.fileCount} changed ${
+          changeSummary.fileCount === 1 ? "file" : "files"
+        } in review`,
+        icon: FileDiff,
+        run: changeSummary.onOpen
+      });
+    }
+    if (workspace && workspace.kind === "git" && !workspace.sharedWorkspace) {
+      commands.push({
+        name: "worktree",
+        label: "Worktree",
+        hint: "Open the worktree folder",
+        icon: FolderOpen,
+        run: () => {
+          void window.argmax?.system.openPath({ path: workspace.path }).catch(() => undefined);
+        }
+      });
+    }
+    return commands;
+  }, [changeSummary, nextMode, onTerminateSession, openFilePicker, session, toggleMode, workspace]);
+
   const slashAutocomplete = useSlashAutocomplete({
     input,
     setInput,
     provider: session?.provider ?? null,
-    workspaceId: workspace?.id ?? null
+    workspaceId: workspace?.id ?? null,
+    commands: composerCommands,
+    inputRef
   });
 
   const fileAutocomplete = useFileAutocomplete({
@@ -268,10 +341,6 @@ export function SessionComposer({
     setWorkspaceDetailsOpen(false)
   );
 
-  const toggleMode = useCallback((): void => {
-    setAgentMode((mode) => toggleAgentMode(mode));
-  }, [setAgentMode]);
-
   useEffect(() => {
     if (!shouldRefocusInput.current || isSending || !canSend) {
       return;
@@ -302,8 +371,16 @@ export function SessionComposer({
       !event.altKey &&
       !event.nativeEvent.isComposing
     ) {
+      // Tab belongs to the suggested follow-up: it drops the placeholder into
+      // the draft so Enter sends it. Mode moved to Shift+Tab. Both swallow the
+      // keypress either way — Tab out of the composer would lose the draft's
+      // focus mid-thought.
       event.preventDefault();
-      toggleMode();
+      if (event.shiftKey) {
+        toggleMode();
+      } else if (followUpSuggestion && input.length === 0) {
+        setInput(followUpSuggestion);
+      }
       return;
     }
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -553,7 +630,7 @@ export function SessionComposer({
           aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
           aria-controls={
             slashAutocomplete.popoverOpen
-              ? "skill-popover"
+              ? "slash-menu"
               : fileAutocomplete.popoverOpen
                 ? "file-popover"
                 : undefined
@@ -579,7 +656,7 @@ export function SessionComposer({
           value={input}
           rows={1}
         />
-        <SkillPopover state={slashAutocomplete} inputRef={inputRef} />
+        <SlashCommandMenu state={slashAutocomplete} />
         <FilePopover state={fileAutocomplete} inputRef={inputRef} />
       </div>
       <div className="session-input-toolbar">
@@ -732,14 +809,14 @@ export function SessionComposer({
         {session && agentMode !== "auto" ? (
           // Auto is the default, so naming it on every turn tells the user
           // nothing. Plan changes what the next send does, so it shows — and
-          // the chip is then how you get back out. Tab toggles either way.
+          // the chip is then how you get back out. Shift+Tab toggles either way.
           <div className="composer-chips-group composer-chips-mode">
             <button
               type="button"
               className="composer-context-chip agent-mode-toggle"
               aria-label="Agent mode"
               aria-pressed
-              title="Toggle agent mode (Tab)"
+              title="Toggle agent mode (Shift+Tab)"
               disabled={!canSend || isSending}
               onClick={toggleMode}
             >

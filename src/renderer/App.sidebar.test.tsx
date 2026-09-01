@@ -756,14 +756,20 @@ describe("App sidebar", () => {
     const input = await screen.findByLabelText<HTMLInputElement>("Task prompt");
     fireEvent.change(input, { target: { value: "/" } });
 
-    expect(await screen.findByRole("listbox", { name: "Skill suggestions" })).toBeInTheDocument();
+    const menu = await screen.findByRole("listbox", { name: "Slash commands" });
     expect(skillsList).toHaveBeenCalledWith({ provider: "claude", workspaceId: null });
+    // Composer actions lead; the skills follow under their own heading.
+    expect(within(menu).getAllByRole("option")[0]).toHaveTextContent("Plan");
+    expect(within(menu).getByText("Skills")).toBeInTheDocument();
+
+    // A query past the command names leaves only the skill, and Enter inserts it.
+    fireEvent.change(input, { target: { value: "/impl" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(input.value).toBe("/plan ");
+    expect(input.value).toBe("/impl ");
     expect(launchProvider).not.toHaveBeenCalled();
   });
 
-  it("toggles active-session agent mode with Tab and sends plan mode", async () => {
+  it("toggles active-session agent mode with Shift+Tab and sends plan mode", async () => {
     const completeSnapshot = {
       ...snapshot,
       sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }))
@@ -775,7 +781,7 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     const input = await screen.findByLabelText("Session prompt");
     fireEvent.change(input, { target: { value: "Plan the follow-up" } });
-    fireEvent.keyDown(input, { key: "Tab" });
+    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
 
     expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
     fireEvent.click(screen.getByTitle("Send follow-up"));
@@ -993,14 +999,15 @@ describe("App sidebar", () => {
     const input = await screen.findByLabelText<HTMLInputElement>("Session prompt");
     fireEvent.change(input, { target: { value: "/o" } });
 
-    const listbox = await screen.findByRole("listbox", { name: "Skill suggestions" });
+    const listbox = await screen.findByRole("listbox", { name: "Slash commands" });
     expect(listbox).toBeInTheDocument();
     expect(skillsList).toHaveBeenCalledWith({ provider: "codex", workspaceId: "workspace-1" });
 
+    // No composer command starts with "o", so the query leaves only skills.
     const options = within(listbox).getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
-      "/opsx-applyApply a change",
-      "/opsx-archiveArchive a change"
+      "opsx-applyApply a changePrompt",
+      "opsx-archiveArchive a changePrompt"
     ]);
     // Claude-only skill must not be present in a Codex session.
     expect(screen.queryByText("/impl")).not.toBeInTheDocument();

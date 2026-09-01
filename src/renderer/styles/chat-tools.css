@@ -568,8 +568,8 @@
   /* Matches the launcher composer's corner radius so the two input surfaces
      read as the same component. */
   border-radius: var(--radius-2xl);
-  background: var(--panel);
-  /* No outline: the panel fill and this quiet, single-layer lift seat the
+  background: var(--composer-surface);
+  /* No outline: the composer fill and this quiet, single-layer lift seat the
      field on the surface. Focus draws its own ring below. */
   box-shadow: 0 1px 2px rgba(31, 28, 24, 0.04), 0 8px 24px rgba(31, 28, 24, 0.05);
   transition: box-shadow var(--duration-base) var(--ease);

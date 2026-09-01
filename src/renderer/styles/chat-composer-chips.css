@@ -831,12 +831,12 @@ button.composer-compact-context-row:hover,
   caret-color: var(--text);
 }
 
-.skill-popover {
+.slash-menu {
   position: absolute;
   bottom: calc(100% + 6px);
   left: 0;
   right: 0;
-  max-height: 280px;
+  max-height: 320px;
   margin: 0;
   padding: 6px;
   list-style: none;
@@ -853,8 +853,74 @@ button.composer-compact-context-row:hover,
    from the visible input box on each edge. Pull it back out by that padding so
    the popover spans the field's full width. The launcher composer anchors these
    same classes to its bordered box directly, so it must NOT inherit this. */
-.session-input-field .skill-popover,
+.session-input-field .slash-menu,
 .session-input-field .file-popover {
+  left: -12px;
+  right: -12px;
+}
+
+/* Command-menu rows: one line each — icon, name, then the description trailing
+   to the right edge. Dense on purpose; this is a picker the user scans dozens
+   of times a day, not content. */
+.slash-menu-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  line-height: 1.5;
+}
+
+.slash-menu-option.is-selected,
+.slash-menu-option[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+
+.slash-menu-icon {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.slash-menu-option.is-selected .slash-menu-icon {
+  color: var(--muted-strong);
+}
+
+.slash-menu-label {
+  flex: 0 0 auto;
+  font-size: var(--text-xs-plus);
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* Right-aligned so short hints hug the panel edge like the reference menu,
+   and long ones simply fill the gap and clip. */
+.slash-menu-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  color: var(--muted-strong);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slash-menu-badge {
+  flex: 0 0 auto;
+  margin-inline-start: 4px;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+}
+
+/* Section heading between the commands and the skills below them. */
+.slash-menu-section {
+  padding: 10px 10px 4px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.file-popover {
   left: -12px;
   right: -12px;
 }

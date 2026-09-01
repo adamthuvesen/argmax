@@ -120,13 +120,13 @@
   display: grid;
   position: relative;
   gap: 4px;
-  /* Borderless, like `.session-input`: the panel fill and the quiet lift seat
-     the field on the surface. The extra 1px absorbs the removed border so the
-     box keeps its size. */
+  /* Borderless, like `.session-input`: the --composer-surface fill and the
+     quiet lift seat the field on the surface. The extra 1px absorbs the removed
+     border so the box keeps its size. */
   padding: 13px 15px 11px;
   border: 0;
   border-radius: var(--radius-2xl);
-  background: var(--panel);
+  background: var(--composer-surface);
   box-shadow: 0 1px 2px rgba(31, 28, 24, 0.04), 0 8px 24px rgba(31, 28, 24, 0.05);
   transition: box-shadow var(--duration-base) var(--ease);
 }

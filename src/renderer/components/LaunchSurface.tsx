@@ -1,4 +1,17 @@
-import { ChevronDown, Folder, GitBranch, MoreHorizontal, Play, Plus, X } from "lucide-react";
+import {
+  Bot,
+  ChevronDown,
+  Folder,
+  FolderGit2,
+  GitBranch,
+  ListChecks,
+  MessageCircle,
+  MoreHorizontal,
+  Paperclip,
+  Play,
+  Plus,
+  X
+} from "lucide-react";
 import {
   Suspense,
   lazy,
@@ -45,6 +58,7 @@ import {
   launcherModeTitle,
   type LauncherMode
 } from "../lib/agentMode.js";
+import type { ComposerCommand } from "../lib/composerCommands.js";
 import {
   readStoredWorkspaceMode,
   toggleWorkspaceMode,
@@ -62,7 +76,7 @@ const ReviewPanel = lazy(async () => ({
 }));
 import { FilePopover } from "./FilePopover.js";
 import { SkeletonPane } from "./SkeletonPane.js";
-import { SkillPopover } from "./SkillPopover.js";
+import { SlashCommandMenu } from "./SlashCommandMenu.js";
 // WelcomePane only renders on a fresh install (no projects) — lazy-mounted
 // (ralph B2) so its provider-discovery code path doesn't ship in the main
 // launcher bundle for the common case.
@@ -435,11 +449,110 @@ export function LaunchSurface({
     // `activeProject` (a fresh object per switch) keeps the "refocus on
     // project switch" behavior; a collapsed boolean would only fire once.
   }, [activeProject, chatMode, reviewIsPanelOpen, isSubmitting]);
+  // Composer actions offered above the skills in the `/` menu. Each one is a
+  // control that already sits in this toolbar — the menu is a keyboard route
+  // to them, not a second set of features. The mode rows name the mode you
+  // would land in, so `/plan` sets Plan outright instead of advancing the
+  // chip's cycle by one.
+  const launcherCommands = useMemo<ComposerCommand[]>(() => {
+    const setMode = (next: LauncherMode) => () => {
+      if (next === "chat") {
+        closeContextPickers();
+        onSideChatModeChange?.(true);
+        return;
+      }
+      onSideChatModeChange?.(false);
+      setAgentMode(next);
+    };
+    const modes: ComposerCommand[] = [
+      {
+        name: "auto",
+        label: LAUNCHER_MODE_LABELS.auto,
+        hint: "Work and approve each step",
+        icon: Bot,
+        run: setMode("auto")
+      },
+      {
+        name: "plan",
+        label: LAUNCHER_MODE_LABELS.plan,
+        hint: "Draft a plan before touching anything",
+        icon: ListChecks,
+        run: setMode("plan")
+      }
+    ];
+    if (chatAvailable) {
+      modes.push({
+        name: "chat",
+        label: LAUNCHER_MODE_LABELS.chat,
+        hint: "Don't attach a repository",
+        icon: MessageCircle,
+        run: setMode("chat")
+      });
+    }
+    const commands = modes.filter((mode) => mode.name !== launcherMode);
+    commands.push({
+      name: "attach",
+      label: "Attach file",
+      hint: "Add an image or file to the prompt",
+      icon: Paperclip,
+      run: openFilePicker
+    });
+    if (!chatMode) {
+      commands.push(
+        {
+          name: "project",
+          label: "Project",
+          hint: "Choose the project this task runs in",
+          icon: Folder,
+          run: () => {
+            setCompactContextOpen(true);
+            setProjectPickerOpen(true);
+          }
+        },
+        {
+          name: "branch",
+          label: "Branch",
+          hint: `Start from a branch other than ${activeProject?.currentBranch ?? "the current one"}`,
+          icon: GitBranch,
+          run: () => {
+            setCompactContextOpen(true);
+            void openBranchPicker();
+          }
+        },
+        {
+          name: "worktree",
+          label: workspaceMode === "worktree" ? "Worktree off" : "Worktree on",
+          hint:
+            workspaceMode === "worktree"
+              ? "Run in your current checkout instead"
+              : "Run in an isolated git worktree on a new branch",
+          icon: FolderGit2,
+          run: toggleWorkspace
+        }
+      );
+    }
+    return commands;
+  }, [
+    activeProject,
+    chatAvailable,
+    chatMode,
+    closeContextPickers,
+    launcherMode,
+    onSideChatModeChange,
+    openBranchPicker,
+    openFilePicker,
+    setAgentMode,
+    toggleWorkspace,
+    workspaceMode
+  ]);
+
   const slashAutocomplete = useSlashAutocomplete({
     input: prompt,
     setInput: setPrompt,
     provider: model.provider,
-    workspaceId: null
+    workspaceId: null,
+    commands: launcherCommands,
+    inputRef: promptInputRef
   });
 
   const fileAutocomplete = useFileAutocomplete({
@@ -609,7 +722,7 @@ export function LaunchSurface({
             aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
             aria-controls={
               slashAutocomplete.popoverOpen
-                ? "skill-popover"
+                ? "slash-menu"
                 : fileAutocomplete.popoverOpen
                   ? "file-popover"
                   : undefined
@@ -629,7 +742,7 @@ export function LaunchSurface({
             value={prompt}
             rows={1}
           />
-          <SkillPopover state={slashAutocomplete} inputRef={promptInputRef} />
+          <SlashCommandMenu state={slashAutocomplete} />
           <FilePopover state={fileAutocomplete} inputRef={promptInputRef} />
           <button
             className="send-button"

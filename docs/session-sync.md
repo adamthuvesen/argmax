@@ -25,7 +25,7 @@ Events use deterministic IDs (`sync:<provider>:<external id>:<line>:<index>`) wi
 ## Provider Support
 
 - **Claude Code:** Supported ([sync/claude.rs](../src-tauri/src/sync/claude.rs)). Reads `~/.claude/projects/<slug>/<sessionId>.jsonl`. The `cwd` is parsed from the JSON lines rather than decoded from the directory slug. Events pass through the existing Claude normalizer.
-- **Codex, Cursor, OpenCode:** Currently unsupported in transcript sync.
+- **Codex, Cursor, OpenCode, Grok Build:** Currently unsupported in transcript sync.
 
 ## Data Storage
 

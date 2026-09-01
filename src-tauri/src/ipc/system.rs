@@ -19,7 +19,7 @@ use crate::state::AppState;
 use crate::util::log_buffer::LogEntry;
 
 const LIGHT_BG: tauri::utils::config::Color = tauri::utils::config::Color(251, 251, 250, 255);
-const DARK_BG: tauri::utils::config::Color = tauri::utils::config::Color(19, 19, 18, 255);
+const DARK_BG: tauri::utils::config::Color = tauri::utils::config::Color(20, 20, 20, 255);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -159,6 +159,27 @@ pub fn system_diagnostics(
             tokio_tracked_tasks: database.prune_task_count() as u64,
         },
     })
+}
+
+/// In-memory-only slice of the diagnostics report, safe to poll on an
+/// interval. Deliberately excludes the DB row counts (nine `COUNT(*)` scans)
+/// and the runtime block (`ps` shellout) that `system:diagnostics` collects.
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugSnapshot {
+    pub generated_at: String,
+    pub ipc_stats: Vec<IpcChannelStats>,
+    pub logs: Vec<LogEntry>,
+}
+
+#[tauri::command(rename = "system:debug-snapshot")]
+#[specta::specta]
+pub fn system_debug_snapshot(input: SystemDebugSnapshotInput) -> DebugSnapshot {
+    DebugSnapshot {
+        generated_at: Utc::now().to_rfc3339(),
+        ipc_stats: ipc_stats(),
+        logs: crate::util::tracing_init::recent_logs_since(input.after_log_seq),
+    }
 }
 
 #[tauri::command(rename = "system:vacuum-database")]

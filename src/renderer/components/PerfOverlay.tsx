@@ -50,17 +50,23 @@ export function PerfOverlay(): JSX.Element | null {
   const enabled = useSyncExternalStore(subscribeEnabled, readEnabled, () => false);
   const [stats, setStats] = useState<IpcChannelStats[]>([]);
   const aliveRef = useRef<boolean>(true);
+  const logCursor = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (!enabled) return;
     aliveRef.current = true;
     const tick = async (): Promise<void> => {
       const api = typeof window !== "undefined" ? window.argmax : undefined;
-      if (!api?.system?.diagnostics) return;
+      if (!api?.system?.debugSnapshot) return;
       try {
-        const report = await api.system.diagnostics();
+        // Not `system:diagnostics`: at 1 Hz its nine `COUNT(*)` scans and `ps`
+        // shellout cost far more than the five numbers drawn here. The log
+        // cursor is advanced and the lines dropped — the HUD only wants stats,
+        // and carrying the cursor keeps each tick from re-sending the ring.
+        const snapshot = await api.system.debugSnapshot({ afterLogSeq: logCursor.current });
         if (!aliveRef.current) return;
-        setStats(report.ipcStats ?? []);
+        logCursor.current = snapshot.logs.at(-1)?.seq ?? logCursor.current;
+        setStats(snapshot.ipcStats);
       } catch {
         // Diagnostics IPC is non-essential for the HUD; swallow polling errors.
       }

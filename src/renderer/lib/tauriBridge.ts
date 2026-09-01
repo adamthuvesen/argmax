@@ -15,6 +15,7 @@ import type {
   DashboardDelta,
   DashboardListSnapshot,
   DashboardSnapshot,
+  DebugSnapshot,
   DetectedIde,
   DiagnosticsReport,
   DiscoveredProvider,
@@ -310,6 +311,8 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       openPath: (input) => invokeCommand<{ ok: true }>("system:open-path", input),
       listDetectedIdes: () => invokeCommand<DetectedIde[]>("system:list-detected-ides"),
       diagnostics: () => invokeCommand<DiagnosticsReport>("system:diagnostics"),
+      debugSnapshot: (input) =>
+        invokeCommand<DebugSnapshot>("system:debug-snapshot", { afterLogSeq: input?.afterLogSeq ?? null }),
       vacuumDatabase: () => invokeCommand<{ ok: true }>("system:vacuum-database"),
       setTheme: (mode) => invokeCommand<{ ok: true }>("system:set-theme", { mode })
     },

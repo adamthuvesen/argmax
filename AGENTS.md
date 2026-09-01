@@ -66,6 +66,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Learnings extraction / project memory** → [memory.md](docs/memory.md)
 - **Skills / slash autocomplete** → [skills.md](docs/skills.md)
 - **Chat surface** → [chat-cards.md](docs/chat-cards.md)
+- **Debug panel / diagnostics** → [debugging.md](docs/debugging.md)
 - **Styling** → [styling.md](docs/styling.md)
 - **Tests** → [testing.md](docs/testing.md)
 - **Perf budgets** → [performance.md](docs/performance.md)

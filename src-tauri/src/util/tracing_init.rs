@@ -81,6 +81,14 @@ pub fn recent_logs() -> Vec<LogEntry> {
         .unwrap_or_default()
 }
 
+/// Log entries recorded after `after_seq`, or the whole ring when it is `None`.
+pub fn recent_logs_since(after_seq: Option<u64>) -> Vec<LogEntry> {
+    HANDLES
+        .get()
+        .map(|handles| handles.logs.read_since(after_seq))
+        .unwrap_or_default()
+}
+
 fn build_subscriber(user_data_dir: Option<&Path>) -> TracingHandles {
     let ipc_latency = Arc::new(IpcLatencyRegistry::new());
     let logs = Arc::new(LogBuffer::default());

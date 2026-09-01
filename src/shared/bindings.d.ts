@@ -387,6 +387,9 @@ async systemDiagnostics(input: SystemDiagnosticsInput) : Promise<Result<Diagnost
     else return { status: "error", error: e  as any };
 }
 },
+async systemDebugSnapshot(input: SystemDebugSnapshotInput) : Promise<DebugSnapshot> {
+    return await TAURI_INVOKE("system_debug_snapshot", { input });
+},
 async systemVacuumDatabase(input: SystemVacuumDatabaseInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("system_vacuum_database", { input }) };
@@ -757,6 +760,12 @@ export type ComposerAttachmentInput = { filePath: AttachmentPath; mimeType: Atta
 export type DashboardListInput = Record<string, never>
 export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[] }
 export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number }
+/**
+ * In-memory-only slice of the diagnostics report, safe to poll on an
+ * interval. Deliberately excludes the DB row counts (nine `COUNT(*)` scans)
+ * and the runtime block (`ps` shellout) that `system:diagnostics` collects.
+ */
+export type DebugSnapshot = { generatedAt: string; ipcStats: IpcChannelStats[]; logs: LogEntry[] }
 export type DetectedIde = { id: IdeId; label: string; appPath: string; hasCli: boolean }
 export type DiagnosticsReport = { appVersion: string; sqliteVersion: string; databasePath: string; platform: string; arch: string; generatedAt: string; startupPhases: StartupPhaseRecord[]; databaseStats: DatabaseStats; ipcStats: IpcChannelStats[]; recentLogs: LogEntry[]; sqlitePragmas: SqlitePragmas; runtime: RuntimeDiagnostics }
 /**
@@ -798,7 +807,13 @@ export type LearningsDeleteInput = { id: NonEmptyString }
 export type LearningsListInput = { projectId: ProjectId; limit: Limit200 | null }
 export type LearningsUpdateInput = { id: NonEmptyString; summary: NonEmptyString | null; verified: boolean | null }
 export type Limit200 = number
-export type LogEntry = { timestamp: string; level: string; scope: string; message: string; fields: Partial<{ [key in string]: string }> }
+export type LogEntry = { 
+/**
+ * Monotonic, process-lifetime sequence number. The debug panel polls with
+ * the highest `seq` it has seen so each tick ships only new lines instead
+ * of the whole 1000-entry ring.
+ */
+seq: number; timestamp: string; level: string; scope: string; message: string; fields: Partial<{ [key in string]: string }> }
 export type NonEmptyString = string
 export type NullableExpectedMtimeMs = number | null
 export type OpenIdeChoice = "default" | "vscode" | "cursor" | "windsurf" | "zed" | "terminal" | "iterm"
@@ -998,6 +1013,12 @@ export type SyncStatus = { config: SyncConfig;
  * disabled, rather than as toggles that silently do nothing.
  */
 supportedProviders: string[]; lastRunAt: string | null; importedCount: number; lastError: string | null }
+export type SystemDebugSnapshotInput = { 
+/**
+ * Highest log `seq` the caller already holds. `None` asks for the whole
+ * ring; the debug panel sends its cursor so each poll ships only new lines.
+ */
+afterLogSeq: number | null }
 export type SystemDiagnosticsInput = Record<string, never>
 export type SystemListDetectedIdesInput = Record<string, never>
 export type SystemOk = { ok: boolean }

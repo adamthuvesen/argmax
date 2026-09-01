@@ -156,7 +156,9 @@
 .session-grid {
   --session-main-column-min-width: 320px;
   --session-review-panel-width: clamp(320px, 34vw, 520px);
-  --session-log-panel-width: clamp(300px, 32vw, 480px);
+  /* Wider than the review panel's floor: the debug panel carries a sortable
+     IPC table and monospaced trace rows that a 300px column truncates. */
+  --session-log-panel-width: clamp(340px, 34vw, 620px);
   position: relative;
   display: grid;
   height: 100%;

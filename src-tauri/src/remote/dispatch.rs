@@ -29,6 +29,8 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "attachments:save-image",
     "system:open-path",
     "system:diagnostics",
+    // The debug panel is a desktop surface; the mobile client has no view for it.
+    "system:debug-snapshot",
     "system:set-theme",
     "remote:get-status",
     "remote:set-config",

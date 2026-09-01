@@ -32,6 +32,14 @@ empty_input!(RemoteTestNotificationInput);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemDebugSnapshotInput {
+    /// Highest log `seq` the caller already holds. `None` asks for the whole
+    /// ring; the debug panel sends its cursor so each poll ships only new lines.
+    pub after_log_seq: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RemoteSetConfigInput {
     pub enabled: bool,
     pub port: u16,

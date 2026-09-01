@@ -52,6 +52,7 @@ export const IPC_CHANNELS = [
   "system:open-path",
   "system:list-detected-ides",
   "system:diagnostics",
+  "system:debug-snapshot",
   "system:vacuum-database",
   "system:set-theme",
   "session:cost-summary",

@@ -45,7 +45,7 @@ import {
 } from "../lib/terminalTabs.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { CommitDialog } from "./CommitDialog.js";
-import { DebugLogPanel } from "./DebugLogPanel.js";
+import { DebugPanel } from "./debug/DebugPanel.js";
 // ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
 // chunk shared with the LaunchSurface call site.
 const ReviewPanel = lazy(async () => ({
@@ -688,9 +688,11 @@ export function SessionPane({
         />
       ) : null}
       {isLogOpen ? (
-        <DebugLogPanel
+        <DebugPanel
           events={visibleEvents}
           rawOutputs={visibleRawOutputs}
+          session={session}
+          workspace={workspace}
           onClose={() => setIsLogOpen(false)}
           onResizePanelMouseDown={reviewState.isPanelOpen ? undefined : onLogPanelResizeMouseDown}
         />

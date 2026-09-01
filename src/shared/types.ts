@@ -7,11 +7,16 @@ export type AgentMode = Bindings.AgentMode;
 export type AttachmentMimeType = Bindings.AttachmentMimeType;
 export type DatabaseStats = Bindings.DatabaseStats;
 export type DetectedIde = Bindings.DetectedIde;
-export type DiagnosticsReport = Omit<Bindings.DiagnosticsReport, "recentLogs"> & {
-  recentLogs: LogEntry[];
-};
+export type DiagnosticsReport = Bindings.DiagnosticsReport;
 export type IdeId = Bindings.IdeId;
 export type IpcChannelStats = Bindings.IpcChannelStats;
+export type DebugSnapshot = Bindings.DebugSnapshot;
+/**
+ * A line from the Rust tracing ring buffer. Distinct from `LogEntry` below,
+ * which is the renderer's own logger — the two share a shape by coincidence,
+ * not by contract, and `level` here is whatever tracing emitted.
+ */
+export type BackendLogEntry = Bindings.LogEntry;
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export interface LogEntry {
   timestamp: string;
@@ -653,6 +658,7 @@ export interface ArgmaxApi {
     openPath: (input: { path: string; cwd?: string }) => Promise<{ ok: true }>;
     listDetectedIdes: () => Promise<DetectedIde[]>;
     diagnostics: () => Promise<DiagnosticsReport>;
+    debugSnapshot: (input?: { afterLogSeq?: number }) => Promise<DebugSnapshot>;
     vacuumDatabase: () => Promise<{ ok: true }>;
     setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
   };

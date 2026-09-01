@@ -231,7 +231,7 @@ pub fn is_serving(state: &crate::state::AppState) -> bool {
 }
 
 pub fn ensure_app_data_dir(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    let app_data_dir = match tauri::Manager::path(app).app_data_dir() {
+    let app_data_dir = match crate::util::data_dir::app_data_dir(app) {
         Ok(dir) => dir,
         Err(error) => {
             tracing::warn!(?error, "remote bridge: app_data_dir unavailable");

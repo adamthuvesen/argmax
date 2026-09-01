@@ -2,7 +2,7 @@
 //! a sweep immediately on every change so the sidebar reflects the new
 //! settings without waiting for the next tick.
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use super::inputs::SyncSetConfigInput;
 use crate::error::{ArgmaxError, ArgmaxResult};
@@ -86,7 +86,7 @@ fn status(state: &State<'_, AppState>, config: SyncConfig) -> SyncStatus {
 }
 
 fn app_data_dir(app: &AppHandle) -> ArgmaxResult<std::path::PathBuf> {
-    app.path().app_data_dir().map_err(|error| {
+    crate::util::data_dir::app_data_dir(app).map_err(|error| {
         ArgmaxError::service("SYNC_NO_APP_DATA_DIR", format!("app data dir: {error}"))
     })
 }

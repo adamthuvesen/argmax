@@ -1,6 +1,7 @@
 // Cross-cutting helpers that don't belong to any single subsystem.
 
 pub mod app_nap;
+pub mod data_dir;
 pub mod gh_runner;
 pub mod instance_lock;
 pub mod ipc_latency;

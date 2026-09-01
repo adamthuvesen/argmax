@@ -256,6 +256,20 @@ pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = p
     "schema_migrations" => &["applied_at", "checksum", "name", "version"] as &'static [&'static str],
 };
 
+// Post-v22 `gh_pr` shape: adds the PR's own head branch, read straight from
+// `gh pr view --json headRefName`. A pull request belongs to a branch, not to
+// the session that happened to observe it, so this is the column the read
+// paths join on. Pre-existing rows stay NULL on purpose — a shared checkout
+// moves across branches over its life, so the observing workspace's *current*
+// `branch` is not evidence of what an older PR was opened from. Those rows
+// re-populate the first time the poller refreshes them.
+pub static GH_PR_HEAD_REF_NAME_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "gh_pr" => &[
+        "head_ref_name", "head_sha", "last_seen_check_state", "notified_at",
+        "pr_number", "pr_state", "session_id", "updated_at",
+    ] as &'static [&'static str],
+};
+
 pub static MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -425,7 +439,22 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &EMPTY_EXPECTED_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 22,
+        name: "gh_pr_head_ref_name",
+        up: GH_PR_HEAD_REF_NAME,
+        affected_tables: &["gh_pr"],
+        expected_columns: &GH_PR_HEAD_REF_NAME_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// The branch a PR was opened from, so a workspace can find the PR for the
+// branch it is on rather than the PRs its own sessions happened to watch.
+const GH_PR_HEAD_REF_NAME: &str = r#"
+ALTER TABLE gh_pr ADD COLUMN head_ref_name TEXT;
+CREATE INDEX idx_gh_pr_head_ref_name ON gh_pr(head_ref_name);
+"#;
 
 // Cumulative Codex turn usage previously recorded as live context occupancy,
 // causing sessions to show overflowed context rings (e.g. 503k of 258k).
@@ -1260,6 +1289,7 @@ mod tests {
                     21,
                     compute_migration_checksum(RESET_CODEX_CORRUPTED_CONTEXT_TOKENS)
                 ),
+                (22, compute_migration_checksum(GH_PR_HEAD_REF_NAME)),
             ]
         );
 

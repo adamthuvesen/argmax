@@ -1,7 +1,8 @@
 // GhPoller periodically calls
-// `GhService::refresh` against every session with an open PR, watches for
-// `check_state` / `head_sha` transitions, and publishes a `DashboardDelta`
-// so the renderer can re-render PR status without polling itself.
+// `GhService::refresh` against running sessions, recently completed sessions,
+// and sessions with an open PR. It watches for `check_state` / `head_sha`
+// transitions and publishes a `DashboardDelta` so the renderer can re-render
+// PR status without polling itself.
 
 use crate::util::sync::LockOrRecover;
 use std::{
@@ -13,7 +14,9 @@ use std::{
 use tauri::async_runtime::JoinHandle;
 
 use crate::error::ArgmaxResult;
-use crate::persistence::dashboard::list_running_session_ids;
+use crate::persistence::dashboard::{
+    list_recently_completed_session_ids, list_running_session_ids,
+};
 use crate::persistence::database::Database;
 use crate::persistence::gh::{list_open_gh_pr_session_ids, GhPrRecord};
 use crate::providers::flush_queue::DashboardDelta;
@@ -27,6 +30,10 @@ pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(60);
 /// slow `gh` (15s default timeout) holds the re-entrancy guard for 15s × N
 /// sessions — far past the 60s tick.
 const TICK_CONCURRENCY: usize = 4;
+
+/// How long after a session completes we still `gh pr view` its branch. Covers
+/// the agent that opened a PR and finished before the next 60s tick.
+const RECENTLY_COMPLETED_POLL_WINDOW: Duration = Duration::from_secs(120);
 
 /// Capacity of the in-memory transition ledger. 500 keys covers thousands
 /// of PR/commit pairs before the oldest entry rotates out.
@@ -299,11 +306,21 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
     Ok(())
 }
 
-/// Union of `running` sessions + sessions with an OPEN gh_pr row, dedup'd.
+/// Union of `running` sessions, recently completed sessions, and sessions with
+/// an OPEN gh_pr row, dedup'd.
 fn pollable_session_ids(database: &Arc<Database>) -> ArgmaxResult<Vec<String>> {
     let conn = database.connection();
     let mut ids: HashSet<String> = list_running_session_ids(&conn)?.into_iter().collect();
     for id in list_open_gh_pr_session_ids(&conn)? {
+        ids.insert(id);
+    }
+    let since = chrono::Utc::now()
+        .checked_sub_signed(chrono::Duration::seconds(
+            RECENTLY_COMPLETED_POLL_WINDOW.as_secs() as i64,
+        ))
+        .unwrap_or_else(chrono::Utc::now)
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    for id in list_recently_completed_session_ids(&conn, &since)? {
         ids.insert(id);
     }
     Ok(ids.into_iter().collect())
@@ -512,6 +529,7 @@ mod tests {
                     updated_at: now_iso(),
                     pr_state: Some("OPEN".to_string()),
                     notified_at: None,
+                    head_ref_name: None,
                 },
             )
             .expect("seed gh_pr");
@@ -602,6 +620,41 @@ mod tests {
             1,
             "failure hook must not refire for the same head_sha"
         );
+    }
+
+    #[tokio::test]
+    async fn poller_refreshes_a_recently_completed_session() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        {
+            let conn = database.connection();
+            conn.execute(
+                "UPDATE sessions SET state = 'complete', completed_at = ? WHERE id = 's1'",
+                [now_iso()],
+            )
+            .expect("complete session");
+        }
+        let payload = r#"{"number": 9, "headRefOid": "abcd", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
+        let stub = StubRunner::new(vec![Ok(payload.to_string())]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+        let publish_count = Arc::new(AtomicUsize::new(0));
+        let publisher_count = Arc::clone(&publish_count);
+        let publisher: DeltaPublisher = Arc::new(move |_delta: DashboardDelta| {
+            publisher_count.fetch_add(1, Ordering::SeqCst);
+        });
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_delta_publisher(publisher),
+        );
+
+        poller.tick_for_test().await.expect("tick");
+        assert_eq!(publish_count.load(Ordering::SeqCst), 1);
+        let rows = {
+            let conn = database.connection();
+            crate::persistence::gh::list_gh_pr_for_session(&conn, "s1").expect("rows")
+        };
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pr_number, 9);
+        assert_eq!(rows[0].head_ref_name.as_deref(), Some("feature/x"));
     }
 
     #[tokio::test]

@@ -605,6 +605,7 @@ fn gh_and_learning_repositories_round_trip() {
             updated_at: "2026-05-24T10:00:00.000Z".to_owned(),
             pr_state: Some("OPEN".to_owned()),
             notified_at: None,
+            head_ref_name: Some("feature/rust".to_owned()),
         },
     )
     .expect("upsert gh pr");
@@ -696,6 +697,7 @@ fn workspace_summaries_carry_latest_pr_on_every_read_path() {
             updated_at: "2026-05-24T10:00:00.000Z".to_owned(),
             pr_state: Some("OPEN".to_owned()),
             notified_at: None,
+            head_ref_name: Some("feature/rust".to_owned()),
         },
     )
     .expect("upsert gh pr");

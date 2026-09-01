@@ -771,6 +771,13 @@ export interface GhPrRecord {
   prState?: GhPrState | null;
   /** ISO timestamp the failure follow-up notification last fired for this head_sha. */
   notifiedAt?: string | null;
+  /**
+   * Branch the PR was opened from. Sidebar markers resolve by this — a PR
+   * belongs to its head branch, not to whichever session happened to be mid-turn
+   * when the poller looked. Null on rows recorded before the branch was stored;
+   * those still attach to the observing workspace.
+   */
+  headRefName?: string | null;
 }
 
 export type GhPrState = "OPEN" | "CLOSED" | "MERGED";

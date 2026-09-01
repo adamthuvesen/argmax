@@ -806,7 +806,18 @@ export type FileContent = string
  * both mean "keep the static placeholder".
  */
 export type FollowUpSuggestion = { suggestion: string | null }
-export type GhPrRecord = { sessionId: string; prNumber: number; headSha: string; lastSeenCheckState: string; updatedAt: string; prState: string | null; notifiedAt: string | null }
+export type GhPrRecord = { 
+/**
+ * The session that observed this PR. Provenance only — sidebar markers
+ * resolve by `head_ref_name`, not by this id.
+ */
+sessionId: string; prNumber: number; headSha: string; lastSeenCheckState: string; updatedAt: string; prState: string | null; notifiedAt: string | null; 
+/**
+ * Branch the PR was opened from, per `gh pr view --json headRefName`.
+ * Null on rows written before the branch was recorded; those still attach
+ * to the observing workspace so a merged PR does not lose its marker.
+ */
+headRefName: string | null }
 export type GitCommitInput = { workspaceId: WorkspaceId; message: GitCommitMessage; selectedFiles: RelativePath[] | null }
 export type GitCommitMessage = string
 export type GitCommitResult = { commitSha: string; branch: string }

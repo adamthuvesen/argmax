@@ -12,7 +12,7 @@ use tempfile::tempdir;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, run_git_text_with_options, GitExecOptions};
 use crate::persistence::database::Database;
-use crate::persistence::gh::{list_gh_pr_for_session, GhPrRecord};
+use crate::persistence::gh::{latest_pr_for_branch, list_gh_pr_for_session, GhPrRecord};
 use crate::persistence::projects::get_project_remote;
 use crate::persistence::sessions::find_session_by_id;
 use crate::persistence::workspaces::find_workspace_by_id;
@@ -249,11 +249,16 @@ impl GitOpsService {
             ));
         }
 
+        // Resolved by branch, matching what `gh pr create` would do in this
+        // checkout. Keying off this session's own rows would miss a PR opened
+        // from another session on the same branch and fall through to a create
+        // that `gh` then rejects — and, on a workspace whose checkout has since
+        // moved, would open a stale PR from the branch it used to be on.
         let existing = {
             let conn = self.database.connection();
-            list_gh_pr_for_session(&conn, &session.id)?
+            latest_pr_for_branch(&conn, &workspace.project_id, &workspace.branch)?
         };
-        if let Some(top) = most_recent(&existing) {
+        if let Some(top) = existing {
             let remote = {
                 let conn = self.database.connection();
                 get_project_remote(&conn, &workspace.project_id)?
@@ -630,6 +635,7 @@ mod tests {
                     updated_at: "2026-05-24T12:00:00.000Z".to_string(),
                     pr_state: Some("OPEN".to_string()),
                     notified_at: None,
+                    head_ref_name: None,
                 }])
             })
         });

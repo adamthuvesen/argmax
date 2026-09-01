@@ -34,6 +34,15 @@ pub(crate) async fn prs_refresh_impl(
     state: &AppState,
     input: PrsRefreshInput,
 ) -> ArgmaxResult<Vec<GhPrRecord>> {
+    let session_id = input.session_id.as_str();
     let service = GhService::new(live_database(state)?);
-    service.refresh(input.session_id.as_str()).await
+    let rows = service.refresh(session_id).await?;
+    if let Err(error) = super::publish_workspace_for_session(state, session_id) {
+        tracing::warn!(
+            %session_id,
+            ?error,
+            "prs.refresh: could not publish workspace after PR refresh"
+        );
+    }
+    Ok(rows)
 }

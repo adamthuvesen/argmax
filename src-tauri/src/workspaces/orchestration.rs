@@ -621,6 +621,16 @@ impl WorkspaceService {
         });
     }
 
+    /// Push workspace rows the renderer already knows, so a PR marker that
+    /// landed in SQLite shows up on the sidebar without waiting for a poller
+    /// tick or a filesystem watcher.
+    pub fn publish_workspaces(&self, workspaces: Vec<WorkspaceSummary>) {
+        self.publish(DashboardDelta {
+            workspaces,
+            ..DashboardDelta::default()
+        });
+    }
+
     /// A session whose transcript grew outside the app (session sync's
     /// `extend`): the fresh events ride the delta so an open conversation view
     /// shows the external continuation without a reopen-and-backfill.

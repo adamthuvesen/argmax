@@ -103,6 +103,26 @@ pub fn list_running_session_ids(connection: &Connection) -> ArgmaxResult<Vec<Str
     Ok(rows)
 }
 
+/// Sessions that finished at or after `since_iso`. The GH poller includes these
+/// so an agent that opened a PR and completed before the next tick still gets
+/// a `gh pr view` against its branch.
+pub fn list_recently_completed_session_ids(
+    connection: &Connection,
+    since_iso: &str,
+) -> ArgmaxResult<Vec<String>> {
+    let mut statement = connection
+        .prepare_cached(
+            "SELECT id FROM sessions WHERE completed_at IS NOT NULL AND completed_at >= ?",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([since_iso], |row| row.get::<_, String>("id"))
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
 pub fn count_attention(connection: &Connection) -> ArgmaxResult<AttentionCounts> {
     let pending_approvals = count_where(
         connection,
@@ -276,6 +296,31 @@ mod tests {
     }
 
     #[test]
+    fn recently_completed_session_ids_are_bounded_by_completed_at() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_dashboard(&connection);
+        seed_session(&connection, "s-old", "w1", "2026-05-24T10:00:00.000Z");
+        seed_session(&connection, "s-new", "w1", "2026-05-24T10:05:00.000Z");
+        connection
+            .execute(
+                "UPDATE sessions SET state = 'complete', completed_at = '2026-05-24T09:00:00.000Z' WHERE id = 's-old'",
+                [],
+            )
+            .expect("complete old");
+        connection
+            .execute(
+                "UPDATE sessions SET state = 'complete', completed_at = '2026-05-24T10:05:00.000Z' WHERE id = 's-new'",
+                [],
+            )
+            .expect("complete new");
+
+        let ids = list_recently_completed_session_ids(&connection, "2026-05-24T10:00:00.000Z")
+            .expect("recently completed");
+        assert_eq!(ids, vec!["s-new"]);
+    }
+
+    #[test]
     fn dashboard_includes_latest_session_for_visible_workspace() {
         let database = Database::open_in_memory().expect("open db");
         let connection = database.connection();
@@ -336,6 +381,151 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_workspace_sees_pr_observed_by_a_sibling_on_the_same_branch() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_project(&connection);
+        // Two workspaces sharing one checkout and one branch — the shared-
+        // workspace default. Only w1's session was mid-turn when the poller
+        // looked, so only it recorded the PR. w2 is on the same branch and
+        // must show the same PR rather than looking PR-less.
+        seed_workspace_on_branch(
+            &connection,
+            "w1",
+            "complete",
+            "2026-05-24T10:00:00.000Z",
+            "adam/feature",
+        );
+        seed_workspace_on_branch(
+            &connection,
+            "w2",
+            "complete",
+            "2026-05-24T10:00:00.000Z",
+            "adam/feature",
+        );
+        seed_session(&connection, "s1", "w1", "2026-05-24T10:00:00.000Z");
+        seed_session(&connection, "s2", "w2", "2026-05-24T10:00:00.000Z");
+        seed_gh_pr_on_branch(
+            &connection,
+            "s1",
+            4174,
+            "OPEN",
+            "2026-05-24T10:01:00.000Z",
+            "adam/feature",
+        );
+
+        let snapshot = list_dashboard(&connection).expect("dashboard");
+        let workspace = snapshot
+            .workspaces
+            .iter()
+            .find(|w| w.id == "w2")
+            .expect("workspace present");
+
+        assert_eq!(workspace.pr_state.as_deref(), Some("OPEN"));
+        assert_eq!(workspace.pr_number, Some(4174));
+    }
+
+    #[test]
+    fn dashboard_workspace_ignores_a_pr_from_a_branch_it_has_left() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_project(&connection);
+        // A long-lived shared workspace accumulates PR rows across months of
+        // branches. Only the PR for the branch it is on now may surface.
+        seed_workspace_on_branch(
+            &connection,
+            "w1",
+            "complete",
+            "2026-05-24T10:00:00.000Z",
+            "adam/current",
+        );
+        seed_session(&connection, "s1", "w1", "2026-05-24T10:00:00.000Z");
+        seed_gh_pr_on_branch(
+            &connection,
+            "s1",
+            1091,
+            "MERGED",
+            "2026-05-24T10:01:00.000Z",
+            "adam/old",
+        );
+        seed_gh_pr_on_branch(
+            &connection,
+            "s1",
+            1124,
+            "OPEN",
+            "2026-05-24T10:02:00.000Z",
+            "adam/current",
+        );
+        seed_gh_pr_on_branch(
+            &connection,
+            "s1",
+            1158,
+            "MERGED",
+            "2026-05-24T10:03:00.000Z",
+            "adam/newer-other",
+        );
+
+        let snapshot = list_dashboard(&connection).expect("dashboard");
+        let workspace = snapshot
+            .workspaces
+            .iter()
+            .find(|w| w.id == "w1")
+            .expect("workspace present");
+
+        // 1158 is the most recent row, but it belongs to another branch.
+        assert_eq!(workspace.pr_state.as_deref(), Some("OPEN"));
+        assert_eq!(workspace.pr_number, Some(1124));
+    }
+
+    #[test]
+    fn dashboard_workspace_keeps_a_legacy_pr_row_on_the_observing_workspace() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_project(&connection);
+        seed_workspace_on_branch(
+            &connection,
+            "w1",
+            "complete",
+            "2026-05-24T10:00:00.000Z",
+            "adam/feature",
+        );
+        seed_workspace_on_branch(
+            &connection,
+            "w2",
+            "complete",
+            "2026-05-24T10:00:00.000Z",
+            "adam/feature",
+        );
+        seed_session(&connection, "s1", "w1", "2026-05-24T10:00:00.000Z");
+        seed_session(&connection, "s2", "w2", "2026-05-24T10:00:00.000Z");
+        // Pre-migration row: branch unknown. The observing workspace still
+        // shows it; a sibling on the same branch cannot claim it.
+        connection
+            .execute(
+                "INSERT INTO gh_pr (session_id, pr_number, head_sha, last_seen_check_state, updated_at, pr_state) VALUES ('s1', 5, 'sha', 'success', '2026-05-24T10:01:00.000Z', 'OPEN')",
+                [],
+            )
+            .expect("insert gh_pr");
+
+        let snapshot = list_dashboard(&connection).expect("dashboard");
+        let observed = snapshot
+            .workspaces
+            .iter()
+            .find(|w| w.id == "w1")
+            .expect("workspace present");
+        let sibling = snapshot
+            .workspaces
+            .iter()
+            .find(|w| w.id == "w2")
+            .expect("sibling present");
+
+        assert_eq!(observed.pr_state.as_deref(), Some("OPEN"));
+        assert_eq!(observed.pr_number, Some(5));
+        assert_eq!(sibling.pr_state, None);
+        assert_eq!(sibling.pr_number, None);
+    }
+
+    #[test]
     fn dashboard_workspace_without_pr_has_none() {
         let database = Database::open_in_memory().expect("open db");
         let connection = database.connection();
@@ -359,10 +549,23 @@ mod tests {
         pr_state: &str,
         updated_at: &str,
     ) {
+        seed_gh_pr_on_branch(
+            connection, session_id, pr_number, pr_state, updated_at, "branch",
+        );
+    }
+
+    fn seed_gh_pr_on_branch(
+        connection: &rusqlite::Connection,
+        session_id: &str,
+        pr_number: i64,
+        pr_state: &str,
+        updated_at: &str,
+        head_ref_name: &str,
+    ) {
         connection
             .execute(
-                "INSERT INTO gh_pr (session_id, pr_number, head_sha, last_seen_check_state, updated_at, pr_state) VALUES (?, ?, 'sha', 'success', ?, ?)",
-                (session_id, pr_number, updated_at, pr_state),
+                "INSERT INTO gh_pr (session_id, pr_number, head_sha, last_seen_check_state, updated_at, pr_state, head_ref_name) VALUES (?, ?, 'sha', 'success', ?, ?, ?)",
+                (session_id, pr_number, updated_at, pr_state, head_ref_name),
             )
             .expect("insert gh_pr");
     }
@@ -383,10 +586,20 @@ mod tests {
     }
 
     fn seed_workspace(connection: &rusqlite::Connection, id: &str, state: &str, ts: &str) {
+        seed_workspace_on_branch(connection, id, state, ts, "branch");
+    }
+
+    fn seed_workspace_on_branch(
+        connection: &rusqlite::Connection,
+        id: &str,
+        state: &str,
+        ts: &str,
+        branch: &str,
+    ) {
         connection
             .execute(
-                "INSERT INTO workspaces (id, project_id, task_label, branch, base_ref, path, state, last_activity_at, created_at, updated_at) VALUES (?, 'p1', 'task', 'branch', 'main', '/tmp/ws', ?, ?, ?, ?)",
-                (id, state, ts, ts, ts),
+                "INSERT INTO workspaces (id, project_id, task_label, branch, base_ref, path, state, last_activity_at, created_at, updated_at) VALUES (?, 'p1', 'task', ?, 'main', '/tmp/ws', ?, ?, ?, ?)",
+                (id, branch, state, ts, ts, ts),
             )
             .expect("insert workspace");
     }

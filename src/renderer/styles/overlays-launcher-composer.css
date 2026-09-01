@@ -14,8 +14,16 @@
   display: inline-block;
   overflow: visible;
   vertical-align: middle;
-  animation: mascot-bob 2.4s var(--ease) infinite;
-  transform-origin: 50% 100%;
+  /* Idle is a breath, not a hover: the sprite squashes from its own footline
+     in two held frames, the way a pixel-art idle cycles between two drawn
+     poses. It used to translate the whole fox up and down, which at mascot
+     sizes above ~64px read as levitating. `steps(1, end)` is what keeps it
+     frames rather than a drift — an interpolated squash reads as a wobble. */
+  animation: mascot-breathe 3.2s steps(1, end) infinite;
+  /* The viewBox squares off under the sprite to leave room for the thinking
+     rain, so the fox's feet sit at 40 of 56 rows, not at the bottom edge.
+     Every mascot transform pivots there. */
+  transform-origin: 50% 71.4%;
 }
 
 .mascot .mascot-fur rect {
@@ -68,7 +76,7 @@
 }
 
 .mascot[data-mood="happy"] {
-  animation: mascot-hop 0.7s var(--ease) 1, mascot-bob 2.4s var(--ease) 0.7s infinite;
+  animation: mascot-hop 0.7s var(--ease) 1, mascot-breathe 3.2s steps(1, end) 0.7s infinite;
 }
 
 /* Rest state (empty composer → send disabled). The fox drains rather than
@@ -124,13 +132,6 @@
   height: 24px;
 }
 
-@keyframes mascot-bob {
-  0%   { transform: translateY(0) scale(1); }
-  30%  { transform: translateY(-3px) scale(1.04); }
-  60%  { transform: translateY(1px) scale(0.98); }
-  100% { transform: translateY(0) scale(1); }
-}
-
 .mascot[data-mood="thinking"] .mascot-rain-dot-1 {
   animation: mascot-rain 1.4s var(--ease) infinite;
 }
@@ -143,13 +144,15 @@
   animation: mascot-rain 1.4s var(--ease) 0.8s infinite;
 }
 
-@keyframes mascot-bob {
-  0%, 100% {
-    transform: translateY(2%);
+/* Two poses, each held for half the cycle. Paired with `steps(1, end)` and
+   the footline origin, the fox settles and rises in place. */
+@keyframes mascot-breathe {
+  0% {
+    transform: scaleY(1);
   }
 
   50% {
-    transform: translateY(-2%);
+    transform: scaleY(0.97);
   }
 }
 

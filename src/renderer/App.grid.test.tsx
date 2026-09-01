@@ -1197,9 +1197,9 @@ describe("App grid", () => {
     await screen.findByRole("heading", { name: "Argmax" });
     expect(screen.getByRole("group", { name: "Session panes" })).toBeInTheDocument();
 
-    // Flip the Defaults → New session toggle to "Open full view".
+    // Flip the Startup → New session toggle to "Full view".
     await openSettings();
-    fireEvent.click(await screen.findByRole("radio", { name: "Open full view" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "Full view" }));
     expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("full");
     fireEvent.keyDown(document, { key: ",", metaKey: true });
     await screen.findByRole("group", { name: "Session panes" });
@@ -1219,13 +1219,13 @@ describe("App grid", () => {
     expect(screen.getByRole("button", { name: "Build dashboard" })).toHaveAttribute("aria-current", "true");
   });
 
-  it("defaults the new-session toggle to 'Open full view' on first launch", async () => {
+  it("defaults the new-session toggle to 'Full view' on first launch", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
     await openSettings();
 
-    expect(await screen.findByRole("radio", { name: "Open full view" })).toBeChecked();
-    expect(screen.getByRole("radio", { name: "Open in grid" })).not.toBeChecked();
+    expect(await screen.findByRole("radio", { name: "Full view" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "In grid" })).not.toBeChecked();
     expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("full");
   });
 

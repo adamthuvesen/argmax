@@ -13,6 +13,7 @@ import {
   mockDashboardSnapshot,
   openInIde,
   providersDiscover,
+  closeSettings,
   openSettings,
   setupAppTestMocks,
   snapshot
@@ -48,10 +49,12 @@ describe("App settings", () => {
 
     await openSettings();
 
-    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Local profile" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Launch defaults" })).toBeInTheDocument();
+    expect(await screen.findByRole("complementary", { name: "Settings groups" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "General" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Startup" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Handoff" })).toBeInTheDocument();
+    // The app sidebar yields its column to the settings rail.
+    expect(screen.queryByRole("button", { name: "Build dashboard" })).not.toBeInTheDocument();
     // The launcher prompt is hidden while the settings panel is showing.
     expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
 
@@ -103,17 +106,19 @@ describe("App settings", () => {
 
     let menu = await openArgmaxMenu();
     fireEvent.click(within(menu).getByRole("menuitem", { name: /Providers/ }));
-    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(await screen.findByRole("complementary", { name: "Settings groups" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Providers" })).toBeInTheDocument();
 
+    await closeSettings();
     menu = await openArgmaxMenu();
     fireEvent.click(within(menu).getByRole("menuitem", { name: /Diagnostics & Logs/ }));
     expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
 
+    await closeSettings();
     menu = await openArgmaxMenu();
     fireEvent.click(within(menu).getByRole("menuitem", { name: /About Argmax/ }));
     expect(await screen.findByRole("heading", { name: "About" })).toBeInTheDocument();
-    expect(screen.getByText("Claude Code · Codex · Cursor · OpenCode")).toBeInTheDocument();
+    expect(screen.getByText("Claude · Codex · Cursor · OpenCode · Grok")).toBeInTheDocument();
   });
 
   it("resets the reused workspace scroller when opening settings", async () => {
@@ -138,7 +143,7 @@ describe("App settings", () => {
     prompt.focus();
     fireEvent.keyDown(prompt, { key: ",", metaKey: true });
 
-    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(await screen.findByRole("complementary", { name: "Settings groups" })).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: ",", metaKey: true });
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
@@ -148,7 +153,7 @@ describe("App settings", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
     await openSettings("Agents");
-    await screen.findByRole("heading", { name: "Model defaults" });
+    await screen.findByRole("heading", { name: "Defaults" });
 
     // getByLabelText only resolves the trigger when label.htmlFor matches the
     // picker button's id — i.e. the wiring is correct end-to-end.
@@ -165,8 +170,9 @@ describe("App settings", () => {
     await screen.findByRole("button", { name: "Build dashboard" });
     await openSettings("Agents");
 
-    const group = await screen.findByRole("radiogroup", { name: "Chat detail & verbosity" });
-    fireEvent.click(within(group).getByRole("radio", { name: "1 · Minimal" }));
+    const verbosity = await screen.findByRole("slider", { name: "Chat detail & verbosity" });
+    expect(verbosity).toHaveValue("3");
+    fireEvent.change(verbosity, { target: { value: "1" } });
 
     await waitFor(() =>
       expect(window.localStorage.getItem("argmax.chat.verbosity")).toBe("1")
@@ -177,8 +183,8 @@ describe("App settings", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    await openSettings();
-    await screen.findByRole("heading", { name: "Appearance" });
+    await openSettings("Appearance");
+    await screen.findByRole("heading", { name: "Layout" });
 
     const toggle = screen.getByRole("checkbox", { name: "Pixel field in composer" });
     expect(toggle).not.toBeChecked();
@@ -194,7 +200,7 @@ describe("App settings", () => {
     await screen.findByRole("button", { name: "Build dashboard" });
 
     await openSettings();
-    await screen.findByRole("heading", { name: "Launch defaults" });
+    await screen.findByRole("heading", { name: "Startup" });
 
     const toggle = screen.getByRole("checkbox", { name: "Random icon for new sessions" });
     expect(toggle).not.toBeChecked();
@@ -268,19 +274,17 @@ describe("App settings", () => {
     expect(window.localStorage.getItem("argmax.defaultIde")).toBe("vscode");
   });
 
-  it("settings Tools section writes the chosen default IDE to localStorage", async () => {
+  it("settings Handoff group writes the chosen default IDE to localStorage", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    await openSettings("Integrations");
-    await screen.findByRole("heading", { name: "Default IDE" });
+    await openSettings();
+    await screen.findByRole("heading", { name: "Handoff" });
 
     const trigger = screen.getByRole("button", { name: "Default IDE" });
     expect(trigger.tagName).toBe("BUTTON");
     fireEvent.click(trigger);
     const listbox = await screen.findByRole("listbox", { name: "Default IDE" });
-    // Opens upward so the menu does not cover the MCP servers section below it.
-    expect(listbox).toHaveAttribute("data-placement", "above");
     fireEvent.click(within(listbox).getByRole("button", { name: "Cursor" }));
 
     await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBe("cursor"));
@@ -340,7 +344,7 @@ describe("App settings", () => {
     await screen.findByRole("button", { name: "Build dashboard" });
 
     await openSettings("Agents");
-    await screen.findByRole("heading", { name: "Model defaults" });
+    await screen.findByRole("heading", { name: "Defaults" });
 
     const toggle = screen.getByRole("checkbox", { name: "Fast mode for Claude and Codex" });
     expect(toggle).not.toBeChecked();
@@ -359,12 +363,12 @@ describe("App settings", () => {
     );
   });
 
-  it("settings Appearance section switches the font family and persists it", async () => {
+  it("settings Appearance page switches the font family and persists it", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    await openSettings();
-    await screen.findByRole("heading", { name: "Appearance" });
+    await openSettings("Appearance");
+    await screen.findByRole("heading", { name: "Theme" });
 
     fireEvent.click(screen.getByRole("button", { name: "Font family" }));
     fireEvent.click(screen.getByRole("button", { name: "JetBrains Mono" }));
@@ -377,12 +381,12 @@ describe("App settings", () => {
     expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
   });
 
-  it("settings Appearance section switches the app font size and persists it", async () => {
+  it("settings Appearance page switches the app font size and persists it", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    await openSettings();
-    await screen.findByRole("heading", { name: "Appearance" });
+    await openSettings("Appearance");
+    await screen.findByRole("heading", { name: "Theme" });
 
     const fontSize = screen.getByRole("slider", { name: "App font size" });
     expect(fontSize).toHaveValue("6");
@@ -397,12 +401,12 @@ describe("App settings", () => {
     expect(document.documentElement.getAttribute("data-font-size")).toBe("1");
   });
 
-  it("settings Appearance section sizes agent windows independently of app chrome", async () => {
+  it("settings Appearance page sizes agent windows independently of app chrome", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    await openSettings();
-    await screen.findByRole("heading", { name: "Appearance" });
+    await openSettings("Appearance");
+    await screen.findByRole("heading", { name: "Theme" });
 
     const appFontSize = screen.getByRole("slider", { name: "App font size" });
     const chatFontSize = screen.getByRole("slider", { name: "Agent window font size" });
@@ -432,12 +436,12 @@ describe("App settings", () => {
     expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
   });
 
-  it("settings Appearance section switches chat width and persists it", async () => {
+  it("settings Appearance page switches chat width and persists it", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    await openSettings();
-    await screen.findByRole("heading", { name: "Appearance" });
+    await openSettings("Appearance");
+    await screen.findByRole("heading", { name: "Theme" });
 
     const chatWidth = screen.getByRole("slider", { name: "Chat width" });
     expect(chatWidth).toHaveValue("3");
@@ -498,12 +502,12 @@ describe("App settings", () => {
   });
 
 
-  it("settings Appearance section renders the Accent picker and persists accent changes", async () => {
+  it("settings Appearance page renders the Accent picker and persists accent changes", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    await openSettings();
-    await screen.findByRole("heading", { name: "Appearance" });
+    await openSettings("Appearance");
+    await screen.findByRole("heading", { name: "Theme" });
 
     const accentPicker = screen.getByRole("radiogroup", { name: "Accent" });
     expect(within(accentPicker).getByRole("radio", { name: "Green" })).toHaveAttribute(
@@ -525,12 +529,12 @@ describe("App settings", () => {
   });
 
 
-  it("settings Appearance section takes user bubbles off the accent and back", async () => {
+  it("settings Appearance page takes user bubbles off the accent and back", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    await openSettings();
-    await screen.findByRole("heading", { name: "Appearance" });
+    await openSettings("Appearance");
+    await screen.findByRole("heading", { name: "Theme" });
 
     const tintPicker = screen.getByRole("radiogroup", { name: "Your message bubbles" });
     expect(within(tintPicker).getByRole("radio", { name: "Accent" })).toBeChecked();
@@ -550,12 +554,12 @@ describe("App settings", () => {
   });
 
 
-  it("settings Appearance section wires the macOS-native options through to the document attribute", async () => {
+  it("settings Appearance page wires the macOS-native options through to the document attribute", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    await openSettings();
-    await screen.findByRole("heading", { name: "Appearance" });
+    await openSettings("Appearance");
+    await screen.findByRole("heading", { name: "Theme" });
 
     for (const [label, id] of [
       ["System Mono", "system-mono"],

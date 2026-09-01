@@ -17,18 +17,14 @@ import type { PermissionMode } from "../lib/permissionMode.js";
 import type { ChatWidth } from "../lib/chatWidth.js";
 import type { ReviewPanelSide } from "../lib/reviewPanelSide.js";
 import type { ChatVerbosity } from "../lib/uiPreferences.js";
+import { AdvancedSettings } from "./settings/AdvancedSettings.js";
 import { AgentsSettings } from "./settings/AgentsSettings.js";
+import { AppearanceSettings } from "./settings/AppearanceSettings.js";
 import { SessionSyncSettings } from "./settings/SessionSyncSettings.js";
 import { GeneralSettings } from "./settings/GeneralSettings.js";
 import { IntegrationsSettings } from "./settings/IntegrationsSettings.js";
-import {
-  DEFAULT_SETTINGS_GROUP,
-  type SettingsGroupId,
-  settingsGroupById
-} from "./settings/settingsMeta.js";
+import { type SettingsGroupId, settingsGroupById } from "./settings/settingsMeta.js";
 import { ProjectsSettings } from "./settings/ProjectsSettings.js";
-import { SettingsGroupIntro, SettingsNav } from "./settings/settingsPrimitives.js";
-import { SystemSettings } from "./settings/SystemSettings.js";
 
 export type SettingsNavigationTarget = {
   group: SettingsGroupId;
@@ -37,6 +33,8 @@ export type SettingsNavigationTarget = {
 };
 
 export function SettingsPanel({
+  activeGroup,
+  onGroupChange,
   defaultModel,
   onDefaultModelChange,
   chatVerbosity,
@@ -80,6 +78,8 @@ export function SettingsPanel({
   onProjectUpdated,
   navigationTarget
 }: {
+  activeGroup: SettingsGroupId;
+  onGroupChange: (group: SettingsGroupId) => void;
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
   chatVerbosity: ChatVerbosity;
@@ -195,13 +195,12 @@ export function SettingsPanel({
   // The panel is lazy-mounted behind Suspense, so App's "scroll settings to top"
   // reset fires while only the skeleton is present and no-ops. Pin the scroll
   // container to the top once the real content is in the DOM, otherwise the
-  // Suspense reveal can leave it mid-scroll with the first section under the bar.
+  // Suspense reveal can leave it mid-scroll with the first group under the bar.
   useLayoutEffect(() => {
     const scroller = surfaceRef.current?.closest(".settings-scroll");
     if (scroller instanceof HTMLElement) scroller.scrollTop = 0;
   }, []);
 
-  const [activeGroup, setActiveGroup] = useState<SettingsGroupId>(DEFAULT_SETTINGS_GROUP.id);
   const handledNavigationRequestRef = useRef<number | null>(null);
   const activeGroupMeta = settingsGroupById(activeGroup);
   const scrollSettings = useCallback((sectionId?: string): void => {
@@ -227,71 +226,63 @@ export function SettingsPanel({
     });
   }, []);
 
-  const handleGroupChange = useCallback((next: SettingsGroupId): void => {
-    setActiveGroup(next);
-    scrollSettings();
-  }, [scrollSettings]);
-
   useEffect(() => {
     if (!navigationTarget) return;
     if (handledNavigationRequestRef.current === navigationTarget.requestId) return;
-    if (activeGroup !== navigationTarget.group) {
-      setActiveGroup(navigationTarget.group);
-      return;
-    }
+    if (activeGroup !== navigationTarget.group) return;
     handledNavigationRequestRef.current = navigationTarget.requestId;
     scrollSettings(navigationTarget.sectionId);
   }, [activeGroup, navigationTarget, scrollSettings]);
 
   return (
-    <>
+    <div className="settings-page" ref={surfaceRef}>
       <header className="settings-topbar" data-window-drag>
-        <div className="settings-topbar-inner">
-          <h1 className="settings-topbar-title">Settings</h1>
-          <span className="settings-topbar-sep" aria-hidden="true">/</span>
-          <span className="settings-topbar-group">{activeGroupMeta.label}</span>
-        </div>
+        <h1 className="settings-page-title">{activeGroupMeta.label}</h1>
       </header>
 
-      <div className="settings-surface" ref={surfaceRef}>
-        <SettingsNav active={activeGroup} onChange={handleGroupChange} />
+      <div className="settings-main">
+        {activeGroup === "general" ? (
+          <GeneralSettings
+            newSessionMode={newSessionMode}
+            onNewSessionModeChange={onNewSessionModeChange}
+            randomSessionIconEnabled={randomSessionIconEnabled}
+            onRandomSessionIconEnabledChange={onRandomSessionIconEnabledChange}
+            detectedIdes={detectedIdes}
+            defaultIde={defaultIde}
+            onDefaultIdeChange={onDefaultIdeChange}
+            onOpenProjects={() => onGroupChange("projects")}
+          />
+        ) : null}
 
-        <div className="settings-main">
-          <SettingsGroupIntro group={activeGroupMeta} />
+        {activeGroup === "appearance" ? (
+          <AppearanceSettings
+            fontFamily={fontFamily}
+            onFontFamilyChange={onFontFamilyChange}
+            fontSize={fontSize}
+            onFontSizeChange={onFontSizeChange}
+            chatFontSize={chatFontSize}
+            onChatFontSizeChange={onChatFontSizeChange}
+            themeMode={themeMode}
+            onThemeModeChange={onThemeModeChange}
+            accentId={accentId}
+            onAccentChange={onAccentChange}
+            userBubbleTint={userBubbleTint}
+            onUserBubbleTintChange={onUserBubbleTintChange}
+            sidebarPriorityVisible={sidebarPriorityVisible}
+            onSidebarPriorityVisibleChange={onSidebarPriorityVisibleChange}
+            workspaceCardVisible={workspaceCardVisible}
+            onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
+            pixelFieldEnabled={pixelFieldEnabled}
+            onPixelFieldEnabledChange={onPixelFieldEnabledChange}
+            chatWidth={chatWidth}
+            onChatWidthChange={onChatWidthChange}
+            reviewPanelSide={reviewPanelSide}
+            onReviewPanelSideChange={onReviewPanelSideChange}
+          />
+        ) : null}
 
-        <div className="settings-group-panel" role="region" aria-labelledby="settings-group-heading">
-          {activeGroup === "general" ? (
-            <GeneralSettings
-              fontFamily={fontFamily}
-              onFontFamilyChange={onFontFamilyChange}
-              fontSize={fontSize}
-              onFontSizeChange={onFontSizeChange}
-              chatFontSize={chatFontSize}
-              onChatFontSizeChange={onChatFontSizeChange}
-              themeMode={themeMode}
-              onThemeModeChange={onThemeModeChange}
-              accentId={accentId}
-              onAccentChange={onAccentChange}
-              userBubbleTint={userBubbleTint}
-              onUserBubbleTintChange={onUserBubbleTintChange}
-              sidebarPriorityVisible={sidebarPriorityVisible}
-              onSidebarPriorityVisibleChange={onSidebarPriorityVisibleChange}
-              workspaceCardVisible={workspaceCardVisible}
-              onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
-              pixelFieldEnabled={pixelFieldEnabled}
-              onPixelFieldEnabledChange={onPixelFieldEnabledChange}
-              chatWidth={chatWidth}
-              onChatWidthChange={onChatWidthChange}
-              reviewPanelSide={reviewPanelSide}
-              onReviewPanelSideChange={onReviewPanelSideChange}
-              newSessionMode={newSessionMode}
-              onNewSessionModeChange={onNewSessionModeChange}
-              randomSessionIconEnabled={randomSessionIconEnabled}
-              onRandomSessionIconEnabledChange={onRandomSessionIconEnabledChange}
-            />
-          ) : null}
-
-          {activeGroup === "agents" ? (
+        {activeGroup === "agents" ? (
+          <>
             <AgentsSettings
               defaultModel={defaultModel}
               onDefaultModelChange={onDefaultModelChange}
@@ -310,37 +301,28 @@ export function SettingsPanel({
                 void refreshProviders();
               }}
             />
-          ) : null}
+            <SessionSyncSettings />
+          </>
+        ) : null}
 
-          {activeGroup === "agents" ? <SessionSyncSettings /> : null}
+        {activeGroup === "projects" ? (
+          <ProjectsSettings projects={projects} onProjectUpdated={onProjectUpdated} />
+        ) : null}
 
-          {activeGroup === "projects" ? (
-            <ProjectsSettings projects={projects} onProjectUpdated={onProjectUpdated} />
-          ) : null}
+        {activeGroup === "integrations" ? <IntegrationsSettings /> : null}
 
-          {activeGroup === "integrations" ? (
-            <IntegrationsSettings
-              detectedIdes={detectedIdes}
-              defaultIde={defaultIde}
-              onDefaultIdeChange={onDefaultIdeChange}
-            />
-          ) : null}
-
-          {activeGroup === "system" ? (
-            <SystemSettings
-              projects={projects}
-              diagnostics={diagnostics}
-              diagnosticsStatus={diagnosticsStatus}
-              setDiagnosticsStatus={setDiagnosticsStatus}
-              copyDiagnostics={copyDiagnostics}
-              revealDatabase={revealDatabase}
-              vacuumDatabase={vacuumDatabase}
-            />
-          ) : null}
-        </div>
+        {activeGroup === "advanced" ? (
+          <AdvancedSettings
+            projects={projects}
+            diagnostics={diagnostics}
+            diagnosticsStatus={diagnosticsStatus}
+            setDiagnosticsStatus={setDiagnosticsStatus}
+            copyDiagnostics={copyDiagnostics}
+            revealDatabase={revealDatabase}
+            vacuumDatabase={vacuumDatabase}
+          />
+        ) : null}
       </div>
-
-      </div>
-    </>
+    </div>
   );
 }

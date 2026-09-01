@@ -1,33 +1,4 @@
-/* ---- Toggle switch row ---- */
-
-.settings-checkbox-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 22px;
-  color: var(--text);
-  font-size: var(--text-sm);
-}
-
-.settings-toggle-row {
-  justify-content: space-between;
-}
-
-.settings-toggle-text {
-  display: grid;
-  gap: 2px;
-}
-
-.settings-toggle-label {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: -0.002em;
-}
-
-.settings-toggle-desc {
-  font-size: var(--text-sm);
-  color: var(--muted);
-}
+/* ---- Toggle switch ---- */
 
 .settings-toggle {
   position: relative;
@@ -48,11 +19,11 @@
 }
 
 .settings-toggle-track {
-  width: 38px;
-  height: 22px;
+  width: 32px;
+  height: 18px;
   border-radius: 999px;
   background: var(--panel-sunken);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   position: relative;
   transition: background var(--duration-fast) var(--ease),
     border-color var(--duration-fast) var(--ease);
@@ -63,8 +34,8 @@
   top: 50%;
   left: 2px;
   transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
   background: var(--panel);
   box-shadow: 0 1px 2px rgba(31, 28, 24, 0.18);
@@ -73,69 +44,26 @@
 }
 
 .settings-toggle input:checked ~ .settings-toggle-track {
-  background: var(--ink);
-  border-color: var(--ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.settings-toggle[data-disabled="true"] {
+  opacity: 0.45;
+}
+
+.settings-toggle input:disabled {
+  cursor: default;
 }
 
 .settings-toggle input:checked ~ .settings-toggle-track .settings-toggle-thumb {
-  left: calc(100% - 18px);
+  left: calc(100% - 14px);
 }
 
 .settings-toggle input:focus-visible ~ .settings-toggle-track {
   outline: none;
   box-shadow: inset 0 0 0 1.5px var(--line-strong);
 }
-
-.settings-checkbox-row > input[type="checkbox"] {
-  accent-color: var(--ink);
-  flex: 0 0 auto;
-}
-
-/* ---- Inline rows ---- */
-
-.settings-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  flex-wrap: wrap;
-}
-
-.settings-row label {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: -0.002em;
-  color: var(--text);
-}
-
-.settings-row select {
-  min-height: 26px;
-  padding: 0 26px 0 10px;
-  font: inherit;
-  font-size: var(--text-xs);
-  color: var(--text);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
-    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
-  background-position: calc(100% - 16px) 50%, calc(100% - 12px) 50%;
-  background-size: 4px 4px;
-  background-repeat: no-repeat;
-  transition: border-color var(--duration-fast) var(--ease);
-}
-
-.settings-row select:hover {
-  border-color: var(--line-strong);
-}
-
-.settings-row select:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-/* ---- Settings dropdown pickers ---- */
 
 .settings-picker {
   position: relative;
@@ -264,234 +192,120 @@
   color: var(--text-soft);
 }
 
-.settings-font-caption {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--muted);
-  font-feature-settings: "calt", "ss01", "tnum";
-}
+/* ---- Accent picker: six colors, six circles ---- */
 
-.settings-font-preview {
-  margin: 0;
-  padding: 12px 14px;
-  border: 0.5px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  color: var(--text-soft);
-  font-size: var(--text-sm);
-  letter-spacing: 0;
-  overflow-x: auto;
-  font-feature-settings: "calt", "ss01", "tnum";
-}
-
-/* ---- Theme picker ---- */
-
-.theme-picker,
 .accent-picker {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.theme-picker-chip,
 .accent-picker-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 13px 7px 8px;
-  border-radius: var(--radius-md);
-  border: 0.5px solid var(--line);
-  background: var(--panel);
-  color: var(--text-soft);
-  font: inherit;
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: border-color var(--motion-fast) var(--ease-out),
-    background var(--motion-fast) var(--ease-out),
-    color var(--motion-fast) var(--ease-out);
-}
-
-.theme-picker-chip:hover,
-.accent-picker-chip:hover {
-  border-color: var(--line-strong);
-  color: var(--text);
-}
-
-.theme-picker-chip:focus-visible,
-.accent-picker-chip:focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
-}
-
-.theme-picker-chip[data-selected],
-.accent-picker-chip[data-selected] {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--text);
-}
-
-.theme-picker-label {
-  font-weight: 500;
-  letter-spacing: 0.01em;
-}
-
-/* Each swatch is a 28×18 rounded rect with three diagonal stripes representing
-   that mode's --bg, --text, and --sage. We override the local custom props on
-   the chip so dark/light/system each preview their own palette without flipping
-   the page's actual theme. The "system" variant splits diagonally between the
-   two — a half-sun, half-moon affordance. */
-.theme-picker-swatch,
-.accent-picker-swatch {
-  position: relative;
-  display: inline-block;
-  width: 28px;
+  width: 18px;
   height: 18px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  overflow: hidden;
-  flex-shrink: 0;
-  background: var(--swatch-bg, var(--bg));
-}
-
-.theme-picker-swatch-bg,
-.theme-picker-swatch-text,
-.theme-picker-swatch-accent {
-  position: absolute;
-  inset: 0;
-}
-
-.theme-picker-swatch-text {
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    transparent 35%,
-    var(--swatch-text, var(--text)) 35%,
-    var(--swatch-text, var(--text)) 65%,
-    transparent 65%,
-    transparent 100%
-  );
-  opacity: 0.85;
-  clip-path: inset(0 50% 0 12%);
-}
-
-.theme-picker-swatch-accent {
-  background: var(--swatch-accent, var(--accent));
-  width: 6px;
-  left: auto;
-  right: 4px;
-  top: 4px;
-  bottom: 4px;
-  border-radius: var(--radius-xs);
-  inset: auto 4px 4px auto;
-  width: 4px;
-  height: 10px;
-}
-
-.theme-picker-chip[data-theme-mode="light"] .theme-picker-swatch {
-  --swatch-bg: #fdfdfd;
-  --swatch-text: #1c1b18;
-  --swatch-accent: #446c56;
-}
-
-.theme-picker-chip[data-theme-mode="dark"] .theme-picker-swatch {
-  --swatch-bg: #131312;
-  --swatch-text: #e3e0d8;
-  --swatch-accent: #6dab86;
-}
-
-.theme-picker-chip[data-theme-mode="system"] .theme-picker-swatch {
-  --swatch-bg: #fdfdfd;
-  --swatch-text: #1c1b18;
-  --swatch-accent: #446c56;
-  background:
-    linear-gradient(135deg, #fdfdfd 0%, #fdfdfd 50%, #131312 50%, #131312 100%);
-}
-
-.theme-picker-chip[data-theme-mode="system"] .theme-picker-swatch-text {
-  /* Split-text stripe: top half dark on light, bottom half light on dark. */
-  background:
-    linear-gradient(135deg,
-      transparent 0%, transparent 50%, transparent 50%, transparent 100%);
-  /* Two pseudo-ish bars stacked: one over the light half (dark text), one over
-     the dark half (light text). Easier to read this as the two swatch halves
-     having their own little caption bars. */
-}
-
-.theme-picker-chip[data-theme-mode="system"] .theme-picker-swatch-accent {
-  background: linear-gradient(180deg, #446c56 0%, #446c56 50%, #6dab86 50%, #6dab86 100%);
-}
-
-.accent-picker-swatch {
-  background: var(--accent-swatch-soft, var(--accent-soft));
-}
-
-.accent-picker-swatch::after {
-  content: "";
-  position: absolute;
-  inset: 4px 6px;
+  padding: 0;
+  border: 0;
   border-radius: 999px;
   background: var(--accent-swatch-color, var(--accent));
+  cursor: pointer;
+  transition: box-shadow var(--motion-fast) var(--ease-out);
 }
 
-.accent-picker-chip[data-accent-id="green"] .accent-picker-swatch {
+.accent-picker-chip:hover {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--line-strong);
+}
+
+.accent-picker-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent);
+}
+
+/* The selected ring floats on the card, so it needs a gap in the card's own
+   fill before the ring colour — two stacked shadows, not a border. */
+.accent-picker-chip[data-selected] {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--text-soft);
+}
+
+.accent-picker-chip[data-accent-id="green"] {
   --accent-swatch-color: #446c56;
   --accent-swatch-soft: #e7efe7;
 }
 
-.accent-picker-chip[data-accent-id="purple"] .accent-picker-swatch {
+.accent-picker-chip[data-accent-id="purple"] {
   --accent-swatch-color: #613e9a;
   --accent-swatch-soft: #ece4fb;
 }
 
-.accent-picker-chip[data-accent-id="neutral"] .accent-picker-swatch {
+.accent-picker-chip[data-accent-id="neutral"] {
   --accent-swatch-color: #4f4d47;
   --accent-swatch-soft: #ecebea;
 }
 
-.accent-picker-chip[data-accent-id="orange"] .accent-picker-swatch {
+.accent-picker-chip[data-accent-id="orange"] {
   --accent-swatch-color: #a85c43;
   --accent-swatch-soft: #f8e9e1;
 }
 
-.accent-picker-chip[data-accent-id="blue"] .accent-picker-swatch {
+.accent-picker-chip[data-accent-id="blue"] {
   --accent-swatch-color: #30609a;
   --accent-swatch-soft: #e5eef9;
 }
 
-.accent-picker-chip[data-accent-id="coral"] .accent-picker-swatch {
+.accent-picker-chip[data-accent-id="coral"] {
   --accent-swatch-color: #a64354;
   --accent-swatch-soft: #fee6e8;
 }
 
 /* ---- Refresh button ---- */
 
-.settings-refresh {
+.settings-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  min-height: 27px;
+  padding: 0 10px;
   background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
   cursor: pointer;
   font: inherit;
-  font-size: var(--text-sm);
-  letter-spacing: 0.02em;
+  font-size: var(--text-xs);
   color: var(--text-soft);
   transition: color var(--duration-fast) var(--ease),
     border-color var(--duration-fast) var(--ease),
     background var(--duration-fast) var(--ease);
 }
 
-.settings-refresh:hover:not(:disabled) {
+.settings-button:hover:not(:disabled) {
   color: var(--text);
   border-color: var(--line-strong);
   background: var(--panel-sunken);
 }
 
-.settings-refresh:disabled {
+.settings-button:disabled {
   cursor: default;
   opacity: 0.6;
+}
+
+.settings-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Disclosure trigger: no chrome until hover, so revealing detail does not read
+   as an action of the same weight as Copy or Vacuum. */
+.settings-button-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-strong);
+}
+
+.settings-button-quiet svg {
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.settings-button-quiet svg[data-rotated="true"] {
+  transform: rotate(90deg);
 }
 
 /* ---- Per-project settings form (Settings → Projects) ---- */
@@ -501,24 +315,26 @@
   gap: 6px;
 }
 
+/* A field is a row whose control needs the full width — a path, a command
+   list. Same label typography as .settings-row-label so the two read as one
+   system, with the input stacked underneath instead of beside. */
 .settings-field-label {
   font-size: var(--text-sm);
-  font-weight: 550;
+  font-weight: 500;
+  letter-spacing: -0.002em;
   color: var(--text);
 }
 
-/* Hint that explains the picker row directly above it — pull it toward the
-   row it annotates rather than the next card divider. */
-.settings-field-hint {
-  margin-top: -8px;
+.settings-field .settings-note {
+  padding: 0;
 }
 
 .settings-text-input {
   width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
+  padding: 7px 10px;
+  border: 0.5px solid var(--line-strong);
   border-radius: var(--radius-md);
-  background: var(--panel-soft);
+  background: var(--panel-sunken);
   color: var(--text);
   font-family: var(--font-mono);
   font-size: var(--text-sm);

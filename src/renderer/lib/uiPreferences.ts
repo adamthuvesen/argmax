@@ -82,6 +82,14 @@ export const CHAT_VERBOSITY_OPTIONS: ReadonlyArray<{ value: string; label: strin
   { value: "5", label: "5 · Full trace" }
 ];
 
+export const CHAT_VERBOSITY_LABELS: Record<ChatVerbosity, string> = {
+  1: "Minimal",
+  2: "Compact",
+  3: "Balanced",
+  4: "Detailed",
+  5: "Full trace"
+};
+
 export const CHAT_VERBOSITY_HINTS: Record<ChatVerbosity, string> = {
   1: "One self-updating summary line per turn. Completed thoughts and tool lists fold away.",
   2: "Turn chips with collapsed group headers. No raw tool lists or reasoning blocks.",

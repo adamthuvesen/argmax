@@ -1,6 +1,7 @@
 import { Check, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type JSX } from "react";
 import type { Learning, ProjectSummary } from "../../shared/types.js";
+import { SettingRow, SettingsListPicker } from "./settings/settingsPrimitives.js";
 
 export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[] }): JSX.Element {
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => projects[0]?.id ?? "");
@@ -100,32 +101,34 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
 
   return (
     <div className="settings-card project-knowledge">
-      <div className="settings-row">
-        <label htmlFor="settings-project-knowledge-picker">Project</label>
-        <select
-          id="settings-project-knowledge-picker"
-          aria-label="Project knowledge — project picker"
-          value={selectedProjectId}
-          onChange={(event) => setSelectedProjectId(event.target.value)}
-          disabled={projects.length === 0}
-        >
-          {projects.length === 0 ? <option value="">No projects yet</option> : null}
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      <SettingRow
+        label="Project"
+        description="Learnings from this project are injected as a preamble on every new session."
+        htmlFor="settings-project-knowledge-picker"
+        control={
+          <SettingsListPicker
+            ariaLabel="Project knowledge — project picker"
+            inputId="settings-project-knowledge-picker"
+            value={selectedProjectId}
+            onChange={setSelectedProjectId}
+            disabled={projects.length === 0}
+            options={
+              projects.length === 0
+                ? [{ value: "", label: "No projects yet" }]
+                : projects.map((project) => ({ value: project.id, label: project.name }))
+            }
+          />
+        }
+      />
 
       {loadError ? (
-        <p className="settings-hint" role="alert">
+        <p className="settings-note" role="alert">
           {loadError}
         </p>
       ) : null}
 
       {learnings.length === 0 ? (
-        <p className="settings-hint">No learnings captured yet. Complete a session to start filling this list.</p>
+        <p className="settings-note">No learnings captured yet. Complete a session to start filling this list.</p>
       ) : (
         <ul className="project-knowledge-list" aria-label="Project learnings">
           {learnings.map((learning) => {

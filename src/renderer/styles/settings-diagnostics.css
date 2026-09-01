@@ -10,51 +10,43 @@
 
 .settings-provider-row {
   display: grid;
-  grid-template-columns: 14px 1fr auto;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  border-radius: var(--radius-xl);
-  transition: background var(--duration-fast) var(--ease);
+  grid-template-columns: 7px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 14px;
 }
 
 .settings-provider-row + .settings-provider-row {
-  border-top: 1px solid var(--line-soft);
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-}
-
-.settings-provider-row:hover {
-  background: var(--panel-soft);
+  border-top: 0.5px solid var(--line-soft);
 }
 
 .settings-provider-dot {
   display: block;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: transparent;
-  border: 1.5px solid var(--line-strong);
+  border: 1px solid var(--line-strong);
+  transform: translateY(-1px);
 }
 
 .settings-provider-row[data-installed="true"] .settings-provider-dot {
   background: var(--sage);
   border-color: var(--sage);
-  box-shadow: 0 0 0 3px var(--sage-soft);
-}
-
-.settings-provider-row[data-installed="true"] {
-  background: transparent;
 }
 
 .settings-provider-meta {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 8px;
   min-width: 0;
 }
 
 .settings-provider-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text);
@@ -62,13 +54,14 @@
 }
 
 .settings-provider-status {
-  font-size: var(--text-xs-plus);
-  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 
-.settings-provider-row[data-installed="true"] .settings-provider-status {
-  color: var(--sage-deep);
+.settings-provider-guidance {
+  flex: 1 0 100%;
+  font-size: var(--text-xs);
+  color: var(--muted);
 }
 
 .settings-provider-link {
@@ -115,13 +108,6 @@
   vertical-align: middle;
 }
 
-.settings-provider-guidance {
-  font-size: var(--text-xs-plus);
-  line-height: 1.4;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
 /* ---- Diagnostics ---- */
 
 .settings-diagnostics-path {
@@ -129,42 +115,6 @@
   font-size: var(--text-sm);
   word-break: break-all;
   color: var(--text-soft);
-}
-
-.settings-diagnostics-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.settings-diagnostics-actions button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 14px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--text-sm-plus);
-  color: var(--text);
-  transition: border-color var(--duration-fast) var(--ease),
-    background var(--duration-fast) var(--ease);
-}
-
-.settings-diagnostics-actions button:hover:not(:disabled) {
-  border-color: var(--ink);
-  background: var(--panel-sunken);
-}
-
-.settings-diagnostics-actions button:disabled {
-  cursor: default;
-  opacity: 0.55;
-}
-
-.settings-diagnostics-actions button svg {
-  color: var(--muted-strong);
 }
 
 .settings-diagnostics-status {
@@ -336,50 +286,3 @@
 
 /* ---- MCP ---- */
 
-.settings-mcp-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.settings-mcp-client {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 11px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--panel);
-}
-
-.settings-mcp-client-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.settings-mcp-client-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.settings-mcp-client-heading code {
-  font-family: var(--font-code);
-  font-size: var(--text-xs);
-  color: var(--muted-strong);
-  background: var(--panel-sunken);
-  border-radius: var(--radius-xs);
-  padding: 2px 5px;
-}
-
-.settings-mcp-client-name {
-  font-size: var(--text-base);
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--text);
-}

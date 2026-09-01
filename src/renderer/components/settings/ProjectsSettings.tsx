@@ -6,7 +6,7 @@ import {
   type ModelPickerSelection
 } from "../../lib/models.js";
 import { CombinedModelSelector } from "../ModelSelector.js";
-import { SectionHeader, SettingsListPicker } from "./settingsPrimitives.js";
+import { SettingGroup, SettingRow, SettingsListPicker } from "./settingsPrimitives.js";
 
 /**
  * Per-project settings editor (Settings → Projects). Every field here is
@@ -26,37 +26,34 @@ export function ProjectsSettings({
   const selected = projects.find((project) => project.id === selectedId) ?? projects[0] ?? null;
 
   return (
-    <section className="settings-section" id="settings-project-config" aria-labelledby="settings-project-config-h">
-      <SectionHeader
-        id="settings-project-config-h"
-        eyebrow="Per-repo defaults"
-        title="Project settings"
-        description="Worktree placement, the setup command run in fresh worktrees, pre-ship check commands, and the agent Argmax uses when it starts a session for this project on its own."
-      />
+    <SettingGroup id="settings-project-config" label="Project settings" card={false}>
       {selected === null ? (
         <div className="settings-card">
-          <p className="settings-hint">No projects registered yet. Add a project from the sidebar first.</p>
+          <p className="settings-note">No projects registered yet. Add a project from the sidebar first.</p>
         </div>
       ) : (
         <>
           {projects.length > 1 ? (
             <div className="settings-card">
-              <div className="settings-row">
-                <label htmlFor="settings-project-picker">Project</label>
-                <SettingsListPicker
-                  ariaLabel="Project"
-                  inputId="settings-project-picker"
-                  value={selected.id}
-                  onChange={setSelectedId}
-                  options={projects.map((project) => ({ value: project.id, label: project.name }))}
-                />
-              </div>
+              <SettingRow
+                label="Project"
+                htmlFor="settings-project-picker"
+                control={
+                  <SettingsListPicker
+                    ariaLabel="Project"
+                    inputId="settings-project-picker"
+                    value={selected.id}
+                    onChange={setSelectedId}
+                    options={projects.map((project) => ({ value: project.id, label: project.name }))}
+                  />
+                }
+              />
             </div>
           ) : null}
           <ProjectSettingsForm key={selected.id} project={selected} onProjectUpdated={onProjectUpdated} />
         </>
       )}
-    </section>
+    </SettingGroup>
   );
 }
 
@@ -148,22 +145,22 @@ function ProjectSettingsForm({
     <div className="settings-card">
       <div className="settings-field">
         <span className="settings-field-label">Repository</span>
-        <p className="settings-hint">{project.repoPath}</p>
+        <p className="settings-note">{project.repoPath}</p>
       </div>
 
-      <div className="settings-row">
-        <label htmlFor="settings-project-model">Default agent</label>
-        <CombinedModelSelector
-          ariaLabel="Default agent"
-          inputId="settings-project-model"
-          value={defaultModel}
-          onChange={setDefaultModel}
-        />
-      </div>
-      <p className="settings-hint settings-field-hint">
-        Used when Argmax starts a session for this project on its own — for example the automatic
-        fix session when a PR check fails.
-      </p>
+      <SettingRow
+        label="Default agent"
+        description="Used when Argmax starts a session for this project on its own — for example the automatic fix session when a PR check fails."
+        htmlFor="settings-project-model"
+        control={
+          <CombinedModelSelector
+            ariaLabel="Default agent"
+            inputId="settings-project-model"
+            value={defaultModel}
+            onChange={setDefaultModel}
+          />
+        }
+      />
 
       <div className="settings-field">
         <label className="settings-field-label" htmlFor="settings-project-worktrees">
@@ -177,7 +174,7 @@ function ProjectSettingsForm({
           onChange={(event) => setWorktreeLocation(event.target.value)}
           spellCheck={false}
         />
-        <p className="settings-hint">
+        <p className="settings-note">
           Absolute path inside the repository where isolated worktrees are created.
         </p>
       </div>
@@ -195,7 +192,7 @@ function ProjectSettingsForm({
           placeholder="npm install"
           spellCheck={false}
         />
-        <p className="settings-hint">
+        <p className="settings-note">
           Run once in each fresh worktree before the agent starts, so dependencies are in place.
           Leave empty to skip.
         </p>
@@ -214,7 +211,7 @@ function ProjectSettingsForm({
           placeholder={"npm run lint\nnpm test"}
           spellCheck={false}
         />
-        <p className="settings-hint">
+        <p className="settings-note">
           One command per line. Offered on a session's changed-files card so you can verify a
           workspace before shipping it.
         </p>
@@ -231,7 +228,7 @@ function ProjectSettingsForm({
         </button>
         {status ? (
           <p
-            className="settings-hint settings-form-status"
+            className="settings-note settings-form-status"
             data-status={status.kind}
             role={status.kind === "error" ? "alert" : "status"}
           >

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type JSX } from "react";
 import { errorMessage } from "../../../shared/error.js";
 import type { RemoteStatus } from "../../../shared/types.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
-import { SectionHeader, ToggleRow } from "./settingsPrimitives.js";
+import { SettingGroup, SettingNote, SettingRow, Toggle } from "./settingsPrimitives.js";
 
 /**
  * Settings → Integrations → Remote access: pair a phone with the local
@@ -96,30 +96,27 @@ export function RemoteSettings(): JSX.Element {
     status !== null && (portField !== String(status.port) || topicField !== (status.ntfyTopic ?? ""));
 
   return (
-    <section className="settings-section" id="settings-remote" aria-labelledby="settings-remote-h">
-      <SectionHeader
-        id="settings-remote-h"
-        eyebrow="Phone companion"
-        title="Remote access"
-        description="Drive Argmax from your phone over your Tailscale network. The bridge listens on this Mac only; Tailscale carries it to your devices, encrypted."
-      />
+    <SettingGroup id="settings-remote" label="Remote access">
       {status === null ? (
-        <div className="settings-card">
-          <p className="settings-hint" role={loadError ? "alert" : "status"}>
-            {loadError ?? "Loading remote status…"}
-          </p>
-        </div>
+        <SettingNote role={loadError ? "alert" : "status"}>
+          {loadError ?? "Loading remote status…"}
+        </SettingNote>
       ) : (
-        <div className="settings-card">
-          <ToggleRow
-            label="Enable phone remote"
-            description="Serves the companion app and WebSocket bridge on 127.0.0.1."
-            checked={status.enabled}
-            onChange={(next) =>
-              void saveConfig(next, {
-                port: String(status.port),
-                ntfyTopic: status.ntfyTopic ?? ""
-              })
+        <>
+          <SettingRow
+            label="Phone remote"
+            description="Drive Argmax from your phone over your Tailscale network. The bridge listens on this Mac only."
+            control={
+              <Toggle
+                ariaLabel="Enable phone remote"
+                checked={status.enabled}
+                onChange={(next) =>
+                  void saveConfig(next, {
+                    port: String(status.port),
+                    ntfyTopic: status.ntfyTopic ?? ""
+                  })
+                }
+              />
             }
           />
 
@@ -134,24 +131,24 @@ export function RemoteSettings(): JSX.Element {
                 dangerouslySetInnerHTML={{ __html: status.qrSvg }}
               />
               <div className="settings-remote-pairing-info">
-                <p className="settings-hint">
+                <p className="settings-note">
                   Scan with your phone's camera. The link carries the pairing token in the URL
                   fragment, so it never crosses the network.
                 </p>
                 <CopyValueRow label="Pairing link" value={status.pairingUrl} />
                 <CopyValueRow label="Tailscale proxy" value={status.serveCommand} code />
                 {status.tailnetUrl === null ? (
-                  <p className="settings-hint" data-tone="warn">
+                  <p className="settings-note" data-tone="warn">
                     Tailscale CLI not found — the QR points at this Mac only. Install Tailscale to
                     reach it from your phone.
                   </p>
                 ) : !status.tailscaleRunning ? (
-                  <p className="settings-hint" data-tone="warn">
+                  <p className="settings-note" data-tone="warn">
                     Tailscale is not running, so the phone link will not connect until you start it.
                   </p>
                 ) : null}
                 {!status.serving ? (
-                  <p className="settings-hint" role="alert" data-tone="warn">
+                  <p className="settings-note" role="alert" data-tone="warn">
                     The bridge is enabled but not running. Try a different port.
                   </p>
                 ) : null}
@@ -159,41 +156,39 @@ export function RemoteSettings(): JSX.Element {
             </div>
           ) : null}
 
-          <div className="settings-field">
-            <label className="settings-field-label" htmlFor="settings-remote-port">
-              Port
-            </label>
-            <input
-              id="settings-remote-port"
-              className="settings-text-input settings-remote-port"
-              inputMode="numeric"
-              value={portField}
-              onChange={(event) => setPortField(event.target.value)}
-            />
-          </div>
+          <SettingRow
+            label="Port"
+            htmlFor="settings-remote-port"
+            control={
+              <input
+                id="settings-remote-port"
+                className="settings-text-input settings-remote-port"
+                inputMode="numeric"
+                value={portField}
+                onChange={(event) => setPortField(event.target.value)}
+              />
+            }
+          />
 
-          <div className="settings-field">
-            <label className="settings-field-label" htmlFor="settings-remote-ntfy">
-              ntfy topic
-            </label>
-            <input
-              id="settings-remote-ntfy"
-              className="settings-text-input"
-              placeholder="argmax-yourname (or a full https:// topic URL)"
-              value={topicField}
-              onChange={(event) => setTopicField(event.target.value)}
-            />
-            <p className="settings-hint">
-              Push notifications when a session needs approval, blocks, fails, or finishes. Install
-              the ntfy app on your phone and subscribe to the same topic. Bare names use ntfy.sh,
-              so pick something unguessable.
-            </p>
-          </div>
+          <SettingRow
+            label="ntfy topic"
+            description="Push when a session needs approval, blocks, fails, or finishes. Bare names use ntfy.sh, so pick something unguessable."
+            htmlFor="settings-remote-ntfy"
+            control={
+              <input
+                id="settings-remote-ntfy"
+                className="settings-text-input"
+                placeholder="argmax-yourname"
+                value={topicField}
+                onChange={(event) => setTopicField(event.target.value)}
+              />
+            }
+          />
 
           <div className="settings-remote-actions">
             <button
               type="button"
-              className="settings-refresh"
+              className="settings-button"
               disabled={busy || !dirty}
               onClick={() => void saveConfig(status.enabled)}
             >
@@ -201,7 +196,7 @@ export function RemoteSettings(): JSX.Element {
             </button>
             <button
               type="button"
-              className="settings-refresh"
+              className="settings-button"
               disabled={busy || status.ntfyTopic === null || dirty}
               title={
                 status.ntfyTopic === null
@@ -216,7 +211,7 @@ export function RemoteSettings(): JSX.Element {
             </button>
             <button
               type="button"
-              className="settings-refresh"
+              className="settings-button"
               aria-label="Refresh remote status"
               disabled={busy}
               onClick={() => void loadStatus()}
@@ -227,16 +222,16 @@ export function RemoteSettings(): JSX.Element {
           </div>
           {note ? (
             <p
-              className="settings-hint settings-form-status"
+              className="settings-note settings-form-status"
               data-status={note.kind}
               role={note.kind === "error" ? "alert" : "status"}
             >
               {note.message}
             </p>
           ) : null}
-        </div>
+        </>
       )}
-    </section>
+    </SettingGroup>
   );
 }
 
@@ -256,7 +251,7 @@ function CopyValueRow({
       {code ? <code>{value}</code> : <span className="settings-remote-copyrow-value">{value}</span>}
       <button
         type="button"
-        className="settings-refresh"
+        className="settings-button"
         onClick={() => void copy(value)}
         aria-label={`Copy ${label.toLowerCase()}`}
       >

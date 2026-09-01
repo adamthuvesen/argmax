@@ -1,11 +1,19 @@
-export type SettingsGroupId = "general" | "agents" | "projects" | "integrations" | "system";
+export type SettingsGroupId =
+  | "general"
+  | "appearance"
+  | "agents"
+  | "projects"
+  | "integrations"
+  | "advanced";
+
 type SettingsSectionMeta = { id: string; label: string };
+
 export type SettingsGroupMeta = {
   id: SettingsGroupId;
   label: string;
-  title: string;
-  eyebrow: string;
-  description: string;
+  /** Renders a hairline above this entry in the rail. Advanced is the only
+   *  group that is not part of everyday configuration, so it sits apart. */
+  dividerBefore?: boolean;
   sections: ReadonlyArray<SettingsSectionMeta>;
 };
 
@@ -13,24 +21,27 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
   {
     id: "general",
     label: "General",
-    title: "Shape the workspace",
-    eyebrow: "Local console",
-    description: "The everyday feel of Argmax: identity, typography, launch behavior, and visible session detail.",
     sections: [
-      { id: "settings-local", label: "Local profile" },
-      { id: "settings-appearance", label: "Appearance" },
-      { id: "settings-defaults", label: "Launch defaults" }
+      { id: "settings-startup", label: "Startup" },
+      { id: "settings-handoff", label: "Handoff" }
+    ]
+  },
+  {
+    id: "appearance",
+    label: "Appearance",
+    sections: [
+      { id: "settings-theme", label: "Theme" },
+      { id: "settings-typography", label: "Typography" },
+      { id: "settings-layout", label: "Layout" }
     ]
   },
   {
     id: "agents",
     label: "Agents",
-    title: "Tune agent behavior",
-    eyebrow: "Model sessions",
-    description: "Provider defaults, tool-call visibility, and the permission stance every new session starts with.",
     sections: [
-      { id: "settings-agent-defaults", label: "Model defaults" },
+      { id: "settings-agent-defaults", label: "Defaults" },
       { id: "settings-permissions", label: "Permissions" },
+      { id: "settings-conversation", label: "Conversation" },
       { id: "settings-providers", label: "Providers" },
       { id: "settings-session-sync", label: "Session sync" }
     ]
@@ -38,30 +49,20 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
   {
     id: "projects",
     label: "Projects",
-    title: "Configure your projects",
-    eyebrow: "Per-repo defaults",
-    description: "Where each project's worktrees live, which checks run before shipping, and which agent handles its automatic sessions.",
     sections: [{ id: "settings-project-config", label: "Project settings" }]
   },
   {
     id: "integrations",
     label: "Integrations",
-    title: "Connect local tools",
-    eyebrow: "Handoffs",
-    description:
-      "Editor handoff, setup guidance for provider-managed MCP servers, and the phone companion.",
     sections: [
-      { id: "settings-tools", label: "Default IDE" },
       { id: "settings-mcp", label: "MCP servers" },
       { id: "settings-remote", label: "Remote access" }
     ]
   },
   {
-    id: "system",
-    label: "System",
-    title: "Inspect the engine room",
-    eyebrow: "On-device state",
-    description: "Project knowledge, runtime diagnostics, local database health, logs, and app details.",
+    id: "advanced",
+    label: "Advanced",
+    dividerBefore: true,
     sections: [
       { id: "settings-knowledge", label: "Project knowledge" },
       { id: "settings-diagnostics", label: "Diagnostics" },

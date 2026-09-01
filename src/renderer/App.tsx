@@ -30,7 +30,7 @@ import type {
   PaletteScope
 } from "./components/CommandPalette.js";
 import type { SettingsNavigationTarget } from "./components/SettingsPanel.js";
-import type { SettingsGroupId } from "./components/settings/settingsMeta.js";
+import { DEFAULT_SETTINGS_GROUP, type SettingsGroupId } from "./components/settings/settingsMeta.js";
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
 import { usePersistedSetting } from "./hooks/usePersistedSetting.js";
 import { BrowserPanel } from "./components/BrowserPanel.js";
@@ -42,6 +42,7 @@ import { DetailsPopup } from "./components/DetailsPopup.js";
 import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/SessionMultiGrid.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
+import { SettingsRail } from "./components/settings/SettingsRail.js";
 import { EMPTY_GRID, MAX_COLS, openWorkspaceInGrid, terminalWorkspaceId } from "./lib/gridState.js";
 import { toggleTerminalPanel } from "./lib/terminalTabs.js";
 import { onBrowserPanelRequest, requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
@@ -159,6 +160,9 @@ export function App(): JSX.Element {
   const workspaceRef = useRef<HTMLElement | null>(null);
   const settingsNavigationRequestRef = useRef(0);
   const [settingsNavigationTarget, setSettingsNavigationTarget] = useState<SettingsNavigationTarget | null>(null);
+  // The settings rail replaces the app sidebar while the page is open, so the
+  // active group lives here rather than inside the lazily-mounted panel.
+  const [settingsGroup, setSettingsGroup] = useState<SettingsGroupId>(DEFAULT_SETTINGS_GROUP.id);
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [chatVerbosity, setChatVerbosity] = useChatVerbosityPreference();
   const { toolCallsDisplay, toolCallGroupsExpanded, thinkingExpanded } = useMemo(
@@ -404,12 +408,13 @@ export function App(): JSX.Element {
       setIsPaletteOpen(false);
       setIsFullLauncherOpen(false);
       settingsNavigationRequestRef.current += 1;
+      setSettingsGroup(group);
       setSettingsNavigationTarget({
         group,
         ...(sectionId ? { sectionId } : {}),
         requestId: settingsNavigationRequestRef.current
       });
-      if (isSettingsOpen && group === "general" && !sectionId) {
+      if (isSettingsOpen && !sectionId) {
         scrollSettingsToTop();
       }
       setIsSettingsOpen(true);
@@ -1014,10 +1019,10 @@ export function App(): JSX.Element {
     openSettingsTarget("agents", "settings-providers");
   }, [openSettingsTarget]);
   const onOpenDiagnosticsRow = useCallback((): void => {
-    openSettingsTarget("system", "settings-diagnostics");
+    openSettingsTarget("advanced", "settings-diagnostics");
   }, [openSettingsTarget]);
   const onOpenAboutRow = useCallback((): void => {
-    openSettingsTarget("system", "settings-about");
+    openSettingsTarget("advanced", "settings-about");
   }, [openSettingsTarget]);
   const onOpenCommandPaletteRow = useCallback((): void => {
     setPaletteScope("all");
@@ -1648,26 +1653,35 @@ export function App(): JSX.Element {
       tabIndex={-1}
       style={{
         gridTemplateColumns:
-          (sidebarCollapsed ? "minmax(0, 1fr)" : `${sidebarWidth}px minmax(0, 1fr)`) +
+          // Settings owns the sidebar column: its rail is fixed-width and is
+          // shown even when the app sidebar is collapsed.
+          (isSettingsOpen
+            ? "var(--settings-rail-width) minmax(0, 1fr)"
+            : sidebarCollapsed
+              ? "minmax(0, 1fr)"
+              : `${sidebarWidth}px minmax(0, 1fr)`) +
           (browserPanelRequest !== null ? ` ${browserPanelWidth}px` : ""),
         ["--sidebar-width" as string]: `${sidebarWidth}px`
       }}
       data-resizing={isResizing || isResizingBrowserPanel ? "true" : undefined}
       data-chat-width={String(chatWidth)}
       data-review-panel-side={reviewPanelSide}
-      data-sidebar-collapsed={sidebarCollapsed ? "true" : undefined}
+      data-settings-open={isSettingsOpen ? "true" : undefined}
+      data-sidebar-collapsed={sidebarCollapsed && !isSettingsOpen ? "true" : undefined}
       data-sidebar-peek={sidebarCollapsed && sidebarPeek ? "true" : undefined}
     >
-      <button
-        type="button"
-        className="sidebar-toggle"
-        title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-        aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-        onClick={toggleSidebarCollapsed}
-      >
-        <PanelLeft size={16} strokeWidth={1.75} />
-      </button>
-      {sidebarCollapsed ? (
+      {isSettingsOpen ? null : (
+        <button
+          type="button"
+          className="sidebar-toggle"
+          title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          onClick={toggleSidebarCollapsed}
+        >
+          <PanelLeft size={16} strokeWidth={1.75} />
+        </button>
+      )}
+      {sidebarCollapsed && !isSettingsOpen ? (
         <div
           className="sidebar-peek-zone"
           aria-hidden="true"
@@ -1728,44 +1742,53 @@ export function App(): JSX.Element {
           workspace={detailsPopupWorkspace}
         />
       ) : null}
-      <Sidebar
-        loadState={loadState}
-        onToggleWorkspacePinned={onToggleWorkspacePinnedRow}
-        onRenameWorkspace={onRenameWorkspaceRow}
-        onRemoveFromPriority={onRemoveFromPriorityRow}
-        onAddToPriority={onAddToPriorityRow}
-        onClearPriority={onClearPrioritySection}
-        onSetWorkspaceIcon={onSetWorkspaceIconRow}
-        onSyncNowWorkspace={onSyncNowWorkspaceRow}
-        showPriority={sidebarPriorityVisible}
-        onOpenLauncher={onOpenLauncherRow}
-        onAddProject={onAddProjectRow}
-        onNewSideChat={openSideChatLauncher}
-        onRemoveProject={onRemoveProjectRow}
-        onArchiveWorkspace={onArchiveWorkspaceRow}
-        onOpenInIde={onOpenInIdeRow}
-        onOpenProject={onOpenProjectRow}
-        onOpenScheduledTasks={onOpenScheduledTasksRow}
-        onOpenSettings={onOpenSettingsRow}
-        onOpenProviders={onOpenProvidersRow}
-        onOpenDiagnostics={onOpenDiagnosticsRow}
-        onOpenAbout={onOpenAboutRow}
-        onOpenCommandPalette={onOpenCommandPaletteRow}
-        onOpenKeyboardShortcuts={onOpenKeyboardShortcutsRow}
-        onOpenWorkspaceChat={onOpenWorkspaceChatRow}
-        onWorkspaceDragStart={handleWorkspaceDragStart}
-        onWorkspaceDragEnd={handleWorkspaceDragEnd}
-        onResizeMouseDown={onResizeMouseDown}
-        selectedProjectId={selectedProject?.id ?? null}
-        selectedWorkspaceId={isFullLauncherOpen ? null : (selectedWorkspace?.id ?? null)}
-        openWorkspaceIds={isFullLauncherOpen ? EMPTY_OPEN_WORKSPACE_IDS : openWorkspaceIds}
-        canDragWorkspaceToGrid={canDragWorkspaceToGrid}
-        snapshot={snapshot}
-        detectedIdes={detectedIdes}
-        defaultIde={defaultIde}
-        collapsed={sidebarCollapsed}
-        onPeekLeave={() => setSidebarPeek(false)}
-      />
+      {isSettingsOpen ? (
+        <SettingsRail
+          active={settingsGroup}
+          onChange={(group) => openSettingsTarget(group)}
+          onOpenSection={(group, sectionId) => openSettingsTarget(group, sectionId)}
+          onBack={() => setIsSettingsOpen(false)}
+        />
+      ) : (
+        <Sidebar
+          loadState={loadState}
+          onToggleWorkspacePinned={onToggleWorkspacePinnedRow}
+          onRenameWorkspace={onRenameWorkspaceRow}
+          onRemoveFromPriority={onRemoveFromPriorityRow}
+          onAddToPriority={onAddToPriorityRow}
+          onClearPriority={onClearPrioritySection}
+          onSetWorkspaceIcon={onSetWorkspaceIconRow}
+          onSyncNowWorkspace={onSyncNowWorkspaceRow}
+          showPriority={sidebarPriorityVisible}
+          onOpenLauncher={onOpenLauncherRow}
+          onAddProject={onAddProjectRow}
+          onNewSideChat={openSideChatLauncher}
+          onRemoveProject={onRemoveProjectRow}
+          onArchiveWorkspace={onArchiveWorkspaceRow}
+          onOpenInIde={onOpenInIdeRow}
+          onOpenProject={onOpenProjectRow}
+          onOpenScheduledTasks={onOpenScheduledTasksRow}
+          onOpenSettings={onOpenSettingsRow}
+          onOpenProviders={onOpenProvidersRow}
+          onOpenDiagnostics={onOpenDiagnosticsRow}
+          onOpenAbout={onOpenAboutRow}
+          onOpenCommandPalette={onOpenCommandPaletteRow}
+          onOpenKeyboardShortcuts={onOpenKeyboardShortcutsRow}
+          onOpenWorkspaceChat={onOpenWorkspaceChatRow}
+          onWorkspaceDragStart={handleWorkspaceDragStart}
+          onWorkspaceDragEnd={handleWorkspaceDragEnd}
+          onResizeMouseDown={onResizeMouseDown}
+          selectedProjectId={selectedProject?.id ?? null}
+          selectedWorkspaceId={isFullLauncherOpen ? null : (selectedWorkspace?.id ?? null)}
+          openWorkspaceIds={isFullLauncherOpen ? EMPTY_OPEN_WORKSPACE_IDS : openWorkspaceIds}
+          canDragWorkspaceToGrid={canDragWorkspaceToGrid}
+          snapshot={snapshot}
+          detectedIdes={detectedIdes}
+          defaultIde={defaultIde}
+          collapsed={sidebarCollapsed}
+          onPeekLeave={() => setSidebarPeek(false)}
+        />
+      )}
 
       <section className="workspace" ref={workspaceRef}>
         <div className={
@@ -1782,6 +1805,8 @@ export function App(): JSX.Element {
           ) : isSettingsOpen ? (
             <Suspense fallback={<SkeletonPane />}>
               <SettingsPanel
+                activeGroup={settingsGroup}
+                onGroupChange={(group) => openSettingsTarget(group)}
                 defaultModel={launchModel}
                 onDefaultModelChange={handleLaunchModelChange}
                 chatVerbosity={chatVerbosity}

@@ -1226,6 +1226,7 @@
   );
   transform: translateX(-100%);
   animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 
 @keyframes skeleton-shimmer {

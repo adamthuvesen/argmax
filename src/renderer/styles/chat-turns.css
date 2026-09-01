@@ -253,6 +253,7 @@
 .thought-block[data-live="true"] .thought-block-eyebrow-label {
   color: var(--muted-strong);
   animation: thought-pulse 1600ms var(--ease) infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 
 @keyframes thought-pulse {
@@ -394,6 +395,7 @@
 .conversation-notice[data-running="true"] .conversation-notice-text {
   color: var(--muted-strong);
   animation: conversation-notice-pulse 2600ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 
 @keyframes conversation-notice-pulse {

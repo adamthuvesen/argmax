@@ -41,6 +41,7 @@
    a stable cluster instead of making the whole mark blink. */
 .working-nest[data-active="true"] .working-nest-dot {
   animation: working-nest-relay var(--working-nest-cycle) linear infinite;
+  animation-play-state: var(--loop-play-state, running);
   animation-delay: var(--working-nest-phase-offset);
 }
 

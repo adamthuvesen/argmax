@@ -112,20 +112,20 @@ function StatusMarker({
   // mid-turn. It keeps the default muted marker color on purpose — the
   // fallback check ring would read "done", but this isn't a warning either.
   if (priorityAttention === "approval-needed" || priorityAttention === "blocked") {
-    return <CircleEllipsis size={14} aria-hidden className="status-marker" data-attention={priorityAttention} />;
+    return <CircleEllipsis size={16} aria-hidden className="status-marker" data-attention={priorityAttention} />;
   }
   if (state === "running") {
-    // The shared working nest, sized to the 14px marker box. It is the same mark and
+    // The shared working nest, sized to the 16px marker box. It is the same mark and
     // motion an agent tab and a sub-agent launch row show while they run.
-    return <WorkingNest active className="status-marker" size={14} phaseKey={phaseKey} />;
+    return <WorkingNest active className="status-marker" size={16} phaseKey={phaseKey} />;
   }
   if (prState === "MERGED") {
-    return <GitMerge size={14} aria-hidden className="status-marker" data-pr="merged" />;
+    return <GitMerge size={16} aria-hidden className="status-marker" data-pr="merged" />;
   }
   if (prState === "OPEN") {
-    return <GitPullRequest size={14} aria-hidden className="status-marker" data-pr="open" />;
+    return <GitPullRequest size={16} aria-hidden className="status-marker" data-pr="open" />;
   }
-  return <CircleX size={14} aria-hidden className="status-marker" />;
+  return <CircleX size={16} aria-hidden className="status-marker" />;
 }
 
 /**
@@ -177,7 +177,7 @@ function CustomIconMarker({
       data-icon-color={resolveSessionIconColor(iconColor)}
       aria-hidden="true"
     >
-      <Glyph size={14} />
+      <Glyph size={16} />
       {overlay ? (
         <span className="session-custom-icon-overlay" data-overlay={overlay} />
       ) : null}

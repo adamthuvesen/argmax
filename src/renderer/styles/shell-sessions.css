@@ -1,7 +1,7 @@
 .session-link {
   position: relative;
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -65,7 +65,7 @@
 /* Calm rows draw no glyph, but they keep the marker column so every title in
    the list starts at the same x. */
 .session-link-lead-spacer {
-  width: 14px;
+  width: 16px;
 }
 
 .session-link-text {
@@ -130,6 +130,16 @@
    shared nest on specificity, so restate the accent at this depth. */
 .session-link[data-status] .status-marker[data-working="true"] {
   color: var(--accent);
+}
+
+/* The nest's dot cluster covers ~71% of its box where a Lucide glyph covers
+   ~83%, so at a shared 16px it reads a size below the markers it alternates
+   with. Oversizing the svg evens out the ink; it overflows the 16px cell by a
+   pixel on each side, which centering absorbs without moving the title. */
+.session-link .working-nest.status-marker {
+  width: 18px;
+  height: 18px;
+  justify-self: center;
 }
 
 .session-row {

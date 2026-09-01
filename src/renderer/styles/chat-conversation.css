@@ -312,7 +312,7 @@
   grid-template-rows: auto minmax(0, 1fr) minmax(0, max-content) auto;
   padding: 14px 0 24px;
   background: transparent;
-  animation: fade-in 280ms var(--ease) both;
+  animation: fade-in 280ms var(--ease);
 }
 
 @keyframes fade-in {
@@ -431,7 +431,7 @@
   min-height: 0;
   padding: 10px 0 16px;
   background: transparent;
-  animation: fade-in 200ms var(--ease) both;
+  animation: fade-in 200ms var(--ease);
 }
 
 .agent-activity-scroll {
@@ -826,7 +826,7 @@
   max-width: min(78%, 920px);
   padding: 12px 16px;
   border-radius: var(--radius-lg);
-  animation: msg-in 240ms var(--ease) both;
+  animation: msg-in 240ms var(--ease);
 }
 
 .chat-bubble p {

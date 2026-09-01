@@ -15,7 +15,7 @@
   display: grid;
   gap: var(--space-3);
   min-width: 0;
-  animation: sched-rise var(--motion-base) var(--ease-out) both;
+  animation: sched-rise var(--motion-base) var(--ease-out);
 }
 
 @keyframes sched-rise {
@@ -339,7 +339,7 @@
   display: grid;
   gap: var(--space-7);
   min-width: 0;
-  animation: sched-rise var(--motion-base) var(--ease-out) both;
+  animation: sched-rise var(--motion-base) var(--ease-out);
 }
 
 .sched-group {

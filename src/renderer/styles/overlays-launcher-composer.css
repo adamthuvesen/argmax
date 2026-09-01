@@ -292,7 +292,7 @@
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-2);
   font-size: var(--text-base);
-  animation: msg-in 220ms var(--ease) both;
+  animation: msg-in 220ms var(--ease);
 }
 
 .toast-error {

@@ -22,7 +22,7 @@
   /* Sits above the launcher's review panel (z 120) so ⌘K / search stay the
      topmost modal even when ⌘B has opened the project Files panel. */
   z-index: 140;
-  animation: inkwell-fade 140ms var(--ease) both;
+  animation: inkwell-fade 140ms var(--ease);
 }
 
 @keyframes inkwell-fade {
@@ -49,7 +49,7 @@
     0 28px 72px -22px rgba(31, 28, 24, 0.45),
     0 6px 18px -12px rgba(31, 28, 24, 0.25);
   overflow: hidden;
-  animation: inkwell-rise 240ms var(--ease) both;
+  animation: inkwell-rise 240ms var(--ease);
 }
 
 @keyframes inkwell-rise {
@@ -475,7 +475,7 @@
   padding: 4vh 4vw;
   background: rgba(14, 14, 12, 0.72);
   z-index: 150;
-  animation: inkwell-fade 140ms var(--ease) both;
+  animation: inkwell-fade 140ms var(--ease);
 }
 
 .image-lightbox-content {
@@ -483,7 +483,7 @@
   max-width: 100%;
   max-height: 100%;
   display: flex;
-  animation: inkwell-rise 240ms var(--ease) both;
+  animation: inkwell-rise 240ms var(--ease);
 }
 
 .image-lightbox-image {

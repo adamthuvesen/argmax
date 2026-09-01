@@ -5,6 +5,7 @@ import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { SessionConversation } from "./SessionConversation.js";
 import { THINKING_WORDS } from "./ThinkingLabel.js";
+import { chatCueLogSnapshot, clearChatCueLog } from "../lib/chatCueLog.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import {
   baseSession,
@@ -12,6 +13,7 @@ import {
   event,
   project,
   renderConversation,
+  rerenderConversation,
   reviewStub,
   workspace
 } from "../../test/sessionConversationTestHarness.js";
@@ -917,6 +919,75 @@ describe("SessionConversation — streaming & composer", () => {
       ]
     );
 
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("records why the progress cue is off screen, for the next time it should not be", async () => {
+    // The cue is derived from half a dozen suppression rules and leaves no
+    // trace: when it wrongly stays down, the pane is blank and the state that
+    // decided it is already gone. One breadcrumb per transition, in Debug →
+    // Logs under `renderer::chat`, turns that into a lookup.
+    clearChatCueLog();
+    renderConversation(baseSession({ provider: "claude", state: "running" }), [
+      event("t1", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
+        id: "tu_live",
+        name: "Bash",
+        input: { command: "npm test" }
+      }),
+      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
+    ]);
+
+    await waitFor(() => expect(chatCueLogSnapshot().length).toBeGreaterThan(0));
+    const latest = chatCueLogSnapshot().at(-1);
+    expect(latest?.scope).toBe("renderer::chat");
+    expect(latest?.message).toBe("progress cue hidden");
+    expect(latest?.fields.reason).toBe("tool-running");
+    expect(latest?.fields.provider).toBe("claude");
+  });
+
+  it("records the cue coming up, so a shown/hidden pair brackets every wait", async () => {
+    clearChatCueLog();
+    renderConversation(baseSession({ provider: "claude", state: "running" }), [
+      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
+    ]);
+
+    await waitFor(() => expect(screen.queryByLabelText("Thinking")).toBeTruthy());
+    const latest = chatCueLogSnapshot().at(-1);
+    expect(latest?.message).toBe("progress cue shown");
+    expect(latest?.fields.reason).toBe("shown");
+  });
+
+  it("shows Thinking after a send even with a stranded compaction marker", async () => {
+    // `session.compacting` closes with `session.compacted`. A turn that died
+    // between the two — the app quit mid-compaction, say — strands the opening
+    // marker, and `isCompacting` then reads true for the rest of the session.
+    // That used to silence the indicator on every later turn. The window
+    // between a send and the provider's first event is a floor, so no leftover
+    // state can leave it with nothing on screen.
+    const onSendSessionInput = vi.fn(() => Promise.resolve());
+    const events = [
+      event("c1", "session.compacting", "", "2026-05-12T15:00:01.000Z"),
+      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
+    ];
+    const { rerender } = renderConversation(
+      baseSession({ provider: "claude", state: "complete" }),
+      events,
+      { onSendSessionInput }
+    );
+
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "keep going" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+
+    rerenderConversation(
+      rerender,
+      baseSession({ provider: "claude", state: "running" }),
+      [event("u2", "user.message", "keep going", "2026-05-12T15:01:00.000Z"), ...events],
+      { onSendSessionInput }
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 900));
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 

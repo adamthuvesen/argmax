@@ -131,7 +131,7 @@
    "thinking" becomes determinate output without moving the answer under the
    metadata row. */
 .turn-block-body[data-just-revealed="true"] > *:first-child {
-  animation: turn-phase-land 280ms var(--ease) both;
+  animation: turn-phase-land 280ms var(--ease);
 }
 
 @keyframes turn-phase-land {
@@ -313,7 +313,7 @@
   color: var(--muted-strong);
   border-radius: 0;
   overflow: visible;
-  animation: thinking-fade-in var(--motion-base) var(--ease-out) both;
+  animation: thinking-fade-in var(--motion-base) var(--ease-out);
 }
 
 @keyframes thinking-fade-in {
@@ -346,6 +346,22 @@
   font-weight: var(--weight-prose);
 }
 
+/* The wait counter. Empty until the gap is worth naming, and `:empty` rather
+   than a conditional render so the flex gap does not reserve a slot for a
+   number that is not there yet. Tabular figures keep the line from twitching
+   as the seconds tick. */
+.thinking-elapsed {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: 1.2;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.thinking-elapsed:empty {
+  display: none;
+}
+
 .conversation-empty {
   margin: 0;
   color: var(--muted);
@@ -361,7 +377,7 @@
   align-items: center;
   gap: var(--space-3);
   margin: var(--space-2) 0;
-  animation: msg-in 200ms var(--ease) both;
+  animation: msg-in 200ms var(--ease);
 }
 
 .conversation-notice-rule {
@@ -417,7 +433,7 @@
   border: 1px solid transparent;
   background: transparent;
   overflow: hidden;
-  animation: msg-in 200ms var(--ease) both;
+  animation: msg-in 200ms var(--ease);
   position: relative;
 }
 
@@ -458,7 +474,7 @@
   gap: 10px;
   padding: 5px 6px 7px;
   border-top: 1px solid color-mix(in oklab, var(--line-soft) 58%, transparent);
-  animation: detail-expand 180ms var(--ease) both;
+  animation: detail-expand 180ms var(--ease);
 }
 
 @keyframes detail-expand {
@@ -783,7 +799,7 @@
   flex-direction: column;
   background: transparent;
   border-radius: 0;
-  animation: msg-in 200ms var(--ease) both;
+  animation: msg-in 200ms var(--ease);
 }
 
 .tool-call-group[data-status="error"] .tool-call-group-eyebrow-label {
@@ -874,7 +890,7 @@
 }
 
 .tool-call-group-row {
-  animation: tool-row-in 220ms var(--ease) both;
+  animation: tool-row-in 220ms var(--ease);
 }
 
 .tool-call-group-body .tool-call-row-button {
@@ -887,7 +903,7 @@
    span remounts on every text change so the fade replays — that replay is the
    "it's updating" affordance. Clicking reveals the per-tool rows. */
 .activity-summary-line .activity-summary-headline {
-  animation: msg-in 180ms var(--ease) both;
+  animation: msg-in 180ms var(--ease);
 }
 
 /* Compact activity rows: one line per tool, read as a sentence rather than a
@@ -901,7 +917,7 @@
   border: 0;
   background: transparent;
   border-radius: var(--radius-sm);
-  animation: msg-in 200ms var(--ease) both;
+  animation: msg-in 200ms var(--ease);
 }
 
 .tool-call-row-main {
@@ -1193,7 +1209,7 @@ button.tool-call-row-button {
 .agent-launch-bullet {
   display: inline-grid;
   place-items: center;
-  animation: working-nest-enter var(--motion-fast) var(--ease-out) both;
+  animation: working-nest-enter var(--motion-fast) var(--ease-out);
 }
 
 .agent-launch-bullet::before {

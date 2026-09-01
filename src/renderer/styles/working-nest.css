@@ -23,7 +23,7 @@
   --working-nest-lead: var(--accent-deep);
   --working-nest-rest: color-mix(in oklab, var(--accent) 45%, var(--muted));
   color: var(--accent);
-  animation: working-nest-enter var(--motion-fast) var(--ease-out) both;
+  animation: working-nest-enter var(--motion-fast) var(--ease-out);
 }
 
 .working-nest-dot {

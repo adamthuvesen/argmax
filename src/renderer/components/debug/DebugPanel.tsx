@@ -1,9 +1,22 @@
 import { PanelRightClose } from "lucide-react";
-import { useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useCallback,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type JSX,
+  type MouseEvent as ReactMouseEvent
+} from "react";
 import type { RawProviderOutput, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../../shared/types.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { useDebugSnapshot } from "../../hooks/useDebugSnapshot.js";
 import { usePersistedSetting } from "../../hooks/usePersistedSetting.js";
+import {
+  chatCueLogSnapshot,
+  clearChatCueLog,
+  subscribeChatCueLog
+} from "../../lib/chatCueLog.js";
+
 import { DebugIpcTab } from "./DebugIpcTab.js";
 import { DebugLogsTab } from "./DebugLogsTab.js";
 import { DebugTraceTab } from "./DebugTraceTab.js";
@@ -63,6 +76,22 @@ export function DebugPanel({
   // Polling only runs for the tabs that read it; the Trace tab is fed entirely
   // by props that already stream in over `dashboard:delta`.
   const snapshot = useDebugSnapshot(tab === "logs" || tab === "ipc");
+  // The chat's own progress-cue breadcrumbs live in the renderer, so they join
+  // the backend ring here rather than crossing the IPC boundary twice. Merged
+  // by timestamp: both sides stamp ISO-8601 UTC, so the reader sees one
+  // chronology and the tab's existing level/scope/text filters cover both.
+  const cueLog = useSyncExternalStore(subscribeChatCueLog, chatCueLogSnapshot, chatCueLogSnapshot);
+  const logs = useMemo(
+    () =>
+      cueLog.length === 0
+        ? snapshot.logs
+        : [...snapshot.logs, ...cueLog].sort((a, b) => a.timestamp.localeCompare(b.timestamp)),
+    [cueLog, snapshot.logs]
+  );
+  const clearLogs = useCallback((): void => {
+    snapshot.clear();
+    clearChatCueLog();
+  }, [snapshot]);
 
   return (
     <aside className="debug-panel" aria-label="Debug panel">
@@ -98,7 +127,7 @@ export function DebugPanel({
 
       {tab === "trace" ? <DebugTraceTab events={events} rawOutputs={rawOutputs} /> : null}
       {tab === "logs" ? (
-        <DebugLogsTab logs={snapshot.logs} error={snapshot.error} onClear={snapshot.clear} />
+        <DebugLogsTab logs={logs} error={snapshot.error} onClear={clearLogs} />
       ) : null}
       {tab === "ipc" ? <DebugIpcTab stats={snapshot.ipcStats} error={snapshot.error} /> : null}
 

@@ -14,17 +14,15 @@
   display: block;
   position: relative;
   overflow: hidden;
-  opacity: 0;
-  transform: translateY(8px);
-  animation: plan-card-rise var(--motion-slow) var(--ease-out) forwards;
+  animation: plan-card-rise var(--motion-slow) var(--ease-out);
   font-family: var(--font-ui);
   color: var(--text);
 }
 
 @keyframes plan-card-rise {
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
 }
 

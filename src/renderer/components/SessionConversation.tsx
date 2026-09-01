@@ -473,9 +473,18 @@ export function SessionConversation({
   useEffect(() => {
     lastAgentResponseIdRef.current = lastAgentResponseId;
   }, [lastAgentResponseId]);
-  const [turnStartBaseline, setTurnStartBaseline] = useState<{ agentResponseId: string | null } | null>(
-    null
-  );
+  // The state the session sat in when the send left this pane. A relaunching
+  // follow-up is sent *from* a terminal state, so the terminal check below has
+  // to ask whether the session fell into one after the send, not whether it was
+  // already in one.
+  const sessionStateRef = useRef<SessionSummary["state"] | null>(session?.state ?? null);
+  useEffect(() => {
+    sessionStateRef.current = session?.state ?? null;
+  }, [session?.state]);
+  const [turnStartBaseline, setTurnStartBaseline] = useState<{
+    agentResponseId: string | null;
+    state: SessionSummary["state"] | null;
+  } | null>(null);
   const sendSessionInput = useCallback(
     async (
       targetSessionId: string,
@@ -484,7 +493,10 @@ export function SessionConversation({
       mode: AgentMode,
       attachments?: ComposerAttachment[]
     ): Promise<void> => {
-      setTurnStartBaseline({ agentResponseId: lastAgentResponseIdRef.current });
+      setTurnStartBaseline({
+        agentResponseId: lastAgentResponseIdRef.current,
+        state: sessionStateRef.current
+      });
       try {
         await onSendSessionInput(targetSessionId, text, model, mode, attachments);
       } catch (error) {
@@ -499,8 +511,14 @@ export function SessionConversation({
     if (turnStartBaseline === null) return;
     const agentTookOver = lastAgentResponseId !== turnStartBaseline.agentResponseId;
     // A send that could not start a turn (stop, crash) must not leave the
-    // pane pretending the agent is about to speak.
-    const turnCannotStart = session?.state === "failed" || session?.state === "cancelled";
+    // pane pretending the agent is about to speak. Only a *new* terminal state
+    // says that: sending to a `failed` session — an orphan the app adopted back
+    // after a restart — or to a `cancelled` one is the ordinary relaunch path,
+    // and reading its pre-send state as a dead turn dropped the cue half a
+    // second after the send and left the pane blank until the provider spoke.
+    const turnCannotStart =
+      (session?.state === "failed" || session?.state === "cancelled") &&
+      session.state !== turnStartBaseline.state;
     if (agentTookOver || turnCannotStart) {
       setTurnStartBaseline(null);
     }

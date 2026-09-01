@@ -76,6 +76,8 @@ export function DebugPanel({
               key={entry.id}
               type="button"
               role="tab"
+              id={`debug-tab-${entry.id}`}
+              aria-controls={`debug-panel-${entry.id}`}
               aria-selected={tab === entry.id}
               onClick={() => setTab(entry.id)}
             >

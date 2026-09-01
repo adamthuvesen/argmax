@@ -45,7 +45,12 @@ export function DebugLogsTab({
   }, [scope, scopes]);
 
   return (
-    <div className="debug-tab">
+    <div
+      className="debug-tab"
+      role="tabpanel"
+      id="debug-panel-logs"
+      aria-labelledby="debug-tab-logs"
+    >
       <div className="debug-filters">
         <select
           className="debug-select"

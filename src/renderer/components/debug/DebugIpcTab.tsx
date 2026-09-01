@@ -29,7 +29,12 @@ export function DebugIpcTab({ stats, error }: { stats: IpcChannelStats[]; error:
   }, [stats, sort, query]);
 
   return (
-    <div className="debug-tab">
+    <div
+      className="debug-tab"
+      role="tabpanel"
+      id="debug-panel-ipc"
+      aria-labelledby="debug-tab-ipc"
+    >
       <div className="debug-filters">
         <input
           className="debug-search"

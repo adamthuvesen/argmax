@@ -3,6 +3,10 @@
    sidebar for as long as settings is open, and the content
    column is one repeated shape: a labelled card of rows, each
    row a label, an optional line of description, and a control.
+
+   Schedule reuses the same page chrome (rail width, empty
+   topbar, column title, measure) so the two surfaces read as
+   one kind of page.
    ============================================================ */
 
 :root {

@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type JSX, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type JSX,
+  type ReactNode,
+  type SetStateAction
+} from "react";
 import { Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { SCRATCH_PROJECT_ID, type ProjectSummary, type ProviderId, type Routine } from "../../../shared/types.js";
 import {
@@ -290,16 +299,18 @@ export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }
 
   if (draft) {
     return (
-      <ScheduledTaskEditor
-        draft={draft}
-        setDraft={setDraft}
-        projects={repositories}
-        modelOptions={modelOptions}
-        saveError={saveError}
-        busy={busy}
-        onSave={() => void saveDraft()}
-        onCancel={closeEditor}
-      />
+      <SchedulePage>
+        <ScheduledTaskEditor
+          draft={draft}
+          setDraft={setDraft}
+          projects={repositories}
+          modelOptions={modelOptions}
+          saveError={saveError}
+          busy={busy}
+          onSave={() => void saveDraft()}
+          onCancel={closeEditor}
+        />
+      </SchedulePage>
     );
   }
 
@@ -307,11 +318,8 @@ export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }
   const total = routines?.length ?? 0;
 
   return (
-    <>
-      <PanelTopbar />
-
-      <div className="sched-surface">
-        <div className="sched-column">
+    <SchedulePage>
+      <div className="sched-column">
           {routines !== null && total > 0 ? (
             <div className="sched-toolbar">
               <p className="sched-count">
@@ -345,7 +353,7 @@ export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }
           ) : repositories.length === 0 ? (
             <EmptyState
               headline="No repositories yet"
-              body="Scheduled tasks run against a repository. Add one from the sidebar, then come back to put a prompt on a schedule."
+              body="Scheduled tasks run against a repository. Add one, then come back to put a prompt on a schedule."
             />
           ) : total === 0 ? (
             <EmptyState
@@ -441,25 +449,20 @@ export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }
               })}
             </ul>
           )}
-        </div>
       </div>
-    </>
+    </SchedulePage>
   );
 }
 
-function PanelTopbar({ trail }: { trail?: string }): JSX.Element {
+function SchedulePage({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <header className="settings-topbar" data-window-drag>
-      <div className="settings-topbar-inner">
-        <h1 className="settings-topbar-title">Schedule</h1>
-        {trail ? (
-          <>
-            <span className="settings-topbar-sep" aria-hidden="true">/</span>
-            <span className="settings-topbar-group">{trail}</span>
-          </>
-        ) : null}
+    <div className="settings-page">
+      <div className="settings-topbar" data-window-drag />
+      <div className="settings-main">
+        <h1 className="settings-page-title">Schedule</h1>
+        {children}
       </div>
-    </header>
+    </div>
   );
 }
 
@@ -523,17 +526,13 @@ function ScheduledTaskEditor({
   const repositoryName = projects.find((project) => project.id === draft.projectId)?.name;
 
   return (
-    <>
-      <PanelTopbar trail={draft.routineId ? "Edit task" : "New task"} />
-
-      <div className="sched-surface">
-        <form
-          className="sched-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSave();
-          }}
-        >
+    <form
+      className="sched-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave();
+      }}
+    >
           <section className="sched-group">
             <div className="sched-field">
               <label className="sched-label" htmlFor="scheduled-name">
@@ -768,8 +767,6 @@ function ScheduledTaskEditor({
               </button>
             </div>
           </footer>
-        </form>
-      </div>
-    </>
+    </form>
   );
 }

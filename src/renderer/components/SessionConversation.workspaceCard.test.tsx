@@ -24,6 +24,7 @@ function renderPane(
       isLogOpen={options.isLogOpen ?? false}
       onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
       onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+      onClearSession={vi.fn().mockResolvedValue(undefined)}
       onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
       onSendQueuedMessageNow={vi.fn().mockResolvedValue(undefined)}
       onToggleLog={vi.fn()}

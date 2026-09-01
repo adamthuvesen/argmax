@@ -168,6 +168,7 @@ type ConversationOptions = {
   onSendQueuedMessageNow?: ConversationProps["onSendQueuedMessageNow"];
   onSendSessionInput?: ConversationProps["onSendSessionInput"];
   onTerminateSession?: ConversationProps["onTerminateSession"];
+  onClearSession?: ConversationProps["onClearSession"];
   onNewSession?: ConversationProps["onNewSession"];
   onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
   onOpenAgent?: (tool: ToolCall) => void;
@@ -188,6 +189,7 @@ function conversationElement(
       isLogOpen={false}
       onSendSessionInput={options.onSendSessionInput ?? vi.fn(() => Promise.resolve())}
       onTerminateSession={options.onTerminateSession ?? vi.fn(() => Promise.resolve())}
+      onClearSession={options.onClearSession ?? vi.fn(() => Promise.resolve())}
       onCancelQueuedMessage={options.onCancelQueuedMessage ?? vi.fn(() => Promise.resolve())}
       onSendQueuedMessageNow={options.onSendQueuedMessageNow ?? vi.fn(() => Promise.resolve())}
       pendingMessages={options.pendingMessages ?? []}

@@ -1,5 +1,6 @@
 import type { AgentMode } from "../../shared/types.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
+import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import type { RenderItem } from "../lib/foldConversation.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 
@@ -16,13 +17,13 @@ export type UserMessageAttachment = {
 export async function sendAfterTerminate(
   sessionId: string,
   isRunning: boolean,
-  onTerminateSession: (id: string) => Promise<void>,
+  onTerminateSession: (id: string, options?: TerminateSessionOptions) => Promise<void>,
   send: () => Promise<void>,
   onError: (message: string) => void
 ): Promise<boolean> {
   if (isRunning) {
     try {
-      await onTerminateSession(sessionId);
+      await onTerminateSession(sessionId, { restoreLauncherOnEarlyStop: false });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not terminate session.");
       return false;

@@ -212,6 +212,7 @@ describe("SessionConversation — cards", () => {
         isLogOpen={false}
         onSendSessionInput={onSend}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
         pendingMessages={[]}
         onToggleLog={vi.fn()}
@@ -307,6 +308,7 @@ describe("SessionConversation — cards", () => {
         isLogOpen={false}
         onSendSessionInput={onSend}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
         pendingMessages={[]}
         onToggleLog={vi.fn()}
@@ -368,6 +370,7 @@ describe("SessionConversation — cards", () => {
         isLogOpen={false}
         onSendSessionInput={onSend}
         onTerminateSession={onTerminate}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
         pendingMessages={[]}
         onToggleLog={vi.fn()}
@@ -382,7 +385,7 @@ describe("SessionConversation — cards", () => {
     fireEvent.click(screen.getByRole("option", { name: /A/ }));
     fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
 
-    expect(onTerminate).toHaveBeenCalledWith("session-a");
+    expect(onTerminate).toHaveBeenCalledWith("session-a", { restoreLauncherOnEarlyStop: false });
     // Send fires AFTER terminate resolves.
     // Testing Library's waitFor, not Vitest's: this one polls inside `act`,
     // so the terminate/send chain's state updates land during the test.
@@ -423,6 +426,7 @@ describe("SessionConversation — cards", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
         pendingMessages={[]}
         onToggleLog={vi.fn()}
@@ -537,6 +541,7 @@ describe("SessionConversation — cards", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
         pendingMessages={[]}
         onToggleLog={vi.fn()}
@@ -632,6 +637,7 @@ describe("SessionConversation — cards", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
         pendingMessages={[]}
         onToggleLog={vi.fn()}
@@ -649,7 +655,8 @@ describe("SessionConversation — cards", () => {
     const agentRow = screen.getByRole("button", { name: startedAgentName("Explore docs") });
     fireEvent.click(agentRow);
     expect(agentRow).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ran echo ok" })).toBeInTheDocument();
+    expect(screen.getByText("echo ok")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ran echo ok" })).toBeNull();
     expect(screen.queryByText("AskUserQuestion")).not.toBeInTheDocument();
   });
 
@@ -670,6 +677,7 @@ describe("SessionConversation — cards", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
         pendingMessages={[]}
         onToggleLog={vi.fn()}
@@ -717,6 +725,7 @@ describe("SessionConversation — cards", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
         pendingMessages={[]}
         onToggleLog={vi.fn()}
@@ -788,6 +797,7 @@ describe("SessionConversation — cards", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
         pendingMessages={[]}
         onToggleLog={vi.fn()}

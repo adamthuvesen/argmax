@@ -549,8 +549,27 @@
   color: var(--diff-del-gutter-fg);
 }
 
+.session-composer-stack {
+  position: relative;
+  /* The stack is the query container for the queued tab, which sits outside
+     the composer card. The card keeps its own container-type so the compact
+     toolbar still measures the field the user types into. */
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-top: 16px;
+  margin-inline: var(--session-inline-padding);
+}
+
+.session-meta-cards + .session-composer-stack,
+.session-meta-cards + .composer-approvals-banner + .session-composer-stack {
+  margin-top: 10px;
+}
+
 .session-input {
   position: relative;
+  z-index: 1;
   /* The composer is its own query container: its width is capped by the
      chat-width setting and squeezed by docked panels, so the compact-toolbar
      thresholds in chat-composer-chips.css must measure this box, not the
@@ -559,8 +578,6 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-top: 16px;
-  margin-inline: var(--session-inline-padding);
   /* Absorbs the 1px the removed border used to contribute, so the box keeps
      its size. */
   padding: 13px 15px 11px;
@@ -573,11 +590,6 @@
      field on the surface. Focus draws its own ring below. */
   box-shadow: 0 1px 2px rgba(31, 28, 24, 0.04), 0 8px 24px rgba(31, 28, 24, 0.05);
   transition: box-shadow var(--duration-base) var(--ease);
-}
-
-.session-meta-cards + .session-input,
-.session-meta-cards + .composer-approvals-banner + .session-input {
-  margin-top: 10px;
 }
 
 /* Focus lifts the card instead of ringing it — an accent ring here reads as

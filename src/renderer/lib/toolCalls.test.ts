@@ -136,7 +136,14 @@ describe("MCP tool names", () => {
   });
 
   it("marks discovery and task bookkeeping as hidden transport", () => {
-    for (const name of ["ToolSearch", "getMcpToolsToolCall", "TodoWrite", "TaskCreate", "TaskUpdate"]) {
+    for (const name of [
+      "ToolSearch",
+      "getMcpToolsToolCall",
+      "TodoWrite",
+      "TaskCreate",
+      "TaskUpdate",
+      "get_command_or_subagent_output"
+    ]) {
       expect(isHiddenToolName(name)).toBe(true);
     }
     expect(isHiddenToolName("mcpToolCall")).toBe(false);

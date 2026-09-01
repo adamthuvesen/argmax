@@ -1,19 +1,19 @@
-import { memo, useState, type JSX, type MutableRefObject } from "react";
+import { memo, useState, type JSX, type MutableRefObject, type ReactNode } from "react";
 import { Sparkles } from "lucide-react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
-import { leadingSkillInvocation } from "../lib/slashHighlight.js";
+import { leadingSkillInvocation, splitSkillTokens } from "../lib/slashHighlight.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { parsePlan } from "../lib/parsePlan.js";
 import type { RenderItem } from "../lib/foldConversation.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { isSupportedImageMime } from "../lib/composerAttachments.js";
-import { buildTurnRenderState, liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
+import { assistantGroupHasVisibleChat, buildTurnRenderState, liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
 import { isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { codenameForTool } from "../lib/agentNames.js";
-import { visibleTurnToolItem } from "../lib/turnToolItems.js";
+import { latestToolCreatedAt, visibleTurnToolItem } from "../lib/turnToolItems.js";
 import { collectTurnFileChanges } from "../lib/turnFileChanges.js";
 import { sessionAgentModeKey, writeStoredAgentMode } from "../lib/agentMode.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
@@ -21,6 +21,7 @@ import type { AgentMode } from "../../shared/types.js";
 import { AgentLaunchList } from "./AgentLaunchList.js";
 import { ActivitySummaryLine } from "./ActivitySummaryLine.js";
 import { ChatBubble } from "./ChatBubble.js";
+import { LogBlock } from "./LogBlock.js";
 import { PlanCard } from "./PlanCard.js";
 import { QuestionCard } from "./QuestionCard.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
@@ -36,6 +37,7 @@ import {
 } from "./sessionConversationHelpers.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import type { ComposerStatus } from "./SessionComposer.js";
+import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;
 
@@ -76,7 +78,7 @@ function SessionConversationTurnInner({
   onOpenDiff?: (path: string) => void;
   /** Open the review panel on the workspace's changes, from the top. */
   onOpenReview?: () => void;
-  onTerminateSession: (sessionId: string) => Promise<void>;
+  onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
   onSendSessionInput: SessionConversationSendInput;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
@@ -125,11 +127,12 @@ function SessionConversationTurnInner({
   // under the answer) and collapse to headers for older turns. The turn chip
   // toggles this for the whole turn; collapsing folds the tool groups to their
   // headers AND the Thought block, so one control governs the turn's reasoning
-  // and its tools. Nothing is removed from the chat. A per-row chevron still
-  // overrides an individual group or the Thought block. "Tool call groups"
-  // still wins over "Tool calls in chat" when it is set, so groups can open
-  // while the tool rows stay collapsed. Single-line mode ("cleanest") never
-  // expands: tool runs render as one self-updating line.
+  // and its tools. A per-row chevron still overrides an individual group or the
+  // Thought block. "Tool call groups" still wins over "Tool calls in chat" when
+  // it is set, so groups can open while the tool rows stay collapsed.
+  // Single-line (Minimal) never expands groups: tool runs render as one
+  // self-updating line while the turn is live, then the finished turn hides
+  // those working rows behind the chip so only the answer remains.
   const minimalActivity = defaultToolCallsDisplay === "single-line";
   const toolsExpandedDefault =
     isLatestTurn && !minimalActivity
@@ -226,11 +229,36 @@ function SessionConversationTurnInner({
     // Flat tool list this child contributes to a single-line-mode run.
     runTools?: ToolCall[];
   };
+  const lastToolCreatedAt = latestToolCreatedAt(item.toolItems);
+  // Finished Minimal keeps the answer: assistant text after the last tool.
+  // Claude, Codex, Grok, and OpenCode write progress as `message.completed`
+  // before each tool, so those lines look like thinking if they stay visible.
+  // Claude and Grok emit that text and the following `command.started` from
+  // the same envelope, so they share a timestamp. Treat same-timestamp prose
+  // as work (`<=`), not as the answer. Expanding the chip restores the
+  // narration with the tools. Live turns keep it so the user can watch the
+  // agent talk while tools run. If the turn ended on a tool, keep the last
+  // prose group so the chip is not empty.
+  const hidePreToolNarration =
+    minimalActivity && !sessionIsLive && !toolsExpanded && lastToolCreatedAt !== null;
+  const lastAnswerGroupId = [...visibleAssistantGroups]
+    .reverse()
+    .find((group) => !group.thinking && !group.error)?.id;
   const assistantChildren: AnnotatedChild[] = visibleAssistantGroups
     .map((group): AnnotatedChild | null => {
       // Single-line mode folds completed Thought blocks away entirely — only
       // the live "Thinking" indicator (governed by thinkingLive) survives.
       if (minimalActivity && group.thinking && !thinkingLive) return null;
+      if (
+        hidePreToolNarration &&
+        lastToolCreatedAt !== null &&
+        !group.thinking &&
+        !group.error &&
+        group.id !== lastAnswerGroupId &&
+        group.lastActivityAt <= lastToolCreatedAt
+      ) {
+        return null;
+      }
       if (group.thinking) {
         const node = (
           <ThoughtBlock
@@ -250,6 +278,17 @@ function SessionConversationTurnInner({
         );
         return { kind: "assistant", id: group.id, node, createdAt: group.createdAt, sortAt: group.lastActivityAt };
       }
+      if (group.error) {
+        if (!assistantGroupHasVisibleChat(group)) return null;
+        return {
+          kind: "assistant",
+          id: group.id,
+          node: <LogBlock key={group.id} text={group.text} tone="error" />,
+          createdAt: group.createdAt,
+          sortAt: group.lastActivityAt
+        };
+      }
+      if (!assistantGroupHasVisibleChat(group)) return null;
       const planNode = tryRenderPlan(group);
       if (planNode) {
         return { kind: "assistant", id: group.id, node: planNode, createdAt: group.createdAt, sortAt: group.lastActivityAt };
@@ -430,7 +469,7 @@ function SessionConversationTurnInner({
           <AgentLaunchList
             key={id}
             tools={child.agentTools}
-            defaultExpanded={toolsExpanded}
+            defaultExpanded={!minimalActivity && toolsExpanded}
             workspaceCwd={workspace?.path ?? null}
             agentCodenames={agentCodenames}
             onOpenFile={onOpenFile}
@@ -485,6 +524,7 @@ function SessionConversationTurnInner({
       isTurnActive={isTurnLiveTicking}
       toolsExpanded={toolsExpanded}
       onToggleTools={() => setToolsExpandOverride(!toolsExpanded)}
+      hideWorkingWhenCollapsed={minimalActivity}
       body={bodyChildren}
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
       {...(turnMarkdown ? { turnMarkdown } : {})}
@@ -499,6 +539,42 @@ function SessionConversationTurnInner({
 // actually changed. Default shallow comparison is sufficient because every prop
 // is referentially stable across a parent render that didn't touch this turn.
 export const SessionConversationTurn = memo(SessionConversationTurnInner);
+
+/**
+ * Mark the `/skill` invocations in a sent message the way the composer tinted
+ * them while it was typed, so a skill still reads as a skill after send. A
+ * leading invocation names the whole message and keeps the icon chip; every
+ * other token is only tinted. Shape is the whole guard — the transcript has no
+ * skills list to check against — so the worst a false positive costs here is
+ * one tinted word, never a chip that claims a skill ran.
+ */
+function markSkillInvocations(message: string): ReactNode {
+  const leading = leadingSkillInvocation(message);
+  const rest = leading ? leading.rest : message;
+  const segments = splitSkillTokens(rest, () => true);
+  const body: ReactNode = segments
+    ? segments.map((segment, index) =>
+        segment.skill ? (
+          <span key={index} className="user-skill-token">
+            {segment.text}
+          </span>
+        ) : (
+          segment.text
+        )
+      )
+    : rest;
+  if (!leading) return body;
+  const label = leading.name.charAt(0).toUpperCase() + leading.name.slice(1);
+  return (
+    <>
+      <span className="user-skill-chip" title={`/${leading.name}`}>
+        <Sparkles size={12} aria-hidden />
+        {label}
+      </span>
+      {leading.rest ? <> {body}</> : null}
+    </>
+  );
+}
 
 /** User-message row from a render item (not a turn). */
 export function SessionConversationUserMessage({
@@ -563,26 +639,9 @@ export function SessionConversationUserMessage({
           kind="user"
           rawMarkdown={displayMessage}
         >
-          <p>
-            {(() => {
-              // A message sent as `/skill args` renders the invocation as an
-              // accent-colored chip so a skill run reads differently from
-              // plain prose. The raw text (with the slash) stays in
-              // rawMarkdown so copy keeps the real message.
-              const skill = leadingSkillInvocation(displayMessage);
-              if (!skill) return displayMessage;
-              const label = skill.name.charAt(0).toUpperCase() + skill.name.slice(1);
-              return (
-                <>
-                  <span className="user-skill-chip" title={`/${skill.name}`}>
-                    <Sparkles size={12} aria-hidden />
-                    {label}
-                  </span>
-                  {skill.rest ? ` ${skill.rest}` : null}
-                </>
-              );
-            })()}
-          </p>
+          {/* The raw text (with the slashes) stays in rawMarkdown so copy
+              keeps the real message. */}
+          <p>{markSkillInvocations(displayMessage)}</p>
         </ChatBubble>
       ) : null}
       <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />

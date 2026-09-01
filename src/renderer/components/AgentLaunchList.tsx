@@ -8,7 +8,7 @@ import {
 } from "../lib/agentLaunch.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
-import { ToolCallDetail } from "./ToolCallDetail.js";
+import { ToolCallDetail, toolCallHasExpandableDetail } from "./ToolCallDetail.js";
 import { WorkingNest } from "./WorkingNest.js";
 
 /**
@@ -66,10 +66,13 @@ function AgentLaunchRow({
   const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
   const localExpanded =
     userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
-  const expanded = localExpanded ?? (tool.status === "error" || (defaultExpanded ?? false));
+  const hasDetail = toolCallHasExpandableDetail(tool);
+  const expanded =
+    hasDetail && (localExpanded ?? (tool.status === "error" || (defaultExpanded ?? false)));
   const { title, identity } = agentLaunchLabel(tool, agentCodename);
   const action = agentLaunchAriaLabel(tool, agentCodename);
   const toggleExpanded = (): void => {
+    if (!hasDetail) return;
     setUserToggle({ value: !expanded, defaultExpanded });
   };
   const opensAgentPane = onOpenAgent !== undefined;
@@ -90,16 +93,18 @@ function AgentLaunchRow({
           </span>
           <span className="agent-launch-status">{agentStatusLabel(tool.status)}</span>
         </button>
-        <button
-          className="tool-call-row-disclosure"
-          type="button"
-          aria-expanded={expanded}
-          aria-label={`Toggle details for ${action}`}
-          title="Toggle details"
-          onClick={toggleExpanded}
-        >
-          <ChevronRight size={14} aria-hidden="true" />
-        </button>
+        {hasDetail ? (
+          <button
+            className="tool-call-row-disclosure"
+            type="button"
+            aria-expanded={expanded}
+            aria-label={`Toggle details for ${action}`}
+            title="Toggle details"
+            onClick={toggleExpanded}
+          >
+            <ChevronRight size={14} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
       {expanded ? (
         <ToolCallDetail

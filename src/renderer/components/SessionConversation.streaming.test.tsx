@@ -59,6 +59,7 @@ describe("SessionConversation — streaming & composer", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onToggleLog={vi.fn()}
         project={project}
         rawOutputs={[]}
@@ -96,6 +97,7 @@ describe("SessionConversation — streaming & composer", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onToggleLog={vi.fn()}
         project={project}
         rawOutputs={[]}
@@ -469,6 +471,7 @@ describe("SessionConversation — streaming & composer", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onToggleLog={vi.fn()}
         project={project}
         rawOutputs={[]}
@@ -579,6 +582,91 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     expect(screen.getAllByText("Hello world")).toHaveLength(1);
+  });
+
+  it("renders stderr error events as a log block, not assistant prose", () => {
+    const log = '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
+    renderConversation(baseSession({ state: "complete" }), [
+      event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z"),
+      event("m1", "message.completed", "Ready for review.", "2026-05-12T15:00:01.000Z"),
+      event("e1", "error", log, "2026-05-12T15:00:02.000Z"),
+      event("e2", "error", log.replace("004170", "017965").replace("abc", "def"), "2026-05-12T15:00:03.000Z")
+    ]);
+
+    expect(screen.getByText("Ready for review.")).toBeInTheDocument();
+    const block = screen.getByRole("status", { name: "Error" });
+    expect(block).toBeInTheDocument();
+    expect(block.textContent).toContain("stream disconnected");
+    expect(block.textContent).toContain('session_id="abc"');
+    expect(block.textContent).toContain('session_id="def"');
+  });
+
+  it("does not render MCP HTTP client teardown tracing as an Error block", () => {
+    const log =
+      '2026-09-01T07:21:37.004170Z ERROR rmcp::transport::streamable_http_client: fail to delete session: invalid_refresh_token session_id="abc"';
+    renderConversation(baseSession({ state: "complete" }), [
+      event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z"),
+      event("m1", "message.completed", "Ready for review.", "2026-05-12T15:00:01.000Z"),
+      event("e1", "error", log, "2026-05-12T15:00:02.000Z"),
+      event("d1", "message.delta", log, "2026-05-12T15:00:03.000Z")
+    ]);
+
+    expect(screen.getByText("Ready for review.")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Error" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/invalid_refresh_token/)).not.toBeInTheDocument();
+  });
+
+  it("does not render cancelled custom-tool bookkeeping as an Error block", () => {
+    const log =
+      "2026-09-01T08:17:32.875356Z ERROR codex_core::util: Custom tool call output is missing for call id: call_BGd71K6CkePKfLZku6sYyP7q";
+    renderConversation(baseSession({ state: "complete" }), [
+      event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z"),
+      event("m1", "message.completed", "Ready for review.", "2026-05-12T15:00:01.000Z"),
+      event("e1", "error", log, "2026-05-12T15:00:02.000Z"),
+      event("d1", "message.delta", log, "2026-05-12T15:00:03.000Z")
+    ]);
+
+    expect(screen.getByText("Ready for review.")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Error" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Custom tool call output is missing/)).not.toBeInTheDocument();
+  });
+
+  it("does not render Codex apply_patch tracing that leaked onto stdout", () => {
+    const header =
+      "2026-09-01T09:08:10.411255Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in run_two_model_serving.py:";
+    renderConversation(baseSession({ provider: "codex", state: "complete" }), [
+      event("u1", "user.message", "hi", "2026-09-01T09:01:00.000Z"),
+      event(
+        "m1",
+        "message.completed",
+        "The preregistration is now written before any candidate scores.",
+        "2026-09-01T09:06:31.000Z"
+      ),
+      event("d1", "message.delta", header, "2026-09-01T09:08:10.411Z", { stream: "stdout" }),
+      event("d2", "message.delta", "point = points[tau]", "2026-09-01T09:08:10.411Z", {
+        stream: "stdout"
+      }),
+      event("c1", "command.started", "Bash", "2026-09-01T09:09:06.000Z", {
+        id: "c1",
+        name: "Bash"
+      }),
+      event(
+        "m2",
+        "message.completed",
+        "The preregistered runner and focused tests are ready.",
+        "2026-09-01T09:09:16.000Z"
+      )
+    ]);
+
+    expect(
+      screen.getByText("The preregistration is now written before any candidate scores.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("The preregistered runner and focused tests are ready.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Error" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/apply_patch/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/point = points\[tau\]/)).not.toBeInTheDocument();
   });
 
   it("does not duplicate the answer when message.completed lands after streamed fragments", () => {
@@ -934,6 +1022,7 @@ describe("SessionConversation — streaming & composer", () => {
       isLogOpen: false,
       onSendSessionInput: vi.fn().mockResolvedValue(undefined),
       onTerminateSession: vi.fn().mockResolvedValue(undefined),
+      onClearSession: vi.fn().mockResolvedValue(undefined),
       onToggleLog: vi.fn(),
       project,
       rawOutputs: [],
@@ -1007,6 +1096,7 @@ describe("SessionConversation — streaming & composer", () => {
       isLogOpen: false,
       onSendSessionInput: vi.fn().mockResolvedValue(undefined),
       onTerminateSession: vi.fn().mockResolvedValue(undefined),
+      onClearSession: vi.fn().mockResolvedValue(undefined),
       onToggleLog: vi.fn(),
       project,
       rawOutputs: [],
@@ -1103,6 +1193,7 @@ describe("SessionConversation — streaming & composer", () => {
       isLogOpen: false,
       onSendSessionInput: vi.fn().mockResolvedValue(undefined),
       onTerminateSession: vi.fn().mockResolvedValue(undefined),
+      onClearSession: vi.fn().mockResolvedValue(undefined),
       onToggleLog: vi.fn(),
       project,
       rawOutputs: [],
@@ -1219,6 +1310,7 @@ describe("SessionConversation — streaming & composer", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn(() => new Promise<void>(() => {}))}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onToggleLog={vi.fn()}
         project={project}
         rawOutputs={[]}
@@ -1252,6 +1344,7 @@ describe("SessionConversation — streaming & composer", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn(() => new Promise<void>(() => {}))}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onToggleLog={vi.fn()}
         project={project}
         rawOutputs={[]}
@@ -1278,6 +1371,7 @@ describe("SessionConversation — streaming & composer", () => {
       isLogOpen: false,
       onSendSessionInput: vi.fn(() => new Promise<void>(() => {})),
       onTerminateSession: vi.fn().mockResolvedValue(undefined),
+      onClearSession: vi.fn().mockResolvedValue(undefined),
       onToggleLog: vi.fn(),
       project,
       rawOutputs: [],
@@ -1316,6 +1410,7 @@ describe("SessionConversation — streaming & composer", () => {
         isLogOpen={false}
         onSendSessionInput={failingSend}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
         onToggleLog={vi.fn()}
         project={project}
         rawOutputs={[]}
@@ -1415,6 +1510,12 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText("add tests for the queue")).toBeInTheDocument();
     expect(screen.getByText("then run lint")).toBeInTheDocument();
 
+    const queue = screen.getByRole("list", { name: "Queued follow-ups" });
+    const composer = document.querySelector(".session-input");
+    expect(composer).not.toBeNull();
+    expect(composer?.contains(queue)).toBe(false);
+    expect(queue.closest(".session-composer-stack")?.contains(composer)).toBe(true);
+
     const removeButtons = screen.getAllByRole("button", { name: "Cancel queued follow-up" });
     expect(removeButtons).toHaveLength(2);
 
@@ -1445,7 +1546,6 @@ describe("SessionConversation — streaming & composer", () => {
       onSendQueuedMessageNow
     });
 
-    expect(screen.getByText("Queued")).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", {
         name: "Send queued follow-up now: use the simpler approach"
@@ -1531,6 +1631,7 @@ describe("SessionConversation — streaming & composer", () => {
       isLogOpen: false,
       onSendSessionInput: vi.fn().mockResolvedValue(undefined),
       onTerminateSession: vi.fn().mockResolvedValue(undefined),
+      onClearSession: vi.fn().mockResolvedValue(undefined),
       onToggleLog: vi.fn(),
       project,
       review: reviewStub(),

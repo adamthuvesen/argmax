@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ProviderId, TimelineEvent } from "../../shared/types.js";
 import {
   baseSession,
   event,
@@ -7,6 +8,100 @@ import {
 } from "../../test/sessionConversationTestHarness.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { startedAgentName, toggleAgentDetailsName } from "../../test/agentRowName.js";
+
+const SAME_ENVELOPE_WORK = "I'll inspect the layout before answering.";
+const SAME_ENVELOPE_THINKING = "Considering the repo structure.";
+const SAME_ENVELOPE_ANSWER = "This repo stores the vault as markdown notes.";
+const SAME_ENVELOPE_AT = "2026-05-12T15:00:02.000Z";
+
+function sameEnvelopeMinimalTurn(tools: TimelineEvent[]): TimelineEvent[] {
+  return [
+    event("u1", "user.message", "summarize this repo", "2026-05-12T15:00:00.000Z"),
+    event("think", "message.delta", SAME_ENVELOPE_THINKING, "2026-05-12T15:00:01.000Z", {
+      thinking: true
+    }),
+    event("narrate", "message.completed", SAME_ENVELOPE_WORK, SAME_ENVELOPE_AT),
+    ...tools,
+    event(
+      "answer",
+      "message.completed",
+      SAME_ENVELOPE_ANSWER,
+      "2026-05-12T15:00:04.000Z"
+    )
+  ];
+}
+
+const sameEnvelopeProviderCases: Array<{
+  provider: ProviderId;
+  modelLabel: string;
+  events: TimelineEvent[];
+  hiddenWhenExpanded: string[];
+}> = [
+  {
+    provider: "claude",
+    modelLabel: "Sonnet 5",
+    hiddenWhenExpanded: [],
+    events: sameEnvelopeMinimalTurn([
+      event("read-start", "command.started", "Read", SAME_ENVELOPE_AT, {
+        id: "read-1",
+        name: "Read",
+        input: { file_path: "README.md" }
+      }),
+      event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
+        tool_use_id: "read-1",
+        content: "readme"
+      })
+    ])
+  },
+  {
+    provider: "grok",
+    modelLabel: "Grok 4.5",
+    hiddenWhenExpanded: ["Get command or subagent output"],
+    events: sameEnvelopeMinimalTurn([
+      event("read-start", "command.started", "read_file", SAME_ENVELOPE_AT, {
+        id: "read-1",
+        name: "read_file",
+        input: { target_file: "README.md" }
+      }),
+      event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.500Z", {
+        tool_use_id: "read-1",
+        content: "readme"
+      }),
+      event(
+        "wait-start",
+        "command.started",
+        "get_command_or_subagent_output",
+        "2026-05-12T15:00:03.000Z",
+        {
+          id: "wait-1",
+          name: "get_command_or_subagent_output"
+        }
+      ),
+      event("wait-end", "command.completed", "tool_result", "2026-05-12T15:00:03.500Z", {
+        tool_use_id: "wait-1",
+        content: "ok"
+      })
+    ])
+  },
+  {
+    provider: "opencode",
+    modelLabel: "Big Pickle",
+    hiddenWhenExpanded: [],
+    events: sameEnvelopeMinimalTurn([
+      event("bash-start", "command.started", "bash", SAME_ENVELOPE_AT, {
+        name: "bash",
+        call_id: "call_1",
+        input: { command: "git status --short" }
+      }),
+      event("bash-end", "command.completed", "bash", SAME_ENVELOPE_AT, {
+        name: "bash",
+        call_id: "call_1",
+        input: { command: "git status --short" },
+        result: ""
+      })
+    ])
+  }
+];
 
 describe("SessionConversation — tools & chrome", () => {
   afterEach(() => {
@@ -255,8 +350,7 @@ describe("SessionConversation — tools & chrome", () => {
     const agentRow = screen.getByRole("button", { name: startedAgentName("Explore repo structure") });
     fireEvent.click(agentRow);
     expect(onOpenAgent).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: toggleAgentDetailsName("Explore repo structure") }))
-      .toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: toggleAgentDetailsName("Explore repo structure") })).toBeNull();
     expect(screen.queryByText("Activity")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Read README.md" })).not.toBeInTheDocument();
   });
@@ -717,25 +811,61 @@ describe("SessionConversation — single-line activity mode", () => {
       { defaultToolCallsDisplay: "single-line" }
     );
 
+    // A finished Minimal turn hides the working rows and pre-tool narration.
+    // Only the answer after the last tool stays until the chip is expanded.
+    expect(screen.queryByRole("button", { name: /Explored 1 file, 1 search/ })).toBeNull();
+    expect(screen.queryByText("git status --short")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Thought" })).toBeNull();
+    expect(screen.queryByText("Weighing options.")).toBeNull();
+    expect(screen.queryByText("First part done.")).toBeNull();
+    expect(screen.getByText("Second part done.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+
+    expect(screen.getByText("First part done.")).toBeInTheDocument();
+    expect(screen.getByText("Second part done.")).toBeInTheDocument();
+
     // One aggregated line per gap, not per-tool rows or group bubbles.
     const exploreLines = screen.getAllByRole("button", { name: /Explored 1 file, 1 search/ });
     expect(exploreLines).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
     // The second gap holds one tool, so its own row is the single line — a
-    // summary of one would only restate it as "Ran 1 command".
-    expect(screen.getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
-    // Saved Thought blocks fold away too.
-    expect(screen.queryByRole("button", { name: "Thought" })).toBeNull();
-    expect(screen.queryByText("Weighing options.")).toBeNull();
-    // The replies themselves stay.
-    expect(screen.getByText("First part done.")).toBeInTheDocument();
-    expect(screen.getByText("Second part done.")).toBeInTheDocument();
+    // summary of one would only restate it as "Ran 1 command". A silent bash
+    // call is not a disclosure.
+    expect(screen.getByText("git status --short")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ran git status --short" })).toBeNull();
 
     // Clicking the line reveals the per-tool rows for that gap only.
     fireEvent.click(exploreLines[0]);
     expect(exploreLines[0]).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Searched for src/**/*.ts" })).toBeInTheDocument();
+  });
+
+  it("keeps the live summary line visible while the session is still running", () => {
+    renderConversation(
+      baseSession({ state: "running" }),
+      [
+        event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
+        event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
+          id: "read",
+          name: "Read",
+          input: { file_path: "README.md" }
+        }),
+        event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "read",
+          content: "readme"
+        }),
+        event("glob-start", "command.started", "Glob", "2026-05-12T15:00:02.500Z", {
+          id: "glob",
+          name: "Glob",
+          input: { pattern: "src/**/*.ts" }
+        })
+      ],
+      { defaultToolCallsDisplay: "single-line" }
+    );
+
+    expect(screen.getByRole("button", { name: /Explored 1 file, 1 search/ })).toBeInTheDocument();
   });
 
   it("keeps agent launches as their own line between the summary lines", () => {
@@ -774,8 +904,15 @@ describe("SessionConversation — single-line activity mode", () => {
       { defaultToolCallsDisplay: "single-line" }
     );
 
+    expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
+    expect(screen.queryByText("git status --short")).toBeNull();
+    expect(screen.queryByRole("button", { name: startedAgentName("Audit renderer tools") })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
+    expect(screen.getByText("git status --short")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ran git status --short" })).toBeNull();
     expect(screen.getByRole("button", { name: startedAgentName("Audit renderer tools") })).toBeInTheDocument();
     // The Task launch is not folded in with the tools on either side of it.
     expect(screen.queryByRole("button", { name: /Started 1 agent|Explored 1 file, started/ })).toBeNull();
@@ -813,6 +950,11 @@ describe("SessionConversation — single-line activity mode", () => {
       ],
       { defaultToolCallsDisplay: "single-line" }
     );
+
+    expect(screen.queryByRole("button", { name: /Fetched/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Notion fetch" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
 
     // No "Fetched 1 URL" summary line over a "Fetched URL" row: one row, named
     // after the tool that actually ran.
@@ -857,6 +999,132 @@ describe("SessionConversation — single-line activity mode", () => {
     // Default (non single-line) rendering: one group bubble, rows folded.
     expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
   });
+
+  it("hides Codex and Grok pre-tool work text on a finished Minimal turn", () => {
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "summarize this repo", "2026-05-12T15:00:00.000Z"),
+        event(
+          "narrate",
+          "message.completed",
+          "Launching a read-only explore subagent to summarize this repository.",
+          "2026-05-12T15:00:01.000Z"
+        ),
+        event("spawn-start", "command.started", "spawn_subagent", "2026-05-12T15:00:02.000Z", {
+          id: "spawn-1",
+          name: "spawn_subagent",
+          input: { description: "Summarize this repo", prompt: "Summarize." }
+        }),
+        event("spawn-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
+          tool_use_id: "spawn-1",
+          content: "done"
+        }),
+        event("frag-1", "message.completed", "I'll", "2026-05-12T15:00:04.000Z"),
+        event("wait-start", "command.started", "get_command_or_subagent_output", "2026-05-12T15:00:05.000Z", {
+          id: "wait-1",
+          name: "get_command_or_subagent_output"
+        }),
+        event("wait-end", "command.completed", "tool_result", "2026-05-12T15:00:06.000Z", {
+          tool_use_id: "wait-1",
+          content: "ok"
+        }),
+        event(
+          "frag-2",
+          "message.completed",
+          " read the core docs and skim the layout so the summary matches how this vault actually works.",
+          "2026-05-12T15:00:07.000Z"
+        ),
+        event("read-start", "command.started", "read_file", "2026-05-12T15:00:08.000Z", {
+          id: "read-1",
+          name: "read_file",
+          input: { target_file: "README.md" }
+        }),
+        event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:09.000Z", {
+          tool_use_id: "read-1",
+          content: "readme"
+        }),
+        event(
+          "progress",
+          "message.completed",
+          "Chronicle isn't available in this session, so I'll fall back to the repository.",
+          "2026-05-12T15:00:10.000Z"
+        ),
+        event("bash-start", "command.started", "Bash", "2026-05-12T15:00:11.000Z", {
+          id: "bash-1",
+          name: "Bash",
+          input: { command: "git status --short" }
+        }),
+        event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:12.000Z", {
+          tool_use_id: "bash-1",
+          content: ""
+        }),
+        event(
+          "answer",
+          "message.completed",
+          "The last two published runs both landed at 9/10.",
+          "2026-05-12T15:00:13.000Z"
+        )
+      ],
+      { defaultToolCallsDisplay: "single-line" }
+    );
+
+    expect(screen.queryByText(/Launching a read-only explore subagent/)).toBeNull();
+    expect(screen.queryByText("I'll")).toBeNull();
+    expect(screen.queryByText(/Get command or subagent output/)).toBeNull();
+    expect(screen.queryByText(/read the core docs/)).toBeNull();
+    expect(screen.queryByText(/Chronicle isn't available/)).toBeNull();
+    expect(screen.queryByText("git status --short")).toBeNull();
+    expect(screen.getByText("The last two published runs both landed at 9/10.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+
+    expect(
+      screen.getByText("I'll read the core docs and skim the layout so the summary matches how this vault actually works.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Get command or subagent output/)).toBeNull();
+    expect(screen.getByText(/Chronicle isn't available/)).toBeInTheDocument();
+  });
+
+  it.each(sameEnvelopeProviderCases)(
+    "hides $provider same-timestamp work text on a finished Minimal turn",
+    ({ provider, modelLabel, events, hiddenWhenExpanded }) => {
+      renderConversation(
+        baseSession({ provider, modelLabel, state: "complete" }),
+        events,
+        { defaultToolCallsDisplay: "single-line" }
+      );
+
+      expect(screen.queryByText(SAME_ENVELOPE_WORK)).toBeNull();
+      expect(screen.queryByText(SAME_ENVELOPE_THINKING)).toBeNull();
+      expect(screen.queryByText(/Get command or subagent output/)).toBeNull();
+      expect(screen.queryByText("git status --short")).toBeNull();
+      expect(screen.getByText(SAME_ENVELOPE_ANSWER)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+
+      expect(screen.getByText(SAME_ENVELOPE_WORK)).toBeInTheDocument();
+      expect(screen.getByText(SAME_ENVELOPE_ANSWER)).toBeInTheDocument();
+      for (const hidden of hiddenWhenExpanded) {
+        expect(screen.queryByText(hidden)).toBeNull();
+      }
+    }
+  );
+
+  it.each(sameEnvelopeProviderCases)(
+    "keeps $provider same-timestamp work text visible while the session is running",
+    ({ provider, modelLabel, events }) => {
+      renderConversation(
+        baseSession({ provider, modelLabel, state: "running" }),
+        events,
+        { defaultToolCallsDisplay: "single-line" }
+      );
+
+      expect(screen.getByText(SAME_ENVELOPE_WORK)).toBeInTheDocument();
+      expect(screen.getByText(SAME_ENVELOPE_ANSWER)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Worked for/ })).toBeNull();
+    }
+  );
 });
 
 describe("SessionConversation — tool group default expansion", () => {

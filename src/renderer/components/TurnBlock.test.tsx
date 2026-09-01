@@ -74,6 +74,55 @@ describe("TurnBlock", () => {
     expect(screen.getByTestId("assistant")).toBeInTheDocument();
   });
 
+  it("hides working rows on a finished turn when hideWorkingWhenCollapsed is set", () => {
+    const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
+    render(
+      <TurnBlock
+        toolItems={items}
+        assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
+        body={body(assistantChild("assistant", "reply"), toolChild("tools"))}
+        toolsExpanded={false}
+        hideWorkingWhenCollapsed
+        changes={<div data-testid="changes">5 files changed</div>}
+      />
+    );
+    expect(screen.getByRole("button", { name: /Worked for/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("tools")).toBeNull();
+    expect(screen.getByTestId("assistant")).toBeInTheDocument();
+    expect(screen.getByTestId("changes")).toBeInTheDocument();
+  });
+
+  it("keeps working rows visible while the turn is still running in hide-working mode", () => {
+    const items: TurnToolItem[] = [{ kind: "tool", tool: tool({ status: "running", completedAt: null }) }];
+    render(
+      <TurnBlock
+        toolItems={items}
+        assistantTimestamps={[]}
+        body={body(assistantChild("assistant", "streaming..."), toolChild("tools"))}
+        toolsExpanded={false}
+        hideWorkingWhenCollapsed
+      />
+    );
+    expect(screen.getByTestId("tools")).toBeInTheDocument();
+    expect(screen.getByTestId("assistant")).toBeInTheDocument();
+  });
+
+  it("restores working rows when the finished turn is expanded in hide-working mode", () => {
+    const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
+    render(
+      <TurnBlock
+        toolItems={items}
+        assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
+        body={body(assistantChild("assistant", "reply"), toolChild("tools"))}
+        toolsExpanded
+        hideWorkingWhenCollapsed
+      />
+    );
+    expect(screen.getByRole("button", { name: /Worked for/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("tools")).toBeInTheDocument();
+    expect(screen.getByTestId("assistant")).toBeInTheDocument();
+  });
+
   it("reflects expanded tool state after completion while it is the current turn", () => {
     // The latest turn stays expanded through completion so the tool block
     // doesn't collapse out from under the answer the moment it lands.

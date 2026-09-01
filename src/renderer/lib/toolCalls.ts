@@ -200,7 +200,11 @@ const HIDDEN_TOOL_NAMES = new Set([
   // agent; the resulting plan is already visible through useful work.
   "taskcreate",
   "taskupdate",
-  "todowrite"
+  "todowrite",
+  // Grok's poll for a spawned child. Same job as Codex `wait`: it names no
+  // user-facing work, and leaving it visible splits the parent's sentence
+  // around "Get command or subagent output".
+  "get_command_or_subagent_output"
 ]);
 
 export function isHiddenToolName(name: string): boolean {

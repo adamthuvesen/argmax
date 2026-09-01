@@ -1,4 +1,4 @@
-import { Fragment, memo, useState, type JSX, type MutableRefObject, type ReactNode } from "react";
+import { Fragment, memo, useMemo, useState, type JSX, type MutableRefObject, type ReactNode } from "react";
 import { Sparkles } from "lucide-react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
@@ -241,8 +241,11 @@ function SessionConversationTurnInner({
   // narration with the tools. Live turns keep it so the user can watch the
   // agent talk while tools run. If the turn ended on a tool, keep the last
   // prose group so the chip is not empty.
+  // This turn's own liveness, not the session's: keying off `sessionIsLive`
+  // alone re-expanded every finished turn the moment a new turn started.
+  const turnIsLive = isLatestTurn && sessionIsLive;
   const hidePreToolNarration =
-    minimalActivity && !sessionIsLive && !toolsExpanded && lastToolCreatedAt !== null;
+    minimalActivity && !turnIsLive && !toolsExpanded && lastToolCreatedAt !== null;
   const lastAnswerGroupId = [...visibleAssistantGroups]
     .reverse()
     .find((group) => !group.thinking && !group.error)?.id;
@@ -331,9 +334,13 @@ function SessionConversationTurnInner({
       sortAt: askUserQuestionTool.createdAt
     });
   }
-  const visibleToolItems = item.toolItems
-    .map((tItem) => visibleTurnToolItem(tItem, hiddenToolIds))
-    .filter((tItem): tItem is TurnToolItem => tItem !== null);
+  const visibleToolItems = useMemo(
+    () =>
+      item.toolItems
+        .map((tItem) => visibleTurnToolItem(tItem, hiddenToolIds))
+        .filter((tItem): tItem is TurnToolItem => tItem !== null),
+    [item.toolItems, hiddenToolIds]
+  );
   const isTurnLiveTicking = isLatestTurn && sessionIsLive && !isPausedOnUserInput;
   const toolChildren: AnnotatedChild[] = visibleToolItems
     .map((tItem) => {
@@ -499,7 +506,10 @@ function SessionConversationTurnInner({
   // only possible outcome was an error toast.
   // Files this turn wrote, folded one row per path. Derived from the same tool
   // input the activity rows read, so the card cannot disagree with them.
-  const turnChanges = collectTurnFileChanges(visibleToolItems);
+  const turnChanges = useMemo(
+    () => collectTurnFileChanges(visibleToolItems),
+    [visibleToolItems]
+  );
   const changesCard =
     turnChanges.length > 0 ? (
       <TurnChangesCard

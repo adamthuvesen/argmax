@@ -11,13 +11,14 @@ use tokio::sync::broadcast;
 
 use crate::approvals::service::ApprovalService;
 use crate::checks::service::CheckService;
+use crate::dock::{DockBadgeService, TauriDockBadgeSink};
 use crate::gh::poller::GhPoller;
 use crate::notifications::{NotificationService, TauriNotificationSink};
 use crate::persistence::Database;
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::discovery::ProviderDiscovery;
 use crate::providers::session_service::ProviderSessionService;
-use crate::remote::{RemoteEvent, REMOTE_EVENT_CAPACITY};
+use crate::remote::{RemoteEvent, REMOTE_EVENT_CAPACITY, REMOTE_TERMINAL_EVENT_CAPACITY};
 use crate::session_control::SessionLaunchServer;
 use crate::skills::registry::SkillRegistry;
 use crate::terminal::service::TerminalService;
@@ -47,17 +48,23 @@ pub struct AppState {
     pub workspaces: OnceCell<Arc<WorkspaceService>>,
     pub gh_poller: OnceCell<Arc<GhPoller>>,
     pub notifications: OnceCell<Arc<LiveNotificationService>>,
+    /// Dock badge showing pending approvals + waiting sessions; updated from
+    /// the `dashboard:delta` emit loop and cleared through the same service on
+    /// focus so its change latch stays in step with what the dock shows.
+    pub dock_badge: OnceCell<Arc<LiveDockBadgeService>>,
     /// Phone push via ntfy; installed by `remote::apply` when the config names
     /// a topic, and swapped in place when the topic changes in Settings.
     pub ntfy: std::sync::RwLock<Option<Arc<crate::remote::ntfy::NtfyPublisher>>>,
     /// Running remote-bridge server task, if any. `remote::apply` aborts and
     /// replaces it when the bridge is toggled or re-configured in Settings.
     pub remote_server: std::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
-    /// Fan-out of the push events (`dashboard:delta`, `terminal:data`,
-    /// `terminal:exit`) the desktop webview receives, mirrored to whatever
-    /// remote-bridge clients are connected. Always present, usually with no
-    /// receivers — see `crate::remote::publish`.
+    /// Fan-out of the `dashboard:delta` push events the desktop webview
+    /// receives, mirrored to whatever remote-bridge clients are connected.
+    /// Always present, usually with no receivers — see `crate::remote::publish`.
     pub remote_events: broadcast::Sender<RemoteEvent>,
+    /// Same, for `terminal:data` / `terminal:exit`. Kept apart so a terminal
+    /// flood cannot evict a queued delta — see `REMOTE_TERMINAL_EVENT_CAPACITY`.
+    pub remote_terminal_events: broadcast::Sender<RemoteEvent>,
     /// Outcome of the most recent session-sync sweep, for the Settings pane.
     pub sync_report: std::sync::Mutex<Option<crate::sync::SyncReport>>,
     /// One session-sync sweep at a time. `sync:set-config`, `sync:run-now` and
@@ -90,9 +97,11 @@ impl Default for AppState {
             workspaces: OnceCell::new(),
             gh_poller: OnceCell::new(),
             notifications: OnceCell::new(),
+            dock_badge: OnceCell::new(),
             ntfy: std::sync::RwLock::new(None),
             remote_server: std::sync::Mutex::new(None),
             remote_events: broadcast::channel(REMOTE_EVENT_CAPACITY).0,
+            remote_terminal_events: broadcast::channel(REMOTE_TERMINAL_EVENT_CAPACITY).0,
             sync_report: std::sync::Mutex::new(None),
             sync_sweep: Arc::new(std::sync::Mutex::new(())),
             skills: Arc::new(SkillRegistry::from_env()),

@@ -295,6 +295,26 @@ pub fn run() {
                             if state.db.set(Arc::clone(&database)).is_err() {
                                 tracing::warn!("database state was already initialized");
                             }
+                            let dock_badge = Arc::new(dock::DockBadgeService::new(
+                                dock::TauriDockBadgeSink::new(app.handle().clone()),
+                                {
+                                    let database = Arc::clone(&database);
+                                    Arc::new(move || {
+                                        persistence::dashboard::count_attention(
+                                            &database.read_connection(),
+                                        )
+                                        .map(|counts| counts.total)
+                                    })
+                                },
+                            ));
+                            if state.dock_badge.set(Arc::clone(&dock_badge)).is_err() {
+                                tracing::warn!("dock badge state was already initialized");
+                            }
+                            // Approvals left pending by the previous run badge
+                            // the dock from the first frame.
+                            if let Err(error) = dock_badge.update() {
+                                tracing::warn!(?error, "failed to set the dock badge at boot");
+                            }
                             // Warm the FTS5 message index on the blocking pool so the
                             // user's first ⌘K message search skips the cold-start cost:
                             // FTS5 module init, compiling the `session:search` statement
@@ -332,6 +352,7 @@ pub fn run() {
                                 tokio::sync::mpsc::unbounded_channel::<providers::flush_queue::DashboardDelta>();
                             let emit_handle = app.handle().clone();
                             let remote_events = state.remote_events.clone();
+                            let dock_badge_for_delta = Arc::clone(&dock_badge);
                             tauri::async_runtime::spawn(async move {
                                 while let Some(mut delta) = delta_rx.recv().await {
                                     // Conflate any deltas that piled up while the previous emit
@@ -383,6 +404,14 @@ pub fn run() {
                                     //
                                     // Remote clients are fed before the hop: a WebSocket
                                     // write needs no NSApp event loop.
+                                    // Session state and approval changes are the
+                                    // only inputs to the attention count, so an
+                                    // events-only streaming delta skips the read.
+                                    if !delta.sessions.is_empty() || !delta.approvals.is_empty() {
+                                        if let Err(error) = dock_badge_for_delta.update() {
+                                            tracing::warn!(?error, "failed to update dock badge");
+                                        }
+                                    }
                                     remote::publish(&remote_events, "dashboard:delta", &delta);
                                     let handle = emit_handle.clone();
                                     // Diagnostic for the "stream freezes, then everything

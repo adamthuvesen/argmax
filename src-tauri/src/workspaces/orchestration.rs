@@ -428,18 +428,7 @@ impl WorkspaceService {
             // Cleanup partial worktree registration so a future archive can
             // reach it. See TS comment for the failure modes this guards
             // against (disk full, ref races, lock contention).
-            let _ = run_git_text(
-                Path::new(&project.repo_path),
-                &[
-                    "worktree",
-                    "remove",
-                    "--force",
-                    &worktree_path.display().to_string(),
-                ],
-                Duration::from_millis(GIT_TIMEOUT_MS),
-            )
-            .await;
-            let _ = tokio::fs::remove_dir_all(&worktree_path).await;
+            discard_worktree(Path::new(&project.repo_path), &worktree_path, &branch).await;
             return Err(invalid_workspace(
                 format!("Could not create worktree for {branch}. {error}"),
                 "Choose another base ref or branch name and retry.",
@@ -448,7 +437,7 @@ impl WorkspaceService {
 
         // Block scope, not drop(): the async Send analysis must see the
         // non-Send connection guard end before the setup-command await below.
-        let workspace = {
+        let persisted = (|| {
             let connection = self.database.connection();
             let workspace = persist_workspace(
                 &connection,
@@ -471,7 +460,17 @@ impl WorkspaceService {
                 workspaces: vec![workspace.clone()],
                 ..DashboardDelta::default()
             });
-            workspace
+            Ok(workspace)
+        })();
+        // The worktree and branch exist but nothing references them: with no
+        // row, archive can never reach either. Undo the git side rather than
+        // leave the checkout orphaned.
+        let workspace = match persisted {
+            Ok(workspace) => workspace,
+            Err(error) => {
+                discard_worktree(Path::new(&project.repo_path), &worktree_path, &branch).await;
+                return Err(error);
+            }
         };
         if let Err(error) = self.watch(&workspace.id) {
             tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
@@ -2150,6 +2149,33 @@ fn comparable_worktree_path(path: &Path) -> PathBuf {
     canonical
 }
 
+/// Undo a `git worktree add -b` that must not survive: deregister the
+/// worktree, delete its directory, and drop the branch it created. Every step
+/// is best-effort — this only ever runs on an error path, where a second
+/// failure has nothing left to report to.
+async fn discard_worktree(repo_path: &Path, worktree_path: &Path, branch: &str) {
+    let _ = run_git_text(
+        repo_path,
+        &[
+            "worktree",
+            "remove",
+            "--force",
+            &worktree_path.display().to_string(),
+        ],
+        Duration::from_millis(GIT_TIMEOUT_MS),
+    )
+    .await;
+    let _ = tokio::fs::remove_dir_all(worktree_path).await;
+    // After the worktree is gone the branch is unreferenced; without this it
+    // stays behind and collides with the next workspace on the same label.
+    let _ = run_git_text(
+        repo_path,
+        &["branch", "-D", branch],
+        Duration::from_millis(GIT_TIMEOUT_MS),
+    )
+    .await;
+}
+
 async fn branch_exists(repo_path: &str, branch: &str) -> ArgmaxResult<bool> {
     let res = run_git_text(
         Path::new(repo_path),
@@ -2283,6 +2309,57 @@ fn slugify(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A create that dies after `git worktree add` must leave nothing behind:
+    // with no workspace row, archive can never reach the worktree, and a
+    // surviving branch collides with the next attempt at the same task label.
+    #[tokio::test]
+    async fn discarding_a_worktree_removes_its_directory_and_branch() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).expect("repo dir");
+        let git = |cwd: PathBuf, args: Vec<&str>| {
+            let out = std::process::Command::new("git")
+                .args(&args)
+                .current_dir(&cwd)
+                .output()
+                .expect("git");
+            assert!(out.status.success(), "git {args:?} failed");
+            String::from_utf8_lossy(&out.stdout).into_owned()
+        };
+        git(repo.clone(), vec!["init", "-q", "."]);
+        git(repo.clone(), vec!["config", "user.email", "t@example.com"]);
+        git(repo.clone(), vec!["config", "user.name", "t"]);
+        std::fs::write(repo.join("f.txt"), "x\n").expect("write");
+        git(repo.clone(), vec!["add", "-A"]);
+        git(repo.clone(), vec!["commit", "-qm", "base"]);
+
+        let worktree = dir.path().join("wt");
+        let worktree_arg = worktree.display().to_string();
+        git(
+            repo.clone(),
+            vec![
+                "worktree",
+                "add",
+                "-b",
+                "argmax/doomed",
+                &worktree_arg,
+                "HEAD",
+            ],
+        );
+        assert!(worktree.exists());
+
+        discard_worktree(&repo, &worktree, "argmax/doomed").await;
+
+        assert!(!worktree.exists(), "worktree directory should be gone");
+        let listed = git(repo.clone(), vec!["worktree", "list"]);
+        assert!(
+            !listed.contains(&worktree_arg),
+            "worktree still registered: {listed}"
+        );
+        let branches = git(repo.clone(), vec!["branch", "--list", "argmax/doomed"]);
+        assert!(branches.trim().is_empty(), "branch survived: {branches}");
+    }
 
     #[test]
     fn branch_header_yields_the_local_branch_name() {

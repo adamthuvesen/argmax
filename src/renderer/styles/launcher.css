@@ -20,11 +20,13 @@
   margin-block-end: -30px;
 }
 
-/* The line under the fox holds still on every visit, so it sits back a step
-   from --text: the mascot carries the greeting and this names the job. */
+/* The line under the fox holds still on every visit, so it sits back from
+   --text: the mascot carries the greeting and this names the job. Sized off
+   --text-display rather than a raw px so it still rides the type-scale
+   setting; the ladder tops out below what this line wants. */
 .launcher-hero-title {
   margin: 0;
-  font-size: var(--text-xl);
+  font-size: calc(var(--text-display) + 2px);
   font-weight: 400;
   letter-spacing: -0.01em;
   color: var(--muted-strong);

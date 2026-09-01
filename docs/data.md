@@ -14,6 +14,10 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 
 Reads take pooled `SQLITE_OPEN_READ_ONLY` connections through `Database::read_connection`, not the writer `Mutex<Connection>`, so a read never queues behind a write. A write attempted on the read path fails loudly; that is the point. See [performance.md](performance.md).
 
+`routines` (v19) stores scheduled tasks: a prompt plus schedule that the
+in-app scheduler launches as normal top-level sessions. See
+[scheduled-tasks.md](scheduled-tasks.md).
+
 ## Repositories
 
 Typed modules (`projects.rs`, `workspaces.rs`, `sessions.rs`, `events.rs`, `approvals.rs`, `checks.rs`, `usage.rs`, `learnings.rs`, `gh.rs`, `routines.rs`) expose queries to services and IPC.

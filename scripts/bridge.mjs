@@ -11,6 +11,8 @@
 //   node scripts/bridge.mjs logs [--after-seq N]
 //   node scripts/bridge.mjs chat --repo <path> --prompt '…' [--provider claude]
 //        [--worktree] [--timeout 600] [--model-id …] [--model-label …] [--effort …]
+//   node scripts/bridge.mjs reply --session <id> --prompt '…' [--timeout 600]
+//   node scripts/bridge.mjs terminal --workspace <id> --run '<shell command>' [--seconds 10]
 //
 // Connection resolution, first match wins:
 //   --port <n> --token <t>        explicit
@@ -18,7 +20,12 @@
 //   $ARGMAX_DATA_DIR              same, via the environment
 //   the real app profile          ~/Library/Application Support/com.argmax.rs
 //
-// `chat` exit codes: 0 session complete · 2 failed/cancelled · 3 timeout.
+// `chat` and `reply` exit codes: 0 session complete · 2 failed/cancelled · 3 timeout.
+// `reply` sends a follow-up turn to an existing session (the resume path) and
+// streams it the same way. `terminal` spawns a PTY in a workspace over the
+// bridge, runs one command, and reports how the output reached a remote client:
+// chunk count, bytes, largest chunk — the observable side of terminal push
+// conflation (docs/performance.md "Push Payloads").
 
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -138,22 +145,58 @@ async function commandChat(bridge, flags) {
     attachments: null
   });
   console.log(JSON.stringify({ launched: true, sessionId: session.id, workspaceId: workspace.id }));
+  await followSession(bridge, { sessionId: session.id, workspaceId: workspace.id, initialState: session.state, startedAt, timeoutMs });
+}
 
-  // Timeline events stream out as NDJSON while the session runs; state is
-  // polled from dashboard:list because a session's terminal transition can
-  // land after its last event.
-  let eventCursor = null;
-  let rawOutputCursor = null;
+async function commandReply(bridge, flags) {
+  if (!flags.session || !flags.prompt) fail("usage: bridge.mjs reply --session <id> --prompt '…'");
+  const timeoutMs = Number(flags.timeout ?? 600) * 1000;
+  const dashboard = await bridge.call("dashboard:list", {});
+  const session = dashboard.sessions.find((entry) => entry.id === flags.session);
+  if (!session) fail(`no session ${flags.session}`);
+  // Only the timeline written after the send is streamed: the cursor is read
+  // first so the earlier turns are not replayed.
+  const before = await bridge.call("session:events-since", { sessionId: session.id, eventCursor: null, rawOutputCursor: null });
+  const startedAt = Date.now();
+  const sent = await bridge.call("providers:send-input", {
+    sessionId: session.id,
+    input: flags.prompt,
+    provider: null,
+    modelLabel: null,
+    modelId: null,
+    reasoningEffort: null,
+    fastMode: false
+  });
+  console.log(JSON.stringify({ sent: true, queued: sent.queued, sessionId: session.id }));
+  await followSession(bridge, {
+    sessionId: session.id,
+    workspaceId: session.workspaceId,
+    initialState: "running",
+    startedAt,
+    timeoutMs,
+    eventCursor: before.eventCursor,
+    rawOutputCursor: before.rawOutputCursor
+  });
+}
+
+// Stream a session's timeline as NDJSON until it reaches a terminal state,
+// then print the cost summary and exit 0 / 2 / 3. State is polled from
+// dashboard:list because a session's terminal transition can land after its
+// last event.
+async function followSession(bridge, options) {
+  const { sessionId, workspaceId, startedAt, timeoutMs } = options;
+  let eventCursor = options.eventCursor ?? null;
+  let rawOutputCursor = options.rawOutputCursor ?? null;
   let eventCount = 0;
-  let state = session.state;
+  let state = options.initialState;
   while (!TERMINAL_SESSION_STATES.has(state)) {
     if (Date.now() - startedAt > timeoutMs) {
-      console.log(JSON.stringify({ timeout: true, sessionId: session.id, state, eventCount }));
+      console.log(JSON.stringify({ timeout: true, sessionId, state, eventCount }));
       process.exit(3);
     }
     await new Promise((resolve) => setTimeout(resolve, 750));
     const batch = await bridge.call("session:events-since", {
-      sessionId: session.id,
+      sessionId,
       eventCursor,
       rawOutputCursor
     });
@@ -165,15 +208,15 @@ async function commandChat(bridge, flags) {
       console.log(JSON.stringify({ at: event.createdAt, type: event.type, message }));
     }
     const dashboard = await bridge.call("dashboard:list", {});
-    const live = dashboard.sessions.find((entry) => entry.id === session.id);
+    const live = dashboard.sessions.find((entry) => entry.id === sessionId);
     if (live) state = live.state;
   }
 
-  const cost = await bridge.call("session:cost-summary", { sessionId: session.id }).catch(() => null);
+  const cost = await bridge.call("session:cost-summary", { sessionId }).catch(() => null);
   console.log(
     JSON.stringify({
-      sessionId: session.id,
-      workspaceId: workspace.id,
+      sessionId,
+      workspaceId,
       state,
       eventCount,
       seconds: Math.round((Date.now() - startedAt) / 100) / 10,
@@ -184,11 +227,43 @@ async function commandChat(bridge, flags) {
   process.exit(state === "complete" ? 0 : 2);
 }
 
+async function commandTerminal(bridge, flags) {
+  if (!flags.workspace || !flags.run) fail("usage: bridge.mjs terminal --workspace <id> --run '<shell command>'");
+  const seconds = Number(flags.seconds ?? 10);
+  const chunks = [];
+  let exit = null;
+  let terminalId = null;
+  bridge.onEvent(({ channel, payload }) => {
+    if (payload?.terminalId !== terminalId) return;
+    if (channel === "terminal:data") chunks.push(payload.data.length);
+    else if (channel === "terminal:exit") exit = payload;
+  });
+  const spawned = await bridge.call("terminal:spawn", { workspaceId: flags.workspace, cols: 120, rows: 32 });
+  terminalId = spawned.terminalId ?? spawned.id;
+  if (!terminalId) fail(`terminal:spawn returned no id: ${JSON.stringify(spawned)}`);
+  // A short settle lets the shell print its prompt before the command lands.
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const promptChunks = chunks.length;
+  await bridge.call("terminal:write", { terminalId, data: `${flags.run}\n` });
+  await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+  await bridge.call("terminal:terminate", { terminalId }).catch(() => undefined);
+  const output = chunks.slice(promptChunks);
+  console.log(
+    JSON.stringify({
+      terminalId,
+      chunks: output.length,
+      bytes: output.reduce((sum, size) => sum + size, 0),
+      largestChunk: output.reduce((max, size) => Math.max(max, size), 0),
+      exit
+    })
+  );
+}
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   const { positionals, flags } = parseArgs(rest);
   if (!command || flags.help) {
-    fail("usage: bridge.mjs <call|watch|logs|chat> …  (see header comment)");
+    fail("usage: bridge.mjs <call|watch|logs|chat|reply|terminal> …  (see header comment)");
   }
   let connection;
   try {
@@ -202,6 +277,8 @@ async function main() {
     else if (command === "watch") await commandWatch(bridge, flags);
     else if (command === "logs") await commandLogs(bridge, flags);
     else if (command === "chat") await commandChat(bridge, flags);
+    else if (command === "reply") await commandReply(bridge, flags);
+    else if (command === "terminal") await commandTerminal(bridge, flags);
     else fail(`unknown command "${command}"`);
   } finally {
     bridge.close();

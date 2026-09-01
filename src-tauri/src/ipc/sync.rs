@@ -16,9 +16,9 @@ pub fn sync_get_status(app: AppHandle, state: State<'_, AppState>) -> ArgmaxResu
     Ok(status(&state, config))
 }
 
-#[tauri::command(rename = "sync:set-config", async)]
+#[tauri::command(rename = "sync:set-config")]
 #[specta::specta]
-pub fn sync_set_config(
+pub async fn sync_set_config(
     app: AppHandle,
     state: State<'_, AppState>,
     input: SyncSetConfigInput,
@@ -37,16 +37,30 @@ pub fn sync_set_config(
     // Turning a provider off prunes its un-adopted imports, and shrinking the
     // window prunes what fell outside it — both happen inside the sweep, so
     // the user sees the effect of the setting immediately.
-    run_now(&state, &config);
+    let config = sweep_off_main(app, config).await?;
     Ok(status(&state, config))
 }
 
-#[tauri::command(rename = "sync:run-now", async)]
+#[tauri::command(rename = "sync:run-now")]
 #[specta::specta]
-pub fn sync_run_now(app: AppHandle, state: State<'_, AppState>) -> ArgmaxResult<SyncStatus> {
+pub async fn sync_run_now(app: AppHandle, state: State<'_, AppState>) -> ArgmaxResult<SyncStatus> {
     let config = sync::load_or_create_config(&app_data_dir(&app)?);
-    run_now(&state, &config);
+    let config = sweep_off_main(app, config).await?;
     Ok(status(&state, config))
+}
+
+// `spawn_blocking`, not `#[tauri::command(async)]`: that flag is a
+// `tokio::spawn`, and a sweep stats every provider transcript store on disk and
+// writes the imports through SQLite — long enough to park a worker shared with
+// provider IO, the remote bridge, and the `dashboard:delta` emit loop. The
+// config comes back out so the caller can report the settings it just applied.
+async fn sweep_off_main(app: AppHandle, config: SyncConfig) -> ArgmaxResult<SyncConfig> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_now(&tauri::Manager::state::<AppState>(&app), &config);
+        config
+    })
+    .await
+    .map_err(|error| ArgmaxError::service("SYNC_SWEEP_JOIN", error.to_string()))
 }
 
 fn run_now(state: &State<'_, AppState>, config: &SyncConfig) {

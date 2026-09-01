@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::{inputs::*, live_database, read_off_main};
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
@@ -11,7 +13,7 @@ use crate::{
     providers::one_shot::suggest_follow_up,
     providers::subagent_trace::{import_subagent_trace_events, reconcile_session_subagent_traces},
     state::AppState,
-    workspaces::orchestration::SessionForkResult,
+    workspaces::{orchestration::SessionForkResult, WorkspaceService},
 };
 use tauri::State;
 
@@ -134,28 +136,36 @@ fn reconcile_subagent_traces_with_warning(
     }
 }
 
-// `async` so the transcript copy (potentially thousands of row inserts) runs
-// off the macOS main thread.
-#[tauri::command(rename = "session:fork", async)]
+// `spawn_blocking`, not `#[tauri::command(async)]`: that flag is a
+// `tokio::spawn`, and the transcript copy is thousands of row inserts — long
+// enough to park a worker shared with provider IO, the remote bridge, and the
+// `dashboard:delta` emit loop.
+#[tauri::command(rename = "session:fork")]
 #[specta::specta]
-pub fn session_fork(
+pub async fn session_fork(
     state: State<'_, AppState>,
     input: SessionForkInput,
 ) -> ArgmaxResult<SessionForkResult> {
-    session_fork_impl(&state, input)
+    let workspaces = live_workspaces(&state)?;
+    tauri::async_runtime::spawn_blocking(move || workspaces.fork_session(input.session_id.as_str()))
+        .await
+        .map_err(|error| ArgmaxError::service("SESSION_FORK_JOIN", error.to_string()))?
 }
 
 pub(crate) fn session_fork_impl(
     state: &AppState,
     input: SessionForkInput,
 ) -> ArgmaxResult<SessionForkResult> {
-    let workspaces = state.workspaces.get().cloned().ok_or_else(|| {
+    live_workspaces(state)?.fork_session(input.session_id.as_str())
+}
+
+fn live_workspaces(state: &AppState) -> ArgmaxResult<Arc<WorkspaceService>> {
+    state.workspaces.get().cloned().ok_or_else(|| {
         ArgmaxError::service(
             "WORKSPACE_SERVICE_NOT_READY",
             "workspace service is not initialized",
         )
-    })?;
-    workspaces.fork_session(input.session_id.as_str())
+    })
 }
 
 #[tauri::command(rename = "session:clear")]
@@ -194,7 +204,7 @@ pub(crate) fn session_cost_summary_impl(
     input: SessionCostSummaryInput,
 ) -> ArgmaxResult<SessionCostSummary> {
     let database = live_database(state)?;
-    let connection = database.connection();
+    let connection = database.read_connection();
     get_session_cost_summary(&connection, input.session_id.as_str())
 }
 

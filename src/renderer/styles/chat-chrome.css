@@ -69,6 +69,20 @@
   overflow-x: auto;
 }
 
+.error-boundary-details summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.error-boundary-details .error-boundary-message {
+  margin-top: 8px;
+  max-height: 40dvh;
+  overflow: auto;
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+
 .error-boundary-actions {
   display: flex;
   gap: 8px;

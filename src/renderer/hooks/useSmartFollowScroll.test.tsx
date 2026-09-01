@@ -596,7 +596,7 @@ describe("useSmartFollowScroll", () => {
       y: 0,
       height: 200,
       bottom: 200
-    } as DOMRect);
+    });
     let nodeContentTop = 800;
     vi.spyOn(turn, "getBoundingClientRect").mockImplementation(
       () =>
@@ -606,7 +606,7 @@ describe("useSmartFollowScroll", () => {
           y: nodeContentTop - state.scrollTop,
           height: 40,
           bottom: nodeContentTop - state.scrollTop + 40
-        }) as DOMRect
+        })
     );
     document.elementFromPoint = () => turn;
 

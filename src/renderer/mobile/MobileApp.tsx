@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { Archive, FolderGit2, Moon, MoreHorizontal, Plus, Sun } from "lucide-react";
 import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
 import { LinesSkeleton } from "../components/LinesSkeleton.js";
@@ -243,11 +243,25 @@ export function MobileApp(): JSX.Element {
     resync: false
   });
   useEffect(() => subscribeRemoteConnection(setConnection), []);
+  // `resync` stays true until the next connection publish, so the reconnect
+  // handler below reads the open session through a ref: keeping it in the
+  // dependency list would replay the whole recovery every time the reader
+  // opened a different session afterwards.
+  const selectedSessionIdRef = useRef(selectedSessionId);
+  useEffect(() => {
+    selectedSessionIdRef.current = selectedSessionId;
+  }, [selectedSessionId]);
   // A socket that died and came back missed every delta in between, so the
   // snapshot has to be reloaded rather than resumed.
   useEffect(() => {
-    if (connection.status === "connected" && connection.resync) void refresh();
-  }, [connection, refresh]);
+    if (connection.status !== "connected" || !connection.resync) return;
+    void refresh();
+    // `refresh` recovers rows but never events. A turn that finished during
+    // the outage comes back as `complete`, which stops the running-only event
+    // tick — so without this pull the tail of the transcript never arrives.
+    const sessionId = selectedSessionIdRef.current;
+    if (sessionId) void loadSessionEvents(sessionId);
+  }, [connection, refresh, loadSessionEvents]);
 
   useEffect(() => {
     if (!toast) return;
@@ -276,8 +290,15 @@ export function MobileApp(): JSX.Element {
   const { pinnedRows, priorityRows, activityRows } = useMemo(() => {
     const sessionsByWorkspace = new Map(snapshot.sessions.map((session) => [session.workspaceId, session]));
     const attentionByWorkspace = computeWorkspaceAttention(snapshot.workspaces, snapshot.sessions, nowMs);
+    // A workspace with no session is a dead row: tapping it resolves no
+    // session, so nothing opens. The desktop sidebar requires a session for
+    // every section too, and the launcher's connection-lost path can strand
+    // exactly such a workspace.
     const visible = snapshot.workspaces.filter(
-      (workspace) => workspace.state !== "archived" && workspace.kind !== "popup"
+      (workspace) =>
+        workspace.state !== "archived" &&
+        workspace.kind !== "popup" &&
+        sessionsByWorkspace.has(workspace.id)
     );
     const rowsById = new Map<string, SessionListRow>(
       visible.map((workspace) => [

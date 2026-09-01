@@ -216,6 +216,85 @@ describe("useDashboardSession — refresh / delta race", () => {
     expect(result.current.snapshot.approvals).toEqual([]);
   });
 
+  it("keeps what a delta wrote while refresh was awaiting its reads", async () => {
+    // `workspaces.status()` and `approvals.pending()` are both read BEFORE any
+    // delta that lands during the await, so applying them wholesale reverts
+    // the delta: a completed session snaps back to running until the next
+    // focus, and an approval the delta just pushed is erased for good —
+    // approvals only ever arrive as incremental pushes.
+    let deltaHandler: ((delta: DashboardDelta) => void) | null = null;
+    let resolveStatus!: (value: Awaited<ReturnType<ArgmaxApi["workspaces"]["status"]>>) => void;
+    const staleStatus = {
+      workspaces: baseSnapshot.workspaces,
+      sessions: baseSnapshot.sessions,
+      checks: baseSnapshot.checks
+    };
+    (window as unknown as { argmax: ArgmaxApi }).argmax = {
+      workspaces: {
+        status: vi.fn(
+          () =>
+            new Promise<Awaited<ReturnType<ArgmaxApi["workspaces"]["status"]>>>((resolve) => {
+              resolveStatus = resolve;
+            })
+        )
+      } as unknown as ArgmaxApi["workspaces"],
+      approvals: { pending: pendingMock, resolve: resolveApprovalMock } as unknown as ArgmaxApi["approvals"],
+      dashboard: {
+        onDelta: (handler: (delta: DashboardDelta) => void) => {
+          deltaHandler = handler;
+          return () => {
+            deltaHandler = null;
+          };
+        }
+      } as unknown as ArgmaxApi["dashboard"],
+      session: {
+        eventsSince: vi.fn().mockResolvedValue({
+          events: [],
+          rawOutputs: [],
+          eventCursor: 0,
+          rawOutputCursor: 0
+        })
+      } as unknown as ArgmaxApi["session"]
+    } as unknown as ArgmaxApi;
+
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    await waitFor(() => expect(deltaHandler).not.toBeNull());
+
+    const raisedApproval: ApprovalRequest = {
+      id: "approval-mid-refresh",
+      sessionId: "session-existing",
+      command: "rm -rf build",
+      cwd: "/tmp/existing",
+      provider: "claude",
+      providerInvocationId: null,
+      providerRequestId: null,
+      riskLevel: "high",
+      status: "pending",
+      createdAt: "2026-05-12T15:00:05.000Z",
+      resolvedAt: null
+    };
+
+    await act(async () => {
+      const pending = result.current.refresh();
+      // The turn ends and an approval is raised while the reads are in flight.
+      deltaHandler?.({
+        sessions: [
+          makeSession({ state: "complete", lastActivityAt: "2026-05-12T15:00:06.000Z" })
+        ],
+        approvals: [raisedApproval]
+      });
+      resolveStatus(staleStatus);
+      await pending;
+    });
+
+    expect(result.current.snapshot.sessions[0]?.state).toBe("complete");
+    expect(result.current.snapshot.approvals.map((approval) => approval.id)).toEqual([
+      "approval-mid-refresh"
+    ]);
+  });
+
   it("preserves the last-good snapshot and toasts when a single refresh fails", async () => {
     // A genuine single-refresh failure must NOT blank a populated dashboard:
     // App renders loadState === "error" as a full-screen EmptyState. The

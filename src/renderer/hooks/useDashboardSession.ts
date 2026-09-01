@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type {
+  ApprovalRequest,
   DashboardSnapshot,
   ProjectSummary,
   SessionEventsSinceResult,
@@ -40,6 +41,41 @@ function mergeSessionEventTail(
     ...merged,
     events: merged.events.filter((event) => !supersededIds.has(event.id))
   };
+}
+
+/**
+ * Drops rows a `dashboard:delta` already advanced past while a status read was
+ * in flight — the fetched copy predates the delta, so upserting it would undo
+ * the newer state. Rows absent from `current` are new and always kept.
+ */
+function withoutOutdated<T extends { id: string }>(
+  current: T[],
+  fetched: T[],
+  changedAt: (item: T) => string
+): T[] {
+  const byId = new Map(current.map((item) => [item.id, item]));
+  const kept = fetched.filter((item) => {
+    const existing = byId.get(item.id);
+    return !existing || changedAt(existing) <= changedAt(item);
+  });
+  return kept.length === fetched.length ? fetched : kept;
+}
+
+/**
+ * Re-adds approvals that are still pending locally but missing from a
+ * `approvals.pending()` list read before a concurrent delta. The list is
+ * authoritative for everything it saw; an approval the backend raised after
+ * that read is simply not in it, and dropping it would lose the prompt for
+ * good.
+ */
+function withCarriedPending(current: ApprovalRequest[], fetched: ApprovalRequest[]): ApprovalRequest[] {
+  const fetchedIds = new Set(fetched.map((approval) => approval.id));
+  const carried = current.filter(
+    (approval) => approval.status === "pending" && !fetchedIds.has(approval.id)
+  );
+  if (carried.length === 0) return fetched;
+  // Newest first, the order mergeSlice keeps approvals in.
+  return [...fetched, ...carried].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
 export interface UseDashboardSessionOptions {
@@ -254,6 +290,7 @@ export function useDashboardSession(
 
   const refresh = useCallback(async (): Promise<void> => {
     const token = ++dashboardRefreshToken.current;
+    const deltaRevision = dashboardDeltaRevision.current;
     try {
       if (!window.argmax) {
         await loadDashboard();
@@ -280,12 +317,27 @@ export function useDashboardSession(
       // truth, and merging would leave resolved approvals lingering in
       // snapshot.approvals because mergeSlice never deletes.
       setSnapshot((current) => {
+        // Both responses were read BEFORE any delta that landed during the
+        // await, so on a race they are the stale copy — same guard shape as
+        // loadDashboard. Upserting them wholesale would revert a
+        // `session.completed` back to running until the next focus, and
+        // replacing approvals would erase one the delta had just pushed
+        // (approvals only ever arrive as incremental pushes; mergeSlice never
+        // re-adds them).
+        const raced = deltaRevision !== dashboardDeltaRevision.current;
         const merged = mergeDashboardDelta(current, {
-          workspaces: status.workspaces,
-          sessions: status.sessions,
-          checks: status.checks
+          workspaces: raced
+            ? withoutOutdated(current.workspaces, status.workspaces, (workspace) => workspace.lastActivityAt)
+            : status.workspaces,
+          sessions: raced
+            ? withoutOutdated(current.sessions, status.sessions, (session) => session.lastActivityAt)
+            : status.sessions,
+          checks: raced
+            ? withoutOutdated(current.checks, status.checks, (check) => check.completedAt ?? check.startedAt)
+            : status.checks
         });
-        return merged.approvals === approvals ? merged : { ...merged, approvals };
+        const authoritative = raced ? withCarriedPending(current.approvals, approvals) : approvals;
+        return merged.approvals === authoritative ? merged : { ...merged, approvals: authoritative };
       });
       setLoadState("ready");
       setLoadError(null);

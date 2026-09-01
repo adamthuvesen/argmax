@@ -9,15 +9,16 @@ use std::io::Read;
 const READ_BUFFER_BYTES: usize = 8192;
 
 /// Largest prefix of `bytes` that ends on a UTF-8 codepoint boundary. Scans at
-/// most the last 3 bytes — UTF-8 codepoints are 1-4 bytes long, so an incomplete
-/// trailing sequence is necessarily within the tail. Returns the byte length
-/// safe to decode now; the remainder should be carried into the next read.
+/// most the last 4 bytes — UTF-8 codepoints are 1-4 bytes long, so the leading
+/// byte of the trailing sequence is necessarily within that window. Returns the
+/// byte length safe to decode now; the remainder should be carried into the next
+/// read.
 pub fn utf8_safe_split(bytes: &[u8]) -> usize {
     if bytes.is_empty() {
         return 0;
     }
     let len = bytes.len();
-    let scan_from = len.saturating_sub(3);
+    let scan_from = len.saturating_sub(4);
     for i in (scan_from..len).rev() {
         let byte = bytes[i];
         // Continuation bytes are 10xxxxxx — keep walking left.
@@ -42,8 +43,15 @@ pub fn utf8_safe_split(bytes: &[u8]) -> usize {
         }
         return i;
     }
-    // Whole tail is continuation bytes — emit nothing this round.
-    0
+    // Four continuation bytes with no leader can never become valid UTF-8, so
+    // waiting for more input would stall the stream forever — flush and let
+    // from_utf8_lossy mark them. A shorter run may still be completed by the
+    // next read.
+    if len >= 4 {
+        len
+    } else {
+        0
+    }
 }
 
 /// Reads `reader` in fixed-size chunks and forwards decoded UTF-8 text to
@@ -115,6 +123,17 @@ mod tests {
         assert_eq!(utf8_safe_split(&[0xC3, 0xA9]), 2);
         // 3 of the 4 bytes of an emoji are present → emit nothing yet.
         assert_eq!(utf8_safe_split(&[0xF0, 0x9F, 0x98]), 0);
+        // A complete 4-byte codepoint at the tail is safe to emit now.
+        assert_eq!(utf8_safe_split("hi😀".as_bytes()), 6);
+        assert_eq!(utf8_safe_split("😀".as_bytes()), 4);
+    }
+
+    #[test]
+    fn split_flushes_a_leaderless_continuation_run() {
+        // Four continuation bytes can never be completed — flush rather than
+        // stall the stream waiting for a leading byte that cannot come.
+        assert_eq!(utf8_safe_split(&[0x80, 0x80, 0x80, 0x80]), 4);
+        assert_eq!(utf8_safe_split(&[0x80, 0x80, 0x80]), 0);
     }
 
     /// Reader that hands out pre-baked chunks, then optionally one error.
@@ -165,6 +184,19 @@ mod tests {
         let mut out = String::new();
         pump_utf8_stream(reader, |_| true, |chunk| out.push_str(&chunk), |_| {});
         assert_eq!(out, "hi");
+    }
+
+    #[test]
+    fn emits_a_trailing_four_byte_codepoint() {
+        // A read ending exactly on a complete emoji must not be held back.
+        let reader = ChunkReader {
+            chunks: vec!["hi😀".as_bytes().to_vec()],
+            index: 0,
+            error_at_end: false,
+        };
+        let mut out = String::new();
+        pump_utf8_stream(reader, |_| true, |chunk| out.push_str(&chunk), |_| {});
+        assert_eq!(out, "hi😀");
     }
 
     #[test]

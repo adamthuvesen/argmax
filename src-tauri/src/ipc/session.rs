@@ -1,11 +1,11 @@
 use super::{inputs::*, live_database, read_off_main};
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
-    persistence::events::latest_agent_message,
     persistence::{
         dashboard::{list_session_agent_tail, list_session_tail},
-        events::SessionEventsSinceResult,
+        events::{latest_agent_message, SessionEventsSinceResult},
         learnings::{search_events, EventSearchResult},
+        sessions::SessionSummary,
         usage::{get_session_cost_summary, SessionCostSummary},
     },
     providers::one_shot::suggest_follow_up,
@@ -157,6 +157,28 @@ pub(crate) fn session_fork_impl(
         )
     })?;
     workspaces.fork_session(input.session_id.as_str())
+}
+
+#[tauri::command(rename = "session:clear")]
+#[specta::specta]
+pub async fn session_clear(
+    state: State<'_, AppState>,
+    input: SessionClearInput,
+) -> ArgmaxResult<SessionSummary> {
+    session_clear_impl(&state, input).await
+}
+
+pub(crate) async fn session_clear_impl(
+    state: &AppState,
+    input: SessionClearInput,
+) -> ArgmaxResult<SessionSummary> {
+    let providers = state.providers.get().cloned().ok_or_else(|| {
+        ArgmaxError::service(
+            "PROVIDER_SERVICE_NOT_READY",
+            "provider service is not initialized",
+        )
+    })?;
+    providers.clear(input).await
 }
 
 #[tauri::command(rename = "session:cost-summary")]

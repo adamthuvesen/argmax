@@ -1,4 +1,4 @@
-import type { TimelineEvent } from "../../shared/types.js";
+import type { EventType, TimelineEvent } from "../../shared/types.js";
 import { stringValue } from "../../shared/typeGuards.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { COMPACTION_FINISHED, COMPACTION_STARTED } from "./compaction.js";
@@ -71,6 +71,38 @@ function compareEventOrder(left: TimelineEvent, right: TimelineEvent): number {
 
 function eventIsAfter(left: TimelineEvent, right: TimelineEvent): boolean {
   return compareEventOrder(left, right) > 0;
+}
+
+export const SESSION_CLEARED: EventType = "session.cleared";
+
+/**
+ * Events after the latest `/clear`. The chat surface and the next prompt both
+ * treat everything at or before that watermark as gone. The debug log still
+ * reads the full timeline.
+ */
+export function eventsAfterLatestClear(events: readonly TimelineEvent[]): TimelineEvent[] {
+  const clear = latestClearEvent(events);
+  if (!clear) return [...events];
+  return events.filter((event) => eventIsAfter(event, clear));
+}
+
+export function latestClearEvent(events: readonly TimelineEvent[]): TimelineEvent | null {
+  let latest: TimelineEvent | null = null;
+  for (const event of events) {
+    if (event.type !== SESSION_CLEARED) continue;
+    if (latest === null || compareEventOrder(event, latest) > 0) {
+      latest = event;
+    }
+  }
+  return latest;
+}
+
+export function outputsAfterClear<T extends { createdAt: string }>(
+  outputs: readonly T[],
+  clear: TimelineEvent | null
+): T[] {
+  if (!clear) return [...outputs];
+  return outputs.filter((output) => output.createdAt > clear.createdAt);
 }
 
 /** Snapshot events arrive newest-first; reverse before the stable sort so rows

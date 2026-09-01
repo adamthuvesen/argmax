@@ -68,6 +68,10 @@ _Avoid_: Conversation, chat, run, thread, agent
 The provider CLI's own identifier for the underlying conversation, kept so a session can be resumed. Distinct from the Argmax session id.
 _Avoid_: Session id
 
+**Clear**:
+Reset a session's provider conversation in place. Drops the native resume id, hides the existing transcript from the chat surface and from the next prompt, and keeps the same workspace (checkout, branch, task label). The next message starts a fresh provider conversation.
+_Avoid_: Reset, new session, wipe
+
 **Turn**:
 One user message and everything the agent produced in response, up to the next user message. The unit the chat surface renders and groups cards into.
 

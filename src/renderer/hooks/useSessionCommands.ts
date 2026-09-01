@@ -8,6 +8,11 @@ interface UseSessionCommandsOptions {
   loadSessionEvents: (sessionId: string) => Promise<void>;
   setToast: (toast: ToastMessage) => void;
   fastMode: boolean;
+  onEarlyStop?: (sessionId: string) => void;
+}
+
+export interface TerminateSessionOptions {
+  restoreLauncherOnEarlyStop?: boolean;
 }
 
 export interface SessionCommands {
@@ -21,14 +26,16 @@ export interface SessionCommands {
   cancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   sendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
   runCheck: (workspaceId: string, command: string) => Promise<void>;
-  terminateSession: (sessionId: string) => Promise<void>;
+  terminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
+  clearSession: (sessionId: string) => Promise<void>;
 }
 
 export function useSessionCommands({
   refreshDashboardStatus,
   loadSessionEvents,
   setToast,
-  fastMode
+  fastMode,
+  onEarlyStop
 }: UseSessionCommandsOptions): SessionCommands {
   const sendSessionInput = useCallback(
     async (
@@ -106,9 +113,12 @@ export function useSessionCommands({
   );
 
   const terminateSession = useCallback(
-    async (sessionId: string): Promise<void> => {
+    async (sessionId: string, options?: TerminateSessionOptions): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to stop a live session.");
+      }
+      if (options?.restoreLauncherOnEarlyStop !== false) {
+        onEarlyStop?.(sessionId);
       }
       const ok = await withToast(
         () => window.argmax!.providers.terminate(sessionId),
@@ -121,6 +131,24 @@ export function useSessionCommands({
         await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
       }
     },
+    [onEarlyStop, refreshDashboardStatus, loadSessionEvents, setToast]
+  );
+
+  const clearSession = useCallback(
+    async (sessionId: string): Promise<void> => {
+      if (!window.argmax) {
+        throw new Error("Open the Tauri app window to clear a session.");
+      }
+      const ok = await withToast(
+        () => window.argmax!.session.clear({ sessionId }),
+        setToast,
+        "Could not clear the conversation."
+      );
+      if (!ok) {
+        throw new Error("Could not clear the conversation.");
+      }
+      await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
+    },
     [refreshDashboardStatus, loadSessionEvents, setToast]
   );
 
@@ -129,6 +157,7 @@ export function useSessionCommands({
     cancelQueuedMessage,
     sendQueuedMessageNow,
     runCheck,
-    terminateSession
+    terminateSession,
+    clearSession
   };
 }

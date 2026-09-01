@@ -42,9 +42,12 @@ import { summarizeChangedFiles } from "../lib/changedFiles.js";
 import {
   buildConversationEvents,
   buildSessionToolCalls,
+  eventsAfterLatestClear,
   hasRenderableSessionContent,
   lastAgentResponseEvent,
   lastSignificantSessionEvent,
+  latestClearEvent,
+  outputsAfterClear,
   subAgentToolUseIds
 } from "../lib/sessionConversationModel.js";
 import { assignAgentCodenames } from "../lib/agentNames.js";
@@ -83,6 +86,7 @@ import {
   SessionConversationTurn,
   SessionConversationUserMessage
 } from "./SessionConversationTurn.js";
+import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 
 // How many transcript items are mounted at once.
 //
@@ -131,6 +135,7 @@ export function SessionConversation({
   onSendQueuedMessageNow,
   pendingMessages = [],
   onTerminateSession,
+  onClearSession,
   onForkSession,
   onRunCheck,
   onToggleLog,
@@ -205,7 +210,8 @@ export function SessionConversation({
   pendingMessages?: PendingMessage[];
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
-  onTerminateSession: (sessionId: string) => Promise<void>;
+  onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
+  onClearSession: (sessionId: string) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   onToggleLog: () => void;
@@ -293,7 +299,12 @@ export function SessionConversation({
   }, [registerAnnotationSink]);
   // `events` is sorted descending upstream (mergeDashboardDelta), so a reverse
   // gives ascending order for free without a per-tick string comparator pass.
-  const conversationEvents = useMemo(() => buildConversationEvents(events), [events]);
+  const liveEvents = useMemo(() => eventsAfterLatestClear(events), [events]);
+  const liveRawOutputs = useMemo(
+    () => outputsAfterClear(rawOutputs, latestClearEvent(events)),
+    [events, rawOutputs]
+  );
+  const conversationEvents = useMemo(() => buildConversationEvents(liveEvents), [liveEvents]);
   const askSideChat = useMemo(() => {
     if (!onOpenSideChat) return undefined;
     return (selection: ChatSelection): void => {
@@ -328,10 +339,10 @@ export function SessionConversation({
   // byte from the child; counting it here suppresses the JSON dump that
   // otherwise leaks the 8 KB system-init payload into the chat while Claude
   // is still in its pre-answer thinking phase.
-  const hasRenderableContent = hasRenderableSessionContent(conversationEvents, events);
+  const hasRenderableContent = hasRenderableSessionContent(conversationEvents, liveEvents);
   const terminalTranscript = useMemo(
-    () => (hasRenderableContent ? "" : buildTerminalTranscript(rawOutputs, session?.id ?? null)),
-    [rawOutputs, session?.id, hasRenderableContent]
+    () => (hasRenderableContent ? "" : buildTerminalTranscript(liveRawOutputs, session?.id ?? null)),
+    [liveRawOutputs, session?.id, hasRenderableContent]
   );
 
   // Only a running session can hold a genuinely in-flight tool. Passing this
@@ -340,8 +351,8 @@ export function SessionConversation({
   // instead of leaving a tool row spinning forever.
   const sessionRunning = session?.state === "running";
   const toolCalls = useMemo(
-    () => buildSessionToolCalls(events, sessionRunning),
-    [events, sessionRunning]
+    () => buildSessionToolCalls(liveEvents, sessionRunning),
+    [liveEvents, sessionRunning]
   );
   const agentCodenames = useMemo(() => assignAgentCodenames(toolCalls), [toolCalls]);
   // The workspace card's Subagents section reads the same tool list the agent
@@ -443,8 +454,8 @@ export function SessionConversation({
   // blink on every child heartbeat while the parent was only waiting.
   const childToolUseIds = useMemo(() => subAgentToolUseIds(toolCalls), [toolCalls]);
   const lastSignificantEvent = useMemo(
-    () => lastSignificantSessionEvent(events, childToolUseIds),
-    [childToolUseIds, events]
+    () => lastSignificantSessionEvent(liveEvents, childToolUseIds),
+    [childToolUseIds, liveEvents]
   );
   // A send from this pane proves a turn is starting, whether or not the
   // backend has flipped the session to `running` and whether or not the new
@@ -455,8 +466,8 @@ export function SessionConversation({
   // The baseline is the newest agent-response id at send time, so the local
   // state releases the instant the provider says anything of its own.
   const lastAgentResponseId = useMemo(
-    () => lastAgentResponseEvent(events, childToolUseIds)?.id ?? null,
-    [childToolUseIds, events]
+    () => lastAgentResponseEvent(liveEvents, childToolUseIds)?.id ?? null,
+    [childToolUseIds, liveEvents]
   );
   const lastAgentResponseIdRef = useRef<string | null>(lastAgentResponseId);
   useEffect(() => {
@@ -534,8 +545,8 @@ export function SessionConversation({
   // (which lands a new `user.message`, advancing `lastUserMessageTime` past
   // the tool's `createdAt`).
   const hasOutstandingCardAsk = useMemo(
-    () => sessionHasOutstandingCardAsk(events, toolCalls),
-    [events, toolCalls]
+    () => sessionHasOutstandingCardAsk(liveEvents, toolCalls),
+    [liveEvents, toolCalls]
   );
   // The turn is live and nothing visible is progressing this instant. True both
   // for the pre-answer beat (nothing emitted yet) and for mid-turn pauses (the
@@ -565,7 +576,7 @@ export function SessionConversation({
     !isStreamingText;
   // Compaction is minutes of provider-side silence with its own live marker in
   // the transcript. A second "Thinking" line under it would say less, not more.
-  const compacting = useMemo(() => isCompacting(events), [events]);
+  const compacting = useMemo(() => isCompacting(liveEvents), [liveEvents]);
   // A finished assistant message ends the beat that produced it: the text now
   // on screen is the progress cue, so the indicator comes down and only claims
   // the *next* silent gap, once this window elapses. Suppressing at the source
@@ -968,6 +979,7 @@ export function SessionConversation({
           onSendSessionInput={sendSessionInput}
           onStartNewSession={onNewSession}
           onTerminateSession={onTerminateSession}
+          onClearSession={onClearSession}
           pendingAnnotations={pendingAnnotations}
           onRemoveAnnotation={removeAnnotation}
           onClearAnnotations={clearAnnotations}

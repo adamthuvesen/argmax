@@ -88,6 +88,7 @@ export type EventType =
   | "session.compacting"
   | "session.compacted"
   | "session.provider-changed"
+  | "session.cleared"
   | "session.move-requested"
   | "session.moved"
   | "session.recovered-from-crash";
@@ -134,6 +135,7 @@ export type SessionEventsSinceInput = OptionalNullable<
 >;
 export type SessionAgentEventsInput = Bindings.SessionAgentEventsInput;
 export type SessionForkInput = Bindings.SessionForkInput;
+export type SessionClearInput = Bindings.SessionClearInput;
 export type SessionSuggestFollowUpInput = Bindings.SessionSuggestFollowUpInput;
 export type FollowUpSuggestion = Bindings.FollowUpSuggestion;
 export type SessionForkResult = Bindings.SessionForkResult;
@@ -606,6 +608,7 @@ export interface ArgmaxApi {
     eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;
     agentEvents: (input: SessionAgentEventsInput) => Promise<SessionEventsSinceResult>;
     fork: (input: SessionForkInput) => Promise<SessionForkResult>;
+    clear: (input: SessionClearInput) => Promise<SessionSummary>;
     /** A composer placeholder proposed by the cheap helper model from the
      *  agent's last message. `suggestion` is null when there is nothing to
      *  reply to yet or the helper call failed. */
@@ -661,6 +664,8 @@ export interface ArgmaxApi {
     debugSnapshot: (input?: { afterLogSeq?: number }) => Promise<DebugSnapshot>;
     vacuumDatabase: () => Promise<{ ok: true }>;
     setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
+    setNotificationsEnabled: (enabled: boolean) => Promise<{ ok: true }>;
+    testNotification: () => Promise<{ ok: true }>;
   };
   remote: {
     getStatus: () => Promise<RemoteStatus>;

@@ -29,6 +29,7 @@ empty_input!(SystemDiagnosticsInput);
 empty_input!(SystemVacuumDatabaseInput);
 empty_input!(RemoteGetStatusInput);
 empty_input!(RemoteTestNotificationInput);
+empty_input!(SystemTestNotificationInput);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -586,6 +587,12 @@ pub struct SessionForkInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionClearInput {
+    pub session_id: SessionId,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReviewListChangedFilesInput {
     pub kind: WorkspaceTargetKind,
     pub id: WorkspaceTargetId,
@@ -673,6 +680,12 @@ pub struct SystemOpenPathInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemSetThemeInput {
     pub mode: ThemeMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemSetNotificationsEnabledInput {
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

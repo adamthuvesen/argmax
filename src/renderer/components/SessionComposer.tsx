@@ -1,6 +1,7 @@
 import {
   Bot,
-  CornerDownRight,
+  CornerDownLeft,
+  Eraser,
   FileDiff,
   Folder,
   FolderOpen,
@@ -37,6 +38,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
+import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useComposerDraft } from "../hooks/useComposerDraft.js";
@@ -58,7 +60,7 @@ import {
   AGENT_MODE_LABELS,
   toggleAgentMode
 } from "../lib/agentMode.js";
-import type { ComposerCommand } from "../lib/composerCommands.js";
+import { isClearCommand, type ComposerCommand } from "../lib/composerCommands.js";
 import { clearDraft } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
@@ -114,6 +116,7 @@ export function SessionComposer({
   onSendSessionInput,
   onStartNewSession,
   onTerminateSession,
+  onClearSession,
   pendingAnnotations = [],
   onRemoveAnnotation,
   onClearAnnotations,
@@ -151,7 +154,8 @@ export function SessionComposer({
   /** Offered by the provider-switch dialog as the recommended alternative:
       opens the launcher with the picked model and this composer's draft. */
   onStartNewSession?: (seed: NewSessionSeed) => void;
-  onTerminateSession: (sessionId: string) => Promise<void>;
+  onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
+  onClearSession: (sessionId: string) => Promise<void>;
   /** Transcript excerpts attached via the selection toolbar; serialized into
       the prompt at send time and cleared through `onClearAnnotations`. */
   pendingAnnotations?: ComposerAnnotation[];
@@ -172,10 +176,10 @@ export function SessionComposer({
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
+  const [isSending, setIsSending] = useState(false);
   // Unsent text belongs to the session, not to this component: it survives
   // switching to another session and comes back when this one does.
-  const [input, setInput] = useComposerDraft(sessionId);
-  const [isSending, setIsSending] = useState(false);
+  const [input, setInput] = useComposerDraft(sessionId, { persist: !isSending });
   const [sendingQueuedMessageId, setSendingQueuedMessageId] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
@@ -222,6 +226,7 @@ export function SessionComposer({
     draftKey: sessionId,
     workspacePath: workspace?.path ?? null,
     setInput,
+    persist: !isSending,
     // The attachments hook only ever reports failures (string status contract,
     // shared with LaunchSurface); lift them into the error kind here.
     setStatus: (message) => setStatus(message === null ? null : { kind: "error", message })
@@ -260,6 +265,15 @@ export function SessionComposer({
         run: () => void onTerminateSession(session.id)
       });
     }
+    if (session) {
+      commands.push({
+        name: "clear",
+        label: "Clear",
+        hint: "Start a fresh conversation here",
+        icon: Eraser,
+        run: () => void onClearSession(session.id).catch(() => undefined)
+      });
+    }
     commands.push({
       name: "attach",
       label: "Attach file",
@@ -290,7 +304,7 @@ export function SessionComposer({
       });
     }
     return commands;
-  }, [changeSummary, nextMode, onTerminateSession, openFilePicker, session, toggleMode, workspace]);
+  }, [changeSummary, nextMode, onClearSession, onTerminateSession, openFilePicker, session, toggleMode, workspace]);
 
   const slashAutocomplete = useSlashAutocomplete({
     input,
@@ -396,8 +410,8 @@ export function SessionComposer({
 
   /**
    * Build the prompt from the draft plus attachments and hand it to `deliver`.
-   * The draft is only cleared once delivery resolves, so a failed send leaves
-   * the text in place for a retry.
+   * Storage is dropped as soon as send starts so a remount cannot restore it.
+   * The on-screen text stays until delivery resolves, so a failed send can retry.
    */
   const deliverDraft = async (
     deliver: (
@@ -411,6 +425,27 @@ export function SessionComposer({
       return;
     }
 
+    if (isClearCommand(trimmedInput)) {
+      setIsSending(true);
+      setStatus(null);
+      shouldRefocusInput.current = true;
+      clearDraft(session.id);
+      try {
+        await onClearSession(session.id);
+        setInput("");
+        clearAttachments();
+        onClearAnnotations?.();
+      } catch (error) {
+        setStatus({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not clear the conversation."
+        });
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
     const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
     const withRefs = refs.length > 0 ? appendReferencesToPrompt(trimmedInput, refs) : trimmedInput;
     const withAnnotations = prependAnnotationsToPrompt(withRefs, pendingAnnotations);
@@ -419,9 +454,9 @@ export function SessionComposer({
     setIsSending(true);
     setStatus(null);
     shouldRefocusInput.current = true;
+    clearDraft(session.id);
     try {
       await deliver(session.id, prompt, pendingAttachments.length > 0 ? pendingAttachments : undefined);
-      clearDraft(session.id);
       setInput("");
       clearAttachments();
       onClearAnnotations?.();
@@ -446,7 +481,7 @@ export function SessionComposer({
 
   return (
     <form
-      className="session-input"
+      className="session-composer-stack"
       // The agent window carries its own type scale (Settings → chat font
       // size), which is about reading the transcript. The composer is chrome —
       // model chip, repo, branch, changed files — so it holds the composer
@@ -466,6 +501,80 @@ export function SessionComposer({
         tabIndex={-1}
         onChange={onAttachmentInputChange}
       />
+      {pendingMessages.length > 0 ? (
+        <div className="composer-queued-lane" role="list" aria-label="Queued follow-ups">
+          {pendingMessages.map((entry) => {
+            const cancel = (): void => {
+              if (!session || !onCancelQueuedMessage) return;
+              void onCancelQueuedMessage(session.id, entry.id).catch(() => undefined);
+            };
+            const sendQueuedNow = async (): Promise<void> => {
+              if (!session || !onSendQueuedMessageNow || sendingQueuedMessageId) return;
+              setSendingQueuedMessageId(entry.id);
+              setStatus(null);
+              try {
+                await onSendQueuedMessageNow(session.id, entry.id);
+              } catch (error) {
+                setStatus({
+                  kind: "error",
+                  message:
+                    error instanceof Error ? error.message : "Could not send queued follow-up."
+                });
+              } finally {
+                setSendingQueuedMessageId(null);
+              }
+            };
+            return (
+              <div
+                key={entry.id}
+                className="composer-queued-chip"
+                role="listitem"
+                tabIndex={0}
+                title={entry.content}
+                aria-label={`Queued follow-up: ${entry.content}`}
+                onKeyDown={(event) => {
+                  if (
+                    sendingQueuedMessageId === null &&
+                    (event.key === "Backspace" || event.key === "Delete")
+                  ) {
+                    event.preventDefault();
+                    cancel();
+                  }
+                }}
+              >
+                <CornerDownLeft
+                  className="composer-queued-chip-icon"
+                  size={14}
+                  aria-hidden="true"
+                />
+                <span className="composer-queued-chip-label">{entry.content}</span>
+                <button
+                  type="button"
+                  className="composer-queued-chip-action"
+                  aria-label={`Send queued follow-up now: ${entry.content}`}
+                  title="Send now, interrupting the current turn"
+                  disabled={sendingQueuedMessageId !== null}
+                  onClick={() => void sendQueuedNow()}
+                >
+                  <Send size={13} aria-hidden="true" />
+                  <span>Send now</span>
+                </button>
+                <button
+                  type="button"
+                  className="composer-queued-chip-remove"
+                  aria-label="Cancel queued follow-up"
+                  title="Cancel queued follow-up"
+                  disabled={sendingQueuedMessageId !== null}
+                  onClick={cancel}
+                >
+                  <Trash2 size={13} aria-hidden="true" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      <div className="session-input">
       {pendingAnnotations.length > 0 || openFilesAttached ? (
         <div className="composer-annotations" role="list" aria-label="Annotations">
           {openFilesAttached ? (
@@ -533,80 +642,6 @@ export function SessionComposer({
               </button>
             </div>
           ))}
-        </div>
-      ) : null}
-      {pendingMessages.length > 0 ? (
-        <div className="composer-queued-lane" role="list" aria-label="Queued follow-ups">
-          {pendingMessages.map((entry) => {
-            const cancel = (): void => {
-              if (!session || !onCancelQueuedMessage) return;
-              void onCancelQueuedMessage(session.id, entry.id).catch(() => undefined);
-            };
-            const sendQueuedNow = async (): Promise<void> => {
-              if (!session || !onSendQueuedMessageNow || sendingQueuedMessageId) return;
-              setSendingQueuedMessageId(entry.id);
-              setStatus(null);
-              try {
-                await onSendQueuedMessageNow(session.id, entry.id);
-              } catch (error) {
-                setStatus({
-                  kind: "error",
-                  message:
-                    error instanceof Error ? error.message : "Could not send queued follow-up."
-                });
-              } finally {
-                setSendingQueuedMessageId(null);
-              }
-            };
-            return (
-              <div
-                key={entry.id}
-                className="composer-queued-chip"
-                role="listitem"
-                tabIndex={0}
-                title={entry.content}
-                aria-label={`Queued follow-up: ${entry.content}`}
-                onKeyDown={(event) => {
-                  if (
-                    sendingQueuedMessageId === null &&
-                    (event.key === "Backspace" || event.key === "Delete")
-                  ) {
-                    event.preventDefault();
-                    cancel();
-                  }
-                }}
-              >
-                <CornerDownRight
-                  className="composer-queued-chip-icon"
-                  size={14}
-                  aria-hidden="true"
-                />
-                <span className="composer-queued-chip-label">{entry.content}</span>
-                <span className="composer-queued-chip-state">Queued</span>
-                <button
-                  type="button"
-                  className="composer-queued-chip-action"
-                  aria-label={`Send queued follow-up now: ${entry.content}`}
-                  title="Send now, interrupting the current turn"
-                  disabled={sendingQueuedMessageId !== null}
-                  onClick={() => void sendQueuedNow()}
-                >
-                  <Send size={13} aria-hidden="true" />
-                  <span>Send now</span>
-                </button>
-                <button
-                  type="button"
-                  className="composer-queued-chip-remove"
-                  aria-label="Cancel queued follow-up"
-                  title="Cancel queued follow-up"
-                  disabled={sendingQueuedMessageId !== null}
-                  onClick={cancel}
-                >
-                  <Trash2 size={13} aria-hidden="true" />
-                </button>
-              </div>
-            );
-          })}
         </div>
       ) : null}
       <div className="session-input-field">
@@ -855,6 +890,7 @@ export function SessionComposer({
             </button>
           );
         })()}
+      </div>
       </div>
       {status ? (
         // Keyed on kind so a role swap remounts the live region — screen

@@ -17,6 +17,11 @@ export interface ComposerCommand {
   run: () => void;
 }
 
+/** True when the composer draft is exactly `/clear` (optional trailing space). */
+export function isClearCommand(input: string): boolean {
+  return /^\/clear\s*$/i.test(input.trim());
+}
+
 /** Badge on a skill row, saying where the skill was discovered. */
 export const SKILL_SOURCE_LABELS: Record<SkillSource, string> = {
   user: "User",

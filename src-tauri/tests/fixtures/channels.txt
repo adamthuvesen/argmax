@@ -34,6 +34,7 @@ approvals:pending
 session:events-since
 session:agent-events
 session:fork
+session:clear
 session:suggest-follow-up
 review:list-changed-files
 review:load-diff
@@ -50,6 +51,8 @@ system:diagnostics
 system:debug-snapshot
 system:vacuum-database
 system:set-theme
+system:set-notifications-enabled
+system:test-notification
 session:cost-summary
 learnings:list
 learnings:update

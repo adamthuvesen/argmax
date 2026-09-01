@@ -288,6 +288,14 @@ async sessionFork(input: SessionForkInput) : Promise<Result<SessionForkResult, A
     else return { status: "error", error: e  as any };
 }
 },
+async sessionClear(input: SessionClearInput) : Promise<Result<SessionSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_clear", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async sessionSuggestFollowUp(input: SessionSuggestFollowUpInput) : Promise<Result<FollowUpSuggestion, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("session_suggest_follow_up", { input }) };
@@ -401,6 +409,22 @@ async systemVacuumDatabase(input: SystemVacuumDatabaseInput) : Promise<Result<Sy
 async systemSetTheme(input: SystemSetThemeInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("system_set_theme", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async systemSetNotificationsEnabled(input: SystemSetNotificationsEnabledInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_set_notifications_enabled", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async systemTestNotification(input: SystemTestNotificationInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_test_notification", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -946,6 +970,7 @@ export type ScratchWorkspaceKind = "scratch" | "popup"
 export type SearchQuery = string
 export type SendInputResult = { ok: boolean; queued: boolean }
 export type SessionAgentEventsInput = { sessionId: SessionId; parentToolUseId: NonEmptyString }
+export type SessionClearInput = { sessionId: SessionId }
 export type SessionCostSummary = { sessionId: string; modelId: string | null; tokens: UsageCounts; costUsd: number }
 export type SessionCostSummaryInput = { sessionId: SessionId }
 export type SessionEventsSinceInput = { sessionId: SessionId; eventCursor: number | null; rawOutputCursor: number | null }
@@ -1023,7 +1048,9 @@ export type SystemDiagnosticsInput = Record<string, never>
 export type SystemListDetectedIdesInput = Record<string, never>
 export type SystemOk = { ok: boolean }
 export type SystemOpenPathInput = { path: OpenPath; cwd: NonEmptyString | null }
+export type SystemSetNotificationsEnabledInput = { enabled: boolean }
 export type SystemSetThemeInput = { mode: ThemeMode }
+export type SystemTestNotificationInput = Record<string, never>
 export type SystemVacuumDatabaseInput = Record<string, never>
 export type TaskLabel = string
 export type TerminalCols = number

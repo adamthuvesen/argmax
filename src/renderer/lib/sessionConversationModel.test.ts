@@ -6,6 +6,7 @@ import {
   hasRenderableSessionContent,
   lastAgentResponseEvent,
   lastSignificantSessionEvent,
+  eventsAfterLatestClear,
   subAgentToolUseIds
 } from "./sessionConversationModel.js";
 
@@ -75,6 +76,16 @@ describe("buildConversationEvents", () => {
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "thinking", "done"]);
   });
 
+  it("hides transcript events at and before the latest session.cleared watermark", () => {
+    const events = [
+      event("new", "user.message", "2026-05-12T15:00:03.000Z", "after"),
+      event("clear", "session.cleared", "2026-05-12T15:00:02.000Z", "Cleared conversation."),
+      event("old", "user.message", "2026-05-12T15:00:01.000Z", "before")
+    ];
+    expect(eventsAfterLatestClear(events).map((e) => e.id)).toEqual(["new"]);
+    expect(buildConversationEvents(eventsAfterLatestClear(events)).map((e) => e.id)).toEqual(["new"]);
+  });
+
   it("keeps parent Codex agent_message rows when they are not child-thread messages", () => {
     const events = [
       event("parent-final", "message.completed", "2026-05-12T15:00:03.000Z", "Parent answer", {
@@ -128,6 +139,24 @@ describe("buildConversationEvents", () => {
     ];
 
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "done"]);
+  });
+
+  it("drops streamed answer deltas when a completed message and tools land in chronological order", () => {
+    const events = [
+      event("c2", "message.completed", "2026-05-12T15:00:07.000Z", "Final conclusion."),
+      event("d6", "message.delta", "2026-05-12T15:00:06.000Z", "ion."),
+      event("d5", "message.delta", "2026-05-12T15:00:05.000Z", "Final conclus"),
+      event("tool-res", "command.completed", "2026-05-12T15:00:04.000Z", "ok", { tool_use_id: "tool-1" }),
+      event("tool", "command.started", "2026-05-12T15:00:03.000Z", "read_file", { id: "tool-1", name: "read_file" }),
+      event("c1", "message.completed", "2026-05-12T15:00:02.500Z", "I will inspect the file."),
+      event("d4", "message.delta", "2026-05-12T15:00:02.400Z", "file."),
+      event("d3", "message.delta", "2026-05-12T15:00:02.300Z", " the "),
+      event("d2", "message.delta", "2026-05-12T15:00:02.200Z", "inspect"),
+      event("d1", "message.delta", "2026-05-12T15:00:02.100Z", "I will "),
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+    ];
+
+    expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "c1", "c2"]);
   });
 });
 

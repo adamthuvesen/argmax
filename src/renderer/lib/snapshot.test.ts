@@ -108,6 +108,22 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(result.map((e) => e.id)).toEqual(["e1", "e3", "e4"]);
   });
 
+  it("drops streamed answer deltas when a completed message and tools land in chronological order", () => {
+    const events: TimelineEvent[] = [
+      event("user", "user.message", "2026-05-12T15:00:01.000Z"),
+      event("d1", "message.delta", "2026-05-12T15:00:02.100Z"),
+      event("d2", "message.delta", "2026-05-12T15:00:02.200Z"),
+      event("c1", "message.completed", "2026-05-12T15:00:02.500Z"),
+      event("tool", "command.started", "2026-05-12T15:00:03.000Z"),
+      event("tool-res", "command.completed", "2026-05-12T15:00:04.000Z"),
+      event("d3", "message.delta", "2026-05-12T15:00:05.000Z"),
+      event("c2", "message.completed", "2026-05-12T15:00:07.000Z")
+    ];
+
+    const result = pruneSupersededDeltas(events);
+    expect(result.map((e) => e.id)).toEqual(["user", "c1", "tool", "tool-res", "c2"]);
+  });
+
   it("keeps the parent's streaming answer when a hidden child completion lands mid-stream", () => {
     // Child rows are excluded from the chat view model's sweep, so they must
     // not act as turn boundaries here either: a fire-and-forget child

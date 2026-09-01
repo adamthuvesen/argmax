@@ -843,7 +843,7 @@ authenticated: boolean | null; setupGuidance: string | null;
  * has no Cursor gate detector, so the UI must not imply live approval.
  */
 approvalSupport: ApprovalSupport }
-export type ProviderId = "claude" | "codex" | "cursor" | "opencode"
+export type ProviderId = "claude" | "codex" | "cursor" | "opencode" | "grok"
 export type ProvidersCancelQueuedMessageInput = { sessionId: SessionId; messageId: NonEmptyString }
 export type ProvidersDiscoverInput = { 
 /**
@@ -983,12 +983,12 @@ export type SyncConfig = {
  * Per-provider opt-in. Only providers whose transcript format Argmax can
  * read are honored; see `SyncStatus::supported_providers`.
  */
-claude?: boolean; codex?: boolean; cursor?: boolean; opencode?: boolean; windowHours?: number }
+claude?: boolean; codex?: boolean; cursor?: boolean; opencode?: boolean; grok?: boolean; windowHours?: number }
 /**
  * Settings → Agents → Session sync. Mirrors `SyncConfig`; the handler
  * normalizes (window clamped, unreadable providers forced off).
  */
-export type SyncSetConfigInput = { claude: boolean; codex: boolean; cursor: boolean; opencode: boolean; windowHours: number }
+export type SyncSetConfigInput = { claude: boolean; codex: boolean; cursor: boolean; opencode: boolean; grok: boolean; windowHours: number }
 /**
  * What the Settings pane renders: the config plus what the last sweep did.
  */

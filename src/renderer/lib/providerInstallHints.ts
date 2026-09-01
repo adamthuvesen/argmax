@@ -16,5 +16,9 @@ export const PROVIDER_INSTALL_HINTS: Record<ProviderId, { label: string; url: st
   opencode: {
     label: "Install OpenCode",
     url: "https://opencode.ai/docs"
+  },
+  grok: {
+    label: "Install Grok Build",
+    url: "https://x.ai/cli"
   }
 };

@@ -352,7 +352,11 @@ impl ProviderSessionService {
                     attention: attention_for_state("running").to_string(),
                 },
             )?;
-            if provider == ProviderId::Claude {
+            // Claude and Grok are both handed `--session-id <our id>`, so the
+            // CLI conversation is known before a single event arrives. Seeding
+            // it here is what lets the very next turn resume: without it the
+            // follow-up launches fresh and loses the history.
+            if matches!(provider, ProviderId::Claude | ProviderId::Grok) {
                 session =
                     update_session_provider_conversation_id(&connection, &session_id, &session_id)?;
             }
@@ -2229,6 +2233,7 @@ mod tests {
             ProviderId::Codex,
             ProviderId::Cursor,
             ProviderId::Opencode,
+            ProviderId::Grok,
         ] {
             let error = ensure_permission_mode_supported(provider, PermissionMode::AskEachTime)
                 .expect_err("unsupported provider approval mode must fail closed");

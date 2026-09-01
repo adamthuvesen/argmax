@@ -117,12 +117,13 @@ describe("LaunchModelSelector — all providers", () => {
     render(<LaunchModelSelector ariaLabel="Launch model" value={value} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
     // Providers are grouped by thin separators, not text labels — one before
-    // each group after the first (Claude): Codex, Cursor, OpenCode.
+    // each group after the first (Claude): Codex, Cursor, OpenCode, Grok Build.
     expect(screen.queryByText("Claude")).not.toBeInTheDocument();
     expect(screen.queryByText("Codex")).not.toBeInTheDocument();
     expect(screen.queryByText("Cursor")).not.toBeInTheDocument();
     expect(screen.queryByText("OpenCode")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("separator")).toHaveLength(3);
+    expect(screen.queryByText("Grok Build")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("separator")).toHaveLength(4);
     expect(screen.getByText("GPT-5.6 Sol")).toBeInTheDocument();
   });
 

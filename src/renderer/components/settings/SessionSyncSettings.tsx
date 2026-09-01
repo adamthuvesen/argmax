@@ -3,13 +3,14 @@ import { errorMessage } from "../../../shared/error.js";
 import type { SyncStatus } from "../../../shared/types.js";
 import { SectionHeader, Segmented, ToggleRow } from "./settingsPrimitives.js";
 
-const PROVIDERS = ["claude", "codex", "cursor", "opencode"] as const;
+const PROVIDERS = ["claude", "codex", "cursor", "opencode", "grok"] as const;
 
 const PROVIDER_LABELS: Record<(typeof PROVIDERS)[number], string> = {
   claude: "Claude Code",
   codex: "Codex",
   cursor: "Cursor",
-  opencode: "OpenCode"
+  opencode: "OpenCode",
+  grok: "Grok Build"
 };
 
 /**

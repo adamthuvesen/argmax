@@ -225,6 +225,7 @@ fn parse_provider(value: &str) -> Option<ProviderId> {
         "codex" => Some(ProviderId::Codex),
         "cursor" => Some(ProviderId::Cursor),
         "opencode" => Some(ProviderId::Opencode),
+        "grok" => Some(ProviderId::Grok),
         _ => None,
     }
 }

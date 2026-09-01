@@ -841,6 +841,11 @@ fn provider_defaults(provider: &str) -> ProviderDefaults {
             model_id: "opencode-go/glm-5.3-flash",
             reasoning_effort: Some("high"),
         },
+        "grok" => ProviderDefaults {
+            model_label: "Grok 4.6",
+            model_id: "grok-4.6",
+            reasoning_effort: Some("medium"),
+        },
         _ => ProviderDefaults {
             model_label: "Opus 5",
             model_id: "claude-opus-5",

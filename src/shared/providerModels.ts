@@ -51,7 +51,8 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
   claude: "Claude",
   codex: "Codex",
   cursor: "Cursor",
-  opencode: "OpenCode"
+  opencode: "OpenCode",
+  grok: "Grok Build"
 };
 
 /** All effort levels, low → high. Each model's picker list is a prefix or
@@ -104,6 +105,9 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
     "opencode-go/deepseek-v4-flash": ["low", "high", "max"]
   };
   if (provider === "opencode" && modelId in opencodeGoVariants) return opencodeGoVariants[modelId];
+  // Grok Build's --reasoning-effort accepts only low/medium/high/xhigh; the CLI
+  // rejects anything above with "unknown effort level". Mirrors grok_reasoning_args.
+  if (provider === "grok") return ["low", "medium", "high", "xhigh"];
   return REASONING_EFFORTS.slice(0, 4); // low → xhigh
 }
 
@@ -202,6 +206,13 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Qwen3.8 Flash", modelId: "opencode-go/qwen3.8-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "DeepSeek V4 Pro", modelId: "opencode-go/deepseek-v4-pro", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "DeepSeek V4 Flash", modelId: "opencode-go/deepseek-v4-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 }
+  ],
+  // The two models `grok models` lists. Both take --reasoning-effort up to
+  // xhigh (the CLI rejects max/ultra). Grok Build has no fast-mode switch.
+  // 500K window per xAI's published model card for both.
+  grok: [
+    { label: "Grok 4.6", modelId: "grok-4.6", supportsReasoningEffort: true, contextWindow: 500_000 },
+    { label: "Grok 4.5", modelId: "grok-4.5", supportsReasoningEffort: true, contextWindow: 500_000 }
   ]
 };
 
@@ -215,7 +226,9 @@ export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
   claude: "claude-sonnet-5",
   codex: "gpt-5.6-luna",
   cursor: "composer-2.5",
-  opencode: "opencode/big-pickle"
+  opencode: "opencode/big-pickle",
+  // 4.5 is the pricier SKU; titles ride the cheaper default model.
+  grok: "grok-4.6"
 };
 
 /**
@@ -228,7 +241,8 @@ export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
 export const FORK_CAPABLE_PROVIDERS: ReadonlySet<string> = new Set<ProviderId>([
   "claude",
   "codex",
-  "opencode"
+  "opencode",
+  "grok"
 ]);
 
 export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> = {
@@ -254,6 +268,11 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
     modelId: "opencode-go/glm-5.3-flash",
     supportsReasoningEffort: true,
     reasoningEffort: "high"
+  },
+  grok: {
+    label: "Grok 4.6",
+    modelId: "grok-4.6",
+    supportsReasoningEffort: true
   }
 };
 
@@ -305,7 +324,15 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "opencode-go/qwen3.8-max":               { input: 2,     output: 6,      cacheRead: 0.25,  cacheWrite: 2.5 },
   "opencode-go/qwen3.8-flash":             { input: 0.15,  output: 0.47,   cacheRead: 0.016, cacheWrite: 0.2 },
   "opencode-go/deepseek-v4-pro":           { input: 0.66,  output: 1.98,   cacheRead: 0.022, cacheWrite: 0 },
-  "opencode-go/deepseek-v4-flash":         { input: 0.22,  output: 0.66,   cacheRead: 0.007, cacheWrite: 0 }
+  "opencode-go/deepseek-v4-flash":         { input: 0.22,  output: 0.66,   cacheRead: 0.007, cacheWrite: 0 },
+
+  // Grok Build bills its own SKUs (`grok-4.6-build` / `grok-4.5-build` in the
+  // CLI's modelUsage map), not xAI's public API list price. Rates were solved
+  // from the CLI's own `total_cost_usd` across runs with varied token mixes and
+  // reproduce it exactly. Cache writes are never billed separately. Keep in
+  // sync with the Rust pricing mirror.
+  "grok-4.6":                              { input: 0.34,  output: 1.02,   cacheRead: 0.085, cacheWrite: 0 },
+  "grok-4.5":                              { input: 0.68,  output: 2.04,   cacheRead: 0.102, cacheWrite: 0 }
 };
 
 const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {

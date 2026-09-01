@@ -957,6 +957,7 @@ pub struct SyncSetConfigInput {
     pub codex: bool,
     pub cursor: bool,
     pub opencode: bool,
+    pub grok: bool,
     pub window_hours: u32,
 }
 

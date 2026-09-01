@@ -49,6 +49,16 @@ use self::{
 use super::{adapters::get_provider_definition, ApprovalSupport, ProviderId};
 use crate::persistence::events::PersistTimelineEventInput;
 
+/// Providers whose headless output is Claude Code's stream-json: a
+/// `system/init` line, Anthropic `stream_event` content blocks, whole
+/// `assistant` messages, and a closing `result`. Grok Build emits the same
+/// envelopes (verified against grok 1.0.13
+/// `--output-format streaming-messages-json`), so it shares Claude's
+/// normalizer instead of carrying a duplicate of it.
+fn speaks_claude_stream_json(provider: ProviderId) -> bool {
+    matches!(provider, ProviderId::Claude | ProviderId::Grok)
+}
+
 pub const JSON_PARSE_LINE_CAP: usize = 1_048_576;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
@@ -183,7 +193,7 @@ impl NormalizerSessionContext {
                 opencode_current_model: Some(model_id.into()),
                 ..Self::default()
             },
-            ProviderId::Claude | ProviderId::Codex => Self::default(),
+            ProviderId::Claude | ProviderId::Codex | ProviderId::Grok => Self::default(),
         }
     }
 }
@@ -343,7 +353,7 @@ fn normalize_json_payload(
 ) -> NormalizedProviderResult {
     let provider_type = string_value(payload.get("type")).map(str::to_string);
 
-    if provider == ProviderId::Claude && provider_type.as_deref() == Some("stream_event") {
+    if speaks_claude_stream_json(provider) && provider_type.as_deref() == Some("stream_event") {
         if let Some(inner) = object_value(payload.get("event")).cloned() {
             return normalize_json_payload(provider, event, inner, context);
         }
@@ -375,7 +385,7 @@ fn normalize_json_payload(
         // makes the CLI mint a new id, and without capturing it the fork keeps
         // its one-shot `resume_fork` flag forever, re-forking the *source*
         // snapshot on every turn and discarding its own history.
-        ProviderId::Claude
+        ProviderId::Claude | ProviderId::Grok
             if matches!(
                 (
                     provider_type.as_deref(),
@@ -579,7 +589,7 @@ fn normalize_json_payload(
         }
     }
 
-    if provider == ProviderId::Claude {
+    if speaks_claude_stream_json(provider) {
         if let Some(marker) = claude_compaction_marker(event, &payload) {
             return NormalizedProviderResult {
                 events: vec![marker],
@@ -597,7 +607,7 @@ fn normalize_json_payload(
         }
     }
 
-    if provider == ProviderId::Claude && provider_type.as_deref() == Some("result") {
+    if speaks_claude_stream_json(provider) && provider_type.as_deref() == Some("result") {
         if context.claude_turn_answer_emitted {
             return NormalizedProviderResult {
                 events: Vec::new(),
@@ -646,7 +656,7 @@ fn normalize_json_payload(
             ..NormalizedProviderResult::default()
         };
     }
-    if provider == ProviderId::Claude && is_claude_hidden_synthetic_body(&payload) {
+    if speaks_claude_stream_json(provider) && is_claude_hidden_synthetic_body(&payload) {
         return NormalizedProviderResult {
             events,
             usages,
@@ -657,7 +667,7 @@ fn normalize_json_payload(
 
     // Compute before `payload` is moved into `final_payload` below.
     let is_claude_thinking_delta =
-        provider == ProviderId::Claude && is_claude_thinking_delta_payload(&payload);
+        speaks_claude_stream_json(provider) && is_claude_thinking_delta_payload(&payload);
     let mut final_payload = if mapped_type.is_some() {
         Value::Object(payload)
     } else {
@@ -671,7 +681,7 @@ fn normalize_json_payload(
         Value::Object(payload)
     };
     let timeline_type = mapped_type.unwrap_or("message.delta");
-    if provider == ProviderId::Claude && timeline_type == "message.completed" {
+    if speaks_claude_stream_json(provider) && timeline_type == "message.completed" {
         context.claude_turn_answer_emitted = true;
     }
     // Flag streamed extended-thinking deltas so the renderer routes them to the
@@ -776,7 +786,7 @@ fn map_provider_type(
     }
     let provider_type = provider_type?;
     match provider {
-        ProviderId::Claude => claude_event_type(provider_type),
+        ProviderId::Claude | ProviderId::Grok => claude_event_type(provider_type),
         ProviderId::Codex => codex_event_type(provider_type),
         // OpenCode payloads never reach here — normalize_json_payload returns
         // early with the opencode-specific mapping.
@@ -815,7 +825,7 @@ fn detect_permission_gate(
     payload: &Map<String, Value>,
 ) -> Option<PermissionGateInfo> {
     match provider {
-        ProviderId::Claude => detect_claude_permission_gate(payload),
+        ProviderId::Claude | ProviderId::Grok => detect_claude_permission_gate(payload),
         ProviderId::Codex => detect_codex_permission_gate(payload),
         ProviderId::Cursor | ProviderId::Opencode => None,
     }
@@ -828,7 +838,7 @@ fn extract_usage_from_payload(
     context: &NormalizerSessionContext,
 ) -> Option<NormalizedUsage> {
     match provider {
-        ProviderId::Claude => extract_claude_usage(payload, provider_type),
+        ProviderId::Claude | ProviderId::Grok => extract_claude_usage(payload, provider_type),
         ProviderId::Codex => extract_codex_usage(payload, provider_type, context),
         ProviderId::Cursor => extract_cursor_usage(payload, provider_type, context),
         ProviderId::Opencode => extract_opencode_usage(payload, provider_type, context),
@@ -908,6 +918,100 @@ fn strip_terminal_controls(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Captured verbatim from `grok 1.0.13 --output-format streaming-messages-json
+    // --include-partial-messages` (thinking + a read_file tool call + answer).
+    // Grok reuses Claude Code's wire format, so it must reuse Claude's
+    // normalizer path; if Grok ever forks that format these lines stop mapping
+    // and this test is what says so.
+    #[test]
+    fn grok_stream_json_normalizes_through_the_claude_path() {
+        let mut context = NormalizerSessionContext::for_provider(ProviderId::Grok, "grok-4.6");
+        let mut all: Vec<PersistTimelineEventInput> = Vec::new();
+        let mut usages = Vec::new();
+        let mut conversation_id = None;
+        for line in [
+            r#"{"type":"system","subtype":"init","session_id":"01a05a2d-c76d-7f00-9cf2-9b5b947a1c5c","apiKeySource":"oauth","model":"grok-4.6","permissionMode":"bypassPermissions"}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me read it."}},"session_id":"s"}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call-88af","name":"read_file","input":{}}},"session_id":"s"}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"target_file\":\"note.txt\"}"}},"session_id":"s"}"#,
+            // The completed turn-1 message carries the tool_use block, exactly
+            // as Claude's does — that is where the tool event comes from.
+            r#"{"type":"assistant","message":{"id":"msg_0","type":"message","role":"assistant","model":"grok-4.6","content":[{"type":"thinking","thinking":"Let me read it.","signature":"sig"},{"type":"tool_use","id":"call-88af","name":"read_file","input":{"target_file":"note.txt"}}],"usage":{"input_tokens":14740,"output_tokens":41,"cache_read_input_tokens":5760,"cache_creation_input_tokens":0}},"session_id":"s"}"#,
+            r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-88af","content":"1→hello from fixture\n"}]},"session_id":"s"}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello from fixture"}},"session_id":"s"}"#,
+            r#"{"type":"assistant","message":{"id":"msg_1","type":"message","role":"assistant","model":"grok-4.6","content":[{"type":"text","text":"hello from fixture"}],"usage":{"input_tokens":14838,"output_tokens":70,"cache_read_input_tokens":26240,"cache_creation_input_tokens":0}},"session_id":"s"}"#,
+            r#"{"type":"result","subtype":"success","is_error":false,"result":"hello from fixture","total_cost_usd":0.00734672,"session_id":"s"}"#,
+        ] {
+            let result = normalize_provider_event(
+                ProviderId::Grok,
+                &output_event(&format!("{line}\n")),
+                &mut context,
+            );
+            conversation_id = conversation_id.or(result.provider_conversation_id);
+            usages.extend(result.usages);
+            all.extend(result.events);
+        }
+
+        // `system/init` carries the CLI-minted id — the one a forked resume
+        // must adopt instead of the id we handed in.
+        assert_eq!(
+            conversation_id.as_deref(),
+            Some("01a05a2d-c76d-7f00-9cf2-9b5b947a1c5c")
+        );
+
+        // Streamed reasoning is flagged so the renderer routes it to the
+        // Thought block rather than the answer bubble.
+        let thinking = all
+            .iter()
+            .find(|event| event.message == "Let me read it.")
+            .expect("thinking delta");
+        assert_eq!(thinking.r#type, "message.delta");
+        assert_eq!(thinking.payload.get("thinking"), Some(&json!(true)));
+
+        // The tool call surfaces as a tool card, not as prose in the answer:
+        // the call from the assistant message's tool_use block, and its result
+        // from the follow-up user message's tool_result block.
+        let started = all
+            .iter()
+            .find(|event| event.r#type == "command.started")
+            .expect("command.started for read_file");
+        assert_eq!(started.message, "read_file");
+        assert_eq!(
+            started.payload.pointer("/input/target_file"),
+            Some(&json!("note.txt"))
+        );
+        assert!(
+            all.iter().any(|event| event.r#type == "command.completed"
+                && event
+                    .payload
+                    .pointer("/tool_use_id")
+                    .is_some_and(|id| id == "call-88af")),
+            "no command.completed tied to the call: {all:?}"
+        );
+
+        // Exactly one turn-ending bubble: the `assistant` message. The trailing
+        // `result` line must not synthesize a duplicate.
+        let completed = all
+            .iter()
+            .filter(|event| event.r#type == "message.completed")
+            .collect::<Vec<_>>();
+        assert_eq!(completed.len(), 1, "expected one completion: {completed:?}");
+        assert_eq!(completed[0].message, "hello from fixture");
+
+        // Usage is priced off the model the assistant message reports.
+        let usage = usages.last().expect("usage row");
+        assert_eq!(usage.model_id, "grok-4.6");
+        assert_eq!(usage.tokens.input, 14838);
+        assert_eq!(usage.tokens.output, 70);
+        assert_eq!(usage.tokens.cache_read, 26240);
+        // Matches the CLI's own total_cost_usd for this exact turn.
+        assert!(
+            (usage.cost_usd - 0.007_346_72).abs() < 1e-9,
+            "priced {}, CLI reported 0.00734672",
+            usage.cost_usd
+        );
+    }
 
     #[test]
     fn dispatcher_buffers_partial_lines_per_session() {

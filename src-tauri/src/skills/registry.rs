@@ -194,6 +194,46 @@ impl SkillRegistry {
                 );
                 sources.push(self.user_agents_skills());
             }
+            // Grok reads its own `.grok` roots and, for compatibility, the
+            // `.claude` ones alongside them (see its docs/user-guide/08-skills).
+            // Bundled platform skills live in a cache Grok never writes user
+            // skills into, so they come last and lose to a same-named local one.
+            ProviderId::Grok => {
+                if let Some(workspace) = workspace_cwd {
+                    sources.push(SourceDescriptor::skill_dir(
+                        workspace.join(".grok/skills"),
+                        SkillSource::Workspace,
+                    ));
+                    sources.push(Self::workspace_agents_skills(workspace));
+                    sources.push(SourceDescriptor::skill_dir(
+                        workspace.join(".claude/skills"),
+                        SkillSource::Workspace,
+                    ));
+                }
+                sources.push(
+                    SourceDescriptor::skill_dir(
+                        self.home_dir.join(".grok/skills"),
+                        SkillSource::User,
+                    )
+                    .exclude_dot_dirs(),
+                );
+                sources.push(self.user_agents_skills());
+                sources.push(
+                    SourceDescriptor::skill_dir(
+                        self.home_dir.join(".claude/skills"),
+                        SkillSource::User,
+                    )
+                    .exclude_dot_dirs(),
+                );
+                sources.push(SourceDescriptor::plugin_root(
+                    self.home_dir.join(".grok/installed-plugins"),
+                    SkillSource::Plugin,
+                ));
+                sources.push(SourceDescriptor::skill_dir(
+                    self.home_dir.join(".grok/bundled/skills"),
+                    SkillSource::System,
+                ));
+            }
         }
         sources
     }
@@ -217,6 +257,7 @@ enum SourceKind {
     SkillDir,
     PromptDir,
     PluginCache,
+    PluginRoot,
 }
 
 #[derive(Debug, Clone)]
@@ -255,6 +296,18 @@ impl SourceDescriptor {
         }
     }
 
+    /// Grok installs each plugin flat under `~/.grok/installed-plugins/<plugin>/`
+    /// with its skills at `<plugin>/skills/`, one level instead of the
+    /// distribution/plugin/version nesting `plugin_cache` walks.
+    fn plugin_root(root: PathBuf, source: SkillSource) -> Self {
+        Self {
+            kind: SourceKind::PluginRoot,
+            root,
+            source,
+            exclude_dot_dirs: false,
+        }
+    }
+
     fn exclude_dot_dirs(mut self) -> Self {
         self.exclude_dot_dirs = true;
         self
@@ -267,6 +320,7 @@ fn load_source(source: &SourceDescriptor) -> Vec<SkillSummary> {
             load_skill_dir(&source.root, source.source, source.exclude_dot_dirs)
         }
         SourceKind::PromptDir => load_prompt_dir(&source.root, source.source),
+        SourceKind::PluginRoot => load_plugin_root(&source.root, source.source),
         SourceKind::PluginCache => load_plugin_cache(&source.root, source.source),
     }
 }
@@ -304,6 +358,17 @@ fn load_prompt_dir(root: &Path, source: SkillSource) -> Vec<SkillSummary> {
             if let Some(summary) = parse_skill_file(&path, fallback, source) {
                 results.push(summary);
             }
+        }
+    }
+    results
+}
+
+fn load_plugin_root(root: &Path, source: SkillSource) -> Vec<SkillSummary> {
+    let mut results = Vec::new();
+    for plugin in read_dir_names(root) {
+        let skills_root = root.join(plugin).join("skills");
+        if skills_root.is_dir() {
+            results.extend(load_skill_dir(&skills_root, source, false));
         }
     }
     results

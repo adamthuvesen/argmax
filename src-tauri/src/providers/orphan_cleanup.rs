@@ -99,7 +99,9 @@ fn provider_command_matches_session(command: &str, session: &RecoveredProviderSe
     }
     let args = args.collect::<Vec<_>>();
     match session.provider.as_str() {
-        "claude" => {
+        // Grok Build takes the same `--session-id` / `--resume` flag pair as
+        // Claude Code, so one arm covers both.
+        "claude" | "grok" => {
             has_flag_value(&args, "--session-id", &session.id)
                 || session
                     .provider_conversation_id
@@ -140,6 +142,7 @@ fn provider_binary_name(binary: &str) -> Option<&'static str> {
         "codex" => Some("codex"),
         "cursor-agent" => Some("cursor"),
         "opencode" => Some("opencode"),
+        "grok" => Some("grok"),
         _ => None,
     }
 }

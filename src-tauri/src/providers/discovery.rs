@@ -46,13 +46,14 @@ impl ProviderDiscovery {
         // discovery serialized the settings open behind that floor. Fan the
         // providers out in parallel; the cache (held in AppState)
         // persists across calls — a fresh boot pays the cold cost once.
-        let (claude, codex, cursor, opencode) = tokio::join!(
+        let (claude, codex, cursor, opencode, grok) = tokio::join!(
             self.discover(ProviderId::Claude),
             self.discover(ProviderId::Codex),
             self.discover(ProviderId::Cursor),
             self.discover(ProviderId::Opencode),
+            self.discover(ProviderId::Grok),
         );
-        vec![claude, codex, cursor, opencode]
+        vec![claude, codex, cursor, opencode, grok]
     }
 
     /// Drop every cached capability report so the next `discover` re-probes the
@@ -215,6 +216,9 @@ fn setup_guidance(provider_id: ProviderId) -> &'static str {
         ProviderId::Opencode => {
             "Install OpenCode locally and authenticate a provider with `opencode auth login`. Argmax will launch the local `opencode` CLI from the selected workspace."
         }
+        ProviderId::Grok => {
+            "Install Grok Build locally and sign in with `grok login`. Argmax will launch the local `grok` CLI from the selected workspace."
+        }
     }
 }
 
@@ -233,6 +237,9 @@ fn login_guidance(provider_id: ProviderId) -> &'static str {
         }
         ProviderId::Opencode => {
             "OpenCode is installed but not authenticated. Run `opencode auth login` in your terminal, then refresh."
+        }
+        ProviderId::Grok => {
+            "Grok Build is installed but not authenticated. Run `grok login` in your terminal, then refresh."
         }
     }
 }

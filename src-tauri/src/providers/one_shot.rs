@@ -184,6 +184,27 @@ fn one_shot_command(provider: ProviderId, model_id: &str, instruction: &str) -> 
             ],
             stdin: None,
         },
+        // `--tools ""` drops the built-in tools and `--disable-web-search` the
+        // network ones; `--output-format plain` returns the answer verbatim.
+        // Grok has no `--no-session-persistence` equivalent, so the title call
+        // does leave a short session under ~/.grok/sessions.
+        ProviderId::Grok => OneShotCommand {
+            args: vec![
+                "-p".into(),
+                instruction.into(),
+                "--output-format".into(),
+                "plain".into(),
+                "--tools".into(),
+                "".into(),
+                "--disable-web-search".into(),
+                "--no-subagents".into(),
+                "--reasoning-effort".into(),
+                "low".into(),
+                "--model".into(),
+                model_id.into(),
+            ],
+            stdin: None,
+        },
     }
 }
 
@@ -253,7 +274,7 @@ async fn run_capture(provider: ProviderId, command: OneShotCommand) -> Option<St
 fn extract_answer(provider: ProviderId, raw: &str) -> Option<String> {
     match provider {
         // `--output-format text` is already the bare answer.
-        ProviderId::Claude | ProviderId::Cursor => Some(raw.to_string()),
+        ProviderId::Claude | ProviderId::Cursor | ProviderId::Grok => Some(raw.to_string()),
         ProviderId::Codex => extract_codex_agent_message(raw),
         ProviderId::Opencode => extract_opencode_text(raw),
     }

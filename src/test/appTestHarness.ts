@@ -532,7 +532,7 @@ export function setupAppTestMocks(): void {
     sync: {
       getStatus: vi.fn(() =>
         Promise.resolve({
-          config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
+          config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
           supportedProviders: ["claude"],
           lastRunAt: null,
           importedCount: 0,
@@ -541,7 +541,7 @@ export function setupAppTestMocks(): void {
       ),
       setConfig: vi.fn(() =>
         Promise.resolve({
-          config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
+          config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
           supportedProviders: ["claude"],
           lastRunAt: null,
           importedCount: 0,
@@ -550,7 +550,7 @@ export function setupAppTestMocks(): void {
       ),
       runNow: vi.fn(() =>
         Promise.resolve({
-          config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
+          config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
           supportedProviders: ["claude"],
           lastRunAt: null,
           importedCount: 0,

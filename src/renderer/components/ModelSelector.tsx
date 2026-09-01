@@ -29,7 +29,8 @@ const PROVIDER_GROUP_LABEL: Record<ProviderId, string> = {
   claude: "Claude",
   codex: "Codex",
   cursor: "Cursor",
-  opencode: "OpenCode"
+  opencode: "OpenCode",
+  grok: "Grok Build"
 };
 
 /** Per-provider install/auth state for picker gating. */

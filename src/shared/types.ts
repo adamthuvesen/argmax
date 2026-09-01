@@ -477,6 +477,7 @@ export interface SyncConfigInput {
   codex: boolean;
   cursor: boolean;
   opencode: boolean;
+  grok: boolean;
   /** 24 or 168; the backend clamps anything else. */
   windowHours: number;
 }

@@ -23,7 +23,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-2);
-  animation: surface-in var(--motion-base) var(--ease-out) both;
+  animation: surface-in var(--motion-base) var(--ease-out);
 }
 
 /* The card lives in the gutter beside the transcript, never on top of it, so

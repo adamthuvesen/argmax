@@ -569,7 +569,7 @@
   width: 100%;
   gap: 22px;
   margin-block-start: -3dvh;
-  animation: surface-in 420ms var(--ease) both;
+  animation: surface-in 420ms var(--ease);
   /* position:relative + z-index:26 puts this stacking context above the
      portaled .picker-dismiss-layer (z-index:25). Without position, z-index is
      ignored and the layer paints on top — swallowing wheel events on pickers. */

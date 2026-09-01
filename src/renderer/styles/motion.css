@@ -33,3 +33,25 @@ html[data-document-hidden="true"] {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Entrance animations add motion to something already visible. They never
+   bring it into existence.
+
+   The rule is one line of CSS with a large blast radius: an entrance keyframe
+   starts at `opacity: 0`, so a `backwards` fill (`both`) holds that frame until
+   the animation advances, and an element whose own rule sets `opacity: 0` and
+   animates *up* to 1 needs `forwards` forever. Either way the content is
+   invisible for as long as the animation has not run — and a document the
+   browser considers hidden advances no animation timeline at all, whatever
+   `animation-play-state` says. A window that reports hidden while the user is
+   looking at it (an occluded or just-shown webview does exactly this) then
+   paints a fully populated chat as a black rectangle: surface, bubbles and the
+   progress cue all mounted, all at zero opacity, until something forces the
+   timeline forward.
+
+   So: no fill mode on an entrance, and never `opacity: 0` in the element's own
+   rule. The resting style is the visible one, the keyframe's `from` is the only
+   place the invisible state lives, and a stalled timeline costs a fade rather
+   than the content. Motion that starts partly visible (`hl-token-in`,
+   `working-nest-settle`) keeps its fill — it has nothing to hide. */
+

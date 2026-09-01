@@ -20,8 +20,8 @@ Pairing is completed by scanning the QR code in settings or opening `http://<mac
 - **Protocol:** JSON frames over WebSocket.
   - Handshake: `{"type":"auth","token":"..."}` within 5 seconds.
   - RPC: `{"type":"request","id", "channel", "input"}` → `{"type":"response","id","ok"|"error"}`.
-  - Push events: `{"type":"event","channel","payload"}` for `dashboard:delta`, `terminal:data`, and `terminal:exit`.
-  - Heartbeat: `{"type":"ping"}` / `{"type":"pong"}` every 20s. Resync signals (`{"type":"resync"}`) indicate dropped connection recovery.
+  - Push events: `{"type":"event","channel","payload"}` for `dashboard:delta`, `terminal:data`, and `terminal:exit`. Terminal events ride their own 64-slot broadcast so a flood of PTY output cannot evict a queued delta; a client that falls behind on that stream silently loses the window, while falling behind on `dashboard:delta` costs it a `resync` frame.
+  - Heartbeat: `{"type":"ping"}` / `{"type":"pong"}` every 20s. Resync signals (`{"type":"resync"}`) indicate dropped connection recovery; the client reloads its snapshot and the open session's events.
 - **Dispatcher:** [src-tauri/src/remote/dispatch.rs](../src-tauri/src/remote/dispatch.rs) maps incoming requests to existing IPC handlers. Desktop-only channels return `REMOTE_UNSUPPORTED`.
 - **Renderer Transport:** [wsTransport.ts](../src/renderer/lib/wsTransport.ts) implements `invoke` and `subscribe` over WebSocket when `argmax.remote` is set.
 - **Mobile UI:** [mobile.html](../mobile.html) and [src/renderer/mobile](../src/renderer/mobile) provide a touch-optimized view for session management, reviews, and launcher flows. Navigation history is synchronized with browser history in [useMobileBackNavigation.ts](../src/renderer/mobile/useMobileBackNavigation.ts) — every screen a back gesture can pop counts toward the depth it mirrors, including sheets and the review screen's file drill-down, so screens whose open state lives in a child are lifted into `MobileApp`.

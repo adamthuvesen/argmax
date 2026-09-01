@@ -50,6 +50,60 @@ const DELTA_CONFLATE_WARN: usize = 256;
 /// token burst into a single push.
 const MAX_CONFLATED_DELTA_BYTES: usize = 256 * 1024;
 
+/// How much terminal text one main-thread emit cycle may carry, for the same
+/// reason as `MAX_CONFLATED_DELTA_BYTES`: the payload becomes a JS source
+/// string the main thread evals, so this caps how long JavaScriptCore parses
+/// per hop. Whatever does not fit stays queued for the next cycle, in order.
+const MAX_CONFLATED_TERMINAL_BYTES: usize = 256 * 1024;
+
+/// One queued terminal push. Data and exit share a queue so a `terminal:exit`
+/// can never overtake output still queued for the same terminal.
+#[derive(Debug)]
+enum TerminalPush {
+    Data(terminal::service::TerminalChunk),
+    Exit(terminal::service::TerminalExitInfo),
+}
+
+impl TerminalPush {
+    fn approx_payload_bytes(&self) -> usize {
+        match self {
+            TerminalPush::Data(chunk) => chunk.data.len(),
+            TerminalPush::Exit(_) => 0,
+        }
+    }
+}
+
+/// Merge a drained batch down to one `terminal:data` per terminal, in order.
+///
+/// PTY chunk text concatenates trivially, so a burst for one terminal becomes a
+/// single push. An exit closes its terminal's open chunk: output that arrived
+/// before it still goes out first, and anything that arrives after is not
+/// folded back in front of it.
+fn coalesce_terminal_pushes(batch: Vec<TerminalPush>) -> Vec<TerminalPush> {
+    let mut coalesced: Vec<TerminalPush> = Vec::with_capacity(batch.len());
+    let mut open: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for push in batch {
+        match push {
+            TerminalPush::Data(chunk) => match open.get(&chunk.terminal_id) {
+                Some(&index) => {
+                    if let Some(TerminalPush::Data(existing)) = coalesced.get_mut(index) {
+                        existing.data.push_str(&chunk.data);
+                    }
+                }
+                None => {
+                    open.insert(chunk.terminal_id.clone(), coalesced.len());
+                    coalesced.push(TerminalPush::Data(chunk));
+                }
+            },
+            TerminalPush::Exit(info) => {
+                open.remove(&info.terminal_id);
+                coalesced.push(TerminalPush::Exit(info));
+            }
+        }
+    }
+    coalesced
+}
+
 /// Construct and run the Tauri app.
 pub fn run() {
     let timer = Arc::new(StartupTimer::new());
@@ -436,32 +490,75 @@ pub fn run() {
                             if state.providers.set(Arc::clone(&providers)).is_err() {
                                 tracing::warn!("provider service state was already initialized");
                             }
-                            let app_handle = app.handle().clone();
-                            let remote_events = state.remote_events.clone();
-                            let on_terminal_data = Arc::new(move |chunk: terminal::service::TerminalChunk| {
-                                remote::publish(&remote_events, "terminal:data", &chunk);
-                                let emit_handle = app_handle.clone();
-                                let handle = emit_handle.clone();
-                                if let Err(error) = emit_handle.run_on_main_thread(move || {
-                                    if let Err(error) = handle.emit("terminal:data", chunk) {
-                                        tracing::warn!(?error, "failed to emit terminal data");
+                            // Terminal pushes take the same shape as
+                            // `dashboard:delta`: a FIFO queue and one worker
+                            // that conflates what piled up into a single
+                            // main-thread hop. The PTY reader thread produces
+                            // an 8 KiB chunk at a time, at MB/s, with no
+                            // backpressure — one `run_on_main_thread` +
+                            // `Emitter::emit` per chunk is what makes a `cat`
+                            // of a large file freeze the window.
+                            let (terminal_tx, mut terminal_rx) =
+                                tokio::sync::mpsc::unbounded_channel::<TerminalPush>();
+                            let emit_handle = app.handle().clone();
+                            let remote_terminal_events = state.remote_terminal_events.clone();
+                            tauri::async_runtime::spawn(async move {
+                                while let Some(first) = terminal_rx.recv().await {
+                                    let mut pending_bytes = first.approx_payload_bytes();
+                                    let mut batch = vec![first];
+                                    while pending_bytes < MAX_CONFLATED_TERMINAL_BYTES {
+                                        let Ok(next) = terminal_rx.try_recv() else {
+                                            break;
+                                        };
+                                        pending_bytes += next.approx_payload_bytes();
+                                        batch.push(next);
                                     }
-                                }) {
-                                    tracing::warn!(?error, "failed to schedule terminal data emit");
+                                    let pushes = coalesce_terminal_pushes(batch);
+                                    // Remote clients are fed before the hop: a
+                                    // WebSocket write needs no NSApp event loop.
+                                    for push in &pushes {
+                                        match push {
+                                            TerminalPush::Data(chunk) => remote::publish(
+                                                &remote_terminal_events,
+                                                "terminal:data",
+                                                chunk,
+                                            ),
+                                            TerminalPush::Exit(info) => remote::publish(
+                                                &remote_terminal_events,
+                                                "terminal:exit",
+                                                info,
+                                            ),
+                                        }
+                                    }
+                                    let handle = emit_handle.clone();
+                                    if let Err(error) = emit_handle.run_on_main_thread(move || {
+                                        for push in pushes {
+                                            let emitted = match push {
+                                                TerminalPush::Data(chunk) => {
+                                                    handle.emit("terminal:data", chunk)
+                                                }
+                                                TerminalPush::Exit(info) => {
+                                                    handle.emit("terminal:exit", info)
+                                                }
+                                            };
+                                            if let Err(error) = emitted {
+                                                tracing::warn!(?error, "failed to emit terminal event");
+                                            }
+                                        }
+                                    }) {
+                                        tracing::warn!(?error, "failed to schedule terminal event emit");
+                                    }
                                 }
                             });
-                            let app_handle = app.handle().clone();
-                            let remote_events = state.remote_events.clone();
+                            let terminal_data_tx = terminal_tx.clone();
+                            let on_terminal_data = Arc::new(move |chunk: terminal::service::TerminalChunk| {
+                                if let Err(error) = terminal_data_tx.send(TerminalPush::Data(chunk)) {
+                                    tracing::warn!(?error, "terminal event channel closed");
+                                }
+                            });
                             let on_terminal_exit = Arc::new(move |info: terminal::service::TerminalExitInfo| {
-                                remote::publish(&remote_events, "terminal:exit", &info);
-                                let emit_handle = app_handle.clone();
-                                let handle = emit_handle.clone();
-                                if let Err(error) = emit_handle.run_on_main_thread(move || {
-                                    if let Err(error) = handle.emit("terminal:exit", info) {
-                                        tracing::warn!(?error, "failed to emit terminal exit");
-                                    }
-                                }) {
-                                    tracing::warn!(?error, "failed to schedule terminal exit emit");
+                                if let Err(error) = terminal_tx.send(TerminalPush::Exit(info)) {
+                                    tracing::warn!(?error, "terminal event channel closed");
                                 }
                             });
                             let terminals = terminal::service::TerminalService::with_lifecycle(
@@ -893,6 +990,55 @@ mod tests {
         assert!(
             contents.contains("health_ping") || contents.contains("healthPing"),
             "expected command surface in bindings:\n{contents}",
+        );
+    }
+
+    fn chunk(terminal_id: &str, data: &str) -> TerminalPush {
+        TerminalPush::Data(terminal::service::TerminalChunk {
+            terminal_id: terminal_id.to_string(),
+            data: data.to_string(),
+        })
+    }
+
+    fn exit(terminal_id: &str) -> TerminalPush {
+        TerminalPush::Exit(terminal::service::TerminalExitInfo {
+            terminal_id: terminal_id.to_string(),
+            exit_code: 0,
+            signal: None,
+        })
+    }
+
+    #[test]
+    fn terminal_pushes_conflate_per_terminal_without_reordering_an_exit() {
+        let coalesced = coalesce_terminal_pushes(vec![
+            chunk("a", "one"),
+            chunk("b", "B1"),
+            chunk("a", "-two"),
+            exit("a"),
+            // Output that lands after the shell exited must stay behind the
+            // exit rather than being folded into the chunk in front of it.
+            chunk("a", "-late"),
+            chunk("b", "-B2"),
+        ]);
+
+        let rendered: Vec<(String, String)> = coalesced
+            .iter()
+            .map(|push| match push {
+                TerminalPush::Data(chunk) => {
+                    (chunk.terminal_id.clone(), format!("data:{}", chunk.data))
+                }
+                TerminalPush::Exit(info) => (info.terminal_id.clone(), "exit".to_string()),
+            })
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec![
+                ("a".to_string(), "data:one-two".to_string()),
+                ("b".to_string(), "data:B1-B2".to_string()),
+                ("a".to_string(), "exit".to_string()),
+                ("a".to_string(), "data:-late".to_string()),
+            ]
         );
     }
 

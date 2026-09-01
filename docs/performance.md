@@ -71,6 +71,12 @@ text — single events reach 711 KB in a real database, and an unbounded merge
 handed JavaScriptCore a multi-megabyte program to parse on the main thread.
 Whatever does not fit stays queued and goes out on the next iteration, in order.
 
+Terminal output takes the same shape: PTY chunks queue onto one worker that
+concatenates them per terminal up to `MAX_CONFLATED_TERMINAL_BYTES` (256 KB)
+before a single main-thread emit, so a `cat` of a large file no longer costs one
+`run_on_main_thread` hop per 8 KB read. A `terminal:exit` rides the same queue
+and never overtakes output still queued for its terminal.
+
 ## Animated Properties
 
 Idle renderer CPU is dominated by *which property* an animation drives, not how

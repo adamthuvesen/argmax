@@ -25,6 +25,7 @@ use crate::util::startup_timer::StartupTimer;
 use crate::workspaces::WorkspaceService;
 
 pub type LiveNotificationService = NotificationService<TauriNotificationSink<tauri::Wry>>;
+pub type LiveDockBadgeService = DockBadgeService<TauriDockBadgeSink<tauri::Wry>>;
 
 pub struct AppState {
     pub startup_timer: Arc<StartupTimer>,

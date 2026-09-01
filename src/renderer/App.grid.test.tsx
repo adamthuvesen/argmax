@@ -5,6 +5,7 @@ import { MIN_RESIZABLE_CELL_WIDTH_PX } from "./components/SessionMultiGrid.js";
 import { THINKING_WORDS } from "./components/ThinkingLabel.js";
 import type { DashboardSnapshot, SessionEventsSinceResult } from "../shared/types.js";
 import {
+  archiveWorkspace,
   createCurrentWorkspace,
   dashboardDeltaListener,
   launchProvider,
@@ -12,7 +13,8 @@ import {
   openSettings,
   sessionAgentEvents,
   setupAppTestMocks,
-  snapshot
+  snapshot,
+  terminateProvider
 } from "../test/appTestHarness.js";
 import { startedAgentName } from "../test/agentRowName.js";
 import { resetTerminalTabsForTests } from "./lib/terminalTabs.js";
@@ -109,6 +111,80 @@ describe("App grid", () => {
     await waitFor(() => {
       expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(1);
     });
+  });
+
+  it("closes only the archived pane when multiple panes are open", async () => {
+    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-2",
+      projectId: "project-1",
+      taskLabel: "Split target",
+      branch: "argmax/split-target",
+      baseRef: "main",
+      path: "/tmp/worktrees/split-target",
+      state: "complete",
+      sharedWorkspace: true,
+      kind: "git",
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
+    };
+    const secondSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-2",
+      workspaceId: "workspace-2",
+      provider: "claude",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-2",
+      prompt: "Split target",
+      state: "complete",
+      attention: "review-ready",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:04:00.000Z",
+      lastActivityAt: "2026-05-08T16:04:00.000Z"
+    };
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, secondWorkspace],
+      sessions: [...snapshot.sessions, secondSession]
+    });
+    archiveWorkspace.mockResolvedValue({
+      ...secondWorkspace,
+      state: "archived"
+    });
+
+    render(<App />);
+
+    // Open first session
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+
+    // ⌘-click the second session to split right
+    fireEvent.click(screen.getByRole("button", { name: "Split target" }), { metaKey: true });
+    await waitFor(() => {
+      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(2);
+    });
+
+    // Archive the second session from its sidebar row
+    const archiveButtons = screen.getAllByRole("button", { name: "Archive session" });
+    const lastArchiveButton = archiveButtons[archiveButtons.length - 1];
+    expect(lastArchiveButton).toBeDefined();
+    if (!lastArchiveButton) throw new Error("Expected lastArchiveButton to be defined");
+    fireEvent.click(lastArchiveButton);
+
+    await waitFor(() =>
+      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-2", force: false })
+    );
+
+    // Grid now has only 1 pane (the first one)
+    await waitFor(() => {
+      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(1);
+    });
+    expect(screen.getByTitle("Build dashboard — running — in view")).toBeInTheDocument();
+    expect(screen.queryByTitle("Split target — complete — in view")).not.toBeInTheDocument();
   });
 
   it("⌥-click on a sidebar session splits below into a new row", async () => {
@@ -258,6 +334,47 @@ describe("App grid", () => {
     // The launcher cell follows the pick; the session pane beside it stays put.
     expect(await screen.findByRole("region", { name: "New session for Sidecar" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
+  });
+
+  it("reverts the grid cell to a launcher with prompt and repo persisted when stopped within 10s in embedded mode", async () => {
+    window.localStorage.setItem("argmax.newSessionMode", "embedded");
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+    fireEvent.click(screen.getByRole("button", { name: "New Agent" }));
+
+    const launcher = await screen.findByRole("region", { name: "New session for Argmax" });
+    const promptInput = within(launcher).getByLabelText("Task prompt");
+    fireEvent.change(promptInput, { target: { value: "Implement embedded early stop feature" } });
+
+    const freshWorkspace = {
+      ...snapshot.workspaces[0],
+      id: "workspace-2",
+      taskLabel: "Embedded task"
+    };
+    createCurrentWorkspace.mockResolvedValue(freshWorkspace);
+
+    const freshSession = {
+      ...snapshot.sessions[0],
+      id: "session-embedded-fresh",
+      workspaceId: "workspace-2",
+      prompt: "Implement embedded early stop feature",
+      startedAt: new Date().toISOString(),
+      state: "running" as const
+    };
+    launchProvider.mockResolvedValue(freshSession);
+
+    fireEvent.click(within(launcher).getByTitle("Start agent"));
+
+    const secondPane = await screen.findByRole("region", { name: "Embedded task" });
+    const freshStopButton = within(secondPane).getByRole("button", { name: "Stop session" });
+    fireEvent.click(freshStopButton);
+
+    await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-embedded-fresh"));
+
+    const restoredLauncher = await screen.findByRole("region", { name: "New session for Argmax" });
+    expect(within(restoredLauncher).getByLabelText("Task prompt")).toHaveValue("Implement embedded early stop feature");
   });
 
   it("opens an agent activity pane from an agent row without showing child prose in the parent chat", async () => {

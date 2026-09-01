@@ -37,7 +37,7 @@ import {
   appendReferencesToPrompt,
   imageAttachmentReference
 } from "../lib/composerAttachments.js";
-import { clearDraft, launcherDraftKey } from "../lib/composerDrafts.js";
+import { clearDraft, launcherDraftKey, readDraft } from "../lib/composerDrafts.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
@@ -156,14 +156,15 @@ export function LaunchSurface({
     : project
       ? launcherDraftKey(project.id)
       : null;
+  const [status, setStatus] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   // Picking another project from the context picker is how the user aims a
   // prompt they are still writing, so the text follows the pick. Switching
   // to Chat uses the same carry so the draft survives the retarget.
   const [prompt, setPrompt, promptCarriedOnRetarget] = useComposerDraft(draftKey, {
-    carryTextOnRetarget: true
+    carryTextOnRetarget: true,
+    persist: !isSubmitting
   });
-  const [status, setStatus] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const {
     pendingAttachments,
     attachmentInputRef,
@@ -179,7 +180,8 @@ export function LaunchSurface({
     workspacePath: activeProject?.repoPath ?? null,
     setInput: setPrompt,
     setStatus,
-    carriedOnRetarget: promptCarriedOnRetarget
+    carriedOnRetarget: promptCarriedOnRetarget,
+    persist: !isSubmitting
   });
   const [agentMode, setAgentMode] = useState<AgentMode>("auto");
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
@@ -291,7 +293,8 @@ export function LaunchSurface({
     lastResetSignal.current = resetSignal;
     setHeading(pickLauncherHeading());
     reviewClosePanel();
-  }, [resetSignal, reviewClosePanel]);
+    if (draftKey) setPrompt(readDraft(draftKey).text);
+  }, [draftKey, resetSignal, reviewClosePanel, setPrompt]);
 
   useEffect(() => {
     if (rightPanelToggleSignal === lastRightPanelToggleSignal.current) return;
@@ -410,18 +413,22 @@ export function LaunchSurface({
     },
     [onSelectProject, onSideChatModeChange]
   );
+  const selectedProjectIndex = projects.findIndex((candidate) => candidate.id === project?.id);
   const projectFilter = useTypeToFilter({
     open: projectPickerOpen,
     items: projects,
     toLabel: (candidate: ProjectSummary) => candidate.name,
     listRef: projectListRef,
+    initialIndex: selectedProjectIndex >= 0 ? selectedProjectIndex : 0,
     onPick: pickProject
   });
+  const selectedBranchIndex = project ? branches.findIndex((b) => b === project.currentBranch) : -1;
   const branchFilter = useTypeToFilter({
     open: branchPickerOpen,
     items: branches,
     toLabel: (branch: string) => branch,
     listRef: branchListRef,
+    initialIndex: selectedBranchIndex >= 0 ? selectedBranchIndex : 0,
     onPick: (branch: string) => void switchBranch(branch)
   });
 
@@ -608,6 +615,11 @@ export function LaunchSurface({
 
     setIsSubmitting(true);
     setStatus(null);
+    // Drop the stored draft before the first await. Launching unmounts this
+    // surface, and a remounted NEW CHAT reads storage: if the entry is still
+    // here, the sent prompt comes back. `persist: !isSubmitting` stops the
+    // write effect from recreating it while the text stays on screen.
+    if (draftKey) clearDraft(draftKey);
     try {
       const attachments = pendingAttachments.length > 0 ? pendingAttachments : undefined;
       if (chatMode && onLaunchSideChat) {
@@ -615,7 +627,6 @@ export function LaunchSurface({
       } else {
         await onLaunchTask(finalPrompt, model, agentMode, workspaceMode, attachments);
       }
-      if (draftKey) clearDraft(draftKey);
       setPrompt("");
       clearAttachments();
     } catch (error) {

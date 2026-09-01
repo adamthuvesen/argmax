@@ -488,6 +488,28 @@ export function setLauncherProject(grid: GridState, projectId: string): GridStat
   return { ...grid, rows: replaceCell(grid.rows, coord, { kind: "launcher", projectId }) };
 }
 
+/**
+ * Replaces a session cell with a launcher cell targeting the given project,
+ * pruning any child subagent panes for that parent session.
+ * Used when an early stop cancels an in-flight session and returns the user to
+ * the new-session composer.
+ */
+export function revertSessionToLauncher(
+  grid: GridState,
+  sessionId: string,
+  projectId: string
+): GridState {
+  const coord = findSessionCell(grid, sessionId);
+  if (!coord) {
+    if (grid.rows.length === 0) return EMPTY_GRID;
+    return openLauncherInGrid(grid, { kind: "launcher", projectId });
+  }
+  const launcherCell: LauncherGridCell = { kind: "launcher", projectId };
+  let rows = replaceCell(grid.rows, coord, launcherCell);
+  rows = removeAgentCellsForParent(rows, sessionId);
+  return { ...grid, rows, focused: coord };
+}
+
 export function setFocus(grid: GridState, coord: GridCoord): GridState {
   if (grid.focused && grid.focused.row === coord.row && grid.focused.col === coord.col) return grid;
   const row = grid.rows[coord.row];

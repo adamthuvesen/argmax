@@ -25,7 +25,8 @@ import {
   sessionEventsSince,
   setWorkspaceIcon,
   setupAppTestMocks,
-  snapshot
+  snapshot,
+  terminateProvider
 } from "../test/appTestHarness.js";
 
 /** Paste of a screenshot: a clipboard carrying one path-less image file. */
@@ -197,6 +198,45 @@ describe("App", () => {
     } finally {
       confirmSpy.mockRestore();
     }
+  });
+
+  it("closes the open chat when archiving the currently active workspace", async () => {
+    const activeSnapshot: DashboardSnapshot = {
+      ...snapshot,
+      workspaces: snapshot.workspaces.map((workspace) => ({
+        ...workspace,
+        state: "complete",
+        sharedWorkspace: true,
+        kind: "git",
+        dirty: false,
+        changedFiles: 0
+      })),
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
+    };
+    mockDashboardSnapshot(activeSnapshot);
+    archiveWorkspace.mockResolvedValue({
+      ...(activeSnapshot.workspaces[0] ?? snapshot.workspaces[0]),
+      state: "archived"
+    });
+
+    render(<App />);
+
+    // Open the chat
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    expect(await screen.findByRole("button", { name: "Close pane" })).toBeInTheDocument();
+
+    // Archive the active chat
+    fireEvent.click(screen.getByRole("button", { name: "Archive session" }));
+
+    await waitFor(() =>
+      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false })
+    );
+
+    // Chat should now be closed and launcher should be visible
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Close pane" })).not.toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
   });
 
   it("re-prompts and retries with force when the backend finds changes the snapshot missed", async () => {
@@ -567,6 +607,92 @@ describe("App", () => {
     render(<App />);
     expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
     expect(attachedScreenshots()).toEqual([]);
+  });
+
+  it("does not restore a launched prompt on the next new chat", async () => {
+    render(<App />);
+
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Implement PTY launch" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+    await screen.findByRole("heading", { name: "Argmax" });
+
+    fireEvent.keyDown(document, { key: "n", metaKey: true });
+    expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
+  });
+
+  it("returns to the new chat composer view with prompt and repo persisted when stopped within 10s of launch", async () => {
+    const freshSession = {
+      ...snapshot.sessions[0],
+      id: "session-new",
+      workspaceId: "workspace-1",
+      prompt: "Fix login auth bug in wrong repo",
+      startedAt: new Date().toISOString(),
+      state: "running" as const
+    };
+    launchProvider.mockResolvedValue(freshSession);
+
+    render(<App />);
+
+    const promptBox = await screen.findByLabelText("Task prompt");
+    fireEvent.change(promptBox, {
+      target: { value: "Fix login auth bug in wrong repo" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    const stopButton = await screen.findByRole("button", { name: "Stop session" });
+    expect(stopButton).toBeInTheDocument();
+
+    fireEvent.click(stopButton);
+
+    await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-new"));
+
+    const restoredPromptBox = await screen.findByLabelText("Task prompt");
+    expect(restoredPromptBox).toHaveValue("Fix login auth bug in wrong repo");
+  });
+
+  it("does not return to composer when stopped after the 10s window", async () => {
+    const oldSession = {
+      ...snapshot.sessions[0],
+      id: "session-old",
+      workspaceId: "workspace-1",
+      prompt: "Build dashboard feature",
+      startedAt: new Date(Date.now() - 30_000).toISOString(),
+      state: "running" as const
+    };
+    launchProvider.mockResolvedValue(oldSession);
+
+    render(<App />);
+
+    const promptBox = await screen.findByLabelText("Task prompt");
+    fireEvent.change(promptBox, {
+      target: { value: "Build dashboard feature" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    const stopButton = await screen.findByRole("button", { name: "Stop session" });
+    fireEvent.click(stopButton);
+
+    await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-old"));
+
+    expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Session prompt")).toBeInTheDocument();
+  });
+
+  it("drops the stored launcher draft as soon as start is pressed", async () => {
+    createCurrentWorkspace.mockImplementation(() => new Promise(() => undefined));
+    render(<App />);
+
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Implement PTY launch" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() => {
+      expect(JSON.parse(window.localStorage.getItem("argmax.composer.drafts") ?? "{}")).toEqual({});
+    });
+    expect(screen.getByLabelText("Task prompt")).toHaveValue("Implement PTY launch");
   });
 
   it("launches into an isolated worktree when the worktree toggle is enabled", async () => {

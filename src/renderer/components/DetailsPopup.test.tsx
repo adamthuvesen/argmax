@@ -39,6 +39,7 @@ function renderPopup(overrides: {
       onSendQueuedMessageNow={vi.fn().mockResolvedValue(undefined)}
       onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
       onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+      onClearSession={vi.fn().mockResolvedValue(undefined)}
       project={null}
       rawOutputs={[]}
       session={baseSession()}

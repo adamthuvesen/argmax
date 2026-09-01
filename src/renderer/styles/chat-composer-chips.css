@@ -308,10 +308,6 @@ button.composer-compact-context-row:hover,
     padding: 8px 10px;
   }
 
-  .composer-queued-lane {
-    margin: -8px -10px 4px;
-  }
-
   .session-input textarea {
     min-height: 56px;
   }
@@ -569,31 +565,39 @@ button.composer-compact-context-row:hover,
   cursor: zoom-in;
 }
 
+/* Queued follow-ups sit on top of the composer as a tucked tab, slightly
+   narrower and a step behind, so the input card stays the live surface and
+   the waiting prompt reads as a layer stacked on it. */
 .composer-queued-lane {
+  position: relative;
   display: flex;
   flex-direction: column;
-  margin: -12px -14px 4px;
-  border-bottom: 1px solid var(--line);
-  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  z-index: 0;
+  min-width: 0;
+  margin-inline: 10px;
+  margin-bottom: -10px;
+  padding-bottom: 10px;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  background: color-mix(in oklab, var(--composer-surface) 58%, var(--panel-sunken));
   overflow: hidden;
 }
 
 .composer-queued-chip {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  padding: 7px 10px 7px 14px;
+  gap: 8px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 8px 6px 12px;
   border: 0;
-  border-bottom: 1px solid var(--line-soft);
-  background: color-mix(in oklab, var(--panel-soft) 56%, var(--panel));
+  background: transparent;
   color: var(--text);
   font-size: var(--text-sm);
   line-height: 1.35;
 }
 
-.composer-queued-chip:last-child {
-  border-bottom: 0;
+.composer-queued-chip + .composer-queued-chip {
+  border-top: 1px solid var(--line-soft);
 }
 
 .composer-queued-chip:focus-visible {
@@ -612,12 +616,6 @@ button.composer-compact-context-row:hover,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.composer-queued-chip-state {
-  flex: 0 0 auto;
-  color: var(--muted);
-  font-size: var(--text-xs);
 }
 
 .composer-queued-chip-action {
@@ -670,10 +668,6 @@ button.composer-compact-context-row:hover,
 }
 
 @container (max-width: 620px) {
-  .composer-queued-chip-state {
-    display: none;
-  }
-
   .composer-queued-chip-action span {
     display: none;
   }

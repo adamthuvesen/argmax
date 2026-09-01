@@ -1099,7 +1099,8 @@
 .composer-status {
   /* Float above the composer instead of taking a layout row — otherwise
      showing the status shoves the whole input box upward. Anchored to the
-     form (.session-input is position: relative). */
+     stack (.session-composer-stack is position: relative) so a queued
+     follow-up tab does not cover it. */
   position: absolute;
   bottom: calc(100% + 6px);
   left: 0;

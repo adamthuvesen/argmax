@@ -341,8 +341,9 @@
   text-overflow: ellipsis;
 }
 
-/* Fenced code block — header strip with language label and copy button.
-   Replaces the bare `<pre>` rendering for fenced code in assistant markdown. */
+/* Fenced code block. A language header is only in flow when the fence names a
+   language. Untagged and ```text fences overlay the copy button so a one-line
+   block is not sitting under a blank 30px strip. */
 .code-block {
   position: relative;
   margin: 14px 0;
@@ -363,6 +364,17 @@
   border-bottom: 1px solid var(--line-soft);
 }
 
+.code-block:not([data-label]) .code-block-header {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: auto;
+  padding: 6px;
+  background: none;
+  border: 0;
+  z-index: 1;
+}
+
 .code-block-lang {
   display: inline-flex;
   align-items: center;
@@ -372,10 +384,6 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted-strong);
-}
-
-.code-block-lang--blank {
-  min-height: 11px;
 }
 
 .code-block-copy {
@@ -393,6 +401,10 @@
   transition: background var(--duration-fast) var(--ease),
               color var(--duration-fast) var(--ease),
               opacity var(--duration-fast) var(--ease);
+}
+
+.code-block:not([data-label]) .code-block-copy {
+  background: var(--panel-soft);
 }
 
 .code-block:hover .code-block-copy,
@@ -417,6 +429,10 @@
   color: var(--text);
   overflow-x: auto;
   font-feature-settings: var(--code-font-features);
+}
+
+.code-block:not([data-label]) pre {
+  padding-right: 40px;
 }
 
 .code-block pre code {

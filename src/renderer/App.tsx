@@ -42,8 +42,10 @@ import { DetailsPopup } from "./components/DetailsPopup.js";
 import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/SessionMultiGrid.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
+import { ScheduleRail } from "./components/scheduled/ScheduleRail.js";
 import { SettingsRail } from "./components/settings/SettingsRail.js";
-import { EMPTY_GRID, MAX_COLS, openWorkspaceInGrid, terminalWorkspaceId } from "./lib/gridState.js";
+import { EMPTY_GRID, MAX_COLS, openWorkspaceInGrid, revertSessionToLauncher, terminalWorkspaceId } from "./lib/gridState.js";
+import { isEarlySessionStop } from "./lib/earlyStop.js";
 import { toggleTerminalPanel } from "./lib/terminalTabs.js";
 import { onBrowserPanelRequest, requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
 import { requestCloseActiveReviewFileTab } from "./lib/reviewFilePanel.js";
@@ -68,7 +70,7 @@ import { animateThemeChange } from "./lib/theme.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import type { WorkspaceMode } from "./lib/workspaceMode.js";
 import { persistLaunchModel, readStoredLaunchModel } from "./lib/launchModelPreference.js";
-import { factoryLaunchModel, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
+import { factoryLaunchModel, modelPickerSelectionFromSession, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
   PERMISSION_MODE_KEY,
@@ -92,6 +94,7 @@ import {
 } from "./lib/reviewPanelSide.js";
 import {
   COMPOSER_PIXEL_FIELD_KEY,
+  DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
   TURN_CHANGES_EXPANDED_KEY,
   RANDOM_SESSION_ICON_KEY,
@@ -137,6 +140,7 @@ export function App(): JSX.Element {
     isCheatSheetOpen,
     setIsCheatSheetOpen
   } = useOverlays();
+  const standalonePageOpen = isSettingsOpen || isScheduledTasksOpen;
   const [toast, setToast] = useState<ToastMessage | null>(null);
   // Each request carries a sequence number: asking for the URL the pane is
   // already on has to stay a state change, or React bails on the identical
@@ -189,6 +193,16 @@ export function App(): JSX.Element {
     RANDOM_SESSION_ICON_KEY,
     false
   );
+  const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useBooleanUiPreference(
+    DESKTOP_NOTIFICATIONS_KEY,
+    true
+  );
+
+  useEffect(() => {
+    if (window.argmax?.system?.setNotificationsEnabled) {
+      void window.argmax.system.setNotificationsEnabled(desktopNotificationsEnabled);
+    }
+  }, [desktopNotificationsEnabled]);
   const handleLaunchModelChange = useCallback(
     (model: ModelPickerSelection): void => {
       setLaunchModel(model);
@@ -390,7 +404,7 @@ export function App(): JSX.Element {
       cancelled = true;
     };
   }, [requiredWindowMinWidth]);
-  const showWorkspaceDropTarget = draggingWorkspaceId !== null && !isSettingsOpen && (grid.rows.length === 0 || isFullLauncherOpen);
+  const showWorkspaceDropTarget = draggingWorkspaceId !== null && !standalonePageOpen && (grid.rows.length === 0 || isFullLauncherOpen);
 
   useEffect(() => {
     if (!showWorkspaceDropTarget) setIsWorkspaceDropPreviewVisible(false);
@@ -429,9 +443,9 @@ export function App(): JSX.Element {
   );
 
   useLayoutEffect(() => {
-    if (!isSettingsOpen) return;
+    if (!standalonePageOpen) return;
     scrollSettingsToTop();
-  }, [isSettingsOpen, scrollSettingsToTop]);
+  }, [standalonePageOpen, scrollSettingsToTop]);
 
   useEffect(() => {
     // First non-loading render is the renderer's "first content" mark.
@@ -1045,8 +1059,63 @@ export function App(): JSX.Element {
     openNewSessionPane();
   }, [openNewSessionPane, setIsSettingsOpen]);
 
-  const { sendSessionInput, cancelQueuedMessage, sendQueuedMessageNow, runCheck, terminateSession } =
-    useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: fastModeEnabled });
+  const handleEarlyStop = useCallback(
+    (sessionId: string): void => {
+      const session =
+        sessionsById.get(sessionId) ?? snapshot.sessions.find((s) => s.id === sessionId);
+      if (!session || !isEarlySessionStop(session)) return;
+
+      const workspace =
+        workspacesById.get(session.workspaceId) ??
+        snapshot.workspaces.find((w) => w.id === session.workspaceId);
+      const isSideChat =
+        !workspace || workspace.kind === "scratch" || workspace.projectId === SCRATCH_PROJECT_ID;
+      const projectId = isSideChat ? SCRATCH_PROJECT_ID : workspace.projectId;
+      const draftKey = isSideChat
+        ? launcherDraftKey(SCRATCH_PROJECT_ID)
+        : launcherDraftKey(projectId);
+
+      if (session.prompt.trim() !== "") {
+        writeDraftText(draftKey, session.prompt);
+      }
+
+      if (!isSideChat) {
+        setSelectedProjectId(projectId);
+      }
+      setLauncherSideChatMode(isSideChat);
+      handleLaunchModelChange(modelPickerSelectionFromSession(session));
+      setLauncherResetSignal((signal) => signal + 1);
+
+      if (newSessionMode === "full" || grid.rows.length === 0) {
+        setIsFullLauncherOpen(true);
+        setGrid((current) => revertSessionToLauncher(current, session.id, projectId));
+      } else {
+        setGrid((current) => revertSessionToLauncher(current, session.id, projectId));
+      }
+    },
+    [
+      grid.rows.length,
+      handleLaunchModelChange,
+      newSessionMode,
+      sessionsById,
+      setGrid,
+      setIsFullLauncherOpen,
+      setLauncherSideChatMode,
+      setSelectedProjectId,
+      snapshot.sessions,
+      snapshot.workspaces,
+      workspacesById
+    ]
+  );
+
+  const { sendSessionInput, cancelQueuedMessage, sendQueuedMessageNow, runCheck, terminateSession, clearSession } =
+    useSessionCommands({
+      refreshDashboardStatus,
+      loadSessionEvents,
+      setToast,
+      fastMode: fastModeEnabled,
+      onEarlyStop: handleEarlyStop
+    });
 
   // The hidden "Side chats" project owns scratch workspaces; it is not a
   // repository, so every repo-picking surface (launcher, settings) sees only
@@ -1653,9 +1722,9 @@ export function App(): JSX.Element {
       tabIndex={-1}
       style={{
         gridTemplateColumns:
-          // Settings owns the sidebar column: its rail is fixed-width and is
-          // shown even when the app sidebar is collapsed.
-          (isSettingsOpen
+          // Settings and schedule own the sidebar column: the rail is fixed-width
+          // and is shown even when the app sidebar is collapsed.
+          (standalonePageOpen
             ? "var(--settings-rail-width) minmax(0, 1fr)"
             : sidebarCollapsed
               ? "minmax(0, 1fr)"
@@ -1667,10 +1736,11 @@ export function App(): JSX.Element {
       data-chat-width={String(chatWidth)}
       data-review-panel-side={reviewPanelSide}
       data-settings-open={isSettingsOpen ? "true" : undefined}
-      data-sidebar-collapsed={sidebarCollapsed && !isSettingsOpen ? "true" : undefined}
+      data-schedule-open={isScheduledTasksOpen ? "true" : undefined}
+      data-sidebar-collapsed={sidebarCollapsed && !standalonePageOpen ? "true" : undefined}
       data-sidebar-peek={sidebarCollapsed && sidebarPeek ? "true" : undefined}
     >
-      {isSettingsOpen ? null : (
+      {standalonePageOpen ? null : (
         <button
           type="button"
           className="sidebar-toggle"
@@ -1681,7 +1751,7 @@ export function App(): JSX.Element {
           <PanelLeft size={16} strokeWidth={1.75} />
         </button>
       )}
-      {sidebarCollapsed && !isSettingsOpen ? (
+      {sidebarCollapsed && !standalonePageOpen ? (
         <div
           className="sidebar-peek-zone"
           aria-hidden="true"
@@ -1735,6 +1805,7 @@ export function App(): JSX.Element {
           onSendQueuedMessageNow={sendQueuedMessageNow}
           onSendSessionInput={sendSessionInput}
           onTerminateSession={terminateSession}
+          onClearSession={clearSession}
           pendingMessages={snapshot.pendingMessages}
           project={null}
           rawOutputs={snapshot.rawOutputs}
@@ -1749,6 +1820,8 @@ export function App(): JSX.Element {
           onOpenSection={(group, sectionId) => openSettingsTarget(group, sectionId)}
           onBack={() => setIsSettingsOpen(false)}
         />
+      ) : isScheduledTasksOpen ? (
+        <ScheduleRail onBack={() => setIsScheduledTasksOpen(false)} />
       ) : (
         <Sidebar
           loadState={loadState}
@@ -1792,7 +1865,7 @@ export function App(): JSX.Element {
 
       <section className="workspace" ref={workspaceRef}>
         <div className={
-          isSettingsOpen || isScheduledTasksOpen
+          standalonePageOpen
             ? "work-scroll settings-scroll"
             : isFullLauncherOpen || grid.rows.length === 0
               ? "work-scroll launcher-scroll"
@@ -1800,7 +1873,7 @@ export function App(): JSX.Element {
         }>
           {loadState === "error" ? (
             <EmptyState message={loadError} onRetry={() => void loadDashboard()} />
-          ) : loadState === "loading" && grid.rows.length === 0 && !isSettingsOpen && !isScheduledTasksOpen ? (
+          ) : loadState === "loading" && grid.rows.length === 0 && !standalonePageOpen ? (
             <SkeletonPane />
           ) : isSettingsOpen ? (
             <Suspense fallback={<SkeletonPane />}>
@@ -1855,6 +1928,8 @@ export function App(): JSX.Element {
                 onNewSessionModeChange={setNewSessionMode}
                 randomSessionIconEnabled={randomSessionIconEnabled}
                 onRandomSessionIconEnabledChange={setRandomSessionIconEnabled}
+                desktopNotificationsEnabled={desktopNotificationsEnabled}
+                onDesktopNotificationsEnabledChange={setDesktopNotificationsEnabled}
                 projects={realProjects}
                 onProjectUpdated={handleProjectUpdated}
                 navigationTarget={settingsNavigationTarget}
@@ -1911,6 +1986,7 @@ export function App(): JSX.Element {
               onSendQueuedMessageNow={sendQueuedMessageNow}
               pendingMessages={snapshot.pendingMessages}
               onTerminateSession={terminateSession}
+              onClearSession={clearSession}
               onForkSession={forkSession}
               onRunCheck={runCheck}
               registerPaletteFileContext={registerPaletteFileContext}

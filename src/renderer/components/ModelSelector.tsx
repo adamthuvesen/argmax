@@ -455,12 +455,15 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     return { ...option.value, reasoningEffort: carried ?? DEFAULT_REASONING_EFFORT };
   };
 
+  const selectedIndex = options.findIndex((option) => isSelected(option.value));
+
   // Typing into the open picker filters the model list through useTypeToFilter.
   const modelFilter = useTypeToFilter({
     open,
     items: options,
     toLabel: (option: ChipModelOption<T>) => option.label,
     listRef: primaryListRef,
+    initialIndex: selectedIndex >= 0 ? selectedIndex : 0,
     onPick: (option: ChipModelOption<T>) => selectModel(option)
   });
 

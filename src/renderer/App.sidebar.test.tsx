@@ -133,14 +133,24 @@ describe("App sidebar", () => {
     render(<App />);
     await screen.findByRole("button", { name: /Pinned work/ });
 
-    fireEvent.keyDown(document, { key: "1", metaKey: true });
+    fireEvent.keyDown(document, { key: "1", code: "Digit1", metaKey: true });
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Pinned work/ })).toHaveAttribute("aria-current", "true")
     );
 
-    fireEvent.keyDown(document, { key: "2", metaKey: true });
+    fireEvent.keyDown(document, { key: "2", code: "Digit2", metaKey: true });
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Build dashboard/ })).toHaveAttribute("aria-current", "true")
+    );
+
+    // Cmd+1..9 must work even when focus is inside the composer textarea
+    const promptInput = await screen.findByLabelText("Session prompt");
+    promptInput.focus();
+    expect(promptInput).toHaveFocus();
+
+    fireEvent.keyDown(promptInput, { key: "1", code: "Digit1", metaKey: true });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Pinned work/ })).toHaveAttribute("aria-current", "true")
     );
   });
 

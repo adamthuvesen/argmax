@@ -561,6 +561,7 @@ export function MobileApp(): JSX.Element {
             onCancelQueuedMessage={commands.cancelQueuedMessage}
             onSendQueuedMessageNow={commands.sendQueuedMessageNow}
             onTerminateSession={commands.terminateSession}
+            onClearSession={commands.clearSession}
             onForkSession={forkSession}
             onOpenFile={(path) => {
               setReviewFilePath(path);

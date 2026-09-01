@@ -10,6 +10,7 @@ import {
   setLauncherProject,
   openAgentInGrid,
   openWorkspaceInGrid,
+  revertSessionToLauncher,
   setActiveAgentTab,
   setFocus,
   terminalWorkspaceId,
@@ -567,5 +568,32 @@ describe("terminalWorkspaceId", () => {
     const grid: GridState = { rows: [[launcher()]], focused: { row: 0, col: 0 } };
     expect(terminalWorkspaceId(grid, [null, undefined, "recent"])).toBe("recent");
     expect(terminalWorkspaceId(grid, [null, undefined])).toBeNull();
+  });
+});
+
+describe("revertSessionToLauncher", () => {
+  it("replaces the session cell with a launcher cell and focuses it", () => {
+    const start: GridState = { rows: [[cell(1), cell(2)]], focused: { row: 0, col: 0 } };
+    const next = revertSessionToLauncher(start, "s1", "p1");
+    expect(next.rows).toEqual([[launcher(1), cell(2)]]);
+    expect(next.focused).toEqual({ row: 0, col: 0 });
+  });
+
+  it("prunes dependent subagent panes when reverting the parent session", () => {
+    const start: GridState = { rows: [[cell(1), agentCell(1)]], focused: { row: 0, col: 0 } };
+    const next = revertSessionToLauncher(start, "s1", "p1");
+    expect(next.rows).toEqual([[launcher(1)]]);
+    expect(next.focused).toEqual({ row: 0, col: 0 });
+  });
+
+  it("returns EMPTY_GRID when called on an empty grid", () => {
+    expect(revertSessionToLauncher(EMPTY_GRID, "s1", "p1")).toEqual(EMPTY_GRID);
+  });
+
+  it("opens launcher in grid if session is not in grid but grid is non-empty", () => {
+    const start: GridState = { rows: [[cell(2)]], focused: { row: 0, col: 0 } };
+    const next = revertSessionToLauncher(start, "s1", "p1");
+    expect(next.rows).toEqual([[cell(2), launcher(1)]]);
+    expect(next.focused).toEqual({ row: 0, col: 1 });
   });
 });

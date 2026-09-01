@@ -58,21 +58,26 @@ export function useTypeToFilter<T>({
   items,
   toLabel,
   listRef,
+  initialIndex = 0,
   onPick
 }: {
   open: boolean;
   items: readonly T[];
   toLabel: (item: T) => string;
   listRef: RefObject<HTMLElement | null>;
+  initialIndex?: number;
   onPick: (item: T) => void;
 }): TypeToFilter<T> {
   const [query, setQuery] = useState("");
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(initialIndex >= 0 ? initialIndex : 0);
 
   // Kept in a ref so an inline `toLabel` can't invalidate the match memo on
   // every render of the popover's parent.
   const toLabelRef = useRef(toLabel);
   toLabelRef.current = toLabel;
+
+  const initialIndexRef = useRef(initialIndex);
+  initialIndexRef.current = initialIndex;
 
   const matches = useMemo(() => {
     const trimmed = query.trim();
@@ -80,7 +85,7 @@ export function useTypeToFilter<T>({
     return rankByLabel(items, toLabelRef.current, trimmed);
   }, [items, query]);
 
-  const clampedIndex = matches.length === 0 ? -1 : Math.min(activeIndex, matches.length - 1);
+  const clampedIndex = matches.length === 0 ? -1 : Math.min(Math.max(0, activeIndex), matches.length - 1);
 
   useRestoreFocus(open);
 
@@ -90,6 +95,8 @@ export function useTypeToFilter<T>({
       setActiveIndex(0);
       return;
     }
+    const startingIndex = initialIndexRef.current >= 0 ? initialIndexRef.current : 0;
+    setActiveIndex(startingIndex);
     // Take focus so typing filters the list rather than the input behind it.
     listRef.current?.focus();
   }, [listRef, open]);

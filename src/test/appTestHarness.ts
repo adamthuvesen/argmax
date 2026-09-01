@@ -28,6 +28,7 @@ import {
 // that render <App /> import this harness, so lib-only tests never pay it.
 await Promise.all([
   import("../renderer/components/SettingsPanel.js"),
+  import("../renderer/components/scheduled/ScheduledTasksPanel.js"),
   import("../renderer/components/CommandPalette.js"),
   import("../renderer/components/ReviewPanel.js")
 ]);
@@ -85,6 +86,8 @@ export type AppTestMocks = {
   providersDiscover: AppTestMockFn<ArgmaxApi["providers"]["discover"]>;
   diagnosticsStub: AppTestMockFn<ArgmaxApi["system"]["diagnostics"]>;
   vacuumDatabaseStub: AppTestMockFn<ArgmaxApi["system"]["vacuumDatabase"]>;
+  setNotificationsEnabledStub: AppTestMockFn<ArgmaxApi["system"]["setNotificationsEnabled"]>;
+  testNotificationStub: AppTestMockFn<ArgmaxApi["system"]["testNotification"]>;
   workspaceStatus: AppTestMockFn<ArgmaxApi["workspaces"]["status"]>;
   skillsList: AppTestMockFn<ArgmaxApi["skills"]["list"]>;
   openInIde: AppTestMockFn<ArgmaxApi["workspaces"]["openInIde"]>;
@@ -121,6 +124,8 @@ export let terminateProvider: AppTestMocks["terminateProvider"];
 export let providersDiscover: AppTestMocks["providersDiscover"];
 export let diagnosticsStub: AppTestMocks["diagnosticsStub"];
 export let vacuumDatabaseStub: AppTestMocks["vacuumDatabaseStub"];
+export let setNotificationsEnabledStub: AppTestMocks["setNotificationsEnabledStub"];
+export let testNotificationStub: AppTestMocks["testNotificationStub"];
 export let workspaceStatus: AppTestMocks["workspaceStatus"];
 export let skillsList: AppTestMocks["skillsList"];
 export let openInIde: AppTestMocks["openInIde"];
@@ -270,6 +275,10 @@ export function setupAppTestMocks(): void {
     ]
   });
   vacuumDatabaseStub = vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>().mockResolvedValue({ ok: true });
+  setNotificationsEnabledStub = vi
+    .fn<ArgmaxApi["system"]["setNotificationsEnabled"]>()
+    .mockResolvedValue({ ok: true });
+  testNotificationStub = vi.fn<ArgmaxApi["system"]["testNotification"]>().mockResolvedValue({ ok: true });
   menuCommandListener = null;
   workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
   listChangedFiles = vi.fn<ArgmaxApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
@@ -456,6 +465,7 @@ export function setupAppTestMocks(): void {
       eventsSince: sessionEventsSince,
       agentEvents: sessionAgentEvents,
       fork: () => Promise.reject(new Error("session fork not stubbed")),
+      clear: () => Promise.reject(new Error("session clear not stubbed")),
       suggestFollowUp: () => Promise.resolve({ suggestion: null }),
       costSummary: sessionCostSummary,
       search: () => Promise.resolve([])
@@ -489,7 +499,9 @@ export function setupAppTestMocks(): void {
       debugSnapshot: () =>
         Promise.resolve({ generatedAt: "2026-05-14T11:00:05.000Z", ipcStats: [], logs: [] }),
       vacuumDatabase: vacuumDatabaseStub,
-      setTheme: () => Promise.resolve({ ok: true })
+      setTheme: () => Promise.resolve({ ok: true }),
+      setNotificationsEnabled: setNotificationsEnabledStub,
+      testNotification: testNotificationStub
     },
     remote: {
       getStatus: () => Promise.reject(new Error("remote status unavailable in tests")),

@@ -534,8 +534,11 @@
     margin-top: 6px;
   }
 
-  .session-input {
+  .session-composer-stack {
     margin-top: 8px;
+  }
+
+  .session-input {
     padding: 8px 12px 7px;
     border-radius: var(--radius-2xl);
   }

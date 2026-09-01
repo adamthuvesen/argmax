@@ -14,7 +14,6 @@ export default tseslint.config(
       "eslint.config.js",
       "scripts/*.cjs",
       "scripts/*.mjs",
-      "docs/**/*.mjs",
       "vitest.perf.config.ts"
     ]
   },

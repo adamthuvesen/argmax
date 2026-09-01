@@ -258,6 +258,9 @@ pub fn run() {
                                 notifications::main_window_focus_probe(app.handle().clone()),
                                 notifications::TauriNotificationSink::new(app.handle().clone()),
                             ));
+                            if state.notifications.set(Arc::clone(&notifications)).is_err() {
+                                tracing::warn!("notifications state was already initialized");
+                            }
                             // Single FIFO channel for every `dashboard:delta`
                             // emit (providers + gh poller + workspaces). One
                             // worker task pulls from it and emits in order.
@@ -840,6 +843,11 @@ fn provider_defaults(provider: &str) -> ProviderDefaults {
             model_label: "GLM-5.3-Flash",
             model_id: "opencode-go/glm-5.3-flash",
             reasoning_effort: Some("high"),
+        },
+        "grok" => ProviderDefaults {
+            model_label: "Grok 4.6",
+            model_id: "grok-4.6",
+            reasoning_effort: Some("medium"),
         },
         _ => ProviderDefaults {
             model_label: "Opus 5",

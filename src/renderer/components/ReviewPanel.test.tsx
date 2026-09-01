@@ -36,6 +36,7 @@ function reviewStub(): ReviewState {
       entries: [],
       listState: "idle",
       listError: null,
+      refreshList: vi.fn(),
       tabs: [],
       activeTabPath: null,
       selectedPath: null,
@@ -177,6 +178,34 @@ describe("ReviewPanel changes layout", () => {
     expect(row).toHaveAttribute("aria-expanded", "false");
     expect(changedFilesStack.querySelector(".review-inline-diff")).toBeNull();
     expect(review.openFile).not.toHaveBeenCalled();
+  });
+
+  it("anchors Files mode with a status bar naming the open file, and drops it in Changes mode", () => {
+    const review = reviewStub();
+    review.mode = "files";
+    review.workspaceFiles.entries = [{ path: "src/index.ts" }, { path: "README.md" }];
+    review.workspaceFiles.selectedPath = "src/index.ts";
+    review.workspaceFiles.buffer = "one\ntwo\nthree";
+    const { rerender } = render(<ReviewPanel review={review} />);
+
+    const status = screen.getByLabelText("File status");
+    expect(status).toHaveTextContent("src/index.ts");
+    expect(status).toHaveTextContent("TypeScript");
+    expect(status).toHaveTextContent("3 lines");
+
+    const changes = reviewStub();
+    changes.mode = "changes";
+    rerender(<ReviewPanel review={changes} />);
+    expect(screen.queryByLabelText("File status")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the workspace file count when nothing is open", () => {
+    const review = reviewStub();
+    review.mode = "files";
+    review.workspaceFiles.entries = [{ path: "README.md" }];
+    render(<ReviewPanel review={review} />);
+
+    expect(screen.getByLabelText("File status")).toHaveTextContent("1 file");
   });
 
   it("keeps the resizable workspace file tree in Files mode", () => {

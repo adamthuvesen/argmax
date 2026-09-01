@@ -29,6 +29,7 @@ pub fn sync_set_config(
         codex: input.codex,
         cursor: input.cursor,
         opencode: input.opencode,
+        grok: input.grok,
         window_hours: input.window_hours,
     }
     .normalized();

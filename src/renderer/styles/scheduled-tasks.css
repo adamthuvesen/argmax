@@ -1,18 +1,20 @@
 /* ============================================================
    Schedule — the scheduled-tasks board and its editor.
 
-   Two surfaces, one column width. The list is a status board:
-   quiet rows, one accent marker, actions that stay out of the
-   way until you reach for them. The editor is a compose form
-   that reads its own schedule back as a sentence.
+   A standalone page, same shell as settings: rail in the sidebar
+   column, title in the content measure, empty topbar for drag.
+   The list is a status board: quiet rows, one accent marker,
+   actions that stay out of the way until you reach for them.
+   The editor is a compose form that reads its own schedule back
+   as a sentence.
 
    Every colour, radius, and step comes from tokens.css.
    ============================================================ */
 
-.sched-surface {
-  width: min(100%, 880px);
-  margin: 0 auto;
-  padding: var(--space-8) var(--space-6) var(--space-8);
+.sched-column {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
   animation: sched-rise var(--motion-base) var(--ease-out) both;
 }
 
@@ -21,12 +23,6 @@
     opacity: 0;
     transform: translateY(4px);
   }
-}
-
-.sched-column {
-  display: grid;
-  gap: var(--space-3);
-  min-width: 0;
 }
 
 /* ---------- Toolbar ---------- */
@@ -315,7 +311,6 @@
   gap: var(--space-2);
   justify-items: start;
   max-width: 46ch;
-  padding: var(--space-8) 0 0;
 }
 
 .sched-empty-headline {
@@ -344,6 +339,7 @@
   display: grid;
   gap: var(--space-7);
   min-width: 0;
+  animation: sched-rise var(--motion-base) var(--ease-out) both;
 }
 
 .sched-group {
@@ -511,12 +507,13 @@
 }
 
 /* No viewport media query here on purpose: `body` carries a 900px min-width,
-   so one could never fire. The panel instead has to survive its *container*
-   narrowing as the sidebar takes width — the name column is the flexible one
-   (min-width: 0 plus ellipsis) and everything else is content-sized. */
+   so one could never fire. The panel instead has to survive its container
+   narrowing. The name column is the flexible one (min-width: 0 plus ellipsis)
+   and everything else is content-sized. */
 
 @media (prefers-reduced-motion: reduce) {
-  .sched-surface {
+  .sched-column,
+  .sched-form {
     animation: none;
   }
 

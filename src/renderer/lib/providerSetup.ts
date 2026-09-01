@@ -19,7 +19,7 @@ export type ProviderSetup = {
   mcpHint: string;
 };
 
-export const PROVIDER_SETUP_ORDER: readonly ProviderId[] = ["claude", "codex", "cursor", "opencode"];
+export const PROVIDER_SETUP_ORDER: readonly ProviderId[] = ["claude", "codex", "cursor", "opencode", "grok"];
 
 export const PROVIDER_SETUP: Record<ProviderId, ProviderSetup> = {
   claude: {
@@ -49,5 +49,12 @@ export const PROVIDER_SETUP: Record<ProviderId, ProviderSetup> = {
     loginCommand: "opencode auth login",
     mcpCommand: "opencode mcp add",
     mcpHint: "Servers are managed with the OpenCode CLI or ~/.config/opencode/opencode.json."
+  },
+  grok: {
+    displayName: "Grok Build",
+    installCommand: "curl -fsSL https://x.ai/cli/install.sh | bash",
+    loginCommand: "grok login",
+    mcpCommand: "grok mcp add <name> -- <command>",
+    mcpHint: "Servers are managed with the Grok CLI or ~/.grok/config.toml."
   }
 };

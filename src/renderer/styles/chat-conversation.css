@@ -156,7 +156,9 @@
 .session-grid {
   --session-main-column-min-width: 320px;
   --session-review-panel-width: clamp(320px, 34vw, 520px);
-  --session-log-panel-width: clamp(300px, 32vw, 480px);
+  /* Wider than the review panel's floor: the debug panel carries a sortable
+     IPC table and monospaced trace rows that a 300px column truncates. */
+  --session-log-panel-width: clamp(340px, 34vw, 620px);
   position: relative;
   display: grid;
   height: 100%;
@@ -929,6 +931,14 @@
   margin-bottom: 0;
 }
 
+/* Prose plus a lifted log dump: the log block is not markdown, so it sits as a
+   sibling rather than inheriting `.markdown pre` chrome. */
+.markdown-with-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
 .markdown > :where(p, ul, ol, blockquote, h1, h2, h3, h4) {
   max-width: 780px;
 }
@@ -1163,8 +1173,257 @@
    `:is()` rather than `:where()`: zero-specificity would lose to `.markdown
    pre` and the rule would silently do nothing. Headings are deliberately not
    in the target list — a subheading under its parent keeps its own space. */
-.markdown :is(h1, h2, h3, h4) + :is(p, ul, ol, pre, blockquote, .markdown-table-scroll) {
+.markdown :is(h1, h2, h3, h4) + :is(p, ul, ol, pre, blockquote, .markdown-table-scroll, .katex-display, .mermaid-diagram) {
   margin-top: 0;
+}
+
+.markdown .katex-display {
+  margin: 16px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+  max-width: 100%;
+  scrollbar-width: thin;
+}
+
+.markdown .katex {
+  font-size: 1.05em;
+  text-rendering: auto;
+}
+
+/* A mermaid fence is a figure, not a code block: no MERMAID header, no
+   highlighter. The well hugs a small SVG and scales a wide one to the
+   column (no sideways scroll). Open the lightbox for native size. */
+.mermaid-diagram {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 18px 0;
+  padding: 16px 18px 14px;
+  border-radius: var(--radius-md);
+  background: var(--tool-block-surface);
+  overflow: hidden;
+}
+
+.mermaid-diagram-toolbar {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.mermaid-diagram:hover .mermaid-diagram-toolbar,
+.mermaid-diagram:focus-within .mermaid-diagram-toolbar,
+.mermaid-diagram[data-overflow] .mermaid-diagram-toolbar {
+  opacity: 1;
+}
+
+.mermaid-diagram-copy,
+.mermaid-diagram-source-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  background: color-mix(in oklab, var(--tool-block-surface) 82%, var(--panel) 18%);
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs-plus);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  transition: background var(--duration-fast) var(--ease),
+              color var(--duration-fast) var(--ease);
+}
+
+.mermaid-diagram-copy {
+  width: 24px;
+}
+
+.mermaid-diagram-source-toggle {
+  padding: 0 7px;
+}
+
+.mermaid-diagram-copy:hover,
+.mermaid-diagram-source-toggle:hover,
+.mermaid-diagram-source-toggle[aria-pressed="true"] {
+  background: var(--panel-sunken);
+  color: var(--text);
+}
+
+.mermaid-diagram-pending,
+.mermaid-diagram-error {
+  margin: 0;
+  padding: 10px 4px;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.mermaid-diagram-pending {
+  color: var(--muted-strong);
+}
+
+.mermaid-diagram-error {
+  color: var(--rose);
+}
+
+.mermaid-diagram-canvas {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  animation: mermaid-in var(--motion-base) var(--ease-out);
+}
+
+.mermaid-diagram[data-overflow] .mermaid-diagram-canvas {
+  cursor: zoom-in;
+}
+
+@keyframes mermaid-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.mermaid-diagram-canvas svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: transparent;
+}
+
+.mermaid-diagram-canvas .nodeLabel,
+.mermaid-diagram-canvas .edgeLabel,
+.mermaid-diagram-canvas .label,
+.mermaid-diagram-canvas .cluster-label,
+.mermaid-diagram-canvas .actor,
+.mermaid-diagram-lightbox-canvas .nodeLabel,
+.mermaid-diagram-lightbox-canvas .edgeLabel,
+.mermaid-diagram-lightbox-canvas .label,
+.mermaid-diagram-lightbox-canvas .cluster-label,
+.mermaid-diagram-lightbox-canvas .actor {
+  font-family: var(--font-ui);
+}
+
+.mermaid-diagram-canvas foreignObject,
+.mermaid-diagram-lightbox-canvas foreignObject,
+.mermaid-diagram-canvas .nodeLabel,
+.mermaid-diagram-lightbox-canvas .nodeLabel,
+.mermaid-diagram-canvas .cluster-label,
+.mermaid-diagram-lightbox-canvas .cluster-label {
+  overflow: visible;
+}
+
+.mermaid-diagram-canvas .nodeLabel div,
+.mermaid-diagram-lightbox-canvas .nodeLabel div {
+  line-height: 1.35;
+}
+
+.mermaid-diagram-source {
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--panel-sunken) 70%, transparent);
+  color: var(--text-soft);
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  font-feature-settings: var(--code-font-features);
+  line-height: 1.55;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.mermaid-diagram[data-state="error"] .mermaid-diagram-source {
+  margin-top: 8px;
+}
+
+/* Full-size mermaid: window-level, same stack as the commit dialog (below
+   search, above pane chrome). The inline view scales. This is native size. */
+.mermaid-diagram-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 4vh 16px;
+  background: var(--modal-backdrop);
+  background-image: var(--modal-backdrop-gradient);
+  z-index: 130;
+  animation: mermaid-in var(--motion-base) var(--ease-out);
+}
+
+.mermaid-diagram-lightbox {
+  display: flex;
+  flex-direction: column;
+  width: calc(100vw - 48px);
+  max-height: 90vh;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2xl);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.mermaid-diagram-lightbox-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 10px 12px 10px 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.mermaid-diagram-lightbox-title {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 520;
+  color: var(--muted-strong);
+}
+
+.mermaid-diagram-lightbox-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mermaid-diagram-lightbox-actions .mermaid-diagram-copy {
+  background: var(--panel-soft);
+  opacity: 1;
+}
+
+.mermaid-diagram-lightbox-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 20px 24px 24px;
+  background: var(--tool-block-surface);
+  scrollbar-width: thin;
+}
+
+.mermaid-diagram-lightbox-canvas {
+  width: max-content;
+  min-width: 100%;
+}
+
+.mermaid-diagram-lightbox-canvas svg {
+  display: block;
+  max-width: none;
+  height: auto;
+  margin: 0 auto;
+  background: transparent;
 }
 
 .markdown blockquote {
@@ -1286,13 +1545,20 @@
 
 /* Links and inline code inside the bubble drop their accent-deep ink — it was
    tuned for panel surfaces and disappears on an accent background — for the
-   bubble fg, keeping the underline as the affordance. */
-.chat-bubble.user .markdown a {
+   bubble fg, keeping the underline as the affordance. A pasted URL in a sent
+   prompt is a bare anchor rather than a markdown one (user text is shown as
+   typed, not parsed), so the underline is spelled out here instead of
+   inherited from `.markdown a`. */
+.chat-bubble.user a {
   color: var(--user-message-fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
   text-decoration-color: color-mix(in oklab, var(--user-message-fg) 55%, transparent);
+  transition: text-decoration-color var(--duration-fast) var(--ease);
 }
 
-.chat-bubble.user .markdown a:hover {
+.chat-bubble.user a:hover {
   text-decoration-color: var(--user-message-fg);
 }
 
@@ -1319,6 +1585,17 @@
 .user-skill-chip svg {
   flex: 0 0 auto;
   translate: 0 1px;
+}
+
+/* A `/skill` token further into the message keeps its slash and prose size —
+   it is a word in a sentence, not the header of one — and is marked with a
+   tinted slab instead. The mark rides the bubble fg for the same reason the
+   chip does: `--accent` is the bubble's own background. */
+.user-skill-token {
+  padding: 0 4px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--user-message-fg) 14%, transparent);
+  font-weight: 600;
 }
 
 /* A long paste (multi-paragraph message) would otherwise grow the bubble to the

@@ -1,10 +1,12 @@
+use std::path::{Path, PathBuf};
+
 use phf::phf_map;
 use serde_json::{Map, Value};
 
 use super::{
     array_value, classify_command_risk, number_value, object_value, string_value, timeline_event,
-    NormalizedUsage, NormalizerSessionContext, PermissionGateInfo, ProviderOutputEvent,
-    UsageCounts,
+    CodexCumulativeUsage, NormalizedUsage, NormalizerSessionContext, PermissionGateInfo,
+    ProviderOutputEvent, UsageCounts,
 };
 use crate::{persistence::events::PersistTimelineEventInput, providers::pricing::cost_of};
 
@@ -252,10 +254,102 @@ fn is_tool_like_item(
         .is_some()
 }
 
+/// Locate the Codex rollout file for a given thread_id under ~/.codex/sessions.
+pub fn find_codex_rollout_path(thread_id: &str) -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)?;
+    let sessions_dir = home.join(".codex").join("sessions");
+    find_rollout_in_dir(&sessions_dir, thread_id)
+}
+
+pub fn find_rollout_in_dir(sessions_dir: &Path, thread_id: &str) -> Option<PathBuf> {
+    if !sessions_dir.is_dir() {
+        return None;
+    }
+    let suffix = format!("{thread_id}.jsonl");
+    let mut matching_paths = Vec::new();
+
+    let mut stack = vec![sessions_dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.is_file() {
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if file_name.ends_with(&suffix) {
+                        matching_paths.push(path);
+                    }
+                }
+            }
+        }
+    }
+
+    matching_paths.sort_by(|a, b| {
+        let a_time = a.metadata().and_then(|m| m.modified()).ok();
+        let b_time = b.metadata().and_then(|m| m.modified()).ok();
+        b_time.cmp(&a_time)
+    });
+
+    matching_paths.into_iter().next()
+}
+
+/// Read the latest `token_count` event from a Codex rollout JSONL file.
+pub fn read_latest_token_count_from_rollout(path: &Path) -> Option<(u64, u64)> {
+    let file = std::fs::File::open(path).ok()?;
+    let reader = std::io::BufReader::new(file);
+    use std::io::BufRead;
+
+    let mut latest_context_tokens = None;
+    let mut latest_context_window = None;
+
+    for line in reader.lines().flatten() {
+        if !line.contains("token_count") {
+            continue;
+        }
+        if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&line) {
+            let payload = object_value(map.get("payload"));
+            let is_token_count = string_value(map.get("type")) == Some("token_count")
+                || payload.and_then(|p| string_value(p.get("type"))) == Some("token_count");
+
+            if is_token_count {
+                let info = payload
+                    .and_then(|p| object_value(p.get("info")))
+                    .or_else(|| object_value(map.get("info")));
+
+                if let Some(info) = info {
+                    let window = number_value(info.get("model_context_window"));
+                    if window > 0 {
+                        latest_context_window = Some(window);
+                    }
+                    if let Some(raw_usage) = object_value(info.get("last_token_usage")) {
+                        let input = number_value(raw_usage.get("input_tokens"));
+                        if input > 0 {
+                            latest_context_tokens = Some(input);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    match (latest_context_tokens, latest_context_window) {
+        (Some(tokens), Some(window)) => Some((tokens, window)),
+        (Some(tokens), None) => Some((tokens, 258_400)),
+        (None, Some(window)) => Some((0, window)),
+        (None, None) => None,
+    }
+}
+
 pub fn extract_usage(
     payload: &Map<String, Value>,
     provider_type: Option<&str>,
-    context: &NormalizerSessionContext,
+    context: &mut NormalizerSessionContext,
 ) -> Option<NormalizedUsage> {
     // token_count events also carry the model's context window in `info`; capture
     // it so the session can show window occupancy. turn.completed has no window.
@@ -268,10 +362,11 @@ pub fn extract_usage(
     } else {
         None
     };
-    let context_window = info
+    let inline_context_window = info
         .map(|info| number_value(info.get("model_context_window")))
         .filter(|window| *window > 0);
 
+    let from_token_count = info.is_some();
     let raw_usage = if let Some(info) = info {
         object_value(info.get("last_token_usage"))
     } else if provider_type == Some("turn.completed") {
@@ -280,27 +375,91 @@ pub fn extract_usage(
         None
     }?;
 
-    let input_tokens = number_value(raw_usage.get("input_tokens"));
-    let cached_input = number_value(raw_usage.get("cached_input_tokens"));
-    let output_tokens = number_value(raw_usage.get("output_tokens"));
-    if input_tokens + output_tokens + cached_input == 0 {
+    let cumulative_input = number_value(raw_usage.get("input_tokens"));
+    let cumulative_cached = number_value(raw_usage.get("cached_input_tokens"));
+    let cumulative_output = number_value(raw_usage.get("output_tokens"));
+    if cumulative_input + cumulative_output + cumulative_cached == 0 {
         return None;
     }
-    let non_cached_input = input_tokens.saturating_sub(cached_input);
+
+    let (delta_input, delta_cached, delta_output) = if from_token_count {
+        (cumulative_input, cumulative_cached, cumulative_output)
+    } else {
+        let prev = context.codex_cumulative_usage.as_ref().cloned();
+        let (p_in, p_cached, p_out) = match prev {
+            Some(ref p) => (p.input_tokens, p.cached_input_tokens, p.output_tokens),
+            None => (cumulative_input, cumulative_cached, cumulative_output),
+        };
+
+        context.codex_cumulative_usage = Some(CodexCumulativeUsage {
+            input_tokens: cumulative_input,
+            cached_input_tokens: cumulative_cached,
+            output_tokens: cumulative_output,
+        });
+
+        if prev.is_none() {
+            // First turn of an unseeded resume: baseline established, no delta billing
+            (0, 0, 0)
+        } else {
+            (
+                cumulative_input.saturating_sub(p_in),
+                cumulative_cached.saturating_sub(p_cached),
+                cumulative_output.saturating_sub(p_out),
+            )
+        }
+    };
+
+    let delta_non_cached_input = delta_input.saturating_sub(delta_cached);
+
+    let mut context_tokens = None;
+    let mut context_window = inline_context_window;
+
+    if from_token_count {
+        context_tokens = Some(cumulative_input);
+    } else {
+        if context.codex_rollout_path.is_none() {
+            if let Some(thread_id) = &context.codex_thread_id {
+                context.codex_rollout_path = find_codex_rollout_path(thread_id);
+            }
+        }
+
+        if let Some(rollout_path) = &context.codex_rollout_path {
+            if let Some((occ, window)) = read_latest_token_count_from_rollout(rollout_path) {
+                if occ > 0 {
+                    context_tokens = Some(occ);
+                }
+                if context_window.is_none() {
+                    context_window = Some(window);
+                }
+            }
+        }
+
+        if context_tokens.is_none() && delta_input > 0 {
+            context_tokens = Some(delta_input);
+        }
+    }
+
+    if delta_non_cached_input + delta_output + delta_cached == 0
+        && context_tokens.is_none()
+        && context_window.is_none()
+    {
+        return None;
+    }
+
     let model_id = context
         .codex_current_model
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
     let tokens = UsageCounts {
-        input: non_cached_input,
-        output: output_tokens,
-        cache_read: cached_input,
+        input: delta_non_cached_input,
+        output: delta_output,
+        cache_read: delta_cached,
         cache_write: 0,
     };
     Some(NormalizedUsage {
         cost_usd: cost_of(tokens.clone().into(), &model_id),
         model_id,
-        context_tokens: info.map(|_| input_tokens),
+        context_tokens,
         tokens,
         event_id: None,
         context_window,
@@ -394,8 +553,8 @@ mod tests {
     use serde_json::{json, Value};
 
     use crate::providers::normalizer::{
-        normalize_provider_event, tests::output_event, Dispatcher, EventNormalizer,
-        NormalizerSessionContext,
+        normalize_provider_event, tests::output_event, CodexCumulativeUsage, Dispatcher,
+        EventNormalizer, NormalizerSessionContext,
     };
     use crate::providers::ProviderId;
 
@@ -784,22 +943,94 @@ mod tests {
         assert_eq!(result.usages[0].context_window, Some(272_000));
     }
 
+    /// `codex exec --json` stopped emitting `token_count`, so `turn.completed`
+    /// is the only usage row a live session sees. Its `input_tokens` is the
+    /// thread's running total — both occupancy and billing delta are calculated
+    /// from the difference between cumulative totals.
     #[test]
-    fn codex_cumulative_turn_usage_is_not_context_occupancy() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
+    fn codex_turn_usage_reports_the_step_between_cumulative_totals() {
+        let mut context =
+            NormalizerSessionContext::for_provider(ProviderId::Codex, "gpt-5.6-terra");
+        let first = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"turn.completed","usage":{"input_tokens":21130,"cached_input_tokens":6912,"output_tokens":5}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(first.usages[0].context_tokens, Some(21_130));
+        assert_eq!(first.usages[0].tokens.input, 14_218);
+        assert_eq!(first.usages[0].tokens.cache_read, 6_912);
+        assert_eq!(first.usages[0].tokens.output, 5);
+
+        let second = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"turn.completed","usage":{"input_tokens":49129,"cached_input_tokens":27136,"output_tokens":10}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(second.usages[0].context_tokens, Some(27_999));
+        // Billing counts the turn delta, not the thread cumulative total.
+        // Delta input = 49129 - 21130 = 27999.
+        // Delta cached = 27136 - 6912 = 20224.
+        // Delta non-cached input = 27999 - 20224 = 7775.
+        assert_eq!(second.usages[0].tokens.input, 7_775);
+        assert_eq!(second.usages[0].tokens.cache_read, 20_224);
+        assert_eq!(second.usages[0].tokens.output, 5);
+        assert_eq!(second.usages[0].context_window, None);
+    }
+
+    /// The counter lives on the Codex thread, not the process, so a resumed
+    /// launch without seeded usage takes a baseline before reporting deltas and occupancy.
+    #[test]
+    fn codex_resumed_launch_takes_a_baseline_before_reporting_occupancy() {
+        let mut context =
+            NormalizerSessionContext::for_provider(ProviderId::Codex, "gpt-5.6-terra").resuming();
+        let first = normalize_provider_event(
             ProviderId::Codex,
             &output_event(
                 r#"{"type":"turn.completed","usage":{"input_tokens":501468,"cached_input_tokens":437504,"output_tokens":1234}}"#,
             ),
             &mut context,
         );
+        assert!(first.usages.is_empty());
 
-        assert_eq!(result.usages[0].tokens.input, 63_964);
-        assert_eq!(result.usages[0].tokens.cache_read, 437_504);
-        assert_eq!(result.usages[0].tokens.output, 1_234);
-        assert_eq!(result.usages[0].context_tokens, None);
-        assert_eq!(result.usages[0].context_window, None);
+        let second = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"turn.completed","usage":{"input_tokens":531468,"cached_input_tokens":437504,"output_tokens":1244}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(second.usages[0].context_tokens, Some(30_000));
+        assert_eq!(second.usages[0].tokens.input, 30_000);
+        assert_eq!(second.usages[0].tokens.output, 10);
+    }
+
+    #[test]
+    fn codex_resumed_launch_with_seeded_usage_computes_delta_immediately() {
+        let mut context =
+            NormalizerSessionContext::for_provider(ProviderId::Codex, "gpt-5.6-terra")
+                .resuming_codex(
+                    Some("thread-xyz".to_string()),
+                    Some(CodexCumulativeUsage {
+                        input_tokens: 501468,
+                        cached_input_tokens: 437504,
+                        output_tokens: 1234,
+                    }),
+                );
+        let first = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"turn.completed","usage":{"input_tokens":531468,"cached_input_tokens":437504,"output_tokens":1244}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(first.usages[0].context_tokens, Some(30_000));
+        assert_eq!(first.usages[0].tokens.input, 30_000);
+        assert_eq!(first.usages[0].tokens.cache_read, 0);
+        assert_eq!(first.usages[0].tokens.output, 10);
     }
 
     #[test]
@@ -815,6 +1046,39 @@ mod tests {
             result.provider_conversation_id.as_deref(),
             Some("thread-123")
         );
+        assert_eq!(context.codex_thread_id.as_deref(), Some("thread-123"));
+    }
+
+    #[test]
+    fn codex_turn_usage_reads_rollout_if_present() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let rollout_file = temp_dir
+            .path()
+            .join("rollout-2026-09-01T08-00-00-thread-test.jsonl");
+        let rollout_content = r#"{"type":"session_meta","payload":{"id":"thread-test"}}
+{"type":"event_msg","payload":{"type":"task_started","model_context_window":258400}}
+{"type":"event_msg","payload":{"type":"token_count","info":{"model_context_window":258400,"last_token_usage":{"input_tokens":12345,"cached_input_tokens":4000,"output_tokens":50}}}}
+"#;
+        std::fs::write(&rollout_file, rollout_content).unwrap();
+
+        let mut context =
+            NormalizerSessionContext::for_provider(ProviderId::Codex, "gpt-5.6-terra");
+        context.codex_thread_id = Some("thread-test".to_string());
+        context.codex_rollout_path = Some(rollout_file);
+
+        let event = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"turn.completed","usage":{"input_tokens":50000,"cached_input_tokens":20000,"output_tokens":100}}"#,
+            ),
+            &mut context,
+        );
+
+        assert_eq!(event.usages[0].context_tokens, Some(12345));
+        assert_eq!(event.usages[0].context_window, Some(258400));
+        assert_eq!(event.usages[0].tokens.input, 30000);
+        assert_eq!(event.usages[0].tokens.cache_read, 20000);
+        assert_eq!(event.usages[0].tokens.output, 100);
     }
 
     #[test]

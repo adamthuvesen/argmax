@@ -6,11 +6,6 @@ import { FONT_OPTIONS, type FontFamilyId, type FontOption } from "../../lib/font
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import { readFirstContentMeasure } from "../../lib/paintTimings.js";
 import { useDismissOnOutsideOrEscape } from "../../hooks/useDismissOnOutsideOrEscape.js";
-import {
-  SETTINGS_GROUPS,
-  type SettingsGroupId,
-  type SettingsGroupMeta
-} from "./settingsMeta.js";
 
 export const COLD_START_BUDGET_MS = 1500;
 
@@ -31,12 +26,7 @@ export function ColdStartSummary({
     >
       <span className="settings-coldstart-label">Cold start</span>
       <span className="settings-coldstart-value">{ready.elapsedMs.toFixed(0)} ms</span>
-      <span className="settings-coldstart-budget">
-        (budget: {COLD_START_BUDGET_MS} ms)
-      </span>
-      <span className="settings-coldstart-status" role="img" aria-hidden="true">
-        {overBudget ? "⚠" : "✓"}
-      </span>
+      <span className="settings-coldstart-budget">(budget: {COLD_START_BUDGET_MS} ms)</span>
       {overBudget ? (
         <span className="settings-badge" data-tone="warn">
           over budget
@@ -60,98 +50,140 @@ export function RendererPaintRow(): JSX.Element | null {
   );
 }
 
-export function SettingsGroupIntro({ group }: { group: SettingsGroupMeta }): JSX.Element {
+/**
+ * A labelled block of setting rows. The label is a real heading — a group of
+ * settings is a section of the page, and the command palette and the rail both
+ * navigate to it by id.
+ */
+export function SettingGroup({
+  id,
+  label,
+  action,
+  card = true,
+  children
+}: {
+  id: string;
+  label: string;
+  /** Optional control on the group's own line, e.g. a Refresh button. */
+  action?: ReactNode;
+  /** Set false when the children bring their own surface (a panel, a form). */
+  card?: boolean;
+  children: ReactNode;
+}): JSX.Element {
   return (
-    <section className="settings-group-intro" aria-labelledby="settings-group-heading">
-      <p className="settings-group-eyebrow">{group.eyebrow}</p>
-      <h2 id="settings-group-heading">{group.title}</h2>
-      <p className="settings-group-desc">{group.description}</p>
+    <section className="settings-group" id={id} aria-labelledby={`${id}-h`}>
+      <div className="settings-group-head">
+        <h3 className="settings-group-label" id={`${id}-h`}>
+          {label}
+        </h3>
+        {action ? <div className="settings-group-action">{action}</div> : null}
+      </div>
+      {card ? <div className="settings-card">{children}</div> : children}
     </section>
   );
 }
 
-export function SettingsNav({
-  active,
-  onChange
-}: {
-  active: SettingsGroupId;
-  onChange: (group: SettingsGroupId) => void;
-}): JSX.Element {
-  return (
-    <aside className="settings-nav" aria-label="Settings groups">
-      <p className="settings-nav-eyebrow rail-label">Settings</p>
-      <ol className="settings-nav-list">
-        {SETTINGS_GROUPS.map((group) => {
-          const isActive = group.id === active;
-          return (
-            <li key={group.id} className="settings-nav-item" data-active={isActive ? "true" : "false"}>
-              <button
-                type="button"
-                className="settings-nav-link"
-                aria-pressed={isActive}
-                onClick={() => onChange(group.id)}
-              >
-                <span className="settings-nav-label">{group.label}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-    </aside>
-  );
-}
-
-export function SectionHeader({
-  id,
-  eyebrow,
-  title,
+/**
+ * The one row shape: label, an optional single-line description, and the
+ * control on the right. Everything configurable in the app is one of these.
+ */
+export function SettingRow({
+  label,
   description,
-  action
+  control,
+  htmlFor
 }: {
-  id: string;
-  eyebrow: string;
-  title: string;
-  description: ReactNode;
-  action?: ReactNode;
+  label: ReactNode;
+  description?: ReactNode;
+  control: ReactNode;
+  /** Set when the control is a single focusable element with that id. */
+  htmlFor?: string;
 }): JSX.Element {
   return (
-    <header className="settings-section-header">
-      <div className="settings-section-titles">
-        <p className="settings-section-eyebrow">{eyebrow}</p>
-        <h2 id={id}>{title}</h2>
-        <p className="settings-section-desc">{description}</p>
-      </div>
-      {action ? <div className="settings-section-action">{action}</div> : null}
-    </header>
+    <div className="settings-row">
+      <span className="settings-row-text">
+        {/* The label element wraps the label alone: pulling the description
+            inside it would fold that sentence into the control's name. */}
+        {htmlFor ? (
+          <label className="settings-row-label" htmlFor={htmlFor}>
+            {label}
+          </label>
+        ) : (
+          <span className="settings-row-label">{label}</span>
+        )}
+        {description ? <span className="settings-row-desc">{description}</span> : null}
+      </span>
+      <div className="settings-row-control">{control}</div>
+    </div>
   );
 }
 
-export function KeyValueList({ rows }: { rows: ReadonlyArray<{ dt: string; dd: ReactNode }> }): JSX.Element {
+/** A read-only row: label on the left, value on the right. */
+export function SettingValueRow({
+  label,
+  value
+}: {
+  label: ReactNode;
+  value: ReactNode;
+}): JSX.Element {
+  return <SettingRow label={label} control={<span className="settings-row-value">{value}</span>} />;
+}
+
+/** Prose that belongs to the group rather than to any one row. */
+export function SettingNote({
+  children,
+  tone,
+  role
+}: {
+  children: ReactNode;
+  tone?: "warn";
+  role?: "alert" | "status";
+}): JSX.Element {
   return (
-    <dl className="settings-keyvals">
-      {rows.map((row) => (
-        <div key={row.dt}>
-          <dt>{row.dt}</dt>
-          <dd>{row.dd}</dd>
-        </div>
-      ))}
-    </dl>
+    <p className="settings-note" data-tone={tone} role={role}>
+      {children}
+    </p>
+  );
+}
+
+export function Toggle({
+  ariaLabel,
+  checked,
+  onChange,
+  disabled = false
+}: {
+  ariaLabel: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+}): JSX.Element {
+  return (
+    <span className="settings-toggle" data-disabled={disabled ? "true" : undefined}>
+      <input
+        type="checkbox"
+        aria-label={ariaLabel}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="settings-toggle-track" aria-hidden="true">
+        <span className="settings-toggle-thumb" />
+      </span>
+    </span>
   );
 }
 
 type SegmentedOption = { value: string; label: string; caption?: string; disabled?: boolean };
 
-export function Segmented({
-  legend,
-  hint,
+export function SegmentedControl({
+  ariaLabel,
   name,
   value,
   onChange,
   options,
   disabled = false
 }: {
-  legend: string;
-  hint?: string;
+  ariaLabel: string;
   name: string;
   value: string;
   onChange: (next: string) => void;
@@ -160,52 +192,48 @@ export function Segmented({
   disabled?: boolean;
 }): JSX.Element {
   return (
-    <div className="settings-segmented" role="radiogroup" aria-label={legend}>
-      <span className="settings-segmented-copy">
-        <span className="settings-segmented-legend">{legend}</span>
-        {hint ? <span className="settings-segmented-hint">{hint}</span> : null}
-      </span>
-      <div className="settings-segmented-track" data-count={options.length} data-disabled={disabled ? "true" : undefined}>
-        {options.map((option) => {
-          const checked = option.value === value;
-          return (
-            <label
-              key={option.value}
-              className="settings-segmented-option"
-              data-checked={checked ? "true" : "false"}
-              data-disabled={option.disabled || disabled ? "true" : "false"}
-            >
-              <input
-                type="radio"
-                name={name}
-                value={option.value}
-                checked={checked}
-                disabled={option.disabled || disabled}
-                onChange={() => onChange(option.value)}
-              />
-              <span className="settings-segmented-label">{option.label}</span>
-              {option.caption ? (
-                <span className="settings-segmented-caption">{option.caption}</span>
-              ) : null}
-            </label>
-          );
-        })}
-      </div>
+    <div
+      className="settings-segmented"
+      role="radiogroup"
+      aria-label={ariaLabel}
+      data-count={options.length}
+      data-disabled={disabled ? "true" : undefined}
+    >
+      {options.map((option) => {
+        const checked = option.value === value;
+        return (
+          <label
+            key={option.value}
+            className="settings-segmented-option"
+            data-checked={checked ? "true" : "false"}
+            data-disabled={option.disabled || disabled ? "true" : "false"}
+            title={option.caption}
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={checked}
+              disabled={option.disabled || disabled}
+              onChange={() => onChange(option.value)}
+            />
+            <span className="settings-segmented-label">{option.label}</span>
+          </label>
+        );
+      })}
     </div>
   );
 }
 
-export function SliderRow({
-  legend,
-  hint,
+export function Slider({
+  ariaLabel,
   min,
   max,
   value,
   valueLabel,
   onChange
 }: {
-  legend: string;
-  hint?: string;
+  ariaLabel: string;
   min: number;
   max: number;
   value: number;
@@ -215,58 +243,20 @@ export function SliderRow({
 }): JSX.Element {
   return (
     <div className="settings-slider">
-      <span className="settings-segmented-copy">
-        <span className="settings-segmented-legend">{legend}</span>
-        {hint ? <span className="settings-segmented-hint">{hint}</span> : null}
-      </span>
-      <div className="settings-slider-control">
-        <input
-          type="range"
-          aria-label={legend}
-          // The level is an index; the size it produces is the meaningful
-          // value, so announce that rather than a bare "6".
-          aria-valuetext={valueLabel}
-          min={min}
-          max={max}
-          step={1}
-          value={value}
-          onChange={(event) => onChange(Number(event.target.value))}
-        />
-        <span className="settings-slider-value">{valueLabel}</span>
-      </div>
+      <input
+        type="range"
+        aria-label={ariaLabel}
+        // The level is an index; the size it produces is the meaningful
+        // value, so announce that rather than a bare "6".
+        aria-valuetext={valueLabel}
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <span className="settings-slider-value">{valueLabel}</span>
     </div>
-  );
-}
-
-export function ToggleRow({
-  label,
-  description,
-  checked,
-  onChange
-}: {
-  label: string;
-  description?: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}): JSX.Element {
-  return (
-    <label className="settings-checkbox-row settings-toggle-row">
-      <div className="settings-toggle-text">
-        <span className="settings-toggle-label">{label}</span>
-        {description ? <span className="settings-toggle-desc">{description}</span> : null}
-      </div>
-      <span className="settings-toggle">
-        <input
-          type="checkbox"
-          aria-label={label}
-          checked={checked}
-          onChange={(event) => onChange(event.target.checked)}
-        />
-        <span className="settings-toggle-track" aria-hidden="true">
-          <span className="settings-toggle-thumb" />
-        </span>
-      </span>
-    </label>
   );
 }
 
@@ -292,7 +282,7 @@ export function SettingsListPicker<T extends string>({
   inputId?: string;
   onChange: (value: T) => void;
   options: ReadonlyArray<SettingsListPickerOption<T>>;
-  /** Set to "above" when the menu would otherwise cover the next section's copy. */
+  /** Set to "above" when the menu would otherwise cover the next group's copy. */
   placement?: "above" | "below";
   value: T;
 }): JSX.Element {
@@ -314,10 +304,7 @@ export function SettingsListPicker<T extends string>({
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
       >
-        <span
-          className="settings-picker-trigger-label"
-          style={selected?.labelStyle}
-        >
+        <span className="settings-picker-trigger-label" style={selected?.labelStyle}>
           {selected?.label ?? ""}
         </span>
         <ChevronDown size={14} aria-hidden="true" />
@@ -391,63 +378,38 @@ export function FontFamilyPicker({
   );
 }
 
-/**
- * Three-chip Light / Dark / System picker. Each chip carries a tiny live
- * preview: a 28×18 swatch showing that mode's --bg / --text / --sage values,
- * so the user sees what they're picking before they pick it. The System chip
- * splits its swatch diagonally — half light, half dark — to advertise that
- * it tracks the OS.
- */
+/** System / Light / Dark, on the same segmented control every other
+ *  three-way choice on the page uses. */
 export function ThemePicker({
   value,
-  onChange,
-  inputId
+  onChange
 }: {
   value: ThemeMode;
   onChange: (mode: ThemeMode) => void;
-  inputId?: string;
 }): JSX.Element {
   return (
-    <div className="theme-picker" role="radiogroup" aria-label="Theme" id={inputId}>
-      {THEME_OPTIONS.map((option) => {
-        const isSelected = option.id === value;
-        return (
-          <button
-            key={option.id}
-            type="button"
-            className="theme-picker-chip"
-            role="radio"
-            aria-checked={isSelected}
-            aria-label={option.label}
-            data-theme-mode={option.id}
-            data-selected={isSelected || undefined}
-            title={option.hint}
-            onClick={() => onChange(option.id)}
-          >
-            <span className="theme-picker-swatch" aria-hidden="true">
-              <span className="theme-picker-swatch-bg" />
-              <span className="theme-picker-swatch-text" />
-              <span className="theme-picker-swatch-accent" />
-            </span>
-            <span className="theme-picker-label">{option.label}</span>
-          </button>
-        );
-      })}
-    </div>
+    <SegmentedControl
+      ariaLabel="Theme"
+      name="theme-mode"
+      value={value}
+      onChange={(next) => {
+        const picked = THEME_OPTIONS.find((option) => option.id === next);
+        if (picked) onChange(picked.id);
+      }}
+      options={THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
+    />
   );
 }
 
 export function AccentPicker({
   value,
-  onChange,
-  inputId
+  onChange
 }: {
   value: AccentId;
   onChange: (accentId: AccentId) => void;
-  inputId?: string;
 }): JSX.Element {
   return (
-    <div className="accent-picker" role="radiogroup" aria-label="Accent" id={inputId}>
+    <div className="accent-picker" role="radiogroup" aria-label="Accent">
       {ACCENT_OPTIONS.map((option) => {
         const isSelected = option.id === value;
         return (
@@ -460,12 +422,9 @@ export function AccentPicker({
             aria-label={option.label}
             data-accent-id={option.id}
             data-selected={isSelected || undefined}
-            title={option.hint}
+            title={option.label}
             onClick={() => onChange(option.id)}
-          >
-            <span className="accent-picker-swatch" aria-hidden="true" />
-            <span className="theme-picker-label">{option.label}</span>
-          </button>
+          />
         );
       })}
     </div>

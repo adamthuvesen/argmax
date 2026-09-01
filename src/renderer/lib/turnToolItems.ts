@@ -7,6 +7,14 @@ import {
   type TurnToolItem
 } from "./toolCalls.js";
 
+export function latestToolCreatedAt(toolItems: readonly TurnToolItem[]): string | null {
+  let latest: string | null = null;
+  for (const tool of allTools(toolItems)) {
+    if (latest === null || tool.createdAt > latest) latest = tool.createdAt;
+  }
+  return latest;
+}
+
 function allTools(toolItems: readonly TurnToolItem[]): ToolCall[] {
   const out: ToolCall[] = [];
   for (const item of toolItems) {

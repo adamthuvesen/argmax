@@ -404,6 +404,27 @@ pub fn update_session_provider_conversation_id(
     find_session_by_id(connection, session_id)
 }
 
+/// Drop the native resume id so the next turn starts a fresh provider
+/// conversation. Occupancy resets because the live context window is empty;
+/// cumulative cost stays, since that work already happened.
+pub fn clear_session_conversation(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<SessionSummary> {
+    let mut statement = connection
+        .prepare_cached(
+            "UPDATE sessions SET provider_conversation_id = NULL, resume_fork = 0, context_tokens = 0, last_activity_at = ? WHERE id = ?",
+        )
+        .map_err(sqlite_error)?;
+    let changes = statement
+        .execute((now_iso(), session_id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("session", session_id));
+    }
+    find_session_by_id(connection, session_id)
+}
+
 /// Mark a session so its next resumed launch forks the provider conversation
 /// (`--fork-session` for Claude) instead of appending to the original's.
 pub fn set_session_resume_fork(connection: &Connection, session_id: &str) -> ArgmaxResult<()> {

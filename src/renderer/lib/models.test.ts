@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reasoningEffortsForModel } from "../../shared/providerModels.js";
+import { PROVIDER_MODELS, reasoningEffortsForModel } from "../../shared/providerModels.js";
 import type { DiscoveredProvider, ProviderId, SessionSummary } from "../../shared/types.js";
 import {
   allModelOptions,
@@ -9,7 +9,8 @@ import {
   modelPickerSelectionFromSession,
   modelSelectionFromSession,
   preferredLaunchModel,
-  preferredLaunchProvider
+  preferredLaunchProvider,
+  PROVIDER_LAUNCH_PRIORITY
 } from "./models.js";
 
 const BASE_SESSION: SessionSummary = {
@@ -181,5 +182,23 @@ describe("allModelOptions", () => {
   it("seeds Kimi K3 with max, its only variant, not the default medium", () => {
     const kimi = allModelOptions.find((option) => option.modelId === "opencode-go/kimi-k3");
     expect(kimi?.reasoningEffort).toBe("max");
+  });
+});
+
+describe("PROVIDER_LAUNCH_PRIORITY", () => {
+  // The constant is a plain array, so omitting a provider compiles fine and
+  // then silently hides it from the launcher. PROVIDER_MODELS is keyed by
+  // ProviderId, so it is the authority on what must be listed.
+  it("lists every provider exactly once", () => {
+    expect([...PROVIDER_LAUNCH_PRIORITY].sort()).toEqual(Object.keys(PROVIDER_MODELS).sort());
+  });
+
+  it("picks Grok when it is the only installed provider", () => {
+    expect(preferredLaunchModel([discovered("grok")])).toEqual({
+      provider: "grok",
+      label: "Grok 4.6",
+      modelId: "grok-4.6",
+      reasoningEffort: "medium"
+    });
   });
 });

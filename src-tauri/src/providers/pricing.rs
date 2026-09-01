@@ -56,6 +56,14 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "opencode-go/qwen3.8-flash" => ModelPricing { input: 0.15, output: 0.47, cache_read: 0.016, cache_write: 0.2 },
     "opencode-go/deepseek-v4-pro" => ModelPricing { input: 0.66, output: 1.98, cache_read: 0.022, cache_write: 0.0 },
     "opencode-go/deepseek-v4-flash" => ModelPricing { input: 0.22, output: 0.66, cache_read: 0.007, cache_write: 0.0 },
+    // Grok Build bills its own SKUs (`grok-4.6-build` / `grok-4.5-build` in the
+    // CLI's modelUsage map), not xAI's public API list price. Rates below were
+    // solved from the CLI's own `total_cost_usd` across runs with varied token
+    // mixes and reproduce it exactly; grok-4.6 lands at 0.17x the published API
+    // rate and grok-4.5 at 0.34x. Cache writes are never billed separately
+    // (cache_creation_input_tokens is always 0). Re-derive if xAI reprices.
+    "grok-4.6" => ModelPricing { input: 0.34, output: 1.02, cache_read: 0.085, cache_write: 0.0 },
+    "grok-4.5" => ModelPricing { input: 0.68, output: 2.04, cache_read: 0.102, cache_write: 0.0 },
 };
 
 static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_map! {

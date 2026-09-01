@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState, type JSX } from "react";
 import { errorMessage } from "../../../shared/error.js";
 import type { SyncStatus } from "../../../shared/types.js";
-import { SectionHeader, Segmented, ToggleRow } from "./settingsPrimitives.js";
+import { SegmentedControl, SettingGroup, SettingNote, SettingRow, Toggle } from "./settingsPrimitives.js";
 
-const PROVIDERS = ["claude", "codex", "cursor", "opencode"] as const;
+const PROVIDERS = ["claude", "codex", "cursor", "opencode", "grok"] as const;
 
 const PROVIDER_LABELS: Record<(typeof PROVIDERS)[number], string> = {
   claude: "Claude Code",
   codex: "Codex",
   cursor: "Cursor",
-  opencode: "OpenCode"
+  opencode: "OpenCode",
+  grok: "Grok Build"
 };
 
 /**
@@ -64,14 +65,9 @@ export function SessionSyncSettings(): JSX.Element {
 
   if (loadError) {
     return (
-      <section className="settings-section" aria-labelledby="settings-session-sync">
-        <SectionHeader
-          id="settings-session-sync"
-          eyebrow="Session sync"
-          title="Sessions from your terminal"
-          description={loadError}
-        />
-      </section>
+      <SettingGroup id="settings-session-sync" label="Session sync">
+        <SettingNote role="alert">{loadError}</SettingNote>
+      </SettingGroup>
     );
   }
 
@@ -79,60 +75,61 @@ export function SessionSyncSettings(): JSX.Element {
   const supported = new Set(status?.supportedProviders ?? []);
 
   return (
-    <section className="settings-section" aria-labelledby="settings-session-sync">
-      <SectionHeader
-        id="settings-session-sync"
-        eyebrow="Session sync"
-        title="Sessions from your terminal"
-        description="Pick up sessions you started outside Argmax by reading each agent's own transcripts. New sessions keep appearing while sync is on, and you can continue any of them here."
-      />
-      <div className="settings-card">
-        {PROVIDERS.map((provider) => (
-          <ToggleRow
-            key={provider}
-            label={PROVIDER_LABELS[provider]}
-            description={
-              supported.has(provider)
-                ? undefined
-                : "Argmax can't read this agent's transcript format yet."
-            }
-            checked={Boolean(config?.[provider])}
-            onChange={(next) => {
-              if (!config || !supported.has(provider) || busy) return;
-              void save({ ...config, [provider]: next });
-            }}
-          />
-        ))}
-        <Segmented
-          legend="How far back"
-          hint="Older sessions are left in the agent's own history."
-          name="sync-window"
-          value={String(config?.windowHours ?? 24)}
-          onChange={(next) => {
-            if (!config || busy) return;
-            void save({ ...config, windowHours: Number(next) });
-          }}
-          options={[
-            { value: "24", label: "Last 24 hours" },
-            { value: "168", label: "Last 7 days" }
-          ]}
+    <SettingGroup id="settings-session-sync" label="Session sync">
+      {PROVIDERS.map((provider) => (
+        <SettingRow
+          key={provider}
+          label={PROVIDER_LABELS[provider]}
+          description={
+            supported.has(provider) ? undefined : "Argmax can't read this agent's transcript format yet."
+          }
+          control={
+            <Toggle
+              ariaLabel={PROVIDER_LABELS[provider]}
+              checked={Boolean(config?.[provider])}
+              disabled={!supported.has(provider)}
+              onChange={(next) => {
+                if (!config || !supported.has(provider) || busy) return;
+                void save({ ...config, [provider]: next });
+              }}
+            />
+          }
         />
-        <p className="settings-hint">
-          Turning a provider off — or narrowing the window — removes the synced sessions you
-          haven&apos;t continued in Argmax. Nothing is lost: the agent&apos;s own history still
-          has them, and turning sync back on brings them back.
+      ))}
+      <SettingRow
+        label="How far back"
+        description="Older sessions are left in the agent's own history."
+        control={
+          <SegmentedControl
+            ariaLabel="How far back"
+            name="sync-window"
+            value={String(config?.windowHours ?? 24)}
+            onChange={(next) => {
+              if (!config || busy) return;
+              void save({ ...config, windowHours: Number(next) });
+            }}
+            options={[
+              { value: "24", label: "Last 24 hours" },
+              { value: "168", label: "Last 7 days" }
+            ]}
+          />
+        }
+      />
+      <SettingNote>
+        Turning a provider off — or narrowing the window — removes the synced sessions you haven&apos;t
+        continued in Argmax. Nothing is lost: the agent&apos;s own history still has them, and turning
+        sync back on brings them back.
+      </SettingNote>
+      {note ? (
+        <p
+          className="settings-note settings-form-status"
+          data-status={note.kind}
+          role={note.kind === "error" ? "alert" : "status"}
+        >
+          {note.message}
         </p>
-        {note ? (
-          <p
-            className="settings-hint settings-form-status"
-            data-status={note.kind}
-            role={note.kind === "error" ? "alert" : "status"}
-          >
-            {note.message}
-          </p>
-        ) : null}
-      </div>
-    </section>
+      ) : null}
+    </SettingGroup>
   );
 }
 

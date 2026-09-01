@@ -38,7 +38,7 @@ The destination uses the shared checkout by default. `--worktree` creates an iso
 Workspaces with active attention (`approval-needed`, `blocked`, `failed`, or `review-ready`) and workspaces with a live turn share the Priority section beneath Pinned.
 
 - Calculated client-side in [src/renderer/lib/priority.ts](../src/renderer/lib/priority.ts). Entries remain while working and for 30 minutes after the last message (`PRIORITY_IDLE_MS`).
-- Order: attention rows first (by severity, oldest waiting first), then running rows (newest activity first), then manual adds.
+- Order: working rows first (sorted by last message descending), followed by non-working rows (attention and manual adds) sorted by last message in descending order.
 - Pinned status takes precedence over Priority.
 - Right-click "Done" (`workspaces:set-priority-dismissed`) clears a priority item until new attention arrives. Manual adds (`workspaces:set-priority-added`) persist until cleared. A row that is only listed because its turn is running has no "Done" — it leaves when the turn ends — and the header's Clear skips it.
 - The "Priority section in sidebar" setting hides the whole section, running rows included; they fall back to their date bucket or project group.
@@ -75,6 +75,10 @@ Each per-file diff is capped at 1 MiB (`PER_FILE_DIFF_CAP_BYTES`). A capped diff
 [src-tauri/src/files/workspace_files.rs](../src-tauri/src/files/workspace_files.rs) handles directory trees, file previews, mtime-checked writes, and content grep. Paths are verified through [workspace_paths.rs](../src-tauri/src/util/workspace_paths.rs) to prevent path traversal.
 
 Tree icons use `@react-symbols/icons` with folder icons styled using `var(--accent)`.
+
+The Files view is laid out as a sidebar plus an editor. [WorkspaceTree.tsx](../src/renderer/components/WorkspaceTree.tsx) virtualizes 24px rows and, given a `toolbar`, renders a titleless action strip above them holding collapse-all and refresh (`refreshList`, which re-lists the source — the automatic re-fetch only keys off the changed-files signature, so it misses files git never saw). The strip carries no label: the panel already names the source, and at rest its only job is keeping the first row off the review toolbar's edge. Rows carry a `--tree-depth` custom property that CSS turns into indent guides, and the folders enclosing the top visible row pin above the scroll window, sliding out as their subtree scrolls past.
+
+The tree column sits on `--review-sidebar`, which steps *under* the preview surface in light and *above* it in dark — `--panel-sunken` is the darkest surface in the app, so a dark column set from it reads as a hole rather than a sidebar. Its width is a share of the panel (`LEFT_COL_AUTO_RATIO`, clamped) until the user drags the divider, which pins a pixel width in `argmax.reviewPanel.leftColumnWidth`. Past `PANEL_WIDE_BREAKPOINT` the panel sets `data-wide`, which labels the Changes/Files tabs. A status bar under both columns carries the open path, save state, language, line count, and the caret position the editor reports up through `onCursorChange`.
 
 ## Git
 

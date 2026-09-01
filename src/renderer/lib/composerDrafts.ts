@@ -46,10 +46,10 @@ export function writeDraftAttachments(key: string, attachments: ComposerAttachme
 }
 
 /**
- * Forget a draft that has been delivered. Clearing the composer's own state
- * does the same thing through the write effects, but only while the composer
- * is still mounted. Launching a task unmounts the launcher as the app moves
- * to the new session, so the send path drops the entry itself.
+ * Forget a draft that has been delivered. Call this as soon as send starts,
+ * not after it resolves: launching unmounts the composer, and the next mount
+ * reads storage. The write effects would recreate the entry from still-held
+ * in-memory text unless `persist` is off for that render.
  */
 export function clearDraft(key: string): void {
   updateDraft(key, () => ({ text: "", attachments: [] }));

@@ -308,10 +308,6 @@ button.composer-compact-context-row:hover,
     padding: 8px 10px;
   }
 
-  .composer-queued-lane {
-    margin: -8px -10px 4px;
-  }
-
   .session-input textarea {
     min-height: 56px;
   }
@@ -569,31 +565,39 @@ button.composer-compact-context-row:hover,
   cursor: zoom-in;
 }
 
+/* Queued follow-ups sit on top of the composer as a tucked tab, slightly
+   narrower and a step behind, so the input card stays the live surface and
+   the waiting prompt reads as a layer stacked on it. */
 .composer-queued-lane {
+  position: relative;
   display: flex;
   flex-direction: column;
-  margin: -12px -14px 4px;
-  border-bottom: 1px solid var(--line);
-  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  z-index: 0;
+  min-width: 0;
+  margin-inline: 10px;
+  margin-bottom: -10px;
+  padding-bottom: 10px;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  background: color-mix(in oklab, var(--composer-surface) 58%, var(--panel-sunken));
   overflow: hidden;
 }
 
 .composer-queued-chip {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  padding: 7px 10px 7px 14px;
+  gap: 8px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 8px 6px 12px;
   border: 0;
-  border-bottom: 1px solid var(--line-soft);
-  background: color-mix(in oklab, var(--panel-soft) 56%, var(--panel));
+  background: transparent;
   color: var(--text);
   font-size: var(--text-sm);
   line-height: 1.35;
 }
 
-.composer-queued-chip:last-child {
-  border-bottom: 0;
+.composer-queued-chip + .composer-queued-chip {
+  border-top: 1px solid var(--line-soft);
 }
 
 .composer-queued-chip:focus-visible {
@@ -612,12 +616,6 @@ button.composer-compact-context-row:hover,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.composer-queued-chip-state {
-  flex: 0 0 auto;
-  color: var(--muted);
-  font-size: var(--text-xs);
 }
 
 .composer-queued-chip-action {
@@ -670,10 +668,6 @@ button.composer-compact-context-row:hover,
 }
 
 @container (max-width: 620px) {
-  .composer-queued-chip-state {
-    display: none;
-  }
-
   .composer-queued-chip-action span {
     display: none;
   }
@@ -831,16 +825,23 @@ button.composer-compact-context-row:hover,
   caret-color: var(--text);
 }
 
-.skill-popover {
+.slash-menu {
   position: absolute;
   bottom: calc(100% + 6px);
   left: 0;
   right: 0;
-  max-height: 280px;
+  max-height: 320px;
   margin: 0;
-  padding: 6px;
+  /* 4px of padding against a 14px panel radius is what makes the 10px row
+     radius below concentric with the corner it nests into — 14 - 4 = 10. Any
+     other pairing leaves the marked row's corner fighting the panel's. */
+  padding: 4px;
   list-style: none;
   overflow-y: auto;
+  /* Reserve the scrollbar's gutter so the thumb rides beside the rows instead
+     of on top of the marked row's rounded right edge. */
+  scrollbar-gutter: stable;
+  scroll-padding-block: 4px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
@@ -853,46 +854,74 @@ button.composer-compact-context-row:hover,
    from the visible input box on each edge. Pull it back out by that padding so
    the popover spans the field's full width. The launcher composer anchors these
    same classes to its bordered box directly, so it must NOT inherit this. */
-.session-input-field .skill-popover,
+.session-input-field .slash-menu,
 .session-input-field .file-popover {
   left: -12px;
   right: -12px;
 }
 
-/* Command-menu rows: one line each — mono command name, muted description
-   trailing on the same baseline. Dense on purpose; this is a picker the user
-   scans dozens of times a day, not content. */
-.skill-option {
+/* Command-menu rows: one line each — icon, name, then the description trailing
+   to the right edge. Dense on purpose; this is a picker the user scans dozens
+   of times a day, not content. */
+.slash-menu-option {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding: 5px 9px;
-  border-radius: var(--radius-sm);
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   line-height: 1.5;
 }
 
-.skill-option.is-selected,
-.skill-option[aria-selected="true"] {
-  background: var(--accent-soft);
+/* The quiet gray every other list in the app marks its chosen row with. The
+   accent is reserved for meaning; which row the arrow keys are parked on is
+   navigation, not a verdict. */
+.slash-menu-option.is-selected,
+.slash-menu-option[aria-selected="true"] {
+  background: var(--row-selected);
 }
 
-.skill-option-name {
+.slash-menu-icon {
   flex: 0 0 auto;
-  font-family: var(--font-code);
+  color: var(--muted);
+}
+
+.slash-menu-option.is-selected .slash-menu-icon {
+  color: var(--muted-strong);
+}
+
+.slash-menu-label {
+  flex: 0 0 auto;
   font-size: var(--text-xs-plus);
   font-weight: 500;
   color: var(--text);
 }
 
-.skill-option-description {
+/* Right-aligned so short hints hug the panel edge like the reference menu,
+   and long ones simply fill the gap and clip. */
+.slash-menu-hint {
   flex: 1 1 auto;
   min-width: 0;
+  text-align: right;
   color: var(--muted-strong);
   font-size: var(--text-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.slash-menu-badge {
+  flex: 0 0 auto;
+  margin-inline-start: 4px;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+}
+
+/* Section heading between the commands and the skills below them. */
+.slash-menu-section {
+  padding: 10px 12px 4px;
+  color: var(--muted);
+  font-size: var(--text-xs);
 }
 
 .file-popover {
@@ -902,9 +931,13 @@ button.composer-compact-context-row:hover,
   right: 0;
   max-height: 280px;
   margin: 0;
-  padding: 6px;
+  /* Same 4px/14px/10px nesting as .slash-menu — the two open in the same slot
+     and must not disagree about their corners. */
+  padding: 4px;
   list-style: none;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  scroll-padding-block: 4px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
@@ -916,8 +949,8 @@ button.composer-compact-context-row:hover,
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 9px;
-  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
@@ -930,7 +963,7 @@ button.composer-compact-context-row:hover,
 
 .file-popover-item.is-selected,
 .file-popover-item[aria-selected="true"] {
-  background: var(--accent-soft);
+  background: var(--row-selected);
 }
 
 .file-popover-icon {
@@ -945,7 +978,7 @@ button.composer-compact-context-row:hover,
 }
 
 .file-popover-empty {
-  padding: 6px 9px;
+  padding: 6px 12px;
   font-size: var(--text-sm);
   color: var(--text-soft, #6a6a6a);
   font-style: italic;

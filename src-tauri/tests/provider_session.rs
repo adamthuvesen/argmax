@@ -21,7 +21,8 @@ use argmax_lib::approvals::service::ApprovalService;
 use argmax_lib::error::ArgmaxResult;
 use argmax_lib::ipc::inputs::{
     ComposerAttachmentInput, ProvidersLaunchInput, ProvidersSendInput,
-    ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput, TerminalCols, TerminalRows,
+    ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput, SessionClearInput, TerminalCols,
+    TerminalRows,
 };
 use argmax_lib::ipc::validation::{NonEmptyString, Prompt, ProviderId, SessionId, WorkspaceId};
 use argmax_lib::persistence::time::now_iso;
@@ -340,6 +341,26 @@ impl ManualExitLauncher {
     }
 }
 
+impl ManualExitLauncher {
+    fn emit_stdout(&self, session_id: &str, message: &str) {
+        let callback = self
+            .callbacks
+            .lock()
+            .expect("callbacks poisoned")
+            .get(session_id)
+            .cloned()
+            .expect("session callback registered");
+        callback(ProviderRuntimeEvent {
+            session_id: session_id.to_string(),
+            r#type: ProviderRuntimeEventType::Output,
+            stream: ProviderOutputStream::Stdout,
+            message: message.to_string(),
+            exit_code: None,
+            created_at: now_iso(),
+        });
+    }
+}
+
 impl ProviderProcessLauncher for ManualExitLauncher {
     fn launch<'a>(
         &'a self,
@@ -378,6 +399,10 @@ const PROJECT_ID: &str = "p-test";
 const WORKSPACE_ID: &str = "w-test";
 
 fn seed_project_and_workspace(db: &Database) {
+    seed_project_and_workspace_at(db, "/tmp/repo");
+}
+
+fn seed_project_and_workspace_at(db: &Database, workspace_path: &str) {
     let connection = db.connection();
     persist_project(
         &connection,
@@ -406,7 +431,7 @@ fn seed_project_and_workspace(db: &Database) {
             task_label: "test workspace".to_owned(),
             branch: "feature/test".to_owned(),
             base_ref: "main".to_owned(),
-            path: "/tmp/repo".to_owned(),
+            path: workspace_path.to_owned(),
             state: "idle".to_owned(),
             shared_workspace: false,
             kind: "git".to_string(),
@@ -626,14 +651,17 @@ async fn fake_cli_streams_normalized_events_to_db_and_dashboard_delta() {
         &database,
         &session.id,
         "message.delta",
-        "New user message: follow up",
+        "fake cli: follow up",
     )
     .await;
 
     let launches = launcher.launches();
     assert_eq!(launches[0].prompt, "hello world");
-    assert!(launches[1].prompt.contains("User: hello world"));
-    assert!(launches[1].prompt.contains("New user message:\nfollow up"));
+    assert_eq!(launches[1].prompt, "follow up");
+    assert_eq!(
+        launches[1].resume_conversation_id.as_deref(),
+        Some(session.id.as_str())
+    );
 }
 
 #[tokio::test]
@@ -707,6 +735,77 @@ async fn cursor_follow_up_infers_missing_resume_id_from_raw_output() {
         persisted.provider_conversation_id.as_deref(),
         Some("cursor-resume-1")
     );
+}
+
+#[tokio::test]
+async fn cursor_follow_up_after_clear_does_not_resume_pre_clear_id() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let launcher = Arc::new(FakeCliLauncher::default());
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+
+    let session = {
+        let connection = database.connection();
+        let session = persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "cursor-cleared".to_owned(),
+                workspace_id: WORKSPACE_ID.to_owned(),
+                provider: "cursor".to_owned(),
+                model_label: "Composer 2.5 (Cursor)".to_owned(),
+                model_id: "composer-2.5".to_owned(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_owned()),
+                agent_mode: Some("auto".to_owned()),
+                prompt: "first prompt".to_owned(),
+                state: "complete".to_owned(),
+                attention: "none".to_owned(),
+            },
+        )
+        .expect("persist cursor session");
+        persist_raw_output(
+            &connection,
+            &PersistRawOutputInput {
+                id: "cursor-raw-init".to_owned(),
+                session_id: session.id.clone(),
+                stream: "stdout".to_owned(),
+                content: "T\n{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"cursor-resume-old\"}\n"
+                    .to_owned(),
+                created_at: Some("2026-05-24T10:00:00.000Z".to_owned()),
+            },
+        )
+        .expect("persist cursor raw init");
+        session
+    };
+
+    service
+        .clear(SessionClearInput {
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+        })
+        .await
+        .expect("clear ok");
+
+    let result = service
+        .send_input(ProvidersSendInput {
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+            input: Prompt::try_from("fresh".to_owned()).expect("prompt valid"),
+            provider: None,
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            agent_mode: None,
+            attachments: None,
+        })
+        .await
+        .expect("send_input ok");
+    assert!(result.ok);
+    assert!(!result.queued);
+
+    wait_for_launch_count(&launcher, 1).await;
+    let launches = launcher.launches();
+    assert_eq!(launches[0].resume_conversation_id, None);
+    assert_eq!(launches[0].prompt, "fresh");
 }
 
 // Switching provider on an idle session relaunches under the new provider,
@@ -813,7 +912,8 @@ async fn provider_switch_relaunches_new_provider_fresh() {
 }
 
 #[tokio::test]
-async fn completed_session_follow_up_launch_includes_visible_transcript_context() {
+async fn completed_session_follow_up_launch_without_native_resume_includes_visible_transcript_context(
+) {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     seed_project_and_workspace(&database);
     let launcher = Arc::new(FakeCliLauncher::default());
@@ -825,6 +925,101 @@ async fn completed_session_follow_up_launch_includes_visible_transcript_context(
             &connection,
             &PersistSessionInput {
                 id: "claude-session".to_owned(),
+                workspace_id: WORKSPACE_ID.to_owned(),
+                provider: "claude".to_owned(),
+                model_label: "Haiku 4.5".to_owned(),
+                model_id: "claude-haiku-4-5".to_owned(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_owned()),
+                agent_mode: Some("auto".to_owned()),
+                prompt: "ok".to_owned(),
+                state: "complete".to_owned(),
+                attention: "none".to_owned(),
+            },
+        )
+        .expect("persist claude session");
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "user-ok".to_owned(),
+                session_id: session.id.clone(),
+                r#type: "user.message".to_owned(),
+                message: "ok".to_owned(),
+                payload: json!({}),
+                created_at: None,
+            },
+        )
+        .expect("persist user event");
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "assistant-ready".to_owned(),
+                session_id: session.id.clone(),
+                r#type: "message.completed".to_owned(),
+                message: "Ready. What's next?".to_owned(),
+                payload: json!({}),
+                created_at: None,
+            },
+        )
+        .expect("persist assistant event");
+        session
+    };
+
+    let result = service
+        .send_input(ProvidersSendInput {
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+            input: Prompt::try_from("hmm".to_owned()).expect("prompt valid"),
+            provider: None,
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            agent_mode: None,
+            attachments: None,
+        })
+        .await
+        .expect("send_input ok");
+    assert!(result.ok);
+    assert!(!result.queued);
+
+    wait_for_launch_count(&launcher, 1).await;
+    let launches = launcher.launches();
+    assert_eq!(launches[0].resume_conversation_id, None);
+    assert!(launches[0]
+        .prompt
+        .contains("The user is continuing this Argmax chat session."));
+    assert!(launches[0].prompt.contains("User: ok"));
+    assert!(launches[0]
+        .prompt
+        .contains("Assistant: Ready. What's next?"));
+    assert!(launches[0].prompt.contains("New user message:\nhmm"));
+
+    let connection = database.connection();
+    let tail =
+        list_session_events_since(&connection, &session.id, None, None).expect("list events");
+    let follow_up = tail
+        .events
+        .iter()
+        .find(|event| event.r#type == "user.message" && event.message == "hmm");
+    assert!(
+        follow_up.is_some(),
+        "visible timeline keeps the raw user text"
+    );
+}
+
+#[tokio::test]
+async fn completed_session_follow_up_launch_with_native_resume_sends_message_alone() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let launcher = Arc::new(FakeCliLauncher::default());
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+
+    let session = {
+        let connection = database.connection();
+        let session = persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "claude-session-native".to_owned(),
                 workspace_id: WORKSPACE_ID.to_owned(),
                 provider: "claude".to_owned(),
                 model_label: "Haiku 4.5".to_owned(),
@@ -891,26 +1086,7 @@ async fn completed_session_follow_up_launch_includes_visible_transcript_context(
         launches[0].resume_conversation_id.as_deref(),
         Some("claude-session")
     );
-    assert!(launches[0]
-        .prompt
-        .contains("The user is continuing this Argmax chat session."));
-    assert!(launches[0].prompt.contains("User: ok"));
-    assert!(launches[0]
-        .prompt
-        .contains("Assistant: Ready. What's next?"));
-    assert!(launches[0].prompt.contains("New user message:\nhmm"));
-
-    let connection = database.connection();
-    let tail =
-        list_session_events_since(&connection, &session.id, None, None).expect("list events");
-    let follow_up = tail
-        .events
-        .iter()
-        .find(|event| event.r#type == "user.message" && event.message == "hmm");
-    assert!(
-        follow_up.is_some(),
-        "visible timeline keeps the raw user text"
-    );
+    assert_eq!(launches[0].prompt, "hmm");
 }
 
 #[tokio::test]
@@ -1140,9 +1316,7 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
 
     let launches = launcher.launches();
     assert_eq!(launches[0].prompt, "hello world");
-    assert!(launches[1]
-        .prompt
-        .contains("New user message:\nqueued after done"));
+    assert_eq!(launches[1].prompt, "queued after done");
     assert_eq!(launches[1].model_label, "Sonnet 5");
     assert_eq!(launches[1].model_id, "claude-sonnet-5");
     assert!(launches[1].fast_mode);
@@ -1256,6 +1430,108 @@ async fn terminate_disposes_handle_and_cancels_session() {
     let connection = database.connection();
     let persisted = find_session_by_id(&connection, &session_id).expect("find session");
     assert_eq!(persisted.state, "cancelled");
+}
+
+#[tokio::test]
+async fn clear_idle_session_drops_resume_id_and_writes_watermark() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(FakeLauncher::new(FakeHandle::new(true))),
+        |_| {},
+    );
+
+    let session = {
+        let connection = database.connection();
+        let session = persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "clear-idle".to_owned(),
+                workspace_id: WORKSPACE_ID.to_owned(),
+                provider: "claude".to_owned(),
+                model_label: "Haiku 4.5".to_owned(),
+                model_id: "claude-haiku-4-5".to_owned(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_owned()),
+                agent_mode: Some("auto".to_owned()),
+                prompt: "first".to_owned(),
+                state: "complete".to_owned(),
+                attention: "none".to_owned(),
+            },
+        )
+        .expect("persist session");
+        update_session_provider_conversation_id(&connection, &session.id, "claude-resume-1")
+            .expect("seed resume id");
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "old-user".to_owned(),
+                session_id: session.id.clone(),
+                r#type: "user.message".to_owned(),
+                message: "old secret".to_owned(),
+                payload: json!({}),
+                created_at: Some("2026-05-24T10:00:00.000Z".to_owned()),
+            },
+        )
+        .expect("old user");
+        session
+    };
+
+    let cleared = service
+        .clear(SessionClearInput {
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+        })
+        .await
+        .expect("clear ok");
+    assert_eq!(cleared.provider_conversation_id, None);
+    assert_eq!(cleared.context_tokens, 0);
+
+    let connection = database.connection();
+    let persisted = find_session_by_id(&connection, &session.id).expect("find session");
+    assert_eq!(persisted.provider_conversation_id, None);
+    let events = list_session_events_since(&connection, &session.id, None, None)
+        .expect("list events")
+        .events;
+    assert!(
+        events.iter().any(|event| event.r#type == "session.cleared"),
+        "expected session.cleared watermark"
+    );
+}
+
+#[tokio::test]
+async fn clear_running_session_stops_provider() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let handle = FakeHandle::new(true);
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(FakeLauncher::new(handle.clone())),
+        |_| {},
+    );
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    let session_id = session.id.clone();
+    wait_for_resolved(&service, &session_id).await;
+
+    let cleared = service
+        .clear(SessionClearInput {
+            session_id: SessionId::try_from(session_id.clone()).expect("session id valid"),
+        })
+        .await
+        .expect("clear ok");
+    assert_eq!(cleared.provider_conversation_id, None);
+    assert!(handle.disposed.load(Ordering::SeqCst));
+    assert_eq!(service.open_handle_count(), 0);
+
+    let connection = database.connection();
+    let events = list_session_events_since(&connection, &session_id, None, None)
+        .expect("list events")
+        .events;
+    assert!(events.iter().any(|event| event.r#type == "session.cleared"));
 }
 
 #[tokio::test]
@@ -1840,4 +2116,107 @@ async fn panic_inside_locked_section_does_not_cascade_to_other_sessions() {
         sent.iter().any(|input| input.contains("still alive")),
         "healthy session's handle should have received the input: {sent:?}"
     );
+}
+
+// A Codex `file_change` item names a path and a kind and carries no diff, so
+// the chat had no line stat for a Codex edit. Argmax marks the worktree when
+// the turn starts and re-marks the written paths afterwards, then writes the
+// measured diff back onto the tool's own `command.completed` row.
+#[tokio::test]
+async fn a_codex_file_change_gets_the_diff_argmax_measured_from_git() {
+    let repo = tempfile::TempDir::new().expect("temp dir");
+    let repo_path = repo.path().to_path_buf();
+    for args in [
+        vec!["init", "--initial-branch=main"],
+        vec!["config", "user.email", "test@example.com"],
+        vec!["config", "user.name", "Test"],
+    ] {
+        Command::new("git")
+            .arg("-C")
+            .arg(&repo_path)
+            .args(&args)
+            .output()
+            .expect("git setup");
+    }
+    std::fs::write(repo_path.join("model.sql"), "one\ntwo\nthree\n").expect("write");
+    for args in [vec!["add", "-A"], vec!["commit", "-m", "init"]] {
+        Command::new("git")
+            .arg("-C")
+            .arg(&repo_path)
+            .args(&args)
+            .output()
+            .expect("git commit");
+    }
+
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace_at(&database, &repo_path.to_string_lossy());
+    let launcher = Arc::new(ManualExitLauncher::default());
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+
+    let session = service
+        .launch(ProvidersLaunchInput {
+            provider: argmax_lib::ipc::validation::ProviderId::Codex,
+            model_id: NonEmptyString::try_from("gpt-5.6-sol".to_owned()).expect("id valid"),
+            ..build_launch_input()
+        })
+        .await
+        .expect("launch ok");
+    wait_for_manual_launch_count(&launcher, 1).await;
+
+    // The mark is taken off the send path; the agent's first write is a model
+    // round-trip away in production, but this test has to wait for it.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while !service.has_turn_mark(&session.id) {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for the turn's git mark"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    let path = repo_path.join("model.sql");
+    let item = |status: &str| {
+        json!({
+            "type": if status == "in_progress" { "item.started" } else { "item.completed" },
+            "item": {
+                "id": "item_1",
+                "type": "file_change",
+                "status": status,
+                "changes": [{ "kind": "update", "path": path.to_string_lossy() }]
+            }
+        })
+        .to_string()
+    };
+    launcher.emit_stdout(&session.id, &format!("{}\n", item("in_progress")));
+    // Codex applies the patch between the two items.
+    std::fs::write(&path, "one\ntwo CHANGED\nthree\nfour\n").expect("write");
+    launcher.emit_stdout(&session.id, &format!("{}\n", item("completed")));
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let diff = {
+            let connection = database.connection();
+            list_session_events_since(&connection, &session.id, None, None)
+                .expect("list events")
+                .events
+                .into_iter()
+                .find(|event| event.r#type == "command.completed" && event.message == "file_change")
+                .and_then(|event| {
+                    event.payload["input"]["changes"][0]["unified_diff"]
+                        .as_str()
+                        .map(ToOwned::to_owned)
+                })
+        };
+        if let Some(diff) = diff {
+            assert!(diff.contains("+two CHANGED"), "diff was:\n{diff}");
+            assert!(diff.contains("+four"), "diff was:\n{diff}");
+            assert!(diff.contains("-two"), "diff was:\n{diff}");
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for the measured diff to land on the tool row"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
 }

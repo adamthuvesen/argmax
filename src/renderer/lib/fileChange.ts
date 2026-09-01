@@ -241,9 +241,16 @@ function interpretCodexFileChange(input: Record<string, unknown>): FileChange[] 
     if (kind === "add" || kind === "create" || addBag) {
       const content =
         (addBag ? pickString(addBag, ["content", "text"]) : null) ??
-        pickString(entry, ["content", "text", "new_text"]) ??
-        "";
-      result.push(makeCreate(path, content));
+        pickString(entry, ["content", "text", "new_text"]);
+      // Codex names a created path and sends no body, so the diff Argmax
+      // measured from git is the only account of what landed. It reads as a
+      // create either way: the file is still new to the tree.
+      if (content === null && diffString) {
+        const hunks = parseUnifiedDiff(diffString);
+        result.push({ kind: "create", path, hunks, addCount: tallyHunks(hunks).adds });
+        continue;
+      }
+      result.push(makeCreate(path, content ?? ""));
       continue;
     }
 

@@ -89,6 +89,8 @@ export interface WorkspaceFilesState {
   entries: WorkspaceFileEntry[];
   listState: AsyncState;
   listError: string | null;
+  /** Re-list the source's files on demand (the tree toolbar's refresh). */
+  refreshList: () => void;
   tabs: WorkspaceFileTab[];
   activeTabPath: string | null;
   selectedPath: string | null;
@@ -330,6 +332,7 @@ export function useReviewState(
     entries: fileListState.entries,
     listState: fileListState.listState,
     listError: fileListState.listError,
+    refreshList: fileListState.refresh,
     tabs: previewState.tabs,
     activeTabPath: previewState.activeTabPath,
     selectedPath: previewState.selectedPath,

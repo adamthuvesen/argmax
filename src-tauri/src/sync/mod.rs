@@ -84,6 +84,8 @@ pub struct SyncConfig {
     pub cursor: bool,
     #[serde(default)]
     pub opencode: bool,
+    #[serde(default)]
+    pub grok: bool,
     #[serde(default = "default_window_hours")]
     pub window_hours: u32,
 }
@@ -95,6 +97,7 @@ impl Default for SyncConfig {
             codex: false,
             cursor: false,
             opencode: false,
+            grok: false,
             window_hours: default_window_hours(),
         }
     }
@@ -107,6 +110,7 @@ impl SyncConfig {
             "codex" => self.codex,
             "cursor" => self.cursor,
             "opencode" => self.opencode,
+            "grok" => self.grok,
             _ => false,
         }
     }
@@ -124,6 +128,7 @@ impl SyncConfig {
         self.codex = false;
         self.cursor = false;
         self.opencode = false;
+        self.grok = false;
         self
     }
 }
@@ -218,13 +223,14 @@ mod tests {
             codex: true,
             cursor: true,
             opencode: true,
+            grok: true,
             window_hours: 9_999,
         }
         .normalized();
         assert_eq!(config.window_hours, WINDOW_7D);
         assert!(config.claude);
         // Unreadable transcript formats stay off however the file was edited.
-        assert!(!config.codex && !config.cursor && !config.opencode);
+        assert!(!config.codex && !config.cursor && !config.opencode && !config.grok);
 
         let short = SyncConfig {
             window_hours: 1,

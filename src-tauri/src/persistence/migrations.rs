@@ -417,7 +417,23 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &ROUTINES_COLUMNS,
         requires_foreign_keys_off: true,
     },
+    Migration {
+        version: 21,
+        name: "reset_codex_corrupted_context_tokens",
+        up: RESET_CODEX_CORRUPTED_CONTEXT_TOKENS,
+        affected_tables: &["sessions"],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Cumulative Codex turn usage previously recorded as live context occupancy,
+// causing sessions to show overflowed context rings (e.g. 503k of 258k).
+// Reset context_tokens to 0 for Codex sessions so next turn or rollout read
+// measures the true occupancy.
+const RESET_CODEX_CORRUPTED_CONTEXT_TOKENS: &str = r#"
+UPDATE sessions SET context_tokens = 0 WHERE provider = 'codex';
+"#;
 
 // Distinguishes real project checkouts ('git') from app-owned scratch
 // directories that back repo-less side chats ('scratch') and the ephemeral
@@ -1240,6 +1256,10 @@ mod tests {
                 (18, compute_migration_checksum(SYNCED_SESSIONS)),
                 (19, compute_migration_checksum(ROUTINES)),
                 (20, compute_migration_checksum(ROUTINES_CANONICAL_SHAPE)),
+                (
+                    21,
+                    compute_migration_checksum(RESET_CODEX_CORRUPTED_CONTEXT_TOKENS)
+                ),
             ]
         );
 

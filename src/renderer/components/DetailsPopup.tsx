@@ -14,6 +14,7 @@ import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { useReviewState } from "../hooks/useReviewState.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
 import { SessionConversation } from "./SessionConversation.js";
+import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 
 const WIDTH_KEY = "argmax.detailsPopup.width";
 const HEIGHT_KEY = "argmax.detailsPopup.height";
@@ -40,6 +41,7 @@ export function DetailsPopup({
   onSendQueuedMessageNow,
   onSendSessionInput,
   onTerminateSession,
+  onClearSession,
   pendingMessages,
   project,
   rawOutputs,
@@ -60,7 +62,8 @@ export function DetailsPopup({
     agentMode: AgentMode,
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
-  onTerminateSession: (sessionId: string) => Promise<void>;
+  onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
+  onClearSession: (sessionId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
@@ -183,6 +186,7 @@ export function DetailsPopup({
         onClose={onClose}
         onSendSessionInput={onSendSessionInput}
         onTerminateSession={onTerminateSession}
+        onClearSession={onClearSession}
         onCancelQueuedMessage={onCancelQueuedMessage}
         onSendQueuedMessageNow={onSendQueuedMessageNow}
         pendingMessages={sessionPendingMessages}

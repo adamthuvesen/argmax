@@ -28,6 +28,7 @@ import {
 // that render <App /> import this harness, so lib-only tests never pay it.
 await Promise.all([
   import("../renderer/components/SettingsPanel.js"),
+  import("../renderer/components/scheduled/ScheduledTasksPanel.js"),
   import("../renderer/components/CommandPalette.js"),
   import("../renderer/components/ReviewPanel.js")
 ]);
@@ -47,7 +48,13 @@ export {
 
 export type { ArgmaxApi, DashboardDelta, DashboardSnapshot };
 
-export type SettingsGroup = "General" | "Agents" | "Integrations" | "System";
+export type SettingsGroup =
+  | "General"
+  | "Appearance"
+  | "Agents"
+  | "Projects"
+  | "Integrations"
+  | "Advanced";
 
 export type AppTestMockFn<T extends (...args: never[]) => unknown> = ReturnType<typeof vi.fn<T>>;
 
@@ -79,6 +86,8 @@ export type AppTestMocks = {
   providersDiscover: AppTestMockFn<ArgmaxApi["providers"]["discover"]>;
   diagnosticsStub: AppTestMockFn<ArgmaxApi["system"]["diagnostics"]>;
   vacuumDatabaseStub: AppTestMockFn<ArgmaxApi["system"]["vacuumDatabase"]>;
+  setNotificationsEnabledStub: AppTestMockFn<ArgmaxApi["system"]["setNotificationsEnabled"]>;
+  testNotificationStub: AppTestMockFn<ArgmaxApi["system"]["testNotification"]>;
   workspaceStatus: AppTestMockFn<ArgmaxApi["workspaces"]["status"]>;
   skillsList: AppTestMockFn<ArgmaxApi["skills"]["list"]>;
   openInIde: AppTestMockFn<ArgmaxApi["workspaces"]["openInIde"]>;
@@ -115,6 +124,8 @@ export let terminateProvider: AppTestMocks["terminateProvider"];
 export let providersDiscover: AppTestMocks["providersDiscover"];
 export let diagnosticsStub: AppTestMocks["diagnosticsStub"];
 export let vacuumDatabaseStub: AppTestMocks["vacuumDatabaseStub"];
+export let setNotificationsEnabledStub: AppTestMocks["setNotificationsEnabledStub"];
+export let testNotificationStub: AppTestMocks["testNotificationStub"];
 export let workspaceStatus: AppTestMocks["workspaceStatus"];
 export let skillsList: AppTestMocks["skillsList"];
 export let openInIde: AppTestMocks["openInIde"];
@@ -246,6 +257,7 @@ export function setupAppTestMocks(): void {
     ],
     recentLogs: [
       {
+        seq: 1,
         timestamp: "2026-05-14T11:00:00.000Z",
         level: "info",
         scope: "providers.session",
@@ -253,6 +265,7 @@ export function setupAppTestMocks(): void {
         fields: { sessionId: "session-1" }
       },
       {
+        seq: 2,
         timestamp: "2026-05-14T11:00:05.000Z",
         level: "warn",
         scope: "gh.poller",
@@ -262,6 +275,10 @@ export function setupAppTestMocks(): void {
     ]
   });
   vacuumDatabaseStub = vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>().mockResolvedValue({ ok: true });
+  setNotificationsEnabledStub = vi
+    .fn<ArgmaxApi["system"]["setNotificationsEnabled"]>()
+    .mockResolvedValue({ ok: true });
+  testNotificationStub = vi.fn<ArgmaxApi["system"]["testNotification"]>().mockResolvedValue({ ok: true });
   menuCommandListener = null;
   workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
   listChangedFiles = vi.fn<ArgmaxApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
@@ -448,6 +465,7 @@ export function setupAppTestMocks(): void {
       eventsSince: sessionEventsSince,
       agentEvents: sessionAgentEvents,
       fork: () => Promise.reject(new Error("session fork not stubbed")),
+      clear: () => Promise.reject(new Error("session clear not stubbed")),
       suggestFollowUp: () => Promise.resolve({ suggestion: null }),
       costSummary: sessionCostSummary,
       search: () => Promise.resolve([])
@@ -478,8 +496,12 @@ export function setupAppTestMocks(): void {
       openPath: () => Promise.resolve({ ok: true }),
       listDetectedIdes: listDetectedIdes,
       diagnostics: diagnosticsStub,
+      debugSnapshot: () =>
+        Promise.resolve({ generatedAt: "2026-05-14T11:00:05.000Z", ipcStats: [], logs: [] }),
       vacuumDatabase: vacuumDatabaseStub,
-      setTheme: () => Promise.resolve({ ok: true })
+      setTheme: () => Promise.resolve({ ok: true }),
+      setNotificationsEnabled: setNotificationsEnabledStub,
+      testNotification: testNotificationStub
     },
     remote: {
       getStatus: () => Promise.reject(new Error("remote status unavailable in tests")),
@@ -532,7 +554,7 @@ export function setupAppTestMocks(): void {
     sync: {
       getStatus: vi.fn(() =>
         Promise.resolve({
-          config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
+          config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
           supportedProviders: ["claude"],
           lastRunAt: null,
           importedCount: 0,
@@ -541,7 +563,7 @@ export function setupAppTestMocks(): void {
       ),
       setConfig: vi.fn(() =>
         Promise.resolve({
-          config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
+          config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
           supportedProviders: ["claude"],
           lastRunAt: null,
           importedCount: 0,
@@ -550,7 +572,7 @@ export function setupAppTestMocks(): void {
       ),
       runNow: vi.fn(() =>
         Promise.resolve({
-          config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
+          config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
           supportedProviders: ["claude"],
           lastRunAt: null,
           importedCount: 0,
@@ -593,16 +615,30 @@ export function mockDashboardSnapshot(data: DashboardSnapshot): void {
   workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(data));
 }
 
+/** Settings owns the sidebar column, so the Argmax menu is only reachable with
+ *  the page closed. Callers that re-open settings go back through here. */
+export async function closeSettings(): Promise<void> {
+  const rail = screen.queryByRole("complementary", { name: "Settings groups" });
+  if (!rail) return;
+  fireEvent.click(within(rail).getByRole("button", { name: "Back" }));
+  await screen.findByRole("button", { name: "Argmax menu" });
+  await settle();
+}
+
 export async function openSettings(group: SettingsGroup = "General"): Promise<void> {
+  await closeSettings();
   fireEvent.click(screen.getByRole("button", { name: "Argmax menu" }));
   const menu = await screen.findByRole("menu", { name: "Argmax menu" });
   fireEvent.click(within(menu).getByRole("menuitem", { name: /Settings/ }));
-  await screen.findByRole("heading", { name: "Settings" });
+  // Settings replaces the app sidebar with its own rail; the panel itself is
+  // lazy, so wait for its page title rather than for the rail.
+  const settingsGroups = await screen.findByRole("complementary", { name: "Settings groups" });
+  await screen.findByRole("heading", { name: "General" });
   if (group === "General") return settle();
 
-  const settingsGroups = screen.getByRole("complementary", { name: "Settings groups" });
-  fireEvent.click(within(settingsGroups).getByRole("button", { name: new RegExp(`\\b${group}\\b`) }));
-  if (group === "System") {
+  fireEvent.click(within(settingsGroups).getByRole("button", { name: new RegExp(`^${group}$`) }));
+  await screen.findByRole("heading", { name: group });
+  if (group === "Advanced") {
     await screen.findByText("No learnings captured yet. Complete a session to start filling this list.");
   }
   await settle();

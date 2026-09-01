@@ -57,6 +57,11 @@ export interface ComposerAttachmentsDeps {
    * never attached to it, and freshly pasted ones are dropped on the floor.
    */
   carriedOnRetarget?: boolean;
+  /**
+   * Same send lock as `useComposerDraft`. Off while a submit is in flight so
+   * this effect cannot recreate the entry the text hook just dropped.
+   */
+  persist?: boolean;
 }
 
 /**
@@ -75,7 +80,7 @@ export interface ComposerAttachmentsDeps {
  * screenshot never has to be taken twice.
  */
 export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerAttachmentsApi {
-  const { draftKey, workspacePath, setInput, setStatus, carriedOnRetarget = false } = deps;
+  const { draftKey, workspacePath, setInput, setStatus, carriedOnRetarget = false, persist = true } = deps;
   const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>(
     () => readDraft(draftKey ?? null).attachments
   );
@@ -104,12 +109,13 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
   useEffect(() => {
     // Clear the images off the draft the text left behind, so the source ends
     // up empty rather than holding screenshots whose sentence has moved on.
+    if (!persist) return;
     if (movedFrom.current) {
       writeDraftAttachments(movedFrom.current, []);
       movedFrom.current = null;
     }
     if (draftKey) writeDraftAttachments(draftKey, pendingAttachments);
-  }, [draftKey, pendingAttachments]);
+  }, [draftKey, pendingAttachments, persist]);
 
   const attachFiles = useCallback(
     (files: Iterable<File> | Iterable<{ path?: string }>): void => {

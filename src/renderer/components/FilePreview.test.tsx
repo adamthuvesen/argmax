@@ -13,6 +13,7 @@ function makeState(overrides: Partial<WorkspaceFilesState> = {}): WorkspaceFiles
     entries: [],
     listState: "ready",
     listError: null,
+    refreshList: () => undefined,
     tabs: [],
     activeTabPath: "src/index.ts",
     selectedPath: "src/index.ts",
@@ -53,13 +54,15 @@ describe("FilePreview", () => {
     expect(screen.queryByText("24 B")).not.toBeInTheDocument();
   });
 
-  it("marks only the no-selection prompt as preview-width responsive", () => {
+  it("shows the shortcut legend with no selection and yields to the editor once a file opens", () => {
     const { rerender } = render(<FilePreview state={makeState({ selectedPath: null, activeTabPath: null })} />);
-    expect(screen.getByText("Select a file to preview.")).toHaveClass("review-empty-preview");
+    expect(screen.getByLabelText("No file selected")).toBeInTheDocument();
+    expect(screen.getByText("Select a file to preview")).toBeInTheDocument();
+    expect(screen.getByText("Find a file")).toBeInTheDocument();
 
     rerender(<FilePreview state={makeState()} />);
     expect(screen.getByLabelText("Editor for src/index.ts")).toBeInTheDocument();
-    expect(screen.queryByText("Select a file to preview.")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("No file selected")).not.toBeInTheDocument();
   });
 
   it("shows the dirty marker only when isDirty is true", () => {

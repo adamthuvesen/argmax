@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { baseSession, renderConversation } from "../../test/sessionConversationTestHarness.js";
 
@@ -50,6 +50,38 @@ describe("SessionComposer follow-up suggestion", () => {
       // handful of tokens and must not queue behind an expensive model.
       modelId: "gpt-5.6-luna"
     });
+  });
+
+  it("accepts the suggestion with Tab so Enter sends it", async () => {
+    stubSuggestion(() => Promise.resolve({ suggestion: "Add a test for the empty case" }));
+    const onSendSessionInput = vi.fn(() => Promise.resolve());
+    renderConversation(baseSession({ state: "complete" }), [], { onSendSessionInput });
+
+    const input = await screen.findByPlaceholderText("Add a test for the empty case");
+    fireEvent.keyDown(input, { key: "Tab" });
+    expect((input as HTMLTextAreaElement).value).toBe("Add a test for the empty case");
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => {
+      expect(onSendSessionInput).toHaveBeenCalledWith(
+        "session-a",
+        "Add a test for the empty case",
+        expect.anything(),
+        "auto",
+        undefined
+      );
+    });
+  });
+
+  it("leaves a half-written draft alone when Tab is pressed", async () => {
+    stubSuggestion(() => Promise.resolve({ suggestion: "Add a test for the empty case" }));
+    renderConversation(baseSession({ state: "complete" }));
+
+    const input = await screen.findByPlaceholderText("Add a test for the empty case");
+    fireEvent.change(input, { target: { value: "Actually, " } });
+    fireEvent.keyDown(input, { key: "Tab" });
+
+    expect((input as HTMLTextAreaElement).value).toBe("Actually, ");
   });
 
   it("keeps the static placeholder while the agent is still working", () => {

@@ -93,6 +93,50 @@ function displayCommandFull(command: string, cwd: string | null | undefined): st
   return shortenCommandCwd(unwrapBashCommand(command), cwd);
 }
 
+function hasVisibleToolOutput(output: string | null): boolean {
+  return output !== null && output.trim().length > 0;
+}
+
+/** True when expanding the row would reveal a payload, leftover arguments, a
+ *  file, or nested activity. A command that printed nothing is not a disclosure. */
+export function toolCallHasExpandableDetail(
+  tool: ToolCall,
+  options?: { hasLeadingContent?: boolean }
+): boolean {
+  const changes = interpretFileChange(tool.name, tool.inputFull);
+  if (changes && changes.length > 0) return true;
+
+  const visibleInput = visibleInputForTool(tool);
+  const bashCommand = isBashLikeTool(tool.name)
+    ? pickString(tool.inputFull, BASH_COMMAND_INPUT_KEYS) ?? tool.inputPreview
+    : null;
+  const fullCommand = bashCommand ? unwrapBashCommand(bashCommand) : null;
+  const showCommandBlock = fullCommand !== null && fullCommand.includes("\n");
+  const openable = tool.status !== "error" ? extractOpenablePath(tool.name, tool.inputFull) : null;
+  const filePath =
+    openable ??
+    pickString(tool.inputFull, ["path", "file_path", "filepath", "relative_path", "absolute_path"]);
+  const streamContent = pickString(tool.inputFull, ["streamContent", "content", "text"]);
+  const canShowFilePreview = Boolean(!changes && filePath && streamContent);
+  const isAgent = getToolTypeBucket(tool.name) === "agent";
+  const redundantKeys = bashCommand ? REDUNDANT_BASH_INPUT_KEYS : REDUNDANT_INPUT_KEYS;
+  const leftoverInput = nonRedundantInput(visibleInput, redundantKeys);
+  const showArguments =
+    Object.keys(leftoverInput).length > 0 &&
+    hasNonRedundantInput(visibleInput, redundantKeys) &&
+    (!isAgent || isCodexAgentTool(tool));
+
+  return (
+    Boolean(tool.error) ||
+    canShowFilePreview ||
+    Boolean(openable) ||
+    showCommandBlock ||
+    showArguments ||
+    Boolean(options?.hasLeadingContent) ||
+    (hasVisibleToolOutput(tool.output) && !tool.error)
+  );
+}
+
 /** Output size, once it is big enough that a reader cares. */
 function formatSize(chars: number): string | null {
   if (chars < 1024) return null;
@@ -228,15 +272,9 @@ export function ToolCallDetail({
 
   // Nothing worth a block (a Task still spawning, say) → render no detail at
   // all rather than an empty fill hanging under the row.
-  const hasMainContent =
-    Boolean(tool.error) ||
-    Boolean(canShowFilePreview) ||
-    Boolean(openable) ||
-    showCommandBlock ||
-    showArguments ||
-    Boolean(leadingContent) ||
-    (Boolean(tool.output) && !tool.error);
-  if (!hasMainContent) return null;
+  if (!toolCallHasExpandableDetail(tool, { hasLeadingContent: Boolean(leadingContent) })) {
+    return null;
+  }
 
   const outputBody = output.body;
   const truncated = outputBody.length > MAX_OUTPUT_CHARS;
@@ -274,20 +312,22 @@ export function ToolCallDetail({
     ) : null,
     // No "Output" label: it sat alone over a box as the only thing it could
     // possibly be labelling. Position and type say it instead.
-    tool.output && !tool.error ? (
+    hasVisibleToolOutput(tool.output) && !tool.error ? (
       <pre className="tool-call-code">{shownOutput}</pre>
     ) : null
   ];
 
   // A read that printed nothing still has somewhere to go: the footer offers
   // Open. The row above already names the file, so nothing repeats it.
-  const showOpenAction = Boolean(!canShowFilePreview && openable && !tool.output);
+  const showOpenAction = Boolean(
+    !canShowFilePreview && openable && !hasVisibleToolOutput(tool.output)
+  );
 
   const footer = (
     <ToolCallFoot
       args={footerArgs}
       notes={outputNotes}
-      output={tool.output && !tool.error ? outputBody : null}
+      output={hasVisibleToolOutput(tool.output) && !tool.error ? outputBody : null}
       truncated={truncated && !showFullOutput}
       onShowAll={() => setShowFullOutput(true)}
       duration={formatDuration(tool.createdAt, tool.completedAt)}

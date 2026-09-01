@@ -232,4 +232,19 @@ describe("ToolCallDetail", () => {
     expect(screen.getByText(/line 399/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Show all" })).toBeNull();
   });
+
+  it("renders nothing for a bash call that printed nothing", () => {
+    const { container } = render(
+      <ToolCallDetail
+        tool={tool({
+          name: "Bash",
+          inputPreview: "mkdir -p dist",
+          inputFull: { command: "mkdir -p dist", description: "create dist", timeout: 30 },
+          output: "\n"
+        })}
+      />
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
 });

@@ -29,7 +29,11 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "attachments:save-image",
     "system:open-path",
     "system:diagnostics",
+    // The debug panel is a desktop surface; the mobile client has no view for it.
+    "system:debug-snapshot",
     "system:set-theme",
+    "system:set-notifications-enabled",
+    "system:test-notification",
     "remote:get-status",
     "remote:set-config",
     "remote:test-notification",
@@ -237,6 +241,10 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
         "session:fork" => {
             let input: SessionForkInput = parse(channel, input)?;
             encode(session::session_fork_impl(state, input)?)
+        }
+        "session:clear" => {
+            let input: SessionClearInput = parse(channel, input)?;
+            encode(session::session_clear_impl(state, input).await?)
         }
         "session:cost-summary" => {
             let input: SessionCostSummaryInput = parse(channel, input)?;

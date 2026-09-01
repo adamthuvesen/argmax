@@ -4,7 +4,7 @@ import { coalesceAssistantGroups } from "./sessionTurnView.js";
 
 function assistantEvent(
   id: string,
-  type: "message.completed" | "message.delta",
+  type: "message.completed" | "message.delta" | "error",
   message: string,
   createdAt: string,
   payload: Record<string, unknown> = {}
@@ -150,5 +150,135 @@ describe("coalesceAssistantGroups", () => {
     expect(groups[1]).toMatchObject({ text: "y", streaming: true });
     expect(groups[1]?.thinking).toBeFalsy();
     expect(groups[2]).toMatchObject({ text: "z", thinking: true });
+  });
+
+  it("coalesces consecutive error events into one log group", () => {
+    const groups = coalesceAssistantGroups([
+      assistantEvent("a1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
+      assistantEvent("e1", "error", "first boom", "2026-05-12T15:00:02.000Z"),
+      assistantEvent("e2", "error", "second boom", "2026-05-12T15:00:03.000Z")
+    ]);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.text).toBe("Done.");
+    expect(groups[0]?.error).toBeFalsy();
+    expect(groups[1]).toMatchObject({
+      text: "first boom\nsecond boom",
+      error: true,
+      streaming: false
+    });
+  });
+
+  it("drops a blank error event", () => {
+    const groups = coalesceAssistantGroups([
+      assistantEvent("e1", "error", "   ", "2026-05-12T15:00:01.000Z")
+    ]);
+    expect(groups).toHaveLength(0);
+  });
+
+  it("drops MCP HTTP client teardown tracing error events", () => {
+    const log =
+      '2026-09-01T07:21:37.004170Z ERROR rmcp::transport::streamable_http_client: fail to delete session: invalid_refresh_token session_id="abc"';
+    const groups = coalesceAssistantGroups([
+      assistantEvent("a1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
+      assistantEvent("e1", "error", log, "2026-05-12T15:00:02.000Z")
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.text).toBe("Done.");
+    expect(groups[0]?.error).toBeFalsy();
+  });
+
+  it("drops Codex apply_patch tracing that leaked in as stdout deltas, including context lines", () => {
+    const header =
+      "2026-09-01T09:08:10.411255Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in run_two_model_serving.py:";
+    const groups = coalesceAssistantGroups([
+      assistantEvent("a1", "message.completed", "Preregistration is written.", "2026-09-01T09:06:31.000Z"),
+      assistantEvent("d1", "message.delta", header, "2026-09-01T09:08:10.411Z", { stream: "stdout" }),
+      assistantEvent("d2", "message.delta", "point = points[tau]", "2026-09-01T09:08:10.411Z", {
+        stream: "stdout"
+      }),
+      assistantEvent("d3", "message.delta", "interval_wrong, interval_correct = _exchange_counts(point, current)", "2026-09-01T09:08:10.411Z", {
+        stream: "stdout"
+      }),
+      assistantEvent(
+        "a2",
+        "message.completed",
+        "The preregistered runner is ready.",
+        "2026-09-01T09:09:16.000Z"
+      )
+    ]);
+    expect(groups.map((group) => group.text)).toEqual([
+      "Preregistration is written.",
+      "The preregistered runner is ready."
+    ]);
+    expect(groups.some((group) => group.error)).toBe(false);
+  });
+
+  it("lifts session-disconnect tracing that leaked in as a stdout delta into an error group", () => {
+    const log =
+      '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
+    const groups = coalesceAssistantGroups([
+      assistantEvent("a1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
+      assistantEvent("d1", "message.delta", log, "2026-05-12T15:00:02.000Z", { stream: "stdout" })
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[1]).toMatchObject({
+      text: log,
+      error: true,
+      streaming: false
+    });
+  });
+
+  it("joins continuation lines of kept tracing onto the error group", () => {
+    const header =
+      '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
+    const groups = coalesceAssistantGroups([
+      assistantEvent("d1", "message.delta", header, "2026-05-12T15:00:01.000Z", { stream: "stdout" }),
+      assistantEvent("d2", "message.delta", "retry scheduled", "2026-05-12T15:00:01.001Z", {
+        stream: "stdout"
+      })
+    ]);
+    expect(groups).toEqual([
+      expect.objectContaining({
+        text: `${header}\nretry scheduled`,
+        error: true
+      })
+    ]);
+  });
+
+  it("joins completed fragments that continue the previous sentence", () => {
+    const groups = coalesceAssistantGroups([
+      assistantEvent("a1", "message.completed", "I'll", "2026-05-12T15:00:01.000Z"),
+      assistantEvent(
+        "a2",
+        "message.completed",
+        " read the core docs and skim the layout.",
+        "2026-05-12T15:00:02.000Z"
+      )
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      text: "I'll read the core docs and skim the layout.",
+      createdAt: "2026-05-12T15:00:01.000Z",
+      lastActivityAt: "2026-05-12T15:00:02.000Z"
+    });
+  });
+
+  it("does not join a new sentence after a completed one", () => {
+    const groups = coalesceAssistantGroups([
+      assistantEvent(
+        "a1",
+        "message.completed",
+        "Launching a read-only explore subagent to summarize this repository.",
+        "2026-05-12T15:00:01.000Z"
+      ),
+      assistantEvent("a2", "message.completed", "I'll read the core docs.", "2026-05-12T15:00:02.000Z")
+    ]);
+
+    expect(groups.map((group) => group.text)).toEqual([
+      "Launching a read-only explore subagent to summarize this repository.",
+      "I'll read the core docs."
+    ]);
   });
 });

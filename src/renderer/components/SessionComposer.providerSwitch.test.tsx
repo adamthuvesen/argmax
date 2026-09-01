@@ -31,8 +31,8 @@ describe("SessionComposer provider switch confirmation", () => {
   });
 
   // The overlay is `position: absolute; inset: 0`, so it fills whichever
-  // positioned ancestor it lands in. The composer's own `.session-input` is
-  // `position: relative`, so a dialog left there sizes to the input box and
+  // positioned ancestor it lands in. The composer's `.session-composer-stack`
+  // is `position: relative`, so a dialog left there sizes to the input box and
   // spills over it instead of centring on the session.
   it("centres the dialog on the session pane, not the composer", () => {
     renderConversation(baseSession({ state: "complete", provider: "codex" }));

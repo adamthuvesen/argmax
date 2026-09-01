@@ -1475,7 +1475,7 @@ describe("Sidebar — working rows in Priority", () => {
     expect(screen.getByRole("button", { name: /Live task/ })).toBeInTheDocument();
   });
 
-  it("sorts a working row under the attention rows and out of the project groups", () => {
+  it("sorts a working row above the attention rows and out of the project groups", () => {
     render(
       <Sidebar
         {...baseProps}
@@ -1501,8 +1501,8 @@ describe("Sidebar — working rows in Priority", () => {
     expect(screen.getByText("Priority")).toBeInTheDocument();
     expect(
       rendersAfter(
-        screen.getByRole("button", { name: /Failed task/ }),
-        screen.getByRole("button", { name: /Live task/ })
+        screen.getByRole("button", { name: /Live task/ }),
+        screen.getByRole("button", { name: /Failed task/ })
       )
     ).toBe(true);
     // Both rows left their project group: expanding it must not duplicate them.
@@ -1526,6 +1526,56 @@ describe("Sidebar — working rows in Priority", () => {
 
     expect(screen.queryByText("Priority")).toBeNull();
     expect(screen.getByRole("button", { name: /Live task/ })).toBeInTheDocument();
+  });
+
+  it("sorts all working rows at top (newest first) followed by non-working rows (newest first)", () => {
+    const t1 = new Date(Date.now() - 1 * 60 * 1000).toISOString();
+    const t2 = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const t5 = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const t8 = new Date(Date.now() - 8 * 60 * 1000).toISOString();
+
+    render(
+      <Sidebar
+        {...baseProps}
+        showPriority
+        snapshot={{
+          ...snapshot,
+          workspaces: [
+            workingWorkspace("w-work-old", "Working Old", { lastActivityAt: t5 }),
+            workingWorkspace("w-work-new", "Working New", { lastActivityAt: t1 }),
+            workingWorkspace("w-attn-new", "Attn New", { lastActivityAt: t2 }),
+            workingWorkspace("w-attn-old", "Attn Old", { lastActivityAt: t8 })
+          ],
+          sessions: [
+            { ...workingSession("w-work-old"), lastActivityAt: t5 },
+            { ...workingSession("w-work-new"), lastActivityAt: t1 },
+            {
+              ...workingSession("w-attn-new", "complete"),
+              state: "waiting" as const,
+              attention: "blocked" as const,
+              attentionChangedAt: t2,
+              lastActivityAt: t2
+            },
+            {
+              ...workingSession("w-attn-old", "complete"),
+              state: "waiting" as const,
+              attention: "approval-needed" as const,
+              attentionChangedAt: t8,
+              lastActivityAt: t8
+            }
+          ]
+        }}
+      />
+    );
+
+    const btnWorkNew = screen.getByRole("button", { name: /Working New/ });
+    const btnWorkOld = screen.getByRole("button", { name: /Working Old/ });
+    const btnAttnNew = screen.getByRole("button", { name: /Attn New/ });
+    const btnAttnOld = screen.getByRole("button", { name: /Attn Old/ });
+
+    expect(rendersAfter(btnWorkNew, btnWorkOld)).toBe(true);
+    expect(rendersAfter(btnWorkOld, btnAttnNew)).toBe(true);
+    expect(rendersAfter(btnAttnNew, btnAttnOld)).toBe(true);
   });
 });
 

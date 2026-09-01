@@ -162,6 +162,17 @@ fn project_workspace_and_session_repositories_round_trip() {
         Some("provider-thread-1")
     );
 
+    connection
+        .execute(
+            "UPDATE sessions SET context_tokens = 42 WHERE id = 's1'",
+            [],
+        )
+        .expect("seed occupancy");
+    let cleared = crate::persistence::sessions::clear_session_conversation(&connection, "s1")
+        .expect("clear conversation");
+    assert_eq!(cleared.provider_conversation_id, None);
+    assert_eq!(cleared.context_tokens, 0);
+
     let waiting = update_session_state(
         &connection,
         "s1",
@@ -255,7 +266,7 @@ fn latest_agent_message_skips_subagent_prose() {
 
     assert_eq!(latest_agent_message(&connection, "s1").expect("read"), None);
 
-    let mut persist = |id: &str, message: &str, payload: serde_json::Value| {
+    let persist = |id: &str, message: &str, payload: serde_json::Value| {
         persist_timeline_event(
             &connection,
             &PersistTimelineEventInput {

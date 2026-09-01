@@ -18,8 +18,8 @@ use self::{
     claude::{
         compaction_marker as claude_compaction_marker,
         detect_permission_gate as detect_claude_permission_gate, event_type as claude_event_type,
+        extract_content_blocks as extract_claude_content_blocks,
         extract_delta_text as extract_claude_delta_text,
-        extract_inline_tool_blocks as extract_claude_inline_tool_blocks,
         extract_message_content as extract_claude_message_content,
         extract_usage as extract_claude_usage,
         is_hidden_synthetic_body as is_claude_hidden_synthetic_body,
@@ -48,6 +48,16 @@ use self::{
 };
 use super::{adapters::get_provider_definition, ApprovalSupport, ProviderId};
 use crate::persistence::events::PersistTimelineEventInput;
+
+/// Providers whose headless output is Claude Code's stream-json: a
+/// `system/init` line, Anthropic `stream_event` content blocks, whole
+/// `assistant` messages, and a closing `result`. Grok Build emits the same
+/// envelopes (verified against grok 1.0.13
+/// `--output-format streaming-messages-json`), so it shares Claude's
+/// normalizer instead of carrying a duplicate of it.
+fn speaks_claude_stream_json(provider: ProviderId) -> bool {
+    matches!(provider, ProviderId::Claude | ProviderId::Grok)
+}
 
 pub const JSON_PARSE_LINE_CAP: usize = 1_048_576;
 
@@ -144,6 +154,21 @@ pub struct NormalizedApprovalRequest {
     pub provider_request_id: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CodexCumulativeUsage {
+    pub input_tokens: u64,
+    pub cached_input_tokens: u64,
+    pub output_tokens: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RawTracingContinuation {
+    #[default]
+    None,
+    Keep,
+    Drop,
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct NormalizerSessionContext {
     pub codex_current_model: Option<String>,
@@ -158,6 +183,16 @@ pub struct NormalizerSessionContext {
     /// Set when Claude emits a `message.completed` for the current turn so a
     /// trailing `result` line does not synthesize a duplicate bubble.
     pub claude_turn_answer_emitted: bool,
+    /// Codex's running cumulative token usage across the thread as last seen on
+    /// a `turn.completed`.
+    pub codex_cumulative_usage: Option<CodexCumulativeUsage>,
+    /// Thread id for the active Codex session, captured on `thread.started`.
+    pub codex_thread_id: Option<String>,
+    /// Cached path to the active Codex rollout file on disk.
+    pub codex_rollout_path: Option<std::path::PathBuf>,
+    /// After a tracing-format PTY line, following non-JSON lines are the rest
+    /// of that record. Codex dumps apply_patch expected context that way.
+    pub raw_tracing_continuation: RawTracingContinuation,
     /// Set once OpenCode's `sessionID` has been reported for this launch.
     /// Every OpenCode envelope carries it, and each report costs a session
     /// UPDATE plus a re-read that ships a session row in the dashboard delta —
@@ -183,8 +218,33 @@ impl NormalizerSessionContext {
                 opencode_current_model: Some(model_id.into()),
                 ..Self::default()
             },
-            ProviderId::Claude | ProviderId::Codex => Self::default(),
+            // A fresh Codex thread starts its cumulative usage counters at zero,
+            // so the first turn's total is already that turn's billing delta.
+            ProviderId::Codex => Self {
+                codex_current_model: Some(model_id.into()),
+                codex_cumulative_usage: Some(CodexCumulativeUsage::default()),
+                ..Self::default()
+            },
+            ProviderId::Claude | ProviderId::Grok => Self::default(),
         }
+    }
+
+    /// Mark this launch as continuing an existing provider conversation.
+    pub fn resuming(mut self) -> Self {
+        self.codex_cumulative_usage = None;
+        self
+    }
+
+    /// Mark this launch as continuing an existing Codex conversation with seeded
+    /// thread id and cumulative usage baseline.
+    pub fn resuming_codex(
+        mut self,
+        thread_id: Option<String>,
+        initial_usage: Option<CodexCumulativeUsage>,
+    ) -> Self {
+        self.codex_thread_id = thread_id;
+        self.codex_cumulative_usage = initial_usage;
+        self
     }
 }
 
@@ -327,11 +387,14 @@ fn normalize_line(
     }
 
     match serde_json::from_str::<Value>(line) {
-        Ok(Value::Object(payload)) => normalize_json_payload(provider, event, payload, context),
+        Ok(Value::Object(payload)) => {
+            context.raw_tracing_continuation = RawTracingContinuation::None;
+            normalize_json_payload(provider, event, payload, context)
+        }
         // Parsed, but not an object: leftover protocol output (an array or a
         // bare scalar), not something a human wrote.
-        Ok(_) => normalize_raw_line(event, line, true),
-        Err(_) => normalize_raw_line(event, line, false),
+        Ok(_) => normalize_raw_line(event, line, true, context),
+        Err(_) => normalize_raw_line(event, line, false, context),
     }
 }
 
@@ -343,7 +406,7 @@ fn normalize_json_payload(
 ) -> NormalizedProviderResult {
     let provider_type = string_value(payload.get("type")).map(str::to_string);
 
-    if provider == ProviderId::Claude && provider_type.as_deref() == Some("stream_event") {
+    if speaks_claude_stream_json(provider) && provider_type.as_deref() == Some("stream_event") {
         if let Some(inner) = object_value(payload.get("event")).cloned() {
             return normalize_json_payload(provider, event, inner, context);
         }
@@ -357,6 +420,13 @@ fn normalize_json_payload(
 
     if provider == ProviderId::Codex && provider_type.as_deref() == Some("turn_context") {
         update_codex_turn_context_model(&payload, context);
+    }
+    if provider == ProviderId::Codex && provider_type.as_deref() == Some("thread.started") {
+        if let Some(id) = string_value(payload.get("thread_id")).or_else(|| {
+            object_value(payload.get("thread")).and_then(|thread| string_value(thread.get("id")))
+        }) {
+            context.codex_thread_id = Some(id.to_string());
+        }
     }
 
     let usage = extract_usage_from_payload(provider, &payload, provider_type.as_deref(), context);
@@ -375,7 +445,7 @@ fn normalize_json_payload(
         // makes the CLI mint a new id, and without capturing it the fork keeps
         // its one-shot `resume_fork` flag forever, re-forking the *source*
         // snapshot on every turn and discarding its own history.
-        ProviderId::Claude
+        ProviderId::Claude | ProviderId::Grok
             if matches!(
                 (
                     provider_type.as_deref(),
@@ -579,7 +649,7 @@ fn normalize_json_payload(
         }
     }
 
-    if provider == ProviderId::Claude {
+    if speaks_claude_stream_json(provider) {
         if let Some(marker) = claude_compaction_marker(event, &payload) {
             return NormalizedProviderResult {
                 events: vec![marker],
@@ -588,16 +658,49 @@ fn normalize_json_payload(
                 ..NormalizedProviderResult::default()
             };
         }
-        events.extend(extract_claude_inline_tool_blocks(event, &payload));
-        if events
-            .iter()
-            .any(|event| event.r#type == "message.completed")
-        {
-            context.claude_turn_answer_emitted = true;
+        if is_claude_hidden_synthetic_body(&payload) {
+            return NormalizedProviderResult {
+                events: Vec::new(),
+                usages,
+                provider_conversation_id,
+                ..NormalizedProviderResult::default()
+            };
+        }
+        if provider_type.as_deref() == Some("assistant") {
+            if let Some(content_events) = extract_claude_content_blocks(event, &payload) {
+                if content_events
+                    .iter()
+                    .any(|event| event.r#type == "message.completed")
+                {
+                    context.claude_turn_answer_emitted = true;
+                }
+                return NormalizedProviderResult {
+                    events: content_events,
+                    usages,
+                    provider_conversation_id,
+                    ..NormalizedProviderResult::default()
+                };
+            }
+        }
+        if provider_type.as_deref() == Some("user") {
+            if let Some(content_events) = extract_claude_content_blocks(event, &payload) {
+                let tool_results: Vec<_> = content_events
+                    .into_iter()
+                    .filter(|e| e.r#type == "command.completed")
+                    .collect();
+                if !tool_results.is_empty() {
+                    return NormalizedProviderResult {
+                        events: tool_results,
+                        usages,
+                        provider_conversation_id,
+                        ..NormalizedProviderResult::default()
+                    };
+                }
+            }
         }
     }
 
-    if provider == ProviderId::Claude && provider_type.as_deref() == Some("result") {
+    if speaks_claude_stream_json(provider) && provider_type.as_deref() == Some("result") {
         if context.claude_turn_answer_emitted {
             return NormalizedProviderResult {
                 events: Vec::new(),
@@ -646,7 +749,7 @@ fn normalize_json_payload(
             ..NormalizedProviderResult::default()
         };
     }
-    if provider == ProviderId::Claude && is_claude_hidden_synthetic_body(&payload) {
+    if speaks_claude_stream_json(provider) && is_claude_hidden_synthetic_body(&payload) {
         return NormalizedProviderResult {
             events,
             usages,
@@ -657,7 +760,7 @@ fn normalize_json_payload(
 
     // Compute before `payload` is moved into `final_payload` below.
     let is_claude_thinking_delta =
-        provider == ProviderId::Claude && is_claude_thinking_delta_payload(&payload);
+        speaks_claude_stream_json(provider) && is_claude_thinking_delta_payload(&payload);
     let mut final_payload = if mapped_type.is_some() {
         Value::Object(payload)
     } else {
@@ -671,7 +774,7 @@ fn normalize_json_payload(
         Value::Object(payload)
     };
     let timeline_type = mapped_type.unwrap_or("message.delta");
-    if provider == ProviderId::Claude && timeline_type == "message.completed" {
+    if speaks_claude_stream_json(provider) && timeline_type == "message.completed" {
         context.claude_turn_answer_emitted = true;
     }
     // Flag streamed extended-thinking deltas so the renderer routes them to the
@@ -727,21 +830,66 @@ fn normalize_json_payload(
     }
 }
 
-/// `is_protocol_json` marks a line that parsed as JSON but not as an object —
-/// protocol leftovers rather than human-readable output. Only those carry
-/// `raw: true`, because that flag is the chat's hide gate (`isConversationVisible`
-/// drops any row with `payload.raw === true`). Stamping it on genuinely
-/// non-JSON text is what kept provider auth errors out of the chat entirely.
 fn normalize_raw_line(
     event: &ProviderOutputEvent,
     line: &str,
     is_protocol_json: bool,
+    context: &mut NormalizerSessionContext,
 ) -> NormalizedProviderResult {
     let cleaned = strip_terminal_controls(line).trim().to_string();
     if cleaned.is_empty() {
         return NormalizedProviderResult::default();
     }
 
+    if is_protocol_json {
+        context.raw_tracing_continuation = RawTracingContinuation::None;
+        return raw_line_event(event, cleaned, true);
+    }
+
+    if let Some(record) = parse_tracing_record(&cleaned) {
+        let noisy = is_noisy_provider_tracing(record.target, record.message);
+        context.raw_tracing_continuation = if noisy {
+            RawTracingContinuation::Drop
+        } else {
+            RawTracingContinuation::Keep
+        };
+        if noisy {
+            return NormalizedProviderResult::default();
+        }
+        return raw_tracing_error(event, cleaned);
+    }
+
+    match context.raw_tracing_continuation {
+        RawTracingContinuation::Drop => NormalizedProviderResult::default(),
+        RawTracingContinuation::Keep => raw_tracing_error(event, cleaned),
+        RawTracingContinuation::None => raw_line_event(event, cleaned, false),
+    }
+}
+
+fn raw_tracing_error(event: &ProviderOutputEvent, cleaned: String) -> NormalizedProviderResult {
+    NormalizedProviderResult {
+        events: vec![timeline_event(
+            event,
+            "error",
+            cleaned,
+            json!({ "stream": event.stream.as_str() }),
+        )],
+        usages: Vec::new(),
+        provider_conversation_id: None,
+        ..NormalizedProviderResult::default()
+    }
+}
+
+/// `is_protocol_json` marks a line that parsed as JSON but not as an object —
+/// protocol leftovers rather than human-readable output. Only those carry
+/// `raw: true`, because that flag is the chat's hide gate (`isConversationVisible`
+/// drops any row with `payload.raw === true`). Stamping it on genuinely
+/// non-JSON text is what kept provider auth errors out of the chat entirely.
+fn raw_line_event(
+    event: &ProviderOutputEvent,
+    cleaned: String,
+    is_protocol_json: bool,
+) -> NormalizedProviderResult {
     // Provider runtimes spawn the CLI under a PTY so stdout stays
     // line-buffered (Stdio::piped causes block-buffering and the chat
     // looks hung). PTY merges stdout/stderr into one stream, so any
@@ -776,7 +924,7 @@ fn map_provider_type(
     }
     let provider_type = provider_type?;
     match provider {
-        ProviderId::Claude => claude_event_type(provider_type),
+        ProviderId::Claude | ProviderId::Grok => claude_event_type(provider_type),
         ProviderId::Codex => codex_event_type(provider_type),
         // OpenCode payloads never reach here — normalize_json_payload returns
         // early with the opencode-specific mapping.
@@ -815,7 +963,7 @@ fn detect_permission_gate(
     payload: &Map<String, Value>,
 ) -> Option<PermissionGateInfo> {
     match provider {
-        ProviderId::Claude => detect_claude_permission_gate(payload),
+        ProviderId::Claude | ProviderId::Grok => detect_claude_permission_gate(payload),
         ProviderId::Codex => detect_codex_permission_gate(payload),
         ProviderId::Cursor | ProviderId::Opencode => None,
     }
@@ -825,10 +973,10 @@ fn extract_usage_from_payload(
     provider: ProviderId,
     payload: &Map<String, Value>,
     provider_type: Option<&str>,
-    context: &NormalizerSessionContext,
+    context: &mut NormalizerSessionContext,
 ) -> Option<NormalizedUsage> {
     match provider {
-        ProviderId::Claude => extract_claude_usage(payload, provider_type),
+        ProviderId::Claude | ProviderId::Grok => extract_claude_usage(payload, provider_type),
         ProviderId::Codex => extract_codex_usage(payload, provider_type, context),
         ProviderId::Cursor => extract_cursor_usage(payload, provider_type, context),
         ProviderId::Opencode => extract_opencode_usage(payload, provider_type, context),
@@ -905,9 +1053,139 @@ fn strip_terminal_controls(value: &str) -> String {
     re.replace_all(value, "").into_owned()
 }
 
+struct TracingRecord<'a> {
+    target: &'a str,
+    message: &'a str,
+}
+
+fn parse_tracing_record(line: &str) -> Option<TracingRecord<'_>> {
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(
+            r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s+(?:ERROR|WARN(?:ING)?|INFO|DEBUG|TRACE)\s+(\S*(?:::[^\s:]+|\.[^\s:]+)\S*):\s(.*)$",
+        )
+        .expect("tracing record regex")
+    });
+    let caps = re.captures(line)?;
+    Some(TracingRecord {
+        target: caps.get(1)?.as_str(),
+        message: caps.get(2)?.as_str(),
+    })
+}
+
+fn is_noisy_provider_tracing(target: &str, message: &str) -> bool {
+    if target == "rmcp"
+        || target.starts_with("rmcp::")
+        || target == "codex_rmcp_client"
+        || target.starts_with("codex_rmcp_client::")
+    {
+        return true;
+    }
+    if (target == "codex_core::util" || target.starts_with("codex_core::util::"))
+        && message.contains("Custom tool call output is missing for call id:")
+    {
+        return true;
+    }
+    target == "codex_core::tools" || target.starts_with("codex_core::tools::")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Captured verbatim from `grok 1.0.13 --output-format streaming-messages-json
+    // --include-partial-messages` (thinking + a read_file tool call + answer).
+    // Grok reuses Claude Code's wire format, so it must reuse Claude's
+    // normalizer path; if Grok ever forks that format these lines stop mapping
+    // and this test is what says so.
+    #[test]
+    fn grok_stream_json_normalizes_through_the_claude_path() {
+        let mut context = NormalizerSessionContext::for_provider(ProviderId::Grok, "grok-4.6");
+        let mut all: Vec<PersistTimelineEventInput> = Vec::new();
+        let mut usages = Vec::new();
+        let mut conversation_id = None;
+        for line in [
+            r#"{"type":"system","subtype":"init","session_id":"01a05a2d-c76d-7f00-9cf2-9b5b947a1c5c","apiKeySource":"oauth","model":"grok-4.6","permissionMode":"bypassPermissions"}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me read it."}},"session_id":"s"}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call-88af","name":"read_file","input":{}}},"session_id":"s"}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"target_file\":\"note.txt\"}"}},"session_id":"s"}"#,
+            // The completed turn-1 message carries the tool_use block, exactly
+            // as Claude's does — that is where the tool event comes from.
+            r#"{"type":"assistant","message":{"id":"msg_0","type":"message","role":"assistant","model":"grok-4.6","content":[{"type":"thinking","thinking":"Let me read it.","signature":"sig"},{"type":"tool_use","id":"call-88af","name":"read_file","input":{"target_file":"note.txt"}}],"usage":{"input_tokens":14740,"output_tokens":41,"cache_read_input_tokens":5760,"cache_creation_input_tokens":0}},"session_id":"s"}"#,
+            r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-88af","content":"1→hello from fixture\n"}]},"session_id":"s"}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello from fixture"}},"session_id":"s"}"#,
+            r#"{"type":"assistant","message":{"id":"msg_1","type":"message","role":"assistant","model":"grok-4.6","content":[{"type":"text","text":"hello from fixture"}],"usage":{"input_tokens":14838,"output_tokens":70,"cache_read_input_tokens":26240,"cache_creation_input_tokens":0}},"session_id":"s"}"#,
+            r#"{"type":"result","subtype":"success","is_error":false,"result":"hello from fixture","total_cost_usd":0.00734672,"session_id":"s"}"#,
+        ] {
+            let result = normalize_provider_event(
+                ProviderId::Grok,
+                &output_event(&format!("{line}\n")),
+                &mut context,
+            );
+            conversation_id = conversation_id.or(result.provider_conversation_id);
+            usages.extend(result.usages);
+            all.extend(result.events);
+        }
+
+        // `system/init` carries the CLI-minted id — the one a forked resume
+        // must adopt instead of the id we handed in.
+        assert_eq!(
+            conversation_id.as_deref(),
+            Some("01a05a2d-c76d-7f00-9cf2-9b5b947a1c5c")
+        );
+
+        // Streamed reasoning is flagged so the renderer routes it to the
+        // Thought block rather than the answer bubble.
+        let thinking = all
+            .iter()
+            .find(|event| event.message == "Let me read it.")
+            .expect("thinking delta");
+        assert_eq!(thinking.r#type, "message.delta");
+        assert_eq!(thinking.payload.get("thinking"), Some(&json!(true)));
+
+        // The tool call surfaces as a tool card, not as prose in the answer:
+        // the call from the assistant message's tool_use block, and its result
+        // from the follow-up user message's tool_result block.
+        let started = all
+            .iter()
+            .find(|event| event.r#type == "command.started")
+            .expect("command.started for read_file");
+        assert_eq!(started.message, "read_file");
+        assert_eq!(
+            started.payload.pointer("/input/target_file"),
+            Some(&json!("note.txt"))
+        );
+        assert!(
+            all.iter().any(|event| event.r#type == "command.completed"
+                && event
+                    .payload
+                    .pointer("/tool_use_id")
+                    .is_some_and(|id| id == "call-88af")),
+            "no command.completed tied to the call: {all:?}"
+        );
+
+        // Exactly one turn-ending bubble: the `assistant` message. The trailing
+        // `result` line must not synthesize a duplicate.
+        let completed = all
+            .iter()
+            .filter(|event| event.r#type == "message.completed")
+            .collect::<Vec<_>>();
+        assert_eq!(completed.len(), 1, "expected one completion: {completed:?}");
+        assert_eq!(completed[0].message, "hello from fixture");
+
+        // Usage is priced off the model the assistant message reports.
+        let usage = usages.last().expect("usage row");
+        assert_eq!(usage.model_id, "grok-4.6");
+        assert_eq!(usage.tokens.input, 14838);
+        assert_eq!(usage.tokens.output, 70);
+        assert_eq!(usage.tokens.cache_read, 26240);
+        // Matches the CLI's own total_cost_usd for this exact turn.
+        assert!(
+            (usage.cost_usd - 0.007_346_72).abs() < 1e-9,
+            "priced {}, CLI reported 0.00734672",
+            usage.cost_usd
+        );
+    }
 
     #[test]
     fn dispatcher_buffers_partial_lines_per_session() {
@@ -970,6 +1248,84 @@ mod tests {
         // `raw: true` is the chat's hide gate, so human-readable text must not
         // carry it — otherwise the row lands in SQLite and renders nowhere.
         assert_eq!(result.events[0].payload.get("raw"), None);
+    }
+
+    #[test]
+    fn tracing_format_pty_line_becomes_an_error_not_assistant_text() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                "2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id=\"abc\"\n",
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "error");
+        assert!(result.events[0].message.contains("stream disconnected"));
+        assert_eq!(
+            context.raw_tracing_continuation,
+            RawTracingContinuation::Keep
+        );
+
+        let continuation = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event("retry scheduled\n"),
+            &mut context,
+        );
+        assert_eq!(continuation.events.len(), 1);
+        assert_eq!(continuation.events[0].r#type, "error");
+        assert_eq!(continuation.events[0].message, "retry scheduled");
+    }
+
+    #[test]
+    fn noisy_codex_tool_router_tracing_and_its_context_lines_are_dropped() {
+        let mut context = NormalizerSessionContext::default();
+        let header = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                "2026-09-01T09:08:10.411255Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in run_two_model_serving.py:\n",
+            ),
+            &mut context,
+        );
+        assert!(header.events.is_empty());
+        assert_eq!(
+            context.raw_tracing_continuation,
+            RawTracingContinuation::Drop
+        );
+
+        let continuation = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event("point = points[tau]\n"),
+            &mut context,
+        );
+        assert!(continuation.events.is_empty());
+
+        let protocol = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Ready."}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(
+            context.raw_tracing_continuation,
+            RawTracingContinuation::None
+        );
+        assert_eq!(protocol.events[0].r#type, "message.completed");
+    }
+
+    #[test]
+    fn mcp_oauth_tracing_on_stdout_is_dropped() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                "2026-09-01T08:22:24.056552Z ERROR codex_rmcp_client::oauth::refresh_transaction: error=failed to refresh OAuth tokens for server hex\n",
+            ),
+            &mut context,
+        );
+        assert!(result.events.is_empty());
     }
 
     #[test]

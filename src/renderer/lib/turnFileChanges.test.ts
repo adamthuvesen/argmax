@@ -67,6 +67,37 @@ describe("collectTurnFileChanges", () => {
     expect(changes.map((change) => change.path)).toEqual(["/repo/b.md", "/repo/a.md"]);
   });
 
+  // Codex reports a written path with no diff, so the stat on these rows is the
+  // one the backend measured from git and wrote onto the tool row
+  // (providers/measured_diffs.rs). Two writes to one file carry one diff each,
+  // so the row still sums to the turn's own lines.
+  it("stats a Codex file change from the diff Argmax measured", () => {
+    const hunk = (line: string) => `@@ -2,1 +2,2 @@\n one\n-two\n+${line}\n`;
+    const changes = collectTurnFileChanges(
+      turnOf([
+        tool("file_change", {
+          changes: [{ kind: "update", path: "/repo/model.sql", unified_diff: hunk("two CHANGED") }]
+        }, "t1"),
+        tool("file_change", {
+          changes: [{ kind: "update", path: "/repo/model.sql", unified_diff: hunk("two AGAIN") }]
+        }, "t2")
+      ])
+    );
+    expect(changes).toHaveLength(1);
+    expect(changes[0]?.writes).toBe(2);
+    expect(changes[0]?.adds).toBe(2);
+    expect(changes[0]?.dels).toBe(2);
+  });
+
+  it("leaves a Codex file change with no measured diff without a stat", () => {
+    const changes = collectTurnFileChanges(
+      turnOf([tool("file_change", { changes: [{ kind: "update", path: "/repo/model.sql" }] }, "t1")])
+    );
+    expect(changes).toHaveLength(1);
+    expect(changes[0]?.adds).toBe(0);
+    expect(changes[0]?.dels).toBe(0);
+  });
+
   it("reads tools nested in a group", () => {
     const group: TurnToolItem = {
       kind: "tool-group",

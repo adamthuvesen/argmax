@@ -50,6 +50,30 @@ describe("ModelSelector — one row per model", () => {
 });
 
 describe("ModelSelector type to filter", () => {
+  it("focuses the currently selected model when opened so only one row is highlighted", () => {
+    openClaudePicker(OPUS_MEDIUM);
+    const list = screen.getByRole("listbox", { name: "Session model" });
+    const options = within(list).getAllByRole("option");
+    // Four Claude models: Fable 5 (0), Opus 5 (1), Sonnet 5 (2), Haiku 4.5 (3)
+    expect(options[0]).not.toHaveAttribute("data-active");
+    expect(options[0]).toHaveAttribute("aria-selected", "false");
+    expect(options[1]).toHaveAttribute("data-active", "true");
+    expect(options[1]).toHaveAttribute("aria-selected", "true");
+    expect(options[2]).not.toHaveAttribute("data-active");
+    expect(options[2]).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("picks the currently selected model on immediate Enter without typing", () => {
+    const onChange = openClaudePicker(OPUS_MEDIUM);
+    const list = screen.getByRole("listbox", { name: "Session model" });
+    fireEvent.keyDown(list, { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith({
+      label: "Opus 5",
+      modelId: "claude-opus-5",
+      reasoningEffort: "medium"
+    });
+  });
+
   it("takes focus on open so typing narrows the list instead of the input behind it", () => {
     openClaudePicker();
     const list = screen.getByRole("listbox", { name: "Session model" });
@@ -117,12 +141,13 @@ describe("LaunchModelSelector — all providers", () => {
     render(<LaunchModelSelector ariaLabel="Launch model" value={value} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
     // Providers are grouped by thin separators, not text labels — one before
-    // each group after the first (Claude): Codex, Cursor, OpenCode.
+    // each group after the first (Claude): Codex, Cursor, OpenCode, Grok Build.
     expect(screen.queryByText("Claude")).not.toBeInTheDocument();
     expect(screen.queryByText("Codex")).not.toBeInTheDocument();
     expect(screen.queryByText("Cursor")).not.toBeInTheDocument();
     expect(screen.queryByText("OpenCode")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("separator")).toHaveLength(3);
+    expect(screen.queryByText("Grok Build")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("separator")).toHaveLength(4);
     expect(screen.getByText("GPT-5.6 Sol")).toBeInTheDocument();
   });
 

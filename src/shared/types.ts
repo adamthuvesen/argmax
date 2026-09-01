@@ -7,11 +7,16 @@ export type AgentMode = Bindings.AgentMode;
 export type AttachmentMimeType = Bindings.AttachmentMimeType;
 export type DatabaseStats = Bindings.DatabaseStats;
 export type DetectedIde = Bindings.DetectedIde;
-export type DiagnosticsReport = Omit<Bindings.DiagnosticsReport, "recentLogs"> & {
-  recentLogs: LogEntry[];
-};
+export type DiagnosticsReport = Bindings.DiagnosticsReport;
 export type IdeId = Bindings.IdeId;
 export type IpcChannelStats = Bindings.IpcChannelStats;
+export type DebugSnapshot = Bindings.DebugSnapshot;
+/**
+ * A line from the Rust tracing ring buffer. Distinct from `LogEntry` below,
+ * which is the renderer's own logger — the two share a shape by coincidence,
+ * not by contract, and `level` here is whatever tracing emitted.
+ */
+export type BackendLogEntry = Bindings.LogEntry;
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export interface LogEntry {
   timestamp: string;
@@ -83,6 +88,7 @@ export type EventType =
   | "session.compacting"
   | "session.compacted"
   | "session.provider-changed"
+  | "session.cleared"
   | "session.move-requested"
   | "session.moved"
   | "session.recovered-from-crash";
@@ -129,6 +135,7 @@ export type SessionEventsSinceInput = OptionalNullable<
 >;
 export type SessionAgentEventsInput = Bindings.SessionAgentEventsInput;
 export type SessionForkInput = Bindings.SessionForkInput;
+export type SessionClearInput = Bindings.SessionClearInput;
 export type SessionSuggestFollowUpInput = Bindings.SessionSuggestFollowUpInput;
 export type FollowUpSuggestion = Bindings.FollowUpSuggestion;
 export type SessionForkResult = Bindings.SessionForkResult;
@@ -477,6 +484,7 @@ export interface SyncConfigInput {
   codex: boolean;
   cursor: boolean;
   opencode: boolean;
+  grok: boolean;
   /** 24 or 168; the backend clamps anything else. */
   windowHours: number;
 }
@@ -600,6 +608,7 @@ export interface ArgmaxApi {
     eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;
     agentEvents: (input: SessionAgentEventsInput) => Promise<SessionEventsSinceResult>;
     fork: (input: SessionForkInput) => Promise<SessionForkResult>;
+    clear: (input: SessionClearInput) => Promise<SessionSummary>;
     /** A composer placeholder proposed by the cheap helper model from the
      *  agent's last message. `suggestion` is null when there is nothing to
      *  reply to yet or the helper call failed. */
@@ -652,8 +661,11 @@ export interface ArgmaxApi {
     openPath: (input: { path: string; cwd?: string }) => Promise<{ ok: true }>;
     listDetectedIdes: () => Promise<DetectedIde[]>;
     diagnostics: () => Promise<DiagnosticsReport>;
+    debugSnapshot: (input?: { afterLogSeq?: number }) => Promise<DebugSnapshot>;
     vacuumDatabase: () => Promise<{ ok: true }>;
     setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
+    setNotificationsEnabled: (enabled: boolean) => Promise<{ ok: true }>;
+    testNotification: () => Promise<{ ok: true }>;
   };
   remote: {
     getStatus: () => Promise<RemoteStatus>;

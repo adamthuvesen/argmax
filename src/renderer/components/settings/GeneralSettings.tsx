@@ -1,372 +1,196 @@
+import { ArrowRight } from "lucide-react";
 import { useState, type JSX } from "react";
-import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
-import {
-  CHAT_WIDTH_HINTS,
-  CHAT_WIDTH_MAX,
-  CHAT_WIDTH_MIN,
-  type ChatWidth
-} from "../../lib/chatWidth.js";
-import {
-  FONT_OPTIONS,
-  FONT_SIZE_MAX,
-  FONT_SIZE_MIN,
-  fontSizeBasePx,
-  toFontSize,
-  type FontFamilyId,
-  type FontSize
-} from "../../lib/fonts.js";
+import type { DetectedIde, IdeId } from "../../../shared/types.js";
 import {
   isLinkTarget,
   persistLinkTarget,
   readStoredLinkTarget,
   type LinkTarget
 } from "../../lib/linkTarget.js";
-import { toScaleLevel } from "../../lib/scaleLevel.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
-import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
-import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
-import { isUserBubbleTint, type UserBubbleTint } from "../../lib/userBubbleTint.js";
 import {
-  AccentPicker,
-  FontFamilyPicker,
-  KeyValueList,
-  SectionHeader,
-  Segmented,
-  SliderRow,
-  ThemePicker,
-  ToggleRow
+  SegmentedControl,
+  SettingGroup,
+  SettingNote,
+  SettingRow,
+  SettingsListPicker,
+  Toggle
 } from "./settingsPrimitives.js";
-import { Mascot } from "../Mascot.js";
 
 export function GeneralSettings({
-  fontFamily,
-  onFontFamilyChange,
-  themeMode,
-  onThemeModeChange,
-  accentId,
-  onAccentChange,
-  userBubbleTint,
-  onUserBubbleTintChange,
-  sidebarPriorityVisible,
-  onSidebarPriorityVisibleChange,
-  workspaceCardVisible,
-  onWorkspaceCardVisibleChange,
-  pixelFieldEnabled,
-  onPixelFieldEnabledChange,
-  chatWidth,
-  onChatWidthChange,
-  reviewPanelSide,
-  onReviewPanelSideChange,
   newSessionMode,
   onNewSessionModeChange,
   randomSessionIconEnabled,
   onRandomSessionIconEnabledChange,
-  fontSize,
-  onFontSizeChange,
-  chatFontSize,
-  onChatFontSizeChange
+  desktopNotificationsEnabled,
+  onDesktopNotificationsEnabledChange,
+  detectedIdes,
+  defaultIde,
+  onDefaultIdeChange,
+  onOpenProjects
 }: {
-  fontFamily: FontFamilyId;
-  onFontFamilyChange: (id: FontFamilyId) => void;
-  fontSize: FontSize;
-  onFontSizeChange: (size: FontSize) => void;
-  chatFontSize: FontSize;
-  onChatFontSizeChange: (size: FontSize) => void;
-  themeMode: ThemeMode;
-  onThemeModeChange: (mode: ThemeMode) => void;
-  accentId: AccentId;
-  onAccentChange: (accentId: AccentId) => void;
-  userBubbleTint: UserBubbleTint;
-  onUserBubbleTintChange: (tint: UserBubbleTint) => void;
-  sidebarPriorityVisible: boolean;
-  onSidebarPriorityVisibleChange: (v: boolean) => void;
-  workspaceCardVisible: boolean;
-  onWorkspaceCardVisibleChange: (v: boolean) => void;
-  pixelFieldEnabled: boolean;
-  onPixelFieldEnabledChange: (v: boolean) => void;
-  chatWidth: ChatWidth;
-  onChatWidthChange: (width: ChatWidth) => void;
-  reviewPanelSide: ReviewPanelSide;
-  onReviewPanelSideChange: (side: ReviewPanelSide) => void;
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
   randomSessionIconEnabled: boolean;
   onRandomSessionIconEnabledChange: (v: boolean) => void;
+  desktopNotificationsEnabled: boolean;
+  onDesktopNotificationsEnabledChange: (v: boolean) => void;
+  detectedIdes: DetectedIde[];
+  defaultIde: IdeId | null;
+  onDefaultIdeChange: (ide: IdeId | null) => void;
+  onOpenProjects: () => void;
 }): JSX.Element {
-  // Chat width rides a 1–5 slider: 1 narrowest, 3 default, 5 widest.
-  const pickChatWidth = (raw: number, apply: (width: ChatWidth) => void): void => {
-    const width = toScaleLevel(raw);
-    if (width) apply(width);
-  };
-  // Font sizes ride a 1–10 slider: each level is 1px of body text, 8px at 1
-  // through 17px at 10, with the shipped 13px default at 6.
-  const pickFontSize = (raw: number, apply: (size: FontSize) => void): void => {
-    const size = toFontSize(String(raw));
-    if (size) apply(size);
-  };
   // Read at click time by the chat's link handler, so localStorage is the
   // source of truth and no App-level state is needed.
   const [linkTarget, setLinkTarget] = useState<LinkTarget>(readStoredLinkTarget);
+  const [testNotificationStatus, setTestNotificationStatus] = useState<string | null>(null);
+  const [isTestingNotification, setIsTestingNotification] = useState(false);
+
   const pickLinkTarget = (raw: string): void => {
     if (!isLinkTarget(raw)) return;
     setLinkTarget(raw);
     persistLinkTarget(raw);
   };
 
+  const handleTestNotification = async (): Promise<void> => {
+    if (!window.argmax?.system?.testNotification) return;
+    setIsTestingNotification(true);
+    setTestNotificationStatus(null);
+    try {
+      await window.argmax.system.testNotification();
+      setTestNotificationStatus("Test notification sent");
+    } catch (error) {
+      setTestNotificationStatus(
+        error instanceof Error ? error.message : "Failed to send notification"
+      );
+    } finally {
+      setIsTestingNotification(false);
+    }
+  };
+
   return (
     <>
-      <section className="settings-section" id="settings-local" aria-labelledby="settings-local-h">
-        <SectionHeader
-          id="settings-local-h"
-          eyebrow="Identity"
-          title="Local profile"
-          description="Argmax runs locally on this machine — there is no cloud account."
+      <SettingGroup id="settings-startup" label="Startup">
+        <SettingRow
+          label="New session"
+          description="What ⌘N opens."
+          control={
+            <SegmentedControl
+              ariaLabel="New session"
+              name="new-session-mode"
+              value={newSessionMode}
+              onChange={(v) => onNewSessionModeChange(v as NewSessionMode)}
+              options={[
+                { value: "embedded", label: "In grid" },
+                { value: "full", label: "Full view" }
+              ]}
+            />
+          }
         />
-        <div className="settings-card">
-          <div className="settings-account">
-            <span className="settings-avatar" aria-hidden="true">
-              <Mascot size={32} className="settings-avatar-mascot" label="Argmax mascot" />
-            </span>
-            <div className="settings-account-meta">
-              <span className="settings-account-name">Argmax</span>
-              <span className="settings-account-sub">Local · single user</span>
-            </div>
-            <span className="settings-status-chip" data-state="ok" aria-hidden="true">
-              <span className="settings-status-chip-dot" />
-              <span>online · on-device</span>
-            </span>
-          </div>
-          <KeyValueList
-            rows={[
-              { dt: "Storage", dd: "SQLite (on this device)" },
-              { dt: "Network", dd: "Provider calls only · no telemetry" }
-            ]}
-          />
-        </div>
-      </section>
-
-      <section className="settings-section" id="settings-appearance" aria-labelledby="settings-appearance-h">
-        <SectionHeader
-          id="settings-appearance-h"
-          eyebrow="Look & feel"
-          title="Appearance"
-          description="Theme and typography. Argmax is paper by day, warm charcoal by night — your call."
+        <SettingRow
+          label="Random icon for new sessions"
+          description="Give each new session a random icon and color."
+          control={
+            <Toggle
+              ariaLabel="Random icon for new sessions"
+              checked={randomSessionIconEnabled}
+              onChange={onRandomSessionIconEnabledChange}
+            />
+          }
         />
-        <div className="settings-card">
-          <div className="settings-row">
-            <label htmlFor="settings-theme-mode">Theme</label>
-            <ThemePicker
-              inputId="settings-theme-mode"
-              value={themeMode}
-              onChange={onThemeModeChange}
-            />
-          </div>
-          <div className="settings-card-sub">
-            <p className="settings-font-caption">
-              {THEME_OPTIONS.find((o) => o.id === themeMode)?.hint}
-            </p>
-          </div>
+      </SettingGroup>
 
-          <div className="settings-row">
-            <label htmlFor="settings-accent-tint">Accent</label>
-            <AccentPicker
-              inputId="settings-accent-tint"
-              value={accentId}
-              onChange={onAccentChange}
+      <SettingGroup id="settings-notifications" label="Notifications">
+        <SettingRow
+          label="Notify when agent finishes"
+          description="Show a desktop notification when an agent completes or fails in the background."
+          control={
+            <Toggle
+              ariaLabel="Notify when agent finishes"
+              checked={desktopNotificationsEnabled}
+              onChange={onDesktopNotificationsEnabledChange}
             />
-          </div>
-          <div className="settings-card-sub">
-            <p className="settings-font-caption">
-              {ACCENT_OPTIONS.find((o) => o.id === accentId)?.hint}
-            </p>
-          </div>
-
-          <Segmented
-            legend="Your message bubbles"
-            name="user-bubble-tint"
-            value={userBubbleTint}
-            onChange={(v) => {
-              if (isUserBubbleTint(v)) onUserBubbleTintChange(v);
-            }}
-            options={[
-              { value: "accent", label: "Accent" },
-              { value: "neutral", label: "Neutral" }
-            ]}
-          />
-          <div className="settings-card-sub">
-            <p className="settings-font-caption">
-              {userBubbleTint === "accent"
-                ? "Your messages fill with the accent above. The agent's replies stay unfilled either way."
-                : "Your messages fill with a quiet gray instead of the accent — dark gray at night, light gray on paper."}
-            </p>
-          </div>
-
-          <div className="settings-row">
-            <label htmlFor="settings-font-family">Font family</label>
-            <FontFamilyPicker
-              inputId="settings-font-family"
-              value={fontFamily}
-              onChange={onFontFamilyChange}
-            />
-          </div>
-          <div className="settings-card-sub">
-            <p
-              className="settings-font-caption"
-              style={{ fontFamily: FONT_OPTIONS.find((o) => o.id === fontFamily)?.stack }}
+          }
+        />
+        <SettingRow
+          label="Test notification"
+          description="Send a sample desktop notification to check permissions and appearance."
+          control={
+            <button
+              type="button"
+              className="settings-button"
+              onClick={() => void handleTestNotification()}
+              disabled={isTestingNotification}
+              aria-label="Send test notification"
             >
-              {FONT_OPTIONS.find((o) => o.id === fontFamily)?.hint}
-            </p>
-            <p
-              className="settings-font-preview"
-              aria-hidden="true"
-              style={{ fontFamily: FONT_OPTIONS.find((o) => o.id === fontFamily)?.stack }}
-            >
-              <span>const argmax = (∑) ⇒ argmax · 0123456789</span>
-            </p>
-          </div>
-
-          <SliderRow
-            legend="App font size"
-            hint="1 smallest · 6 default · 10 largest"
-            min={FONT_SIZE_MIN}
-            max={FONT_SIZE_MAX}
-            value={fontSize}
-            valueLabel={`${fontSizeBasePx(fontSize)}px`}
-            onChange={(v) => pickFontSize(v, onFontSizeChange)}
-          />
-          <div className="settings-card-sub">
-            <p className="settings-font-caption">
-              Sidebar, titlebar, settings, and search. Body text at {fontSizeBasePx(fontSize)}px.
-            </p>
-          </div>
-
-          <SliderRow
-            legend="Agent window font size"
-            hint="1 smallest · 6 default · 10 largest"
-            min={FONT_SIZE_MIN}
-            max={FONT_SIZE_MAX}
-            value={chatFontSize}
-            valueLabel={`${fontSizeBasePx(chatFontSize)}px`}
-            onChange={(v) => pickFontSize(v, onChatFontSizeChange)}
-          />
-          <div className="settings-card-sub">
-            <p className="settings-font-caption">
-              Conversations, composers, and agent activity panes. Body text at {fontSizeBasePx(chatFontSize)}px.
-            </p>
-          </div>
-
-          <ToggleRow
-            label="Priority section in sidebar"
-            description="Float sessions that need approval, are blocked, failed, or are ready for review to the top of the sidebar. Right-click a row to mark it done."
-            checked={sidebarPriorityVisible}
-            onChange={onSidebarPriorityVisibleChange}
-          />
-
-          <ToggleRow
-            label="Workspace card in agent view"
-            description="A summary of the session's worktree in the top-right of the agent view: branch, changed lines, and one click into changes, files, terminal, commit, and the pull request. It yields to the review and debug panels, and needs a pane wide enough to sit beside the conversation."
-            checked={workspaceCardVisible}
-            onChange={onWorkspaceCardVisibleChange}
-          />
-
-          <ToggleRow
-            label="Pixel field in composer"
-            description="As you type a new session, ripple an animated pixel field across the input."
-            checked={pixelFieldEnabled}
-            onChange={onPixelFieldEnabledChange}
-          />
-
-          <SliderRow
-            legend="Chat width"
-            hint="1 narrowest · 3 default · 5 widest"
-            min={CHAT_WIDTH_MIN}
-            max={CHAT_WIDTH_MAX}
-            value={chatWidth}
-            valueLabel={String(chatWidth)}
-            onChange={(v) => pickChatWidth(v, onChatWidthChange)}
-          />
-          <div className="settings-card-sub">
-            <p className="settings-font-caption">
-              How wide a conversation runs before it stops growing. {CHAT_WIDTH_HINTS[chatWidth]}
-            </p>
-          </div>
-
-          <Segmented
-            legend="Files panel side"
-            name="review-panel-side"
-            value={reviewPanelSide}
-            onChange={(v) => onReviewPanelSideChange(v === "left" ? "left" : "right")}
-            options={[
-              { value: "left", label: "Left" },
-              { value: "right", label: "Right" }
-            ]}
-          />
-          <div className="settings-card-sub">
-            <p className="settings-font-caption">
-              {reviewPanelSide === "left"
-                ? "IDE order: changes and files on the left, the conversation on the right."
-                : "Changes and files dock to the right of the conversation — how Argmax ships."}
-            </p>
-          </div>
-
-          <Segmented
-            legend="Web links from chat"
-            name="link-target"
-            value={linkTarget}
-            onChange={pickLinkTarget}
-            options={[
-              { value: "system", label: "Default browser" },
-              { value: "argmax", label: "Argmax browser" }
-            ]}
-          />
-          <div className="settings-card-sub">
-            <p className="settings-font-caption">
-              {linkTarget === "argmax"
-                ? "Links open in the in-app browser pane. ⌘-click opens your default browser."
-                : "Links open in your default browser. ⌘-click opens the in-app browser pane."}
-            </p>
-          </div>
-
-          <KeyValueList
-            rows={[
-              { dt: "Reduce motion", dd: "Follows OS setting" }
-            ]}
-          />
-        </div>
-      </section>
-
-      <section className="settings-section" id="settings-defaults" aria-labelledby="settings-defaults-h">
-        <SectionHeader
-          id="settings-defaults-h"
-          eyebrow="Launch"
-          title="Launch defaults"
-          description="Choose whether ⌘N opens a launcher inside the active grid or replaces it with a full new-session view."
+              <span>{isTestingNotification ? "Sending…" : "Send test notification"}</span>
+            </button>
+          }
         />
-        <div className="settings-card">
-          <Segmented
-            legend="New session"
-            name="new-session-mode"
-            value={newSessionMode}
-            onChange={(v) => onNewSessionModeChange(v as NewSessionMode)}
-            options={[
-              { value: "embedded", label: "Open in grid" },
-              { value: "full", label: "Open full view" }
-            ]}
-          />
-          <ToggleRow
-            label="Random icon for new sessions"
-            description="Give each new session a random icon and color."
-            checked={randomSessionIconEnabled}
-            onChange={onRandomSessionIconEnabledChange}
-          />
-          <KeyValueList
-            rows={[
-              { dt: "Worktree base", dd: "Configured per project" },
-              { dt: "Setup & check commands", dd: "Configured per project" }
-            ]}
-          />
-        </div>
-      </section>
+        {testNotificationStatus ? (
+          <SettingNote role="status">{testNotificationStatus}</SettingNote>
+        ) : null}
+      </SettingGroup>
+
+      <SettingGroup id="settings-handoff" label="Handoff">
+        <SettingRow
+          label="Default IDE"
+          description="Opens when you click Open in IDE on a session."
+          htmlFor="settings-default-ide"
+          control={
+            <SettingsListPicker
+              ariaLabel="Default IDE"
+              inputId="settings-default-ide"
+              // A default that isn't detected (e.g. the factory Cursor default
+              // on a machine without Cursor) shows as "Ask each time" — the
+              // effective behavior — instead of a dangling option.
+              value={defaultIde && detectedIdes.some((entry) => entry.id === defaultIde) ? defaultIde : ""}
+              onChange={(next) => {
+                onDefaultIdeChange(next === "" ? null : next);
+              }}
+              disabled={detectedIdes.length === 0}
+              options={[
+                { value: "", label: "Ask each time" },
+                ...detectedIdes.map((entry) => ({ value: entry.id, label: entry.label }))
+              ]}
+            />
+          }
+        />
+        <SettingRow
+          label="Web links from chat"
+          description="⌘-click always opens the other one."
+          control={
+            <SegmentedControl
+              ariaLabel="Web links from chat"
+              name="link-target"
+              value={linkTarget}
+              onChange={pickLinkTarget}
+              options={[
+                { value: "system", label: "Default browser" },
+                { value: "argmax", label: "Argmax browser" }
+              ]}
+            />
+          }
+        />
+        {detectedIdes.length === 0 ? (
+          <SettingNote>
+            No supported IDEs detected. Install VS Code, Cursor, Windsurf, or Zed to enable this.
+          </SettingNote>
+        ) : null}
+      </SettingGroup>
+
+      <SettingGroup id="settings-general-projects" label="Per project">
+        <SettingRow
+          label="Worktree base, setup command, checks"
+          description="Configured for each project, not for the app."
+          control={
+            <button type="button" className="settings-button" onClick={onOpenProjects}>
+              <span>Open Projects</span>
+              <ArrowRight size={13} aria-hidden="true" />
+            </button>
+          }
+        />
+      </SettingGroup>
     </>
   );
 }

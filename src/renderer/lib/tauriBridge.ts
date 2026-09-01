@@ -15,6 +15,7 @@ import type {
   DashboardDelta,
   DashboardListSnapshot,
   DashboardSnapshot,
+  DebugSnapshot,
   DetectedIde,
   DiagnosticsReport,
   DiscoveredProvider,
@@ -46,6 +47,7 @@ import type {
   RoutineUpsertInput,
   RunCheckInput,
   SessionAgentEventsInput,
+  SessionClearInput,
   SessionForkInput,
   SessionForkResult,
   FollowUpSuggestion,
@@ -259,6 +261,7 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       agentEvents: (input: SessionAgentEventsInput) =>
         invokeCommand<SessionEventsSinceResult>("session:agent-events", input),
       fork: (input: SessionForkInput) => invokeCommand<SessionForkResult>("session:fork", input),
+      clear: (input: SessionClearInput) => invokeCommand<SessionSummary>("session:clear", input),
       suggestFollowUp: (input) =>
         invokeCommand<FollowUpSuggestion>("session:suggest-follow-up", input),
       costSummary: (input: SessionCostSummaryInput) =>
@@ -310,8 +313,13 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       openPath: (input) => invokeCommand<{ ok: true }>("system:open-path", input),
       listDetectedIdes: () => invokeCommand<DetectedIde[]>("system:list-detected-ides"),
       diagnostics: () => invokeCommand<DiagnosticsReport>("system:diagnostics"),
+      debugSnapshot: (input) =>
+        invokeCommand<DebugSnapshot>("system:debug-snapshot", { afterLogSeq: input?.afterLogSeq ?? null }),
       vacuumDatabase: () => invokeCommand<{ ok: true }>("system:vacuum-database"),
-      setTheme: (mode) => invokeCommand<{ ok: true }>("system:set-theme", { mode })
+      setTheme: (mode) => invokeCommand<{ ok: true }>("system:set-theme", { mode }),
+      setNotificationsEnabled: (enabled) =>
+        invokeCommand<{ ok: true }>("system:set-notifications-enabled", { enabled }),
+      testNotification: () => invokeCommand<{ ok: true }>("system:test-notification")
     },
     remote: {
       getStatus: () => invokeCommand<RemoteStatus>("remote:get-status"),

@@ -221,6 +221,8 @@ describe("accent CSS contract", () => {
     const labelRule = cssRuleBody(chatTurns, ".tool-call-part-label");
     const codeRule = cssRuleBody(chatTurns, ".tool-call-code");
     const errorRule = cssRuleBody(chatTurns, ".tool-call-code--error");
+    const logBlockRule = cssRuleBody(chatTurns, ".log-block");
+    const logErrorRule = cssRuleBody(chatTurns, ".log-record[data-level=\"error\"] .log-record-message");
     const bashTargetRule = cssRuleBody(
       chatTurns,
       ".tool-call-row[data-tool-type=\"bash\"] .tool-call-row-target"
@@ -279,6 +281,12 @@ describe("accent CSS contract", () => {
     expect(errorRule).toContain("color: color-mix(in oklab, var(--rose) 72%, var(--text));");
     expect(errorRule).not.toContain("background:");
 
+    // Conversation log dumps share the tool-block fill. A failure is rose text
+    // on that fill, not a rose box.
+    expect(logBlockRule).toContain("background: var(--tool-block-surface);");
+    expect(logErrorRule).toContain("color: color-mix(in oklab, var(--rose) 72%, var(--text));");
+    expect(logBlockRule).not.toContain("border:");
+
     // A bash row shows text the app did not author, so ligatures stay off or a
     // run of `=` fuses into one bar and the command reads as struck through.
     expect(bashTargetRule).toContain("font-feature-settings: var(--code-font-features);");
@@ -331,10 +339,11 @@ describe("accent CSS contract", () => {
       ["src/renderer/styles/chat-turns.css", ".tool-call-command-line"],
       ["src/renderer/styles/chat-conversation.css", ".markdown code"],
       ["src/renderer/styles/chat-conversation.css", ".terminal-transcript pre"],
+      ["src/renderer/styles/chat-conversation.css", ".mermaid-diagram-source"],
       ["src/renderer/styles/chat-composer.css", ".code-block pre"],
       ["src/renderer/styles/chat-tools.css", ".checks-row-log"],
       ["src/renderer/styles/overlays-review-files.css", ".diff-blocks"],
-      ["src/renderer/styles/overlays-launcher-panels.css", ".log-output-content"]
+      ["src/renderer/styles/overlays-launcher-panels.css", ".debug-rows"]
     ];
     for (const [file, selector] of surfaces) {
       expect(
@@ -342,6 +351,27 @@ describe("accent CSS contract", () => {
         `${selector} in ${file} must disable ligatures`
       ).toContain("font-feature-settings: var(--code-font-features);");
     }
+  });
+
+  it("overlays the copy control on unlabeled fenced code instead of reserving a header strip", () => {
+    const css = readSource("src/renderer/styles/chat-composer.css");
+    expect(cssRuleBody(css, ".code-block:not([data-label]) .code-block-header")).toContain(
+      "position: absolute"
+    );
+  });
+
+  it("paints mermaid diagrams as a hugging well, not a labelled code block", () => {
+    const rule = cssRuleBody(
+      readSource("src/renderer/styles/chat-conversation.css"),
+      ".mermaid-diagram"
+    );
+    expect(rule).toContain("background: var(--tool-block-surface);");
+    expect(rule).toContain("width: fit-content;");
+    expect(rule).toContain("max-width: 100%;");
+    expect(rule).toContain("overflow: hidden;");
+    expect(
+      cssRuleBody(readSource("src/renderer/styles/chat-conversation.css"), ".mermaid-diagram-canvas svg")
+    ).toContain("max-width: 100%;");
   });
 
   it("keeps review file names on UI type and file contents on compact code type", () => {
@@ -874,7 +904,7 @@ describe("accent CSS contract", () => {
     // subheading under its parent keeps its own space.
     const headingResetRule = cssRuleBody(
       chatConversation,
-      ".markdown :is(h1, h2, h3, h4) + :is(p, ul, ol, pre, blockquote, .markdown-table-scroll)"
+      ".markdown :is(h1, h2, h3, h4) + :is(p, ul, ol, pre, blockquote, .markdown-table-scroll, .katex-display, .mermaid-diagram)"
     );
     expect(headingResetRule).toContain("margin-top: 0;");
 

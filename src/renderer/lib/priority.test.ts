@@ -50,23 +50,29 @@ const session = (
 const NOW = Date.parse("2026-05-12T18:00:00.000Z");
 
 describe("computePriorityEntries", () => {
-  it("includes only attention-worthy workspaces and sorts by severity then age", () => {
+  it("includes only attention-worthy workspaces and sorts by lastActivityAt descending", () => {
     const entries = computePriorityEntries(
-      [workspace("w-normal"), workspace("w-review"), workspace("w-approval"), workspace("w-blocked-old"), workspace("w-blocked-new")],
+      [
+        workspace("w-normal"),
+        workspace("w-review", { lastActivityAt: "2026-05-12T17:35:00.000Z" }),
+        workspace("w-approval", { lastActivityAt: "2026-05-12T17:55:00.000Z" }),
+        workspace("w-blocked-old", { lastActivityAt: "2026-05-12T17:40:00.000Z" }),
+        workspace("w-blocked-new", { lastActivityAt: "2026-05-12T17:50:00.000Z" })
+      ],
       [
         session("w-normal", "normal"),
-        session("w-review", "review-ready"),
-        session("w-approval", "approval-needed"),
-        session("w-blocked-old", "blocked", { attentionChangedAt: "2026-05-12T10:00:00.000Z" }),
-        session("w-blocked-new", "blocked", { attentionChangedAt: "2026-05-12T12:00:00.000Z" })
+        session("w-review", "review-ready", { lastActivityAt: "2026-05-12T17:35:00.000Z" }),
+        session("w-approval", "approval-needed", { lastActivityAt: "2026-05-12T17:55:00.000Z" }),
+        session("w-blocked-old", "blocked", { attentionChangedAt: "2026-05-12T10:00:00.000Z", lastActivityAt: "2026-05-12T17:40:00.000Z" }),
+        session("w-blocked-new", "blocked", { attentionChangedAt: "2026-05-12T12:00:00.000Z", lastActivityAt: "2026-05-12T17:50:00.000Z" })
       ],
       NOW
     );
 
     expect(entries.map((entry) => entry.workspace.id)).toEqual([
       "w-approval",
-      "w-blocked-old",
       "w-blocked-new",
+      "w-blocked-old",
       "w-review"
     ]);
   });
@@ -183,16 +189,16 @@ describe("computePriorityEntries", () => {
     );
   });
 
-  it("floats manual adds without attention, after attention-driven entries", () => {
+  it("floats manual adds without attention, sorted by lastActivityAt descending", () => {
     const entries = computePriorityEntries(
       [
-        workspace("w-manual", { priorityAddedAt: "2026-05-12T17:30:00.000Z" }),
-        workspace("w-blocked")
+        workspace("w-manual", { priorityAddedAt: "2026-05-12T17:30:00.000Z", lastActivityAt: "2026-05-12T17:40:00.000Z" }),
+        workspace("w-blocked", { lastActivityAt: "2026-05-12T17:50:00.000Z" })
       ],
       [
         // Manual entries ignore the idle gate (no attention stamp at all).
-        session("w-manual", "normal", { attentionChangedAt: undefined }),
-        session("w-blocked", "blocked", { attentionChangedAt: "2026-05-12T17:00:00.000Z" })
+        session("w-manual", "normal", { attentionChangedAt: undefined, lastActivityAt: "2026-05-12T17:40:00.000Z" }),
+        session("w-blocked", "blocked", { attentionChangedAt: "2026-05-12T17:00:00.000Z", lastActivityAt: "2026-05-12T17:50:00.000Z" })
       ],
       NOW
     );
@@ -202,7 +208,7 @@ describe("computePriorityEntries", () => {
     ]);
   });
 
-  it("floats a working workspace with no attention, under the triage rows", () => {
+  it("floats a working workspace with no attention to the top, above non-working rows", () => {
     const entries = computePriorityEntries(
       [workspace("w-live"), workspace("w-blocked")],
       [
@@ -212,22 +218,22 @@ describe("computePriorityEntries", () => {
       NOW
     );
     expect(entries.map((entry) => [entry.workspace.id, entry.attention, entry.working])).toEqual([
-      ["w-blocked", "blocked", false],
-      ["w-live", null, true]
+      ["w-live", null, true],
+      ["w-blocked", "blocked", false]
     ]);
   });
 
-  it("sorts working rows newest-first, above manual adds", () => {
+  it("sorts working rows newest-first, above non-working entries", () => {
     const entries = computePriorityEntries(
       [
-        workspace("w-manual", { priorityAddedAt: "2026-05-12T17:30:00.000Z" }),
+        workspace("w-manual", { priorityAddedAt: "2026-05-12T17:30:00.000Z", lastActivityAt: "2026-05-12T17:55:00.000Z" }),
         workspace("w-older", { lastActivityAt: "2026-05-12T17:00:00.000Z" }),
         workspace("w-newer", { lastActivityAt: "2026-05-12T17:50:00.000Z" })
       ],
       [
-        session("w-manual", "normal", { attentionChangedAt: undefined }),
-        session("w-older", "normal", { state: "running" }),
-        session("w-newer", "normal", { state: "running" })
+        session("w-manual", "normal", { attentionChangedAt: undefined, lastActivityAt: "2026-05-12T17:55:00.000Z" }),
+        session("w-older", "normal", { state: "running", lastActivityAt: "2026-05-12T17:00:00.000Z" }),
+        session("w-newer", "normal", { state: "running", lastActivityAt: "2026-05-12T17:50:00.000Z" })
       ],
       NOW
     );

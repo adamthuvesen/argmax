@@ -12,6 +12,7 @@ use tokio::sync::broadcast;
 use crate::approvals::service::ApprovalService;
 use crate::checks::service::CheckService;
 use crate::gh::poller::GhPoller;
+use crate::notifications::{NotificationService, TauriNotificationSink};
 use crate::persistence::Database;
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::discovery::ProviderDiscovery;
@@ -22,6 +23,8 @@ use crate::skills::registry::SkillRegistry;
 use crate::terminal::service::TerminalService;
 use crate::util::startup_timer::StartupTimer;
 use crate::workspaces::WorkspaceService;
+
+pub type LiveNotificationService = NotificationService<TauriNotificationSink<tauri::Wry>>;
 
 pub struct AppState {
     pub startup_timer: Arc<StartupTimer>,
@@ -42,6 +45,7 @@ pub struct AppState {
     pub checks: OnceCell<Arc<CheckService>>,
     pub workspaces: OnceCell<Arc<WorkspaceService>>,
     pub gh_poller: OnceCell<Arc<GhPoller>>,
+    pub notifications: OnceCell<Arc<LiveNotificationService>>,
     /// Phone push via ntfy; installed by `remote::apply` when the config names
     /// a topic, and swapped in place when the topic changes in Settings.
     pub ntfy: std::sync::RwLock<Option<Arc<crate::remote::ntfy::NtfyPublisher>>>,
@@ -84,6 +88,7 @@ impl Default for AppState {
             checks: OnceCell::new(),
             workspaces: OnceCell::new(),
             gh_poller: OnceCell::new(),
+            notifications: OnceCell::new(),
             ntfy: std::sync::RwLock::new(None),
             remote_server: std::sync::Mutex::new(None),
             remote_events: broadcast::channel(REMOTE_EVENT_CAPACITY).0,

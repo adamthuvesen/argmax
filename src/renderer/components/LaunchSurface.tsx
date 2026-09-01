@@ -1,4 +1,17 @@
-import { ChevronDown, Folder, GitBranch, MoreHorizontal, Play, Plus, X } from "lucide-react";
+import {
+  Bot,
+  ChevronDown,
+  Folder,
+  FolderGit2,
+  GitBranch,
+  ListChecks,
+  MessageCircle,
+  MoreHorizontal,
+  Paperclip,
+  Play,
+  Plus,
+  X
+} from "lucide-react";
 import {
   Suspense,
   lazy,
@@ -24,7 +37,7 @@ import {
   appendReferencesToPrompt,
   imageAttachmentReference
 } from "../lib/composerAttachments.js";
-import { clearDraft, launcherDraftKey } from "../lib/composerDrafts.js";
+import { clearDraft, launcherDraftKey, readDraft } from "../lib/composerDrafts.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
@@ -45,6 +58,7 @@ import {
   launcherModeTitle,
   type LauncherMode
 } from "../lib/agentMode.js";
+import type { ComposerCommand } from "../lib/composerCommands.js";
 import {
   readStoredWorkspaceMode,
   toggleWorkspaceMode,
@@ -62,7 +76,7 @@ const ReviewPanel = lazy(async () => ({
 }));
 import { FilePopover } from "./FilePopover.js";
 import { SkeletonPane } from "./SkeletonPane.js";
-import { SkillPopover } from "./SkillPopover.js";
+import { SlashCommandMenu } from "./SlashCommandMenu.js";
 // WelcomePane only renders on a fresh install (no projects) — lazy-mounted
 // (ralph B2) so its provider-discovery code path doesn't ship in the main
 // launcher bundle for the common case.
@@ -142,14 +156,15 @@ export function LaunchSurface({
     : project
       ? launcherDraftKey(project.id)
       : null;
+  const [status, setStatus] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   // Picking another project from the context picker is how the user aims a
   // prompt they are still writing, so the text follows the pick. Switching
   // to Chat uses the same carry so the draft survives the retarget.
   const [prompt, setPrompt, promptCarriedOnRetarget] = useComposerDraft(draftKey, {
-    carryTextOnRetarget: true
+    carryTextOnRetarget: true,
+    persist: !isSubmitting
   });
-  const [status, setStatus] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const {
     pendingAttachments,
     attachmentInputRef,
@@ -165,7 +180,8 @@ export function LaunchSurface({
     workspacePath: activeProject?.repoPath ?? null,
     setInput: setPrompt,
     setStatus,
-    carriedOnRetarget: promptCarriedOnRetarget
+    carriedOnRetarget: promptCarriedOnRetarget,
+    persist: !isSubmitting
   });
   const [agentMode, setAgentMode] = useState<AgentMode>("auto");
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
@@ -277,7 +293,8 @@ export function LaunchSurface({
     lastResetSignal.current = resetSignal;
     setHeading(pickLauncherHeading());
     reviewClosePanel();
-  }, [resetSignal, reviewClosePanel]);
+    if (draftKey) setPrompt(readDraft(draftKey).text);
+  }, [draftKey, resetSignal, reviewClosePanel, setPrompt]);
 
   useEffect(() => {
     if (rightPanelToggleSignal === lastRightPanelToggleSignal.current) return;
@@ -396,18 +413,22 @@ export function LaunchSurface({
     },
     [onSelectProject, onSideChatModeChange]
   );
+  const selectedProjectIndex = projects.findIndex((candidate) => candidate.id === project?.id);
   const projectFilter = useTypeToFilter({
     open: projectPickerOpen,
     items: projects,
     toLabel: (candidate: ProjectSummary) => candidate.name,
     listRef: projectListRef,
+    initialIndex: selectedProjectIndex >= 0 ? selectedProjectIndex : 0,
     onPick: pickProject
   });
+  const selectedBranchIndex = project ? branches.findIndex((b) => b === project.currentBranch) : -1;
   const branchFilter = useTypeToFilter({
     open: branchPickerOpen,
     items: branches,
     toLabel: (branch: string) => branch,
     listRef: branchListRef,
+    initialIndex: selectedBranchIndex >= 0 ? selectedBranchIndex : 0,
     onPick: (branch: string) => void switchBranch(branch)
   });
 
@@ -435,11 +456,110 @@ export function LaunchSurface({
     // `activeProject` (a fresh object per switch) keeps the "refocus on
     // project switch" behavior; a collapsed boolean would only fire once.
   }, [activeProject, chatMode, reviewIsPanelOpen, isSubmitting]);
+  // Composer actions offered above the skills in the `/` menu. Each one is a
+  // control that already sits in this toolbar — the menu is a keyboard route
+  // to them, not a second set of features. The mode rows name the mode you
+  // would land in, so `/plan` sets Plan outright instead of advancing the
+  // chip's cycle by one.
+  const launcherCommands = useMemo<ComposerCommand[]>(() => {
+    const setMode = (next: LauncherMode) => () => {
+      if (next === "chat") {
+        closeContextPickers();
+        onSideChatModeChange?.(true);
+        return;
+      }
+      onSideChatModeChange?.(false);
+      setAgentMode(next);
+    };
+    const modes: ComposerCommand[] = [
+      {
+        name: "auto",
+        label: LAUNCHER_MODE_LABELS.auto,
+        hint: "Work and approve each step",
+        icon: Bot,
+        run: setMode("auto")
+      },
+      {
+        name: "plan",
+        label: LAUNCHER_MODE_LABELS.plan,
+        hint: "Draft a plan before touching anything",
+        icon: ListChecks,
+        run: setMode("plan")
+      }
+    ];
+    if (chatAvailable) {
+      modes.push({
+        name: "chat",
+        label: LAUNCHER_MODE_LABELS.chat,
+        hint: "Don't attach a repository",
+        icon: MessageCircle,
+        run: setMode("chat")
+      });
+    }
+    const commands = modes.filter((mode) => mode.name !== launcherMode);
+    commands.push({
+      name: "attach",
+      label: "Attach file",
+      hint: "Add an image or file to the prompt",
+      icon: Paperclip,
+      run: openFilePicker
+    });
+    if (!chatMode) {
+      commands.push(
+        {
+          name: "project",
+          label: "Project",
+          hint: "Choose the project this task runs in",
+          icon: Folder,
+          run: () => {
+            setCompactContextOpen(true);
+            setProjectPickerOpen(true);
+          }
+        },
+        {
+          name: "branch",
+          label: "Branch",
+          hint: `Start from a branch other than ${activeProject?.currentBranch ?? "the current one"}`,
+          icon: GitBranch,
+          run: () => {
+            setCompactContextOpen(true);
+            void openBranchPicker();
+          }
+        },
+        {
+          name: "worktree",
+          label: workspaceMode === "worktree" ? "Worktree off" : "Worktree on",
+          hint:
+            workspaceMode === "worktree"
+              ? "Run in your current checkout instead"
+              : "Run in an isolated git worktree on a new branch",
+          icon: FolderGit2,
+          run: toggleWorkspace
+        }
+      );
+    }
+    return commands;
+  }, [
+    activeProject,
+    chatAvailable,
+    chatMode,
+    closeContextPickers,
+    launcherMode,
+    onSideChatModeChange,
+    openBranchPicker,
+    openFilePicker,
+    setAgentMode,
+    toggleWorkspace,
+    workspaceMode
+  ]);
+
   const slashAutocomplete = useSlashAutocomplete({
     input: prompt,
     setInput: setPrompt,
     provider: model.provider,
-    workspaceId: null
+    workspaceId: null,
+    commands: launcherCommands,
+    inputRef: promptInputRef
   });
 
   const fileAutocomplete = useFileAutocomplete({
@@ -495,6 +615,11 @@ export function LaunchSurface({
 
     setIsSubmitting(true);
     setStatus(null);
+    // Drop the stored draft before the first await. Launching unmounts this
+    // surface, and a remounted NEW CHAT reads storage: if the entry is still
+    // here, the sent prompt comes back. `persist: !isSubmitting` stops the
+    // write effect from recreating it while the text stays on screen.
+    if (draftKey) clearDraft(draftKey);
     try {
       const attachments = pendingAttachments.length > 0 ? pendingAttachments : undefined;
       if (chatMode && onLaunchSideChat) {
@@ -502,7 +627,6 @@ export function LaunchSurface({
       } else {
         await onLaunchTask(finalPrompt, model, agentMode, workspaceMode, attachments);
       }
-      if (draftKey) clearDraft(draftKey);
       setPrompt("");
       clearAttachments();
     } catch (error) {
@@ -609,7 +733,7 @@ export function LaunchSurface({
             aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
             aria-controls={
               slashAutocomplete.popoverOpen
-                ? "skill-popover"
+                ? "slash-menu"
                 : fileAutocomplete.popoverOpen
                   ? "file-popover"
                   : undefined
@@ -629,7 +753,7 @@ export function LaunchSurface({
             value={prompt}
             rows={1}
           />
-          <SkillPopover state={slashAutocomplete} inputRef={promptInputRef} />
+          <SlashCommandMenu state={slashAutocomplete} />
           <FilePopover state={fileAutocomplete} inputRef={promptInputRef} />
           <button
             className="send-button"

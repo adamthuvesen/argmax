@@ -4,12 +4,13 @@ import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shar
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { SCROLL_INTENT_KEYS, useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
-import { coalesceAssistantGroups, type AssistantGroup } from "../lib/sessionTurnView.js";
+import { assistantGroupHasVisibleChat, coalesceAssistantGroups, type AssistantGroup } from "../lib/sessionTurnView.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { groupToolRuns, type TurnBodyChild } from "../lib/turnChildren.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
 import { ChatBubble } from "./ChatBubble.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
+import { LogBlock } from "./LogBlock.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
@@ -50,7 +51,7 @@ function renderAssistantGroup({
   agentKey: string | null;
   workspace: WorkspaceSummary | null;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
-}): JSX.Element {
+}): JSX.Element | null {
   if (group.thinking) {
     return (
       <ThoughtBlock
@@ -72,6 +73,11 @@ function renderAssistantGroup({
       </ThoughtBlock>
     );
   }
+  if (group.error) {
+    if (!assistantGroupHasVisibleChat(group)) return null;
+    return <LogBlock key={group.id} text={group.text} tone="error" />;
+  }
+  if (!assistantGroupHasVisibleChat(group)) return null;
   return (
     <ChatBubble key={group.id} kind="assistant" rawMarkdown={group.text}>
       <StreamingMarkdown
@@ -173,22 +179,28 @@ export function AgentActivityPane({
       streaming
     });
     const hasAnswerText = assistantGroups.some(
-      (group) => !group.thinking && group.text.trim().length > 0
+      (group) => !group.thinking && assistantGroupHasVisibleChat(group)
     );
     const thinkingLive = streaming && !hasAnswerText;
-    const assistantChildren = assistantGroups.map((group) => ({
-      kind: "assistant" as const,
-      id: `assistant-${group.id}`,
-      createdAt: group.createdAt,
-      sortAt: group.lastActivityAt,
-      node: renderAssistantGroup({
+    const assistantChildren = assistantGroups.flatMap((group) => {
+      const node = renderAssistantGroup({
         group,
         thinkingLive,
         agentKey,
         workspace,
         onOpenFile
-      })
-    }));
+      });
+      if (node === null) return [];
+      return [
+        {
+          kind: "assistant" as const,
+          id: `assistant-${group.id}`,
+          createdAt: group.createdAt,
+          sortAt: group.lastActivityAt,
+          node
+        }
+      ];
+    });
     const toolChildren = toolItems.map((tool) => ({
       kind: "tool" as const,
       id: `tool-${tool.id}`,

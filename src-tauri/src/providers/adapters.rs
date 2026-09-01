@@ -6,6 +6,7 @@ const CLAUDE_BYPASS_PERMISSION_ARGS: &[&str] = &["--permission-mode", "bypassPer
 const CODEX_BYPASS_PERMISSION_ARGS: &[&str] = &["--dangerously-bypass-approvals-and-sandbox"];
 const CURSOR_BYPASS_PERMISSION_ARGS: &[&str] = &["--force", "--trust"];
 const OPENCODE_BYPASS_PERMISSION_ARGS: &[&str] = &["--auto"];
+const GROK_BYPASS_PERMISSION_ARGS: &[&str] = &["--always-approve"];
 
 pub const PLAN_MODE_PROMPT_PREFIX: &str =
     "Plan mode: analyze the request and propose a plan only. Do not edit files, run mutating commands, or make changes.";
@@ -35,7 +36,7 @@ pub fn get_provider_definition(provider_id: ProviderId) -> &'static ProviderLaun
         .expect("all ProviderId variants have a launch definition")
 }
 
-static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 4] = [
+static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
     ProviderLaunchDefinition {
         id: ProviderId::Claude,
         display_name: "Claude Code",
@@ -75,6 +76,18 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 4] = [
         structured_resume_args: opencode_structured_resume_args,
         structured_stdin: |_| None,
         approval_support: ApprovalSupport::Unsupported,
+    },
+    ProviderLaunchDefinition {
+        id: ProviderId::Grok,
+        display_name: "Grok Build",
+        binary_name: "grok",
+        // `models` exits 0 only once the CLI has credentials; it prints the
+        // logged-in account on the first line.
+        status_args: &["models"],
+        structured_args: grok_structured_args,
+        structured_resume_args: grok_structured_resume_args,
+        structured_stdin: |_| None,
+        approval_support: ApprovalSupport::ObservableOnly,
     },
 ];
 
@@ -380,6 +393,110 @@ fn opencode_variant_args(model_id: &str, effort: Option<ReasoningEffort>) -> Vec
     } else {
         vec!["--variant".to_string(), supported[0].as_str().to_string()]
     }
+}
+
+// Grok Build's headless mode (`-p`) emits the same stream-json envelopes as
+// Claude Code — `system/init`, Anthropic `stream_event` content blocks, a final
+// `assistant` message, and a `result` line — so it reuses Claude's normalizer
+// path rather than getting one of its own. `--cwd` is passed explicitly: with
+// `[cli] use_leader` enabled the turn runs inside a shared leader process whose
+// own cwd is not this child's, the same trap OpenCode's `--dir` covers.
+fn grok_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
+    let mut args = vec![
+        grok_prompt_arg(&input.prompt),
+        "--cwd".to_string(),
+        input.workspace_path.to_string_lossy().into_owned(),
+        "--session-id".to_string(),
+        input.session_id.clone(),
+    ];
+    args.extend(grok_common_args(input));
+    args
+}
+
+fn grok_structured_resume_args(
+    input: &ProviderLaunchInput,
+    resume_conversation_id: &str,
+) -> Vec<String> {
+    let mut args = vec![
+        grok_prompt_arg(&input.prompt),
+        "--cwd".to_string(),
+        input.workspace_path.to_string_lossy().into_owned(),
+        "--resume".to_string(),
+        resume_conversation_id.to_string(),
+    ];
+    // Diverge instead of appending. The CLI mints a fresh id for the fork,
+    // which the normalizer captures off `system/init` — so no `--session-id`
+    // here (the CLI rejects it without `--fork-session`, and naming it
+    // ourselves would fight the id we then read back).
+    if input.resume_fork {
+        args.push("--fork-session".to_string());
+    }
+    args.extend(grok_common_args(input));
+    args
+}
+
+// Flags shared by the fresh and resumed launches, in one place so a resumed
+// turn can never quietly drop partial-message streaming or the model.
+fn grok_common_args(input: &ProviderLaunchInput) -> Vec<String> {
+    let mut args = vec![
+        "--output-format".to_string(),
+        "streaming-messages-json".to_string(),
+        // Without this the turn arrives as whole assistant messages instead of
+        // token-by-token `content_block_delta`s. Same contract as Claude's
+        // --include-partial-messages.
+        "--include-partial-messages".to_string(),
+    ];
+    args.extend(grok_agent_mode_args(input));
+    args.extend(grok_permission_args(input));
+    args.extend(grok_reasoning_args(input));
+    args.extend(["--model".to_string(), input.model_id.clone()]);
+    args
+}
+
+// Grok's headless prompt is a FLAG VALUE (`-p/--single <PROMPT>`), not the
+// trailing positional Claude and Cursor take. Passed as two argv entries the
+// CLI rejects any prompt starting with `-` outright ("Usage: grok ..."), which
+// a pasted diff or a "- do this" bullet list trips immediately. The `--flag=value`
+// form is the one clap always reads as a value, whatever it starts with.
+fn grok_prompt_arg(prompt: &str) -> String {
+    format!("--single={prompt}")
+}
+
+// Grok ships a bundled read-only `plan` agent (permission_mode: plan, no edit
+// tools), so plan mode maps to it natively instead of a prompt prefix.
+fn grok_agent_mode_args(input: &ProviderLaunchInput) -> Vec<String> {
+    if input.agent_mode == AgentMode::Plan {
+        vec!["--agent".to_string(), "plan".to_string()]
+    } else {
+        Vec::new()
+    }
+}
+
+fn grok_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
+    // Plan mode rides the read-only plan agent; never stack the bypass on it.
+    if input.agent_mode == AgentMode::Plan {
+        return Vec::new();
+    }
+    if input.permission_mode == PermissionMode::AutoApprove {
+        owned(GROK_BYPASS_PERMISSION_ARGS)
+    } else {
+        Vec::new()
+    }
+}
+
+// `--reasoning-effort` tops out at xhigh: the CLI rejects anything else with
+// "unknown effort level ...; use one of: xhigh, high, medium, low". Clamp Max
+// and Ultra down rather than letting a provider switch or resume fail the
+// launch outright.
+fn grok_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
+    let Some(reasoning_effort) = input.reasoning_effort else {
+        return Vec::new();
+    };
+    let effort = match reasoning_effort {
+        ReasoningEffort::Max | ReasoningEffort::Ultra => "xhigh",
+        other => other.as_str(),
+    };
+    vec!["--reasoning-effort".to_string(), effort.to_string()]
 }
 
 fn claude_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
@@ -1145,6 +1262,12 @@ mod tests {
                         .expect("prompt carried as argv");
                     assert_eq!(args[prompt_index - 1], "--");
                 }
+                // Grok takes the prompt as a flag value, so `--` never appears;
+                // the `=` form is what keeps a leading dash out of clap's way.
+                ProviderId::Grok => {
+                    assert_eq!(args[0], format!("--single={}", input.prompt));
+                    assert!(!args.contains(&"--".to_string()));
+                }
             }
         }
     }
@@ -1207,12 +1330,140 @@ mod tests {
         }
     }
 
+    #[test]
+    fn grok_structured_args_match_claude_stream_json_shape() {
+        let input = launch_input(ProviderId::Grok);
+        let definition = get_provider_definition(ProviderId::Grok);
+
+        assert_eq!(
+            (definition.structured_args)(&input),
+            vec![
+                "--single=Implement the task",
+                "--cwd",
+                "/repo/worktree",
+                "--session-id",
+                "session-1",
+                "--output-format",
+                "streaming-messages-json",
+                "--include-partial-messages",
+                "--always-approve",
+                "--model",
+                "grok-4.6",
+            ]
+        );
+        assert_eq!((definition.structured_stdin)(&input), None);
+    }
+
+    // -p takes the prompt as its VALUE, unlike Claude's trailing `-- <prompt>`.
+    // A prompt that looks like a flag must still land as the -p argument.
+    // Verified against grok 1.0.13: `grok -p "--x"` exits with a usage error,
+    // while `grok "--single=--x"` runs. A prompt is arbitrary user text, so the
+    // form that tolerates a leading dash is the only correct one.
+    #[test]
+    fn grok_prompt_survives_a_leading_dash() {
+        let mut input = launch_input(ProviderId::Grok);
+        input.prompt = "--not-a-flag\nsecond line".to_string();
+        for args in [
+            (get_provider_definition(ProviderId::Grok).structured_args)(&input),
+            (get_provider_definition(ProviderId::Grok).structured_resume_args)(&input, "c1"),
+        ] {
+            assert_eq!(args[0], "--single=--not-a-flag\nsecond line");
+            assert!(!args.iter().any(|arg| arg == "-p"));
+            assert!(!args.contains(&"--".to_string()));
+        }
+    }
+
+    #[test]
+    fn grok_resume_passes_conversation_id_and_keeps_partial_streaming() {
+        let mut input = launch_input(ProviderId::Grok);
+        let definition = get_provider_definition(ProviderId::Grok);
+
+        let args = (definition.structured_resume_args)(&input, "conv-7");
+        assert_eq!(args[3], "--resume");
+        assert_eq!(args[4], "conv-7");
+        assert!(!args.contains(&"--fork-session".to_string()));
+        assert!(args.contains(&"--include-partial-messages".to_string()));
+        // The CLI rejects --session-id alongside --resume without --fork-session.
+        assert!(!args.contains(&"--session-id".to_string()));
+
+        input.resume_fork = true;
+        let args = (definition.structured_resume_args)(&input, "conv-7");
+        assert_eq!(args[5], "--fork-session");
+        assert!(!args.contains(&"--session-id".to_string()));
+    }
+
+    // `--reasoning-effort` accepts only low/medium/high/xhigh; the CLI errors on
+    // anything else, so Max and Ultra clamp instead of failing the launch.
+    #[test]
+    fn grok_reasoning_effort_clamps_above_xhigh() {
+        for (effort, expected) in [
+            (ReasoningEffort::Low, "low"),
+            (ReasoningEffort::Medium, "medium"),
+            (ReasoningEffort::High, "high"),
+            (ReasoningEffort::Xhigh, "xhigh"),
+            (ReasoningEffort::Max, "xhigh"),
+            (ReasoningEffort::Ultra, "xhigh"),
+        ] {
+            let input = ProviderLaunchInput {
+                reasoning_effort: Some(effort),
+                ..launch_input(ProviderId::Grok)
+            };
+            let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input);
+            let index = args
+                .iter()
+                .position(|arg| arg == "--reasoning-effort")
+                .expect("effort flag");
+            assert_eq!(args[index + 1], expected, "effort {effort:?}");
+        }
+    }
+
+    #[test]
+    fn grok_plan_mode_uses_the_read_only_plan_agent_without_bypass() {
+        let input = ProviderLaunchInput {
+            agent_mode: AgentMode::Plan,
+            ..launch_input(ProviderId::Grok)
+        };
+        let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input);
+        assert!(args.windows(2).any(|w| w[0] == "--agent" && w[1] == "plan"));
+        assert!(!args.contains(&"--always-approve".to_string()));
+
+        // And the same on a resumed turn.
+        let args = (get_provider_definition(ProviderId::Grok).structured_resume_args)(&input, "c1");
+        assert!(args.windows(2).any(|w| w[0] == "--agent" && w[1] == "plan"));
+        assert!(!args.contains(&"--always-approve".to_string()));
+    }
+
+    #[test]
+    fn grok_ask_each_time_omits_the_bypass_flag() {
+        let input = ProviderLaunchInput {
+            permission_mode: PermissionMode::AskEachTime,
+            ..launch_input(ProviderId::Grok)
+        };
+        let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input);
+        assert!(!args.contains(&"--always-approve".to_string()));
+    }
+
+    // Grok has no fast-mode surface; the toggle must not leak a flag.
+    #[test]
+    fn grok_ignores_fast_mode() {
+        let input = ProviderLaunchInput {
+            fast_mode: true,
+            ..launch_input(ProviderId::Grok)
+        };
+        let on = (get_provider_definition(ProviderId::Grok).structured_args)(&input);
+        let off = (get_provider_definition(ProviderId::Grok).structured_args)(&launch_input(
+            ProviderId::Grok,
+        ));
+        assert_eq!(on, off);
+    }
+
     fn launch_input(provider_id: ProviderId) -> ProviderLaunchInput {
         let (model_label, model_id, reasoning_effort) = match provider_id {
             ProviderId::Claude => ("Claude Haiku", "haiku", None),
             ProviderId::Codex => ("GPT-5.6 Sol Low", "gpt-5.6-sol", Some(ReasoningEffort::Low)),
             ProviderId::Cursor => ("Composer 2.5 (Cursor)", "composer-2.5", None),
             ProviderId::Opencode => ("Big Pickle", "opencode/big-pickle", None),
+            ProviderId::Grok => ("Grok 4.6", "grok-4.6", None),
         };
 
         ProviderLaunchInput {

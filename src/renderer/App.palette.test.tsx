@@ -59,7 +59,7 @@ describe("App unified search palette", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Settings" }));
     // Palette rows commit on mousedown so the input never loses focus first.
-    fireEvent.mouseDown(screen.getByText("Appearance"));
+    fireEvent.mouseDown(screen.getByText("Theme"));
 
     expect(await screen.findByRole("heading", { name: "Appearance" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();

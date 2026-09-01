@@ -23,6 +23,17 @@ describe("splitSkillTokens", () => {
     expect(splitSkillTokens("see src/lib/foo.ts", isSkill)).toBeNull();
     expect(splitSkillTokens("nothing here", isSkill)).toBeNull();
   });
+
+  it("leaves paths alone even when every name is accepted", () => {
+    // The transcript has no skills list and passes accept-all, so the token
+    // shape is the only thing keeping a path out of the marked segments.
+    const anyName = (): boolean => true;
+    expect(splitSkillTokens("look in /tmp/logs for it", anyName)).toBeNull();
+    expect(splitSkillTokens("open /Users/adam/dev now", anyName)).toBeNull();
+    expect(splitSkillTokens("check with /snow first", anyName)?.filter((s) => s.skill)).toEqual([
+      { text: "/snow", skill: true }
+    ]);
+  });
 });
 
 describe("leadingSkillInvocation", () => {

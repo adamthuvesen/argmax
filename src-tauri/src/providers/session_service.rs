@@ -1,9 +1,9 @@
 // Provider session service.
 //
 // Owns the per-session lifecycle state machine: launching, queuing
-// follow-up messages, resizing, terminating, recovering orphans on boot,
-// and translating provider runtime events into persisted timeline rows
-// + `DashboardDelta` publishes.
+// follow-up messages, resizing, terminating, clearing conversation context,
+// recovering orphans on boot, and translating provider runtime events into
+// persisted timeline rows + `DashboardDelta` publishes.
 //
 // The process / PTY / IO substrate lives in `runtime.rs` — this module
 // imports its handle traits and helpers. Follow-up transcript assembly and
@@ -27,7 +27,11 @@ use super::{
     adapters::{get_provider_definition, prompt_for_agent_mode},
     flush_queue::{DashboardDelta, PendingMessage, ProviderEventFlushQueue},
     follow_up::compose_follow_up_prompt,
-    normalizer::{NormalizerSessionContext, ProviderOutputEvent},
+    measured_diffs::{
+        capture_opening_mark, merge_measured_diffs, paths_awaiting_diff, MeasuredDiff,
+        MeasuredDiffs,
+    },
+    normalizer::{CodexCumulativeUsage, NormalizerSessionContext, ProviderOutputEvent},
     orphan_cleanup::{terminate_orphaned_provider_processes, RecoveredProviderSession},
     runtime::{
         attention_for_state, composer_payload, parse_agent_mode, parse_permission_mode,
@@ -44,21 +48,23 @@ use crate::{
     ipc::inputs::{
         ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
         ProvidersResizeInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
-        ProvidersTerminateInput,
+        ProvidersTerminateInput, SessionClearInput,
     },
     ipc::validation::{NonEmptyString, Prompt, SessionId},
     persistence::{
         database::Database,
         events::{
-            list_session_events_since, persist_raw_output, persist_timeline_event,
-            PersistRawOutputInput, PersistTimelineEventInput,
+            find_event_by_id, list_session_events_since, persist_raw_output,
+            persist_timeline_event, update_event_payload, PersistRawOutputInput,
+            PersistTimelineEventInput, TimelineEvent,
         },
         projects::list_projects,
         sessions::{
-            find_session_by_id, persist_session, session_resume_fork, update_session_agent_mode,
-            update_session_model, update_session_provider, update_session_provider_conversation_id,
-            update_session_state, PersistSessionInput, SessionAgentModeInput, SessionModelInput,
-            SessionProviderInput, SessionStateInput, SessionSummary,
+            clear_session_conversation, find_session_by_id, persist_session, session_resume_fork,
+            update_session_agent_mode, update_session_model, update_session_provider,
+            update_session_provider_conversation_id, update_session_state, PersistSessionInput,
+            SessionAgentModeInput, SessionModelInput, SessionProviderInput, SessionStateInput,
+            SessionSummary,
         },
         time::now_iso,
         workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
@@ -129,6 +135,9 @@ pub struct ProviderSessionService {
     lifecycle: Arc<WorkspaceLifecycle>,
     approvals: Option<Arc<ApprovalService>>,
     session_control: OnceCell<Arc<SessionLaunchRegistry>>,
+    /// Per-turn git marks, for providers that report a file write without
+    /// saying what changed. See `measured_diffs`.
+    measured_diffs: Arc<MeasuredDiffs>,
 }
 
 /// The result slot a termination job publishes to; `None` while the job runs.
@@ -222,6 +231,7 @@ impl ProviderSessionService {
             lifecycle,
             approvals,
             session_control: OnceCell::new(),
+            measured_diffs: Arc::new(MeasuredDiffs::default()),
         })
     }
 
@@ -304,6 +314,12 @@ impl ProviderSessionService {
 
     /// Whether the session's provider handle has finished spawning (`Resolved`)
     /// rather than still launching in the background (`Pending`).
+    /// Whether this turn's git mark is in place, so a file write the provider
+    /// reports without a diff can be measured against it.
+    pub fn has_turn_mark(&self, session_id: &str) -> bool {
+        self.measured_diffs.is_marked(session_id)
+    }
+
     pub fn is_handle_resolved(&self, session_id: &str) -> bool {
         matches!(
             self.handles.lock_or_recover("handles").get(session_id),
@@ -352,7 +368,11 @@ impl ProviderSessionService {
                     attention: attention_for_state("running").to_string(),
                 },
             )?;
-            if provider == ProviderId::Claude {
+            // Claude and Grok are both handed `--session-id <our id>`, so the
+            // CLI conversation is known before a single event arrives. Seeding
+            // it here is what lets the very next turn resume: without it the
+            // follow-up launches fresh and loses the history.
+            if matches!(provider, ProviderId::Claude | ProviderId::Grok) {
                 session =
                     update_session_provider_conversation_id(&connection, &session_id, &session_id)?;
             }
@@ -405,6 +425,7 @@ impl ProviderSessionService {
                 provider_invocation_id.clone(),
                 NormalizerSessionContext::for_provider(provider, input.model_id.as_str()),
             );
+        self.mark_turn_start(&session_id, workspace_path.clone());
         self.handles
             .lock_or_recover("handles")
             .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
@@ -560,7 +581,7 @@ impl ProviderSessionService {
         }
         ensure_permission_mode_supported(session_provider, session_permission_mode)?;
         let admission = self.lifecycle.admit(&workspace_id)?;
-        {
+        let workspace_path = {
             let connection = self.database.connection();
             let workspace = find_workspace_by_id(&connection, &workspace_id)?;
             if matches!(
@@ -572,7 +593,8 @@ impl ProviderSessionService {
                     "Workspace archive is in progress; no new provider input can be sent.",
                 ));
             }
-        }
+            PathBuf::from(workspace.path)
+        };
 
         if let Some(handle) = self.live_handle(&session_id) {
             if !handle.accepts_input() {
@@ -588,6 +610,7 @@ impl ProviderSessionService {
                     queued: true,
                 });
             }
+            self.mark_turn_start(&session_id, workspace_path);
             handle.send_input(&format!(
                 "{}\r",
                 prompt_for_agent_mode(&message, input.agent_mode.unwrap_or(AgentMode::Auto))
@@ -627,7 +650,7 @@ impl ProviderSessionService {
             });
         }
 
-        let (provider, launch_input) = {
+        let (provider, launch_input, session_tokens) = {
             let connection = self.database.connection();
             let mut session = find_session_by_id(&connection, &session_id)?;
             let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
@@ -731,7 +754,15 @@ impl ProviderSessionService {
                     resume_conversation_id = session.provider_conversation_id.clone();
                 }
             }
-            let launch_prompt = compose_follow_up_prompt(&connection, &session_id, &message)?;
+            // A provider switch NULLs the resume id, so this same flag also
+            // carries the switched-agent case: no rollout on the other side,
+            // rebuild the context from the visible transcript.
+            let launch_prompt = compose_follow_up_prompt(
+                &connection,
+                &session_id,
+                &message,
+                resume_conversation_id.is_some(),
+            )?;
             let user_message = self.persist_user_message_locked(
                 &connection,
                 &session_id,
@@ -781,7 +812,7 @@ impl ProviderSessionService {
                 cols: STRUCTURED_LAUNCH_COLS,
                 rows: STRUCTURED_LAUNCH_ROWS,
             };
-            (provider, launch_input)
+            (provider, launch_input, session.tokens)
         };
 
         let provider_invocation_id = Uuid::new_v4().to_string();
@@ -791,8 +822,31 @@ impl ProviderSessionService {
                 session_id.clone(),
                 provider,
                 provider_invocation_id.clone(),
-                NormalizerSessionContext::for_provider(provider, launch_input.model_id.as_str()),
+                {
+                    let context = NormalizerSessionContext::for_provider(
+                        provider,
+                        launch_input.model_id.as_str(),
+                    );
+                    if provider == ProviderId::Codex
+                        && launch_input.resume_conversation_id.is_some()
+                    {
+                        let initial_usage = Some(CodexCumulativeUsage {
+                            input_tokens: (session_tokens.input + session_tokens.cache_read) as u64,
+                            cached_input_tokens: session_tokens.cache_read as u64,
+                            output_tokens: session_tokens.output as u64,
+                        });
+                        context.resuming_codex(
+                            launch_input.resume_conversation_id.clone(),
+                            initial_usage,
+                        )
+                    } else if launch_input.resume_conversation_id.is_some() {
+                        context.resuming()
+                    } else {
+                        context
+                    }
+                },
             );
+        self.mark_turn_start(&session_id, workspace_path);
         self.handles
             .lock_or_recover("handles")
             .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
@@ -895,6 +949,46 @@ impl ProviderSessionService {
             .remove(&session_id);
         let done = self.start_termination(session_id, false)?;
         wait_for_termination(done).await
+    }
+
+    /// Drop the provider conversation in place: same workspace, same session
+    /// row, no resume id, and a `session.cleared` watermark so the next turn
+    /// and the chat surface both start empty. A live provider is stopped first.
+    pub async fn clear(self: &Arc<Self>, input: SessionClearInput) -> ArgmaxResult<SessionSummary> {
+        let session_id = input.session_id.as_str().to_string();
+        let live = {
+            let connection = self.database.connection();
+            let session = find_session_by_id(&connection, &session_id)?;
+            matches!(session.state.as_str(), "running" | "waiting" | "blocked")
+        };
+        if live {
+            self.terminate(ProvidersTerminateInput {
+                session_id: input.session_id.clone(),
+            })
+            .await?;
+        } else {
+            self.clear_queue(&session_id);
+        }
+
+        let connection = self.database.connection();
+        let session = clear_session_conversation(&connection, &session_id)?;
+        let event = persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: Uuid::new_v4().to_string(),
+                session_id: session_id.clone(),
+                r#type: "session.cleared".to_string(),
+                message: "Cleared conversation.".to_string(),
+                payload: json!({}),
+                created_at: None,
+            },
+        )?;
+        self.publish(DashboardDelta {
+            sessions: vec![session.clone()],
+            events: vec![event],
+            ..DashboardDelta::default()
+        });
+        Ok(session)
     }
 
     pub async fn terminate_workspace(self: &Arc<Self>, workspace_id: &str) -> ArgmaxResult<()> {
@@ -1365,6 +1459,7 @@ impl ProviderSessionService {
             !delta_has_terminal_event(delta) && delta_has_subagent_control_event(delta)
         });
         if let Some(delta) = result.delta {
+            self.schedule_measured_diffs(&event.session_id, &delta);
             self.publish(delta);
         }
         if reconcile_subagents {
@@ -1980,6 +2075,75 @@ impl ProviderSessionService {
         }
     }
 
+    /// Mark the worktree where this turn starts, so a provider that reports a
+    /// file write without saying what changed can still get a line stat. Off
+    /// the send path: the mark costs a few hundred milliseconds on a large
+    /// repo, while the agent's first write is a model round-trip away.
+    fn mark_turn_start(&self, session_id: &str, workspace_path: PathBuf) {
+        let mark = self.measured_diffs.open_turn(session_id, workspace_path);
+        tauri::async_runtime::spawn(capture_opening_mark(mark));
+    }
+
+    /// Measure the diffs a provider left out, then rewrite the tool's own
+    /// `command.completed` row with them.
+    ///
+    /// The row is already on screen by the time this runs, so the stat arrives
+    /// a moment after the file name. Updating the row in place (same id, same
+    /// rowid) means the renderer's upsert replaces it and the chat keeps
+    /// reading tool input, rather than learning about a second kind of event.
+    fn schedule_measured_diffs(self: &Arc<Self>, session_id: &str, delta: &DashboardDelta) {
+        let pending = delta
+            .events
+            .iter()
+            .filter_map(|event| {
+                let paths = paths_awaiting_diff(event);
+                (!paths.is_empty()).then(|| (event.id.clone(), paths))
+            })
+            .collect::<Vec<_>>();
+        if pending.is_empty() {
+            return;
+        }
+        let service = Arc::clone(self);
+        let session_id = session_id.to_string();
+        tauri::async_runtime::spawn(async move {
+            for (event_id, paths) in pending {
+                let measured = service.measured_diffs.measure(&session_id, &paths).await;
+                match service.rewrite_event_with_measured_diffs(&event_id, &measured) {
+                    Ok(Some(event)) => service.publish(DashboardDelta {
+                        events: vec![event],
+                        ..DashboardDelta::default()
+                    }),
+                    Ok(None) => {}
+                    Err(error) => tracing::warn!(
+                        %error,
+                        session_id,
+                        event_id,
+                        "could not store measured file-change diffs"
+                    ),
+                }
+            }
+        });
+    }
+
+    fn rewrite_event_with_measured_diffs(
+        &self,
+        event_id: &str,
+        measured: &[MeasuredDiff],
+    ) -> ArgmaxResult<Option<TimelineEvent>> {
+        if measured.is_empty() {
+            return Ok(None);
+        }
+        let connection = self.database.connection();
+        let Some(mut event) = find_event_by_id(&connection, event_id)? else {
+            return Ok(None);
+        };
+        if !merge_measured_diffs(&mut event.payload, measured) {
+            return Ok(None);
+        }
+        update_event_payload(&connection, event_id, &event.payload)?;
+        Ok(Some(event))
+    }
+
     fn schedule_subagent_trace_reconciliation(&self, session_id: &str) {
         let session_id = session_id.to_string();
         {
@@ -2151,7 +2315,20 @@ fn infer_cursor_provider_conversation_id(
     session_id: &str,
 ) -> ArgmaxResult<Option<String>> {
     let mut statement = connection
-        .prepare("SELECT content FROM raw_outputs WHERE session_id = ? ORDER BY rowid ASC")
+        .prepare(
+            r#"
+            SELECT content FROM raw_outputs
+            WHERE session_id = ?
+              AND created_at > COALESCE((
+                SELECT created_at FROM events
+                WHERE events.session_id = raw_outputs.session_id
+                  AND events.type = 'session.cleared'
+                ORDER BY rowid DESC
+                LIMIT 1
+              ), '')
+            ORDER BY rowid ASC
+            "#,
+        )
         .map_err(sqlite_error)?;
     let mut rows = statement.query([session_id]).map_err(sqlite_error)?;
     while let Some(row) = rows.next().map_err(sqlite_error)? {
@@ -2229,6 +2406,7 @@ mod tests {
             ProviderId::Codex,
             ProviderId::Cursor,
             ProviderId::Opencode,
+            ProviderId::Grok,
         ] {
             let error = ensure_permission_mode_supported(provider, PermissionMode::AskEachTime)
                 .expect_err("unsupported provider approval mode must fail closed");

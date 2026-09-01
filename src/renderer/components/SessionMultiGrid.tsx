@@ -32,6 +32,7 @@ import { isAgentCell, isSessionCell, MAX_CELLS, MAX_COLS, MAX_ROWS } from "../li
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
+import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { AgentTabsPane } from "./AgentTabsPane.js";
 import { SessionPane } from "./SessionPane.js";
 
@@ -121,7 +122,8 @@ interface SessionMultiGridProps {
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
-  onTerminateSession: (sessionId: string) => Promise<void>;
+  onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
+  onClearSession: (sessionId: string) => Promise<void>;
   onForkSession: (sessionId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   /** App-level setter the focused SessionPane registers with so its file
@@ -176,6 +178,7 @@ export function SessionMultiGrid({
   onSendQueuedMessageNow,
   pendingMessages,
   onTerminateSession,
+  onClearSession,
   onForkSession,
   onRunCheck,
   registerPaletteFileContext
@@ -449,6 +452,7 @@ export function SessionMultiGrid({
                         onSendQueuedMessageNow={onSendQueuedMessageNow}
                         pendingMessages={pendingMessages}
                         onTerminateSession={onTerminateSession}
+                        onClearSession={onClearSession}
                         onForkSession={onForkSession}
                         project={project}
                         rawOutputs={rawOutputs}

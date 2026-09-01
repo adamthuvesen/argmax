@@ -5,7 +5,7 @@ import { SessionSyncSettings } from "./SessionSyncSettings.js";
 
 function status(overrides: Partial<SyncStatus> = {}): SyncStatus {
   return {
-    config: { claude: false, codex: false, cursor: false, opencode: false, windowHours: 24 },
+    config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
     supportedProviders: ["claude"],
     lastRunAt: null,
     importedCount: 0,
@@ -37,7 +37,7 @@ describe("SessionSyncSettings", () => {
   it("turning a provider on saves it and reports what was imported", async () => {
     syncStub.setConfig.mockResolvedValue(
       status({
-        config: { claude: true, codex: false, cursor: false, opencode: false, windowHours: 24 },
+        config: { claude: true, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
         importedCount: 3
       })
     );
@@ -66,7 +66,7 @@ describe("SessionSyncSettings", () => {
   it("says what turning sync off removes, and confirms it afterwards", async () => {
     syncStub.getStatus.mockResolvedValue(
       status({
-        config: { claude: true, codex: false, cursor: false, opencode: false, windowHours: 24 }
+        config: { claude: true, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 }
       })
     );
     render(<SessionSyncSettings />);

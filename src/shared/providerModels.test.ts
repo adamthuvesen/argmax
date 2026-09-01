@@ -59,6 +59,19 @@ describe("reasoningEffortsForModel", () => {
     ]);
   });
 
+  // Grok Build's CLI rejects anything above xhigh outright:
+  // "unknown effort level 'max'; use one of: xhigh, high, medium, low".
+  it("caps Grok Build at xhigh for every model", () => {
+    for (const model of PROVIDER_MODELS.grok) {
+      expect(reasoningEffortsForModel("grok", model.modelId)).toEqual([
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]);
+    }
+  });
+
   it("caps Cursor Grok and Gemini 3.7 at High", () => {
     expect(reasoningEffortsForModel("cursor", "cursor-grok-4.6-medium")).toEqual([
       "low",
@@ -256,5 +269,31 @@ describe("MODEL_PRICING coverage", () => {
       expect(price.cacheRead, model).toBeGreaterThanOrEqual(0);
       expect(price.cacheWrite, model).toBeGreaterThanOrEqual(0);
     }
+  });
+});
+
+describe("Grok Build pricing", () => {
+  // These three token mixes and costs are verbatim from
+  // `grok --output-format json` runs (grok 1.0.13). The table is only correct
+  // if it reproduces what the CLI itself billed — Grok Build charges its own
+  // `*-build` SKU rate, not xAI's published API price.
+  it("reproduces the cost the CLI reported, to the cent fraction", () => {
+    const cases: Array<[string, UsageCounts, number]> = [
+      ["grok-4.6", { input: 14_740, output: 41, cacheRead: 5_760, cacheWrite: 0 }, 0.00554302],
+      ["grok-4.6", { input: 20_377, output: 4_442, cacheRead: 128, cacheWrite: 0 }, 0.0114699],
+      ["grok-4.6", { input: 14_838, output: 70, cacheRead: 26_240, cacheWrite: 0 }, 0.00734672],
+      ["grok-4.5", { input: 20_377, output: 362, cacheRead: 128, cacheWrite: 0 }, 0.014607896]
+    ];
+    for (const [modelId, usage, reported] of cases) {
+      expect(costOf(usage, modelId), modelId).toBeCloseTo(reported, 9);
+    }
+  });
+
+  // 4.5 is the pricier SKU here, so the default and the title model must stay
+  // on 4.6 — a silent flip would double every session's cost.
+  it("keeps the cheaper model as the default and title model", () => {
+    expect(PROVIDER_MODEL_DEFAULTS.grok.modelId).toBe("grok-4.6");
+    expect(PROVIDER_TITLE_MODEL.grok).toBe("grok-4.6");
+    expect(MODEL_PRICING["grok-4.6"].input).toBeLessThan(MODEL_PRICING["grok-4.5"].input);
   });
 });

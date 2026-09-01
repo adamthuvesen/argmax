@@ -390,6 +390,7 @@
    chrome, same chevron tucked inside the label, same pointer affordance. They
    just never host the … / + cluster, which stays on the lead recency header. */
 .project-group.session-pinned-group > .session-pinned-row,
+.project-group.session-working-group > .session-working-row,
 .project-group.session-priority-group > .session-priority-row {
   cursor: pointer;
 }

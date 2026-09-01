@@ -1,617 +1,529 @@
 /* ============================================================
-   Settings — quiet, paper-white preferences. Uppercase section
-   eyebrows, a transparent left rail with a hairline divider, and
-   toned-down cards that match the app sidebar.
+   Settings — a standalone page. The rail replaces the app
+   sidebar for as long as settings is open, and the content
+   column is one repeated shape: a labelled card of rows, each
+   row a label, an optional line of description, and a control.
+
+   Schedule reuses the same page chrome (rail width, empty
+   topbar, column title, measure) so the two surfaces read as
+   one kind of page.
    ============================================================ */
+
+:root {
+  --settings-rail-width: 232px;
+  /* Topbar title and content column share one measure and one inset, so the
+     page title sits exactly on the cards' left edge. */
+  --settings-measure: 760px;
+}
 
 .settings-scroll {
   overflow: auto;
   scrollbar-gutter: stable;
 }
 
-.settings-surface {
-  display: grid;
-  grid-template-columns: minmax(176px, 208px) minmax(0, 760px);
-  gap: clamp(32px, 5vw, 72px);
-  width: min(100%, 1160px);
-  margin: 0 auto;
-  padding: 28px clamp(28px, 5vw, 64px) 96px;
-  animation: surface-in 320ms var(--ease) both;
-}
+/* ---- Rail: sits in the app sidebar's grid column ---- */
 
-@media (max-width: 900px) {
-  .settings-surface {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 24px;
-  }
-}
-
-/* ---- Left rail: grouped settings index ---- */
-
-.settings-nav {
-  position: sticky;
-  top: 54px;
-  align-self: start;
-  display: grid;
-  gap: 12px;
-  padding-right: 16px;
+.settings-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   min-width: 0;
-  background: transparent;
-  border-right: 0.5px solid var(--line);
+  min-height: 0;
+  overflow: hidden auto;
+  padding: 0 12px 16px;
+  border-right: 1px solid var(--line);
+  background: var(--sidebar);
 }
 
-@media (max-width: 900px) {
-  .settings-nav {
-    position: static;
-    padding-right: 0;
-    padding-bottom: 14px;
-    border-right: 0;
-    border-bottom: 0.5px solid var(--line);
-  }
-}
-
-.settings-nav-eyebrow {
-  margin: 0;
-}
-
-.settings-nav-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 2px;
-}
-
-@media (max-width: 900px) {
-  .settings-nav-list {
-    grid-template-columns: repeat(4, minmax(136px, 1fr));
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: thin;
-  }
-}
-
-.settings-nav-item {
-  position: relative;
-}
-
-.settings-nav-link {
+.settings-rail-back {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   width: 100%;
-  display: block;
-  padding: 8px 10px 8px 12px;
+  padding: 7px 10px;
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--muted-strong);
   cursor: pointer;
   font: inherit;
-  line-height: 1.2;
+  font-size: var(--text-sm);
   text-align: left;
-  transition: background var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease);
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
-.settings-nav-link:hover {
-  color: var(--text);
+.settings-rail-back:hover {
   background: var(--row-hover);
+  color: var(--text);
 }
 
-.settings-nav-link:focus-visible {
+.settings-rail-back:focus-visible {
   outline: none;
   box-shadow: var(--ring);
 }
 
-.settings-nav-label {
-  color: inherit;
+.settings-rail-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-sunken);
+  color: var(--muted);
+}
+
+.settings-rail-search:focus-within {
+  border-color: var(--line-strong);
+  box-shadow: var(--ring);
+}
+
+.settings-rail-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
   font-size: var(--text-sm);
-  letter-spacing: 0;
+}
+
+.settings-rail-search input:focus {
+  outline: none;
+}
+
+.settings-rail-search input::placeholder {
+  color: var(--muted);
+}
+
+/* Safari draws its own clear affordance on a search input; the rail has no
+   room for it and the value is cleared by selecting a hit anyway. */
+.settings-rail-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.settings-rail-list,
+.settings-rail-hits {
+  list-style: none;
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+}
+
+.settings-rail-list li[data-divider-before="true"] {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 0.5px solid var(--line);
+}
+
+.settings-rail-link {
+  width: 100%;
+  display: block;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.25;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.settings-rail-link:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
+.settings-rail-link:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Selected group uses the shared selection gray, matching the sidebar
+   sessions, the model picker, and the agent tabs. */
+.settings-rail-link[aria-pressed="true"] {
+  background: var(--row-selected);
+  color: var(--text);
   font-weight: 500;
 }
 
-/* Selected section uses the shared selection gray (--row-selected), matching
-   the sidebar sessions, model picker, and agent tabs. */
-.settings-nav-item[data-active="true"] .settings-nav-link {
-  color: var(--text);
-  background: var(--row-selected);
+.settings-rail-hit {
+  width: 100%;
+  display: grid;
+  gap: 1px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
 
-/* ---- Main column ---- */
+.settings-rail-hit:hover {
+  background: var(--row-hover);
+}
 
-.settings-main {
-  display: grid;
-  gap: 28px;
+.settings-rail-hit:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.settings-rail-hit-label {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.settings-rail-hit-group {
+  display: block;
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+
+.settings-rail-empty {
+  margin: 4px 10px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ---- Page ---- */
+
+.settings-page {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
-/* ---- Pinned top bar ----
-   A slim, opaque bar that sticks to the top of the scroll area so the sections
-   scroll underneath it instead of clipping raw against the window titlebar —
-   mirrors the chat surface's pinned `.section-heading`. */
-
+/* A slim opaque bar pinned to the top of the scroll area, so groups scroll
+   underneath it instead of clipping raw against the window titlebar. It holds
+   nothing: it is the drag region, and the mask. */
 .settings-topbar {
   position: sticky;
   top: 0;
   z-index: 6;
-  background: var(--panel);
+  height: 46px;
+  background: var(--bg);
 }
 
-.settings-topbar-inner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: min(100%, 1160px);
-  margin: 0 auto;
-  min-height: 46px;
-  padding: 0 clamp(28px, 5vw, 64px);
-}
-
-/* Sidebar collapsed: the bar doubles as the titlebar strip, so pad past the
-   macOS traffic lights (matches the chat header's collapsed inset). */
-.app-shell[data-sidebar-collapsed="true"] .settings-topbar-inner {
-  padding-left: 131px;
-}
-
-.settings-topbar-title {
+.settings-page-title {
   margin: 0;
-  font-size: var(--text-sm);
+  font-size: var(--text-lg-tight);
   font-weight: 500;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.014em;
   color: var(--text);
 }
 
-.settings-topbar-sep {
-  color: var(--line-strong);
-  font-size: var(--text-sm);
+.settings-main {
+  display: grid;
+  gap: 26px;
+  align-content: start;
+  width: min(100%, var(--settings-measure));
+  min-width: 0;
+  margin-inline: auto;
+  /* The page opens well below the titlebar rather than tight under it — the
+     title is the first thing read, and it needs room above to read as one. */
+  padding: 34px clamp(24px, 3vw, 40px) 96px;
 }
 
-.settings-topbar-group {
-  font-size: var(--text-sm);
+/* The title introduces the first group, so it sits closer to it than the
+   groups sit to each other. */
+.settings-main > .settings-page-title {
+  margin-bottom: -6px;
+}
+
+/* ---- Group: a label and a card of rows ---- */
+
+.settings-group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  scroll-margin-top: 54px;
+}
+
+.settings-group-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 22px;
+}
+
+.settings-group-label {
+  margin: 0;
+  font-size: var(--text-xs);
   font-weight: 500;
+  letter-spacing: 0.012em;
   color: var(--muted-strong);
 }
-
-/* ---- Group landing strip ---- */
-
-.settings-group-intro {
-  display: grid;
-  gap: 4px;
-  padding: 2px 0 20px;
-  border-bottom: 0.5px solid var(--line);
-}
-
-.settings-group-eyebrow {
-  margin: 0;
-  font-size: var(--text-2xs);
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.settings-group-intro h2 {
-  margin: 2px 0 0;
-  color: var(--text);
-  font-size: var(--text-base-plus);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  line-height: 1.2;
-}
-
-.settings-group-desc {
-  margin: 2px 0 0;
-  max-width: 62ch;
-  color: var(--muted);
-  font-size: var(--text-sm);
-  line-height: 1.5;
-}
-
-.settings-group-panel {
-  display: grid;
-  gap: 32px;
-  min-width: 0;
-  animation: settings-section-in 280ms var(--ease) both;
-}
-
-/* ---- Section header (numbered marker + eyebrow + title) ---- */
-
-.settings-section {
-  display: grid;
-  gap: 16px;
-  scroll-margin-top: clamp(24px, 4dvh, 56px);
-  animation: settings-section-in 360ms var(--ease) both;
-}
-
-.settings-section + .settings-section {
-  border-top: 0.5px solid var(--line);
-  padding-top: 40px;
-}
-
-.settings-section:nth-of-type(2) { animation-delay: 40ms; }
-.settings-section:nth-of-type(3) { animation-delay: 80ms; }
-.settings-section:nth-of-type(4) { animation-delay: 120ms; }
-.settings-section:nth-of-type(5) { animation-delay: 160ms; }
-.settings-section:nth-of-type(n+6) { animation-delay: 200ms; }
-
-@keyframes settings-section-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.settings-section-header {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: start;
-  column-gap: 16px;
-  row-gap: 4px;
-  padding-bottom: 14px;
-  border-bottom: 0.5px solid var(--line);
-}
-
-.settings-section-titles {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.settings-section-eyebrow {
-  margin: 0;
-  font-size: var(--text-2xs);
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.settings-section-titles h2 {
-  margin: 0;
-  font-size: var(--text-base);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  color: var(--text);
-  line-height: 1.2;
-}
-
-.settings-section-desc {
-  margin: 2px 0 0;
-  font-size: var(--text-sm);
-  line-height: 1.5;
-  color: var(--muted);
-  max-width: 64ch;
-}
-
-.settings-section-action {
-  align-self: start;
-}
-
-/* ---- Card ---- */
 
 .settings-card {
   display: flex;
   flex-direction: column;
-  padding: 0;
+  min-width: 0;
   border: 0.5px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--panel);
-  overflow: visible;
 }
 
 .settings-card > * {
-  padding: 16px 22px;
+  padding: 10px 14px;
   border-top: 0.5px solid var(--line-soft);
+}
+
+/* Lists paint their own rows edge to edge. */
+.settings-card > .settings-providers-list,
+.settings-card > .project-knowledge-list {
+  padding: 0;
 }
 
 .settings-card > *:first-child {
   border-top: 0;
 }
 
-.settings-card-flush {
-  padding: 8px;
-}
+/* ---- Row: the one shape every setting takes ---- */
 
-.settings-card-flush > * {
-  padding: 0;
-  border-top: 0;
-}
-
-.settings-card-title {
-  margin: 0 0 4px;
-  font-size: var(--text-xs);
-  font-weight: 500;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text-soft);
-}
-
-.settings-card-sub {
-  display: grid;
-  gap: 10px;
-}
-
-/* ---- Account ---- */
-
-.settings-account {
+/* The control keeps its natural width and the text takes the rest — but a wide
+   control (a five-option segmented, a slider plus readout) would otherwise
+   crush the description into a column one word wide. Past a 260px text basis
+   the control wraps onto its own line instead. */
+.settings-row {
   display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.settings-avatar {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text);
-  flex: 0 0 auto;
-  position: relative;
-  overflow: hidden;
-}
-
-.settings-avatar::after {
-  content: none;
-}
-
-.settings-avatar-mascot {
-  position: relative;
-  z-index: 1;
-  width: 32px;
-  height: 32px;
-  animation: none;
-  transform: translateY(3px);
-}
-
-.settings-account-meta {
-  display: grid;
-  gap: 2px;
-}
-
-.settings-account-name {
-  font-size: var(--text-base);
-  font-weight: 500;
-  color: var(--text);
-  letter-spacing: -0.005em;
-}
-
-.settings-account-sub {
-  font-size: var(--text-sm);
-  color: var(--muted);
-}
-
-.settings-status-chip {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  font-size: var(--text-xs);
-  letter-spacing: 0.02em;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-}
-
-.settings-status-chip[data-state="ok"] {
-  color: var(--accent-deep);
-}
-
-.settings-status-chip-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--accent);
-  flex: 0 0 auto;
-}
-
-/* ---- Key-value lists ---- */
-
-.settings-keyvals {
-  display: grid;
-  grid-template-columns: minmax(140px, max-content) 1fr;
-  row-gap: 0;
-  column-gap: 24px;
-  margin: 0;
-  font-size: var(--text-sm);
-}
-
-.settings-keyvals div {
-  display: contents;
-}
-
-.settings-keyvals dt,
-.settings-keyvals dd {
-  margin: 0;
-  padding: 10px 0;
-  border-top: 0.5px solid var(--line-soft);
-}
-
-.settings-keyvals div:first-child dt,
-.settings-keyvals div:first-child dd {
-  border-top: 0;
-  padding-top: 2px;
-}
-
-.settings-keyvals dt {
-  color: var(--muted);
-  font-weight: 500;
-  font-size: var(--text-xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  align-self: center;
-}
-
-.settings-keyvals dd {
-  color: var(--text);
-  font-feature-settings: "tnum", "zero";
-}
-
-/* ---- Metric grid (DB stats) ---- */
-
-.settings-metric-grid {
-  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.settings-metric-grid > div {
-  display: grid !important;
-  align-content: start;
-  gap: 5px;
-  min-height: 72px;
-  padding: 10px 11px;
-  border: 0.5px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--panel-soft);
-}
-
-.settings-metric-grid dt,
-.settings-metric-grid dd {
-  padding: 0;
-  border-top: 0 !important;
-}
-
-.settings-metric-grid dt {
-  order: 2;
-  font-size: var(--text-2xs);
-  letter-spacing: 0.08em;
-  line-height: 1.25;
-  color: var(--muted);
-}
-
-.settings-metric-grid dd {
-  order: 1;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--text);
-  line-height: 1.15;
-  overflow-wrap: anywhere;
-}
-
-/* ---- Segmented controls (replace .settings-radio-group) ---- */
-
-.settings-segmented {
-  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  flex-wrap: wrap;
+  gap: 10px 20px;
+  min-height: 44px;
 }
 
-.settings-segmented-copy {
-  display: grid;
+.settings-row-text {
+  display: flex;
+  flex-direction: column;
   gap: 2px;
+  flex: 1 1 260px;
   min-width: 0;
-  flex: 1 1 auto;
 }
 
-.settings-segmented-legend {
+.settings-row-label {
   font-size: var(--text-sm);
   font-weight: 500;
   letter-spacing: -0.002em;
   color: var(--text);
 }
 
-.settings-segmented-hint {
-  font-size: var(--text-sm);
-  line-height: 1.5;
+.settings-row-desc {
+  max-width: 52ch;
+  font-size: var(--text-xs);
+  line-height: 1.45;
   color: var(--muted);
-  max-width: 60ch;
 }
 
-.settings-segmented-track {
+.settings-row-code {
+  font-family: var(--font-mono);
+  font-feature-settings: var(--code-font-features);
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+}
+
+.settings-row-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.settings-row-value {
+  font-size: var(--text-sm);
+  color: var(--muted-strong);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* Prose that belongs to the group rather than to any single row. */
+.settings-note {
+  margin: 0;
+  padding: 10px 14px 12px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.settings-note code {
+  font-family: var(--font-mono);
+  font-feature-settings: var(--code-font-features);
+  font-size: var(--text-2xs-plus);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-sunken);
+  color: var(--text-soft);
+}
+
+.settings-note[data-tone="warn"] {
+  color: var(--amber);
+}
+
+/* The font specimen — the one preview kept, because a family name cannot
+   show what the face looks like. */
+.settings-font-specimen {
+  margin: 0;
+  font-size: var(--text-sm);
+  letter-spacing: 0;
+  color: var(--muted-strong);
+  overflow-x: auto;
+  font-feature-settings: "calt", "ss01", "tnum";
+}
+
+/* ---- Segmented control ---- */
+
+.settings-segmented {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 2px;
   padding: 2px;
   border: 0.5px solid var(--line);
   border-radius: var(--radius-md);
-  background: var(--panel);
+  background: var(--panel-sunken);
 }
 
-/* Range-slider rows (font sizes). Shares the segmented rows' copy column so
-   the two control styles align in the same card. */
+.settings-segmented-option {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.settings-segmented-option input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+
+.settings-segmented-label {
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+}
+
+.settings-segmented-option:hover .settings-segmented-label {
+  color: var(--text);
+}
+
+.settings-segmented-option[data-checked="true"] {
+  background: var(--panel);
+  box-shadow: var(--shadow-1);
+}
+
+.settings-segmented-option[data-checked="true"] .settings-segmented-label {
+  color: var(--text);
+}
+
+.settings-segmented-option:focus-within {
+  box-shadow: var(--ring);
+}
+
+.settings-segmented[data-disabled="true"] {
+  opacity: 0.55;
+}
+
+.settings-segmented-option[data-disabled="true"],
+.settings-segmented-option[data-disabled="true"]:hover {
+  cursor: default;
+  background: transparent;
+  box-shadow: none;
+}
+
+.settings-segmented-option[data-disabled="true"] .settings-segmented-label {
+  color: var(--muted);
+}
+
+/* ---- Slider ---- */
+
 .settings-slider {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  flex-wrap: wrap;
+  gap: 11px;
 }
 
-.settings-slider-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.settings-slider-control input[type="range"] {
-  width: 180px;
+.settings-slider input[type="range"] {
+  width: 130px;
   accent-color: var(--accent);
 }
 
 .settings-slider-value {
-  min-width: 4ch;
+  min-width: 64px;
   text-align: right;
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--muted-strong);
 }
 
-.settings-segmented-option {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 3px 9px;
-  border-radius: var(--radius-sm);
+/* ---- Performance detail, revealed from the Diagnostics group ---- */
+
+.settings-performance {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.settings-performance .settings-card {
+  padding: 14px 16px 16px;
+}
+
+.settings-performance .settings-card > * {
+  padding: 0;
+  border-top: 0;
+}
+
+.settings-card-title {
+  margin: 0 0 8px;
   font-size: var(--text-xs);
-  color: var(--muted-strong);
-  cursor: pointer;
-  text-align: center;
-  white-space: nowrap;
-  transition: color var(--duration-fast) var(--ease),
-    background var(--duration-fast) var(--ease),
-    box-shadow var(--duration-fast) var(--ease);
-}
-
-.settings-segmented-option:hover {
-  color: var(--text);
-}
-
-.settings-segmented-option input[type="radio"] {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.settings-segmented-label {
   font-weight: 500;
+  letter-spacing: 0.012em;
+  color: var(--muted-strong);
 }
 
-.settings-segmented-caption {
-  font-size: var(--text-3xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.settings-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px 20px;
+  margin: 0;
+}
+
+.settings-metric-grid > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 5px;
+  border-bottom: 0.5px solid var(--line-soft);
+}
+
+.settings-metric-grid dt {
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 
-.settings-segmented-option[data-checked="true"] {
-  background: var(--accent-soft);
-  color: var(--text);
-}
-
-.settings-segmented-option[data-checked="true"] .settings-segmented-caption {
-  color: var(--accent-deep);
-}
-
-.settings-segmented-option:focus-within {
-  outline: none;
-  box-shadow: var(--ring);
+.settings-metric-grid dd {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-soft);
 }
 
 /* A control another setting has made moot — "Tool call groups" while "Tool

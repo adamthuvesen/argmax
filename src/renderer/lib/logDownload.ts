@@ -1,8 +1,8 @@
-import type { LogEntry } from "../../shared/types.js";
+import type { BackendLogEntry } from "../../shared/types.js";
 
 // Renderer-only download path (P8.04): logs are already in memory from IPC;
 // Blob + anchor avoids a main-process save dialog for a diagnostics export.
-export function saveLogsFile(entries: ReadonlyArray<LogEntry>, setStatus: (status: string | null) => void): void {
+export function saveLogsFile(entries: ReadonlyArray<BackendLogEntry>, setStatus: (status: string | null) => void): void {
   if (entries.length === 0) {
     setStatus("No log entries to save.");
     return;

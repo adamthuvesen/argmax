@@ -1,8 +1,21 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { onBrowserPanelRequest } from "../lib/browserPanel.js";
 import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
+import type * as MermaidRuntime from "../lib/mermaidRuntime.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
+
+const renderMermaidDiagram = vi.hoisted(() =>
+  vi.fn(() => Promise.resolve({ svg: `<svg data-testid="mermaid-svg"><title>flow</title></svg>` }))
+);
+
+vi.mock("../lib/mermaidRuntime.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof MermaidRuntime>();
+  return {
+    ...actual,
+    renderMermaidDiagram
+  };
+});
 
 // Installing the real bridge at import time would arm a WebSocket; the flag is
 // all this component reads from it.
@@ -185,5 +198,125 @@ describe("<StreamingMarkdown />", () => {
     render(<StreamingMarkdown text={text} streaming />);
 
     expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
+  it("renders LaTeX display equations from \\[ ... \\] and $$ ... $$ blocks", () => {
+    const text = [
+      "Here is the abstention equation:",
+      "\\[ \\text{margin} = P(\\text{best family}) - P(\\text{second-best family}) \\]",
+      "And in double dollars:",
+      "$$E = mc^2$$"
+    ].join("\n\n");
+
+    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+
+    const katexDisplays = container.querySelectorAll(".katex-display");
+    expect(katexDisplays.length).toBe(2);
+    expect(katexDisplays[0]?.textContent).toContain("margin");
+    expect(katexDisplays[1]?.textContent).toContain("E=mc");
+  });
+
+  it("renders LaTeX inline equations from \\( ... \\) and $ ... $ spans", () => {
+    const text = "\\(\\tau\\) is the threshold and $x + y = z$ is the sum.";
+
+    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+
+    const katexInlines = container.querySelectorAll(".katex");
+    expect(katexInlines.length).toBeGreaterThanOrEqual(2);
+    expect(container.textContent).toContain("τ");
+  });
+
+  it("safely handles currency amounts without breaking into math mode", () => {
+    const text = "Prices are $10 for standard and $20 for pro tier.";
+
+    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+
+    expect(container.querySelectorAll(".katex").length).toBe(0);
+    expect(container.textContent).toContain("$10");
+    expect(container.textContent).toContain("$20");
+  });
+
+  it("preserves code blocks containing dollar signs and LaTeX slashes", () => {
+    const text = [
+      "```bash",
+      "PRICE=$50",
+      "echo \"\\[ preserved \\]\"",
+      "```"
+    ].join("\n");
+
+    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+
+    expect(container.querySelectorAll(".katex").length).toBe(0);
+    expect(container.textContent).toContain("PRICE=$50");
+    expect(container.textContent).toContain("\\[ preserved \\]");
+  });
+
+  it("lifts glued tracing logs out of assistant prose into an Error block", () => {
+    const log = '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
+    const text = `After that PR-description correction, I would consider it ready for colleague review.\n${log}`;
+
+    render(<StreamingMarkdown text={text} streaming={false} />);
+
+    expect(
+      screen.getByText("After that PR-description correction, I would consider it ready for colleague review.")
+    ).toBeInTheDocument();
+    const block = screen.getByRole("status", { name: "Error" });
+    expect(block).toBeInTheDocument();
+    expect(block.textContent).toContain("stream disconnected");
+    expect(block.textContent).toContain('session_id="abc"');
+  });
+
+  it("strips MCP HTTP client teardown tracing from assistant prose", () => {
+    const log =
+      '2026-09-01T07:21:37.004170Z ERROR rmcp::transport::streamable_http_client: fail to delete session: invalid_refresh_token session_id="abc"';
+    const text = `The other eight tasks were stable across both latest runs.\n${log}`;
+
+    render(<StreamingMarkdown text={text} streaming={false} />);
+
+    expect(screen.getByText("The other eight tasks were stable across both latest runs.")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Error" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/invalid_refresh_token/)).not.toBeInTheDocument();
+  });
+
+  it("renders nothing when the dump is only MCP HTTP client tracing", () => {
+    const log =
+      '2026-09-01T07:21:37.004170Z ERROR rmcp::transport::streamable_http_client: fail to delete session: invalid_refresh_token session_id="abc"';
+    const { container } = render(<StreamingMarkdown text={log} streaming={false} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("renders the exact markdown formula example from user query", () => {
+    const text = [
+      "\\tau (\"tau\") is the abstention threshold. It controls how far ahead the model's best family must be from its second-best family before we emit a label.",
+      "",
+      "\\[ \\text{margin} = P(\\text{best family}) - P(\\text{second-best family}) \\]",
+      "",
+      "The probabilities are family-level, prior-matched probabilities. \\tau is not \"17.5% confidence\" or an accuracy estimate."
+    ].join("\n");
+
+    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+
+    const displayMath = container.querySelector(".katex-display");
+    expect(displayMath).toBeInTheDocument();
+    expect(displayMath?.textContent).toContain("margin");
+    expect(displayMath?.textContent).toContain("best family");
+    expect(displayMath?.textContent).toContain("second-best family");
+
+    // Both instances of \tau in prose should be rendered as KaTeX tau symbols
+    expect(container.textContent).toContain("τ");
+  });
+
+  it("renders a mermaid fence as a diagram instead of a labelled code block", async () => {
+    const text = ["```mermaid", "flowchart LR", "  A --> B", "```"].join("\n");
+
+    render(<StreamingMarkdown text={text} streaming={false} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mermaid-svg")).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Diagram")).toBeInTheDocument();
+    expect(screen.queryByText("mermaid")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Copy code" })).not.toBeInTheDocument();
+    expect(renderMermaidDiagram).toHaveBeenCalledWith("flowchart LR\n  A --> B");
   });
 });

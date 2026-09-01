@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
@@ -9,6 +9,7 @@ function makeState(entries: WorkspaceFileEntry[]): WorkspaceFilesState {
     entries,
     listState: "ready",
     listError: null,
+    refreshList: () => undefined,
     tabs: [],
     activeTabPath: null,
     selectedPath: null,
@@ -119,6 +120,70 @@ describe("WorkspaceTree virtualization", () => {
 
     rerender(<WorkspaceTree state={makeState(entriesB)} height={600} />);
     expect(scroller.scrollTop).toBe(120);
+  });
+
+  it("pins the enclosing folders once their rows scroll out of the window", () => {
+    // One deep chain plus enough leaves under it to scroll past the ancestors.
+    const entries: WorkspaceFileEntry[] = Array.from({ length: 40 }, (_, i) => ({
+      path: `src/renderer/components/File${String(i).padStart(2, "0")}.tsx`
+    }));
+    const state = { ...makeState(entries), selectedPath: entries[0]?.path ?? null };
+
+    render(<WorkspaceTree state={state} height={240} />);
+    const scroller = screen.getByRole("tree");
+    // No sticky block at rest: the first row has no ancestor above it.
+    expect(document.querySelector(".workspace-tree-sticky")).toBeNull();
+
+    scroller.scrollTop = 240;
+    fireEvent.scroll(scroller);
+
+    const sticky = document.querySelector(".workspace-tree-sticky");
+    expect(sticky).not.toBeNull();
+    // src › renderer › components, outermost first, and hidden from AT because
+    // the canonical rows are still in the tree above.
+    expect([...(sticky?.querySelectorAll(".workspace-tree-label") ?? [])].map((el) => el.textContent)).toEqual([
+      "src",
+      "renderer",
+      "components"
+    ]);
+    expect(sticky?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("folds every open directory from the toolbar's collapse-all", () => {
+    const entries: WorkspaceFileEntry[] = [
+      { path: "src/renderer/App.tsx" },
+      { path: "README.md" }
+    ];
+    const state = { ...makeState(entries), selectedPath: "src/renderer/App.tsx" };
+
+    render(<WorkspaceTree state={state} height={400} toolbar={{ onRefresh: () => undefined }} />);
+    // selectedPath auto-expanded the chain, so the leaf starts on screen.
+    expect(screen.getByText("App.tsx")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all folders" }));
+
+    expect(screen.queryByText("App.tsx")).toBeNull();
+    expect(screen.queryByText("renderer")).toBeNull();
+    expect(screen.getByText("src")).toBeTruthy();
+    expect(screen.getByText("README.md")).toBeTruthy();
+  });
+
+  it("runs the toolbar's refresh action and keeps it off surfaces without one", () => {
+    const entries: WorkspaceFileEntry[] = [{ path: "README.md" }];
+    const refreshList = vi.fn();
+
+    const { rerender } = render(
+      <WorkspaceTree
+        state={{ ...makeState(entries), refreshList }}
+        height={400}
+        toolbar={{ onRefresh: refreshList }}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Refresh file list" }));
+    expect(refreshList).toHaveBeenCalledTimes(1);
+
+    rerender(<WorkspaceTree state={{ ...makeState(entries), refreshList }} height={400} />);
+    expect(screen.queryByRole("button", { name: "Refresh file list" })).toBeNull();
   });
 
   it("auto-expands the ancestors of selectedPath so the row is visible", () => {

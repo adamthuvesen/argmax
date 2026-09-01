@@ -128,27 +128,18 @@ export function computeWorkspaceAttention(
 }
 
 /**
- * Placement tier: what put the row in the section. Attention outranks a live
- * turn — something waiting on you beats something you are only watching — and
- * a manual add, which asks for nothing at all, sits last.
- */
-function tier(entry: PriorityEntry): number {
-  if (entry.attention) return 2;
-  return entry.working ? 1 : 0;
-}
-
-/**
- * Workspaces that need the user right now, most urgent first. `archived` and
- * `kept` workspaces are excluded — keeping is an explicit "I'm done here" —
- * and so is anything quiet for longer than `PRIORITY_IDLE_MS` (or whose last
- * message is of unknown age). A row holds its place while it is working and
- * for `PRIORITY_IDLE_MS` after the last message; opening it changes nothing,
- * and right-click → "Done" is how the user clears it early.
- * Ties within a severity sort oldest-waiting first (triage, not a feed).
+ * Workspaces that need the user right now (active attention, live turns, or
+ * manual adds). `archived` and `kept` workspaces are excluded — keeping is an
+ * explicit "I'm done here" — and so is anything quiet for longer than
+ * `PRIORITY_IDLE_MS` (or whose last message is of unknown age). A row holds its
+ * place while it is working and for `PRIORITY_IDLE_MS` after the last message;
+ * opening it changes nothing, and right-click → "Done" is how the user clears
+ * it early.
  *
- * A workspace with a live turn joins the section too, below every row that
- * wants judgment: an in-flight turn is transient like triage, but it needs
- * watching rather than a decision. It leaves the moment the turn ends.
+ * Sorting:
+ * 1) Working rows are always at the top (sorted by last message descending).
+ * 2) Followed by the remaining priority rows, also sorted by last message in
+ *    descending order.
  *
  * A manual add (`priorityAddedAt`) floats the workspace regardless of
  * attention and never ages out; the backend guarantees add/dismiss are
@@ -189,23 +180,14 @@ export function computePriorityEntries(
   }
 
   entries.sort((a, b) => {
-    const byTier = tier(b) - tier(a);
-    if (byTier !== 0) return byTier;
-    if (a.attention && b.attention) {
-      const bySeverity = severity(b.attention) - severity(a.attention);
-      if (bySeverity !== 0) return bySeverity;
+    // 1) Working is always at the top
+    if (a.working !== b.working) {
+      return a.working ? -1 : 1;
     }
-    if (tier(a) === 1) {
-      // Live turns are a status list, not a queue: newest activity on top.
-      if (a.workspace.lastActivityAt !== b.workspace.lastActivityAt) {
-        return a.workspace.lastActivityAt < b.workspace.lastActivityAt ? 1 : -1;
-      }
-      return a.workspace.id < b.workspace.id ? -1 : 1;
+    // 2) Followed by last message in descending order
+    if (a.workspace.lastActivityAt !== b.workspace.lastActivityAt) {
+      return a.workspace.lastActivityAt < b.workspace.lastActivityAt ? 1 : -1;
     }
-    // Oldest waiting first; manual entries (no stamp) sort by add time.
-    const aChanged = a.attentionChangedAt ?? a.workspace.priorityAddedAt ?? "";
-    const bChanged = b.attentionChangedAt ?? b.workspace.priorityAddedAt ?? "";
-    if (aChanged !== bChanged) return aChanged < bChanged ? -1 : 1;
     return a.workspace.id < b.workspace.id ? -1 : 1;
   });
   return entries;

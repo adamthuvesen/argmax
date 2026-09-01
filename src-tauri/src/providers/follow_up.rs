@@ -5,11 +5,24 @@ use rusqlite::OptionalExtension;
 const FOLLOW_UP_CONTEXT_MAX_MESSAGES: usize = 12;
 const FOLLOW_UP_CONTEXT_MAX_CHARS: usize = 12_000;
 
+/// The prompt a follow-up turn launches with. `native_resume` says the provider
+/// is being handed its own conversation id, which is the difference between
+/// continuing a conversation and rebuilding one.
 pub(super) fn compose_follow_up_prompt(
     connection: &rusqlite::Connection,
     session_id: &str,
     message: &str,
+    native_resume: bool,
 ) -> ArgmaxResult<String> {
+    let handoff = pending_project_handoff(connection, session_id)?;
+    // A native resume replays the provider's own rollout, so the transcript
+    // below would hand it turns it already holds in full — capped at 12
+    // messages and retold in a voice that is not its own. Only the handoff
+    // note survives: no rollout records that the checkout moved.
+    if native_resume {
+        return Ok(handoff_prompt(handoff.as_deref(), message));
+    }
+
     // Child-agent rows are hidden from the visible transcript, so they must
     // not resurface here: Claude child prose carries `parent_tool_use_id`,
     // trace-imported Codex/Cursor rows carry `traceImported`, and live Codex
@@ -22,6 +35,11 @@ pub(super) fn compose_follow_up_prompt(
             WHERE session_id = ?
               AND type IN ('user.message', 'message.completed', 'error')
               AND trim(message) <> ''
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = events.session_id
+                  AND cleared.type = 'session.cleared'
+              ), 0)
               AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
               AND json_extract(payload_json, '$.traceImported') IS NULL
               AND NOT (
@@ -63,12 +81,8 @@ pub(super) fn compose_follow_up_prompt(
         .collect::<Vec<_>>();
     transcript.reverse();
 
-    let handoff = pending_project_handoff(connection, session_id)?;
     if transcript.is_empty() {
-        return Ok(handoff.map_or_else(
-            || message.to_string(),
-            |note| format!("Project handoff:\n{note}\n\nNew user message:\n{message}"),
-        ));
+        return Ok(handoff_prompt(handoff.as_deref(), message));
     }
 
     let mut transcript_chars = transcript.iter().map(|line| line.len()).sum::<usize>()
@@ -86,6 +100,15 @@ pub(super) fn compose_follow_up_prompt(
         transcript.join("\n"),
         message
     ))
+}
+
+/// The prompt when no transcript is carried: the message alone, or the message
+/// behind the one-time project handoff note.
+fn handoff_prompt(handoff: Option<&str>, message: &str) -> String {
+    handoff.map_or_else(
+        || message.to_string(),
+        |note| format!("Project handoff:\n{note}\n\nNew user message:\n{message}"),
+    )
 }
 
 fn pending_project_handoff(
@@ -172,7 +195,7 @@ mod tests {
             .expect("insert event");
         }
 
-        let prompt = compose_follow_up_prompt(&connection, "s1", "next").expect("prompt");
+        let prompt = compose_follow_up_prompt(&connection, "s1", "next", false).expect("prompt");
 
         assert!(!prompt.contains("message 7"));
         assert!(prompt.contains("message 8"));
@@ -200,7 +223,7 @@ mod tests {
             .expect("insert event");
         }
 
-        let prompt = compose_follow_up_prompt(&connection, "s1", "next").expect("prompt");
+        let prompt = compose_follow_up_prompt(&connection, "s1", "next", false).expect("prompt");
 
         assert!(!prompt.contains("large 0"));
         assert!(!prompt.contains("large 1"));
@@ -247,13 +270,63 @@ mod tests {
             .expect("insert event");
         }
 
-        let prompt = compose_follow_up_prompt(&connection, "s1", "next").expect("prompt");
+        let prompt = compose_follow_up_prompt(&connection, "s1", "next", false).expect("prompt");
 
         assert!(prompt.contains("User: real question"));
         assert!(prompt.contains("Assistant: real answer"));
         assert!(!prompt.contains("claude child prose"));
         assert!(!prompt.contains("imported child message"));
         assert!(!prompt.contains("codex child message"));
+    }
+
+    #[test]
+    fn follow_up_prompt_drops_transcript_before_a_clear() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_session(&connection);
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "old-user".to_string(),
+                session_id: "s1".to_string(),
+                r#type: "user.message".to_string(),
+                message: "secret prior turn".to_string(),
+                payload: json!({}),
+                created_at: Some("2026-05-24T10:00:00.000Z".to_string()),
+            },
+        )
+        .expect("old user");
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "old-assistant".to_string(),
+                session_id: "s1".to_string(),
+                r#type: "message.completed".to_string(),
+                message: "secret prior answer".to_string(),
+                payload: json!({}),
+                created_at: Some("2026-05-24T10:00:01.000Z".to_string()),
+            },
+        )
+        .expect("old assistant");
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "clear".to_string(),
+                session_id: "s1".to_string(),
+                r#type: "session.cleared".to_string(),
+                message: "Cleared conversation.".to_string(),
+                payload: json!({}),
+                created_at: Some("2026-05-24T10:00:02.000Z".to_string()),
+            },
+        )
+        .expect("clear");
+
+        let prompt =
+            compose_follow_up_prompt(&connection, "s1", "fresh start", false).expect("prompt");
+
+        assert!(!prompt.contains("secret prior"));
+        assert!(!prompt.contains("Conversation so far:"));
+        assert_eq!(prompt, "fresh start");
     }
 
     #[test]
@@ -279,7 +352,8 @@ mod tests {
         )
         .expect("move event");
 
-        let first = compose_follow_up_prompt(&connection, "s1", "continue").expect("first prompt");
+        let first =
+            compose_follow_up_prompt(&connection, "s1", "continue", false).expect("first prompt");
         assert!(first.contains("Project handoff:"));
         assert!(first.contains("This chat moved from HQ to Argmax."));
         assert!(first.contains("/tmp/argmax"));
@@ -296,8 +370,70 @@ mod tests {
             },
         )
         .expect("destination user message");
-        let later = compose_follow_up_prompt(&connection, "s1", "again").expect("later prompt");
+        let later =
+            compose_follow_up_prompt(&connection, "s1", "again", false).expect("later prompt");
         assert!(!later.contains("Project handoff:"));
+    }
+
+    #[test]
+    fn native_resume_prompt_carries_the_message_alone() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_session(&connection);
+        for (index, (event_type, message)) in [
+            ("user.message", "earlier question"),
+            ("message.completed", "earlier answer"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: format!("event-{index}"),
+                    session_id: "s1".to_string(),
+                    r#type: event_type.to_string(),
+                    message: message.to_string(),
+                    payload: json!({}),
+                    created_at: Some(format!("2026-05-24T10:00:{index:02}.000Z")),
+                },
+            )
+            .expect("insert event");
+        }
+
+        let prompt = compose_follow_up_prompt(&connection, "s1", "next", true).expect("prompt");
+
+        assert_eq!(prompt, "next");
+    }
+
+    #[test]
+    fn native_resume_prompt_still_carries_the_project_handoff() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_session(&connection);
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "move".to_string(),
+                session_id: "s1".to_string(),
+                r#type: "session.moved".to_string(),
+                message: "Moved from HQ to Argmax.".to_string(),
+                payload: json!({
+                    "direction": "destination",
+                    "sourceProjectName": "HQ",
+                    "destinationProjectName": "Argmax",
+                    "destinationPath": "/tmp/argmax",
+                }),
+                created_at: None,
+            },
+        )
+        .expect("move event");
+
+        let prompt = compose_follow_up_prompt(&connection, "s1", "continue", true).expect("prompt");
+
+        assert!(prompt.contains("This chat moved from HQ to Argmax."));
+        assert!(prompt.contains("New user message:\ncontinue"));
+        assert!(!prompt.contains("Conversation so far:"));
     }
 
     fn seed_session(connection: &rusqlite::Connection) {

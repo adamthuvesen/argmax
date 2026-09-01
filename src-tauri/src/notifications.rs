@@ -18,6 +18,7 @@ const CHECK_FAILURE_CAPACITY: usize = 500;
 pub struct NotificationOptions {
     pub title: String,
     pub body: String,
+    pub icon: Option<String>,
 }
 
 pub trait NotificationSink: Send + Sync + 'static {
@@ -48,6 +49,20 @@ impl<S: NotificationSink> NotificationService<S> {
 
     pub fn set_enabled(&self, value: bool) {
         *self.enabled.lock_or_recover("notification enabled") = value;
+    }
+
+    pub fn fire_test(&self) -> ArgmaxResult<()> {
+        if !self.sink.is_supported() {
+            return Err(ArgmaxError::service(
+                "NOTIFICATIONS_UNSUPPORTED",
+                "Desktop notifications are not supported or permission was denied by the system.",
+            ));
+        }
+        self.sink.fire(NotificationOptions {
+            title: "Argmax".to_string(),
+            body: "Desktop notifications are working.".to_string(),
+            icon: Some("icon".to_string()),
+        })
     }
 
     pub fn notify(&self, session: &SessionSummary) -> ArgmaxResult<bool> {
@@ -112,6 +127,7 @@ impl<S: NotificationSink> NotificationService<S> {
                 "{} — open Argmax to queue a follow-up.",
                 session.model_label
             ),
+            icon: Some("icon".to_string()),
         })?;
         Ok(true)
     }
@@ -122,7 +138,7 @@ impl<S: NotificationSink> NotificationService<S> {
             .remove(session_id);
     }
 
-    fn is_enabled(&self) -> bool {
+    pub fn is_enabled(&self) -> bool {
         *self.enabled.lock_or_recover("notification enabled")
     }
 }
@@ -135,6 +151,18 @@ impl<R: Runtime> TauriNotificationSink<R> {
     pub fn new(app: AppHandle<R>) -> Self {
         Self { app }
     }
+
+    pub fn request_permission(&self) -> ArgmaxResult<PermissionState> {
+        self.app
+            .notification()
+            .request_permission()
+            .map_err(|error| {
+                ArgmaxError::service(
+                    "NOTIFICATION_PERMISSION_FAILED",
+                    format!("requesting notification permission failed: {error}"),
+                )
+            })
+    }
 }
 
 impl<R: Runtime> NotificationSink for TauriNotificationSink<R> {
@@ -146,18 +174,23 @@ impl<R: Runtime> NotificationSink for TauriNotificationSink<R> {
     }
 
     fn fire(&self, options: NotificationOptions) -> ArgmaxResult<()> {
-        self.app
+        let mut builder = self
+            .app
             .notification()
             .builder()
             .title(options.title)
-            .body(options.body)
-            .show()
-            .map_err(|error| {
-                ArgmaxError::service(
-                    "NOTIFICATION_FAILED",
-                    format!("notification failed: {error}"),
-                )
-            })
+            .body(options.body);
+        if let Some(icon) = options.icon {
+            builder = builder.icon(icon);
+        } else {
+            builder = builder.icon("icon");
+        }
+        builder.show().map_err(|error| {
+            ArgmaxError::service(
+                "NOTIFICATION_FAILED",
+                format!("notification failed: {error}"),
+            )
+        })
     }
 }
 
@@ -174,6 +207,7 @@ fn build_session_options(session: &SessionSummary) -> NotificationOptions {
         return NotificationOptions {
             title: "Session complete".to_string(),
             body: format!("{} finished — open Argmax to review.", session.model_label),
+            icon: Some("icon".to_string()),
         };
     }
 
@@ -183,6 +217,7 @@ fn build_session_options(session: &SessionSummary) -> NotificationOptions {
             "{} exited with an error. Open Argmax for details.",
             session.model_label
         ),
+        icon: Some("icon".to_string()),
     }
 }
 
@@ -301,6 +336,33 @@ mod tests {
         assert_eq!(fired.len(), 1);
         assert_eq!(fired[0].title, "Session complete");
         assert!(fired[0].body.contains("Haiku 4.5"));
+        assert_eq!(fired[0].icon.as_deref(), Some("icon"));
+    }
+
+    #[test]
+    fn fire_test_sends_notification_with_app_icon() {
+        let sink = Arc::new(StubSink::supported());
+        let service = service_with_focus(true, sink.clone());
+
+        service.fire_test().expect("fire test ok");
+
+        let fired = sink.fired();
+        assert_eq!(fired.len(), 1);
+        assert_eq!(fired[0].title, "Argmax");
+        assert_eq!(fired[0].body, "Desktop notifications are working.");
+        assert_eq!(fired[0].icon.as_deref(), Some("icon"));
+    }
+
+    #[test]
+    fn fire_test_fails_when_unsupported() {
+        let sink = Arc::new(StubSink::supported());
+        sink.supported.store(false, Ordering::SeqCst);
+        let service = service_with_focus(true, sink.clone());
+
+        let error = service.fire_test().expect_err("unsupported error");
+        assert!(error
+            .to_string()
+            .contains("not supported or permission was denied"));
     }
 
     #[test]

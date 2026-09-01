@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { startedAgentName } from "../../test/agentRowName.js";
+import { startedAgentName, toggleAgentDetailsName } from "../../test/agentRowName.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentLaunchList } from "./AgentLaunchList.js";
 
@@ -64,6 +64,16 @@ describe("AgentLaunchList", () => {
     expect(container.querySelector(".working-nest")).toBeNull();
     expect(container.querySelector('.agent-launch-bullet[data-launch-mark="done"]')).not.toBeNull();
     expect(container.querySelector(".lucide-circle-check-big")).toBeNull();
+  });
+
+  it("omits the details toggle when expanding would show nothing", () => {
+    render(<AgentLaunchList tools={[tool()]} />);
+    expect(screen.queryByRole("button", { name: toggleAgentDetailsName("Map the renderer") })).toBeNull();
+  });
+
+  it("keeps the details toggle when the launch produced output", () => {
+    render(<AgentLaunchList tools={[tool({ output: "done" })]} />);
+    expect(screen.getByRole("button", { name: toggleAgentDetailsName("Map the renderer") })).toBeInTheDocument();
   });
 
   it("marks a failed launch with the bullet and the word Failed", () => {

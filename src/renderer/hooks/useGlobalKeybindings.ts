@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
 import { listVisibleSidebarWorkspaceIds } from "../lib/sidebarOrder.js";
-import { isTypingTarget } from "../lib/typingTarget.js";
 import type { MenuCommand } from "../../shared/types.js";
 
 interface GlobalKeybindingArgs {
@@ -27,6 +26,19 @@ interface GlobalKeybindingArgs {
   onCloseFocusedPane?: () => boolean;
 }
 
+function parseDigitShortcut(event: KeyboardEvent): number | null {
+  if (event.isComposing) return null;
+  const parsedKey = parseInt(event.key, 10);
+  if (Number.isFinite(parsedKey) && parsedKey >= 1 && parsedKey <= 9) {
+    return parsedKey;
+  }
+  const match = /^(?:Digit|Numpad)([1-9])$/.exec(event.code);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  return null;
+}
+
 /**
  * Document-level keybinding handler for the app shell.
  *
@@ -41,9 +53,9 @@ interface GlobalKeybindingArgs {
  *   Cmd/Ctrl+Shift+F → same palette, Contents filter (git grep) pre-selected
  *   Cmd/Ctrl+J    → toggle integrated terminal
  *
- * Typing-target guard: text-editing keys stay in contenteditable /
- * textarea / role=textbox. App-level shortcuts that do not edit text
- * (settings, command palette, new session, pane close) run first.
+ * All bindings here are app-level shortcuts (settings, command palette,
+ * session jumping, new session, pane close, cheat sheet, search) that do not
+ * conflict with standard text-editing shortcuts in inputs/textareas.
  */
 export function useGlobalKeybindings({
   onMenuCommand,
@@ -103,15 +115,16 @@ export function useGlobalKeybindings({
         onOpenFilePalette();
         return;
       }
-      if (isTypingTarget(event.target)) return;
-      const digit = parseInt(event.key, 10);
-      if (Number.isFinite(digit) && digit >= 1 && digit <= 9) {
-        const targetWorkspaceId = listVisibleSidebarWorkspaceIds()[digit - 1];
-        if (!targetWorkspaceId) return;
-        event.preventDefault();
-        onCloseSettings();
-        onSelectWorkspace(targetWorkspaceId);
-        return;
+      if (!event.altKey) {
+        const digit = parseDigitShortcut(event);
+        if (digit !== null) {
+          const targetWorkspaceId = listVisibleSidebarWorkspaceIds()[digit - 1];
+          if (!targetWorkspaceId) return;
+          event.preventDefault();
+          onCloseSettings();
+          onSelectWorkspace(targetWorkspaceId);
+          return;
+        }
       }
       if (event.key === "/") {
         event.preventDefault();

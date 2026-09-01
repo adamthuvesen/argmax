@@ -111,6 +111,18 @@ describe("ScheduledTasksPanel", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(/Started/);
   });
 
+  it("titles the page Schedule and does not paint a New task breadcrumb", async () => {
+    routinesStub.list.mockResolvedValue([]);
+    render(<ScheduledTasksPanel projects={[project()]} />);
+
+    expect(await screen.findByRole("heading", { name: "Schedule" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New task" }));
+
+    expect(screen.getByRole("heading", { name: "Schedule" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toBeInTheDocument();
+    expect(screen.queryByText("New task")).not.toBeInTheDocument();
+  });
+
   it("creates a task through the editor with the generated daily cron", async () => {
     routinesStub.list.mockResolvedValue([]);
     render(<ScheduledTasksPanel projects={[project()]} />);

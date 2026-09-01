@@ -678,6 +678,86 @@
   color: color-mix(in oklab, var(--rose) 72%, var(--text));
 }
 
+/* Tracing dumps and stderr `error` events: the same fill as an expanded tool
+   payload, so they read as a report rather than as something the agent said. */
+.log-block {
+  display: flex;
+  flex-direction: column;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  padding: 11px 13px;
+  border-radius: var(--radius-md);
+  background: var(--tool-block-surface);
+}
+
+.log-block-label {
+  margin: 0 0 8px;
+  font-size: var(--text-xs);
+  font-weight: 450;
+  color: color-mix(in oklab, var(--muted) 88%, var(--text-soft) 12%);
+}
+
+.log-block-records {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: calc(16 * 1.65em);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted) 40%, transparent) transparent;
+}
+
+.log-record {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  font-feature-settings: var(--code-font-features);
+  line-height: 1.55;
+  color: color-mix(in oklab, var(--text) 72%, var(--muted-strong) 28%);
+}
+
+.log-record-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55em;
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.log-record-level {
+  font-weight: 500;
+}
+
+.log-record[data-level="error"] .log-record-level,
+.log-record[data-level="error"] .log-record-message {
+  color: color-mix(in oklab, var(--rose) 72%, var(--text));
+}
+
+.log-record[data-level="warn"] .log-record-level {
+  color: var(--amber);
+}
+
+.log-record-message {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .tool-call-agent-activity {
   min-width: 0;
 }
@@ -849,12 +929,16 @@
   text-align: left;
   border: 0;
   background: transparent;
-  cursor: pointer;
+  cursor: default;
   font-family: inherit;
   font-size: var(--text-sm);
   line-height: 1.4;
   color: var(--muted);
   transition: color var(--duration-fast) var(--ease);
+}
+
+button.tool-call-row-button {
+  cursor: pointer;
 }
 
 .tool-call-row-button:hover {

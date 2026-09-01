@@ -87,8 +87,17 @@ export function modelDefaultForProvider(provider: ProviderId): ProviderModelSele
 }
 
 /** Fallback provider order when the seeded launch model isn't installed or
- *  authenticated: Claude first, then Codex, then Cursor, then OpenCode. */
-export const PROVIDER_LAUNCH_PRIORITY: ProviderId[] = ["claude", "codex", "cursor", "opencode"];
+ *  authenticated: Claude first, then Codex, Cursor, OpenCode, Grok Build.
+ *  Must list every ProviderId — a provider missing here is invisible to the
+ *  launcher even when it is the only one installed, and the array type won't
+ *  catch the omission (see the exhaustiveness test in models.test.ts). */
+export const PROVIDER_LAUNCH_PRIORITY: ProviderId[] = [
+  "claude",
+  "codex",
+  "cursor",
+  "opencode",
+  "grok"
+];
 
 /** Last-resort launcher pick when no provider CLI is installed. OpenCode Zen
  *  Big Pickle, not the OpenCode Go default. */

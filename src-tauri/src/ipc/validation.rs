@@ -20,6 +20,7 @@ pub enum ProviderId {
     Codex,
     Cursor,
     Opencode,
+    Grok,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]

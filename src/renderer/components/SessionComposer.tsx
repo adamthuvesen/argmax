@@ -1,8 +1,14 @@
 import {
-  CornerDownRight,
+  Bot,
+  CornerDownLeft,
+  Eraser,
+  FileDiff,
   Folder,
+  FolderOpen,
   GitBranch,
+  ListChecks,
   MoreHorizontal,
+  Paperclip,
   Play,
   Plus,
   Send,
@@ -32,6 +38,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
+import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useComposerDraft } from "../hooks/useComposerDraft.js";
@@ -53,6 +60,7 @@ import {
   AGENT_MODE_LABELS,
   toggleAgentMode
 } from "../lib/agentMode.js";
+import { isClearCommand, type ComposerCommand } from "../lib/composerCommands.js";
 import { clearDraft } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
@@ -63,7 +71,7 @@ import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import { LaunchModelSelector, ModelSelector } from "./ModelSelector.js";
 import { ProviderSwitchDialog } from "./ProviderSwitchDialog.js";
-import { SkillPopover } from "./SkillPopover.js";
+import { SlashCommandMenu } from "./SlashCommandMenu.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
 
 const PROMPT_MAX_HEIGHT_PX = 168;
@@ -108,6 +116,7 @@ export function SessionComposer({
   onSendSessionInput,
   onStartNewSession,
   onTerminateSession,
+  onClearSession,
   pendingAnnotations = [],
   onRemoveAnnotation,
   onClearAnnotations,
@@ -145,7 +154,8 @@ export function SessionComposer({
   /** Offered by the provider-switch dialog as the recommended alternative:
       opens the launcher with the picked model and this composer's draft. */
   onStartNewSession?: (seed: NewSessionSeed) => void;
-  onTerminateSession: (sessionId: string) => Promise<void>;
+  onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
+  onClearSession: (sessionId: string) => Promise<void>;
   /** Transcript excerpts attached via the selection toolbar; serialized into
       the prompt at send time and cleared through `onClearAnnotations`. */
   pendingAnnotations?: ComposerAnnotation[];
@@ -166,10 +176,10 @@ export function SessionComposer({
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
+  const [isSending, setIsSending] = useState(false);
   // Unsent text belongs to the session, not to this component: it survives
   // switching to another session and comes back when this one does.
-  const [input, setInput] = useComposerDraft(sessionId);
-  const [isSending, setIsSending] = useState(false);
+  const [input, setInput] = useComposerDraft(sessionId, { persist: !isSending });
   const [sendingQueuedMessageId, setSendingQueuedMessageId] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
@@ -216,16 +226,93 @@ export function SessionComposer({
     draftKey: sessionId,
     workspacePath: workspace?.path ?? null,
     setInput,
+    persist: !isSending,
     // The attachments hook only ever reports failures (string status contract,
     // shared with LaunchSurface); lift them into the error kind here.
     setStatus: (message) => setStatus(message === null ? null : { kind: "error", message })
   });
 
+  const toggleMode = useCallback((): void => {
+    setAgentMode((mode) => toggleAgentMode(mode));
+  }, [setAgentMode]);
+
+  // Composer actions offered above the skills in the `/` menu. Every entry is
+  // a control that already exists in this toolbar — the menu is a keyboard
+  // route to them, not a second set of features. Entries that would be a
+  // no-op right now (no changes to review, nothing running) are left out
+  // rather than shown disabled: a menu you can only reach by typing should
+  // never answer with a dead row.
+  const nextMode = toggleAgentMode(agentMode);
+  const composerCommands = useMemo<ComposerCommand[]>(() => {
+    const commands: ComposerCommand[] = [
+      {
+        name: nextMode,
+        label: AGENT_MODE_LABELS[nextMode],
+        hint:
+          nextMode === "plan"
+            ? "Draft a plan before touching anything"
+            : "Work and approve each step",
+        icon: nextMode === "plan" ? ListChecks : Bot,
+        run: toggleMode
+      }
+    ];
+    if (session?.state === "running") {
+      commands.push({
+        name: "stop",
+        label: "Stop",
+        hint: "Stop the agent mid-turn",
+        icon: Square,
+        run: () => void onTerminateSession(session.id)
+      });
+    }
+    if (session) {
+      commands.push({
+        name: "clear",
+        label: "Clear",
+        hint: "Start a fresh conversation here",
+        icon: Eraser,
+        run: () => void onClearSession(session.id).catch(() => undefined)
+      });
+    }
+    commands.push({
+      name: "attach",
+      label: "Attach file",
+      hint: "Add an image or file to the prompt",
+      icon: Paperclip,
+      run: openFilePicker
+    });
+    if (changeSummary) {
+      commands.push({
+        name: "changes",
+        label: "Changes",
+        hint: `Open ${changeSummary.fileCount} changed ${
+          changeSummary.fileCount === 1 ? "file" : "files"
+        } in review`,
+        icon: FileDiff,
+        run: changeSummary.onOpen
+      });
+    }
+    if (workspace && workspace.kind === "git" && !workspace.sharedWorkspace) {
+      commands.push({
+        name: "worktree",
+        label: "Worktree",
+        hint: "Open the worktree folder",
+        icon: FolderOpen,
+        run: () => {
+          void window.argmax?.system.openPath({ path: workspace.path }).catch(() => undefined);
+        }
+      });
+    }
+    return commands;
+  }, [changeSummary, nextMode, onClearSession, onTerminateSession, openFilePicker, session, toggleMode, workspace]);
+
   const slashAutocomplete = useSlashAutocomplete({
     input,
     setInput,
     provider: session?.provider ?? null,
-    workspaceId: workspace?.id ?? null
+    workspaceId: workspace?.id ?? null,
+    commands: composerCommands,
+    inputRef
   });
 
   const fileAutocomplete = useFileAutocomplete({
@@ -268,10 +355,6 @@ export function SessionComposer({
     setWorkspaceDetailsOpen(false)
   );
 
-  const toggleMode = useCallback((): void => {
-    setAgentMode((mode) => toggleAgentMode(mode));
-  }, [setAgentMode]);
-
   useEffect(() => {
     if (!shouldRefocusInput.current || isSending || !canSend) {
       return;
@@ -302,8 +385,16 @@ export function SessionComposer({
       !event.altKey &&
       !event.nativeEvent.isComposing
     ) {
+      // Tab belongs to the suggested follow-up: it drops the placeholder into
+      // the draft so Enter sends it. Mode moved to Shift+Tab. Both swallow the
+      // keypress either way — Tab out of the composer would lose the draft's
+      // focus mid-thought.
       event.preventDefault();
-      toggleMode();
+      if (event.shiftKey) {
+        toggleMode();
+      } else if (followUpSuggestion && input.length === 0) {
+        setInput(followUpSuggestion);
+      }
       return;
     }
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -319,8 +410,8 @@ export function SessionComposer({
 
   /**
    * Build the prompt from the draft plus attachments and hand it to `deliver`.
-   * The draft is only cleared once delivery resolves, so a failed send leaves
-   * the text in place for a retry.
+   * Storage is dropped as soon as send starts so a remount cannot restore it.
+   * The on-screen text stays until delivery resolves, so a failed send can retry.
    */
   const deliverDraft = async (
     deliver: (
@@ -334,6 +425,27 @@ export function SessionComposer({
       return;
     }
 
+    if (isClearCommand(trimmedInput)) {
+      setIsSending(true);
+      setStatus(null);
+      shouldRefocusInput.current = true;
+      clearDraft(session.id);
+      try {
+        await onClearSession(session.id);
+        setInput("");
+        clearAttachments();
+        onClearAnnotations?.();
+      } catch (error) {
+        setStatus({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not clear the conversation."
+        });
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
     const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
     const withRefs = refs.length > 0 ? appendReferencesToPrompt(trimmedInput, refs) : trimmedInput;
     const withAnnotations = prependAnnotationsToPrompt(withRefs, pendingAnnotations);
@@ -342,9 +454,9 @@ export function SessionComposer({
     setIsSending(true);
     setStatus(null);
     shouldRefocusInput.current = true;
+    clearDraft(session.id);
     try {
       await deliver(session.id, prompt, pendingAttachments.length > 0 ? pendingAttachments : undefined);
-      clearDraft(session.id);
       setInput("");
       clearAttachments();
       onClearAnnotations?.();
@@ -369,7 +481,7 @@ export function SessionComposer({
 
   return (
     <form
-      className="session-input"
+      className="session-composer-stack"
       // The agent window carries its own type scale (Settings → chat font
       // size), which is about reading the transcript. The composer is chrome —
       // model chip, repo, branch, changed files — so it holds the composer
@@ -389,6 +501,80 @@ export function SessionComposer({
         tabIndex={-1}
         onChange={onAttachmentInputChange}
       />
+      {pendingMessages.length > 0 ? (
+        <div className="composer-queued-lane" role="list" aria-label="Queued follow-ups">
+          {pendingMessages.map((entry) => {
+            const cancel = (): void => {
+              if (!session || !onCancelQueuedMessage) return;
+              void onCancelQueuedMessage(session.id, entry.id).catch(() => undefined);
+            };
+            const sendQueuedNow = async (): Promise<void> => {
+              if (!session || !onSendQueuedMessageNow || sendingQueuedMessageId) return;
+              setSendingQueuedMessageId(entry.id);
+              setStatus(null);
+              try {
+                await onSendQueuedMessageNow(session.id, entry.id);
+              } catch (error) {
+                setStatus({
+                  kind: "error",
+                  message:
+                    error instanceof Error ? error.message : "Could not send queued follow-up."
+                });
+              } finally {
+                setSendingQueuedMessageId(null);
+              }
+            };
+            return (
+              <div
+                key={entry.id}
+                className="composer-queued-chip"
+                role="listitem"
+                tabIndex={0}
+                title={entry.content}
+                aria-label={`Queued follow-up: ${entry.content}`}
+                onKeyDown={(event) => {
+                  if (
+                    sendingQueuedMessageId === null &&
+                    (event.key === "Backspace" || event.key === "Delete")
+                  ) {
+                    event.preventDefault();
+                    cancel();
+                  }
+                }}
+              >
+                <CornerDownLeft
+                  className="composer-queued-chip-icon"
+                  size={14}
+                  aria-hidden="true"
+                />
+                <span className="composer-queued-chip-label">{entry.content}</span>
+                <button
+                  type="button"
+                  className="composer-queued-chip-action"
+                  aria-label={`Send queued follow-up now: ${entry.content}`}
+                  title="Send now, interrupting the current turn"
+                  disabled={sendingQueuedMessageId !== null}
+                  onClick={() => void sendQueuedNow()}
+                >
+                  <Send size={13} aria-hidden="true" />
+                  <span>Send now</span>
+                </button>
+                <button
+                  type="button"
+                  className="composer-queued-chip-remove"
+                  aria-label="Cancel queued follow-up"
+                  title="Cancel queued follow-up"
+                  disabled={sendingQueuedMessageId !== null}
+                  onClick={cancel}
+                >
+                  <Trash2 size={13} aria-hidden="true" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      <div className="session-input">
       {pendingAnnotations.length > 0 || openFilesAttached ? (
         <div className="composer-annotations" role="list" aria-label="Annotations">
           {openFilesAttached ? (
@@ -458,80 +644,6 @@ export function SessionComposer({
           ))}
         </div>
       ) : null}
-      {pendingMessages.length > 0 ? (
-        <div className="composer-queued-lane" role="list" aria-label="Queued follow-ups">
-          {pendingMessages.map((entry) => {
-            const cancel = (): void => {
-              if (!session || !onCancelQueuedMessage) return;
-              void onCancelQueuedMessage(session.id, entry.id).catch(() => undefined);
-            };
-            const sendQueuedNow = async (): Promise<void> => {
-              if (!session || !onSendQueuedMessageNow || sendingQueuedMessageId) return;
-              setSendingQueuedMessageId(entry.id);
-              setStatus(null);
-              try {
-                await onSendQueuedMessageNow(session.id, entry.id);
-              } catch (error) {
-                setStatus({
-                  kind: "error",
-                  message:
-                    error instanceof Error ? error.message : "Could not send queued follow-up."
-                });
-              } finally {
-                setSendingQueuedMessageId(null);
-              }
-            };
-            return (
-              <div
-                key={entry.id}
-                className="composer-queued-chip"
-                role="listitem"
-                tabIndex={0}
-                title={entry.content}
-                aria-label={`Queued follow-up: ${entry.content}`}
-                onKeyDown={(event) => {
-                  if (
-                    sendingQueuedMessageId === null &&
-                    (event.key === "Backspace" || event.key === "Delete")
-                  ) {
-                    event.preventDefault();
-                    cancel();
-                  }
-                }}
-              >
-                <CornerDownRight
-                  className="composer-queued-chip-icon"
-                  size={14}
-                  aria-hidden="true"
-                />
-                <span className="composer-queued-chip-label">{entry.content}</span>
-                <span className="composer-queued-chip-state">Queued</span>
-                <button
-                  type="button"
-                  className="composer-queued-chip-action"
-                  aria-label={`Send queued follow-up now: ${entry.content}`}
-                  title="Send now, interrupting the current turn"
-                  disabled={sendingQueuedMessageId !== null}
-                  onClick={() => void sendQueuedNow()}
-                >
-                  <Send size={13} aria-hidden="true" />
-                  <span>Send now</span>
-                </button>
-                <button
-                  type="button"
-                  className="composer-queued-chip-remove"
-                  aria-label="Cancel queued follow-up"
-                  title="Cancel queued follow-up"
-                  disabled={sendingQueuedMessageId !== null}
-                  onClick={cancel}
-                >
-                  <Trash2 size={13} aria-hidden="true" />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
       <div className="session-input-field">
         {skillHighlight ? (
           <div className="composer-highlight-backdrop" aria-hidden="true" ref={highlightBackdropRef}>
@@ -553,7 +665,7 @@ export function SessionComposer({
           aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
           aria-controls={
             slashAutocomplete.popoverOpen
-              ? "skill-popover"
+              ? "slash-menu"
               : fileAutocomplete.popoverOpen
                 ? "file-popover"
                 : undefined
@@ -579,7 +691,7 @@ export function SessionComposer({
           value={input}
           rows={1}
         />
-        <SkillPopover state={slashAutocomplete} inputRef={inputRef} />
+        <SlashCommandMenu state={slashAutocomplete} />
         <FilePopover state={fileAutocomplete} inputRef={inputRef} />
       </div>
       <div className="session-input-toolbar">
@@ -732,14 +844,14 @@ export function SessionComposer({
         {session && agentMode !== "auto" ? (
           // Auto is the default, so naming it on every turn tells the user
           // nothing. Plan changes what the next send does, so it shows — and
-          // the chip is then how you get back out. Tab toggles either way.
+          // the chip is then how you get back out. Shift+Tab toggles either way.
           <div className="composer-chips-group composer-chips-mode">
             <button
               type="button"
               className="composer-context-chip agent-mode-toggle"
               aria-label="Agent mode"
               aria-pressed
-              title="Toggle agent mode (Tab)"
+              title="Toggle agent mode (Shift+Tab)"
               disabled={!canSend || isSending}
               onClick={toggleMode}
             >
@@ -778,6 +890,7 @@ export function SessionComposer({
             </button>
           );
         })()}
+      </div>
       </div>
       {status ? (
         // Keyed on kind so a role swap remounts the live region — screen

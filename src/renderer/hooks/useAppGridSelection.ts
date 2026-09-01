@@ -160,7 +160,13 @@ export function useAppGridSelection({
                     candidateCell.sessionId === cell.parentSessionId
                 )
               );
-              if (!parentSessionIsVisible || !parentSession || !workspacesById.has(cell.workspaceId)) {
+              const workspace = workspacesById.get(cell.workspaceId);
+              if (
+                !parentSessionIsVisible ||
+                !parentSession ||
+                !workspace ||
+                workspace.state === "archived"
+              ) {
                 mutated = true;
                 continue;
               }
@@ -206,7 +212,8 @@ export function useAppGridSelection({
               next.push(cell);
               continue;
             }
-            if (sessionsById.has(cell.sessionId) && workspacesById.has(cell.workspaceId)) {
+            const workspace = workspacesById.get(cell.workspaceId);
+            if (sessionsById.has(cell.sessionId) && workspace && workspace.state !== "archived") {
               next.push(cell);
             } else {
               mutated = true;
@@ -262,7 +269,7 @@ export function useAppGridSelection({
   const openWorkspaceChat = useCallback(
     (workspaceId: string, modifiers: WorkspaceClickModifiers = { ctrlOrMeta: false, alt: false }): void => {
       const workspace = workspacesById.get(workspaceId);
-      if (!workspace) return;
+      if (!workspace || workspace.state === "archived") return;
       const sessionForWorkspace = snapshot.sessions.find((s) => s.workspaceId === workspaceId);
       if (!sessionForWorkspace) {
         showErrorToast("This session isn't loaded — try refreshing the dashboard.");
@@ -333,7 +340,7 @@ export function useAppGridSelection({
   const handleDropWorkspace = useCallback(
     (workspaceId: string, target: GridCoord & { position: SplitPosition }): void => {
       const workspace = workspacesById.get(workspaceId);
-      if (!workspace) return;
+      if (!workspace || workspace.state === "archived") return;
       const sessionForWorkspace = snapshot.sessions.find((s) => s.workspaceId === workspaceId);
       if (!sessionForWorkspace) {
         showErrorToast("This session isn't loaded — try refreshing the dashboard.");

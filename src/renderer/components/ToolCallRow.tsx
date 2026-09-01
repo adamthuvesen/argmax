@@ -10,7 +10,7 @@ import {
 } from "../lib/toolCalls.js";
 import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
-import { ToolCallDetail } from "./ToolCallDetail.js";
+import { ToolCallDetail, toolCallHasExpandableDetail } from "./ToolCallDetail.js";
 import { WorkingNest } from "./WorkingNest.js";
 
 function verbForChanges(changes: FileChange[]): string | null {
@@ -89,41 +89,40 @@ function ToolCallRowInner({
   const verb = overrideVerb ?? baseSplit.verb;
   const target = baseSplit.rest;
   const toolTypeBucket = getToolTypeBucket(tool.name);
-  const expanded = localExpanded ?? (autoExpandedOnError || (defaultExpanded ?? false));
+  const hasLeadingContent = Boolean(childTools && childTools.length > 0);
+  const hasDetail = toolCallHasExpandableDetail(tool, { hasLeadingContent });
+  const expanded =
+    hasDetail && (localExpanded ?? (autoExpandedOnError || (defaultExpanded ?? false)));
   const opensAgentPane = toolTypeBucket === "agent" && onOpenAgent !== undefined;
   const toggleExpanded = (): void => {
+    if (!hasDetail) return;
     setUserToggle({ value: !expanded, defaultExpanded });
   };
-  const childToolRows = childTools && childTools.length > 0 ? (
-    <div className="tool-call-section tool-call-agent-activity">
-      <div className="tool-call-agent-child-list">
-        {childTools.map((child) => (
-          <ToolCallRow
-            key={child.id}
-            tool={child}
-            defaultExpanded={false}
-            workspaceCwd={workspaceCwd ?? null}
-            onOpenFile={onOpenFile}
-            onOpenAgent={onOpenAgent}
-          />
-        ))}
+  const childToolRows =
+    childTools && childTools.length > 0 ? (
+      <div className="tool-call-section tool-call-agent-activity">
+        <div className="tool-call-agent-child-list">
+          {childTools.map((child) => (
+            <ToolCallRow
+              key={child.id}
+              tool={child}
+              defaultExpanded={false}
+              workspaceCwd={workspaceCwd ?? null}
+              onOpenFile={onOpenFile}
+              onOpenAgent={onOpenAgent}
+            />
+          ))}
+        </div>
       </div>
-    </div>
-  ) : null;
-  const rowButton = (
-    <button
-      className="tool-call-row-button"
-      type="button"
-      {...(!opensAgentPane ? { "aria-expanded": expanded } : {})}
-      aria-label={action}
-      onClick={opensAgentPane ? () => onOpenAgent(tool) : toggleExpanded}
-    >
+    ) : null;
+  const rowContent = (
+    <>
       <span className="tool-call-row-verb">{verb}</span>
       {target ? (
         <span className="tool-call-row-target">{shortenPathsInText(target)}</span>
       ) : null}
       {counts ? <ActivityStat counts={counts} /> : null}
-      {opensAgentPane ? null : (
+      {opensAgentPane || !hasDetail ? null : (
         <ChevronRight size={11} className="tool-call-row-chevron" aria-hidden="true" />
       )}
       {tool.status === "running" ? (
@@ -131,7 +130,29 @@ function ToolCallRowInner({
           <WorkingNest active size={13} />
         </span>
       ) : null}
+    </>
+  );
+  const rowButton = opensAgentPane ? (
+    <button
+      className="tool-call-row-button"
+      type="button"
+      aria-label={action}
+      onClick={() => onOpenAgent(tool)}
+    >
+      {rowContent}
     </button>
+  ) : hasDetail ? (
+    <button
+      className="tool-call-row-button"
+      type="button"
+      aria-expanded={expanded}
+      aria-label={action}
+      onClick={toggleExpanded}
+    >
+      {rowContent}
+    </button>
+  ) : (
+    <div className="tool-call-row-button">{rowContent}</div>
   );
 
   return (
@@ -139,18 +160,22 @@ function ToolCallRowInner({
       {opensAgentPane ? (
         <div className="tool-call-row-main">
           {rowButton}
-          <button
-            className="tool-call-row-disclosure"
-            type="button"
-            aria-expanded={expanded}
-            aria-label={`Toggle details for ${action}`}
-            title="Toggle details"
-            onClick={toggleExpanded}
-          >
-            <ChevronRight size={14} aria-hidden="true" />
-          </button>
+          {hasDetail ? (
+            <button
+              className="tool-call-row-disclosure"
+              type="button"
+              aria-expanded={expanded}
+              aria-label={`Toggle details for ${action}`}
+              title="Toggle details"
+              onClick={toggleExpanded}
+            >
+              <ChevronRight size={14} aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
-      ) : rowButton}
+      ) : (
+        rowButton
+      )}
       {expanded ? (
         <ToolCallDetail
           tool={tool}

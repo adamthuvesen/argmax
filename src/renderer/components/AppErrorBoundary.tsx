@@ -3,13 +3,14 @@ import { logger } from "../../shared/logger.js";
 
 interface State {
   error: Error | null;
+  componentStack: string | null;
 }
 
 export class AppErrorBoundary extends Component<{ children: ReactNode }, State> {
-  state: State = { error: null };
+  state: State = { error: null, componentStack: null };
 
   static getDerivedStateFromError(error: Error): State {
-    return { error };
+    return { error, componentStack: null };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
@@ -17,6 +18,12 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
       error: error.message,
       stack: info.componentStack ?? null
     });
+    // The log buffer is in-memory and reachable only from the desktop debug
+    // panel, so on a paired phone the boundary itself is the only place the
+    // crash is ever readable. Without the component stack, a message like
+    // "undefined is not an object" names no file and the report cannot be
+    // acted on.
+    this.setState({ componentStack: info.componentStack ?? null });
   }
 
   private handleReload = (): void => {
@@ -44,6 +51,12 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
         <h1>Argmax hit an unexpected error.</h1>
         <p>Your session state is safe — it was persisted before the error.</p>
         <pre className="error-boundary-message">{this.state.error.message}</pre>
+        {this.state.componentStack ? (
+          <details className="error-boundary-details">
+            <summary>Where it happened</summary>
+            <pre className="error-boundary-message">{this.state.componentStack.trim()}</pre>
+          </details>
+        ) : null}
         <div className="error-boundary-actions">
           <button type="button" onClick={this.handleReload}>
             Reload renderer

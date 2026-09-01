@@ -63,10 +63,6 @@ function isToolRunning(item: TurnToolItem): boolean {
 }
 
 
-// Tool calls are NEVER removed when a turn is "collapsed". Collapsing folds
-// each tool group to its header (the group's own `defaultExpanded`, driven by
-// the parent), so the work the agent did stays in the chat.
-
 export function TurnBlock({
   toolItems,
   assistantTimestamps,
@@ -75,6 +71,7 @@ export function TurnBlock({
   isTurnActive,
   toolsExpanded,
   onToggleTools,
+  hideWorkingWhenCollapsed,
   headerTimestampIso,
   turnMarkdown,
   changes,
@@ -95,9 +92,12 @@ export function TurnBlock({
   // Whether this turn's tool groups are expanded. Owned by the parent (which
   // builds the tool nodes) so the chip and the per-group toggles share one
   // source of truth; the chip reflects it and flips it via `onToggleTools`.
-  // Collapsing only folds groups to their headers — tools are never removed.
+  // Collapsing usually folds groups to their headers. In minimal verbosity
+  // (`hideWorkingWhenCollapsed`) a finished turn hides the working rows
+  // entirely, leaving the chip and the answer.
   toolsExpanded?: boolean;
   onToggleTools?: () => void;
+  hideWorkingWhenCollapsed?: boolean;
   // The canonical timestamp shown in the turn header (typically the earliest
   // assistant event in the turn). Per-paragraph timestamps inside the body
   // are visually suppressed once a turn-level one is available.
@@ -128,8 +128,13 @@ export function TurnBlock({
 
   // Tool-group expansion is owned by the parent (it builds the tool nodes), so
   // the chip and the per-group chevrons stay in sync. The chip just reflects it
-  // and flips it; collapsing folds groups to their headers — never removes them.
+  // and flips it. Collapsing folds groups to their headers, except in minimal
+  // verbosity where a finished turn drops the working rows from the body.
   const toolsAreExpanded = toolsExpanded ?? true;
+  const visibleBody =
+    hideWorkingWhenCollapsed && !running && !toolsAreExpanded
+      ? body.filter((child) => child.kind !== "tool")
+      : body;
 
   const elapsedLabel = formatElapsedSeconds(elapsedMs);
   const staticChipLabel = running ? "Working" : elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked";
@@ -232,12 +237,14 @@ export function TurnBlock({
           <span className="turn-block-chip turn-block-chip-static">{staticChipLabel}</span>
         ) : null}
       </div>
-      <div
-        className="turn-block-body"
-        data-just-revealed={justRevealed ? "true" : undefined}
-      >
-        {groupToolRuns(body)}
-      </div>
+      {visibleBody.length > 0 ? (
+        <div
+          className="turn-block-body"
+          data-just-revealed={justRevealed ? "true" : undefined}
+        >
+          {groupToolRuns(visibleBody)}
+        </div>
+      ) : null}
       {!running ? changes ?? null : null}
       {!running && (turnMarkdown || onFork) ? (
         <TurnFooter {...(turnMarkdown ? { turnMarkdown } : {})} {...(onFork ? { onFork } : {})} />

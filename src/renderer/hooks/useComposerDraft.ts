@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { readDraft, writeDraftText } from "../lib/composerDrafts.js";
+import { clearDraft, readDraft, writeDraftText } from "../lib/composerDrafts.js";
 
 /**
  * Composer text for one draft key, as `useState` with a memory.
@@ -7,19 +7,26 @@ import { readDraft, writeDraftText } from "../lib/composerDrafts.js";
  * Unsent text belongs to what it targets: a session for the session
  * composer or a project for the new-session launcher. It outlives the
  * composer: switching panes remounts the component, and the draft comes back
- * when the target does, across an app restart too. Sending clears the text,
- * which drops the stored draft with it. Pasted screenshots ride along in the
- * same entry. See `useComposerAttachments`.
+ * when the target does, across an app restart too. Sending drops the stored
+ * entry immediately (see `persist`) and clears the on-screen text once
+ * delivery finishes. Pasted screenshots ride along in the same entry.
+ * See `useComposerAttachments`.
  *
  * `carryTextOnRetarget` is for composers the user retargets mid-sentence — the
  * launcher's project picker. There the typed text is aimed at whatever repo is
  * selected when they hit send, so it moves to the new target instead of being
  * left behind — even over a stale draft stored on that target, which it
  * replaces.
+ *
+ * `persist` is the send lock. A submit keeps the text on screen (so a slow
+ * worktree setup still shows what was sent) but must not keep it in storage:
+ * launching unmounts the composer, and the next NEW CHAT remounts from the
+ * stored entry. Flip this off as soon as send starts. A failed send turns it
+ * back on and the write effect restores the entry from the still-held text.
  */
 export function useComposerDraft(
   key: string | null,
-  { carryTextOnRetarget = false }: { carryTextOnRetarget?: boolean } = {}
+  { carryTextOnRetarget = false, persist = true }: { carryTextOnRetarget?: boolean; persist?: boolean } = {}
 ): [string, Dispatch<SetStateAction<string>>, boolean] {
   const [draft, setDraft] = useState(() => readDraft(key).text);
 
@@ -49,12 +56,16 @@ export function useComposerDraft(
   useEffect(() => {
     // Text only here; `useComposerAttachments` clears the same key's images on
     // the same carry, so the source draft ends up empty rather than half-moved.
+    if (!persist) {
+      if (key) clearDraft(key);
+      return;
+    }
     if (movedFrom.current) {
       writeDraftText(movedFrom.current, "");
       movedFrom.current = null;
     }
     if (key) writeDraftText(key, draft);
-  }, [key, draft]);
+  }, [key, draft, persist]);
 
   return [draft, setDraft, carriedOnRetarget];
 }

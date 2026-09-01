@@ -282,6 +282,37 @@ pub fn upgrade_trace_no_output_completion(
     Ok(rows > 0)
 }
 
+pub fn find_event_by_id(
+    connection: &Connection,
+    event_id: &str,
+) -> ArgmaxResult<Option<TimelineEvent>> {
+    let mut statement = connection
+        .prepare_cached("SELECT rowid AS row_cursor, * FROM events WHERE id = ?")
+        .map_err(sqlite_error)?;
+    statement
+        .query_row((event_id,), event_row_to_timeline_event)
+        .optional()
+        .map_err(sqlite_error)
+}
+
+/// Replace one event's payload, keeping its rowid so cursors and timeline
+/// ordering are untouched. Used when Argmax learns something about an event
+/// after the fact — the measured diff for a file write the provider reported
+/// without one.
+pub fn update_event_payload(
+    connection: &Connection,
+    event_id: &str,
+    payload: &Value,
+) -> ArgmaxResult<bool> {
+    let payload_json = serde_json::to_string(payload).map_err(json_error)?;
+    let rows = connection
+        .prepare_cached("UPDATE events SET payload_json = ? WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute((payload_json.as_str(), event_id))
+        .map_err(sqlite_error)?;
+    Ok(rows > 0)
+}
+
 /// Every tool boundary row of a session, oldest first. The subagent trace
 /// reconciler reads them to learn which child threads already carry a launch
 /// row and which tool ids are taken.
@@ -505,6 +536,11 @@ pub fn latest_agent_message(
             WHERE session_id = ?
               AND type = 'message.completed'
               AND trim(message) <> ''
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = events.session_id
+                  AND cleared.type = 'session.cleared'
+              ), 0)
               AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
               AND json_extract(payload_json, '$.traceImported') IS NULL
               AND NOT (

@@ -37,11 +37,11 @@ export function ProviderSwitchDialog({
 
   // The composer raises this dialog, but the decision is about the whole
   // session, so the overlay covers the pane. `.provider-switch-overlay` is
-  // `position: absolute; inset: 0` against `.conversation-surface` — and
-  // `.session-input` around the composer is itself `position: relative`, so
-  // rendered in place the overlay would size to the composer box and the dialog
-  // would sit over the input rather than centred in the pane. Portal it up to
-  // the surface the stylesheet is written against.
+  // `position: absolute; inset: 0` against `.conversation-surface`. The
+  // `.session-composer-stack` around the composer is itself `position: relative`,
+  // so rendered in place the overlay would size to the composer box and the
+  // dialog would sit over the input rather than centred in the pane. Portal it
+  // up to the surface the stylesheet is written against.
   // `undefined` until the probe has looked; `null` when this host has no pane
   // to portal into, which falls back to rendering in place rather than
   // swallowing the dialog.

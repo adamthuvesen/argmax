@@ -33,6 +33,7 @@ import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { CHAT_PANE_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
 import { lastTurnEditedPaths } from "../lib/lastTurnFiles.js";
+import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
@@ -45,7 +46,7 @@ import {
 } from "../lib/terminalTabs.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { CommitDialog } from "./CommitDialog.js";
-import { DebugLogPanel } from "./DebugLogPanel.js";
+import { DebugPanel } from "./debug/DebugPanel.js";
 // ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
 // chunk shared with the LaunchSurface call site.
 const ReviewPanel = lazy(async () => ({
@@ -100,6 +101,7 @@ export function SessionPane({
   onOpenAgent,
   pendingMessages,
   onTerminateSession,
+  onClearSession,
   onForkSession,
   project,
   rawOutputs,
@@ -151,7 +153,8 @@ export function SessionPane({
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
-  onTerminateSession: (sessionId: string) => Promise<void>;
+  onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
+  onClearSession: (sessionId: string) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
@@ -577,6 +580,7 @@ export function SessionPane({
           onSendQueuedMessageNow={onSendQueuedMessageNow}
           pendingMessages={sessionId ? (pendingMessages?.[sessionId] ?? []) : []}
           onTerminateSession={onTerminateSession}
+          onClearSession={onClearSession}
           onForkSession={onForkSession}
           onRunCheck={onRunCheck}
           onOpenFile={handleOpenFile}
@@ -688,9 +692,11 @@ export function SessionPane({
         />
       ) : null}
       {isLogOpen ? (
-        <DebugLogPanel
+        <DebugPanel
           events={visibleEvents}
           rawOutputs={visibleRawOutputs}
+          session={session}
+          workspace={workspace}
           onClose={() => setIsLogOpen(false)}
           onResizePanelMouseDown={reviewState.isPanelOpen ? undefined : onLogPanelResizeMouseDown}
         />

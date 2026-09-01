@@ -238,9 +238,16 @@ fn launch_structured_via_pty(
     // i.e., the "no chat until Stop" symptom. A PTY makes `isatty(stdout)`
     // true so each JSON line flushes as it is written.
     //
-    // ECHO is disabled on the slave so the prompt payload we hand to
-    // Codex's stdin doesn't loop back into the output stream and confuse
-    // the JSON normalizer.
+    // Only stdout and stderr go through the PTY. Stdin is an ordinary pipe:
+    // a PTY runs its input through the line discipline, which caps one line
+    // at TTYHOG (1024 bytes on macOS) and, past that, drops the line and
+    // rings a BEL per discarded byte back onto the PTY's output side. A
+    // pasted paragraph longer than that reached Codex as an empty prompt and
+    // reached the renderer as a wall of bells. A pipe has no such limit, and
+    // closing it is a real EOF rather than a canonical-mode Ctrl-D.
+    //
+    // ECHO is still disabled on the slave so nothing the child writes loops
+    // back into the output stream and confuses the JSON normalizer.
     let definition = get_provider_definition(input.provider);
 
     let OpenptyResult { master, slave } = openpty(None, None).map_err(|error| {
@@ -262,8 +269,8 @@ fn launch_structured_via_pty(
         tcsetattr(slave.as_fd(), SetArg::TCSANOW, &termios).map_err(termios_error)?;
     }
 
-    // Each Stdio takes ownership of an fd; dup the slave three times so
-    // stdin/stdout/stderr each get their own.
+    // Each Stdio takes ownership of an fd; dup the slave twice so stdout and
+    // stderr each get their own.
     // nix 0.31's `dup` borrows an `AsFd` and hands back a fresh `OwnedFd`
     // we exclusively own — no raw-fd round-trip or `unsafe` needed.
     let dup_slave = || -> ArgmaxResult<OwnedFd> {
@@ -274,7 +281,6 @@ fn launch_structured_via_pty(
             )
         })
     };
-    let stdin_fd = dup_slave()?;
     let stdout_fd = dup_slave()?;
     let stderr_fd = dup_slave()?;
 
@@ -291,7 +297,7 @@ fn launch_structured_via_pty(
         .current_dir(&input.workspace_path)
         .env_clear()
         .envs(build_provider_environment(environment_overrides))
-        .stdin(Stdio::from(stdin_fd))
+        .stdin(Stdio::piped())
         .stdout(Stdio::from(stdout_fd))
         .stderr(Stdio::from(stderr_fd))
         .spawn()
@@ -306,23 +312,25 @@ fn launch_structured_via_pty(
     // reference so the master sees EOF when the child exits.
     drop(slave);
 
-    let mut master_file = File::from(master);
+    let master_file = File::from(master);
 
-    // Write the prompt payload (Codex reads its prompt from stdin) then send
-    // Ctrl-D so the child sees EOF and starts work. Claude/Cursor pass their
-    // prompt via argv and ignore stdin, so the EOF is harmless for them.
-    if let Some(payload) = (definition.structured_stdin)(input) {
-        if let Err(error) = master_file.write_all(payload.as_bytes()) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(io_error(error));
-        }
-        if !payload.ends_with('\n') {
-            let _ = master_file.write_all(b"\n");
+    // Write the prompt payload (Codex reads its prompt from stdin), then drop
+    // the handle so the child sees EOF and starts work. Claude/Cursor pass
+    // their prompt via argv and ignore stdin, so the immediate EOF is
+    // harmless for them.
+    if let Some(mut child_stdin) = child.stdin.take() {
+        if let Some(payload) = (definition.structured_stdin)(input) {
+            let mut write = child_stdin.write_all(payload.as_bytes());
+            if write.is_ok() && !payload.ends_with('\n') {
+                write = child_stdin.write_all(b"\n");
+            }
+            if let Err(error) = write.and_then(|()| child_stdin.flush()) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(io_error(error));
+            }
         }
     }
-    let _ = master_file.write_all(b"\x04");
-    let _ = master_file.flush();
 
     let pid = child.id();
     let disposed = Arc::new(AtomicBool::new(false));
@@ -618,6 +626,7 @@ pub(super) fn parse_provider(value: &str) -> ArgmaxResult<ProviderId> {
         "codex" => Ok(ProviderId::Codex),
         "cursor" => Ok(ProviderId::Cursor),
         "opencode" => Ok(ProviderId::Opencode),
+        "grok" => Ok(ProviderId::Grok),
         _ => Err(ArgmaxError::service(
             "PROVIDER_UNKNOWN",
             format!("unknown provider {value}"),

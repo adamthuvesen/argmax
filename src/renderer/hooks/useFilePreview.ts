@@ -470,6 +470,8 @@ export function useFilePreview(args: {
     entries: [],
     listState: "idle",
     listError: null,
+    // This standalone shape has no file listing of its own to re-fetch.
+    refreshList: () => undefined,
     tabs: tabSummaries,
     activeTabPath: activeTab?.path ?? null,
     selectedPath: activeTab?.path ?? null,

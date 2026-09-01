@@ -22,7 +22,8 @@ import { parseUnifiedDiff } from "../lib/diff.js";
 import { ChangeCount } from "./ChangeCount.js";
 import { DiffBlocks } from "./DiffBlocks.js";
 import type { ReviewCommentInput } from "../lib/composerAnnotations.js";
-import { FilePreview } from "./FilePreview.js";
+import { FilePreview, type EditorCursor } from "./FilePreview.js";
+import { languageLabelFor } from "../lib/fileLanguage.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 import { FileIcon } from "@react-symbols/icons/utils";
@@ -182,6 +183,15 @@ const LEFT_COL_MAX = 600;
 const LEFT_COL_DEFAULT = 280;
 const PREVIEW_COL_MIN = 160;
 const REVIEW_RESIZE_HANDLE_WIDTH = 5;
+/** Until the user drags the divider the tree takes a share of the panel rather
+ *  than a fixed 280px — a panel dragged out to half the window used to leave
+ *  the tree a sliver against a vast empty preview. */
+const LEFT_COL_AUTO_RATIO = 0.22;
+const LEFT_COL_AUTO_MIN = 260;
+const LEFT_COL_AUTO_MAX = 420;
+/** Past this the toolbar has room to label its mode tabs instead of relying on
+ *  two bare icons. */
+const PANEL_WIDE_BREAKPOINT = 640;
 
 function maxLeftColumnWidth(panelWidth: number): number {
   return Math.max(
@@ -190,12 +200,39 @@ function maxLeftColumnWidth(panelWidth: number): number {
   );
 }
 
-function readStoredLeftColumnWidth(): number {
+function autoLeftColumnWidth(panelWidth: number): number {
+  if (panelWidth <= 0) return LEFT_COL_AUTO_MIN;
+  const share = Math.round(panelWidth * LEFT_COL_AUTO_RATIO);
+  return Math.max(LEFT_COL_AUTO_MIN, Math.min(LEFT_COL_AUTO_MAX, share));
+}
+
+/** Null when the user has never dragged the divider, which hands the width to
+ *  `autoLeftColumnWidth` instead of freezing it at the stored default. */
+function readStoredLeftColumnWidth(): number | null {
+  if (typeof window === "undefined") return null;
+  if (window.localStorage.getItem(LEFT_COL_WIDTH_KEY) === null) return null;
   return readBoundedNumberPreference(LEFT_COL_WIDTH_KEY, {
     min: LEFT_COL_MIN,
     max: LEFT_COL_MAX,
     fallback: LEFT_COL_DEFAULT
   });
+}
+
+function writeLeftColumnWidth(width: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LEFT_COL_WIDTH_KEY, String(width));
+  } catch {
+    // Quota or private-mode failures are non-fatal for a pane width.
+  }
+}
+
+function countLines(text: string): number {
+  let lines = 1;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 10) lines += 1;
+  }
+  return lines;
 }
 
 export function ReviewPanel({
@@ -216,29 +253,34 @@ export function ReviewPanel({
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
-  const [leftColumnWidth, setLeftColumnWidth] = useState<number>(() => readStoredLeftColumnWidth());
+  const [leftColumnWidth, setLeftColumnWidth] = useState<number | null>(() => readStoredLeftColumnWidth());
+  const [panelWidth, setPanelWidth] = useState(0);
+  const [cursor, setCursor] = useState<EditorCursor | null>(null);
   const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
 
+  // One measurement feeds three things: the auto tree width, the wide-toolbar
+  // switch, and the clamp that keeps a stored width off the preview column.
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(LEFT_COL_WIDTH_KEY, String(leftColumnWidth));
-  }, [leftColumnWidth]);
-
-  useEffect(() => {
-    if (review.mode !== "files") return undefined;
     const panel = panelRef.current;
     if (!panel) return undefined;
-    const clampToPanel = (): void => {
-      const maxW = maxLeftColumnWidth(panel.clientWidth);
-      setLeftColumnWidth((current) => (current > maxW ? maxW : current));
+    const measure = (): void => {
+      const width = panel.clientWidth;
+      setPanelWidth(width);
+      const maxW = maxLeftColumnWidth(width);
+      setLeftColumnWidth((current) => (current !== null && current > maxW ? maxW : current));
     };
-    clampToPanel();
+    measure();
     if (typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(clampToPanel);
+    const observer = new ResizeObserver(measure);
     observer.observe(panel);
     return () => observer.disconnect();
   }, [review.mode]);
+
+  const effectiveLeftColumnWidth = Math.min(
+    leftColumnWidth ?? autoLeftColumnWidth(panelWidth),
+    maxLeftColumnWidth(panelWidth)
+  );
 
   useEffect(() => {
     if (!isFocused) {
@@ -299,14 +341,18 @@ export function ReviewPanel({
   const handleResizeMouseDown = (e: ReactMouseEvent): void => {
     e.preventDefault();
     const startX = e.clientX;
-    const startW = leftColumnWidth;
+    const startW = effectiveLeftColumnWidth;
+    // Touching the divider at all pins the width: from here the panel keeps the
+    // user's number instead of re-deriving a share of its own width.
+    let latest = startW;
     const maxW = maxLeftColumnWidth(panelRef.current?.clientWidth ?? 800);
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     const onMove = (me: MouseEvent) => {
-      setLeftColumnWidth(Math.max(LEFT_COL_MIN, Math.min(startW + me.clientX - startX, maxW)));
+      latest = Math.max(LEFT_COL_MIN, Math.min(startW + me.clientX - startX, maxW));
+      setLeftColumnWidth(latest);
     };
     const cleanup = () => {
       document.body.style.cursor = previousCursor;
@@ -315,7 +361,11 @@ export function ReviewPanel({
       document.removeEventListener("mouseup", onUp);
       dragCleanupRef.current = null;
     };
-    const onUp = () => cleanup();
+    const onUp = () => {
+      setLeftColumnWidth(latest);
+      writeLeftColumnWidth(latest);
+      cleanup();
+    };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
     dragCleanupRef.current = cleanup;
@@ -326,6 +376,16 @@ export function ReviewPanel({
     ? `${review.files.length} file${review.files.length === 1 ? "" : "s"} · +${totals.additions} −${totals.deletions}`
     : null;
   const expandedFilePath = selectedFile && collapsedDiffPath !== selectedFile.path ? selectedFile.path : null;
+  const sourceLabel = review.workspaceFiles.rootPath?.split("/").filter(Boolean).pop() ?? "Files";
+  const entryCountLabel = `${review.workspaceFiles.entries.length} file${
+    review.workspaceFiles.entries.length === 1 ? "" : "s"
+  }`;
+  const saveStatusLabel =
+    review.workspaceFiles.saveState === "saving"
+      ? "Saving…"
+      : review.workspaceFiles.isDirty
+        ? "Unsaved"
+        : null;
 
   const toggleChangedFile = (filePath: string): void => {
     if (review.selectedFilePath === filePath) {
@@ -341,6 +401,10 @@ export function ReviewPanel({
   // tree are siblings of the preview, so a handler on the preview alone misses
   // them and the save silently never happens.
   const files = review.workspaceFiles;
+  const lineCount = useMemo(
+    () => (files.buffer === null ? null : countLines(files.buffer)),
+    [files.buffer]
+  );
   const handleFilesModeKeyShortcut = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (isChanges) return;
     if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
@@ -365,6 +429,7 @@ export function ReviewPanel({
       // code between them — so it holds the app-chrome scale, matching the
       // left sidebar and the workspace card. See tokens.css.
       data-type-scale="chrome"
+      data-wide={panelWidth >= PANEL_WIDE_BREAKPOINT ? "true" : "false"}
       aria-label="Review panel"
       ref={panelRef}
     >
@@ -383,6 +448,7 @@ export function ReviewPanel({
               onClick={() => review.setMode("changes")}
             >
               <GitBranch size={14} aria-hidden="true" />
+              <span className="review-mode-tab-label">Changes</span>
             </button>
             <button
               role="tab"
@@ -393,6 +459,7 @@ export function ReviewPanel({
               onClick={() => review.setMode("files")}
             >
               <Folder size={14} aria-hidden="true" />
+              <span className="review-mode-tab-label">Files</span>
             </button>
           </div>
         </div>
@@ -409,8 +476,8 @@ export function ReviewPanel({
       >
         {isChanges ? null : (
           <>
-            <div className="review-list-col" style={{ width: leftColumnWidth }}>
-              <WorkspaceTree state={review.workspaceFiles} />
+            <div className="review-list-col" style={{ width: effectiveLeftColumnWidth }}>
+              <WorkspaceTree state={files} toolbar={{ onRefresh: files.refreshList }} />
             </div>
             <div
               className="review-resize-handle"
@@ -498,7 +565,7 @@ export function ReviewPanel({
           ) : (
             <>
               <FileTabStrip state={review.workspaceFiles} />
-              <FilePreview state={review.workspaceFiles} />
+              <FilePreview state={files} onCursorChange={setCursor} />
             </>
           )}
         </div>
@@ -509,6 +576,31 @@ export function ReviewPanel({
           <span className="review-footer-text">{summaryStrip}</span>
         </footer>
       ) : null}
+      {isChanges ? null : (
+        <footer className="review-status-bar" aria-label="File status">
+          <span className="review-status-path" title={files.selectedPath ?? sourceLabel}>
+            {files.selectedPath ?? entryCountLabel}
+          </span>
+          <span className="review-status-meta">
+            {saveStatusLabel ? (
+              <span className="review-status-save" data-state={files.saveState}>
+                {saveStatusLabel}
+              </span>
+            ) : null}
+            {files.selectedPath ? <span>{languageLabelFor(files.selectedPath)}</span> : null}
+            {lineCount === null ? null : (
+              <span>
+                {lineCount} {lineCount === 1 ? "line" : "lines"}
+              </span>
+            )}
+            {cursor ? (
+              <span>
+                Ln {cursor.line}, Col {cursor.column}
+              </span>
+            ) : null}
+          </span>
+        </footer>
+      )}
     </aside>
   );
 }

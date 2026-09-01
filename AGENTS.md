@@ -1,6 +1,6 @@
 # AGENTS.md: Argmax
 
-Argmax is a local Tauri desktop app that orchestrates AI coding agents (Claude Code, Codex, Cursor, OpenCode) in parallel git worktrees. Single-user, on-device, no cloud, no auth.
+Argmax is a local Tauri desktop app that orchestrates AI coding agents (Claude Code, Codex, Cursor, OpenCode, Grok Build) in parallel git worktrees. Single-user, on-device, no cloud, no auth.
 
 User-level guidance (tone, principles, git etiquette) lives in `~/.claude/CLAUDE.md` and `~/dotfiles/agents/AGENTS.md` and is *not* duplicated here. This file is for project-specific facts.
 
@@ -66,6 +66,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Learnings extraction / project memory** → [memory.md](docs/memory.md)
 - **Skills / slash autocomplete** → [skills.md](docs/skills.md)
 - **Chat surface** → [chat-cards.md](docs/chat-cards.md)
+- **Debug panel / diagnostics** → [debugging.md](docs/debugging.md)
 - **Styling** → [styling.md](docs/styling.md)
 - **Tests** → [testing.md](docs/testing.md)
 - **Perf budgets** → [performance.md](docs/performance.md)

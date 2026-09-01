@@ -238,3 +238,75 @@ async fn real_claude_launcher_streams_json_and_exits_cleanly() {
         "Exit lifecycle event",
     );
 }
+
+// Same contract for Grok Build. It shares Claude's stream-json wire format,
+// so this asserts the *launcher* delivers it: a `-p` turn under a PTY must
+// stream JSON lines and exit cleanly. Grok is slower off the line than Claude
+// (it connects every configured MCP server before the first `system/init`),
+// so the first-output budget is wider.
+#[tokio::test]
+#[ignore = "requires installed, logged-in `grok` CLI; run manually"]
+async fn real_grok_launcher_streams_json_and_exits_cleanly() {
+    let launcher = RealProviderProcessLauncher::new();
+    let (events, callback) = collect_events();
+
+    // Grok requires `--session-id` to be a UUID that does not already exist
+    // under the session directory, matching what session_service mints.
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let input = ProviderLaunchInput {
+        provider: ProviderId::Grok,
+        session_id,
+        workspace_path: workspace_root(),
+        prompt: "Reply with exactly the word: pong".to_string(),
+        model_label: "Grok 4.6".to_string(),
+        model_id: "grok-4.6".to_string(),
+        reasoning_effort: None,
+        fast_mode: false,
+        resume_conversation_id: None,
+        resume_fork: false,
+        permission_mode: PermissionMode::AutoApprove,
+        agent_mode: AgentMode::Auto,
+        cols: 120,
+        rows: 32,
+    };
+
+    let _handle = launcher
+        .launch(input, callback)
+        .await
+        .expect("real launcher returns a handle");
+
+    let snapshot = wait_for(
+        &events,
+        |events| {
+            events
+                .iter()
+                .any(|event| event.r#type == ProviderRuntimeEventType::Output)
+        },
+        Duration::from_secs(90),
+        "at least one Output event",
+    );
+
+    let saw_json = snapshot.iter().any(|event| {
+        event.r#type == ProviderRuntimeEventType::Output
+            && event
+                .message
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .any(|line| serde_json::from_str::<serde_json::Value>(line.trim()).is_ok())
+    });
+    assert!(
+        saw_json,
+        "no JSON line in Output events; captured: {snapshot:?}"
+    );
+
+    wait_for(
+        &events,
+        |events| {
+            events
+                .iter()
+                .any(|event| event.r#type == ProviderRuntimeEventType::Exit)
+        },
+        Duration::from_secs(120),
+        "Exit lifecycle event",
+    );
+}

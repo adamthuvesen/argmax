@@ -539,3 +539,27 @@ describe("buildGroupRows — sub-agent nesting", () => {
     expect(rows[0]?.children).toHaveLength(0);
   });
 });
+
+describe("Grok Build tool names", () => {
+  // Grok's built-in tools are snake_case and don't share Claude's spellings.
+  // `search_replace` is the trap: it is Grok's primary EDIT tool, and the
+  // `search` matcher used to claim it, so every file edit rendered as a search.
+  it("buckets each built-in tool by what it actually does", () => {
+    expect(getToolTypeBucket("search_replace")).toBe("edit");
+    expect(getToolTypeBucket("write")).toBe("edit");
+    expect(getToolTypeBucket("run_terminal_command")).toBe("bash");
+    expect(getToolTypeBucket("read_file")).toBe("read");
+    expect(getToolTypeBucket("list_dir")).toBe("read");
+    expect(getToolTypeBucket("grep")).toBe("search");
+    expect(getToolTypeBucket("web_fetch")).toBe("web");
+    expect(getToolTypeBucket("spawn_subagent")).toBe("agent");
+  });
+
+  // The user-visible consequence of the bucket, through the public label.
+  it("describes a search_replace as an edit, not a search", () => {
+    expect(describeToolAction(tool({ name: "search_replace", inputPreview: "src/app.ts" })))
+      .toBe("Edited app.ts");
+    expect(describeToolAction(tool({ name: "read_file", inputPreview: "src/app.ts" })))
+      .toBe("Read app.ts");
+  });
+});

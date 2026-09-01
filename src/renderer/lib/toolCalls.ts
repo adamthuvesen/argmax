@@ -226,7 +226,9 @@ function getFineBucket(name: string): FineBucket {
   if (parseMcpToolName(name)) return "other";
   if (isAgentToolName(name)) return "agent";
   if (/bash|shell|exec|terminal|cmd/.test(lower)) return "bash";
-  if (/write|edit|create|patch|file[_-]?change/.test(lower)) return "edit";
+  // `replace` catches Grok Build's `search_replace`, its primary edit tool —
+  // without it the `search` matcher below claims it and edits read as searches.
+  if (/write|edit|create|patch|replace|file[_-]?change/.test(lower)) return "edit";
   if (/search|grep|find|glob/.test(lower)) return "search";
   if (/web|browser|navigate|fetch|url|http/.test(lower)) return "web";
   // Distinguish directory listings ("list", "list_dir", "ls") from file reads
@@ -693,7 +695,7 @@ export function getToolTypeBucket(name: string): ToolTypeBucket {
   if (parseMcpToolName(name)) return "other";
   if (isAgentToolName(name)) return "agent";
   if (/bash|shell|exec|terminal|cmd/.test(lower)) return "bash";
-  if (/write|edit|create|patch|file[_-]?change/.test(lower)) return "edit";
+  if (/write|edit|create|patch|replace|file[_-]?change/.test(lower)) return "edit";
   if (/read|view|open|cat|list/.test(lower)) return "read";
   if (/search|grep|find|glob/.test(lower)) return "search";
   if (/web|browser|navigate|fetch|url|http/.test(lower)) return "web";

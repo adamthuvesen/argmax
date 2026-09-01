@@ -1111,10 +1111,10 @@ priorityDismissedAt: string | null;
  */
 priorityAddedAt: string | null; 
 /**
- * State of the most-recent PR across this workspace's sessions. Filled in
- * from `gh_pr` on every read path — the renderer merges workspace deltas
- * by whole-object replacement, so a summary published with `None` here
- * would erase the sidebar PR marker.
+ * State of the most-recent PR on this workspace's current branch (same
+ * project), filled in from `gh_pr` on every read path. The renderer merges
+ * workspace deltas by whole-object replacement, so a summary published
+ * with `None` here would erase the sidebar PR marker.
  */
 prState: string | null; 
 /**

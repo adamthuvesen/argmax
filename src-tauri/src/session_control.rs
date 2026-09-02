@@ -35,6 +35,7 @@ use crate::{
         events::{
             latest_agent_message, latest_user_message_at, list_session_events_since,
             persist_timeline_event, PersistTimelineEventInput, TimelineEvent,
+            SESSION_EVENT_PAGE_LIMIT,
         },
         projects::{list_projects, ProjectSummary},
         session_messages::{
@@ -77,6 +78,11 @@ const SESSION_READ_MAX_CHARS: usize = 40 * 1024;
 /// a status call rather than a transcript read.
 const STATUS_ANSWER_CHARS: usize = 2 * 1024;
 const INBOX_READ_LIMIT: usize = 50;
+/// How many bytes of message body one inbox hand-over may carry. A row is
+/// marked delivered only when it is actually in the reply, so this has to stay
+/// under `MAX_RESPONSE_BYTES` with room for the envelope and JSON escaping;
+/// what does not fit stays collectable for the next read.
+const INBOX_READ_BYTE_BUDGET: usize = 48 * 1024;
 const WAIT_DEFAULT_SECONDS: u64 = 120;
 const WAIT_MAX_SECONDS: u64 = 600;
 /// A safety re-read while a wait is blocked. The broadcast is what makes a
@@ -1364,13 +1370,20 @@ fn session_read(
     // The same read the chat pane takes. `events` is already the normalized
     // timeline — every provider's output is translated into these rows on the
     // way in — so this summarizes rows rather than re-parsing provider JSON.
-    let page = list_session_events_since(&connection, &action.session_id, action.cursor, None)
+    // A read with no cursor starts at the beginning of the transcript. The
+    // cursorless read this shares with the chat pane returns the *newest* page,
+    // which is right for a surface that scrolls up and wrong for an agent that
+    // pages forward from `nextCursor`, so name row 0 rather than leaving it out.
+    let cursor = action.cursor.unwrap_or(0);
+    let page = list_session_events_since(&connection, &action.session_id, Some(cursor), None)
         .map_err(argmax_protocol_error)?;
     drop(connection);
 
     let mut entries = Vec::new();
     let mut spent = 0usize;
-    let mut truncated = false;
+    // A full page of rows means the row limit, not the byte budget, is what
+    // ended this page: there is more to read from `nextCursor`.
+    let mut truncated = page.events.len() == SESSION_EVENT_PAGE_LIMIT;
     let mut next_cursor = page.event_cursor;
     for event in page.events {
         let cursor = event.row_cursor.unwrap_or(next_cursor);
@@ -1435,8 +1448,13 @@ fn inbox_read(
     database: Arc<Database>,
 ) -> Result<SessionControlResponse, SessionControlError> {
     let mut connection = database.connection();
-    let messages = take_undelivered_messages(&mut connection, &parent.session_id, INBOX_READ_LIMIT)
-        .map_err(argmax_protocol_error)?;
+    let messages = take_undelivered_messages(
+        &mut connection,
+        &parent.session_id,
+        INBOX_READ_LIMIT,
+        INBOX_READ_BYTE_BUDGET,
+    )
+    .map_err(argmax_protocol_error)?;
     let messages = to_inbox_messages(&connection, messages);
     Ok(SessionControlResponse::new(SessionControlResult::Inbox(
         InboxDelivery { messages },
@@ -1695,8 +1713,13 @@ fn collect_wait_outcome(
     // is actually returning.
     let messages = {
         let mut connection = database.connection();
-        let taken = take_undelivered_messages(&mut connection, caller_session_id, INBOX_READ_LIMIT)
-            .map_err(argmax_protocol_error)?;
+        let taken = take_undelivered_messages(
+            &mut connection,
+            caller_session_id,
+            INBOX_READ_LIMIT,
+            INBOX_READ_BYTE_BUDGET,
+        )
+        .map_err(argmax_protocol_error)?;
         to_inbox_messages(&connection, taken)
     };
     Ok(Some(WaitOutcome {

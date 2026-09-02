@@ -13,8 +13,11 @@ use argmax_lib::{
     error::ArgmaxResult,
     persistence::{
         database::Database,
-        events::{persist_timeline_event, PersistTimelineEventInput},
+        events::{persist_timeline_event, PersistTimelineEventInput, SESSION_EVENT_PAGE_LIMIT},
         projects::{persist_project, PersistProjectInput, ProjectSettings},
+        session_messages::{
+            insert_session_message, NewSessionMessage, MAX_MESSAGE_BODY_CHARS, MESSAGE_KIND,
+        },
         sessions::{
             find_session_by_id, persist_session, record_session_launch, PersistSessionInput,
         },
@@ -26,7 +29,10 @@ use argmax_lib::{
         session_service::ProviderSessionService,
         AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort,
     },
-    session_control::{SessionLaunchServer, SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV},
+    session_control::{
+        SessionLaunchRegistry, SessionLaunchServer, SESSION_LAUNCH_SOCKET_ENV,
+        SESSION_LAUNCH_TOKEN_ENV,
+    },
     workspaces::WorkspaceService,
 };
 use serde_json::json;
@@ -858,4 +864,434 @@ async fn wait_for<T>(mut read: impl FnMut() -> Option<T>) -> Option<T> {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     None
+}
+
+/// One project, one workspace per session, and the session rows themselves —
+/// the floor a control-socket test stands on. Each entry is
+/// `(session id, task label, state)`.
+fn seed_sessions(database: &Database, repo_path: &str, sessions: &[(&str, &str, &str)]) {
+    let connection = database.connection();
+    persist_project(
+        &connection,
+        &PersistProjectInput {
+            id: "project-1".to_string(),
+            name: "Argmax".to_string(),
+            repo_path: repo_path.to_string(),
+            current_branch: "main".to_string(),
+            default_branch: Some("main".to_string()),
+            settings: ProjectSettings {
+                worktree_location: format!("{repo_path}/worktrees"),
+                setup_command: String::new(),
+                check_commands: Vec::new(),
+            },
+        },
+    )
+    .expect("project");
+    for (session_id, label, state) in sessions {
+        let workspace_id = format!("workspace-{session_id}");
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: workspace_id.clone(),
+                project_id: "project-1".to_string(),
+                task_label: (*label).to_string(),
+                branch: "main".to_string(),
+                base_ref: "main".to_string(),
+                path: repo_path.to_string(),
+                state: "running".to_string(),
+                shared_workspace: true,
+                kind: "git".to_string(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("workspace");
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: (*session_id).to_string(),
+                workspace_id,
+                provider: "codex".to_string(),
+                model_label: "GPT-5.6 Sol".to_string(),
+                model_id: "gpt-5.6-sol".to_string(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_string()),
+                agent_mode: Some("auto".to_string()),
+                prompt: "Task".to_string(),
+                state: (*state).to_string(),
+                attention: "normal".to_string(),
+            },
+        )
+        .expect("session");
+    }
+}
+
+/// The socket path and token a session's own agent would find in its
+/// environment.
+fn credential(
+    registry: &SessionLaunchRegistry,
+    repo: &std::path::Path,
+    session_id: &str,
+) -> (String, String) {
+    let config = registry.issue(&ProviderLaunchInput {
+        provider: ProviderId::Codex,
+        session_id: session_id.to_string(),
+        workspace_path: PathBuf::from(repo),
+        prompt: "Task".to_string(),
+        model_label: "GPT-5.6 Sol".to_string(),
+        model_id: "gpt-5.6-sol".to_string(),
+        reasoning_effort: None,
+        fast_mode: false,
+        resume_conversation_id: None,
+        resume_fork: false,
+        permission_mode: PermissionMode::AutoApprove,
+        agent_mode: AgentMode::Auto,
+        cols: 120,
+        rows: 32,
+    });
+    let environment = config.env_pairs().into_iter().collect::<Vec<_>>();
+    let value = |key: &str| {
+        environment
+            .iter()
+            .find(|(name, _)| name == key)
+            .map(|(_, value)| value.clone())
+            .expect("credential env")
+    };
+    (
+        value(SESSION_LAUNCH_SOCKET_ENV),
+        value(SESSION_LAUNCH_TOKEN_ENV),
+    )
+}
+
+/// One request on the control socket, answered with the raw reply text — the
+/// size of a reply is itself under test.
+async fn ask_raw(socket: String, token: String, action: serde_json::Value) -> String {
+    tokio::task::spawn_blocking(move || {
+        let mut stream = UnixStream::connect(socket).expect("connect control socket");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(30)))
+            .expect("read timeout");
+        let request = json!({ "version": 1, "token": token, "action": action });
+        writeln!(stream, "{request}").expect("write request");
+        stream.shutdown(Shutdown::Write).expect("finish request");
+        let mut response = String::new();
+        stream.read_to_string(&mut response).expect("read response");
+        response
+    })
+    .await
+    .expect("client task")
+}
+
+/// The client refuses a reply over 64 KB, and the rows in a refused reply have
+/// already been marked delivered — so a hand-over that ignored the ceiling
+/// would destroy exactly the messages it was carrying. Big messages must come
+/// back across several reads instead, losing none of them.
+#[tokio::test]
+async fn a_large_inbox_drains_across_reads_within_the_reply_ceiling() {
+    const MAX_RESPONSE_BYTES: usize = 64 * 1024;
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[
+            ("session-parent", "Parent", "running"),
+            ("session-child", "Count to ten", "running"),
+        ],
+    );
+    {
+        let connection = database.connection();
+        for marker in ["alpha", "beta", "gamma"] {
+            insert_session_message(
+                &connection,
+                &NewSessionMessage {
+                    id: format!("message-{marker}"),
+                    from_session_id: Some("session-parent".to_string()),
+                    to_session_id: "session-child".to_string(),
+                    body: format!("{marker}:{}", "x".repeat(30 * 1024)),
+                    kind: MESSAGE_KIND.to_string(),
+                },
+            )
+            .expect("inbox row");
+        }
+    }
+
+    let launcher = Arc::new(RecordingLauncher::default());
+    let providers =
+        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    providers.set_session_control(Arc::clone(&registry));
+    let (socket, child_token) = credential(&registry, repo.path(), "session-child");
+    let _server = server
+        .start(
+            None,
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            Arc::clone(&providers),
+        )
+        .expect("start control socket");
+
+    let mut collected = Vec::new();
+    let mut reads = 0;
+    loop {
+        let raw = ask_raw(socket.clone(), child_token.clone(), json!({ "inbox": {} })).await;
+        assert!(
+            raw.len() <= MAX_RESPONSE_BYTES,
+            "an inbox reply of {} bytes is over the client's ceiling and would be refused",
+            raw.len()
+        );
+        let response: serde_json::Value = serde_json::from_str(&raw).expect("response json");
+        let messages = response["inbox"]["messages"]
+            .as_array()
+            .expect("messages")
+            .clone();
+        if messages.is_empty() {
+            break;
+        }
+        reads += 1;
+        assert!(reads <= 4, "the inbox never drained");
+        for message in messages {
+            let body = message["body"].as_str().expect("body");
+            assert!(
+                body.len() <= MAX_MESSAGE_BODY_CHARS + 32,
+                "a stored body is capped, so no single row can outgrow the reply"
+            );
+            collected.push(body.split(':').next().expect("marker").to_string());
+        }
+    }
+    assert_eq!(reads, 2, "three oversized messages take two reads");
+    assert_eq!(collected, vec!["alpha", "beta", "gamma"]);
+}
+
+/// A read with no cursor answers with the start of the transcript, the way the
+/// tool says it does, and admits it stopped at the row limit so the caller
+/// pages on rather than believing it has the whole thing.
+#[tokio::test]
+async fn a_cursorless_read_starts_at_the_beginning_and_reports_more_to_come() {
+    const EVENT_COUNT: usize = 600;
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[
+            ("session-parent", "Parent", "running"),
+            ("session-child", "Count to ten", "running"),
+        ],
+    );
+    {
+        let connection = database.connection();
+        for index in 0..EVENT_COUNT {
+            persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: format!("event-{index}"),
+                    session_id: "session-child".to_string(),
+                    r#type: "message.completed".to_string(),
+                    message: format!("answer {index}"),
+                    payload: json!({}),
+                    created_at: None,
+                },
+            )
+            .expect("child event");
+        }
+    }
+
+    let launcher = Arc::new(RecordingLauncher::default());
+    let providers =
+        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    providers.set_session_control(Arc::clone(&registry));
+    let (socket, parent_token) = credential(&registry, repo.path(), "session-parent");
+    let _server = server
+        .start(
+            None,
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            Arc::clone(&providers),
+        )
+        .expect("start control socket");
+
+    let first: serde_json::Value = serde_json::from_str(
+        &ask_raw(
+            socket.clone(),
+            parent_token.clone(),
+            json!({ "read": { "sessionId": "session-child" } }),
+        )
+        .await,
+    )
+    .expect("response json");
+    let entries = first["read"]["entries"].as_array().expect("entries");
+    assert_eq!(entries[0]["text"], "answer 0");
+    assert_eq!(
+        entries.len(),
+        SESSION_EVENT_PAGE_LIMIT,
+        "one page is the row limit"
+    );
+    assert_eq!(
+        first["read"]["truncated"], true,
+        "a page the row limit cut short must say so"
+    );
+
+    let cursor = first["read"]["nextCursor"].as_i64().expect("cursor");
+    let second: serde_json::Value = serde_json::from_str(
+        &ask_raw(
+            socket,
+            parent_token,
+            json!({ "read": { "sessionId": "session-child", "cursor": cursor } }),
+        )
+        .await,
+    )
+    .expect("response json");
+    let entries = second["read"]["entries"].as_array().expect("entries");
+    assert_eq!(
+        entries[0]["text"],
+        format!("answer {SESSION_EVENT_PAGE_LIMIT}")
+    );
+    assert_eq!(entries.len(), EVENT_COUNT - SESSION_EVENT_PAGE_LIMIT);
+    assert_eq!(second["read"]["truncated"], false);
+}
+
+/// A completion notice that queued behind the launcher's running turn has not
+/// been delivered: the launcher never saw it. It has to stay collectable from
+/// the inbox, the same rule an agent's own message follows.
+#[tokio::test]
+async fn a_completion_notice_queued_behind_a_running_turn_stays_collectable() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[
+            ("session-parent", "Parent", "running"),
+            ("session-child", "Count to ten", "running"),
+        ],
+    );
+    {
+        let connection = database.connection();
+        record_session_launch(&connection, "session-child", "session-parent", 1)
+            .expect("record lineage");
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "event-1".to_string(),
+                session_id: "session-child".to_string(),
+                r#type: "message.completed".to_string(),
+                message: "pong".to_string(),
+                payload: json!({}),
+                created_at: None,
+            },
+        )
+        .expect("child event");
+    }
+
+    let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
+    let provider_deltas = Arc::clone(&deltas);
+    let launcher = Arc::new(RecordingLauncher::default());
+    let providers = ProviderSessionService::with_launcher(
+        Arc::clone(&database),
+        launcher.clone(),
+        move |delta| {
+            provider_deltas.lock().expect("deltas poisoned").push(delta);
+        },
+    );
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    providers.set_session_control(Arc::clone(&registry));
+    let (socket, parent_token) = credential(&registry, repo.path(), "session-parent");
+    let (_, child_token) = credential(&registry, repo.path(), "session-child");
+    let _server = server
+        .start(
+            None,
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            Arc::clone(&providers),
+        )
+        .expect("start control socket");
+
+    // The child's first message starts the launcher's turn; the second proves
+    // that turn is now running, since it queues instead of sending.
+    let started: serde_json::Value = serde_json::from_str(
+        &ask_raw(
+            socket.clone(),
+            child_token.clone(),
+            json!({ "message": { "sessionId": "session-parent", "message": "starting" } }),
+        )
+        .await,
+    )
+    .expect("response json");
+    assert_eq!(started["messaged"]["queued"], false);
+    let queued: serde_json::Value = serde_json::from_str(
+        &ask_raw(
+            socket.clone(),
+            child_token,
+            json!({ "message": { "sessionId": "session-parent", "message": "mid-turn" } }),
+        )
+        .await,
+    )
+    .expect("response json");
+    assert_eq!(
+        queued["messaged"]["queued"], true,
+        "the launcher must be mid-turn for this test to mean anything"
+    );
+
+    let stopped: serde_json::Value = serde_json::from_str(
+        &ask_raw(
+            socket.clone(),
+            parent_token.clone(),
+            json!({ "stop": { "sessionId": "session-child" } }),
+        )
+        .await,
+    )
+    .expect("response json");
+    assert_eq!(stopped["stopped"]["state"], "cancelled");
+
+    // The notice is delivered on a background task: wait until it has actually
+    // been handed to the launcher and queued there before judging the row.
+    let notice_queued = wait_for(|| {
+        let deltas = deltas.lock().expect("deltas poisoned");
+        deltas
+            .iter()
+            .filter_map(|delta| delta.pending_messages.as_ref())
+            .filter_map(|pending| pending.get("session-parent"))
+            .flatten()
+            .any(|message| message.content.contains("finished with state cancelled"))
+            .then_some(())
+    })
+    .await;
+    assert!(
+        notice_queued.is_some(),
+        "the notice must reach the launcher's queue"
+    );
+
+    let delivered_at = {
+        let connection = database.connection();
+        connection
+            .query_row(
+                "SELECT delivered_at FROM session_messages WHERE kind = 'completion'",
+                [],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .expect("the completion row")
+    };
+    assert!(
+        delivered_at.is_none(),
+        "a queued notice has not been delivered: {delivered_at:?}"
+    );
+
+    let inbox: serde_json::Value =
+        serde_json::from_str(&ask_raw(socket, parent_token, json!({ "inbox": {} })).await)
+            .expect("response json");
+    let notice = inbox["inbox"]["messages"]
+        .as_array()
+        .expect("messages")
+        .iter()
+        .find(|message| message["kind"] == "completion")
+        .expect("the launcher collects the notice it never saw");
+    assert!(notice["body"]
+        .as_str()
+        .expect("body")
+        .contains("finished with state cancelled"));
 }

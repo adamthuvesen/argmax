@@ -95,6 +95,10 @@ const STRUCTURED_LAUNCH_ROWS: u16 = 32;
 /// chunk, so this only fires when the provider pauses; the lower bound just
 /// makes that pause-driven flush feel real-time instead of laggy.
 const STREAM_IDLE_FLUSH_MS: u64 = 16;
+/// How much of a child's final answer a completion notice carries. The notice
+/// is a summary handed back through the inbox, which has its own reply ceiling
+/// — a whole transcript-length answer belongs to `session_read`.
+const NOTICE_ANSWER_CHARS: usize = 4 * 1024;
 
 fn ensure_permission_mode_supported(
     provider: ProviderId,
@@ -112,6 +116,15 @@ fn ensure_permission_mode_supported(
         ));
     }
     Ok(())
+}
+
+fn cap_notice_answer(answer: &str) -> String {
+    if answer.chars().count() <= NOTICE_ANSWER_CHARS {
+        return answer.to_string();
+    }
+    let mut capped: String = answer.chars().take(NOTICE_ANSWER_CHARS).collect();
+    capped.push_str("\n\n(truncated)");
+    capped
 }
 
 /// Where a user turn came from, when it was not the person at the keyboard.
@@ -1771,6 +1784,7 @@ impl ProviderSessionService {
             .unwrap_or_else(|_| session_id.to_string());
         let answer = latest_agent_message(&connection, session_id)?
             .filter(|text| !text.trim().is_empty())
+            .map(|text| cap_notice_answer(&text))
             .unwrap_or_else(|| "(the session produced no assistant message)".to_string());
         let body = format!(
             "Session {session_id} ({label}) finished with state {state}. Final answer:\n{answer}"
@@ -1821,12 +1835,17 @@ impl ProviderSessionService {
             .send_input_with_origin(input, Some(notice.origin))
             .await
         {
-            Ok(_) => {
+            // Only a notice that actually reached the launcher as a turn has
+            // been delivered. One that queued behind a running turn has not,
+            // and stays collectable from the inbox — the same rule an agent's
+            // own message follows in `session_control`.
+            Ok(result) if !result.queued => {
                 let connection = self.database.connection();
                 if let Err(error) = mark_message_delivered(&connection, &notice.message_id) {
                     tracing::warn!(?error, "failed to mark a completion notice delivered");
                 }
             }
+            Ok(_) => {}
             // The row stays undelivered, so `inbox_read` still hands it over.
             Err(error) => tracing::warn!(
                 to_session_id = %notice.to_session_id,

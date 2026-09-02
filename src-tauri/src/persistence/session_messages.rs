@@ -18,6 +18,13 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 pub const MESSAGE_KIND: &str = "message";
 pub const COMPLETION_KIND: &str = "completion";
 
+/// How much of a body the row keeps. The stored row is the fallback copy of a
+/// message, not a transcript: the reply that hands it back has a hard byte
+/// ceiling, so an uncapped body — a quarter-megabyte prompt, say — would make
+/// `inbox_read` fail instead of delivering anything.
+pub const MAX_MESSAGE_BODY_CHARS: usize = 16 * 1024;
+const TRUNCATION_MARKER: &str = "\n\n(truncated)";
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionMessage {
@@ -61,7 +68,7 @@ pub fn insert_session_message(
             &message.id,
             &message.from_session_id,
             &message.to_session_id,
-            &message.body,
+            cap_message_body(&message.body),
             &message.kind,
             now_iso(),
         ))
@@ -128,13 +135,30 @@ pub fn list_undelivered_messages(
 /// Read the caller's undelivered messages and mark them delivered in one
 /// transaction, so two concurrent `inbox_read` calls cannot both take the same
 /// message.
+///
+/// Only the prefix that fits `max_bytes` is taken. A row marked delivered
+/// inside a reply the client then rejects for being too large is a message
+/// nobody ever reads, so what does not fit stays undelivered and comes back on
+/// the next read. The first message is always taken, so no single row can
+/// wedge the inbox.
 pub fn take_undelivered_messages(
     connection: &mut Connection,
     to_session_id: &str,
     limit: usize,
+    max_bytes: usize,
 ) -> ArgmaxResult<Vec<SessionMessage>> {
     let transaction = connection.transaction().map_err(sqlite_error)?;
-    let messages = list_undelivered_messages(&transaction, to_session_id, limit)?;
+    let candidates = list_undelivered_messages(&transaction, to_session_id, limit)?;
+    let mut messages = Vec::new();
+    let mut spent = 0usize;
+    for message in candidates {
+        let cost = message.body.len();
+        if !messages.is_empty() && spent + cost > max_bytes {
+            break;
+        }
+        spent += cost;
+        messages.push(message);
+    }
     let delivered_at = now_iso();
     for message in &messages {
         transaction
@@ -151,6 +175,15 @@ pub fn take_undelivered_messages(
             ..message
         })
         .collect())
+}
+
+fn cap_message_body(body: &str) -> String {
+    if body.chars().count() <= MAX_MESSAGE_BODY_CHARS {
+        return body.to_string();
+    }
+    let mut capped: String = body.chars().take(MAX_MESSAGE_BODY_CHARS).collect();
+    capped.push_str(TRUNCATION_MARKER);
+    capped
 }
 
 fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {

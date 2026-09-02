@@ -245,7 +245,8 @@ yourself."
         description = "Collect the messages other sessions have addressed to you and have not been \
 handed over yet — each with who sent it, whether it is a plain message or the automatic notice that \
 a session you launched has finished, and when it arrived. Reading them marks them collected, so a \
-second call returns only what has arrived since. Messages also reach you as ordinary turns when you \
+second call returns only what has arrived since; a batch too large for one reply comes back over \
+several calls. Messages also reach you as ordinary turns when you \
 are idle; this is how you see the ones that landed while you were working."
     )]
     async fn inbox_read(

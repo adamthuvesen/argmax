@@ -112,10 +112,14 @@ provider's output is translated into `events` rows on the way in
 streaming deltas, subagent traces, lifecycle bookkeeping — are dropped here
 too.
 
-A page is capped in bytes (16 KB by default, 40 KB at most) and each entry is
-capped at 2 000 characters, so one enormous tool result cannot spend the whole
-budget. A page cut short comes back with `truncated: true`; read again from
-`nextCursor` for the rest.
+A read with no cursor starts at the beginning of the transcript and pages
+forward from `nextCursor` — unlike the chat pane's cursorless read of the same
+rows, which wants the newest page because it scrolls up.
+
+A page is capped at 500 rows and in bytes (16 KB by default, 40 KB at most),
+and each entry is capped at 2 000 characters, so one enormous tool result
+cannot spend the whole budget. A page either cap cut short comes back with
+`truncated: true`; read again from `nextCursor` for the rest.
 
 `session_status` answers the cheaper question — is it still working, how long
 has this turn been running, what did it last say, is anyone waiting on it — in
@@ -137,8 +141,14 @@ into the recipient as an ordinary turn through the existing queue-until-idle
 path — an idle session starts a turn on it, a working one gets it when its turn
 ends. But a session that is mid-turn cannot see a turn that has not started
 yet, and no provider CLI surfaces a server push into a running model. The row
-is what closes that gap: `inbox_read` hands over everything not yet delivered
-and marks it collected, and `session_wait` wakes on the insert.
+is what closes that gap: `inbox_read` hands over what is not yet delivered and
+marks it collected, and `session_wait` wakes on the insert.
+
+Two caps keep a hand-over inside the reply ceiling, since a row is marked
+collected by the same call that carries it and a reply the client refuses would
+take the messages with it: a stored body is capped at 16 KB with a
+`(truncated)` marker, and one read hands over at most 50 messages and 48 KB of
+body. What does not fit stays undelivered and comes back on the next read.
 
 A message that reached its recipient as a turn is marked delivered, so it is
 not handed over twice. One that queued behind a running turn stays collectable
@@ -156,7 +166,8 @@ Session <id> (<label>) finished with state <state>. Final answer:
 
 It is delivered like any other message, so an idle launcher **wakes up on a new
 turn** carrying its child's answer, the way Claude Code's Agent Teams
-idle-notification works.
+idle-notification works. A notice that queued behind the launcher's running
+turn is not delivered, and stays collectable from its inbox.
 
 **The rule, and why it cannot ping-pong.** A session emits a notice on every
 turn end *if and only if it has a launcher*. `launched_by_session_id` is a

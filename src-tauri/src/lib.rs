@@ -693,6 +693,7 @@ pub fn run() {
                             }
                             if let Some(server) = session_launch_server {
                                 match server.start(
+                                    Some(app.handle().clone()),
                                     Arc::clone(&database),
                                     Arc::clone(&workspaces_for_watchers),
                                     Arc::clone(&providers),

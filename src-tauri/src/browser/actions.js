@@ -303,6 +303,26 @@
     return entry.result;
   }
 
+  // --- dialogs -------------------------------------------------------------
+
+  /**
+   * Arms the answer for this tab's next `alert`/`confirm`/`prompt`, and
+   * acknowledges the one that just fired. The recorder lives in `dialog.js`,
+   * an initialization script installed only on tabs a session opened — a tab
+   * the user opened keeps the engine's native dialogs.
+   */
+  function handleDialog(accept, promptText) {
+    var capture = window.__argmaxDialog;
+    if (!capture || typeof capture.answer !== "function") {
+      return {
+        error:
+          "this tab does not capture dialogs — only tabs a session opened do; open the page with browser_open"
+      };
+    }
+    return capture.answer(accept, promptText);
+  }
+
+  api.handleDialog = handleDialog;
   api.click = click;
   api.type = typeText;
   api.select = select;

@@ -196,6 +196,7 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
         .expect("token env");
     let _server = server
         .start(
+            None,
             Arc::clone(&database),
             Arc::clone(&workspaces),
             Arc::clone(&providers),
@@ -447,6 +448,7 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
         .expect("token env");
     let _server = server
         .start(
+            None,
             Arc::clone(&database),
             Arc::clone(&workspaces),
             Arc::clone(&providers),

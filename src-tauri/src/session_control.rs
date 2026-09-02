@@ -27,6 +27,7 @@ use crate::{
             BaseRef, NonEmptyString, ProjectId, Prompt, SessionId, TaskLabel, WorkspaceId,
         },
     },
+    mcp::browser_bridge::{BrowserOutcome, BrowserRequest},
     persistence::{
         dashboard::DASHBOARD_ROW_LIMIT,
         database::Database,
@@ -45,6 +46,9 @@ use crate::{
 const PROTOCOL_VERSION: u32 = 1;
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
+/// A screenshot's base64 PNG rides in the reply, so the browser action gets
+/// its own ceiling. `mcp::browser_bridge` caps the image well below this.
+const MAX_BROWSER_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 const SERVER_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_IO_TIMEOUT: Duration = Duration::from_secs(75);
 const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -353,9 +357,15 @@ impl SessionLaunchServer {
         Err(SessionLaunchError::Unsupported)
     }
 
+    /// `app` is what the browser actions need: `browser::automation` takes an
+    /// `AppHandle` explicitly, and this socket is the one caller that does not
+    /// arrive through Tauri's invoke pipeline. It is optional because the
+    /// protocol tests run this server with no GUI behind it; without a handle
+    /// the browser actions are refused and everything else works as before.
     #[cfg(unix)]
     pub fn start(
         mut self,
+        app: Option<tauri::AppHandle>,
         database: Arc<Database>,
         workspaces: Arc<WorkspaceService>,
         providers: Arc<ProviderSessionService>,
@@ -370,12 +380,15 @@ impl SessionLaunchServer {
             while !stop.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((stream, _)) => {
+                        let app = app.clone();
                         let database = Arc::clone(&database);
                         let workspaces = Arc::clone(&workspaces);
                         let providers = Arc::clone(&providers);
                         let registry = Arc::clone(&registry);
                         std::thread::spawn(move || {
-                            handle_connection(stream, database, workspaces, providers, registry)
+                            handle_connection(
+                                stream, app, database, workspaces, providers, registry,
+                            )
                         });
                     }
                     Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
@@ -394,6 +407,7 @@ impl SessionLaunchServer {
     #[cfg(not(unix))]
     pub fn start(
         self,
+        _app: Option<tauri::AppHandle>,
         _database: Arc<Database>,
         _workspaces: Arc<WorkspaceService>,
         _providers: Arc<ProviderSessionService>,
@@ -433,6 +447,10 @@ pub enum SessionControlAction {
     Move(MoveAction),
     List(ListAction),
     Message(MessageAction),
+    /// Drive the in-app browser. The MCP process has no `AppHandle`, so the
+    /// tools send the action here and the app runs it — see
+    /// [`crate::mcp::browser_bridge`].
+    Browser(BrowserRequest),
 }
 
 /// Start a new top-level session. Provider and model default to the calling
@@ -497,6 +515,7 @@ pub enum SessionControlResult {
     Scheduled(ScheduledMove),
     Listed(SessionList),
     Messaged(MessageDelivery),
+    Browsed(BrowserOutcome),
     Error(SessionControlError),
 }
 
@@ -574,6 +593,7 @@ impl SessionControlResponse {
 #[cfg(unix)]
 fn handle_connection(
     mut stream: std::os::unix::net::UnixStream,
+    app: Option<tauri::AppHandle>,
     database: Arc<Database>,
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
@@ -606,10 +626,11 @@ fn handle_connection(
         return;
     };
     tauri::async_runtime::spawn(async move {
-        let response =
-            handle_session_control(request, parent, database, workspaces, providers, registry)
-                .await
-                .unwrap_or_else(|error| SessionControlResponse::failure(error.code, error.message));
+        let response = handle_session_control(
+            request, parent, app, database, workspaces, providers, registry,
+        )
+        .await
+        .unwrap_or_else(|error| SessionControlResponse::failure(error.code, error.message));
         let _ = write_json_line(&mut stream, &response);
     });
 }
@@ -881,6 +902,7 @@ fn parse_reasoning_effort(value: Option<&str>) -> Option<crate::providers::Reaso
 async fn handle_session_control(
     request: SessionControlRequest,
     parent: ParentLaunchSettings,
+    app: Option<tauri::AppHandle>,
     database: Arc<Database>,
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
@@ -904,6 +926,17 @@ async fn handle_session_control(
         }
         SessionControlAction::List(action) => list_sessions_action(action, parent, database).await,
         SessionControlAction::Message(action) => message_session(action, parent, providers).await,
+        SessionControlAction::Browser(request) => {
+            let app = app.ok_or_else(|| {
+                protocol_error(
+                    "BROWSER_UNAVAILABLE",
+                    "This Argmax instance has no window to browse in.",
+                )
+            })?;
+            crate::mcp::browser_bridge::handle(&app, &parent.session_id, request)
+                .await
+                .map(|outcome| SessionControlResponse::new(SessionControlResult::Browsed(outcome)))
+        }
     }
 }
 
@@ -1255,7 +1288,7 @@ fn invalid_input_error(error: crate::error::InvalidInputIssue) -> SessionControl
     protocol_error(error.code, error.message)
 }
 
-fn argmax_protocol_error(error: ArgmaxError) -> SessionControlError {
+pub(crate) fn argmax_protocol_error(error: ArgmaxError) -> SessionControlError {
     match error {
         ArgmaxError::InvalidInput { issues } => issues.into_iter().next().map_or_else(
             || protocol_error("INVALID_INPUT", "Input is invalid."),
@@ -1685,7 +1718,11 @@ pub fn send_session_control(
     stream
         .shutdown(Shutdown::Write)
         .map_err(|error| protocol_error("REQUEST_WRITE_FAILED", error.to_string()))?;
-    let response = read_json_line::<SessionControlResponse>(&mut stream, MAX_RESPONSE_BYTES)
+    let response_cap = match request.action {
+        SessionControlAction::Browser(_) => MAX_BROWSER_RESPONSE_BYTES,
+        _ => MAX_RESPONSE_BYTES,
+    };
+    let response = read_json_line::<SessionControlResponse>(&mut stream, response_cap)
         .map_err(|error| protocol_error(error.code, error.message))?;
     if response.version != PROTOCOL_VERSION {
         return Err(protocol_error(
@@ -1699,6 +1736,7 @@ pub fn send_session_control(
         (SessionControlAction::Move(_), SessionControlResult::Scheduled(_)) => true,
         (SessionControlAction::List(_), SessionControlResult::Listed(_)) => true,
         (SessionControlAction::Message(_), SessionControlResult::Messaged(_)) => true,
+        (SessionControlAction::Browser(_), SessionControlResult::Browsed(_)) => true,
         _ => false,
     };
     if !matches_action {

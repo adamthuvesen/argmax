@@ -35,7 +35,7 @@ pub const SERVER_NAME: &str = "argmax";
 /// What a provider that actually loads the `argmax` server is told. The tool
 /// descriptions carry the rest: what each tool does, and that a launch makes a
 /// visible top-level session rather than a subagent.
-pub const AGENT_TOOLS_INSTRUCTION: &str = "Argmax tools are available as the `argmax` MCP server; use them to launch, list and message other Argmax sessions when the task needs it.";
+pub const AGENT_TOOLS_INSTRUCTION: &str = "Argmax tools are available as the `argmax` MCP server; use them to launch, list and message other Argmax sessions, and to browse the web in Argmax's own browser, when the task needs it.";
 
 /// The fallback for a provider whose launch cannot carry an MCP server yet:
 /// Grok (its folder-trust gate refuses a config Argmax wrote) and Cursor's

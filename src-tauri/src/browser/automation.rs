@@ -34,6 +34,7 @@ const ACTIONS_JS: &str = include_str!("actions.js");
 const READ_TIMEOUT: Duration = Duration::from_secs(15);
 const ACTION_TIMEOUT: Duration = Duration::from_secs(10);
 const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(5);
+const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(150);
 const WAIT_TIMEOUT_DEFAULT_MS: u32 = 10_000;
 const WAIT_TIMEOUT_MAX_MS: u32 = 120_000;
@@ -553,6 +554,7 @@ pub async fn screenshot(
     app: &AppHandle,
     target: &TabTarget,
     element_ref: Option<&str>,
+    max_width_points: Option<f64>,
 ) -> ArgmaxResult<snapshot_image::CapturedPng> {
     let tab_id = resolve_tab(app, target)?;
     let rect = match element_ref {
@@ -578,7 +580,66 @@ pub async fn screenshot(
         }
     };
     let view = webview(app, &tab_id)?;
-    snapshot_image::capture(&view, rect, SCREENSHOT_TIMEOUT).await
+    snapshot_image::capture(&view, rect, max_width_points, SCREENSHOT_TIMEOUT).await
+}
+
+/// Runs an expression in the page and returns what it evaluated to.
+///
+/// `wrap_for_errors` catches inside the page, because WebKit's completion
+/// handler drops the `NSError` and a script that threw would otherwise be
+/// indistinguishable from one that returned `undefined`.
+pub async fn evaluate(
+    app: &AppHandle,
+    target: &TabTarget,
+    expression: &str,
+) -> ArgmaxResult<Value> {
+    let tab_id = resolve_tab(app, target)?;
+    let view = webview(app, &tab_id)?;
+    let raw = eval::eval_json(&view, &eval::wrap_for_errors(expression), EVAL_TIMEOUT).await?;
+    let encoded: String = serde_json::from_str(&raw).map_err(|_| {
+        ArgmaxError::service(
+            "BROWSER_EVAL_FAILED",
+            "the page returned nothing — it may still be loading",
+        )
+    })?;
+    let value: Value = serde_json::from_str(&encoded).map_err(|error| {
+        ArgmaxError::service(
+            "BROWSER_EVAL_FAILED",
+            format!("unreadable answer from the page: {error}"),
+        )
+    })?;
+    if let Some(message) = value.get("error").and_then(Value::as_str) {
+        return Err(ArgmaxError::service("BROWSER_EVAL_FAILED", message));
+    }
+    Ok(json!({ "tabId": tab_id, "result": value.get("ok").cloned().unwrap_or(Value::Null) }))
+}
+
+/// Answers this tab's next `alert`/`confirm`/`prompt`, and acknowledges the
+/// one that just fired. A page's dialog call is synchronous and cannot wait
+/// for an answer from another process, so it is auto-dismissed on the spot and
+/// this arms the reply for the next one; `dialog.js` has the reasoning.
+pub async fn handle_dialog(
+    app: &AppHandle,
+    target: &TabTarget,
+    accept: bool,
+    prompt_text: Option<&str>,
+) -> ArgmaxResult<Value> {
+    let tab_id = resolve_tab(app, target)?;
+    let mut value = call(
+        app,
+        &tab_id,
+        &format!(
+            "window.__argmax.handleDialog({}, {})",
+            json!(accept),
+            json!(prompt_text)
+        ),
+        ACTION_TIMEOUT,
+    )
+    .await?;
+    if let Some(object) = value.as_object_mut() {
+        object.insert("tabId".to_string(), json!(tab_id));
+    }
+    Ok(value)
 }
 
 #[cfg(test)]

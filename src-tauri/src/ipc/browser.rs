@@ -153,6 +153,21 @@ const BROWSER_INIT_SCRIPT: &str = r#"
 })();
 "#;
 
+/// Dialog capture, installed *only* on tabs a session opened: silently
+/// answering the user's own `confirm()` would misreport what they clicked.
+const BROWSER_DIALOG_SCRIPT: &str = include_str!("../browser/dialog.js");
+
+/// The initialization script one tab gets. Two documents' worth, because the
+/// agent-only half must be in place before the page's first statement runs
+/// and an initialization script is fixed when the webview is created.
+fn init_script(owned_by_session: bool) -> String {
+    if owned_by_session {
+        format!("{BROWSER_INIT_SCRIPT}\n{BROWSER_DIALOG_SCRIPT}")
+    } else {
+        BROWSER_INIT_SCRIPT.to_string()
+    }
+}
+
 fn validated_browser_url(raw: &str) -> ArgmaxResult<Url> {
     let url = Url::parse(raw)
         .map_err(|error| ArgmaxError::service("BROWSER_URL_INVALID", error.to_string()))?;
@@ -259,6 +274,24 @@ fn new_tab_request_url(url: &Url) -> Option<String> {
         .map(|url| url.to_string())
 }
 
+/// Extract a captured dialog from an `argmax-newtab://dialog?k=&m=`
+/// navigation, which `dialog.js` posts when a page raises one.
+fn page_dialog(url: &Url) -> Option<(String, String)> {
+    if url.host_str() != Some("dialog") {
+        return None;
+    }
+    let kind = url
+        .query_pairs()
+        .find(|(key, _)| key == "k")
+        .map(|(_, value)| value.into_owned())?;
+    let message = url
+        .query_pairs()
+        .find(|(key, _)| key == "m")
+        .map(|(_, value)| value.into_owned())
+        .unwrap_or_default();
+    Some((kind, message))
+}
+
 /// Extract a whitelisted shortcut command from an
 /// `argmax-newtab://command?c=…` navigation.
 fn page_command(url: &Url) -> Option<&'static str> {
@@ -338,7 +371,7 @@ pub(crate) fn open_tab(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 \
              (KHTML, like Gecko) Version/18.5 Safari/605.1.15",
         )
-        .initialization_script(BROWSER_INIT_SCRIPT)
+        .initialization_script(init_script(owner_session_id.is_some()))
         .on_navigation(move |url| {
             if url.scheme() == "argmax-newtab" {
                 if let Some(target) = new_tab_request_url(url) {
@@ -349,6 +382,17 @@ pub(crate) fn open_tab(
                             tab_id: nav_tab.clone(),
                             url: target,
                         },
+                    );
+                } else if let Some(dialog) = page_dialog(url) {
+                    // Nothing to push: the agent reads the dialog off the next
+                    // snapshot's header line, and the user's tabs never raise
+                    // one here. The log is what makes it visible in
+                    // `system:debug-snapshot` while verifying.
+                    tracing::info!(
+                        tab = %nav_tab,
+                        kind = %dialog.0,
+                        message = %dialog.1,
+                        "browser dialog captured on an agent tab"
                     );
                 } else if let Some(command) = page_command(url) {
                     let _ = nav_app.emit_to(
@@ -530,7 +574,7 @@ pub async fn browser_screenshot(
     let captured = match input.element_ref {
         Some(element_ref) => {
             let target = TabTarget::from_inputs(input.tab_id, input.session_id)?;
-            automation::screenshot(&app, &target, Some(&element_ref)).await?
+            automation::screenshot(&app, &target, Some(&element_ref), None).await?
         }
         None => {
             let target = TabTarget::from_inputs(input.tab_id, input.session_id)?;
@@ -542,7 +586,7 @@ pub async fn browser_screenshot(
                 width: rect.width,
                 height: rect.height,
             });
-            snapshot_image::capture(&webview, rect, SCREENSHOT_TIMEOUT).await?
+            snapshot_image::capture(&webview, rect, None, SCREENSHOT_TIMEOUT).await?
         }
     };
     Ok(BrowserScreenshot {

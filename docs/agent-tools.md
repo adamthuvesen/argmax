@@ -11,12 +11,80 @@ protocol, two faces.
 Namespace `argmax`; Claude, Codex, and Cursor show them as
 `mcp__argmax__<tool>`.
 
+### Sessions
+
 | Tool | Arguments | Returns |
 |---|---|---|
 | `session_list` | `project?`, `all?` | `{sessions: [{sessionId, projectId, projectName, taskLabel, provider, state, lastActivityAt, launchedBySessionId?}], truncated}` — newest activity first, the caller excluded, capped at 40 rows |
 | `session_launch` | `prompt`, `project?`, `provider?`, `model?`, `worktree?`, `taskLabel?` | `{sessionId, workspaceId, projectId, projectName}` |
 | `session_message` | `session`, `message` | `{sessionId, queued}` — `queued` is true when the target was mid-turn |
 | `session_move` | `project`, `worktree?`, `keepSource?` | `{scheduled, sourceSessionId, projectId, projectName}` |
+
+### Browser
+
+The same server carries Argmax's browser. A page an agent opens is a real tab
+in the user's window, shown in that session's own pane — browsing is visible
+work, not a hidden side channel.
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `browser_open` | `url` | `{tabId, opened}` |
+| `browser_navigate` | `url`, `tab?` | `{tabId}` |
+| `browser_back` / `browser_reload` | `tab?` | `{tabId}` |
+| `browser_tabs` | — | `{tabs: [{tabId, ownerSessionId, url, title, loading}]}`, this session's only |
+| `browser_close` | `tab` | `{tabId, closed}` |
+| `browser_snapshot` | `tab?`, `interactive_only?` | `{tabId, url, title, tree, truncated}` |
+| `browser_find` | `query`, `tab?` | `{tabId, matches: [{ref, role, name, value}]}` |
+| `browser_get_text` | `tab?`, `max_chars?` | `{tabId, url, title, text, truncated}` |
+| `browser_click` / `browser_hover` | `ref`, `tab?` | `{tabId, url, detail}` |
+| `browser_type` | `ref`, `text`, `submit?`, `tab?` | `{tabId, url, detail}` |
+| `browser_select` | `ref`, `value`, `tab?` | `{tabId, url, detail}` |
+| `browser_press_key` | `key`, `modifiers?`, `tab?` | `{tabId, url, detail}` |
+| `browser_scroll` | `direction`, `amount?`, `ref?`, `tab?` | `{tabId, url, detail}` |
+| `browser_wait_for` | `text?`, `ref?`, `url_includes?`, `timeout_s?`, `tab?` | `{tabId, url, detail}` |
+| `browser_screenshot` | `tab?`, `ref?` | an image content block, plus `{width, height, bytes}` |
+| `browser_evaluate` | `expression`, `tab?` | `{tabId, result}` |
+| `browser_handle_dialog` | `accept`, `prompt_text?`, `tab?` | `{tabId, armed, answered}` |
+
+**Ownership.** A session may only drive tabs it opened. A `tab` naming the
+user's own tab, or another session's, is refused with `BROWSER_TAB_NOT_OWNED`;
+an unknown id with `BROWSER_NOT_OPEN`. Naming no tab means the tab this session
+touched most recently, which no other session can reach by construction — so
+the default is always safe. `browser_tabs` lists only the caller's tabs.
+
+**Refs.** `browser_snapshot` returns an aria tree whose interactive lines carry
+`[ref=eN]` handles, and every write tool addresses one of those. A ref lives in
+the page as a `data-argmax-ref` attribute, so it stays valid while its element
+does and dies with the document: after a navigation, a reload, or a
+single-page-app route change, take a fresh snapshot. A ref that no longer
+resolves fails with a message that says exactly that.
+
+**Screenshots cost more than snapshots.** A snapshot is text — a few kilobytes
+of roles, names and refs, and the only thing that hands out refs. A screenshot
+is a PNG that has to survive base64 through the provider's JSON stream, so it
+is rasterised at 720 CSS pixels wide and dropped entirely (text and dimensions
+only) past 900 KB of base64, which is what keeps it under the normalizer's
+1 MB per-line cap. Reach for it when the question is visual and for nothing
+else; the tool description says so.
+
+**Dialogs.** A page's `alert` / `confirm` / `prompt` is synchronous: it must
+return before the page's next statement runs, and it cannot wait for an answer
+from an agent in another process. So on a tab a session opened, the three are
+captured and answered on the spot — with whatever `browser_handle_dialog`
+armed, otherwise dismissively (`confirm` → false, `prompt` → null) — and the
+record shows up for 30 seconds as a `dialog:` header line in the snapshot:
+
+```
+url: https://example.com/
+title: Example
+dialog: confirm "Delete this?" pending (auto-dismissed with false)
+```
+
+`browser_handle_dialog` arms the answer for the *next* dialog on that tab and
+acknowledges the one that just fired, so the way through is: see the header
+line, arm the answer, repeat the action. Tabs the user opened are untouched and
+keep the engine's native dialogs — silently answering a person's confirm box
+would misreport what they clicked.
 
 `project` takes a registered project's name or its absolute repo path, and
 defaults to the caller's own project. `provider` and `model` default to the
@@ -93,6 +161,21 @@ answered by a `SessionControlResponse` whose result is flattened
 Each action carries exactly the fields it uses, so a nonsense combination — a
 project selector on a message, a prompt on a move — cannot be encoded.
 
+The browser tools ride the same socket with one action of their own,
+`Browser(BrowserRequest)`, answered by `Browsed(BrowserOutcome)`. The MCP
+process has no `AppHandle` and cannot touch a webview, so
+[browser_bridge.rs](../src-tauri/src/mcp/browser_bridge.rs) holds both ends: the
+request the tool builds, and the app-side handler that resolves the caller's
+session from its token, checks tab ownership, and calls
+`browser::automation` with the real handle. A screenshot's PNG rides beside the
+JSON rather than inside it, so the base64 becomes an MCP image block without
+also landing in the text the model reads; the browser reply gets a 4 MB ceiling
+where every other action gets 64 KB.
+
+Creating, navigating and destroying a webview are AppKit calls, so the handler
+hops them to the main thread with `run_on_main_thread`. Reads do not need it:
+WebKit's own `evaluateJavaScript:` and `takeSnapshot` callbacks already do.
+
 The CLI and the MCP tools both build a `SessionControlAction` and hand it to
 `send_session_control`; the socket handler matches on the same enum. Adding a
 tool means adding a variant, not a second protocol.
@@ -118,7 +201,10 @@ Rung 3 of [verification.md](verification.md): a scratch instance plus
 `scripts/bridge.mjs chat` against a scratch repo, prompting the agent to use the
 tools. The proof is tool rows for `session_list` / `session_launch` /
 `session_message` with JSON results, and a new session in `dashboard:list` whose
-`launchedBySessionId` names the caller. The caps have their own test in
+`launchedBySessionId` names the caller. For the browser tools the proof is a
+`mcp__argmax__browser_*` row per step, an answer that names something only the
+real page could have said, and `browser:list-tabs` showing the tab owned by the
+calling session. The caps have their own test in
 [src-tauri/tests/session_control.rs](../src-tauri/tests/session_control.rs).
 
 `pgrep -f "argmax mcp"` must come back empty once the app is gone. The ACP pool

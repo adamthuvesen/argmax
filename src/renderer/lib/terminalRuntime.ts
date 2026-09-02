@@ -54,6 +54,27 @@ export interface TerminalTabRuntime {
   fit: FitAddon;
   /** Set once the spawn resolves; resize/write calls before that are skipped. */
   terminalId: string | null;
+  /** Grid last pushed to the PTY, so {@link syncTerminalSize} can skip a
+   *  no-op. Null until the spawn settles. */
+  lastSentSize: { cols: number; rows: number } | null;
+}
+
+/**
+ * Push the terminal's grid to its PTY, but only when the grid actually moved.
+ *
+ * `tryFit` reports that `fit()` didn't throw, not that anything changed: a
+ * cell is roughly 8x18 px, so most pixel steps of a drag-resize (and every
+ * appearance mutation that doesn't change the font) leave cols/rows identical.
+ * `terminal:resize` is a synchronous Rust command that resolves on the macOS
+ * main thread, so those no-ops are pure main-thread contention.
+ */
+export function syncTerminalSize(runtime: TerminalTabRuntime): void {
+  if (!runtime.terminalId) return;
+  const size = boundedTerminalSize(runtime.term);
+  const last = runtime.lastSentSize;
+  if (last && last.cols === size.cols && last.rows === size.rows) return;
+  runtime.lastSentSize = size;
+  void window.argmax?.terminal.resize({ terminalId: runtime.terminalId, ...size });
 }
 
 interface RuntimeEntry extends TerminalTabRuntime {
@@ -107,7 +128,15 @@ export function attachTerminalTab(
   term.loadAddon(fit);
   term.open(host);
 
-  const entry: RuntimeEntry = { term, fit, terminalId: null, host, disposed: false, cleanups: [] };
+  const entry: RuntimeEntry = {
+    term,
+    fit,
+    terminalId: null,
+    lastSentSize: null,
+    host,
+    disposed: false,
+    cleanups: []
+  };
   runtimes.set(tabId, entry);
 
   // Watch <html data-theme="..."> so the terminal palette flips live when
@@ -118,9 +147,7 @@ export function attachTerminalTab(
   const appearanceObserver = new MutationObserver(() => {
     syncTerminalAppearance(term);
     tryFit(fit);
-    if (entry.terminalId) {
-      void window.argmax?.terminal.resize({ terminalId: entry.terminalId, ...boundedTerminalSize(term) });
-    }
+    syncTerminalSize(entry);
   });
   appearanceObserver.observe(document.documentElement, {
     attributes: true,
@@ -171,6 +198,12 @@ export function attachTerminalTab(
         return;
       }
       entry.terminalId = terminalId;
+      // The PTY was created at the pre-spawn grid. Record it so the first
+      // observer tick at the same size is a no-op, then push once in case the
+      // container resized while the spawn was in flight — those ticks were
+      // dropped, because `terminalId` was still null.
+      entry.lastSentSize = { cols, rows };
+      syncTerminalSize(entry);
 
       for (const chunk of pendingData.get(terminalId) ?? []) {
         term.write(chunk);

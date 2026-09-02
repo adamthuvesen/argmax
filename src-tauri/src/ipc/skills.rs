@@ -24,7 +24,7 @@ pub(crate) fn skills_list_impl(
     let workspace_cwd: Option<PathBuf> = match input.workspace_id {
         Some(workspace_id) => {
             let database = live_database(state)?;
-            let connection = database.connection();
+            let connection = database.read_connection();
             let workspace = find_workspace_by_id(&connection, workspace_id.as_str())?;
             Some(PathBuf::from(workspace.path))
         }

@@ -432,4 +432,89 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(next.workspaces).toHaveLength(0);
     expect(next.sessions).toHaveLength(0);
   });
+  // -------------------------------------------------------------------------
+  // Streamed-append fast path
+  //
+  // A one-event delta onto a long snapshot takes a head splice instead of
+  // rebuilding a Map and re-sorting. These pin that it stays indistinguishable
+  // from the general path, including on the shapes that must reject it.
+  // -------------------------------------------------------------------------
+
+  it("splices a streamed delta ahead of the retained events, newest first", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        event("e2", "command.completed", "2026-05-12T15:00:02.000Z", 2),
+        event("e1", "user.message", "2026-05-12T15:00:01.000Z", 1)
+      ]
+    };
+    const next = mergeDashboardDelta(base, {
+      events: [
+        event("e4", "command.completed", "2026-05-12T15:00:04.000Z", 4),
+        event("e3", "command.started", "2026-05-12T15:00:03.000Z", 3)
+      ]
+    });
+    expect(next.events.map((e) => e.id)).toEqual(["e4", "e3", "e2", "e1"]);
+  });
+
+  it("matches the general merge when the retained events are not already ordered", () => {
+    const retained = [
+      event("e1", "user.message", "2026-05-12T15:00:01.000Z", 1),
+      event("e3", "command.completed", "2026-05-12T15:00:03.000Z", 3),
+      event("e2", "command.started", "2026-05-12T15:00:02.000Z", 2)
+    ];
+    const delta = { events: [event("e4", "command.completed", "2026-05-12T15:00:04.000Z", 4)] };
+    // The ordered array takes the splice; the scrambled one falls back to the
+    // Map-and-sort. Both must land on the same list.
+    const spliced = mergeDashboardDelta(
+      { ...emptySnapshot, events: [retained[1], retained[2], retained[0]] },
+      delta
+    );
+    const sorted = mergeDashboardDelta({ ...emptySnapshot, events: retained }, delta);
+    expect(spliced.events.map((e) => e.id)).toEqual(sorted.events.map((e) => e.id));
+    expect(sorted.events.map((e) => e.id)).toEqual(["e4", "e3", "e2", "e1"]);
+  });
+
+  it("replaces rather than duplicates an id that comes back on a higher row cursor", () => {
+    // The subagent trace importer deletes and re-imports rows, so a known id
+    // can reappear above everything retained. Splicing it on would show the
+    // row twice.
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        event("e2", "command.completed", "2026-05-12T15:00:02.000Z", 2),
+        event("e1", "user.message", "2026-05-12T15:00:01.000Z", 1)
+      ]
+    };
+    const next = mergeDashboardDelta(base, {
+      events: [event("e2", "command.completed", "2026-05-12T15:00:09.000Z", 9)]
+    });
+    expect(next.events.map((e) => e.id)).toEqual(["e2", "e1"]);
+    expect(next.events[0]?.rowCursor).toBe(9);
+  });
+
+  it("sorts a delta that lands below the retained head into place", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        event("e3", "command.completed", "2026-05-12T15:00:03.000Z", 3),
+        event("e1", "user.message", "2026-05-12T15:00:01.000Z", 1)
+      ]
+    };
+    const next = mergeDashboardDelta(base, {
+      events: [event("e2", "command.started", "2026-05-12T15:00:02.000Z", 2)]
+    });
+    expect(next.events.map((e) => e.id)).toEqual(["e3", "e2", "e1"]);
+  });
+
+  it("falls back to the general merge for events that carry no row cursor", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [event("e1", "user.message", "2026-05-12T15:00:01.000Z")]
+    };
+    const next = mergeDashboardDelta(base, {
+      events: [event("e2", "command.started", "2026-05-12T15:00:02.000Z", 2)]
+    });
+    expect(next.events.map((e) => e.id)).toEqual(["e2", "e1"]);
+  });
 });

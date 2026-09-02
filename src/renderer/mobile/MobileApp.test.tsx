@@ -13,6 +13,7 @@ import {
   loadDiff,
   mockDashboardSnapshot,
   readWorkspaceFile,
+  sessionEventsSince,
   setPriorityDismissed,
   setupAppTestMocks,
   snapshot,
@@ -128,6 +129,31 @@ describe("MobileApp", () => {
     expect(within(priority).getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
     // The marker carries it now; nothing spells the attention out in text.
     expect(priority).not.toHaveTextContent("needs approval");
+  });
+
+  // The mobile launcher's own connection-lost path leaves the workspace in
+  // place with no session attached. Such a row resolves no session on tap, so
+  // it opens nothing — the desktop sidebar keeps it out of every section for
+  // the same reason.
+  it("hides a workspace that has no session", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [
+        ...snapshot.workspaces,
+        {
+          ...snapshot.workspaces[0],
+          id: "workspace-stranded",
+          taskLabel: "Stranded launch",
+          state: "created"
+        }
+      ]
+    });
+
+    render(<MobileApp />);
+
+    const section = await screen.findByRole("region", { name: "Session list" });
+    expect(within(section).getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Stranded launch/ })).not.toBeInTheDocument();
   });
 
   it("opens a session on tap and returns to the list via back", async () => {
@@ -274,6 +300,32 @@ describe("MobileApp", () => {
     // Deltas pushed while the socket was dead never arrived, so the snapshot is
     // reloaded rather than resumed.
     await waitFor(() => expect(workspaceStatus.mock.calls.length).toBeGreaterThan(statusCalls));
+  });
+
+  it("pulls the open session's transcript tail after a resync, not just rows", async () => {
+    // The socket dropped mid-turn and the turn finished offline. `refresh`
+    // brings the session back as `complete`, which stops the running-only
+    // event tick — so if the resync doesn't pull events too, the tail of the
+    // transcript never lands. Idle fixture so no poll can supply the pull.
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [{ ...snapshot.workspaces[0], state: "complete" }],
+      sessions: [{ ...snapshot.sessions[0], state: "complete" }]
+    });
+
+    render(<MobileApp />);
+    const section = await screen.findByRole("region", { name: "Session list" });
+    fireEvent.click(within(section).getByRole("button", { name: /Build dashboard/ }));
+    await screen.findByRole("region", { name: "Session conversation" });
+    await waitFor(() => expect(sessionEventsSince).toHaveBeenCalled());
+
+    const before = sessionEventsSince.mock.calls.length;
+    act(() => remote.publish({ status: "connected", resync: true }));
+
+    await waitFor(() => expect(sessionEventsSince.mock.calls.length).toBeGreaterThan(before));
+    expect(sessionEventsSince).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: "session-1" })
+    );
   });
 
   it("launches a new session in the current checkout from the + screen", async () => {

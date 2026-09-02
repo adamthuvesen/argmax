@@ -55,6 +55,15 @@ function weekdayValue(name: string): number | null {
   return null;
 }
 
+/** A cron field the friendly kinds can hold: a plain decimal 0..max. Rejects
+ *  everything `Number()` would quietly accept but cron does not ("0x10",
+ *  "1e1") along with the step, list and range forms only `custom` can keep. */
+function plainNumber(field: string, max: number): number | null {
+  if (!/^\d{1,2}$/.test(field)) return null;
+  const value = Number(field);
+  return value <= max ? value : null;
+}
+
 export const DEFAULT_SCHEDULE_CONTROLS: ScheduleControls = {
   onceAt: "",
   minute: 0,
@@ -108,15 +117,27 @@ export function parseSchedule(
     controls.custom = routine.cronExpr ?? "";
     return { kind: "custom", controls };
   }
-  const minuteValue = Number(minute);
-  const hourValue = Number(hour);
-  if (Number.isInteger(minuteValue) && minuteValue >= 0 && minuteValue <= 59) {
-    controls.minute = minuteValue;
+  // Every field the friendly kinds cannot express has to fall through to
+  // `custom`, because the panel re-serializes the parsed kind on every save:
+  // keeping the default minute for a step or list expression ("*/15", "0,30")
+  // would silently rewrite the cadence when the user only renamed the task.
+  const minuteValue = plainNumber(minute, 59);
+  if (minuteValue === null) {
+    controls.custom = routine.cronExpr ?? "";
+    return { kind: "custom", controls };
   }
+  controls.minute = minuteValue;
   if (hour === "*") {
+    // "every hour at :30, but only on Monday" has no friendly kind either;
+    // the hourly form drops the day.
+    if (dow !== "*") {
+      controls.custom = routine.cronExpr ?? "";
+      return { kind: "custom", controls };
+    }
     return { kind: "hourly", controls };
   }
-  if (!Number.isInteger(hourValue) || hourValue < 0 || hourValue > 23) {
+  const hourValue = plainNumber(hour, 23);
+  if (hourValue === null) {
     controls.custom = routine.cronExpr ?? "";
     return { kind: "custom", controls };
   }

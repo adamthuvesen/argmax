@@ -115,30 +115,30 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
         return;
     }
 
-    let mut events = bridge.app.state::<AppState>().remote_events.subscribe();
+    let (mut events, mut terminal_events) = {
+        let state = bridge.app.state::<AppState>();
+        (
+            state.remote_events.subscribe(),
+            state.remote_terminal_events.subscribe(),
+        )
+    };
     let (responses, mut queued) = mpsc::channel::<String>(RESPONSE_QUEUE);
     // One task owns the write half so dispatch results and pushed events can
     // interleave without either blocking the read loop.
     let writer = tauri::async_runtime::spawn(async move {
         loop {
-            let frame = tokio::select! {
+            let step = tokio::select! {
                 response = queued.recv() => match response {
-                    Some(response) => response,
+                    Some(response) => WriterStep::Send(response),
                     None => break,
                 },
-                event = events.recv() => match event {
-                    Ok(event) => event_frame(&event),
-                    // Pushed events are fire-and-forget, so the skipped window
-                    // is gone for this client — including the deltas that carry
-                    // approval requests. Say so instead of only logging: the
-                    // client reloads its snapshot the same way it does after a
-                    // reconnect.
-                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                        tracing::warn!(skipped, "remote client fell behind the event stream");
-                        resync_frame()
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                },
+                event = events.recv() => writer_step(event, LagReport::Resync),
+                event = terminal_events.recv() => writer_step(event, LagReport::Silent),
+            };
+            let frame = match step {
+                WriterStep::Send(frame) => frame,
+                WriterStep::Skip => continue,
+                WriterStep::Stop => break,
             };
             if sender.send(Message::Text(frame.into())).await.is_err() {
                 break;
@@ -273,6 +273,47 @@ pub fn resync_frame() -> String {
     json!({ "type": "resync" }).to_string()
 }
 
+/// What the writer task does with one broadcast receive.
+#[derive(Debug, PartialEq)]
+pub enum WriterStep {
+    Send(String),
+    /// Nothing to write; keep the socket open.
+    Skip,
+    Stop,
+}
+
+/// How a dropped-event window is reported to the client, per stream.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LagReport {
+    /// The skipped window may have held state the client still needs (an
+    /// approval request rides a `dashboard:delta`), so tell it to reload.
+    Resync,
+    /// Terminal output: a best-effort mirror the mobile client does not render.
+    /// A dropped window is nothing to recover, and answering it with a resync
+    /// would make a noisy `cat` cost the client a full snapshot refresh.
+    Silent,
+}
+
+pub fn writer_step(
+    received: Result<RemoteEvent, broadcast::error::RecvError>,
+    on_lag: LagReport,
+) -> WriterStep {
+    match received {
+        Ok(event) => WriterStep::Send(event_frame(&event)),
+        Err(broadcast::error::RecvError::Lagged(skipped)) => match on_lag {
+            LagReport::Resync => {
+                tracing::warn!(skipped, "remote client fell behind the event stream");
+                WriterStep::Send(resync_frame())
+            }
+            LagReport::Silent => {
+                tracing::debug!(skipped, "remote client dropped terminal output");
+                WriterStep::Skip
+            }
+        },
+        Err(broadcast::error::RecvError::Closed) => WriterStep::Stop,
+    }
+}
+
 pub fn response_ok_frame(id: i64, value: Value) -> String {
     json!({ "type": "response", "id": id, "ok": value }).to_string()
 }
@@ -374,6 +415,32 @@ mod tests {
     fn a_dropped_event_window_is_named_so_the_client_can_reload() {
         let parsed: Value = serde_json::from_str(&resync_frame()).expect("frame is json");
         assert_eq!(parsed["type"], "resync");
+    }
+
+    #[test]
+    fn only_a_lagging_dashboard_stream_costs_the_client_a_resync() {
+        let lagged = || Err(broadcast::error::RecvError::Lagged(9));
+
+        assert_eq!(
+            writer_step(lagged(), LagReport::Resync),
+            WriterStep::Send(resync_frame())
+        );
+        // A phone that cannot drain a `cat` must not answer every dropped
+        // terminal chunk with a full snapshot reload.
+        assert_eq!(writer_step(lagged(), LagReport::Silent), WriterStep::Skip);
+
+        let event = RemoteEvent {
+            channel: "terminal:data",
+            payload: json!({ "terminalId": "t1" }),
+        };
+        assert_eq!(
+            writer_step(Ok(event.clone()), LagReport::Silent),
+            WriterStep::Send(event_frame(&event))
+        );
+        assert_eq!(
+            writer_step(Err(broadcast::error::RecvError::Closed), LagReport::Silent),
+            WriterStep::Stop
+        );
     }
 
     #[test]

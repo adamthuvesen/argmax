@@ -218,6 +218,108 @@ fn imports_a_terminal_session_with_its_transcript_and_resume_id() {
 }
 
 #[test]
+fn an_imported_session_keeps_both_sides_of_the_conversation() {
+    let harness = harness();
+    let cwd = harness.repo_path.clone();
+    // Content blocks and a bare string are both shapes Claude's transcript
+    // writes for a typed prompt; a tool result rides the same `user` type.
+    let array_prompt = format!(
+        r#"{{"type":"user","isSidechain":false,"cwd":"{cwd}","timestamp":"2026-08-30T10:05:00.000Z","sessionId":"sess-both","message":{{"role":"user","content":[{{"type":"text","text":"And also this"}}]}}}}"#
+    );
+    let tool_result = format!(
+        r#"{{"type":"user","isSidechain":false,"cwd":"{cwd}","timestamp":"2026-08-30T10:05:02.000Z","sessionId":"sess-both","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"toolu_1","content":"done"}}]}}}}"#
+    );
+    write_transcript(
+        harness.home.path(),
+        &cwd,
+        "sess-both",
+        &[
+            user_line(
+                &cwd,
+                "sess-both",
+                "2026-08-30T10:00:00.000Z",
+                "Fix the flaky test",
+            ),
+            assistant_line(&cwd, "sess-both", "2026-08-30T10:00:05.000Z", "On it."),
+            array_prompt,
+            tool_result,
+        ],
+    );
+
+    assert_eq!(harness.sync(&claude_enabled()).imported, 1);
+    let session_id = harness.sessions()[0].id.clone();
+    let connection = harness.database.connection();
+    let events = list_session_events_since(&connection, &session_id, None, None)
+        .expect("events")
+        .events;
+
+    let prompts = events
+        .iter()
+        .filter(|event| event.r#type == "user.message")
+        .map(|event| event.message.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        prompts,
+        vec!["Fix the flaky test", "And also this"],
+        "both prompt shapes must reach the timeline: {events:#?}"
+    );
+    // A tool-result row is not a prompt; it stays the normalizer's business.
+    assert!(
+        !events
+            .iter()
+            .any(|event| event.r#type == "user.message" && event.message.contains("done")),
+        "a tool result must not become a user message: {events:#?}"
+    );
+    // Each event carries the timestamp of the line it came from, not one
+    // sweep instant for the whole batch.
+    let prompt = events
+        .iter()
+        .find(|event| event.r#type == "user.message")
+        .expect("prompt event");
+    assert_eq!(prompt.created_at, "2026-08-30T10:00:00.000Z");
+}
+
+#[test]
+fn model_facing_bodies_never_become_imported_prompts() {
+    let harness = harness();
+    let cwd = harness.repo_path.clone();
+    // Claude's transcript store writes no `isSynthetic` flag on these.
+    let skill_body = format!(
+        r#"{{"type":"user","isSidechain":false,"cwd":"{cwd}","timestamp":"2026-08-30T10:01:00.000Z","sessionId":"sess-hidden","message":{{"role":"user","content":[{{"type":"text","text":"Base directory for this skill: /repo/.claude/skills/review\n\n# Review"}}]}}}}"#
+    );
+    write_transcript(
+        harness.home.path(),
+        &cwd,
+        "sess-hidden",
+        &[
+            user_line(&cwd, "sess-hidden", "2026-08-30T10:00:00.000Z", "Review it"),
+            skill_body,
+            assistant_line(&cwd, "sess-hidden", "2026-08-30T10:02:00.000Z", "On it."),
+        ],
+    );
+
+    assert_eq!(harness.sync(&claude_enabled()).imported, 1);
+    let session_id = harness.sessions()[0].id.clone();
+    let connection = harness.database.connection();
+    let events = list_session_events_since(&connection, &session_id, None, None)
+        .expect("events")
+        .events;
+    assert!(
+        !events
+            .iter()
+            .any(|event| event.message.contains("Base directory for this skill")),
+        "a skill body is written for the model, not the chat: {events:#?}"
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.r#type == "user.message")
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn sessions_outside_a_registered_project_are_ignored() {
     let harness = harness();
     // Same shape, but the cwd belongs to no registered project.

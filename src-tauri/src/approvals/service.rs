@@ -94,7 +94,7 @@ impl ApprovalService {
     /// `approvals:pending` takes no input today and that shape is
     /// preserved here — callers pass nothing.
     pub fn pending(&self) -> ArgmaxResult<Vec<ApprovalRequest>> {
-        let conn = self.database.connection();
+        let conn = self.database.read_connection();
         list_pending_approvals(&conn, PENDING_LIMIT)
     }
 

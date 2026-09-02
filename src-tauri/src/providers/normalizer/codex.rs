@@ -299,16 +299,53 @@ pub fn find_rollout_in_dir(sessions_dir: &Path, thread_id: &str) -> Option<PathB
     matching_paths.into_iter().next()
 }
 
-/// Read the latest `token_count` event from a Codex rollout JSONL file.
-pub fn read_latest_token_count_from_rollout(path: &Path) -> Option<(u64, Option<u64>)> {
-    let file = std::fs::File::open(path).ok()?;
-    let reader = std::io::BufReader::new(file);
-    use std::io::BufRead;
+/// Read `token_count` events from a Codex rollout JSONL file, starting at
+/// `offset` bytes. Returns the latest values the new bytes carried (`None` when
+/// they carried none) and the offset to resume from — always a line boundary,
+/// so a rollout still being appended to is picked up whole next time.
+///
+/// Rollouts reach hundreds of megabytes and this runs on the PTY reader thread
+/// once per turn, so re-reading the file from the top every time is the whole
+/// cost of the call.
+pub fn read_token_count_from_rollout(
+    path: &Path,
+    offset: u64,
+) -> (Option<(u64, Option<u64>)>, u64) {
+    use std::io::{BufRead, Seek, SeekFrom};
+
+    let Ok(file) = std::fs::File::open(path) else {
+        return (None, offset);
+    };
+    let file_length = file.metadata().map(|meta| meta.len()).unwrap_or(0);
+    // A rollout that shrank was replaced or rotated: start over.
+    let start = if file_length < offset { 0 } else { offset };
+    let mut reader = std::io::BufReader::new(file);
+    if start > 0 && reader.seek(SeekFrom::Start(start)).is_err() {
+        return (None, offset);
+    }
 
     let mut latest_context_tokens = None;
     let mut latest_context_window = None;
-
-    for line in reader.lines().flatten() {
+    let mut consumed = start;
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let read = match reader.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(error) => {
+                // A line we cannot decode would otherwise be re-read forever.
+                // Skip the unreadable remainder rather than stalling usage.
+                tracing::debug!(?error, ?path, "codex rollout read failed");
+                consumed = file_length;
+                break;
+            }
+        };
+        if !line.ends_with('\n') {
+            // The turn is still writing this line — leave it for next time.
+            break;
+        }
+        consumed += read as u64;
         if !line.contains("token_count") {
             continue;
         }
@@ -338,7 +375,7 @@ pub fn read_latest_token_count_from_rollout(path: &Path) -> Option<(u64, Option<
         }
     }
 
-    match (latest_context_tokens, latest_context_window) {
+    let latest = match (latest_context_tokens, latest_context_window) {
         (None, None) => None,
         // Report only what the rollout actually said. A rollout that carries
         // usage but no window used to yield a hardcoded 258_400 regardless of
@@ -346,7 +383,8 @@ pub fn read_latest_token_count_from_rollout(path: &Path) -> Option<(u64, Option<
         // `None` lets the renderer fall back to the per-model table that owns
         // this number.
         (tokens, window) => Some((tokens.unwrap_or(0), window)),
-    }
+    };
+    (latest, consumed)
 }
 
 pub fn extract_usage(
@@ -431,8 +469,14 @@ pub fn extract_usage(
             }
         }
 
-        if let Some(rollout_path) = &context.codex_rollout_path {
-            if let Some((occ, window)) = read_latest_token_count_from_rollout(rollout_path) {
+        if let Some(rollout_path) = context.codex_rollout_path.clone() {
+            let (appended, offset) =
+                read_token_count_from_rollout(&rollout_path, context.codex_rollout_offset);
+            context.codex_rollout_offset = offset;
+            if appended.is_some() {
+                context.codex_rollout_last_token_count = appended;
+            }
+            if let Some((occ, window)) = context.codex_rollout_last_token_count {
                 if occ > 0 {
                     context_tokens = Some(occ);
                 }
@@ -560,6 +604,7 @@ fn extract_tool_input(item: &Map<String, Value>, action: Option<&Map<String, Val
 mod tests {
     use serde_json::{json, Value};
 
+    use super::read_token_count_from_rollout;
     use crate::providers::normalizer::{
         normalize_provider_event, tests::output_event, CodexCumulativeUsage, Dispatcher,
         EventNormalizer, NormalizerSessionContext,
@@ -1087,6 +1132,128 @@ mod tests {
         assert_eq!(event.usages[0].tokens.input, 30000);
         assert_eq!(event.usages[0].tokens.cache_read, 20000);
         assert_eq!(event.usages[0].tokens.output, 100);
+        assert_eq!(
+            context.codex_rollout_offset,
+            rollout_content.len() as u64,
+            "the whole rollout was consumed on the first turn"
+        );
+    }
+
+    #[test]
+    fn codex_rollout_reads_only_the_bytes_appended_since_the_last_turn() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let rollout_file = temp_dir
+            .path()
+            .join("rollout-2026-09-01T08-00-00-thread-test.jsonl");
+        let first_turn = concat!(
+            r#"{"type":"session_meta","payload":{"id":"thread-test"}}"#,
+            "\n",
+            r#"{"type":"event_msg","payload":{"type":"token_count","info":{"model_context_window":258400,"last_token_usage":{"input_tokens":12345}}}}"#,
+            "\n",
+        );
+        std::fs::write(&rollout_file, first_turn).unwrap();
+
+        let mut context =
+            NormalizerSessionContext::for_provider(ProviderId::Codex, "gpt-5.6-terra");
+        context.codex_thread_id = Some("thread-test".to_string());
+        context.codex_rollout_path = Some(rollout_file.clone());
+
+        let turn_one = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"turn.completed","usage":{"input_tokens":50000,"cached_input_tokens":20000,"output_tokens":100}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(turn_one.usages[0].context_tokens, Some(12345));
+        assert_eq!(context.codex_rollout_offset, first_turn.len() as u64);
+
+        // A turn that appends nothing keeps the cached readout instead of
+        // dropping the occupancy to nothing.
+        let quiet_turn = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"turn.completed","usage":{"input_tokens":60000,"cached_input_tokens":20000,"output_tokens":150}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(quiet_turn.usages[0].context_tokens, Some(12345));
+        assert_eq!(quiet_turn.usages[0].context_window, Some(258400));
+
+        let appended = concat!(
+            r#"{"type":"event_msg","payload":{"type":"token_count","info":{"model_context_window":258400,"last_token_usage":{"input_tokens":67890}}}}"#,
+            "\n",
+        );
+        {
+            use std::io::Write;
+            let mut handle = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&rollout_file)
+                .unwrap();
+            handle.write_all(appended.as_bytes()).unwrap();
+        }
+
+        let turn_two = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"turn.completed","usage":{"input_tokens":70000,"cached_input_tokens":20000,"output_tokens":200}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(turn_two.usages[0].context_tokens, Some(67890));
+        assert_eq!(
+            context.codex_rollout_offset,
+            (first_turn.len() + appended.len()) as u64
+        );
+    }
+
+    #[test]
+    fn codex_rollout_leaves_a_half_written_line_for_the_next_read() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let rollout_file = temp_dir.path().join("rollout-partial.jsonl");
+        let complete = concat!(
+            r#"{"type":"event_msg","payload":{"type":"token_count","info":{"model_context_window":100,"last_token_usage":{"input_tokens":10}}}}"#,
+            "\n",
+        );
+        let partial = r#"{"type":"event_msg","payload":{"type":"token_count","info":{"last_"#;
+        std::fs::write(&rollout_file, format!("{complete}{partial}")).unwrap();
+
+        let (latest, offset) = read_token_count_from_rollout(&rollout_file, 0);
+        assert_eq!(latest, Some((10, Some(100))));
+        assert_eq!(
+            offset,
+            complete.len() as u64,
+            "partial line is not consumed"
+        );
+
+        // Finishing the line makes it readable without re-reading the first.
+        let rest = concat!(r#"token_usage":{"input_tokens":20}}}}"#, "\n");
+        {
+            use std::io::Write;
+            let mut handle = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&rollout_file)
+                .unwrap();
+            handle.write_all(rest.as_bytes()).unwrap();
+        }
+        let (latest, offset) = read_token_count_from_rollout(&rollout_file, offset);
+        assert_eq!(latest, Some((20, None)));
+        assert_eq!(offset, (complete.len() + partial.len() + rest.len()) as u64);
+    }
+
+    #[test]
+    fn codex_rollout_restarts_when_the_file_shrinks() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let rollout_file = temp_dir.path().join("rollout-rotated.jsonl");
+        let replacement = concat!(
+            r#"{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":7}}}}"#,
+            "\n",
+        );
+        std::fs::write(&rollout_file, replacement).unwrap();
+
+        let (latest, offset) = read_token_count_from_rollout(&rollout_file, 10_000);
+        assert_eq!(latest, Some((7, None)));
+        assert_eq!(offset, replacement.len() as u64);
     }
 
     #[test]

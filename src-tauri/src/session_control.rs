@@ -175,6 +175,21 @@ impl SessionLaunchRegistry {
         }
     }
 
+    /// Drops the session's launch token. Only for a session that is gone for
+    /// good: follow-up turns reuse the token issued for the first turn, so a
+    /// plain process exit must not revoke it. Without this, a background process
+    /// the agent left running keeps a working credential forever.
+    pub fn revoke(&self, session_id: &str) {
+        let mut credentials = self
+            .inner
+            .credentials
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(token) = credentials.tokens_by_session.remove(session_id) {
+            credentials.launches_by_token.remove(&token);
+        }
+    }
+
     fn resolve(&self, token: &str) -> Option<ParentLaunchSettings> {
         self.inner
             .credentials
@@ -1932,6 +1947,22 @@ mod tests {
                 & 0o777,
             0o600
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn revoked_session_token_stops_resolving() {
+        let (_server, registry) = SessionLaunchServer::bind().unwrap();
+        let issued = registry.issue(&launch_input("session-1"));
+        let token = issued.env_pairs()[1].1.clone();
+        assert!(registry.resolve(&token).is_some());
+
+        registry.revoke("session-1");
+        assert!(registry.resolve(&token).is_none());
+
+        // A later session gets a fresh token rather than the revoked one.
+        let reissued = registry.issue(&launch_input("session-1"));
+        assert_ne!(reissued.env_pairs()[1].1, token);
     }
 
     #[cfg(unix)]

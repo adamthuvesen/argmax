@@ -50,9 +50,12 @@ function renderAssistantGroup({
         holdOpen
         durationMs={thoughtDurationMs(group.createdAt, group.lastActivityAt)}
       >
+        {/* Same as the chat surface: a live thought streams so the committed
+            prefix stops being re-parsed on every reasoning delta. */}
         <StreamingMarkdown
           text={group.text}
-          streaming={false}
+          streaming={thinkingLive}
+          paced={false}
           workspace={workspace}
           onOpenFile={onOpenFile}
         />

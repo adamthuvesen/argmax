@@ -13,8 +13,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{claude, DiscoveredSession, SyncConfig};
-use crate::error::ArgmaxResult;
-use crate::persistence::events::{persist_timeline_event_if_absent, TimelineEvent};
+use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::persistence::events::{
+    persist_timeline_event_if_absent, PersistTimelineEventInput, TimelineEvent,
+};
 use crate::persistence::projects::list_projects;
 use crate::persistence::sessions::{
     delete_session, persist_imported_session, touch_imported_session, PersistImportedSessionInput,
@@ -255,27 +257,69 @@ fn write_events(
     let mut highest_line = from_line;
     let mut inserted = Vec::new();
 
-    for (line_number, line) in lines {
-        highest_line = line_number + 1;
+    // One commit for the whole batch. Importing a long transcript is thousands
+    // of inserts, and each one on its own transaction is a separate fsync and a
+    // separate FTS trigger run while every reader waits on the writer.
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    for line in lines {
+        highest_line = line.index + 1;
+        // The row's own timestamp, not the file's mtime: stamping one sweep
+        // time on every event of a batch collapses a whole conversation into a
+        // single instant.
+        let created_at = line
+            .timestamp
+            .clone()
+            .unwrap_or_else(|| session.last_activity_at.clone());
+        // Deterministic ids: re-reading a transcript must never duplicate a
+        // bubble, whatever the cursor says.
+        let event_id = |index: usize| {
+            format!(
+                "sync:{provider}:{}:{}:{index}",
+                session.external_id, line.index
+            )
+        };
+
+        let own_event = match &line.kind {
+            claude::LineKind::UserPrompt(prompt) => Some(PersistTimelineEventInput {
+                id: event_id(0),
+                session_id: session_id.to_string(),
+                r#type: "user.message".to_string(),
+                message: prompt.clone(),
+                payload: serde_json::json!({ "source": "sync" }),
+                created_at: Some(created_at.clone()),
+            }),
+            claude::LineKind::Compacted => Some(PersistTimelineEventInput {
+                id: event_id(0),
+                session_id: session_id.to_string(),
+                r#type: "session.compacted".to_string(),
+                message: "Compacted context".to_string(),
+                payload: serde_json::json!({}),
+                created_at: Some(created_at.clone()),
+            }),
+            claude::LineKind::Provider => None,
+        };
+        if let Some(event) = own_event {
+            if let Some(persisted) = persist_timeline_event_if_absent(&transaction, &event)? {
+                inserted.push(persisted);
+            }
+            continue;
+        }
+
         let output = ProviderOutputEvent {
             session_id: session_id.to_string(),
             stream: ProviderOutputStream::Stdout,
-            message: line,
-            created_at: session.last_activity_at.clone(),
+            message: line.raw,
+            created_at,
         };
         let normalized = normalize_provider_event(provider_id, &output, &mut context);
         for (index, mut event) in normalized.events.into_iter().enumerate() {
-            // Deterministic ids: re-reading a transcript must never duplicate
-            // a bubble, whatever the cursor says.
-            event.id = format!(
-                "sync:{provider}:{}:{line_number}:{index}",
-                session.external_id
-            );
-            if let Some(persisted) = persist_timeline_event_if_absent(connection, &event)? {
+            event.id = event_id(index);
+            if let Some(persisted) = persist_timeline_event_if_absent(&transaction, &event)? {
                 inserted.push(persisted);
             }
         }
     }
+    transaction.commit().map_err(sqlite_error)?;
     Ok((highest_line, inserted))
 }
 
@@ -341,6 +385,10 @@ fn model_id(session: &DiscoveredSession, provider: &str) -> String {
         .model_id
         .clone()
         .unwrap_or_else(|| crate::provider_defaults(provider).model_id.to_string())
+}
+
+fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
+    ArgmaxError::service("SQLITE", error.to_string())
 }
 
 fn iso_from_ms(ms: i64) -> String {

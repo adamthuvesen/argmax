@@ -2,8 +2,8 @@ import { useEffect, useRef, type JSX } from "react";
 import { tryFit } from "../lib/xtermFit.js";
 import {
   attachTerminalTab,
-  boundedTerminalSize,
   detachTerminalTab,
+  syncTerminalSize,
   type TerminalTabRuntime
 } from "../lib/terminalRuntime.js";
 
@@ -36,12 +36,7 @@ export function TerminalInstance({
 
     const ro = new ResizeObserver(() => {
       if (!tryFit(runtime.fit)) return;
-      if (runtime.terminalId) {
-        void window.argmax?.terminal.resize({
-          terminalId: runtime.terminalId,
-          ...boundedTerminalSize(runtime.term)
-        });
-      }
+      syncTerminalSize(runtime);
     });
     ro.observe(container);
 
@@ -60,12 +55,7 @@ export function TerminalInstance({
     const runtime = runtimeRef.current;
     if (!runtime) return;
     if (!tryFit(runtime.fit)) return;
-    if (runtime.terminalId) {
-      void window.argmax?.terminal.resize({
-        terminalId: runtime.terminalId,
-        ...boundedTerminalSize(runtime.term)
-      });
-    }
+    syncTerminalSize(runtime);
     runtime.term.focus();
   }, [visible]);
 

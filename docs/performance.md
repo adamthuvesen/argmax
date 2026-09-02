@@ -21,6 +21,7 @@ Targets defined in [src/test/perf.test.ts](../src/test/perf.test.ts):
 
 - `mergeDashboardDelta` across 200 sessions: p95 < 5 ms.
 - `mergeDashboardDelta` with 500 deltas + tool rows: p95 < 5 ms.
+- `mergeDashboardDelta` with a 1-event delta onto 5,000 events: p95 < 2 ms.
 - `buildFileTree` across 10,000 files: < 75 ms.
 - `searchFilePaths` across 10,000 paths: p95 < 25 ms.
 - `parseUnifiedDiff` across a 500-hunk diff: p95 < 20 ms.
@@ -70,6 +71,12 @@ conflation is therefore capped at `MAX_CONFLATED_DELTA_BYTES` (256 KB) of event
 text — single events reach 711 KB in a real database, and an unbounded merge
 handed JavaScriptCore a multi-megabyte program to parse on the main thread.
 Whatever does not fit stays queued and goes out on the next iteration, in order.
+
+Terminal output takes the same shape: PTY chunks queue onto one worker that
+concatenates them per terminal up to `MAX_CONFLATED_TERMINAL_BYTES` (256 KB)
+before a single main-thread emit, so a `cat` of a large file no longer costs one
+`run_on_main_thread` hop per 8 KB read. A `terminal:exit` rides the same queue
+and never overtakes output still queued for its terminal.
 
 ## Animated Properties
 

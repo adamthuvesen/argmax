@@ -34,7 +34,10 @@ node scripts/ui-screenshot.mjs --eval 'document.querySelector("[aria-label=\"Set
 The script serves the renderer with vite, opens it in headless Chrome over
 CDP, and captures a PNG. `--theme` seeds `localStorage["argmax.theme.mode"]`
 before boot; `--eval` runs arbitrary JS after load, so the UI can be clicked
-into the state under test. An agent can read the PNG back and *look* at it.
+into the state under test, and the expression's value comes back as `eval` in
+the ready line — an async expression can click a row, wait, and return a
+measurement (a scroll gap, a row count, a text probe) alongside the PNG. An
+agent can read the PNG back and *look* at it, and assert on the value.
 
 ## Rung 3: a scratch instance, driven over the bridge
 
@@ -76,6 +79,39 @@ Without `--data-dir` the bridge CLI targets the real app's profile
 (`~/Library/Application Support/com.argmax.rs`), which works once remote
 access is enabled in Settings → Integrations.
 
+`reply` sends a follow-up turn to an existing session — the resume path, which
+`chat` never exercises — and streams it the same way. `terminal` spawns a PTY
+in a workspace, runs one command, and reports how its output reached a remote
+client (chunk count, bytes, largest chunk), which is the observable side of
+terminal push conflation:
+
+```bash
+node scripts/bridge.mjs reply --session <id> --prompt 'now add tests'
+node scripts/bridge.mjs terminal --workspace <id> --run 'cat big.txt' --seconds 8
+```
+
+### The desktop renderer against the scratch backend
+
+The remote server serves the desktop renderer too, so the browser rung and the
+scratch rung compose: point `ui-screenshot.mjs` at the instance with `?remote`
+and the pairing token in the fragment, and headless Chrome runs the full
+desktop UI over the WebSocket bridge against real sessions. This is the rung
+for the chat surface — streaming, Thought blocks, tool rows, follow-scroll —
+because `--eval` can open a session row and sample the page while a real
+provider streams into it:
+
+```bash
+TOKEN=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/argmax-scratch/remote.json")).token)')
+node scripts/ui-screenshot.mjs --url "http://127.0.0.1:<port>/?remote#token=$TOKEN" \
+  --eval "$(cat open-session.js)" --out chat.png
+```
+
+where `open-session.js` is an async IIFE that clicks the sidebar row (rows are
+`button[title]` elements titled by task label and state; collapsed project
+groups open via the `Show <project> sessions` button), then returns whatever it
+measured. Start the provider session with `bridge.mjs chat` in the background
+first and time the capture into the stream.
+
 `system:debug-snapshot` is served over the bridge precisely for this loop:
 a script can assert on log lines and per-channel latency instead of eyeballing
 the debug panel ([debugging.md](debugging.md)). For performance claims,
@@ -88,8 +124,11 @@ node scripts/app-screenshot.mjs --out real.png [--pid <pid>]
 ```
 
 Captures an on-screen Argmax window with `screencapture` (window id via a
-Swift `CGWindowList` lookup). `--pid` picks between the real app and a scratch
-instance — `scratch-app.mjs` prints its pid. Needs the Screen Recording
-permission for whatever runs the script, and a window on another Space is not
-capturable; the browser rung covers everything except native chrome, so this
+Swift `CGWindowList` lookup; a debug binary reports its owner as `argmax`, a
+packaged build as `Argmax`, and both match). `--pid` picks between the real
+app and a scratch instance — `scratch-app.mjs` prints its pid. Needs the
+Screen Recording permission for whatever runs the script — an agent's host
+process usually lacks it, and granting it is a Privacy & Security change the
+user makes — and a window on another Space is not capturable. The browser rung
+against the scratch backend covers everything except native chrome, so this
 is the last mile, not the default.

@@ -192,13 +192,18 @@ const loaded = cdp.waitForEvent("Page.loadEventFired");
 await cdp.send("Page.navigate", { url: pageUrl }, sessionId);
 await loaded;
 
+// The expression's value comes back in the ready line as `eval`, so a script
+// can click the UI into a state and read a measurement out of the same page
+// (a scroll position, a row count) instead of judging the PNG alone.
+let evaluated;
 if (options.evaluate) {
-  const { exceptionDetails } = await cdp.send(
+  const { result, exceptionDetails } = await cdp.send(
     "Runtime.evaluate",
-    { expression: options.evaluate, awaitPromise: true, userGesture: true },
+    { expression: options.evaluate, awaitPromise: true, returnByValue: true, userGesture: true },
     sessionId
   );
   if (exceptionDetails) fail(`--eval threw: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`);
+  evaluated = result?.value;
 }
 await new Promise((resolve) => setTimeout(resolve, options.settle));
 
@@ -206,5 +211,7 @@ const { data } = await cdp.send("Page.captureScreenshot", { format: "png" }, ses
 const out = path.resolve(options.out);
 writeFileSync(out, Buffer.from(data, "base64"));
 cdp.close();
-console.log(JSON.stringify({ out, url: pageUrl, theme: options.theme, width: options.width, height: options.height }));
+console.log(
+  JSON.stringify({ out, url: pageUrl, theme: options.theme, width: options.width, height: options.height, eval: evaluated })
+);
 process.exit(0);

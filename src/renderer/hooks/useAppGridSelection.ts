@@ -12,7 +12,6 @@ import {
   type DashboardSnapshot,
   type ProjectSummary,
   type SessionSummary,
-  type TimelineEvent,
   type WorkspaceSummary
 } from "../../shared/types.js";
 import type { WorkspaceClickModifiers } from "../components/SidebarSessionRow.js";
@@ -91,19 +90,6 @@ export function useAppGridSelection({
     () => new Map(snapshot.projects.map((p) => [p.id, p])),
     [snapshot.projects]
   );
-  const eventsBySessionId = useMemo(() => {
-    const bySession = new Map<string, TimelineEvent[]>();
-    for (const event of snapshot.events) {
-      const current = bySession.get(event.sessionId);
-      if (current) {
-        current.push(event);
-      } else {
-        bySession.set(event.sessionId, [event]);
-      }
-    }
-    return bySession;
-  }, [snapshot.events]);
-
   const openWorkspaceIds = useMemo(
     () => new Set(grid.rows.flatMap((row) => row.filter(isSessionCell).map((cell) => cell.workspaceId))),
     [grid.rows]
@@ -159,7 +145,7 @@ export function useAppGridSelection({
       }
       return { rows, focused: { row: 0, col: 0 } };
     });
-  }, [eventsBySessionId, pendingSelectionRef, projectsById, sessionsById, workspacesById]);
+  }, [pendingSelectionRef, projectsById, sessionsById, workspacesById]);
 
   // Mirror grid.focused → hook selection state. Avoids racing on initial
   // mount by skipping when the focused cell already matches what the hook

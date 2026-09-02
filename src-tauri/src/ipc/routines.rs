@@ -21,7 +21,7 @@ pub fn routines_list(
     _input: RoutinesListInput,
 ) -> ArgmaxResult<Vec<Routine>> {
     let database = live_database(&state)?;
-    let connection = database.connection();
+    let connection = database.read_connection();
     list_routines(&connection)
 }
 
@@ -144,7 +144,7 @@ fn schedule_next_run(
         Some(time) => Ok(Some(time.clone())),
         None => Ok(
             schedule::next_occurrence(routine.cron_expr.as_deref(), None, now)?
-                .map(|time| schedule::format_rfc3339(time)),
+                .map(schedule::format_rfc3339),
         ),
     }
 }

@@ -30,6 +30,15 @@ const DEFAULT_PORT: u16 = 8790;
 /// not stall the emit sites; it gets a `Lagged` warning instead.
 pub const REMOTE_EVENT_CAPACITY: usize = 256;
 
+/// Buffered terminal push events per connected client, on their own channel.
+/// A `cat` of a large file produces terminal output faster than a phone over a
+/// tailnet can drain it; sharing the buffer above meant that flood evicted the
+/// `dashboard:delta`s carrying approval requests, and every eviction cost the
+/// client a full snapshot reload. Terminal output is a best-effort mirror the
+/// mobile client does not even render, so it gets a small buffer of its own
+/// and drops silently.
+pub const REMOTE_TERMINAL_EVENT_CAPACITY: usize = 64;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteConfig {
     #[serde(default)]

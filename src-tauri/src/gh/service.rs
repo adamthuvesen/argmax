@@ -34,7 +34,7 @@ impl GhService {
     /// Returns the cached `gh_pr` rows for a session. Cheap — single
     /// read-only DB hit.
     pub fn list_for_session(&self, session_id: &str) -> ArgmaxResult<Vec<GhPrRecord>> {
-        let conn = self.database.connection();
+        let conn = self.database.read_connection();
         list_gh_pr_for_session(&conn, session_id)
     }
 

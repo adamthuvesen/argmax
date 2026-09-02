@@ -39,7 +39,9 @@ import CoreGraphics
 import Foundation
 guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { exit(2) }
 for window in list {
-    guard let owner = window["kCGWindowOwnerName"] as? String, owner == "Argmax",
+    // A packaged build reports "Argmax"; a debug binary (scripts/scratch-app.mjs)
+    // reports its executable name, "argmax".
+    guard let owner = window["kCGWindowOwnerName"] as? String, owner.lowercased() == "argmax",
           let layer = window["kCGWindowLayer"] as? Int, layer == 0,
           let id = window["kCGWindowNumber"] as? Int,
           let pid = window["kCGWindowOwnerPID"] as? Int else { continue }

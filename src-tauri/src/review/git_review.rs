@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -513,15 +513,48 @@ async fn collect_changed_files(
     Ok(files)
 }
 
+/// Attach +/- counts to a changed-file list.
+///
+/// One `git diff --numstat` covers every tracked file: the renderer refetches
+/// this list on each changed-file count change, so a per-file `git diff` would
+/// mean one process per file per refresh. Untracked files are invisible to
+/// `git diff` and still need the synthesized whole-file diff, so those alone
+/// fan out.
 async fn load_file_summaries(
     repo_path: PathBuf,
     files: Vec<ChangedFileSummary>,
     diff_base: String,
 ) -> ArgmaxResult<Vec<ChangedFileSummary>> {
+    let tracked_counts = if files.iter().any(|file| file.status != "??") {
+        let numstat = run_git_text(
+            &repo_path,
+            ["diff", "--numstat", "-z", diff_base.as_str()],
+            GIT_TIMEOUT,
+        )
+        .await?;
+        parse_numstat_z(&numstat)
+    } else {
+        HashMap::new()
+    };
+
     let semaphore = Arc::new(Semaphore::new(DIFF_FANOUT_LIMIT));
     let diff_base = Arc::new(diff_base);
     let mut tasks = JoinSet::new();
     for (index, file) in files.into_iter().enumerate() {
+        if file.status != "??" {
+            // A path numstat never mentions has no diff against the base
+            // (a mode-only change, say), which is genuinely 0/0.
+            let (additions, deletions) = tracked_counts.get(&file.path).copied().unwrap_or((0, 0));
+            let summary = ChangedFileSummary {
+                additions,
+                deletions,
+                ..file
+            };
+            // Already resolved; goes through the JoinSet only so
+            // `collect_ordered` can restore the caller's file order.
+            tasks.spawn(async move { Ok::<_, ArgmaxError>((index, summary)) });
+            continue;
+        }
         let repo_path = repo_path.clone();
         let semaphore = semaphore.clone();
         let diff_base = diff_base.clone();
@@ -548,6 +581,52 @@ async fn load_file_summaries(
     }
 
     collect_ordered(tasks).await
+}
+
+/// Parse `git diff --numstat -z <base>` into per-path `(additions, deletions)`.
+///
+/// Records are NUL-separated. A plain change is one record,
+/// `<adds>\t<dels>\t<path>`; a rename/copy splits into three, the counts
+/// record ending at its second tab followed by the old and new paths
+/// (`<adds>\t<dels>\t\0<old>\0<new>`). Binary files report `-` for both
+/// counts, which has no line meaning, so they map to 0/0.
+fn parse_numstat_z(value: &str) -> HashMap<String, (usize, usize)> {
+    let records: Vec<_> = value.split('\0').collect();
+    let mut out = HashMap::new();
+    let mut index = 0;
+    while index < records.len() {
+        let record = records[index];
+        index += 1;
+        if record.is_empty() {
+            continue;
+        }
+        let mut parts = record.splitn(3, '\t');
+        let (Some(additions), Some(deletions), Some(path)) =
+            (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        // `-` marks a binary file; anything else unparseable is not a record
+        // we understand, and guessing a count would be worse than zero.
+        let additions = additions.parse::<usize>().unwrap_or(0);
+        let deletions = deletions.parse::<usize>().unwrap_or(0);
+        let path = if path.is_empty() {
+            // Rename/copy: the old path is skipped, the new path is the key,
+            // matching how `parse_name_status_z` names the entry.
+            index += 1;
+            match records.get(index) {
+                Some(new_path) => {
+                    index += 1;
+                    (*new_path).to_owned()
+                }
+                None => continue,
+            }
+        } else {
+            path.to_owned()
+        };
+        out.insert(path, (additions, deletions));
+    }
+    out
 }
 
 async fn load_file_diffs(
@@ -912,5 +991,68 @@ mod tests {
     #[test]
     fn name_status_empty_input_is_empty() {
         assert!(parse_name_status_z("").is_empty());
+    }
+
+    #[test]
+    fn numstat_parses_counts_renames_and_binaries() {
+        // Real `git diff --numstat -z` bytes: plain records carry the path in
+        // the third tab field; a rename empties it and appends old + new; a
+        // binary file reports `-` for both counts.
+        let parsed = parse_numstat_z(
+            "3\t1\tsrc/a.rs\x00-\t-\tassets/logo.png\x005\t0\t\x00src/old.rs\x00src/new.rs\x00",
+        );
+        assert_eq!(parsed.get("src/a.rs"), Some(&(3, 1)));
+        assert_eq!(parsed.get("assets/logo.png"), Some(&(0, 0)));
+        assert_eq!(parsed.get("src/new.rs"), Some(&(5, 0)));
+        assert!(!parsed.contains_key("src/old.rs"));
+        assert_eq!(parsed.len(), 3);
+    }
+
+    #[test]
+    fn numstat_empty_input_is_empty() {
+        assert!(parse_numstat_z("").is_empty());
+    }
+
+    // The counts must survive being gathered in one batch instead of one
+    // `git diff` per file, untracked files included — those are invisible to
+    // numstat and still need the synthesized whole-file diff.
+    #[tokio::test]
+    async fn changed_file_counts_cover_tracked_and_untracked_files() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let repo = dir.path();
+        let git = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .args(args)
+                .current_dir(repo)
+                .output()
+                .expect("git");
+            assert!(status.status.success(), "git {args:?} failed");
+        };
+        git(&["init", "-q", "."]);
+        git(&["config", "user.email", "t@example.com"]);
+        git(&["config", "user.name", "t"]);
+        std::fs::write(repo.join("kept.txt"), "a\nb\nc\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "base"]);
+
+        std::fs::write(repo.join("kept.txt"), "a\nB\nc\nd\n").expect("write");
+        std::fs::write(repo.join("fresh.txt"), "one\ntwo\n").expect("write");
+
+        let files = list_changed_files_at_path(repo, ReviewBaseline::WorkingTree)
+            .await
+            .expect("changed files");
+        let by_path = |name: &str| {
+            files
+                .iter()
+                .find(|file| file.path == name)
+                .unwrap_or_else(|| panic!("{name} missing from {files:?}"))
+                .clone()
+        };
+
+        let kept = by_path("kept.txt");
+        assert_eq!((kept.additions, kept.deletions), (2, 1));
+        let fresh = by_path("fresh.txt");
+        assert_eq!(fresh.status, "??");
+        assert_eq!((fresh.additions, fresh.deletions), (2, 0));
     }
 }

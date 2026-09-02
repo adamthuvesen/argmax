@@ -37,13 +37,22 @@ pub fn validate_schedule(cron_expr: Option<&str>, run_once_at: Option<&str>) -> 
 /// the next future match; for a one-shot it is the stored time only while
 /// still in the future. Overdue occurrences therefore collapse into a
 /// single late run instead of replaying every missed tick.
+///
+/// Cron fields are matched against the *local* calendar: the renderer's
+/// hour and weekday pickers mean local wall-clock, the same as a one-shot's
+/// naive `datetime-local` input. The result converts back to UTC, so
+/// storage stays UTC and a daily routine keeps its wall-clock hour across
+/// DST shifts.
 pub fn next_occurrence(
     cron_expr: Option<&str>,
     run_once_at: Option<&str>,
     after: DateTime<Utc>,
 ) -> ArgmaxResult<Option<DateTime<Utc>>> {
     match (cron_expr, run_once_at) {
-        (Some(cron), _) => Ok(parse_cron(cron)?.after(&after).next()),
+        (Some(cron), _) => Ok(parse_cron(cron)?
+            .after(&after.with_timezone(&Local))
+            .next()
+            .map(|time| time.with_timezone(&Utc))),
         (None, Some(at)) => Ok(parse_once_at(at)?.and_then(|time| (time > after).then_some(time))),
         (None, None) => Err(schedule_issue(
             "SCHEDULE_MISSING",
@@ -124,7 +133,7 @@ fn schedule_issue(code: &'static str, message: impl Into<String>) -> ArgmaxError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use chrono::{Offset, TimeZone, Timelike};
 
     fn utc(secs: i64) -> DateTime<Utc> {
         Utc.timestamp_opt(secs, 0).unwrap()
@@ -149,6 +158,28 @@ mod tests {
         let next = next_occurrence(Some("0 0 9 * * *"), None, utc(1000)).unwrap();
         let next = next.expect("daily 9am always has a next occurrence");
         assert!(next > utc(1000));
+    }
+
+    // A "Daily at 09:00" routine means 09:00 where the user lives. Matching
+    // the cron fields against UTC fired it at 10:00/11:00 Stockholm time and
+    // shifted by an hour at every DST boundary.
+    #[test]
+    fn cron_hour_is_local_wall_clock() {
+        let after = utc(1_756_700_000);
+        let next = next_occurrence(Some("0 0 9 * * *"), None, after)
+            .unwrap()
+            .expect("daily 9am always has a next occurrence");
+
+        let local = next.with_timezone(&Local);
+        assert_eq!(local.hour(), 9);
+        assert_eq!(local.minute(), 0);
+        assert_eq!(local.second(), 0);
+
+        // ...which is a different instant from 09:00 UTC anywhere off the
+        // prime meridian. Skip the contrast where the two coincide.
+        if local.offset().fix().local_minus_utc() != 0 {
+            assert_ne!(next.hour(), 9);
+        }
     }
 
     #[test]

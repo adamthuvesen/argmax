@@ -69,6 +69,17 @@ describe("parseSchedule", () => {
     expect(parsed.controls.custom).toBe("*/15 * * * * *");
   });
 
+  // The editor re-serializes whatever kind it parsed on every save, so a
+  // cadence the friendly kinds cannot hold has to come back as `custom` —
+  // otherwise renaming a task quietly rewrites when it runs.
+  it("survives a parse → build round trip for cadences only custom can hold", () => {
+    for (const cronExpr of ["0 */15 9 * * *", "0 0,30 9 * * *", "0 30 * * * Mon"]) {
+      const { kind, controls: parsed } = parseSchedule({ cronExpr, runOnceAt: null });
+      expect(kind).toBe("custom");
+      expect(buildSchedule(kind, parsed).cronExpr).toBe(cronExpr);
+    }
+  });
+
   it("treats a stored once-time as the once kind", () => {
     const parsed = parseSchedule({ cronExpr: null, runOnceAt: "2026-09-01T09:30:00.000Z" });
     expect(parsed.kind).toBe("once");
@@ -85,6 +96,9 @@ describe("describeSchedule", () => {
 
   it("shows the raw cron string for custom expressions", () => {
     expect(describeSchedule({ cronExpr: "*/15 * * * * *", runOnceAt: null })).toBe("*/15 * * * * *");
+    // A quarter-hourly run must not read as "Daily at 09:00": the row would
+    // then describe a cadence the task does not have.
+    expect(describeSchedule({ cronExpr: "0 */15 9 * * *", runOnceAt: null })).toBe("0 */15 9 * * *");
   });
 });
 

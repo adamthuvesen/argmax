@@ -66,8 +66,21 @@ impl<R: Runtime> DockBadgeSink for TauriDockBadgeSink<R> {
 }
 
 pub fn clear_badge_on_focus<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
-    if matches!(event, WindowEvent::Focused(true)) {
-        clear_window_badge(window);
+    if !matches!(event, WindowEvent::Focused(true)) {
+        return;
+    }
+    // Clear through the service when it is up: a direct window clear would
+    // leave `last_text` holding the old count, and the next update at the
+    // same count would be deduplicated away instead of re-setting the badge.
+    let cleared = window
+        .app_handle()
+        .try_state::<crate::state::AppState>()
+        .and_then(|state| state.dock_badge.get().cloned())
+        .map(|service| service.clear());
+    match cleared {
+        Some(Ok(_)) => {}
+        Some(Err(error)) => tracing::warn!(?error, "failed to clear dock badge on focus"),
+        None => clear_window_badge(window),
     }
 }
 

@@ -1,4 +1,4 @@
-mod claude;
+pub(crate) mod claude;
 mod codex;
 mod cursor;
 mod opencode;
@@ -193,6 +193,13 @@ pub struct NormalizerSessionContext {
     /// Whether the rollout search already ran for this session. The search
     /// walks the whole Codex sessions tree, so a miss must not repeat it.
     pub codex_rollout_searched: bool,
+    /// How far into the rollout file the token-count scan has already read.
+    /// Rollouts grow past 100 MB, so each turn reads only the appended bytes.
+    pub codex_rollout_offset: u64,
+    /// Last `(context tokens, context window)` the rollout reported. A turn
+    /// whose appended bytes carry no `token_count` reuses this instead of
+    /// losing the occupancy readout.
+    pub codex_rollout_last_token_count: Option<(u64, Option<u64>)>,
     /// After a tracing-format PTY line, following non-JSON lines are the rest
     /// of that record. Codex dumps apply_patch expected context that way.
     pub raw_tracing_continuation: RawTracingContinuation,

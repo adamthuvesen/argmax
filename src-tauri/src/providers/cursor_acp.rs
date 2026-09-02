@@ -54,6 +54,16 @@ const ACP_MODEL_FAMILY: &str = "composer-2.5";
 /// up. The warm process is never killed on turn termination.
 const CANCEL_WAIT: Duration = Duration::from_secs(5);
 
+/// Cursor's ACP mode ids, as listed in `session/new`'s
+/// `modes.availableModes`: `agent` (the `currentModeId` a new session starts
+/// on), `plan`, and `ask`. Argmax's agent modes map onto the first two.
+fn acp_mode_id(agent_mode: AgentMode) -> &'static str {
+    match agent_mode {
+        AgentMode::Plan => "plan",
+        AgentMode::Auto => "agent",
+    }
+}
+
 pub fn is_acp_eligible(input: &ProviderLaunchInput) -> bool {
     input.provider == ProviderId::Cursor && input.model_id == ACP_MODEL_FAMILY
 }
@@ -147,14 +157,6 @@ impl CursorAcpSessions {
                     })?
                     .to_string();
                 ensure_composer_model(&client, &session_id, &response).await?;
-                if input.agent_mode == AgentMode::Plan {
-                    client
-                        .request(
-                            "session/set_mode",
-                            json!({ "sessionId": session_id, "modeId": "plan" }),
-                        )
-                        .await?;
-                }
                 workspace
                     .live_sessions
                     .lock_or_recover("acp live sessions")
@@ -162,6 +164,20 @@ impl CursorAcpSessions {
                 session_id
             }
         };
+
+        // Apply this turn's mode on every turn, fresh or resumed. The ACP
+        // session keeps whatever mode the previous turn left it in, so setting
+        // it only at session/new made Plan a one-way door and left a resumed
+        // session ignoring the toggle entirely.
+        client
+            .request(
+                "session/set_mode",
+                json!({
+                    "sessionId": acp_session_id,
+                    "modeId": acp_mode_id(input.agent_mode),
+                }),
+            )
+            .await?;
 
         Ok(spawn_turn(client, acp_session_id, input, on_event))
     }
@@ -800,6 +816,14 @@ mod tests {
         input.model_id = "composer-2.5".into();
         input.provider = ProviderId::Claude;
         assert!(!is_acp_eligible(&input));
+    }
+
+    #[test]
+    fn agent_mode_maps_onto_cursors_acp_mode_ids() {
+        assert_eq!(acp_mode_id(AgentMode::Plan), "plan");
+        // Auto must name the default mode explicitly: a follow-up leaving Plan
+        // has to set something, and omitting the call keeps the old mode.
+        assert_eq!(acp_mode_id(AgentMode::Auto), "agent");
     }
 
     #[test]

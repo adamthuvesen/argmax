@@ -379,10 +379,14 @@ impl ProviderEventFlushQueue {
 /// Past the parse cap the line is unrecoverable anyway, so let it through and
 /// let `normalize_line` report the oversized line.
 fn is_incomplete_json_line(fragment: &str) -> bool {
-    let trimmed = fragment.trim_start();
-    trimmed.starts_with('{')
-        && fragment.len() <= JSON_PARSE_LINE_CAP
-        && serde_json::from_str::<Value>(fragment.trim()).is_err()
+    let trimmed = fragment.trim();
+    if !trimmed.starts_with('{') || fragment.len() > JSON_PARSE_LINE_CAP {
+        return false;
+    }
+    // The idle flush re-tests the same growing fragment every 16 ms, and a line
+    // that has not reached its closing brace yet cannot parse — skip serde for
+    // that case and only parse the ambiguous one.
+    !trimmed.ends_with('}') || serde_json::from_str::<Value>(trimmed).is_err()
 }
 
 impl Default for ProviderEventFlushQueue {
@@ -1015,6 +1019,20 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn incomplete_json_line_holds_only_unfinished_object_fragments() {
+        assert!(is_incomplete_json_line("{\"type\":\"assis"));
+        assert!(is_incomplete_json_line("  {\"a\":{\"b\":1}"));
+        // Brace-balanced but still malformed — the parse decides.
+        assert!(is_incomplete_json_line("{\"a\":}"));
+        assert!(!is_incomplete_json_line("{\"type\":\"assistant\"}"));
+        assert!(!is_incomplete_json_line("  {\"type\":\"assistant\"}\n"));
+        assert!(!is_incomplete_json_line("plain trailing output"));
+        // Past the parse cap the line is unrecoverable — let it through.
+        let oversized = format!("{{\"a\":\"{}", "x".repeat(JSON_PARSE_LINE_CAP));
+        assert!(!is_incomplete_json_line(&oversized));
     }
 
     #[test]

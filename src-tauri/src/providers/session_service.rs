@@ -67,6 +67,7 @@ use crate::{
             SessionSummary,
         },
         time::now_iso,
+        usage::session_usage_since_conversation_start,
         workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
     },
     session_control::SessionLaunchRegistry,
@@ -812,7 +813,13 @@ impl ProviderSessionService {
                 cols: STRUCTURED_LAUNCH_COLS,
                 rows: STRUCTURED_LAUNCH_ROWS,
             };
-            (provider, launch_input, session.tokens)
+            // Not `session.tokens`: those counters run for the life of the
+            // session row and survive `/clear`, so seeding a resumed Codex
+            // thread from them bills $0 for every turn until the new thread
+            // passes the old lifetime total.
+            let conversation_tokens =
+                session_usage_since_conversation_start(&connection, &session_id)?;
+            (provider, launch_input, conversation_tokens)
         };
 
         let provider_invocation_id = Uuid::new_v4().to_string();
@@ -1002,25 +1009,36 @@ impl ProviderSessionService {
     }
 
     pub async fn terminate_workspace(self: &Arc<Self>, workspace_id: &str) -> ArgmaxResult<()> {
-        let session_ids = {
+        let sessions = {
             let connection = self.database.connection();
             let mut statement = connection
-                .prepare_cached(
-                    "SELECT id FROM sessions WHERE workspace_id = ? AND state IN ('running', 'waiting', 'blocked')",
-                )
+                .prepare_cached("SELECT id, state FROM sessions WHERE workspace_id = ?")
                 .map_err(sqlite_error)?;
-            let session_ids = statement
-                .query_map([workspace_id], |row| row.get::<_, String>("id"))
+            let sessions = statement
+                .query_map([workspace_id], |row| {
+                    Ok((row.get::<_, String>("id")?, row.get::<_, String>("state")?))
+                })
                 .map_err(sqlite_error)?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(sqlite_error)?;
-            session_ids
+            sessions
         };
+        // The workspace is being archived, so no session in it takes another
+        // turn. Drop their launch credentials — a background process the agent
+        // left behind would otherwise keep a working token indefinitely.
+        if let Some(registry) = self.session_control.get() {
+            for (session_id, _) in &sessions {
+                registry.revoke(session_id);
+            }
+        }
         // Transfer every live handle into an owned job before waiting for any
         // of them. Archive timeouts may cancel these waiters, but the jobs
         // continue disposing their provider processes and persisting state.
         let mut done = Vec::new();
-        for session_id in session_ids {
+        for (session_id, state) in sessions {
+            if !matches!(state.as_str(), "running" | "waiting" | "blocked") {
+                continue;
+            }
             done.push(self.start_termination(session_id, false)?);
         }
         for ticket in done {
@@ -1056,11 +1074,15 @@ impl ProviderSessionService {
         let service = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
             let result = service.finish_termination(&session_id, entry).await;
-            let _ = done_tx.send(Some(result));
+            // Retire the job before waking the waiters. Woken on another
+            // worker, a waiter that then starts its own turn would otherwise
+            // still find this finished job and be rejected as
+            // PROVIDER_TERMINATING.
             service
                 .termination_jobs
                 .lock_or_recover("termination jobs")
                 .remove(&session_id);
+            let _ = done_tx.send(Some(result));
         });
         Ok(done_rx)
     }
@@ -1215,6 +1237,20 @@ impl ProviderSessionService {
             .lock_or_recover("queue-preserving launches")
             .insert(session_id.clone());
         let result = self.send_input(send_input).await;
+        if let Err(error) = result.as_ref() {
+            // send_input can reject before the message is persisted as a
+            // user.message — an archiving workspace, a refused lifecycle
+            // admission, a pending move, a terminating provider. Put the
+            // follow-up back instead of losing what the user typed. The
+            // queue-preserving marker is still set here, so a launch failure
+            // cannot clear the restored message straight back out.
+            tracing::warn!(
+                session_id,
+                error = %error,
+                "restoring queued follow-up after a failed send"
+            );
+            restore(self, message);
+        }
         self.preserve_queue_on_launch_failure
             .lock_or_recover("queue-preserving launches")
             .remove(&session_id);
@@ -1461,12 +1497,12 @@ impl ProviderSessionService {
             })
         });
         if let Some(delta) = result.delta.as_mut() {
-            if delta_has_terminal_event(delta) {
+            if delta_has_session_completed_event(delta) {
                 self.append_reconciled_subagent_events(&event.session_id, delta);
             }
         }
         let reconcile_subagents = result.delta.as_ref().is_some_and(|delta| {
-            !delta_has_terminal_event(delta) && delta_has_subagent_control_event(delta)
+            !delta_has_session_completed_event(delta) && delta_has_subagent_control_event(delta)
         });
         if let Some(delta) = result.delta {
             self.schedule_measured_diffs(&event.session_id, &delta);
@@ -1926,12 +1962,12 @@ impl ProviderSessionService {
             )?;
         drop(connection);
         if let Some(delta) = delta.as_mut() {
-            if delta_has_terminal_event(delta) {
+            if delta_has_session_completed_event(delta) {
                 self.append_reconciled_subagent_events(session_id, delta);
             }
         }
         let reconcile_subagents = delta.as_ref().is_some_and(|delta| {
-            !delta_has_terminal_event(delta) && delta_has_subagent_control_event(delta)
+            !delta_has_session_completed_event(delta) && delta_has_subagent_control_event(delta)
         });
         if let Some(delta) = delta {
             self.publish(delta);
@@ -2222,11 +2258,15 @@ impl ProviderSessionService {
     }
 }
 
-fn delta_has_terminal_event(delta: &DashboardDelta) -> bool {
+/// A turn ending, and only that. `error` rows are transient — stderr lines,
+/// tracing-format output, per-item provider errors — and treating them as
+/// terminal ran a synchronous subagent-trace sweep on the PTY reader thread for
+/// every one. The real process-exit path reconciles unconditionally.
+fn delta_has_session_completed_event(delta: &DashboardDelta) -> bool {
     delta
         .events
         .iter()
-        .any(|event| matches!(event.r#type.as_str(), "session.completed" | "error"))
+        .any(|event| event.r#type == "session.completed")
 }
 
 fn delta_has_subagent_control_event(delta: &DashboardDelta) -> bool {
@@ -2396,7 +2436,7 @@ mod tests {
             ..DashboardDelta::default()
         };
         assert!(delta_has_subagent_control_event(&delta));
-        assert!(!delta_has_terminal_event(&delta));
+        assert!(!delta_has_session_completed_event(&delta));
 
         delta.events[0].message = "shell".to_string();
         assert!(!delta_has_subagent_control_event(&delta));
@@ -2406,7 +2446,124 @@ mod tests {
         assert!(!delta_has_subagent_control_event(&delta));
 
         delta.events[0].r#type = "session.completed".to_string();
-        assert!(delta_has_terminal_event(&delta));
+        assert!(delta_has_session_completed_event(&delta));
+
+        // A transient error line (stderr, a tracing-format line, a failed
+        // provider item) is not the end of the turn — treating it as one made
+        // every such line walk the subagent trace directory synchronously.
+        delta.events[0].r#type = "error".to_string();
+        assert!(!delta_has_session_completed_event(&delta));
+    }
+
+    /// "Send now" pops the follow-up out of the queue before it reaches the
+    /// provider. When the send is then refused — here by an archiving
+    /// workspace — the message must come back rather than vanish.
+    #[tokio::test]
+    async fn send_now_restores_the_follow_up_when_the_send_is_refused() {
+        use crate::persistence::{
+            projects::{persist_project, PersistProjectInput, ProjectSettings},
+            workspaces::{persist_workspace, PersistWorkspaceInput},
+        };
+
+        let database = Arc::new(Database::open_in_memory().expect("open db"));
+        {
+            let connection = database.connection();
+            persist_project(
+                &connection,
+                &PersistProjectInput {
+                    id: "project-1".to_string(),
+                    name: "argmax-test".to_string(),
+                    repo_path: "/tmp/repo".to_string(),
+                    current_branch: "main".to_string(),
+                    default_branch: Some("main".to_string()),
+                    settings: ProjectSettings {
+                        default_provider: "claude".to_string(),
+                        default_model_label: "Sonnet 5".to_string(),
+                        default_model_id: String::new(),
+                        worktree_location: "/tmp/worktrees".to_string(),
+                        setup_command: String::new(),
+                        check_commands: Vec::new(),
+                    },
+                },
+            )
+            .expect("persist project");
+            persist_workspace(
+                &connection,
+                &PersistWorkspaceInput {
+                    id: "workspace-1".to_string(),
+                    project_id: "project-1".to_string(),
+                    task_label: "test workspace".to_string(),
+                    branch: "feature/test".to_string(),
+                    base_ref: "main".to_string(),
+                    path: "/tmp/repo".to_string(),
+                    state: "archiving".to_string(),
+                    shared_workspace: false,
+                    kind: "git".to_string(),
+                    dirty: false,
+                    changed_files: 0,
+                },
+            )
+            .expect("persist workspace");
+            persist_session(
+                &connection,
+                &PersistSessionInput {
+                    id: "session-1".to_string(),
+                    workspace_id: "workspace-1".to_string(),
+                    provider: "claude".to_string(),
+                    model_label: "Sonnet 5".to_string(),
+                    model_id: "claude-sonnet-5".to_string(),
+                    reasoning_effort: None,
+                    permission_mode: Some("auto-approve".to_string()),
+                    agent_mode: Some("auto".to_string()),
+                    prompt: "hello".to_string(),
+                    state: "running".to_string(),
+                    attention: attention_for_state("running").to_string(),
+                },
+            )
+            .expect("persist session");
+        }
+
+        let service = ProviderSessionService::new(database);
+        let message_id = Uuid::new_v4().to_string();
+        service
+            .queues
+            .lock_or_recover("queues")
+            .entry("session-1".to_string())
+            .or_default()
+            .push_back(PendingMessage {
+                id: message_id.clone(),
+                session_id: "session-1".to_string(),
+                content: "please keep this".to_string(),
+                agent_mode: AgentMode::Auto.as_str().to_string(),
+                model_label: None,
+                model_id: None,
+                reasoning_effort: None,
+                fast_mode: false,
+                attachments: Vec::new(),
+                queued_at: now_iso(),
+            });
+
+        let error = service
+            .send_queued_message_now(ProvidersSendQueuedMessageNowInput {
+                session_id: SessionId::try_from("session-1".to_string()).expect("session id"),
+                message_id: NonEmptyString::try_from(message_id.clone()).expect("message id"),
+            })
+            .await
+            .expect_err("archiving workspace refuses the send");
+        assert!(matches!(
+            error,
+            ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == "WORKSPACE_ARCHIVING"
+        ));
+
+        let queue = service
+            .queues
+            .lock_or_recover("queues")
+            .get("session-1")
+            .cloned()
+            .expect("follow-up restored to the queue");
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].id, message_id);
+        assert_eq!(queue[0].content, "please keep this");
     }
 
     #[test]

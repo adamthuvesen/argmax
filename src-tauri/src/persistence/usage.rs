@@ -186,6 +186,166 @@ pub fn get_session_cost_summary(
     })
 }
 
+/// Billing totals recorded since the session's current provider conversation
+/// began — everything after the last `/clear` or provider switch, or the whole
+/// session when neither has happened.
+///
+/// The session row's own counters keep accumulating across `/clear`, so using
+/// them to seed a resumed thread's cumulative baseline under-bills: the new
+/// thread's totals restart near zero and every `saturating_sub` yields nothing
+/// until they pass the old lifetime total.
+pub fn session_usage_since_conversation_start(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<UsageCounts> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT
+              COALESCE(SUM(input_tokens), 0) AS input_tokens,
+              COALESCE(SUM(output_tokens), 0) AS output_tokens,
+              COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+              COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens
+            FROM usage_events
+            WHERE session_id = ?
+              AND created_at > COALESCE((
+                SELECT created_at FROM events
+                WHERE events.session_id = usage_events.session_id
+                  AND events.type IN ('session.cleared', 'session.provider-changed')
+                ORDER BY rowid DESC
+                LIMIT 1
+              ), '')
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    statement
+        .query_row([session_id], |row| {
+            Ok(UsageCounts {
+                input: row.get("input_tokens")?,
+                output: row.get("output_tokens")?,
+                cache_read: row.get("cache_read_tokens")?,
+                cache_write: row.get("cache_write_tokens")?,
+            })
+        })
+        .map_err(sqlite_error)
+}
+
 fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
     ArgmaxError::service("SQLITE", error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::persistence::database::Database;
+
+    fn seed_session(connection: &Connection) {
+        connection
+            .execute(
+                "INSERT INTO projects (id, name, repo_path, current_branch, default_provider, default_model_label, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', 'codex', 'GPT', '~/.argmax', '2026-09-01T09:00:00.000Z', '2026-09-01T09:00:00.000Z')",
+                [],
+            )
+            .expect("insert project");
+        connection
+            .execute(
+                "INSERT INTO workspaces (id, project_id, task_label, branch, base_ref, path, state, last_activity_at, created_at, updated_at) VALUES ('w1', 'p1', 'task', 'branch', 'main', '/tmp/ws', 'running', '2026-09-01T09:00:00.000Z', '2026-09-01T09:00:00.000Z', '2026-09-01T09:00:00.000Z')",
+                [],
+            )
+            .expect("insert workspace");
+        connection
+            .execute(
+                "INSERT INTO sessions (id, workspace_id, provider, model_label, model_id, prompt, state, attention, started_at, last_activity_at) VALUES ('s1', 'w1', 'codex', 'GPT', 'gpt-5.6-terra', 'hello', 'running', 'normal', '2026-09-01T09:00:00.000Z', '2026-09-01T09:00:00.000Z')",
+                [],
+            )
+            .expect("insert session");
+    }
+
+    fn record_usage(connection: &Connection, created_at: &str, input: i64, output: i64) {
+        insert_usage_event(
+            connection,
+            &InsertUsageEventInput {
+                session_id: "s1".to_string(),
+                event_id: None,
+                model_id: "gpt-5.6-terra".to_string(),
+                tokens: UsageCounts {
+                    input,
+                    output,
+                    cache_read: 0,
+                    cache_write: 0,
+                },
+                cost_usd: 0.5,
+                context_tokens: None,
+                context_window: None,
+                created_at: Some(created_at.to_string()),
+            },
+        )
+        .expect("insert usage event");
+    }
+
+    /// The Codex resume baseline is read from this, so it must follow the
+    /// current provider conversation and not the session's lifetime totals:
+    /// `/clear` keeps the counters but starts the provider's own cumulative
+    /// usage over at zero.
+    #[test]
+    fn conversation_usage_restarts_at_the_clear_watermark() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_session(&connection);
+
+        record_usage(&connection, "2026-09-01T10:00:00.000Z", 5_000, 400);
+        assert_eq!(
+            session_usage_since_conversation_start(&connection, "s1").expect("usage"),
+            UsageCounts {
+                input: 5_000,
+                output: 400,
+                cache_read: 0,
+                cache_write: 0,
+            }
+        );
+
+        connection
+            .execute(
+                "INSERT INTO events (id, session_id, type, message, payload_json, created_at) VALUES ('e1', 's1', 'session.cleared', '', '{}', '2026-09-01T10:05:00.000Z')",
+                [],
+            )
+            .expect("insert cleared marker");
+        assert_eq!(
+            session_usage_since_conversation_start(&connection, "s1").expect("usage after clear"),
+            UsageCounts {
+                input: 0,
+                output: 0,
+                cache_read: 0,
+                cache_write: 0,
+            },
+            "a fresh conversation starts from nothing"
+        );
+
+        record_usage(&connection, "2026-09-01T10:06:00.000Z", 900, 30);
+        let conversation = session_usage_since_conversation_start(&connection, "s1")
+            .expect("usage on the new conversation");
+        assert_eq!(conversation.input, 900);
+        assert_eq!(conversation.output, 30);
+
+        // The session row still carries both threads, which is exactly what
+        // made the old baseline over-count.
+        let lifetime = get_session_cost_summary(&connection, "s1").expect("summary");
+        assert_eq!(lifetime.tokens.input, 5_900);
+
+        // A provider switch is the same kind of boundary.
+        connection
+            .execute(
+                "INSERT INTO events (id, session_id, type, message, payload_json, created_at) VALUES ('e2', 's1', 'session.provider-changed', '', '{}', '2026-09-01T10:07:00.000Z')",
+                [],
+            )
+            .expect("insert provider-changed marker");
+        assert_eq!(
+            session_usage_since_conversation_start(&connection, "s1").expect("usage after switch"),
+            UsageCounts {
+                input: 0,
+                output: 0,
+                cache_read: 0,
+                cache_write: 0,
+            }
+        );
+    }
 }

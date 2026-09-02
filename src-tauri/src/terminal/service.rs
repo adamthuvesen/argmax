@@ -239,7 +239,7 @@ impl TerminalService {
             terminal_id.clone(),
             reader,
             Arc::clone(&self.on_data),
-            Arc::clone(self),
+            Arc::clone(&reaped),
         );
         spawn_exit_watcher(
             terminal_id.clone(),
@@ -381,24 +381,24 @@ fn spawn_reader_thread(
     terminal_id: String,
     reader: Box<dyn Read + Send>,
     on_data: OutputSink,
-    service: Arc<TerminalService>,
+    reaped: Arc<AtomicBool>,
 ) {
     thread::spawn(move || {
-        let chunk_terminal_id = terminal_id.clone();
         let error_terminal_id = terminal_id.clone();
         crate::util::stream_reader::pump_utf8_stream(
             reader,
             |_n| {
-                // If the exit watcher has already removed the entry, stop
-                // streaming — the renderer has moved on.
-                service
-                    .terminals
-                    .lock_or_recover("terminals")
-                    .contains_key(&terminal_id)
+                // If the exit watcher has already reaped the child, stop
+                // streaming — the renderer has moved on. Read the entry's own
+                // flag rather than looking the id up in `terminals`: this runs
+                // once per PTY chunk, and taking the shared map lock at that
+                // rate contends with `resize` (which holds it across the ioctl
+                // on the main thread) and `terminate_workspace`'s poll.
+                !reaped.load(Ordering::Acquire)
             },
             |data| {
                 on_data(TerminalChunk {
-                    terminal_id: chunk_terminal_id.clone(),
+                    terminal_id: terminal_id.clone(),
                     data,
                 });
             },

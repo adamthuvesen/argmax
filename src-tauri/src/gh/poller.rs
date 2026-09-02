@@ -345,6 +345,13 @@ fn detect_transition(
 
     let changed = {
         let mut state = inner.last_state.lock_or_recover("last_state");
+        // Bounded like `failure_ledger`: entries for archived workspaces and
+        // closed PRs are never removed individually, so a long-running app
+        // would grow this forever. Past the cap the whole map is dropped —
+        // an empty entry only costs one redundant delta on the next tick.
+        if state.len() > TRANSITION_LEDGER_CAPACITY {
+            state.clear();
+        }
         match state.get(&key) {
             Some(prior) if prior == &next => false,
             _ => {
@@ -510,6 +517,77 @@ mod tests {
             },
         )
         .expect("session");
+    }
+
+    // A worktree that's gone can't be polled: `gh pr view` fails every tick
+    // and `pr_state` stays OPEN, so without this exclusion an archived
+    // workspace is retried forever.
+    #[test]
+    fn archived_workspaces_drop_out_of_the_poll_set() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        {
+            let conn = database.connection();
+            persist_workspace(
+                &conn,
+                &PersistWorkspaceInput {
+                    id: "w2".to_string(),
+                    project_id: "p1".to_string(),
+                    task_label: "gone".to_string(),
+                    branch: "feature/gone".to_string(),
+                    base_ref: "main".to_string(),
+                    path: "/tmp/argmax-gh-poller/.worktrees/gone".to_string(),
+                    state: "archived".to_string(),
+                    shared_workspace: false,
+                    kind: "git".to_string(),
+                    dirty: false,
+                    changed_files: 0,
+                },
+            )
+            .expect("archived workspace");
+            persist_session(
+                &conn,
+                &PersistSessionInput {
+                    id: "s2".to_string(),
+                    workspace_id: "w2".to_string(),
+                    provider: "claude".to_string(),
+                    model_label: "Haiku 4.5".to_string(),
+                    model_id: "claude-haiku-4.5".to_string(),
+                    reasoning_effort: None,
+                    permission_mode: Some("auto-approve".to_string()),
+                    agent_mode: Some("auto".to_string()),
+                    prompt: "test".to_string(),
+                    state: "complete".to_string(),
+                    attention: "normal".to_string(),
+                },
+            )
+            .expect("archived session");
+            for session_id in ["s1", "s2"] {
+                upsert_gh_pr(
+                    &conn,
+                    &GhPrRecord {
+                        session_id: session_id.to_string(),
+                        pr_number: 7,
+                        head_sha: "cafebabe".to_string(),
+                        last_seen_check_state: "pending".to_string(),
+                        updated_at: now_iso(),
+                        pr_state: Some("OPEN".to_string()),
+                        notified_at: None,
+                        head_ref_name: None,
+                    },
+                )
+                .expect("seed gh_pr");
+            }
+        }
+
+        let open = {
+            let conn = database.connection();
+            list_open_gh_pr_session_ids(&conn).expect("open pr sessions")
+        };
+        assert_eq!(open, vec!["s1".to_string()]);
+
+        let pollable = pollable_session_ids(&database).expect("pollable");
+        assert!(!pollable.iter().any(|id| id == "s2"));
     }
 
     #[tokio::test]

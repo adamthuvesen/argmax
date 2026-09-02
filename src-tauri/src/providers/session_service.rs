@@ -606,6 +606,7 @@ impl ProviderSessionService {
                     &input,
                 )?;
                 drop(admission);
+                self.drain_queue_if_turn_ended(&session_id);
                 return Ok(SendInputResult {
                     ok: true,
                     queued: true,
@@ -645,6 +646,7 @@ impl ProviderSessionService {
                 &input,
             )?;
             drop(admission);
+            self.drain_queue_if_turn_ended(&session_id);
             return Ok(SendInputResult {
                 ok: true,
                 queued: true,
@@ -1630,14 +1632,18 @@ impl ProviderSessionService {
         drop(connection);
         self.append_reconciled_subagent_events(&event.session_id, &mut delta);
         self.publish(delta);
-        if let Some(approvals) = self.approvals.as_ref() {
-            approvals.cancel_session_pending(&event.session_id)?;
-        }
+        // The drain is what sends a follow-up the user queued during the turn.
+        // It must not depend on the approvals cleanup succeeding: an error
+        // there used to return early and strand the queue until the next turn.
+        let approvals_cancelled = match self.approvals.as_ref() {
+            Some(approvals) => approvals.cancel_session_pending(&event.session_id),
+            None => Ok(()),
+        };
         self.settle_session_move(&event.session_id);
         if succeeded {
             self.drain_queue_after_complete(event.session_id);
         }
-        Ok(())
+        approvals_cancelled
     }
 
     fn record_launch_failure(
@@ -1885,6 +1891,31 @@ impl ProviderSessionService {
             pending_messages: Some(pending_messages),
             ..DashboardDelta::default()
         });
+    }
+
+    /// A follow-up can be queued against a process that has just exited:
+    /// `send_input` saw the live handle, then the exit handler removed it,
+    /// wrote the terminal state, and drained a still-empty queue before the
+    /// enqueue landed. Nothing would send that message until the next turn.
+    /// So once a message is queued, look again: no handle and a settled
+    /// session means the turn is over, and the queue drains now. A drain that
+    /// races this one pops under the same lock and finds the queue empty.
+    fn drain_queue_if_turn_ended(self: &Arc<Self>, session_id: &str) {
+        if self
+            .handles
+            .lock_or_recover("handles")
+            .contains_key(session_id)
+        {
+            return;
+        }
+        let state = {
+            let connection = self.database.connection();
+            find_session_by_id(&connection, session_id).map(|session| session.state)
+        };
+        match state.as_deref() {
+            Ok("running" | "waiting" | "blocked") | Err(_) => {}
+            Ok(_) => self.drain_queue_after_complete(session_id.to_string()),
+        }
     }
 
     fn drain_queue_after_complete(self: &Arc<Self>, session_id: String) {

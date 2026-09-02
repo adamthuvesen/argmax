@@ -10,8 +10,8 @@ use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_shell::ShellExt;
 
 use super::inputs::*;
-use super::live_database;
 use super::validation::ThemeMode;
+use super::{live_database, read_off_main};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ide::detection::{detect_installed_ides, DetectedIde};
 use crate::persistence::database::vacuum_database;
@@ -210,11 +210,13 @@ pub fn system_set_theme(app: AppHandle, input: SystemSetThemeInput) -> ArgmaxRes
 /// theme cache: a small JSON file, last write wins.
 #[tauri::command(rename = "system:set-default-agent")]
 #[specta::specta]
-pub fn system_set_default_agent(
+pub async fn system_set_default_agent(
     app: AppHandle,
     input: SystemSetDefaultAgentInput,
 ) -> ArgmaxResult<SystemOk> {
-    persist_default_agent(&app, &input)?;
+    // A file write, so it leaves the main thread like every other handler
+    // that touches the disk.
+    read_off_main(move || persist_default_agent(&app, &input)).await?;
     Ok(SystemOk { ok: true })
 }
 

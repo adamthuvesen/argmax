@@ -174,7 +174,7 @@ export function SessionActionsMenu({
                   type="button"
                   role="menuitem"
                   className="project-picker-item"
-                  title="Open the in-app browser pane beside the chat"
+                  title="Open the browser in the review panel"
                   onClick={() => {
                     closeActions();
                     openBrowserPanel();

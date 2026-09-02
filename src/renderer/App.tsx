@@ -33,7 +33,6 @@ import type { SettingsNavigationTarget } from "./components/SettingsPanel.js";
 import { DEFAULT_SETTINGS_GROUP, type SettingsGroupId } from "./components/settings/settingsMeta.js";
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
 import { usePersistedSetting } from "./hooks/usePersistedSetting.js";
-import { BrowserPanel } from "./components/BrowserPanel.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
@@ -47,7 +46,7 @@ import { SettingsRail } from "./components/settings/SettingsRail.js";
 import { EMPTY_GRID, MAX_COLS, openWorkspaceInGrid, revertSessionToLauncher, terminalWorkspaceId } from "./lib/gridState.js";
 import { isEarlySessionStop } from "./lib/earlyStop.js";
 import { toggleTerminalPanel } from "./lib/terminalTabs.js";
-import { onBrowserPanelRequest, requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
+import { requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
 import { requestCloseActiveReviewFileTab } from "./lib/reviewFilePanel.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
 // out of the production renderer bundle. Browser-preview mode (no Tauri
@@ -63,7 +62,6 @@ import {
 } from "./hooks/useLazyOverlayPrefetch.js";
 import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
 import { useOverlays } from "./hooks/useOverlays.js";
-import { useBrowserPanelResize } from "./hooks/useBrowserPanelResize.js";
 import { DEFAULT_WORKSPACE_MIN_WIDTH_PX, useSidebarResize } from "./hooks/useSidebarResize.js";
 import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange } from "./lib/theme.js";
@@ -142,24 +140,6 @@ export function App(): JSX.Element {
   } = useOverlays();
   const standalonePageOpen = isSettingsOpen || isScheduledTasksOpen;
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  // Each request carries a sequence number: asking for the URL the pane is
-  // already on has to stay a state change, or React bails on the identical
-  // string and the pane never navigates back to it.
-  const [browserPanelRequest, setBrowserPanelRequest] = useState<{
-    url: string;
-    seq: number;
-  } | null>(null);
-  useEffect(
-    () =>
-      onBrowserPanelRequest((url) =>
-        setBrowserPanelRequest((previous) => ({ url, seq: (previous?.seq ?? 0) + 1 }))
-      ),
-    []
-  );
-  // Stable identity: BrowserPanel's `browser:page-command` listener depends on
-  // this handler, and a fresh arrow per App render would tear the Tauri
-  // subscription down and re-register it on every dashboard delta.
-  const closeBrowserPanel = useCallback(() => setBrowserPanelRequest(null), []);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const workspaceRef = useRef<HTMLElement | null>(null);
   const settingsNavigationRequestRef = useRef(0);
@@ -374,7 +354,6 @@ export function App(): JSX.Element {
     return Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, gridColumnWidth, sessionGridRequiredWorkspaceMinWidth);
   }, [requiredGridColumns, sessionGridRequiredWorkspaceMinWidth]);
   const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize(requiredWorkspaceMinWidth);
-  const { browserPanelWidth, isResizingBrowserPanel, onBrowserResizeMouseDown } = useBrowserPanelResize();
   const requiredWindowMinWidth = useMemo(() => {
     const sidebarPart = sidebarCollapsed ? 0 : sidebarWidth;
     return Math.max(STATIC_APP_MIN_WIDTH_PX, requiredWorkspaceMinWidth + sidebarPart);
@@ -505,13 +484,9 @@ export function App(): JSX.Element {
         // (useGlobalKeybindings preventDefaults after closing a pane), which
         // in practice means focus was inside a native browser tab.
         case "close-surface":
-          if (browserPanelRequest !== null) {
-            requestCloseActiveBrowserTab();
-          } else if (requestCloseActiveReviewFileTab()) {
-            return;
-          } else {
-            closeFocusedPane();
-          }
+          if (requestCloseActiveBrowserTab()) return;
+          if (requestCloseActiveReviewFileTab()) return;
+          closeFocusedPane();
           return;
         case "toggle-debug-log":
           setDebugLogToggleSignal((signal) => signal + 1);
@@ -520,7 +495,7 @@ export function App(): JSX.Element {
           return;
       }
     },
-    [browserPanelRequest, closeFocusedPane, isSettingsOpen, openNewSessionPane, openSettingsTarget, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen, toggleSidebarCollapsed]
+    [closeFocusedPane, isSettingsOpen, openNewSessionPane, openSettingsTarget, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen, toggleSidebarCollapsed]
   );
 
   // ⌘P / ⌘F / ⌘⇧F are all the ⌘K overlay; only the pre-selected filter differs.
@@ -1664,6 +1639,7 @@ export function App(): JSX.Element {
     // instead of moving the app's selection off the sessions being watched.
     (project: ProjectSummary | null, options: { embedded?: boolean } = {}): JSX.Element => (
       <LaunchSurface
+        claimsBrowserRequests={!options.embedded}
         fastModeEnabled={fastModeEnabled}
         pixelFieldEnabled={pixelFieldEnabled}
         onAddProject={() => void addProject()}
@@ -1744,15 +1720,14 @@ export function App(): JSX.Element {
         gridTemplateColumns:
           // Settings and schedule own the sidebar column: the rail is fixed-width
           // and is shown even when the app sidebar is collapsed.
-          (standalonePageOpen
+          standalonePageOpen
             ? "var(--settings-rail-width) minmax(0, 1fr)"
             : sidebarCollapsed
               ? "minmax(0, 1fr)"
-              : `${sidebarWidth}px minmax(0, 1fr)`) +
-          (browserPanelRequest !== null ? ` ${browserPanelWidth}px` : ""),
+              : `${sidebarWidth}px minmax(0, 1fr)`,
         ["--sidebar-width" as string]: `${sidebarWidth}px`
       }}
-      data-resizing={isResizing || isResizingBrowserPanel ? "true" : undefined}
+      data-resizing={isResizing ? "true" : undefined}
       data-chat-width={String(chatWidth)}
       data-review-panel-side={reviewPanelSide}
       data-settings-open={isSettingsOpen ? "true" : undefined}
@@ -2026,14 +2001,6 @@ export function App(): JSX.Element {
           </div>
         ) : null}
       </section>
-      {browserPanelRequest !== null ? (
-        <BrowserPanel
-          url={browserPanelRequest.url}
-          requestSeq={browserPanelRequest.seq}
-          onClose={closeBrowserPanel}
-          onResizeMouseDown={onBrowserResizeMouseDown}
-        />
-      ) : null}
     </main>
   );
 }

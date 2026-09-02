@@ -92,6 +92,7 @@ function isOptionButtonTarget(target: EventTarget | null): boolean {
 }
 
 export function LaunchSurface({
+  claimsBrowserRequests = false,
   fastModeEnabled = false,
   pixelFieldEnabled = false,
   model,
@@ -110,6 +111,10 @@ export function LaunchSurface({
   registerPaletteFileContext,
   sideChatMode = false
 }: {
+  /** True when this launcher is the only surface on screen, so chat links and
+   *  the actions menu have nowhere else to open the browser. False for a
+   *  launcher cell sharing the grid with session panes. */
+  claimsBrowserRequests?: boolean;
   fastModeEnabled?: boolean;
   pixelFieldEnabled?: boolean;
   model: ModelPickerSelection;
@@ -230,7 +235,7 @@ export function LaunchSurface({
     () => (activeProject ? { kind: "project", project: activeProject } : null),
     [activeProject]
   );
-  const reviewState = useReviewState(reviewSource);
+  const reviewState = useReviewState(reviewSource, null, { claimsBrowserRequests });
   const reviewOpenPanelInFilesMode = reviewState.openPanelInFilesMode;
   const reviewOpenInFilesView = reviewState.openInFilesView;
   const reviewClosePanel = reviewState.closePanel;
@@ -645,7 +650,10 @@ export function LaunchSurface({
     );
   }
 
-  const isReviewOpen = reviewState.isPanelOpen && activeProject !== null;
+  // Browser mode reads nothing from the project, so it opens even before one
+  // is picked; Changes and Files have no source without it.
+  const isReviewOpen =
+    reviewState.isPanelOpen && (activeProject !== null || reviewState.mode === "browser");
   const contextSummary = project
     ? `Project and branch: ${project.name}, ${project.currentBranch}`
     : "";

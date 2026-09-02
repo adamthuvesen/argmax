@@ -110,9 +110,12 @@ describe("SessionActionsMenu", () => {
   });
 
   it("opens the browser pane from the menu", async () => {
-    const { onBrowserPanelRequest } = await import("../lib/browserPanel.js");
+    const { getBrowserRequest, subscribeBrowserRequest } = await import("../lib/browserPanel.js");
     const opened: string[] = [];
-    const unsubscribe = onBrowserPanelRequest((url) => opened.push(url));
+    const unsubscribe = subscribeBrowserRequest(() => {
+      const request = getBrowserRequest();
+      if (request) opened.push(request.url);
+    });
 
     render(
       <SessionActionsMenu

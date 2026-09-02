@@ -8,7 +8,9 @@ vi.mock("../lib/highlighter.js", () => ({
   langFromPath: vi.fn(() => null)
 }));
 
+import type { ArgmaxApi } from "../../shared/types.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
+import { resetBrowserTabsForTests } from "../lib/browserPanel.js";
 import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
 import { ReviewPanel } from "./ReviewPanel.js";
 
@@ -39,6 +41,9 @@ function reviewStub(): ReviewState {
       closeTab: vi.fn()
     },
     openAgent: vi.fn(),
+    openBrowser: vi.fn(),
+    browserOwner: false,
+    browserRequest: null,
     workspaceFiles: {
       entries: [],
       listState: "idle",
@@ -522,5 +527,80 @@ describe("ReviewPanel — drag listener cleanup on unmount", () => {
     expect(detached).toContain("mouseup");
 
     removeListener.mockRestore();
+  });
+});
+
+describe("ReviewPanel browser mode", () => {
+  const browserStub = {
+    open: vi.fn(() => Promise.resolve({ ok: true as const })),
+    navigate: vi.fn(() => Promise.resolve({ ok: true as const })),
+    back: vi.fn(() => Promise.resolve({ ok: true as const })),
+    forward: vi.fn(() => Promise.resolve({ ok: true as const })),
+    reload: vi.fn(() => Promise.resolve({ ok: true as const })),
+    setBounds: vi.fn(() => Promise.resolve({ ok: true as const })),
+    close: vi.fn(() => Promise.resolve({ ok: true as const })),
+    stop: vi.fn(() => Promise.resolve({ ok: true as const })),
+    fillCredentials: vi.fn(() => Promise.resolve({ ok: true, itemTitle: "GitHub" })),
+    onState: vi.fn(() => () => undefined),
+    onNewTab: vi.fn(() => () => undefined),
+    onPageCommand: vi.fn(() => () => undefined)
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetBrowserTabsForTests();
+    for (const mock of Object.values(browserStub)) mock.mockClear();
+    window.argmax = { browser: browserStub } as unknown as ArgmaxApi;
+  });
+
+  afterEach(() => {
+    cleanup();
+    resetBrowserTabsForTests();
+    delete (window as { argmax?: ArgmaxApi }).argmax;
+  });
+
+  it("offers the Browser tab only where the desktop bridge has one", () => {
+    render(<ReviewPanel review={reviewStub()} />);
+    expect(screen.getByRole("tab", { name: "Browser" })).toBeInTheDocument();
+
+    cleanup();
+    delete (window as { argmax?: ArgmaxApi }).argmax;
+    render(<ReviewPanel review={reviewStub()} />);
+    expect(screen.queryByRole("tab", { name: "Browser" })).toBeNull();
+  });
+
+  it("opens the browser from the tab, taking the surface rather than only switching mode", () => {
+    const review = reviewStub();
+    render(<ReviewPanel review={review} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
+    expect(review.openBrowser).toHaveBeenCalled();
+    expect(review.setMode).not.toHaveBeenCalled();
+  });
+
+  it("renders the browser chrome for the panel that owns the surface", () => {
+    const review = reviewStub();
+    review.mode = "browser";
+    review.browserOwner = true;
+    review.browserRequest = { url: "https://argmax.dev", seq: 1 };
+    const { container } = render(<ReviewPanel review={review} />);
+
+    expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue("https://argmax.dev");
+    expect(container.querySelector(".review-body-browser")).not.toBeNull();
+    // Files-mode furniture stays out of the way.
+    expect(container.querySelector(".review-list-col")).toBeNull();
+    expect(screen.queryByLabelText("File status")).toBeNull();
+  });
+
+  it("shows a placeholder in a panel that lost the surface, and claims it back", () => {
+    const review = reviewStub();
+    review.mode = "browser";
+    review.browserOwner = false;
+    render(<ReviewPanel review={review} />);
+
+    expect(screen.queryByRole("textbox", { name: "Address" })).toBeNull();
+    expect(screen.getByText("The browser moved to another pane.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show here" }));
+    expect(review.openBrowser).toHaveBeenCalled();
   });
 });

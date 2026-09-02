@@ -1,4 +1,4 @@
-import { Bot, ChevronDown, Folder, FolderOpen, GitBranch, PanelRightClose, X } from "lucide-react";
+import { Bot, ChevronDown, Folder, FolderOpen, GitBranch, Globe, PanelRightClose, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -20,7 +20,9 @@ import {
 import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentsView } from "./AgentsView.js";
+import { BrowserPanel } from "./BrowserPanel.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
+import { DEFAULT_BROWSER_URL } from "../lib/browserPanel.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
 import { ChangeCount } from "./ChangeCount.js";
@@ -268,11 +270,16 @@ export function ReviewPanel({
   onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
   review: ReviewState;
 }): JSX.Element {
-  // The Agents tab only exists with `agents`, so a mode that outlived a source
-  // switch (session pane -> launcher) resolves back to Changes.
-  const mode: ReviewPanelMode = review.mode === "agents" && !agents ? "changes" : review.mode;
+  // The Browser tab needs the desktop bridge; the Agents tab only exists with
+  // `agents`, so a mode that outlived a source switch (session pane ->
+  // launcher) resolves back to Changes.
+  const hasBrowser = typeof window !== "undefined" && Boolean(window.argmax?.browser);
+  const unavailable =
+    (review.mode === "agents" && !agents) || (review.mode === "browser" && !hasBrowser);
+  const mode: ReviewPanelMode = unavailable ? "changes" : review.mode;
   const isChanges = mode === "changes";
   const isAgents = mode === "agents";
+  const isBrowser = mode === "browser";
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
@@ -352,8 +359,6 @@ export function ReviewPanel({
       if (event.shiftKey || event.altKey) return;
       if (event.key.toLowerCase() !== "w") return;
       if (event.isComposing || event.repeat) return;
-      // ⌘W inside the browser panel belongs to its tab strip, not ours.
-      if (event.target instanceof Element && event.target.closest(".browser-panel")) return;
       const panel = panelRef.current;
       if (!panel || !(event.target instanceof Node) || !panel.contains(event.target)) return;
       event.preventDefault();
@@ -443,7 +448,7 @@ export function ReviewPanel({
     [files.buffer]
   );
   const handleFilesModeKeyShortcut = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (isChanges) return;
+    if (isChanges || isBrowser) return;
     if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
     if (event.defaultPrevented || event.nativeEvent.isComposing) return;
     const key = event.key.toLowerCase();
@@ -515,6 +520,19 @@ export function ReviewPanel({
                 ) : null}
               </button>
             ) : null}
+            {hasBrowser ? (
+              <button
+                role="tab"
+                type="button"
+                aria-label="Browser"
+                aria-selected={isBrowser}
+                title="Browser"
+                onClick={review.openBrowser}
+              >
+                <Globe size={14} aria-hidden="true" />
+                <span className="review-mode-tab-label">Browser</span>
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="review-toolbar-actions">
@@ -530,10 +548,32 @@ export function ReviewPanel({
             ? "review-body review-body-changes"
             : isAgents
               ? "review-body review-body-agents"
-              : "review-body"
+              : isBrowser
+                ? "review-body review-body-browser"
+                : "review-body"
         }
         onKeyDown={handleFilesModeKeyShortcut}
       >
+        {isBrowser ? (
+          review.browserOwner ? (
+            <BrowserPanel
+              url={review.browserRequest?.url ?? DEFAULT_BROWSER_URL}
+              requestSeq={review.browserRequest?.seq}
+              onClose={review.closePanel}
+            />
+          ) : (
+            // One native surface, one browser: this panel kept Browser mode
+            // but the page went elsewhere — another pane took it over, or the
+            // pane that held it closed its panel.
+            <div className="review-empty">
+              <span className="review-empty-mark" aria-hidden="true">↗</span>
+              <span>The browser moved to another pane.</span>
+              <button type="button" className="review-empty-action" onClick={review.openBrowser}>
+                Show here
+              </button>
+            </div>
+          )
+        ) : null}
         {isAgents && agents ? (
           <AgentsView
             events={agents.events}
@@ -547,7 +587,7 @@ export function ReviewPanel({
             onOpenFile={review.openInFilesView}
           />
         ) : null}
-        {isChanges || isAgents ? null : (
+        {isChanges || isAgents || isBrowser ? null : (
           <>
             <div className="review-list-col" style={{ width: effectiveLeftColumnWidth }}>
               <WorkspaceTree state={files} toolbar={{ onRefresh: files.refreshList }} />
@@ -561,7 +601,7 @@ export function ReviewPanel({
             />
           </>
         )}
-        {isAgents ? null : (
+        {isAgents || isBrowser ? null : (
         <div className={isChanges ? "review-diff" : "review-diff review-diff-files"}>
           {isChanges ? (
             <>
@@ -651,7 +691,7 @@ export function ReviewPanel({
           <span className="review-footer-text">{summaryStrip}</span>
         </footer>
       ) : null}
-      {isChanges || isAgents ? null : (
+      {isChanges || isAgents || isBrowser ? null : (
         <footer className="review-status-bar" aria-label="File status">
           <span className="review-status-path" title={files.selectedPath ?? sourceLabel}>
             {files.selectedPath ?? entryCountLabel}

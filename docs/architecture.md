@@ -54,7 +54,7 @@ React 19 + Vite. [App.tsx](../src/renderer/App.tsx) renders the shell; [tauriBri
 [SessionMultiGrid.tsx](../src/renderer/components/SessionMultiGrid.tsx) manages two pane types:
 - **Session panes**: Primary conversation views.
 - **Launcher panes**: In-grid session creation. Each launcher has its own `projectId` via `setLauncherProject` ([gridState.ts](../src/renderer/lib/gridState.ts)), so launching in another repo does not change the global app selection.
-- **Agents view**: Subagent traces linked to a parent session and tool use ID, shown as the third mode of that session's review panel (Changes / Files / Agents). They live and die with the session's pane.
+- **Agents view**: Subagent traces linked to a parent session and tool use ID, shown as the third mode of that session's review panel (Changes / Files / Agents / Browser). They live and die with the session's pane.
 
 "New session here" in the pane menu opens a launcher adjacent to the active pane without replacing the grid.
 

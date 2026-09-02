@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { onBrowserPanelRequest } from "../lib/browserPanel.js";
+import { getBrowserRequest, subscribeBrowserRequest } from "../lib/browserPanel.js";
 import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
 import type * as MermaidRuntime from "../lib/mermaidRuntime.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
@@ -139,7 +139,10 @@ describe("<StreamingMarkdown />", () => {
     const openPath = vi.fn().mockResolvedValue({ ok: true });
     (window as unknown as { argmax: unknown }).argmax = { system: { openPath } };
     const opened: string[] = [];
-    const unsubscribe = onBrowserPanelRequest((url) => opened.push(url));
+    const unsubscribe = subscribeBrowserRequest(() => {
+      const request = getBrowserRequest();
+      if (request) opened.push(request.url);
+    });
 
     render(<StreamingMarkdown text="See [docs](https://example.com/docs)." streaming={false} />);
     const link = screen.getByRole("link", { name: "docs" });
@@ -163,7 +166,10 @@ describe("<StreamingMarkdown />", () => {
     const openPath = vi.fn().mockResolvedValue({ ok: true });
     (window as unknown as { argmax: unknown }).argmax = { system: { openPath } };
     const opened: string[] = [];
-    const unsubscribe = onBrowserPanelRequest((url) => opened.push(url));
+    const unsubscribe = subscribeBrowserRequest(() => {
+      const request = getBrowserRequest();
+      if (request) opened.push(request.url);
+    });
 
     render(<StreamingMarkdown text="See [docs](https://example.com/docs)." streaming={false} />);
     const link = screen.getByRole("link", { name: "docs" });
@@ -181,7 +187,10 @@ describe("<StreamingMarkdown />", () => {
   it("opens web links in the pane when the link target preference is argmax", () => {
     window.localStorage.setItem(LINK_TARGET_KEY, "argmax");
     const opened: string[] = [];
-    const unsubscribe = onBrowserPanelRequest((url) => opened.push(url));
+    const unsubscribe = subscribeBrowserRequest(() => {
+      const request = getBrowserRequest();
+      if (request) opened.push(request.url);
+    });
 
     render(<StreamingMarkdown text="See [docs](https://example.com/docs)." streaming={false} />);
     const link = screen.getByRole("link", { name: "docs" });

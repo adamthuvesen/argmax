@@ -6,8 +6,7 @@ import {
   useSyncExternalStore,
   type FormEvent,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent
+  type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { ArrowLeft, ArrowRight, ExternalLink, KeyRound, Plus, RotateCw, X } from "lucide-react";
 import type { BrowserBounds } from "../../shared/types.js";
@@ -39,16 +38,14 @@ import {
 import { WorkingNest } from "./WorkingNest.js";
 
 interface BrowserPanelProps {
-  /** Normalized http(s) URL the pane should show. */
+  /** Normalized http(s) URL the browser should show. */
   url: string;
   /**
-   * Bumped on every open-in-pane request, so asking again for the URL the
-   * pane was last sent to still re-navigates after the user browsed away.
+   * Bumped on every open request, so asking again for the URL the browser was
+   * last sent to still re-navigates after the user browsed away.
    */
   requestSeq?: number;
   onClose: () => void;
-  /** Bind for the left-edge width drag; absent hides the handle. */
-  onResizeMouseDown?: (event: ReactMouseEvent) => void;
 }
 
 /** Tab label: page title once loaded, host until then. */
@@ -88,16 +85,21 @@ function TabFavicon({ url }: { url: string }): JSX.Element {
 }
 
 /**
- * Chrome for the native browser tabs. Each tab is its own child webview glued
- * onto `.browser-panel-surface` via `browser:set-bounds`; only the active
- * tab's webview is visible, the rest stay hidden but alive. Native webviews
- * always paint above the renderer DOM, so this component hides the active one
+ * Chrome for the native browser tabs, filling the review panel's body in
+ * Browser mode. Each tab is its own child webview glued onto
+ * `.browser-panel-surface` via `browser:set-bounds`; only the active tab's
+ * webview is visible, the rest stay hidden but alive. Native webviews always
+ * paint above the renderer DOM, so this component hides the active one
  * whenever a `[role="dialog"]` overlay actually overlaps the surface.
+ *
+ * Only the review panel that owns the browser surface mounts this, so moving
+ * the browser between panes is a plain unmount/mount: the unmount effect hides
+ * the webview and the mount effect re-glues it to the new panel's surface.
  */
-export function BrowserPanel({ url, requestSeq, onClose, onResizeMouseDown }: BrowserPanelProps): JSX.Element {
+export function BrowserPanel({ url, requestSeq, onClose }: BrowserPanelProps): JSX.Element {
   const browser = window.argmax?.browser ?? null;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
-  const panelRef = useRef<HTMLElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
   /** What the user typed, before ↑/↓ started swapping in suggestions. */
   const typedValueRef = useRef("");
@@ -569,19 +571,8 @@ export function BrowserPanel({ url, requestSeq, onClose, onResizeMouseDown }: Br
     void window.argmax?.system.openPath({ path: activeTab.url }).catch(() => undefined);
   };
 
-  if (!browser) {
-    return (
-      <aside className="browser-panel" aria-label="Browser">
-        <div className="browser-panel-fallback">Browser pane needs the desktop app.</div>
-      </aside>
-    );
-  }
-
   return (
-    <aside className="browser-panel" aria-label="Browser" ref={panelRef}>
-      {onResizeMouseDown ? (
-        <div className="browser-panel-resizer" aria-hidden="true" onMouseDown={onResizeMouseDown} />
-      ) : null}
+    <div className="browser-panel" role="group" aria-label="Browser" ref={panelRef}>
       <div className="browser-panel-toolbar">
         <button
           type="button"
@@ -606,7 +597,7 @@ export function BrowserPanel({ url, requestSeq, onClose, onResizeMouseDown }: Br
             aria-label="Stop loading"
             onClick={() => {
               if (!activeTabId) return;
-              void browser.stop(activeTabId).catch(reportError);
+              void browser?.stop(activeTabId).catch(reportError);
               // A stopped load never reports "finished" — clear the spinner now.
               setBrowserTabLoading(activeTabId, false);
             }}
@@ -618,7 +609,7 @@ export function BrowserPanel({ url, requestSeq, onClose, onResizeMouseDown }: Br
             type="button"
             title="Reload"
             aria-label="Reload"
-            onClick={() => activeTabId && void browser.reload(activeTabId).catch(reportError)}
+            onClick={() => activeTabId && void browser?.reload(activeTabId).catch(reportError)}
           >
             <RotateCw size={14} strokeWidth={1.75} />
           </button>
@@ -749,6 +740,6 @@ export function BrowserPanel({ url, requestSeq, onClose, onResizeMouseDown }: Br
         </div>
       ) : null}
       <div ref={surfaceRef} className="browser-panel-surface" />
-    </aside>
+    </div>
   );
 }

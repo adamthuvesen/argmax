@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
-import { onBrowserPanelRequest } from "../lib/browserPanel.js";
+import { getBrowserRequest, subscribeBrowserRequest } from "../lib/browserPanel.js";
 import { SessionConversationUserMessage } from "./SessionConversationTurn.js";
 
 // Installing the real bridge at import time would arm a WebSocket; the flag is
@@ -57,7 +57,10 @@ describe("<SessionConversationUserMessage />", () => {
 
   it("opens a link in the browser pane on ⌘-click", () => {
     const requested: string[] = [];
-    const stop = onBrowserPanelRequest((url) => requested.push(url));
+    const stop = subscribeBrowserRequest(() => {
+      const request = getBrowserRequest();
+      if (request) requested.push(request.url);
+    });
 
     renderMessage("see https://menti.com/docs");
     fireEvent.click(screen.getByRole("link", { name: "https://menti.com/docs" }), {

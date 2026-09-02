@@ -191,7 +191,9 @@ export function SessionPane({
   // Which files the agent wrote in its newest turn, for the review panel's
   // "Last turn" scope. Null without a session: there is no turn to scope to.
   const lastTurnPaths = useMemo(() => lastTurnEditedPaths(visibleEvents), [visibleEvents]);
-  const reviewState = useReviewState(reviewSource, session ? lastTurnPaths : null);
+  const reviewState = useReviewState(reviewSource, session ? lastTurnPaths : null, {
+    claimsBrowserRequests: isFocused
+  });
   const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isPanelResizing, setIsPanelResizing] = useState(false);

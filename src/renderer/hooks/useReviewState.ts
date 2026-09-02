@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type {
   ChangedFileSummary,
   ProjectSummary,
@@ -8,6 +8,16 @@ import type {
   WorkspaceFilePreview,
   WorkspaceSummary
 } from "../../shared/types.js";
+import {
+  claimBrowserSurface,
+  getBrowserOwnerId,
+  getBrowserRequest,
+  lastBrowsedUrl,
+  releaseBrowserSurface,
+  subscribeBrowserOwner,
+  subscribeBrowserRequest,
+  type BrowserOpenRequest
+} from "../lib/browserPanel.js";
 import { filterToLastTurn } from "../lib/lastTurnFiles.js";
 import { reviewIpcDispatch } from "../lib/reviewIpc.js";
 import { usePersistedSetting } from "./usePersistedSetting.js";
@@ -17,7 +27,7 @@ import { useReviewDiff } from "./useReviewDiff.js";
 import { useWorkspaceFileList } from "./useWorkspaceFileList.js";
 
 export type AsyncState = "idle" | "loading" | "ready" | "error";
-export type ReviewPanelMode = "changes" | "files" | "agents";
+export type ReviewPanelMode = "changes" | "files" | "agents" | "browser";
 
 /**
  * Which slice of the work the Changes view shows.
@@ -154,6 +164,15 @@ export interface ReviewState {
   subagents: SubagentTabsState;
   /** Open the panel on a subagent, adding its tab if it is not open yet. */
   openAgent: (parentToolUseId: string) => void;
+  /** Open the panel on the Browser view, taking the one native surface. */
+  openBrowser: () => void;
+  /** True when this panel holds the browser surface. Only the owner mounts the
+   *  browser chrome; every other panel in Browser mode shows a placeholder. */
+  browserOwner: boolean;
+  /** Where the Browser view should be, and a sequence number that re-navigates
+   *  even when the URL is the one the page is already on. Null until this
+   *  panel has been asked for the browser at least once. */
+  browserRequest: BrowserOpenRequest | null;
   openFile: (filePath: string) => void;
   /** Reload the open file's diff with more unchanged context around its hunks. */
   expandDiffContext: () => void;
@@ -183,6 +202,10 @@ export function useReviewState(
      *  an effect-driven open races useReviewDiff's auto-select of the first
      *  changed file. Defaults to closed. */
     initiallyOpen?: boolean;
+    /** Whether open-in-browser requests (chat links, the actions menu) land in
+     *  this panel. True for the focused pane, and for a launcher that is the
+     *  only surface on screen. Defaults to false. */
+    claimsBrowserRequests?: boolean;
   }
 ): ReviewState {
   const sourceKind = source?.kind ?? null;
@@ -205,6 +228,52 @@ export function useReviewState(
   const [storedScope, setChangesScope] = useState<ReviewChangesScope>(readStoredScope);
   usePersistedSetting(SCOPE_KEY, storedScope);
   const previousSourceId = useRef<string | null>(null);
+
+  // --- Browser mode -------------------------------------------------------
+  // One native browser surface exists, so one panel shows it at a time. This
+  // id identifies the panel to the surface-ownership store.
+  const panelId = useId();
+  const [browserRequest, setBrowserRequest] = useState<BrowserOpenRequest | null>(null);
+  const browserOwner = useSyncExternalStore(subscribeBrowserOwner, getBrowserOwnerId) === panelId;
+
+  const openBrowserAt = useCallback(
+    (url: string): void => {
+      // Claim here, not only in the effect below: a demoted panel is already
+      // in Browser mode with the panel open, so neither of the effect's deps
+      // changes and "Show here" would be a no-op.
+      claimBrowserSurface(panelId);
+      setBrowserRequest((current) => ({ url, seq: (current?.seq ?? 0) + 1 }));
+      setMode("browser");
+      setIsPanelOpen(true);
+    },
+    [panelId]
+  );
+
+  const openBrowser = useCallback((): void => openBrowserAt(lastBrowsedUrl()), [openBrowserAt]);
+
+  // Entering Browser mode by any path takes the surface; leaving it — another
+  // mode, a closed panel, an unmounted pane — hands it back, unless another
+  // panel has already claimed it in the meantime.
+  useEffect(() => {
+    if (mode !== "browser" || !isPanelOpen) return undefined;
+    claimBrowserSurface(panelId);
+    return () => releaseBrowserSurface(panelId);
+  }, [isPanelOpen, mode, panelId]);
+
+  // Open-in-browser requests (chat links, the actions menu). Every panel
+  // tracks the sequence, so one that was unfocused when a request landed does
+  // not act on it later when focus arrives; only the panel taking requests
+  // right now switches itself to Browser mode.
+  const pendingBrowserRequest = useSyncExternalStore(subscribeBrowserRequest, getBrowserRequest);
+  const claimsBrowserRequests = useRef(options?.claimsBrowserRequests ?? false);
+  claimsBrowserRequests.current = options?.claimsBrowserRequests ?? false;
+  const handledBrowserSeq = useRef(pendingBrowserRequest?.seq ?? 0);
+  useEffect(() => {
+    if (!pendingBrowserRequest || pendingBrowserRequest.seq === handledBrowserSeq.current) return;
+    handledBrowserSeq.current = pendingBrowserRequest.seq;
+    if (!claimsBrowserRequests.current) return;
+    openBrowserAt(pendingBrowserRequest.url);
+  }, [openBrowserAt, pendingBrowserRequest]);
 
   const hasTranscript = lastTurnPaths !== null;
   const availableScopes: ReviewChangesScope[] = useMemo(
@@ -285,7 +354,9 @@ export function useReviewState(
       if (!panelRef.current.isPanelOpen) setMode("changes");
     }
 
-    if (!sourceId || !sourceKind || !window.argmax) {
+    // Browser mode has no source to lose, so it survives the project
+    // selection going away; every other mode has nothing left to show.
+    if (!window.argmax || ((!sourceId || !sourceKind) && panelRef.current.mode !== "browser")) {
       setIsPanelOpen(false);
     }
   }, [sourceId, sourceKind, resetDiff, resetFileList, resetFilePreview, resetSubagents]);
@@ -400,6 +471,9 @@ export function useReviewState(
     workspaceFiles,
     subagents,
     openAgent,
+    openBrowser,
+    browserOwner,
+    browserRequest,
     openFile: diffState.openFile,
     expandDiffContext: diffState.expandDiffContext,
     openPanelInFilesMode,

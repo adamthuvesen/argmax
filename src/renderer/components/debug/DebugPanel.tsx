@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { RawProviderOutput, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../../shared/types.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
+import { formatSessionIds } from "../../lib/sessionIds.js";
 import { useDebugSnapshot } from "../../hooks/useDebugSnapshot.js";
 import { usePersistedSetting } from "../../hooks/usePersistedSetting.js";
 import {
@@ -146,14 +147,7 @@ function DebugIdentity({
   const [flash, copy] = useCopyToClipboard();
   if (!session && !workspace) return null;
 
-  const ids = [
-    session ? `session   ${session.id}` : null,
-    session?.providerConversationId ? `provider  ${session.providerConversationId}` : null,
-    workspace ? `workspace ${workspace.id}` : null,
-    workspace ? `path      ${workspace.path}` : null
-  ]
-    .filter((line): line is string => line !== null)
-    .join("\n");
+  const ids = formatSessionIds(session, workspace);
 
   return (
     <footer className="debug-identity">

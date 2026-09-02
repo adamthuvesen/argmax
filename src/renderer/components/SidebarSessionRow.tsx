@@ -3,6 +3,7 @@ import {
   Check,
   CircleEllipsis,
   CircleX,
+  Copy,
   ExternalLink,
   GitMerge,
   GitPullRequest,
@@ -29,6 +30,7 @@ import {
 import { createPortal } from "react-dom";
 import type { DetectedIde, IdeId, WorkspaceSummary } from "../../shared/types.js";
 import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
+import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import type { PriorityAttention } from "../lib/priority.js";
@@ -81,6 +83,10 @@ type SidebarSessionRowProps = {
   onAddToPriority?: (workspaceId: string) => void;
   /** Right-click "Edit Icon" — both values null clears the custom glyph. */
   onSetIcon?: (workspaceId: string, icon: string | null, iconColor: string | null) => void;
+  /** Right-click "Copy ids" puts this block on the clipboard: the session,
+   *  provider-conversation, and workspace ids a user hands to another agent
+   *  ("message session …") or pastes into a bug report. */
+  copyableIds?: string;
   /** Right-click "Sync now" on an imported row — runs one session-sync sweep
    *  so continuations made in the provider CLI appear immediately. */
   onSyncNow?: () => void;
@@ -205,7 +211,8 @@ function SidebarSessionRowInner({
   onRemoveFromPriority,
   onAddToPriority,
   onSetIcon,
-  onSyncNow
+  onSyncNow,
+  copyableIds
 }: SidebarSessionRowProps): JSX.Element {
   // Right-click "Open in IDE" → the IDE list replaces the menu at the same
   // point, the way "Edit Icon" hands off to the icon picker.
@@ -241,6 +248,7 @@ function SidebarSessionRowInner({
   });
   const { anchorToPoint: anchorContextMenu } = contextMenu;
   const closeContextMenu = (): void => setContextMenuPoint(null);
+  const [, copyIds] = useCopyToClipboard();
   useDismissOnOutsideOrEscape(contextMenu.popoverRef, contextMenuPoint !== null, closeContextMenu);
 
   useEffect(() => {
@@ -620,6 +628,23 @@ function SidebarSessionRowInner({
                   Open in IDE
                 </button>
               </li>
+              {copyableIds ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeContextMenu();
+                      void copyIds(copyableIds);
+                    }}
+                  >
+                    <Copy size={13} aria-hidden="true" />
+                    Copy ids
+                  </button>
+                </li>
+              ) : null}
               {canSyncNow && onSyncNow ? (
                 <li role="none">
                   <button
@@ -770,6 +795,7 @@ export function sidebarSessionRowEqual(
   if (prev.onAddToPriority !== next.onAddToPriority) return false;
   if (prev.onSetIcon !== next.onSetIcon) return false;
   if (prev.onSyncNow !== next.onSyncNow) return false;
+  if (prev.copyableIds !== next.copyableIds) return false;
   const pw = prev.workspace;
   const nw = next.workspace;
   if (pw === nw) {

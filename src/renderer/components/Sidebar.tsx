@@ -58,6 +58,7 @@ import {
   type SidebarViewMode
 } from "../lib/projects.js";
 import { computePriorityEntries, nextPriorityIdleAt } from "../lib/priority.js";
+import { formatSessionIds } from "../lib/sessionIds.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
@@ -388,6 +389,16 @@ export function Sidebar({
   // Sessions synced from a provider CLI's own history get a small provider
   // marker on the row, so a session that came from the terminal is never
   // mistaken for one this app started.
+  const copyableIdsByWorkspace = useMemo(() => {
+    const sessions = new Map(snapshot.sessions.map((session) => [session.workspaceId, session]));
+    return new Map(
+      snapshot.workspaces.map((workspace) => [
+        workspace.id,
+        formatSessionIds(sessions.get(workspace.id) ?? null, workspace)
+      ])
+    );
+  }, [snapshot.sessions, snapshot.workspaces]);
+
   const importedProviderByWorkspace = useMemo(() => {
     const labels = new Map<string, string>();
     for (const session of snapshot.sessions) {
@@ -934,6 +945,7 @@ export function Sidebar({
               <div key={workspace.id} className="session-row-wrap">
                 <SidebarSessionRow
                   workspace={workspace}
+                  copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                   isSelected={selectedWorkspaceId === workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                   canDragToGrid={canDragWorkspaceToGrid}
@@ -1058,6 +1070,7 @@ export function Sidebar({
               <div key={workspace.id} className="session-row-wrap">
                 <SidebarSessionRow
                   workspace={workspace}
+                  copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                   subtitle={subtitleFor(workspace.projectId)}
                   importedProvider={importedProviderByWorkspace.get(workspace.id)}
                   isSelected={selectedWorkspaceId === workspace.id}
@@ -1113,6 +1126,7 @@ export function Sidebar({
               <div key={entry.workspace.id} className="session-row-wrap">
                 <SidebarSessionRow
                   workspace={entry.workspace}
+                  copyableIds={copyableIdsByWorkspace.get(entry.workspace.id)}
                   subtitle={subtitleFor(entry.workspace.projectId)}
                   importedProvider={importedProviderByWorkspace.get(entry.workspace.id)}
                   isSelected={selectedWorkspaceId === entry.workspace.id}
@@ -1192,6 +1206,7 @@ export function Sidebar({
                         >
                           <SidebarSessionRow
                             workspace={workspace}
+                            copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                             subtitle={subtitleFor(workspace.projectId)}
                             importedProvider={importedProviderByWorkspace.get(workspace.id)}
                             isSelected={selectedWorkspaceId === workspace.id}
@@ -1349,6 +1364,7 @@ export function Sidebar({
                     >
                       <SidebarSessionRow
                         workspace={workspace}
+                        copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                         isSelected={selectedWorkspaceId === workspace.id}
                         isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                         canDragToGrid={canDragWorkspaceToGrid}

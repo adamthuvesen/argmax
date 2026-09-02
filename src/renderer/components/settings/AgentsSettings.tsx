@@ -1,7 +1,8 @@
 import { AlertTriangle, ExternalLink, RefreshCcw } from "lucide-react";
 import { useMemo, type JSX } from "react";
+import { REASONING_EFFORTS, type ReasoningEffort } from "../../../shared/providerModels.js";
 import type { DiscoveredProvider } from "../../../shared/types.js";
-import type { ModelPickerSelection } from "../../lib/models.js";
+import { effortLabel, type ModelPickerSelection } from "../../lib/models.js";
 import type { PermissionMode } from "../../lib/permissionMode.js";
 import { PROVIDER_INSTALL_HINTS } from "../../lib/providerInstallHints.js";
 import { CHAT_VERBOSITY_HINTS, CHAT_VERBOSITY_LABELS, type ChatVerbosity } from "../../lib/uiPreferences.js";
@@ -12,6 +13,7 @@ import {
   SettingGroup,
   SettingNote,
   SettingRow,
+  SettingsListPicker,
   Slider,
   Toggle
 } from "./settingsPrimitives.js";
@@ -19,6 +21,8 @@ import {
 export function AgentsSettings({
   defaultModel,
   onDefaultModelChange,
+  defaultEffort,
+  onDefaultEffortChange,
   chatVerbosity,
   onChatVerbosityChange,
   fastModeEnabled,
@@ -34,6 +38,8 @@ export function AgentsSettings({
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
+  defaultEffort: ReasoningEffort;
+  onDefaultEffortChange: (effort: ReasoningEffort) => void;
   chatVerbosity: ChatVerbosity;
   onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
   fastModeEnabled: boolean;
@@ -74,6 +80,20 @@ export function AgentsSettings({
               inputId="settings-default-model"
               value={defaultModel}
               onChange={onDefaultModelChange}
+            />
+          }
+        />
+        <SettingRow
+          label="Default effort"
+          description="How hard the model thinks by default. Models offer different levels — one that doesn't go this high runs at Medium instead."
+          htmlFor="settings-default-effort"
+          control={
+            <SettingsListPicker
+              ariaLabel="Default effort"
+              inputId="settings-default-effort"
+              value={defaultEffort}
+              onChange={onDefaultEffortChange}
+              options={REASONING_EFFORTS.map((effort) => ({ value: effort, label: effortLabel(effort) }))}
             />
           }
         />

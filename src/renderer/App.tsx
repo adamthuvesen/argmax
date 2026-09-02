@@ -24,7 +24,7 @@ import type {
 import { SCRATCH_PROJECT_ID } from "../shared/types.js";
 import { launcherDraftKey, writeDraftText } from "./lib/composerDrafts.js";
 import type { NewSessionSeed } from "./components/SessionComposer.js";
-import { PROVIDER_TITLE_MODEL } from "../shared/providerModels.js";
+import { effortForModel, PROVIDER_TITLE_MODEL, type ReasoningEffort } from "../shared/providerModels.js";
 import type {
   MessageHit as PaletteMessageHit,
   PaletteScope
@@ -67,7 +67,12 @@ import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange } from "./lib/theme.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import type { WorkspaceMode } from "./lib/workspaceMode.js";
-import { persistLaunchModel, readStoredLaunchModel } from "./lib/launchModelPreference.js";
+import {
+  persistDefaultEffort,
+  persistLaunchModel,
+  readStoredDefaultEffort,
+  readStoredLaunchModel
+} from "./lib/launchModelPreference.js";
 import { factoryLaunchModel, modelPickerSelectionFromSession, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
@@ -125,8 +130,9 @@ function widestGridRowColumnCount(rows: unknown[][]): number {
 }
 
 export function App(): JSX.Element {
+  const [defaultEffort, setDefaultEffort] = useState<ReasoningEffort>(() => readStoredDefaultEffort());
   const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(
-    () => readStoredLaunchModel() ?? factoryLaunchModel()
+    () => readStoredLaunchModel() ?? factoryLaunchModel(readStoredDefaultEffort())
   );
   const {
     isSettingsOpen,
@@ -187,9 +193,21 @@ export function App(): JSX.Element {
     (model: ModelPickerSelection): void => {
       setLaunchModel(model);
       persistLaunchModel(model);
+      setDefaultEffort(readStoredDefaultEffort());
     },
     []
   );
+  // Changing the app-wide default effort re-resolves the launcher model: the
+  // level rides along when the model offers it, and falls back when it doesn't.
+  const handleDefaultEffortChange = useCallback((effort: ReasoningEffort): void => {
+    persistDefaultEffort(effort);
+    setDefaultEffort(effort);
+    setLaunchModel((current) => {
+      const resolved = effortForModel(current.provider, current.modelId, effort);
+      if (!current.reasoningEffort || !resolved || resolved === current.reasoningEffort) return current;
+      return { ...current, reasoningEffort: resolved };
+    });
+  }, []);
   const {
     themeMode,
     setThemeMode,
@@ -1879,6 +1897,8 @@ export function App(): JSX.Element {
                 onGroupChange={(group) => openSettingsTarget(group)}
                 defaultModel={launchModel}
                 onDefaultModelChange={handleLaunchModelChange}
+                defaultEffort={defaultEffort}
+                onDefaultEffortChange={handleDefaultEffortChange}
                 chatVerbosity={chatVerbosity}
                 onChatVerbosityChange={setChatVerbosity}
                 sidebarPriorityVisible={sidebarPriorityVisible}

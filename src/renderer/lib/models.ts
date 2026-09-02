@@ -1,7 +1,7 @@
 import {
-  clampEffort,
   costOf as rendererCostOf,
   DEFAULT_REASONING_EFFORT,
+  effortForModel,
   modelLabelFor,
   PROVIDER_MODEL_DEFAULTS,
   PROVIDER_MODELS,
@@ -22,12 +22,13 @@ export type ModelPickerOption = ModelPickerSelection & { supportsReasoningEffort
 export const allModelOptions: ModelPickerOption[] = (Object.keys(PROVIDER_MODELS) as ProviderId[])
   .flatMap((provider) =>
     PROVIDER_MODELS[provider].map((model) => {
-      // Clamp the seed onto what the model actually offers, exactly as
-      // `modelDefaultForProvider` does: the OpenCode Go variant lists are
-      // discrete (Kimi K3 is `max`-only), so an unclamped "medium" would show
-      // Medium in the picker while the adapter launched a different variant.
+      // Resolve the seed onto what the model actually offers: the OpenCode Go
+      // variant lists are discrete (Kimi K3 is `max`-only), so an unresolved
+      // "medium" would show Medium in the picker while the adapter launched a
+      // different variant. The row seed is catalog-level, so it uses the
+      // built-in default effort rather than the user's preference.
       const reasoningEffort = model.supportsReasoningEffort
-        ? clampEffort(DEFAULT_REASONING_EFFORT, reasoningEffortsForModel(provider, model.modelId))
+        ? effortForModel(provider, model.modelId)
         : undefined;
       return {
         provider,
@@ -75,10 +76,21 @@ export function effortLabel(reasoningEffort: ReasoningEffort): string {
   return EFFORT_LABELS[reasoningEffort];
 }
 
-export function modelDefaultForProvider(provider: ProviderId): ProviderModelSelection {
+/** The provider's catalog default, run at the app-wide default effort. The
+ *  catalog's own seed stands in when that effort isn't on the model's ladder
+ *  and the seed is (GLM-5.3-Flash offers no Medium, and Low reads as a worse
+ *  default than the High the catalog names). */
+export function modelDefaultForProvider(
+  provider: ProviderId,
+  preferredEffort: ReasoningEffort = DEFAULT_REASONING_EFFORT
+): ProviderModelSelection {
   const model = PROVIDER_MODEL_DEFAULTS[provider];
-  const seeded = model.reasoningEffort ?? (model.supportsReasoningEffort ? DEFAULT_REASONING_EFFORT : undefined);
-  const reasoningEffort = clampEffort(seeded, reasoningEffortsForModel(provider, model.modelId));
+  const allowed = reasoningEffortsForModel(provider, model.modelId);
+  const reasoningEffort = !model.supportsReasoningEffort
+    ? undefined
+    : allowed.includes(preferredEffort)
+      ? preferredEffort
+      : (model.reasoningEffort ?? effortForModel(provider, model.modelId, preferredEffort));
   return {
     label: model.label,
     modelId: model.modelId,
@@ -108,9 +120,9 @@ export const FALLBACK_LAUNCH_MODEL: ModelPickerSelection = {
 };
 
 /** Unpersisted factory default: highest-priority provider's catalog default. */
-export function factoryLaunchModel(): ModelPickerSelection {
+export function factoryLaunchModel(preferredEffort?: ReasoningEffort): ModelPickerSelection {
   const provider = PROVIDER_LAUNCH_PRIORITY[0];
-  return { provider, ...modelDefaultForProvider(provider) };
+  return { provider, ...modelDefaultForProvider(provider, preferredEffort) };
 }
 
 /**
@@ -135,10 +147,13 @@ export function preferredLaunchProvider(providers: DiscoveredProvider[]): Provid
  * provider is usable. Used to pre-fill the launcher when the stored global
  * preference is missing or points at an unusable provider.
  */
-export function preferredLaunchModel(providers: DiscoveredProvider[]): ModelPickerSelection {
+export function preferredLaunchModel(
+  providers: DiscoveredProvider[],
+  preferredEffort?: ReasoningEffort
+): ModelPickerSelection {
   const preferred = preferredLaunchProvider(providers);
   if (!preferred) return FALLBACK_LAUNCH_MODEL;
-  return { provider: preferred, ...modelDefaultForProvider(preferred) };
+  return { provider: preferred, ...modelDefaultForProvider(preferred, preferredEffort) };
 }
 
 export function modelSelectionFromSession(session: SessionSummary | null): ProviderModelSelection {

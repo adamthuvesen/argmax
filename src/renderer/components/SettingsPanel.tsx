@@ -11,6 +11,7 @@ import type { ThemeMode } from "../lib/theme.js";
 import type { AccentId } from "../lib/accent.js";
 import type { UserBubbleTint } from "../lib/userBubbleTint.js";
 import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
+import type { ReasoningEffort } from "../../shared/providerModels.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { NewSessionMode } from "../lib/newSessionMode.js";
 import type { PermissionMode } from "../lib/permissionMode.js";
@@ -36,6 +37,8 @@ export function SettingsPanel({
   activeGroup,
   onGroupChange,
   defaultModel,
+  defaultEffort,
+  onDefaultEffortChange,
   onDefaultModelChange,
   chatVerbosity,
   onChatVerbosityChange,
@@ -83,6 +86,8 @@ export function SettingsPanel({
   activeGroup: SettingsGroupId;
   onGroupChange: (group: SettingsGroupId) => void;
   defaultModel: ModelPickerSelection;
+  defaultEffort: ReasoningEffort;
+  onDefaultEffortChange: (effort: ReasoningEffort) => void;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
   chatVerbosity: ChatVerbosity;
   onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
@@ -293,6 +298,8 @@ export function SettingsPanel({
           <>
             <AgentsSettings
               defaultModel={defaultModel}
+              defaultEffort={defaultEffort}
+              onDefaultEffortChange={onDefaultEffortChange}
               onDefaultModelChange={onDefaultModelChange}
               chatVerbosity={chatVerbosity}
               onChatVerbosityChange={onChatVerbosityChange}

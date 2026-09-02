@@ -78,8 +78,46 @@ describe("coalesceAssistantGroups", () => {
       assistantEvent("a3", "message.delta", "!", "2026-05-12T15:00:03.000Z")
     ]);
 
-    expect(beforeCap[0]?.id).toBe("assistant-answer-0");
     expect(afterCap[0]?.id).toBe(beforeCap[0]?.id);
+  });
+
+  it("re-keys only the group that followed a trimmed-away earlier group", () => {
+    // The bounded event tail trims from the front. Dropping the first group
+    // may re-key the group right behind it (its boundary event is gone), but
+    // nothing after that: a positional key would shift every later group,
+    // remounting the live bubble at the bottom, replaying its entrance
+    // animation, and restarting its typed reveal from nothing.
+    const t1 = assistantEvent("t1", "message.delta", "Let me think.", "2026-05-12T15:00:01.000Z", { thinking: true });
+    const a1 = assistantEvent("a1", "message.delta", "Hello ", "2026-05-12T15:00:02.000Z");
+    const t2 = assistantEvent("t2", "message.delta", "And more.", "2026-05-12T15:00:03.000Z", { thinking: true });
+    const a2 = assistantEvent("a2", "message.delta", "world", "2026-05-12T15:00:04.000Z");
+    const a3 = assistantEvent("a3", "message.delta", "!", "2026-05-12T15:00:05.000Z");
+    const before = coalesceAssistantGroups([t1, a1, t2, a2]);
+    const after = coalesceAssistantGroups([a1, t2, a2, a3]);
+
+    expect(before).toHaveLength(4);
+    expect(after).toHaveLength(3);
+    expect(after[1]?.id).toBe(before[2]?.id);
+    expect(after[2]?.id).toBe(before[3]?.id);
+  });
+
+  it("keeps a later group's id when an earlier group splits around a new tool call", () => {
+    const events = [
+      assistantEvent("a1", "message.delta", "Reading. ", "2026-05-12T15:00:01.000Z"),
+      assistantEvent("a2", "message.delta", "Found it. ", "2026-05-12T15:00:03.000Z"),
+      assistantEvent("t1", "message.delta", "Now summarize.", "2026-05-12T15:00:04.000Z", { thinking: true }),
+      assistantEvent("a3", "message.delta", "Summary", "2026-05-12T15:00:05.000Z")
+    ];
+    const before = coalesceAssistantGroups(events);
+    // A tool row lands with a timestamp between a1 and a2 (its own poll was
+    // late), so the first answer splits in two.
+    const after = coalesceAssistantGroups(events, { splitAt: ["2026-05-12T15:00:02.000Z"] });
+
+    expect(before.map((group) => group.text)).toEqual(["Reading. Found it. ", "Now summarize.", "Summary"]);
+    expect(after.map((group) => group.text)).toEqual(["Reading. ", "Found it. ", "Now summarize.", "Summary"]);
+    expect(after[2]?.id).toBe(before[1]?.id);
+    expect(after[3]?.id).toBe(before[2]?.id);
+    expect(after[0]?.id).toBe(before[0]?.id);
   });
 
   it("folds streamed thinking_delta fragments into ONE growing group", () => {

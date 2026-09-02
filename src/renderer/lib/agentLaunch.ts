@@ -18,7 +18,11 @@ export function isInternalAgentLaunchMetadata(output: string): boolean {
   return (
     normalized.includes("this tool result is internal metadata") ||
     normalized.includes("async agent launched successfully") ||
-    normalized.includes("use sendmessage with to:") ||
+    // Not "use SendMessage with to:": Claude Code appends that footer
+    // (agentId, SendMessage hint, usage) to every *finished* subagent result
+    // too, so matching it re-marked each completed agent as still running
+    // whenever the session ran — and a stale running row from an earlier
+    // turn suppressed the Thinking cue for the next turn's whole opening gap.
     normalized.includes("do not read or tail this file") ||
     normalized.includes("background agent launched") ||
     normalized.includes("background task launched") ||

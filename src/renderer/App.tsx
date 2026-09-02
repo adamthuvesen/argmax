@@ -33,7 +33,6 @@ import type { SettingsNavigationTarget } from "./components/SettingsPanel.js";
 import { DEFAULT_SETTINGS_GROUP, type SettingsGroupId } from "./components/settings/settingsMeta.js";
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
 import { usePersistedSetting } from "./hooks/usePersistedSetting.js";
-import { BrowserPanel } from "./components/BrowserPanel.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
@@ -46,8 +45,8 @@ import { ScheduleRail } from "./components/scheduled/ScheduleRail.js";
 import { SettingsRail } from "./components/settings/SettingsRail.js";
 import { EMPTY_GRID, MAX_COLS, openWorkspaceInGrid, revertSessionToLauncher, terminalWorkspaceId } from "./lib/gridState.js";
 import { isEarlySessionStop } from "./lib/earlyStop.js";
-import { toggleTerminalPanel } from "./lib/terminalTabs.js";
-import { onBrowserPanelRequest, requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
+import { getWorkspaceTerminalState, requestTerminalVisible } from "./lib/terminalTabs.js";
+import { requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
 import { requestCloseActiveReviewFileTab } from "./lib/reviewFilePanel.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
 // out of the production renderer bundle. Browser-preview mode (no Tauri
@@ -63,7 +62,6 @@ import {
 } from "./hooks/useLazyOverlayPrefetch.js";
 import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
 import { useOverlays } from "./hooks/useOverlays.js";
-import { useBrowserPanelResize } from "./hooks/useBrowserPanelResize.js";
 import { DEFAULT_WORKSPACE_MIN_WIDTH_PX, useSidebarResize } from "./hooks/useSidebarResize.js";
 import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange } from "./lib/theme.js";
@@ -142,24 +140,6 @@ export function App(): JSX.Element {
   } = useOverlays();
   const standalonePageOpen = isSettingsOpen || isScheduledTasksOpen;
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  // Each request carries a sequence number: asking for the URL the pane is
-  // already on has to stay a state change, or React bails on the identical
-  // string and the pane never navigates back to it.
-  const [browserPanelRequest, setBrowserPanelRequest] = useState<{
-    url: string;
-    seq: number;
-  } | null>(null);
-  useEffect(
-    () =>
-      onBrowserPanelRequest((url) =>
-        setBrowserPanelRequest((previous) => ({ url, seq: (previous?.seq ?? 0) + 1 }))
-      ),
-    []
-  );
-  // Stable identity: BrowserPanel's `browser:page-command` listener depends on
-  // this handler, and a fresh arrow per App render would tear the Tauri
-  // subscription down and re-register it on every dashboard delta.
-  const closeBrowserPanel = useCallback(() => setBrowserPanelRequest(null), []);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const workspaceRef = useRef<HTMLElement | null>(null);
   const settingsNavigationRequestRef = useRef(0);
@@ -374,7 +354,6 @@ export function App(): JSX.Element {
     return Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, gridColumnWidth, sessionGridRequiredWorkspaceMinWidth);
   }, [requiredGridColumns, sessionGridRequiredWorkspaceMinWidth]);
   const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize(requiredWorkspaceMinWidth);
-  const { browserPanelWidth, isResizingBrowserPanel, onBrowserResizeMouseDown } = useBrowserPanelResize();
   const requiredWindowMinWidth = useMemo(() => {
     const sidebarPart = sidebarCollapsed ? 0 : sidebarWidth;
     return Math.max(STATIC_APP_MIN_WIDTH_PX, requiredWorkspaceMinWidth + sidebarPart);
@@ -505,13 +484,9 @@ export function App(): JSX.Element {
         // (useGlobalKeybindings preventDefaults after closing a pane), which
         // in practice means focus was inside a native browser tab.
         case "close-surface":
-          if (browserPanelRequest !== null) {
-            requestCloseActiveBrowserTab();
-          } else if (requestCloseActiveReviewFileTab()) {
-            return;
-          } else {
-            closeFocusedPane();
-          }
+          if (requestCloseActiveBrowserTab()) return;
+          if (requestCloseActiveReviewFileTab()) return;
+          closeFocusedPane();
           return;
         case "toggle-debug-log":
           setDebugLogToggleSignal((signal) => signal + 1);
@@ -520,7 +495,7 @@ export function App(): JSX.Element {
           return;
       }
     },
-    [browserPanelRequest, closeFocusedPane, isSettingsOpen, openNewSessionPane, openSettingsTarget, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen, toggleSidebarCollapsed]
+    [closeFocusedPane, isSettingsOpen, openNewSessionPane, openSettingsTarget, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen, toggleSidebarCollapsed]
   );
 
   // ⌘P / ⌘F / ⌘⇧F are all the ⌘K overlay; only the pre-selected filter differs.
@@ -543,7 +518,7 @@ export function App(): JSX.Element {
       snapshot.sessions[0]?.workspaceId
     ]);
     if (!workspaceId) {
-      setToast({ kind: "error", message: "Open a session before toggling the terminal." });
+      setToast({ kind: "error", message: "Open a chat before toggling the terminal." });
       return;
     }
 
@@ -552,11 +527,13 @@ export function App(): JSX.Element {
     setIsSettingsOpen(false);
     setIsFullLauncherOpen(false);
     openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
-    // Toggle the workspace-keyed store directly. An earlier design bumped a
-    // counter prop that SessionPane replayed in an effect — a remounted pane
-    // (every session switch) re-saw the historical count and flipped the
-    // persisted panel state on each visit.
-    toggleTerminalPanel(workspaceId);
+    // Address the request to the workspace, not to a component: the pane that
+    // owns the terminal's review panel may only be mounting now (⌘J from
+    // Settings opens the chat first). It consumes the request once, so a pane
+    // that remounts later never replays it. The toggle resolves here, against
+    // the workspace's own remembered state, so a pane mounting into a restored
+    // terminal is told "hide" rather than "flip whatever you came up as".
+    requestTerminalVisible(workspaceId, !getWorkspaceTerminalState(workspaceId).showing);
   }, [
     grid,
     openWorkspaceChat,
@@ -584,7 +561,7 @@ export function App(): JSX.Element {
         const forked = await window.argmax.session.fork({ sessionId });
         openWorkspaceChat(forked.workspace.id, { ctrlOrMeta: false, alt: false });
       } catch (error) {
-        showErrorToast(error instanceof Error ? error.message : "Couldn't fork the session.");
+        showErrorToast(error instanceof Error ? error.message : "Couldn't fork the chat.");
       }
     },
     [openWorkspaceChat, showErrorToast]
@@ -788,7 +765,7 @@ export function App(): JSX.Element {
   const toggleWorkspacePinned = useCallback(
     async (workspaceId: string, pinned: boolean): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to pin a session." });
+        setToast({ kind: "error", message: "Open the Tauri app window to pin a chat." });
         return;
       }
       const ok = await withToast(
@@ -810,7 +787,7 @@ export function App(): JSX.Element {
       const ok = await withToast(
         () => window.argmax!.workspaces.setPriorityDismissed({ workspaceId, dismissed: true }),
         setToast,
-        "Could not remove the session from priority."
+        "Could not remove the chat from priority."
       );
       if (ok) await refreshDashboardStatus();
     },
@@ -850,7 +827,7 @@ export function App(): JSX.Element {
       const ok = await withToast(
         () => window.argmax!.workspaces.setPriorityAdded({ workspaceId, added: true }),
         setToast,
-        "Could not add the session to priority."
+        "Could not add the chat to priority."
       );
       if (ok) await refreshDashboardStatus();
     },
@@ -889,13 +866,13 @@ export function App(): JSX.Element {
   const renameWorkspace = useCallback(
     async (workspaceId: string, taskLabel: string): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to rename a session." });
+        setToast({ kind: "error", message: "Open the Tauri app window to rename a chat." });
         return;
       }
       const ok = await withToast(
         () => window.argmax!.workspaces.setLabel({ workspaceId, taskLabel }),
         setToast,
-        "Could not rename session."
+        "Could not rename chat."
       );
       if (ok) await refreshDashboardStatus();
     },
@@ -905,13 +882,13 @@ export function App(): JSX.Element {
   const setWorkspaceIcon = useCallback(
     async (workspaceId: string, icon: string | null, iconColor: string | null): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to change a session icon." });
+        setToast({ kind: "error", message: "Open the Tauri app window to change a chat icon." });
         return;
       }
       const ok = await withToast(
         () => window.argmax!.workspaces.setIcon({ workspaceId, icon, iconColor }),
         setToast,
-        "Could not change the session icon."
+        "Could not change the chat icon."
       );
       if (ok) await refreshDashboardStatus();
     },
@@ -963,13 +940,13 @@ export function App(): JSX.Element {
   // row's conversation updates without a reopen.
   const onSyncNowWorkspaceRow = useCallback((): void => {
     if (!window.argmax) {
-      setToast({ kind: "error", message: "Open the Tauri app window to sync sessions." });
+      setToast({ kind: "error", message: "Open the Tauri app window to sync chats." });
       return;
     }
     void withToast(
       () => window.argmax!.sync.runNow(),
       setToast,
-      "Could not run session sync."
+      "Could not run chat sync."
     );
   }, []);
   const onAddProjectRow = useCallback((): void => {
@@ -1607,7 +1584,7 @@ export function App(): JSX.Element {
       return hits.map((hit) => ({
         id: `${hit.sessionId}:${hit.eventId}`,
         sessionId: hit.sessionId,
-        label: sessionLabelById.get(hit.sessionId) ?? "Unknown session",
+        label: sessionLabelById.get(hit.sessionId) ?? "Unknown chat",
         snippetSegments: parseFtsSnippet(hit.snippet),
         run: () => {
           const target = snapshot.sessions.find((session) => session.id === hit.sessionId);
@@ -1664,6 +1641,7 @@ export function App(): JSX.Element {
     // instead of moving the app's selection off the sessions being watched.
     (project: ProjectSummary | null, options: { embedded?: boolean } = {}): JSX.Element => (
       <LaunchSurface
+        claimsBrowserRequests={!options.embedded}
         fastModeEnabled={fastModeEnabled}
         pixelFieldEnabled={pixelFieldEnabled}
         onAddProject={() => void addProject()}
@@ -1744,15 +1722,14 @@ export function App(): JSX.Element {
         gridTemplateColumns:
           // Settings and schedule own the sidebar column: the rail is fixed-width
           // and is shown even when the app sidebar is collapsed.
-          (standalonePageOpen
+          standalonePageOpen
             ? "var(--settings-rail-width) minmax(0, 1fr)"
             : sidebarCollapsed
               ? "minmax(0, 1fr)"
-              : `${sidebarWidth}px minmax(0, 1fr)`) +
-          (browserPanelRequest !== null ? ` ${browserPanelWidth}px` : ""),
+              : `${sidebarWidth}px minmax(0, 1fr)`,
         ["--sidebar-width" as string]: `${sidebarWidth}px`
       }}
-      data-resizing={isResizing || isResizingBrowserPanel ? "true" : undefined}
+      data-resizing={isResizing ? "true" : undefined}
       data-chat-width={String(chatWidth)}
       data-review-panel-side={reviewPanelSide}
       data-settings-open={isSettingsOpen ? "true" : undefined}
@@ -2026,14 +2003,6 @@ export function App(): JSX.Element {
           </div>
         ) : null}
       </section>
-      {browserPanelRequest !== null ? (
-        <BrowserPanel
-          url={browserPanelRequest.url}
-          requestSeq={browserPanelRequest.seq}
-          onClose={closeBrowserPanel}
-          onResizeMouseDown={onBrowserResizeMouseDown}
-        />
-      ) : null}
     </main>
   );
 }

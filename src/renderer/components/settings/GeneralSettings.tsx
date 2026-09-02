@@ -72,11 +72,11 @@ export function GeneralSettings({
     <>
       <SettingGroup id="settings-startup" label="Startup">
         <SettingRow
-          label="New session"
+          label="New chat"
           description="What ⌘N opens."
           control={
             <SegmentedControl
-              ariaLabel="New session"
+              ariaLabel="New chat"
               name="new-session-mode"
               value={newSessionMode}
               onChange={(v) => onNewSessionModeChange(v as NewSessionMode)}
@@ -88,11 +88,11 @@ export function GeneralSettings({
           }
         />
         <SettingRow
-          label="Random icon for new sessions"
-          description="Give each new session a random icon and color."
+          label="Random icon for new chats"
+          description="Give each new chat a random icon and color."
           control={
             <Toggle
-              ariaLabel="Random icon for new sessions"
+              ariaLabel="Random icon for new chats"
               checked={randomSessionIconEnabled}
               onChange={onRandomSessionIconEnabledChange}
             />
@@ -135,7 +135,7 @@ export function GeneralSettings({
       <SettingGroup id="settings-handoff" label="Handoff">
         <SettingRow
           label="Default IDE"
-          description="Opens when you click Open in IDE on a session."
+          description="Opens when you click Open in IDE on a chat."
           htmlFor="settings-default-ide"
           control={
             <SettingsListPicker

@@ -56,7 +56,7 @@ export function ProviderSwitchDialog({
       className="provider-switch-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label={`Switch this session to ${toName}`}
+      aria-label={`Switch this chat to ${toName}`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
@@ -69,9 +69,9 @@ export function ProviderSwitchDialog({
       <div className="provider-switch-dialog">
         <h2>Switch to {toName}?</h2>
         <p>
-          {`${toName} can't resume ${fromName}'s session. It starts fresh from a short summary of this chat.`}
+          {`${toName} can't resume ${fromName}'s chat. It starts fresh from a short summary of this chat.`}
         </p>
-        <p className="provider-switch-recommendation">A new session usually works better.</p>
+        <p className="provider-switch-recommendation">A new chat usually works better.</p>
         <div className="provider-switch-actions">
           <button type="button" onClick={onCancel}>
             Cancel
@@ -91,7 +91,7 @@ export function ProviderSwitchDialog({
               ref={primaryRef}
               onClick={onStartNewSession}
             >
-              New session
+              New chat
             </button>
           ) : null}
         </div>

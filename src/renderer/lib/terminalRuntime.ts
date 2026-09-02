@@ -9,7 +9,7 @@
 // its tab is closed or its workspace is LRU-evicted by the store.
 //
 // This module imports @xterm/xterm and must only be imported from the lazy
-// terminal chunk (TerminalPanel / TerminalTabsPanel), never from the main
+// terminal chunk (TerminalInstance / TerminalTabsPanel), never from the main
 // bundle.
 
 import { Terminal } from "@xterm/xterm";

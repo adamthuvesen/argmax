@@ -322,7 +322,7 @@ export function SessionMultiGrid({
     <div
       className="session-multigrid"
       role="group"
-      aria-label="Session panes"
+      aria-label="Chat panes"
       data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
       data-resizing={isResizing ? "true" : undefined}
       style={
@@ -358,8 +358,8 @@ export function SessionMultiGrid({
               const launcherProject = isLauncher ? projectsById.get(cell.projectId) ?? null : null;
               const focused = grid.focused?.row === r && grid.focused.col === c;
               const paneLabel = isLauncher
-                ? `New session${launcherProject ? ` for ${launcherProject.name}` : ""}`
-                : workspace?.taskLabel || workspace?.branch || "Session pane";
+                ? `New chat${launcherProject ? ` for ${launcherProject.name}` : ""}`
+                : workspace?.taskLabel || workspace?.branch || "Chat pane";
               const allowedDropPositions: EdgeDropPosition[] = [
                 ...(canAddGridCell && grid.rows.length < MAX_ROWS ? (["above", "below"] as const) : []),
                 ...(canAddGridCell && row.length < rowColumnCap ? (["left", "right"] as const) : [])

@@ -42,10 +42,10 @@ describe("SessionConversation — streaming & composer", () => {
     });
     const { rerender } = renderConversation(v1);
 
-    const picker = screen.getByRole("button", { name: "Session model" });
+    const picker = screen.getByRole("button", { name: "Chat model" });
     expect(picker.textContent).toContain("GPT-5.6 Terra");
     // Effort rides in its own chip beside the model, not in the model label.
-    expect(screen.getByRole("button", { name: "Session model effort" }).textContent).toContain("Medium");
+    expect(screen.getByRole("button", { name: "Chat model effort" }).textContent).toContain("Medium");
 
     // Parent rebuilds the SessionSummary object on every dashboard delta.
     // A new object reference with the same id (and even a freshly-emitted
@@ -71,9 +71,9 @@ describe("SessionConversation — streaming & composer", () => {
       />
     );
 
-    const pickerAfter = screen.getByRole("button", { name: "Session model" });
+    const pickerAfter = screen.getByRole("button", { name: "Chat model" });
     expect(pickerAfter.textContent).toContain("GPT-5.6 Terra");
-    expect(screen.getByRole("button", { name: "Session model effort" }).textContent).toContain("Medium");
+    expect(screen.getByRole("button", { name: "Chat model effort" }).textContent).toContain("Medium");
   });
 
   it("does reset the model picker when session.id changes (different session selected)", () => {
@@ -84,7 +84,7 @@ describe("SessionConversation — streaming & composer", () => {
       reasoningEffort: "medium"
     });
     const { rerender } = renderConversation(original);
-    expect(screen.getByRole("button", { name: "Session model" }).textContent).toContain("GPT-5.6 Terra");
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("GPT-5.6 Terra");
 
     const switched = baseSession({
       id: "session-b",
@@ -109,14 +109,14 @@ describe("SessionConversation — streaming & composer", () => {
       />
     );
 
-    const pickerAfter = screen.getByRole("button", { name: "Session model" });
+    const pickerAfter = screen.getByRole("button", { name: "Chat model" });
     expect(pickerAfter.textContent).toContain("Haiku 4.5");
   });
 
   it("keeps workspace context chips on the same toolbar row as the model picker", () => {
     renderConversation(baseSession());
 
-    const modelPicker = screen.getByRole("button", { name: "Session model" });
+    const modelPicker = screen.getByRole("button", { name: "Chat model" });
     const workspaceContext = screen.getByLabelText("Workspace context");
     const toolbar = modelPicker.closest(".session-input-toolbar");
 
@@ -1414,7 +1414,7 @@ describe("SessionConversation — streaming & composer", () => {
 
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Session prompt"), {
+    fireEvent.change(screen.getByLabelText("Chat prompt"), {
       target: { value: "and now the tests" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Send follow-up" }));
@@ -1446,7 +1446,7 @@ describe("SessionConversation — streaming & composer", () => {
       />
     );
 
-    const prompt = screen.getByLabelText("Session prompt");
+    const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "then run lint" } });
     fireEvent.keyDown(prompt, { key: "Enter" });
 
@@ -1473,10 +1473,10 @@ describe("SessionConversation — streaming & composer", () => {
     };
 
     const { rerender } = render(<SessionConversation {...baseProps} events={previousTurn} />);
-    fireEvent.change(screen.getByLabelText("Session prompt"), {
+    fireEvent.change(screen.getByLabelText("Chat prompt"), {
       target: { value: "and now the tests" }
     });
-    fireEvent.keyDown(screen.getByLabelText("Session prompt"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Enter" });
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
 
     // The provider takes over: the user bubble lands and the answer streams.
@@ -1512,7 +1512,7 @@ describe("SessionConversation — streaming & composer", () => {
       />
     );
 
-    fireEvent.change(screen.getByLabelText("Session prompt"), {
+    fireEvent.change(screen.getByLabelText("Chat prompt"), {
       target: { value: "and now the tests" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Send follow-up" }));
@@ -1562,11 +1562,11 @@ describe("SessionConversation — streaming & composer", () => {
   it("keeps the composer enabled while the session is running so messages can be queued", () => {
     renderConversation(baseSession({ state: "running" }));
 
-    const textarea = screen.getByLabelText("Session prompt");
+    const textarea = screen.getByLabelText("Chat prompt");
     expect(textarea).toBeEnabled();
     // Stop is the only send-slot control while running: Enter queues the
     // follow-up, and interrupting is the queued chip's explicit "Send now".
-    expect(screen.getByRole("button", { name: "Stop session" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop chat" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Send now" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Queue follow-up — sent when the current turn finishes" })
@@ -1647,10 +1647,10 @@ describe("SessionConversation — streaming & composer", () => {
     await waitFor(() =>
       expect(onSendQueuedMessageNow).toHaveBeenCalledWith("session-a", "queued-1")
     );
-    expect(screen.getByRole("button", { name: "Stop session" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Stop chat" })).toBeDisabled();
 
     resolveSend?.();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Stop session" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Stop chat" })).toBeEnabled());
   });
 
   it("queued chips are keyboard-focusable and Backspace/Delete cancels them", () => {

@@ -108,6 +108,11 @@ fn claude_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
         // arrive token-by-token (content_block_delta) instead of as whole
         // assistant messages. See docs/runtime.md "Event delivery".
         "--include-partial-messages".to_string(),
+        // Without this the CLI forwards a subagent's tool calls but not its
+        // text or thinking, so a subagent that only writes (a report, a
+        // review) leaves the Agents pane empty until its result lands.
+        // Needs Claude Code 2.1.258 or newer.
+        "--forward-subagent-text".to_string(),
         "--".to_string(),
         input.prompt.clone(),
     ]);
@@ -141,6 +146,7 @@ fn claude_structured_resume_args(
         // Keep partial-message streaming on for resumed turns too — otherwise
         // follow-ups regress to whole-message (non-streaming) output.
         "--include-partial-messages".to_string(),
+        "--forward-subagent-text".to_string(),
         "--".to_string(),
         input.prompt.clone(),
     ]);
@@ -684,6 +690,7 @@ mod tests {
                 "stream-json",
                 "--verbose",
                 "--include-partial-messages",
+                "--forward-subagent-text",
                 "--",
                 "Implement the task",
             ]
@@ -758,6 +765,7 @@ mod tests {
                 "stream-json",
                 "--verbose",
                 "--include-partial-messages",
+                "--forward-subagent-text",
                 "--",
                 "Implement the task",
             ]

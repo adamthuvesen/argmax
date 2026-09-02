@@ -279,10 +279,6 @@
   grid-template-rows: minmax(0, 1fr) auto;
 }
 
-.session-main-column[data-terminal-open="true"] {
-  grid-template-rows: minmax(0, 1fr) auto auto;
-}
-
 .session-grid.review-open .session-main-column,
 .session-grid.log-open .session-main-column {
   --session-inline-padding: clamp(22px, calc((100% - var(--chat-content-width-docked)) / 2), 2000px);

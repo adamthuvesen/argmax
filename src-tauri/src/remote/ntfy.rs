@@ -125,8 +125,8 @@ fn signal_for(session: &SessionSummary, mobile_url: Option<&str>) -> Option<Ntfy
     let (title, priority, tags) = match (session.attention.as_str(), session.state.as_str()) {
         ("approval-needed", _) => ("Needs approval", "high", "raised_hand"),
         ("blocked", _) => ("Waiting on you", "high", "speech_balloon"),
-        (_, "failed") => ("Session failed", "default", "x"),
-        (_, "complete") => ("Session complete", "default", ""),
+        (_, "failed") => ("Chat failed", "default", "x"),
+        (_, "complete") => ("Chat complete", "default", ""),
         _ => return None,
     };
     Some(NtfyMessage {
@@ -232,7 +232,7 @@ mod tests {
         assert_eq!(first.title, "Argmax: Needs approval");
         assert_eq!(first.priority, "high");
         let second = rx.try_recv().expect("completion push");
-        assert_eq!(second.title, "Argmax: Session complete");
+        assert_eq!(second.title, "Argmax: Chat complete");
         assert!(rx.try_recv().is_err(), "duplicate transition must not fire");
     }
 

@@ -150,7 +150,7 @@ function ProjectSettingsForm({
 
       <SettingRow
         label="Default agent"
-        description="Used when Argmax starts a session for this project on its own — for example the automatic fix session when a PR check fails."
+        description="Used when Argmax starts a chat for this project on its own — for example the automatic fix chat when a PR check fails."
         htmlFor="settings-project-model"
         control={
           <CombinedModelSelector
@@ -212,7 +212,7 @@ function ProjectSettingsForm({
           spellCheck={false}
         />
         <p className="settings-note">
-          One command per line. Offered on a session's changed-files card so you can verify a
+          One command per line. Offered on a chat's changed-files card so you can verify a
           workspace before shipping it.
         </p>
       </div>

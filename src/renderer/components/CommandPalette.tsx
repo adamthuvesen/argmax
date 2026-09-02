@@ -102,7 +102,7 @@ const SCOPE_PLACEHOLDER: Record<PaletteScope, string> = {
   all: "Search agents, files, actions…",
   agents: "Search agents…",
   files: "Search files…",
-  messages: "Search across sessions…",
+  messages: "Search across chats…",
   contents: "Search inside files…",
   actions: "Search actions…",
   settings: "Search settings…"
@@ -664,7 +664,7 @@ export function CommandPalette({
                 {trimmedQuery.length > 0
                   ? "No matches — try shorter terms or another filter."
                   : (scope === "files" || scope === "contents") && !fileSource
-                    ? "Open a session or project to search its files."
+                    ? "Open a chat or project to search its files."
                     : `Start typing to search ${scopeNoun(scope)}.`}
               </span>
             </li>

@@ -23,7 +23,7 @@ describe("searchPaletteItems", () => {
   it("ranks substring matches in the label first and returns highlight ranges", () => {
     const items = [
       item("settings", "Open Settings", "Defaults, providers, tools"),
-      item("session", "New Session", "Open the launcher"),
+      item("session", "New Chat", "Open the launcher"),
       item("search", "Search Sessions", "Full-text search across every session timeline")
     ];
     const hits = searchPaletteItems(items, "Settings");

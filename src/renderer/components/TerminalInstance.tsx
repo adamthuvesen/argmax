@@ -11,9 +11,9 @@ import {
  * One mounted view of a persistent terminal tab. The xterm instance and PTY
  * live in `terminalRuntime.ts` keyed by `tabId`; this component only
  * reparents the terminal's host element into its container on mount and
- * detaches it on unmount. Unmounting (tab switch, panel close, session
- * switch) never terminates the PTY — only closing the tab does, via the
- * store's disposer.
+ * detaches it on unmount. Unmounting (tab switch, another panel mode, a
+ * closed panel, a session switch) never terminates the PTY — only closing
+ * the tab does, via the store's disposer.
  */
 export function TerminalInstance({
   tabId,
@@ -47,8 +47,8 @@ export function TerminalInstance({
     };
   }, [tabId, workspaceId]);
 
-  // When the panel becomes visible after being hidden (collapsed via ⌘J or
-  // because another tab was active), xterm's renderer can be out of sync
+  // When the terminal becomes visible after being hidden (⌘J, another panel
+  // mode, or another tab being active), xterm's renderer can be out of sync
   // with the container size. Re-fit + focus on visibility flips.
   useEffect(() => {
     if (!visible) return;
@@ -62,7 +62,7 @@ export function TerminalInstance({
   return (
     <div
       ref={containerRef}
-      className="terminal-panel-surface"
+      className="terminal-surface"
       role="region"
       aria-label="Integrated terminal"
     />

@@ -328,7 +328,9 @@ describe("BrowserPanel", () => {
     const onClose = vi.fn();
     render(<BrowserPanel url="https://github.com" onClose={onClose} />);
     const firstTab = activeTabId();
-    act(() => requestCloseActiveBrowserTab());
+    act(() => {
+      requestCloseActiveBrowserTab();
+    });
     expect(browserStub.close).toHaveBeenCalledWith(firstTab);
     expect(onClose).toHaveBeenCalled();
   });

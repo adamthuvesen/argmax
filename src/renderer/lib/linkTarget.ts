@@ -3,7 +3,7 @@
  *
  * - `system`: the OS default browser (the webview's `target="_blank"`
  *   handling). This is the default.
- * - `argmax`: the in-app browser pane.
+ * - `argmax`: the review panel's Browser view.
  *
  * ⌘/Ctrl-click always opens in the other target, whichever is default.
  * Persisted to localStorage. Reads tolerate missing/corrupt values by

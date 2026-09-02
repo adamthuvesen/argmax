@@ -50,7 +50,7 @@ describe("SessionSyncSettings", () => {
         expect.objectContaining({ claude: true, windowHours: 24 })
       )
     );
-    expect(await screen.findByRole("status")).toHaveTextContent("Imported 3 sessions");
+    expect(await screen.findByRole("status")).toHaveTextContent("Imported 3 chats");
   });
 
   it("changing the window re-runs the sweep with the new range", async () => {
@@ -73,7 +73,7 @@ describe("SessionSyncSettings", () => {
 
     // The warning is visible before the user acts, not only after.
     expect(
-      await screen.findByText(/removes the synced sessions you haven't continued/i)
+      await screen.findByText(/removes the synced chats you haven't continued/i)
     ).toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "Claude Code" }));
@@ -81,7 +81,7 @@ describe("SessionSyncSettings", () => {
       expect(syncStub.setConfig).toHaveBeenCalledWith(expect.objectContaining({ claude: false }))
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Synced sessions you never continued were removed"
+      "Synced chats you never continued were removed"
     );
   });
 

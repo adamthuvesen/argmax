@@ -17,7 +17,10 @@ import {
   terminateProvider
 } from "../test/appTestHarness.js";
 import { startedAgentName } from "../test/agentRowName.js";
-import { resetTerminalTabsForTests } from "./lib/terminalTabs.js";
+import {
+  getWorkspaceTerminalState as getWorkspaceTerminalStateForTest,
+  resetTerminalTabsForTests
+} from "./lib/terminalTabs.js";
 
 vi.mock("./components/TerminalTabsPanel.js", async () => {
   const { useEffect } = await import("react");
@@ -31,7 +34,13 @@ vi.mock("./components/TerminalTabsPanel.js", async () => {
           addTerminalTab(workspaceId, "zsh");
         }
       }, [workspaceId]);
-      return <div data-testid="terminal-tabs-panel" data-visible={String(visible)} />;
+      return (
+        <div
+          data-testid="terminal-tabs-panel"
+          data-workspace={workspaceId}
+          data-visible={String(visible)}
+        />
+      );
     }
   };
 });
@@ -169,7 +178,7 @@ describe("App grid", () => {
     });
 
     // Archive the second session from its sidebar row
-    const archiveButtons = screen.getAllByRole("button", { name: "Archive session" });
+    const archiveButtons = screen.getAllByRole("button", { name: "Archive chat" });
     const lastArchiveButton = archiveButtons[archiveButtons.length - 1];
     expect(lastArchiveButton).toBeDefined();
     if (!lastArchiveButton) throw new Error("Expected lastArchiveButton to be defined");
@@ -277,20 +286,20 @@ describe("App grid", () => {
       }
     });
 
-    expect(await screen.findByRole("group", { name: "Session panes" })).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: "Chat panes" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
   });
 
-  it("keeps the current session and opens a launcher pane to the right from New Agent", async () => {
+  it("keeps the current session and opens a launcher pane to the right from New chat", async () => {
     window.localStorage.setItem("argmax.newSessionMode", "embedded");
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("heading", { name: "Argmax" });
 
-    fireEvent.click(screen.getByRole("button", { name: "New Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
 
-    expect(await screen.findByRole("region", { name: "New session for Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "New chat for Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
     const rows = document.querySelectorAll(".session-multigrid-row");
     expect(rows).toHaveLength(1);
@@ -305,10 +314,10 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("heading", { name: "Argmax" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "New session here" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "New chat here" }));
 
-    expect(await screen.findByRole("region", { name: "New session for Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "New chat for Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
   });
 
@@ -325,14 +334,14 @@ describe("App grid", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("heading", { name: "Argmax" });
-    fireEvent.click(screen.getByRole("button", { name: "New Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
 
-    const launcher = await screen.findByRole("region", { name: "New session for Argmax" });
+    const launcher = await screen.findByRole("region", { name: "New chat for Argmax" });
     fireEvent.click(within(launcher).getByRole("button", { name: "Switch project" }));
     fireEvent.click(await within(launcher).findByRole("button", { name: "Sidecar" }));
 
     // The launcher cell follows the pick; the session pane beside it stays put.
-    expect(await screen.findByRole("region", { name: "New session for Sidecar" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "New chat for Sidecar" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
   });
 
@@ -342,9 +351,9 @@ describe("App grid", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("heading", { name: "Argmax" });
-    fireEvent.click(screen.getByRole("button", { name: "New Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
 
-    const launcher = await screen.findByRole("region", { name: "New session for Argmax" });
+    const launcher = await screen.findByRole("region", { name: "New chat for Argmax" });
     const promptInput = within(launcher).getByLabelText("Task prompt");
     fireEvent.change(promptInput, { target: { value: "Implement embedded early stop feature" } });
 
@@ -368,12 +377,12 @@ describe("App grid", () => {
     fireEvent.click(within(launcher).getByTitle("Start agent"));
 
     const secondPane = await screen.findByRole("region", { name: "Embedded task" });
-    const freshStopButton = within(secondPane).getByRole("button", { name: "Stop session" });
+    const freshStopButton = within(secondPane).getByRole("button", { name: "Stop chat" });
     fireEvent.click(freshStopButton);
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-embedded-fresh"));
 
-    const restoredLauncher = await screen.findByRole("region", { name: "New session for Argmax" });
+    const restoredLauncher = await screen.findByRole("region", { name: "New chat for Argmax" });
     expect(within(restoredLauncher).getByLabelText("Task prompt")).toHaveValue("Implement embedded early stop feature");
   });
 
@@ -539,7 +548,7 @@ describe("App grid", () => {
       expect(screen.queryByRole("region", { name: /^Agent activity: / })).toBeNull();
     });
     expect(screen.queryByRole("region", { name: "Build dashboard" })).toBeNull();
-    const grid = screen.getByRole("group", { name: "Session panes" });
+    const grid = screen.getByRole("group", { name: "Chat panes" });
     expect(within(grid).getAllByRole("group", { name: /^Pane row/ })).toHaveLength(1);
     expect(within(grid).getAllByRole("region", { name: "Follow up task" })).toHaveLength(1);
   });
@@ -1298,7 +1307,7 @@ describe("App grid", () => {
     await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("region", { name: /^Agent activity: / })).toBeNull();
     expect(await screen.findByRole("region", { name: "Fresh task" })).toBeInTheDocument();
-    const grid = screen.getByRole("group", { name: "Session panes" });
+    const grid = screen.getByRole("group", { name: "Chat panes" });
     expect(within(grid).getAllByRole("group", { name: /^Pane row/ })).toHaveLength(1);
     expect(within(grid).getAllByRole("region", { name: "Fresh task" })).toHaveLength(1);
   });
@@ -1309,27 +1318,27 @@ describe("App grid", () => {
     // Promote one workspace into the grid so the new-session toggle can do work.
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("heading", { name: "Argmax" });
-    expect(screen.getByRole("group", { name: "Session panes" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Chat panes" })).toBeInTheDocument();
 
-    // Flip the Startup → New session toggle to "Full view".
+    // Flip the Startup → New chat toggle to "Full view".
     await openSettings();
     fireEvent.click(await screen.findByRole("radio", { name: "Full view" }));
     expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("full");
     fireEvent.keyDown(document, { key: ",", metaKey: true });
-    await screen.findByRole("group", { name: "Session panes" });
+    await screen.findByRole("group", { name: "Chat panes" });
     expect(screen.getByRole("button", { name: "Build dashboard" })).toHaveAttribute("aria-current", "true");
 
     fireEvent.keyDown(document, { key: "n", metaKey: true });
 
     // Full launcher replaces the grid; no in-grid launcher cell is added.
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Session panes" })).toBeNull();
-    expect(screen.queryByRole("region", { name: "New session for Argmax" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Chat panes" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "New chat for Argmax" })).toBeNull();
     expect(screen.getByRole("button", { name: "Build dashboard" })).not.toHaveAttribute("aria-current");
 
     // Esc dismisses the full launcher and restores the grid view.
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(await screen.findByRole("group", { name: "Session panes" })).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: "Chat panes" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build dashboard" })).toHaveAttribute("aria-current", "true");
   });
 
@@ -1427,7 +1436,7 @@ describe("App grid", () => {
 
     fireEvent.keyDown(document, { key: "n", metaKey: true });
 
-    expect(await screen.findByRole("region", { name: "New session for Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "New chat for Argmax" })).toBeInTheDocument();
     const rows = document.querySelectorAll(".session-multigrid-row");
     expect(rows).toHaveLength(2);
     expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(3);
@@ -1563,7 +1572,7 @@ describe("App grid", () => {
     fireEvent.click(screen.getByRole("button", { name: "Resize target" }), { metaKey: true });
 
     const handle = await screen.findByRole("separator", { name: /Resize Build dashboard/ });
-    const grid = screen.getByRole("group", { name: "Session panes" });
+    const grid = screen.getByRole("group", { name: "Chat panes" });
     const row = grid.firstElementChild;
     if (!(row instanceof HTMLElement)) throw new Error("Expected a grid row");
     Object.defineProperty(row, "getBoundingClientRect", {
@@ -1663,7 +1672,7 @@ describe("App grid", () => {
     fireEvent.click(screen.getByRole("button", { name: "Wide pane" }), { metaKey: true });
 
     const handle = await screen.findByRole("separator", { name: /Resize Build dashboard/ });
-    const grid = screen.getByRole("group", { name: "Session panes" });
+    const grid = screen.getByRole("group", { name: "Chat panes" });
     const row = grid.firstElementChild;
     if (!(row instanceof HTMLElement)) throw new Error("Expected a grid row");
     Object.defineProperty(row, "getBoundingClientRect", {
@@ -1747,21 +1756,20 @@ describe("App grid", () => {
 
     fireEvent.keyDown(document, { key: "j", metaKey: true });
 
-    expect(await screen.findByRole("group", { name: "Session panes" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
-    });
+    expect(await screen.findByRole("group", { name: "Chat panes" })).toBeInTheDocument();
+    expect(await screen.findByTestId("terminal-tabs-panel")).toHaveAttribute("data-visible", "true");
 
     fireEvent.keyDown(document, { key: "j", metaKey: true });
 
     await waitFor(() => {
-      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "true");
+      expect(screen.queryByTestId("terminal-tabs-panel")).not.toBeInTheDocument();
     });
   });
 
   it("keeps an open terminal open after switching to another session and back", async () => {
-    // The Cmd+J counter lives in App and outlives every pane; a remounted
-    // pane must not replay the last press and toggle the persisted panel.
+    // Panes are keyed by session, so the review panel's mode dies on every
+    // switch; the workspace-keyed store is what brings the terminal back. The
+    // ⌘J request is consumed once, so the remounted pane must not replay it.
     const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-2",
       projectId: "project-1",
@@ -1806,18 +1814,19 @@ describe("App grid", () => {
     await screen.findByRole("heading", { name: "Argmax" });
     fireEvent.keyDown(document, { key: "j", metaKey: true });
     await waitFor(() => {
-      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
+      expect(screen.getByTestId("terminal-tabs-panel")).toHaveAttribute("data-workspace", "workspace-1");
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Other session" }));
     await waitFor(() => {
-      expect(document.querySelector(".terminal-panel")).toBeNull();
+      expect(screen.queryByTestId("terminal-tabs-panel")).not.toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
     await waitFor(() => {
-      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
+      expect(screen.getByTestId("terminal-tabs-panel")).toHaveAttribute("data-workspace", "workspace-1");
     });
+    expect(getWorkspaceTerminalStateForTest("workspace-1").tabs).toHaveLength(1);
   });
 
   it("returns from Settings and opens the active session terminal on Cmd+J", async () => {
@@ -1831,7 +1840,7 @@ describe("App grid", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("heading", { name: "Settings" })).not.toBeInTheDocument();
-      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
+      expect(screen.getByTestId("terminal-tabs-panel")).toHaveAttribute("data-visible", "true");
     });
   });
 

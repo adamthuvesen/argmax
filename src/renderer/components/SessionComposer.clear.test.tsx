@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { baseSession, renderConversation } from "../../test/sessionConversationTestHarness.js";
 
 function prompt(): HTMLTextAreaElement {
-  return screen.getByLabelText("Session prompt");
+  return screen.getByLabelText("Chat prompt");
 }
 
 describe("SessionComposer /clear", () => {

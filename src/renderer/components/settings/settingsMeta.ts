@@ -44,7 +44,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
       { id: "settings-permissions", label: "Permissions" },
       { id: "settings-conversation", label: "Conversation" },
       { id: "settings-providers", label: "Providers" },
-      { id: "settings-session-sync", label: "Session sync" }
+      { id: "settings-session-sync", label: "Chat sync" }
     ]
   },
   {

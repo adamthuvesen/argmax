@@ -112,6 +112,17 @@ groups open via the `Show <project> sessions` button), then returns whatever it
 measured. Start the provider session with `bridge.mjs chat` in the background
 first and time the capture into the stream.
 
+For the Agents pane the same recipe applies with two extra conditions. The
+parent repo must live at a plain path (the CLI's transcript slug is lossy, so a
+temp directory full of dots and dashes strands the child transcript), and the
+subagent must do something the CLI forwards: tool calls always are, text and
+thinking only with `--forward-subagent-text`, which the Claude adapter passes.
+Open the pane by clicking the last `.agent-launch-row-button` in the parent
+transcript, then sample `.agent-activity-scroll` (`scrollTop`, `scrollHeight`,
+`.agent-activity-items` height) and count `animationstart` events on it: an
+entrance animation firing on a bubble that already existed is a remount, and a
+`scrollHeight` decrease while pinned to the bottom is the drop a reader sees.
+
 `system:debug-snapshot` is served over the bridge precisely for this loop:
 a script can assert on log lines and per-channel latency instead of eyeballing
 the debug panel ([debugging.md](debugging.md)). For performance claims,

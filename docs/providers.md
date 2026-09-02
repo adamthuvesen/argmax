@@ -78,7 +78,7 @@ Grok Build runs via `grok "--single=<prompt>" --cwd <workspace> --output-format 
 ## Subagent Activity
 
 Subagent tool calls (`Task`, `spawn_agent`, `taskToolCall`) open an activity pane:
-- **Claude:** Emits child events directly in the stdout stream with `parent_tool_use_id`.
+- **Claude:** Emits child events directly in the stdout stream with `parent_tool_use_id`. Tool calls are forwarded by default; a subagent's text and thinking blocks arrive only with `--forward-subagent-text` (Claude Code 2.1.258+), which the adapter passes on launch and resume, so a subagent that only writes still streams into the pane.
 - **Codex:** Reads child JSONL traces from `~/.codex/sessions/YYYY/MM/DD` or `~/.codex/archived_sessions`. A child `session_meta.parent_thread_id` can recover a launch omitted from structured stdout.
 - **Cursor:** Reads transcripts from `~/.cursor/projects/*/agent-transcripts/<agentId>/`.
 - **OpenCode:** Emits the `task` launch through structured stdout. Argmax has no separate OpenCode child-trace source.

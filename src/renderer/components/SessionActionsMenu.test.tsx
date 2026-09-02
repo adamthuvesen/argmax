@@ -66,7 +66,7 @@ function workspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary 
  * which is what React warns about.
  */
 async function openMenu(): Promise<void> {
-  fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+  fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
   await act(async () => {});
 }
 
@@ -110,9 +110,12 @@ describe("SessionActionsMenu", () => {
   });
 
   it("opens the browser pane from the menu", async () => {
-    const { onBrowserPanelRequest } = await import("../lib/browserPanel.js");
+    const { getBrowserRequest, subscribeBrowserRequest } = await import("../lib/browserPanel.js");
     const opened: string[] = [];
-    const unsubscribe = onBrowserPanelRequest((url) => opened.push(url));
+    const unsubscribe = subscribeBrowserRequest(() => {
+      const request = getBrowserRequest();
+      if (request) opened.push(request.url);
+    });
 
     render(
       <SessionActionsMenu
@@ -151,7 +154,7 @@ describe("SessionActionsMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Push" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Create pull request" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Back to session actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to chat actions" }));
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
 
     await waitFor(() => {

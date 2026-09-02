@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  claimBrowserSurface,
+  getBrowserOwnerId,
+  getBrowserRequest,
+  lastBrowsedUrl,
   normalizeBrowserUrl,
-  onBrowserPanelRequest,
+  onBrowserCloseActiveTabRequest,
+  openBrowserPanel,
   openInBrowserPanel,
-  resolveBrowserInput
+  releaseBrowserSurface,
+  requestCloseActiveBrowserTab,
+  resetBrowserSurfaceForTests,
+  resolveBrowserInput,
+  subscribeBrowserOwner,
+  subscribeBrowserRequest
 } from "./browserPanel.js";
 
 describe("resolveBrowserInput", () => {
@@ -49,15 +59,82 @@ describe("normalizeBrowserUrl", () => {
   });
 });
 
-describe("browser panel request bus", () => {
-  it("delivers open requests to the subscriber and stops after unsubscribe", () => {
-    const listener = vi.fn();
-    const unsubscribe = onBrowserPanelRequest(listener);
+describe("browser open requests", () => {
+  afterEach(() => resetBrowserSurfaceForTests());
+
+  it("notifies every subscriber and bumps the sequence per request", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const stopFirst = subscribeBrowserRequest(first);
+    const stopSecond = subscribeBrowserRequest(second);
+
     openInBrowserPanel("https://github.com");
-    expect(listener).toHaveBeenCalledWith("https://github.com");
-    unsubscribe();
+    expect(getBrowserRequest()).toEqual({ url: "https://github.com", seq: 1 });
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+
+    // The same URL again is still a new request: the reader asked to see it.
+    openInBrowserPanel("https://github.com");
+    expect(getBrowserRequest()).toEqual({ url: "https://github.com", seq: 2 });
+
+    stopFirst();
     openInBrowserPanel("https://example.com");
+    expect(first).toHaveBeenCalledTimes(2);
+    expect(second).toHaveBeenCalledTimes(3);
+    stopSecond();
+  });
+
+  it("reopens where the browser last was", () => {
+    expect(lastBrowsedUrl()).toBe("https://www.google.com");
+    openInBrowserPanel("https://argmax.dev");
+    openBrowserPanel();
+    expect(getBrowserRequest()).toEqual({ url: "https://argmax.dev", seq: 2 });
+  });
+});
+
+describe("browser surface ownership", () => {
+  afterEach(() => resetBrowserSurfaceForTests());
+
+  it("hands the surface to the newest claimant and ignores a stale release", () => {
+    const listener = vi.fn();
+    const stop = subscribeBrowserOwner(listener);
+
+    claimBrowserSurface("panel-a");
+    expect(getBrowserOwnerId()).toBe("panel-a");
+
+    // A second panel switching to Browser mode demotes the first.
+    claimBrowserSurface("panel-b");
+    expect(getBrowserOwnerId()).toBe("panel-b");
+
+    // The demoted panel leaving Browser mode must not release panel-b's claim.
+    releaseBrowserSurface("panel-a");
+    expect(getBrowserOwnerId()).toBe("panel-b");
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    releaseBrowserSurface("panel-b");
+    expect(getBrowserOwnerId()).toBeNull();
+    stop();
+  });
+
+  it("does not notify when the owner re-claims a surface it already holds", () => {
+    const listener = vi.fn();
+    const stop = subscribeBrowserOwner(listener);
+    claimBrowserSurface("panel-a");
+    claimBrowserSurface("panel-a");
     expect(listener).toHaveBeenCalledTimes(1);
+    stop();
+  });
+});
+
+describe("close active tab requests", () => {
+  it("reports whether a mounted browser consumed the request", () => {
+    expect(requestCloseActiveBrowserTab()).toBe(false);
+    const listener = vi.fn();
+    const stop = onBrowserCloseActiveTabRequest(listener);
+    expect(requestCloseActiveBrowserTab()).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+    stop();
+    expect(requestCloseActiveBrowserTab()).toBe(false);
   });
 });
 

@@ -1,3 +1,4 @@
+import { Plus, SquareTerminal, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -7,7 +8,7 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
-import { TerminalInstance } from "./TerminalPanel.js";
+import { TerminalInstance } from "./TerminalInstance.js";
 import {
   addTerminalTab,
   closeTerminalTab,
@@ -44,28 +45,26 @@ function nextLabel(existing: readonly TerminalTabMeta[], base: string): string {
 }
 
 /**
- * Multi-tab integrated terminal. Tab state and the xterm/PTY runtimes live in
- * `terminalTabs.ts` / `terminalRuntime.ts` keyed by workspace, so this
- * component can unmount freely (tab switch, ⌘J collapse, session switch) and
- * remount to the same terminals with scrollback and running processes intact.
- * Inactive tabs stay mounted (`display: none`) so switching tabs is instant.
+ * The review panel's Terminal view. Tab state and the xterm/PTY runtimes live
+ * in `terminalTabs.ts` / `terminalRuntime.ts` keyed by workspace, so this
+ * component can unmount freely (another panel mode, a closed panel, a session
+ * switch) and remount to the same terminals with scrollback and running
+ * processes intact. Inactive tabs stay mounted (`display: none`) so switching
+ * tabs is instant.
  *
- * Two close paths:
- * - `onCollapse` — header × (or any "hide panel" affordance). PTYs stay
- *   alive; the parent hides the panel.
- * - `onRequestClose` — last tab was closed via its inline ×. PTYs are gone;
- *   the parent should unmount the panel entirely.
+ * Chrome matches Files and Agents — the same tab strip and the same status
+ * strip — so switching modes moves content, not furniture. Hiding the
+ * terminal is the panel's own close button; there is no second × here.
  */
 export function TerminalTabsPanel({
   workspaceId,
   visible,
-  onCollapse,
-  onRequestClose
+  cwdLabel
 }: {
   workspaceId: string;
   visible: boolean;
-  onCollapse: () => void;
-  onRequestClose: () => void;
+  /** Shown in the status strip: where these shells are running. */
+  cwdLabel?: string | null;
 }): JSX.Element {
   const shellLabel = useMemo(() => defaultShellLabel(), []);
   const { tabs, activeTabId } = useSyncExternalStore(subscribeTerminalTabs, () =>
@@ -77,9 +76,9 @@ export function TerminalTabsPanel({
   useEffect(() => markTerminalWorkspaceAttached(workspaceId), [workspaceId]);
 
   // Seed one tab on first mount of an empty workspace; after that, an empty
-  // tab list means the user closed the last tab — hand control back to the
-  // parent so it unmounts the panel. Re-check the store before seeding or
-  // closing: StrictMode re-runs this effect with a stale empty-tabs closure
+  // tab list means the user closed the last tab, and the view rests on its
+  // empty state until they ask for another. Re-check the store before
+  // seeding: StrictMode re-runs this effect with a stale empty-tabs closure
   // right after the first run already seeded.
   const seededRef = useRef(false);
   useEffect(() => {
@@ -87,14 +86,11 @@ export function TerminalTabsPanel({
       seededRef.current = true;
       return;
     }
+    if (seededRef.current) return;
+    seededRef.current = true;
     if (getWorkspaceTerminalState(workspaceId).tabs.length > 0) return;
-    if (!seededRef.current) {
-      seededRef.current = true;
-      addTerminalTab(workspaceId, shellLabel);
-      return;
-    }
-    onRequestClose();
-  }, [tabs, workspaceId, shellLabel, onRequestClose]);
+    addTerminalTab(workspaceId, shellLabel);
+  }, [tabs, workspaceId, shellLabel]);
 
   const addTab = useCallback(() => {
     addTerminalTab(workspaceId, nextLabel(getWorkspaceTerminalState(workspaceId).tabs, shellLabel));
@@ -174,41 +170,52 @@ export function TerminalTabsPanel({
     [activateTab, closeTab, focusTab, tabs]
   );
 
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+
+  // No tabs left (the reader closed the last one): the empty state carries the
+  // only action, so the strip would be a lone + over nothing.
+  if (tabs.length === 0) {
+    return (
+      <div className="review-terminal">
+        <p className="review-empty">
+          <span className="review-empty-mark" aria-hidden="true">∅</span>
+          <span>No terminal open.</span>
+          <button type="button" className="review-empty-action" onClick={addTab}>
+            New terminal
+          </button>
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <>
-      <div className="terminal-panel-header">
-        <div
-          className="terminal-tab-bar"
-          role="tablist"
-          aria-label="Terminal tabs"
-          aria-orientation="horizontal"
-        >
+    <div className="review-terminal">
+      <div className="file-tabs-shell">
+        <div className="file-tabs" role="tablist" aria-label="Terminal tabs" aria-orientation="horizontal">
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
             return (
-              <div
-                key={tab.id}
-                className="terminal-tab"
-                data-active={isActive}
-              >
+              <div className="file-tab" data-active={isActive ? "true" : "false"} key={tab.id}>
                 <button
                   ref={setTabButtonRef(tab.id)}
                   type="button"
-                  className="terminal-tab-label"
                   role="tab"
                   aria-selected={isActive}
                   aria-controls={`terminal-tabpanel-${tab.id}`}
                   id={`terminal-tab-${tab.id}`}
                   tabIndex={isActive ? 0 : -1}
+                  title={tab.label}
                   onClick={() => activateTab(tab.id)}
                   onKeyDown={handleTabKeyDown(tab.id)}
-                  title={tab.label}
                 >
-                  {tab.label}
+                  <span className="file-tab-icon" aria-hidden="true">
+                    <SquareTerminal size={13} />
+                  </span>
+                  <span className="file-tab-name">{tab.label}</span>
                 </button>
                 <button
                   type="button"
-                  className="terminal-tab-close"
+                  className="file-tab-close"
                   aria-label={`Close ${tab.label}`}
                   title={`Close ${tab.label}`}
                   onClick={(event) => {
@@ -216,31 +223,23 @@ export function TerminalTabsPanel({
                     closeTab(tab.id);
                   }}
                 >
-                  ×
+                  <X size={12} aria-hidden="true" />
                 </button>
               </div>
             );
           })}
-          <button
-            type="button"
-            className="terminal-tab-add"
-            aria-label="New terminal"
-            title="New terminal"
-            onClick={addTab}
-          >
-            +
-          </button>
         </div>
         <button
           type="button"
-          className="terminal-panel-close"
-          aria-label="Hide terminal"
-          title="Hide terminal (⌘J)"
-          onClick={onCollapse}
+          className="file-tab-add"
+          aria-label="New terminal"
+          title="New terminal"
+          onClick={addTab}
         >
-          ×
+          <Plus size={13} aria-hidden="true" />
         </button>
       </div>
+
       <div className="terminal-tab-bodies">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId;
@@ -254,15 +253,21 @@ export function TerminalTabsPanel({
               aria-labelledby={`terminal-tab-${tab.id}`}
               aria-hidden={!isActive}
             >
-              <TerminalInstance
-                tabId={tab.id}
-                workspaceId={workspaceId}
-                visible={visible && isActive}
-              />
+              <TerminalInstance tabId={tab.id} workspaceId={workspaceId} visible={visible && isActive} />
             </div>
           );
         })}
       </div>
-    </>
+
+      <footer className="review-status-bar" aria-label="Terminal status">
+        <span className="review-status-path" title={cwdLabel ?? undefined}>
+          {cwdLabel ?? ""}
+        </span>
+        <span className="review-status-meta">
+          {activeTab ? <span>{activeTab.label}</span> : null}
+          {tabs.length > 1 ? <span>{tabs.length} terminals</span> : null}
+        </span>
+      </footer>
+    </div>
   );
 }

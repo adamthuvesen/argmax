@@ -67,6 +67,16 @@ describe("isInternalAgentLaunchMetadata", () => {
 
   it("returns false for real subagent completion text", () => {
     expect(isInternalAgentLaunchMetadata("Checked the repository layout. Found 12 components.")).toBe(false);
+  });
+
+  it("does not mistake the footer on a finished subagent result for a launch", () => {
+    // Claude Code 2.1.25x trails every Agent result — including a foreground
+    // one that already returned its answer — with this block.
+    expect(
+      isInternalAgentLaunchMetadata(
+        "**Verdict: B.** Delete the projection.\n\nagentId: a1ee15e7eb144fead (use SendMessage with to: 'a1ee15e7eb144fead', summary: '<5-10 word recap>' to continue this agent)\n<usage>subagent_tokens: 64476</usage>"
+      )
+    ).toBe(false);
     expect(isInternalAgentLaunchMetadata("README is updated.")).toBe(false);
   });
 });

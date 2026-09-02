@@ -46,7 +46,7 @@ export function useSessionCommands({
       attachments?: ComposerAttachment[]
     ): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Tauri app window to send input to a live session.");
+        throw new Error("Open the Tauri app window to send input to a live chat.");
       }
 
       const result = await window.argmax.providers.sendInput({
@@ -115,7 +115,7 @@ export function useSessionCommands({
   const terminateSession = useCallback(
     async (sessionId: string, options?: TerminateSessionOptions): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Tauri app window to stop a live session.");
+        throw new Error("Open the Tauri app window to stop a live chat.");
       }
       if (options?.restoreLauncherOnEarlyStop !== false) {
         onEarlyStop?.(sessionId);
@@ -123,7 +123,7 @@ export function useSessionCommands({
       const ok = await withToast(
         () => window.argmax!.providers.terminate(sessionId),
         setToast,
-        "Could not stop session."
+        "Could not stop chat."
       );
       if (ok) {
         // Terminate already succeeded; the refresh is best-effort catch-up.
@@ -137,7 +137,7 @@ export function useSessionCommands({
   const clearSession = useCallback(
     async (sessionId: string): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Tauri app window to clear a session.");
+        throw new Error("Open the Tauri app window to clear a chat.");
       }
       const ok = await withToast(
         () => window.argmax!.session.clear({ sessionId }),

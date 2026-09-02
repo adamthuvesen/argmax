@@ -175,7 +175,7 @@ export function useAppGridSelection({
       if (!workspace || workspace.state === "archived") return;
       const sessionForWorkspace = snapshot.sessions.find((s) => s.workspaceId === workspaceId);
       if (!sessionForWorkspace) {
-        showErrorToast("This session isn't loaded — try refreshing the dashboard.");
+        showErrorToast("This chat isn't loaded — try refreshing the dashboard.");
         return;
       }
       setSelectedProjectId(workspace.projectId);
@@ -212,7 +212,7 @@ export function useAppGridSelection({
       if (!workspace || workspace.state === "archived") return;
       const sessionForWorkspace = snapshot.sessions.find((s) => s.workspaceId === workspaceId);
       if (!sessionForWorkspace) {
-        showErrorToast("This session isn't loaded — try refreshing the dashboard.");
+        showErrorToast("This chat isn't loaded — try refreshing the dashboard.");
         return;
       }
       setSelectedProjectId(workspace.projectId);
@@ -275,7 +275,7 @@ export function useAppGridSelection({
       // A full grid silently swallows the request otherwise, which reads as a
       // dead button rather than as a limit the user can act on.
       if (next === current && findLauncherCell(current) === null) {
-        showErrorToast("The grid is full. Close a pane to start a new session here.");
+        showErrorToast("The grid is full. Close a pane to start a new chat here.");
       }
       return next;
     });

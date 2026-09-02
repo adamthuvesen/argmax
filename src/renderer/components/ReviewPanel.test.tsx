@@ -1,5 +1,7 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Stub the highlighter so this test never touches shiki.
 vi.mock("../lib/highlighter.js", () => ({
@@ -8,9 +10,13 @@ vi.mock("../lib/highlighter.js", () => ({
   langFromPath: vi.fn(() => null)
 }));
 
+import type { ArgmaxApi } from "../../shared/types.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
+import { resetBrowserTabsForTests } from "../lib/browserPanel.js";
 import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
+import { addTerminalTab, resetTerminalTabsForTests } from "../lib/terminalTabs.js";
 import { ReviewPanel } from "./ReviewPanel.js";
+import { readBundledCss } from "../styles/readBundledCss.js";
 
 function reviewStub(): ReviewState {
   return {
@@ -39,6 +45,12 @@ function reviewStub(): ReviewState {
       closeTab: vi.fn()
     },
     openAgent: vi.fn(),
+    openBrowser: vi.fn(),
+    browserOwner: false,
+    browserRequest: null,
+    terminalWorkspaceId: "workspace-1",
+    openTerminal: vi.fn(),
+    toggleTerminal: vi.fn(),
     workspaceFiles: {
       entries: [],
       listState: "idle",
@@ -522,5 +534,151 @@ describe("ReviewPanel — drag listener cleanup on unmount", () => {
     expect(detached).toContain("mouseup");
 
     removeListener.mockRestore();
+  });
+});
+
+describe("ReviewPanel browser mode", () => {
+  const browserStub = {
+    open: vi.fn(() => Promise.resolve({ ok: true as const })),
+    navigate: vi.fn(() => Promise.resolve({ ok: true as const })),
+    back: vi.fn(() => Promise.resolve({ ok: true as const })),
+    forward: vi.fn(() => Promise.resolve({ ok: true as const })),
+    reload: vi.fn(() => Promise.resolve({ ok: true as const })),
+    setBounds: vi.fn(() => Promise.resolve({ ok: true as const })),
+    close: vi.fn(() => Promise.resolve({ ok: true as const })),
+    stop: vi.fn(() => Promise.resolve({ ok: true as const })),
+    fillCredentials: vi.fn(() => Promise.resolve({ ok: true, itemTitle: "GitHub" })),
+    onState: vi.fn(() => () => undefined),
+    onNewTab: vi.fn(() => () => undefined),
+    onPageCommand: vi.fn(() => () => undefined)
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetBrowserTabsForTests();
+    for (const mock of Object.values(browserStub)) mock.mockClear();
+    window.argmax = { browser: browserStub } as unknown as ArgmaxApi;
+  });
+
+  afterEach(() => {
+    cleanup();
+    resetBrowserTabsForTests();
+    delete (window as { argmax?: ArgmaxApi }).argmax;
+  });
+
+  it("offers the Browser tab only where the desktop bridge has one", () => {
+    render(<ReviewPanel review={reviewStub()} />);
+    expect(screen.getByRole("tab", { name: "Browser" })).toBeInTheDocument();
+
+    cleanup();
+    delete (window as { argmax?: ArgmaxApi }).argmax;
+    render(<ReviewPanel review={reviewStub()} />);
+    expect(screen.queryByRole("tab", { name: "Browser" })).toBeNull();
+  });
+
+  it("opens the browser from the tab, taking the surface rather than only switching mode", () => {
+    const review = reviewStub();
+    render(<ReviewPanel review={review} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
+    expect(review.openBrowser).toHaveBeenCalled();
+    expect(review.setMode).not.toHaveBeenCalled();
+  });
+
+  it("renders the browser chrome for the panel that owns the surface", () => {
+    const review = reviewStub();
+    review.mode = "browser";
+    review.browserOwner = true;
+    review.browserRequest = { url: "https://argmax.dev", seq: 1 };
+    const { container } = render(<ReviewPanel review={review} />);
+
+    expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue("https://argmax.dev");
+    expect(container.querySelector(".review-body-browser")).not.toBeNull();
+    // Files-mode furniture stays out of the way.
+    expect(container.querySelector(".review-list-col")).toBeNull();
+    expect(screen.queryByLabelText("File status")).toBeNull();
+  });
+
+  it("shows a placeholder in a panel that lost the surface, and claims it back", () => {
+    const review = reviewStub();
+    review.mode = "browser";
+    review.browserOwner = false;
+    render(<ReviewPanel review={review} />);
+
+    expect(screen.queryByRole("textbox", { name: "Address" })).toBeNull();
+    expect(screen.getByText("The browser moved to another pane.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show here" }));
+    expect(review.openBrowser).toHaveBeenCalled();
+  });
+});
+
+describe("ReviewPanel terminal mode", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetTerminalTabsForTests();
+  });
+
+  afterEach(() => {
+    cleanup();
+    resetTerminalTabsForTests();
+  });
+
+  it("offers the Terminal tab only where a workspace backs the panel", () => {
+    render(<ReviewPanel review={reviewStub()} />);
+    expect(screen.getByRole("tab", { name: "Terminal" })).toBeInTheDocument();
+
+    cleanup();
+    const projectPanel = reviewStub();
+    projectPanel.terminalWorkspaceId = null;
+    render(<ReviewPanel review={projectPanel} />);
+    expect(screen.queryByRole("tab", { name: "Terminal" })).toBeNull();
+  });
+
+  it("opens the terminal from the tab", () => {
+    const review = reviewStub();
+    render(<ReviewPanel review={review} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Terminal" }));
+    expect(review.openTerminal).toHaveBeenCalled();
+    expect(review.setMode).not.toHaveBeenCalled();
+  });
+
+  it("gives Terminal mode the body to itself, with no Files or Changes furniture", async () => {
+    const review = reviewStub();
+    review.mode = "terminal";
+    const { container } = render(<ReviewPanel review={review} />);
+
+    await waitFor(() => {
+      expect(container.querySelector(".review-body-terminal")).not.toBeNull();
+    });
+    expect(container.querySelector(".review-list-col")).toBeNull();
+    expect(container.querySelector(".review-diff")).toBeNull();
+    expect(screen.queryByLabelText("File status")).toBeNull();
+  });
+
+  it("keeps a workspace's terminals mounted, and hidden, behind another mode", async () => {
+    addTerminalTab("workspace-1", "zsh");
+    const review = reviewStub();
+    const { container } = render(<ReviewPanel review={review} />);
+
+    await waitFor(() => {
+      expect(container.querySelector(".review-terminal-mount")).not.toBeNull();
+    });
+    expect(container.querySelector(".review-terminal-mount")).toHaveAttribute("hidden");
+
+    // `hidden` alone would lose to the mount's own `display`, painting the
+    // terminal over the Changes list.
+    const css = readBundledCss(resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css"));
+    const rule = /\.review-terminal-mount\[hidden\]\s*\{(?<body>[^}]+)\}/i.exec(css);
+    expect(rule?.groups?.body).toMatch(/display:\s*none/i);
+  });
+
+  it("falls back to Changes when the mode outlives the workspace", () => {
+    const review = reviewStub();
+    review.mode = "terminal";
+    review.terminalWorkspaceId = null;
+    const { container } = render(<ReviewPanel review={review} />);
+
+    expect(container.querySelector(".review-body-changes")).not.toBeNull();
+    expect(container.querySelector(".review-terminal-mount")).toBeNull();
   });
 });

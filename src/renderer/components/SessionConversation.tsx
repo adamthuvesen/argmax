@@ -408,7 +408,7 @@ export function SessionConversation({
           // pane too narrow to hold it.
           setStatus({
             kind: "info",
-            message: "Workspace card is on. It shows up on sessions that have a git worktree."
+            message: "Workspace card is on. It shows up on chats that have a git worktree."
           });
           return;
         }
@@ -809,7 +809,7 @@ export function SessionConversation({
   }, [agentMode, sessionId]);
 
   return (
-    <section className="conversation-surface" aria-label="Session conversation">
+    <section className="conversation-surface" aria-label="Conversation">
       <div className="section-heading" data-window-drag={floating ? undefined : true}>
         <div className="session-title">
           {workspace && workspace.kind !== "git" ? (

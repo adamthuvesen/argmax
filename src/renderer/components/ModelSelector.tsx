@@ -13,7 +13,6 @@ import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { EffortPixelField } from "./EffortPixelField.js";
-import { Mascot } from "./Mascot.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import {
   allModelOptions,
@@ -193,13 +192,25 @@ function alwaysSupportsFastMode(): boolean {
 
 type EffortPosStyle = CSSProperties & { "--effort-pos"?: string };
 
+// Stop labels under the rail. Short so six of them fit the popover width;
+// the head above carries the full name of the live draft.
+const SHORT_EFFORT_LABELS: Record<ReasoningEffort, string> = {
+  low: "Low",
+  medium: "Med",
+  high: "High",
+  xhigh: "XHigh",
+  max: "Max",
+  ultra: "Ultra"
+};
+
 /**
  * Standalone effort control shown beside the model chip: a chip that reads the
  * current effort and opens a slider spanning `efforts`. The list is
  * provider-specific (Claude and Codex Sol/Terra run low→ultra, others stop
- * earlier). The thumb tracks the pointer 1:1 while dragging, then glides to
- * the nearest stop; arrow/Home/End keys step it. role="slider" carries the
- * a11y semantics.
+ * earlier). The fill's leading edge is the cursor: it tracks the pointer 1:1
+ * while dragging, then glides to the nearest stop; arrow/Home/End keys step
+ * it, and the stop labels under the rail jump straight to a level.
+ * role="slider" carries the a11y semantics.
  */
 function EffortSlider({
   value,
@@ -361,13 +372,29 @@ function EffortSlider({
               <EffortPixelField level={fraction} flowRate={fraction} />
             </div>
             <div
-              className="effort-slider-thumb"
+              className="effort-slider-cursor"
               data-dragging={dragging || undefined}
               aria-hidden="true"
               style={{ "--effort-pos": String(fraction) } as EffortPosStyle}
-            >
-              <Mascot mood="idle" size={18} />
-            </div>
+            />
+          </div>
+          <div className="effort-slider-stops">
+            {efforts.map((effort, stop) => (
+              <button
+                key={effort}
+                type="button"
+                className="effort-slider-stop"
+                tabIndex={-1}
+                data-active={stop === index || undefined}
+                data-lit={stop <= index || undefined}
+                aria-label={`Set effort to ${effortLabel(effort)}`}
+                style={{ "--effort-pos": String(maxIndex === 0 ? 0 : stop / maxIndex) } as EffortPosStyle}
+                onClick={() => selectIndex(stop)}
+              >
+                <span className="effort-slider-stop-tick" aria-hidden="true" />
+                <span className="effort-slider-stop-label">{SHORT_EFFORT_LABELS[effort]}</span>
+              </button>
+            ))}
           </div>
         </div>
       )}

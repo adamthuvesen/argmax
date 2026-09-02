@@ -64,6 +64,8 @@ _Avoid_: Agent, CLI, tool, backend
 One agent run inside one workspace: its provider, model, prompt, lifecycle state, token usage, and cost. The unit users think of as "a chat". A workspace holds exactly one — forking, importing, and agent-launched sessions all create a fresh workspace rather than a second session. The schema permits more, but nothing may rely on that. This bounds identity, not parallelism: any number of sessions may run at once, each in its own workspace, including many against the same checkout and branch.
 _Avoid_: Conversation, chat, run, thread, agent
 
+The display name for a session is **chat**: the sidebar, menus, and mobile say chat; code and docs say session.
+
 **Provider conversation id**:
 The provider CLI's own identifier for the underlying conversation, kept so a session can be resumed. Distinct from the Argmax session id.
 _Avoid_: Session id

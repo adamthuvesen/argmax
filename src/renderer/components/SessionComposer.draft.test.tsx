@@ -16,7 +16,7 @@ vi.mock("../lib/tauriBridge.js", async (importOriginal) => {
 });
 
 function prompt(): HTMLTextAreaElement {
-  return screen.getByLabelText("Session prompt");
+  return screen.getByLabelText("Chat prompt");
 }
 
 /** Paste of a screenshot: a clipboard carrying one path-less image file. */

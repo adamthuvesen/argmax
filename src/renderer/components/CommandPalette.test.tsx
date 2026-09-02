@@ -125,7 +125,7 @@ describe("CommandPalette", () => {
 
   it("exposes one tab per search chord and scopes results to the picked one", () => {
     const mixed: PaletteCommand[] = [
-      { id: "act", label: "New Session", group: "Actions", run: vi.fn() },
+      { id: "act", label: "New Chat", group: "Actions", run: vi.fn() },
       { id: "sess", label: "Refactor watcher", group: "Sessions", run: vi.fn() }
     ];
     render(<CommandPalette open={true} commands={mixed} onClose={vi.fn()} />);
@@ -139,13 +139,13 @@ describe("CommandPalette", () => {
       "Actions",
       "Settings"
     ]);
-    expect(screen.getByText("New Session")).toBeInTheDocument();
+    expect(screen.getByText("New Chat")).toBeInTheDocument();
     expect(screen.getByText("Refactor watcher")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Agents");
     expect(screen.getByText("Refactor watcher")).toBeInTheDocument();
-    expect(screen.queryByText("New Session")).toBeNull();
+    expect(screen.queryByText("New Chat")).toBeNull();
   });
 
   it("Tab and Shift+Tab move between filters without leaving the input", () => {
@@ -410,7 +410,7 @@ describe("CommandPalette", () => {
           searchContents={searchContents}
         />
       );
-      expect(screen.getByText(/open a session or project/i)).toBeInTheDocument();
+      expect(screen.getByText(/open a chat or project/i)).toBeInTheDocument();
     });
   });
 });

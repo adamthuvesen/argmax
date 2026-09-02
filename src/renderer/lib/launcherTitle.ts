@@ -8,3 +8,6 @@ export const LAUNCHER_TITLE = "What are we building?";
 
 /** Side chat has no repository, so it asks for a subject instead of a build. */
 export const SIDE_CHAT_TITLE = "What's on your mind?";
+
+/** Prompt placeholder for a side chat, on both the desktop and mobile launchers. */
+export const SIDE_CHAT_PLACEHOLDER = "Ask anything — no repository attached";

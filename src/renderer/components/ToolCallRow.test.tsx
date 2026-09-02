@@ -69,3 +69,25 @@ describe("ToolCallRow", () => {
     );
   });
 });
+
+describe("ToolCallRow server marks", () => {
+  afterEach(() => cleanup());
+
+  it("leads an MCP row with the server's brand mark", () => {
+    render(
+      <ToolCallRow
+        tool={tool({
+          name: "mcp__claude_ai_Slack__slack_search_public",
+          inputPreview: "PQL score",
+          inputFull: { query: "PQL score" }
+        })}
+      />
+    );
+    expect(screen.getByRole("img", { name: "Slack" })).toBeInTheDocument();
+  });
+
+  it("shows no mark on a built-in tool row", () => {
+    render(<ToolCallRow tool={tool()} />);
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+});

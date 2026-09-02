@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type CSSProperties,
   type JSX,
   type MouseEvent as ReactMouseEvent
@@ -38,12 +37,6 @@ import { resolveOpenablePath } from "../lib/openableFile.js";
 import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { readBoundedNumberPreference, type ToolCallsDisplay } from "../lib/uiPreferences.js";
-import {
-  getWorkspaceTerminalState,
-  setTerminalPanelOpen,
-  subscribeTerminalTabs,
-  toggleTerminalPanel
-} from "../lib/terminalTabs.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { CommitDialog } from "./CommitDialog.js";
 import { DebugPanel } from "./debug/DebugPanel.js";
@@ -54,13 +47,10 @@ const ReviewPanel = lazy(async () => ({
 }));
 import { SessionConversation } from "./SessionConversation.js";
 // TerminalTabsPanel pulls in @xterm/xterm + addons + xterm CSS — heavy and
-// only loaded when the user opens the integrated terminal. Lazy-mounted
-// (ralph B5) so xterm leaves the main chunk. The importer is named so it can
-// also be prefetched on idle (see the warm-up effect below).
-const importTerminalPanel = () => import("./TerminalTabsPanel.js");
-const TerminalTabsPanel = lazy(async () => ({
-  default: (await importTerminalPanel()).TerminalTabsPanel
-}));
+// only loaded when the user opens the review panel's Terminal view, which
+// mounts it. Named here so this pane can prefetch the chunk on idle (see the
+// warm-up effect below) and the first ⌘J paints straight away.
+const importTerminalView = () => import("./TerminalTabsPanel.js");
 
 const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
 const SESSION_RIGHT_PANEL_MIN = 360;
@@ -68,10 +58,6 @@ const SESSION_RIGHT_PANEL_MAX = 2000;
 const SESSION_RIGHT_PANEL_DEFAULT = 420;
 const SESSION_LOG_PANEL_MIN = 300;
 
-const TERMINAL_HEIGHT_KEY = "argmax.terminal.height";
-const TERMINAL_MIN_HEIGHT = 120;
-const TERMINAL_MAX_HEIGHT = 600;
-const TERMINAL_DEFAULT_HEIGHT = 280;
 export function SessionPane({
   approvals,
   checks,
@@ -191,7 +177,9 @@ export function SessionPane({
   // Which files the agent wrote in its newest turn, for the review panel's
   // "Last turn" scope. Null without a session: there is no turn to scope to.
   const lastTurnPaths = useMemo(() => lastTurnEditedPaths(visibleEvents), [visibleEvents]);
-  const reviewState = useReviewState(reviewSource, session ? lastTurnPaths : null);
+  const reviewState = useReviewState(reviewSource, session ? lastTurnPaths : null, {
+    claimsBrowserRequests: isFocused
+  });
   const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isPanelResizing, setIsPanelResizing] = useState(false);
@@ -203,24 +191,6 @@ export function SessionPane({
     })
   );
   const toggleLog = useCallback(() => setIsLogOpen((v) => !v), []);
-  // Terminal panel state lives in the workspace-keyed store (terminalTabs.ts)
-  // so it survives this pane unmounting on session/workspace switches — the
-  // xterm instances and PTYs persist in terminalRuntime.ts and reattach here.
-  const terminalWorkspaceId = workspace?.id ?? null;
-  const terminalState = useSyncExternalStore(subscribeTerminalTabs, () =>
-    getWorkspaceTerminalState(terminalWorkspaceId)
-  );
-  const [isTerminalResizing, setIsTerminalResizing] = useState(false);
-  const [terminalHeight, setTerminalHeight] = useState<number>(() =>
-    readBoundedNumberPreference(TERMINAL_HEIGHT_KEY, {
-      min: TERMINAL_MIN_HEIGHT,
-      max: TERMINAL_MAX_HEIGHT,
-      fallback: TERMINAL_DEFAULT_HEIGHT
-    })
-  );
-  const toggleTerminal = useCallback(() => {
-    if (terminalWorkspaceId) toggleTerminalPanel(terminalWorkspaceId);
-  }, [terminalWorkspaceId]);
   // The card's own dismiss and the session menu's checkbox write the same
   // app-level preference, so hiding it here keeps it hidden everywhere.
   const handleHideWorkspaceCard = useCallback(
@@ -231,12 +201,6 @@ export function SessionPane({
     () => onWorkspaceCardVisibleChange?.(!workspaceCardVisible),
     [onWorkspaceCardVisibleChange, workspaceCardVisible]
   );
-  const handleTerminalCollapse = useCallback(() => {
-    if (terminalWorkspaceId) setTerminalPanelOpen(terminalWorkspaceId, false);
-  }, [terminalWorkspaceId]);
-  // Last tab closed: the store has no tabs left, so closing the panel also
-  // prunes the workspace entry.
-  const handleTerminalRequestClose = handleTerminalCollapse;
   const handleResolveApproval = async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
     try {
       await onResolveApproval(approvalId, status);
@@ -254,27 +218,18 @@ export function SessionPane({
     .join(" ");
   const reviewColumnWidth = `${rightPanelWidth}px`;
   const logColumnWidth = reviewState.isPanelOpen ? "clamp(300px, 32vw, 480px)" : `${rightPanelWidth}px`;
-  const terminalOpen = terminalState.panelOpen && workspace !== null;
-  // Keep the panel mounted while collapsed so xterm stays attached and
-  // re-expanding is instant; the runtimes survive unmounts regardless.
-  const terminalMounted = workspace !== null && (terminalOpen || terminalState.tabs.length > 0);
+  // The terminal is a review-panel view, so "open" is that panel showing it.
+  const terminalOpen = reviewState.isPanelOpen && reviewState.mode === "terminal";
   const gridStyle = {
     "--session-main-column-min-width": `${CHAT_PANE_MIN_WIDTH_PX}px`,
     "--session-review-panel-width": reviewColumnWidth,
-    "--session-log-panel-width": logColumnWidth,
-    "--session-terminal-height": terminalOpen ? `${terminalHeight}px` : "0px"
+    "--session-log-panel-width": logColumnWidth
   } as CSSProperties;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(SESSION_RIGHT_PANEL_WIDTH_KEY, String(rightPanelWidth));
   }, [rightPanelWidth]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(TERMINAL_HEIGHT_KEY, String(terminalHeight));
-  }, [terminalHeight]);
-
 
   // Destructure so the effect's dep is the stable useCallback from inside
   // useReviewState — not the parent object, which would expand the effect's
@@ -345,17 +300,17 @@ export function SessionPane({
   }, [workspaceId]);
 
   // Warm the heavy xterm chunk on idle once a workspace is present, so the first
-  // Cmd+J paints the terminal immediately instead of showing blank panel space
+  // ⌘J paints the terminal immediately instead of showing blank panel space
   // while the bundle downloads. Deferred to idle so it never competes with the
   // session's own first paint; Vite caches the import, so the real open is instant.
   useEffect(() => {
     if (!workspaceId) return;
     const idle = window.requestIdleCallback;
     if (typeof idle === "function") {
-      const id = idle(() => void importTerminalPanel().catch(() => undefined));
+      const id = idle(() => void importTerminalView().catch(() => undefined));
       return () => window.cancelIdleCallback?.(id);
     }
-    const timer = window.setTimeout(() => void importTerminalPanel().catch(() => undefined), 1500);
+    const timer = window.setTimeout(() => void importTerminalView().catch(() => undefined), 1500);
     return () => window.clearTimeout(timer);
   }, [workspaceId]);
   const handleOpenFile = useCallback(
@@ -482,36 +437,6 @@ export function SessionPane({
     []
   );
 
-  const onTerminalResizeMouseDown = useCallback((event: ReactMouseEvent): void => {
-    event.preventDefault();
-    const startY = event.clientY;
-    const startHeight = terminalHeight;
-    setIsTerminalResizing(true);
-    document.body.style.cursor = "row-resize";
-    document.body.style.userSelect = "none";
-
-    const onMouseMove = (e: MouseEvent): void => {
-      // Dragging up grows the panel, dragging down shrinks it.
-      const next = Math.max(
-        TERMINAL_MIN_HEIGHT,
-        Math.min(TERMINAL_MAX_HEIGHT, startHeight - (e.clientY - startY))
-      );
-      setTerminalHeight(next);
-    };
-    const cleanup = (): void => {
-      setIsTerminalResizing(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      dragCleanupRef.current = null;
-    };
-    const onMouseUp = (): void => cleanup();
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-    dragCleanupRef.current = cleanup;
-  }, [terminalHeight]);
-
   const startPanelResize = useCallback(
     (event: ReactMouseEvent, dock: "left" | "right"): void => {
       event.preventDefault();
@@ -565,9 +490,9 @@ export function SessionPane({
     <div
       className={gridClass}
       style={gridStyle}
-      data-panel-resizing={isPanelResizing || isTerminalResizing ? "true" : undefined}
+      data-panel-resizing={isPanelResizing ? "true" : undefined}
     >
-      <div className="session-main-column" data-terminal-open={terminalOpen ? "true" : undefined}>
+      <div className="session-main-column">
         <SessionConversation
           checks={checks}
           defaultToolCallsDisplay={defaultToolCallsDisplay}
@@ -599,7 +524,7 @@ export function SessionPane({
           onOpenAgent={handleOpenAgent}
           onToggleLog={toggleLog}
           isTerminalOpen={terminalOpen}
-          onToggleTerminal={toggleTerminal}
+          onToggleTerminal={reviewState.toggleTerminal}
           workspaceCardEnabled={workspaceCardVisible}
           onHideWorkspaceCard={handleHideWorkspaceCard}
           onToggleWorkspaceCard={handleToggleWorkspaceCard}
@@ -655,32 +580,6 @@ export function SessionPane({
               </div>
             ))}
           </section>
-        ) : null}
-        {terminalMounted && workspace ? (
-          <div
-            className="terminal-panel"
-            data-argmax-terminal="true"
-            data-collapsed={terminalOpen ? "false" : "true"}
-            aria-hidden={!terminalOpen}
-            style={{ height: terminalOpen ? `${terminalHeight}px` : "0px" }}
-          >
-            <div
-              className="terminal-panel-resize"
-              role="separator"
-              aria-orientation="horizontal"
-              aria-label="Resize terminal"
-              onMouseDown={onTerminalResizeMouseDown}
-            />
-            <Suspense fallback={null}>
-              <TerminalTabsPanel
-                key={workspace.id}
-                workspaceId={workspace.id}
-                visible={terminalOpen}
-                onCollapse={handleTerminalCollapse}
-                onRequestClose={handleTerminalRequestClose}
-              />
-            </Suspense>
-          </div>
         ) : null}
       </div>
       {reviewState.isPanelOpen ? (

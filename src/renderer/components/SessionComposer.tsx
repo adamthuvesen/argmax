@@ -660,7 +660,7 @@ export function SessionComposer({
         ) : null}
         <textarea
           className={skillHighlight ? "composer-input--highlighting" : undefined}
-          aria-label="Session prompt"
+          aria-label="Chat prompt"
           aria-autocomplete="list"
           aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
           aria-controls={
@@ -707,7 +707,7 @@ export function SessionComposer({
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
                 withEffortSlider
-                ariaLabel="Session model"
+                ariaLabel="Chat model"
               />
             ) : (
               // Idle: switching provider here relaunches the agent under the new
@@ -735,7 +735,7 @@ export function SessionComposer({
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
                 withEffortSlider
-                ariaLabel="Session model"
+                ariaLabel="Chat model"
               />
             )}
           </div>
@@ -866,8 +866,8 @@ export function SessionComposer({
           <button
             className="session-send-button session-stop-button"
             type="button"
-            title="Stop session"
-            aria-label="Stop session"
+            title="Stop chat"
+            aria-label="Stop chat"
             disabled={sendingQueuedMessageId !== null}
             onClick={() => void onTerminateSession(session.id)}
           >

@@ -118,7 +118,7 @@ export function coalesceAssistantGroups(
   options: { splitAt?: readonly string[]; streaming?: boolean } = {}
 ): AssistantGroup[] {
   const assistantGroups: AssistantGroup[] = [];
-  type Buffer = { id: string; createdAt: string; lastCreatedAt: string; text: string };
+  type Buffer = { id: string; createdAt: string; lastCreatedAt: string; lastEventId: string; text: string };
   let answerBuffer: Buffer | null = null;
   let thinkingBuffer: Buffer | null = null;
   let previousEventCreatedAt: string | null = null;
@@ -128,8 +128,16 @@ export function coalesceAssistantGroups(
   // by extra lines (apply_patch dumps the expected context). Keep dropping
   // those until a real protocol event arrives.
   let dropRawContinuations = false;
-  let groupIndex = 0;
-  const nextGroupId = (kind: "answer" | "thinking"): string => `assistant-${kind}-${groupIndex++}`;
+  // A group is keyed by the event that closed the group before it, not by its
+  // position or its own first event. A positional key shifts for every later
+  // group when an earlier one splits or the bounded event tail drops a whole
+  // group; a first-event key shifts when the tail trims into the group. A
+  // shifted key remounts the bubble: the entrance animation replays and a live
+  // block's typed reveal restarts from nothing, so a pane pinned to the bottom
+  // drops and regrows. The boundary event only changes when the group really
+  // is a different group.
+  let boundaryEventId = "start";
+  const nextGroupId = (kind: "answer" | "thinking"): string => `assistant-${kind}-after-${boundaryEventId}`;
   const flushAnswer = (): void => {
     if (!answerBuffer) return;
     assistantGroups.push({
@@ -139,6 +147,7 @@ export function coalesceAssistantGroups(
       text: answerBuffer.text,
       streaming
     });
+    boundaryEventId = answerBuffer.lastEventId;
     answerBuffer = null;
   };
   const flushThinking = (): void => {
@@ -151,6 +160,7 @@ export function coalesceAssistantGroups(
       streaming: false,
       thinking: true
     });
+    boundaryEventId = thinkingBuffer.lastEventId;
     thinkingBuffer = null;
   };
   const splitBefore = (event: TimelineEvent): boolean => {
@@ -162,6 +172,7 @@ export function coalesceAssistantGroups(
     if (last?.error) {
       last.text = `${last.text}\n${message}`;
       last.lastActivityAt = event.createdAt;
+      boundaryEventId = event.id;
       return;
     }
     assistantGroups.push({
@@ -172,6 +183,7 @@ export function coalesceAssistantGroups(
       streaming: false,
       error: true
     });
+    boundaryEventId = event.id;
   };
   for (const event of assistantEvents) {
     if (splitBefore(event)) {
@@ -218,10 +230,12 @@ export function coalesceAssistantGroups(
           id: nextGroupId("thinking"),
           createdAt: event.createdAt,
           lastCreatedAt: event.createdAt,
+          lastEventId: event.id,
           text: ""
         };
       }
       thinkingBuffer.lastCreatedAt = event.createdAt;
+      thinkingBuffer.lastEventId = event.id;
       thinkingBuffer.text = appendThinking(thinkingBuffer.text, event.message);
       previousEventCreatedAt = event.createdAt;
       continue;
@@ -233,10 +247,12 @@ export function coalesceAssistantGroups(
           id: nextGroupId("answer"),
           createdAt: event.createdAt,
           lastCreatedAt: event.createdAt,
+          lastEventId: event.id,
           text: ""
         };
       }
       answerBuffer.lastCreatedAt = event.createdAt;
+      answerBuffer.lastEventId = event.id;
       answerBuffer.text += deltaTextForBuffer(event, answerBuffer.text);
       previousEventCreatedAt = event.createdAt;
       continue;
@@ -250,6 +266,7 @@ export function coalesceAssistantGroups(
       last.text === event.message &&
       event.type === "message.completed"
     ) {
+      boundaryEventId = event.id;
       previousEventCreatedAt = event.createdAt;
       continue;
     }
@@ -263,6 +280,7 @@ export function coalesceAssistantGroups(
     ) {
       last.text = joinAnswerFragments(last.text, event.message);
       last.lastActivityAt = event.createdAt;
+      boundaryEventId = event.id;
       previousEventCreatedAt = event.createdAt;
       continue;
     }
@@ -273,6 +291,7 @@ export function coalesceAssistantGroups(
       text: event.message,
       streaming: false
     });
+    boundaryEventId = event.id;
     previousEventCreatedAt = event.createdAt;
   }
   flushThinking();

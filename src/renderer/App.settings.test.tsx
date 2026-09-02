@@ -205,7 +205,7 @@ describe("App settings", () => {
     await openSettings();
     await screen.findByRole("heading", { name: "Startup" });
 
-    const toggle = screen.getByRole("checkbox", { name: "Random icon for new sessions" });
+    const toggle = screen.getByRole("checkbox", { name: "Random icon for new chats" });
     expect(toggle).not.toBeChecked();
 
     fireEvent.click(toggle);
@@ -465,7 +465,7 @@ describe("App settings", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
-    const grid = await screen.findByRole("group", { name: "Session panes" });
+    const grid = await screen.findByRole("group", { name: "Chat panes" });
     expect(grid).toHaveAttribute("data-font-size", "5");
     expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
   });

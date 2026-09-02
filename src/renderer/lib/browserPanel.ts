@@ -1,32 +1,104 @@
 /**
- * Open-in-browser-pane request bus. Deeply nested chat content (markdown
- * links) asks for the pane without threading a callback through every layer;
- * App subscribes once and owns the panel state.
+ * Open-in-browser request store and browser-surface ownership. Deeply nested
+ * chat content (markdown links) asks for the browser without threading a
+ * callback through every layer; every review panel subscribes and the one
+ * taking requests (the focused pane) switches itself to Browser mode.
+ *
+ * There is one native browser surface, so exactly one review panel shows it at
+ * a time. The owner is whichever panel most recently entered Browser mode, not
+ * the focused one: clicking into another pane's chat must not yank the page
+ * away, while that pane switching to Browser takes it over deliberately.
  */
 
-const OPEN_EVENT = "argmax:browser-panel-open";
-
-/** Start page when the pane (or a fresh tab) is opened without a target. */
+/** Start page when the browser (or a fresh tab) is opened without a target. */
 export const DEFAULT_BROWSER_URL = "https://www.google.com";
 
-// Where the pane last was, surviving a close: the native webview is hidden
+// Where the browser last was, surviving a close: the native webview is hidden
 // rather than destroyed, so reopening at the same URL matches what the
 // restored webview actually shows.
 let lastUrl: string | null = null;
 
-export function openInBrowserPanel(url: string): void {
-  lastUrl = url;
-  window.dispatchEvent(new CustomEvent<string>(OPEN_EVENT, { detail: url }));
+export interface BrowserOpenRequest {
+  url: string;
+  /** Bumped on every request: asking again for the URL the page is already on
+   *  has to stay a change, or the panel never navigates back to it. */
+  seq: number;
 }
 
-/** Open the pane without a target: the last browsed URL, or the start page. */
+let openRequest: BrowserOpenRequest | null = null;
+const requestListeners = new Set<() => void>();
+
+export function openInBrowserPanel(url: string): void {
+  lastUrl = url;
+  openRequest = { url, seq: (openRequest?.seq ?? 0) + 1 };
+  for (const listener of requestListeners) listener();
+}
+
+/** Open the browser without a target: where it last was, or the start page. */
 export function openBrowserPanel(): void {
-  openInBrowserPanel(lastUrl ?? DEFAULT_BROWSER_URL);
+  openInBrowserPanel(lastBrowsedUrl());
+}
+
+/** The URL a reopen should land on: what the active webview still shows. */
+export function lastBrowsedUrl(): string {
+  return lastUrl ?? DEFAULT_BROWSER_URL;
+}
+
+export function subscribeBrowserRequest(listener: () => void): () => void {
+  requestListeners.add(listener);
+  return () => {
+    requestListeners.delete(listener);
+  };
+}
+
+/** Stable snapshot for useSyncExternalStore: replaced, never mutated. */
+export function getBrowserRequest(): BrowserOpenRequest | null {
+  return openRequest;
 }
 
 /** Called on in-page navigation so a reopen lands where the user browsed to. */
 export function rememberBrowserUrl(url: string): void {
   if (url.length > 0) lastUrl = url;
+}
+
+// --- Surface ownership ------------------------------------------------------
+
+let ownerId: string | null = null;
+const ownerListeners = new Set<() => void>();
+
+export function subscribeBrowserOwner(listener: () => void): () => void {
+  ownerListeners.add(listener);
+  return () => {
+    ownerListeners.delete(listener);
+  };
+}
+
+export function getBrowserOwnerId(): string | null {
+  return ownerId;
+}
+
+/** Entering Browser mode takes the surface, demoting whoever held it. */
+export function claimBrowserSurface(id: string): void {
+  if (ownerId === id) return;
+  ownerId = id;
+  for (const listener of ownerListeners) listener();
+}
+
+/** No-op from a panel that no longer owns the surface: a demoted panel
+ *  leaving Browser mode must not release the claim that displaced it. */
+export function releaseBrowserSurface(id: string): void {
+  if (ownerId !== id) return;
+  ownerId = null;
+  for (const listener of ownerListeners) listener();
+}
+
+/** Test-only: forgets the pending request, the owner, and the last URL. */
+export function resetBrowserSurfaceForTests(): void {
+  openRequest = null;
+  ownerId = null;
+  lastUrl = null;
+  for (const listener of requestListeners) listener();
+  for (const listener of ownerListeners) listener();
 }
 
 // --- Tab store --------------------------------------------------------------
@@ -236,27 +308,24 @@ export function updateBrowserTabState(id: string, url: string, title: string | n
   notifyTabListeners();
 }
 
-const CLOSE_ACTIVE_TAB_EVENT = "argmax:browser-close-active-tab";
+const closeActiveTabListeners = new Set<() => void>();
 
-/** Menu ⌘W lands here when the browser pane is open: close the active tab.
- *  A bus event because App owns the menu wiring and BrowserPanel owns the
- *  tab-close flow (webview teardown, neighbor activation, last-tab close). */
-export function requestCloseActiveBrowserTab(): void {
-  window.dispatchEvent(new CustomEvent(CLOSE_ACTIVE_TAB_EVENT));
+/** Menu ⌘W lands here first: close the browser's active tab. False when no
+ *  browser is mounted, so the command falls through to the review file tabs
+ *  and then to the focused pane. A listener set because App owns the menu
+ *  wiring and BrowserPanel owns the tab-close flow (webview teardown,
+ *  neighbor activation, last-tab close). */
+export function requestCloseActiveBrowserTab(): boolean {
+  if (closeActiveTabListeners.size === 0) return false;
+  for (const listener of closeActiveTabListeners) listener();
+  return true;
 }
 
 export function onBrowserCloseActiveTabRequest(listener: () => void): () => void {
-  window.addEventListener(CLOSE_ACTIVE_TAB_EVENT, listener);
-  return () => window.removeEventListener(CLOSE_ACTIVE_TAB_EVENT, listener);
-}
-
-export function onBrowserPanelRequest(listener: (url: string) => void): () => void {
-  const handler = (event: Event): void => {
-    const detail = (event as CustomEvent<string>).detail;
-    if (typeof detail === "string" && detail.length > 0) listener(detail);
+  closeActiveTabListeners.add(listener);
+  return () => {
+    closeActiveTabListeners.delete(listener);
   };
-  window.addEventListener(OPEN_EVENT, handler);
-  return () => window.removeEventListener(OPEN_EVENT, handler);
 }
 
 /**

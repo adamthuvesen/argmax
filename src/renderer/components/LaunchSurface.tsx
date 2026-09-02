@@ -48,7 +48,7 @@ import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
-import { LAUNCHER_TITLE, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
+import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { preferredLaunchModel, type ModelPickerSelection } from "../lib/models.js";
 import {
@@ -92,6 +92,7 @@ function isOptionButtonTarget(target: EventTarget | null): boolean {
 }
 
 export function LaunchSurface({
+  claimsBrowserRequests = false,
   fastModeEnabled = false,
   pixelFieldEnabled = false,
   model,
@@ -110,6 +111,10 @@ export function LaunchSurface({
   registerPaletteFileContext,
   sideChatMode = false
 }: {
+  /** True when this launcher is the only surface on screen, so chat links and
+   *  the actions menu have nowhere else to open the browser. False for a
+   *  launcher cell sharing the grid with session panes. */
+  claimsBrowserRequests?: boolean;
   fastModeEnabled?: boolean;
   pixelFieldEnabled?: boolean;
   model: ModelPickerSelection;
@@ -230,7 +235,7 @@ export function LaunchSurface({
     () => (activeProject ? { kind: "project", project: activeProject } : null),
     [activeProject]
   );
-  const reviewState = useReviewState(reviewSource);
+  const reviewState = useReviewState(reviewSource, null, { claimsBrowserRequests });
   const reviewOpenPanelInFilesMode = reviewState.openPanelInFilesMode;
   const reviewOpenInFilesView = reviewState.openInFilesView;
   const reviewClosePanel = reviewState.closePanel;
@@ -430,7 +435,7 @@ export function LaunchSurface({
   });
 
   const placeholderText = chatMode
-    ? "Ask anything — no repository attached"
+    ? SIDE_CHAT_PLACEHOLDER
     : "Ask your agent to inspect, build, or fix something";
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -645,7 +650,10 @@ export function LaunchSurface({
     );
   }
 
-  const isReviewOpen = reviewState.isPanelOpen && activeProject !== null;
+  // Browser mode reads nothing from the project, so it opens even before one
+  // is picked; Changes and Files have no source without it.
+  const isReviewOpen =
+    reviewState.isPanelOpen && (activeProject !== null || reviewState.mode === "browser");
   const contextSummary = project
     ? `Project and branch: ${project.name}, ${project.currentBranch}`
     : "";

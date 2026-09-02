@@ -52,7 +52,7 @@ describe("SidebarSessionRow", () => {
     // The row's hover actions are archive (and pin) only — no IDE button.
     expect(screen.queryByRole("button", { name: "Open in IDE" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Choose IDE" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Archive session" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Archive chat" })).toBeInTheDocument();
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
     expect(screen.getByRole("menuitem", { name: "Open in IDE" })).toBeEnabled();
@@ -216,7 +216,7 @@ describe("SidebarSessionRow", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
 
     // The label is replaced by an input seeded with the current label.
-    const input = screen.getByRole("textbox", { name: "Rename session" });
+    const input = screen.getByRole("textbox", { name: "Rename chat" });
     expect(input).toHaveValue("Build the dashboard");
 
     fireEvent.change(input, { target: { value: "Ship the date view" } });
@@ -246,7 +246,7 @@ describe("SidebarSessionRow", () => {
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
-    const input = screen.getByRole("textbox", { name: "Rename session" });
+    const input = screen.getByRole("textbox", { name: "Rename chat" });
     fireEvent.change(input, { target: { value: "Discarded" } });
     fireEvent.keyDown(input, { key: "Escape" });
 
@@ -960,5 +960,52 @@ describe("styles.css startup contract", () => {
       />
     );
     expect(screen.queryByTitle(/^Synced from/)).not.toBeInTheDocument();
+  });
+});
+
+describe("SidebarSessionRow copy ids", () => {
+  afterEach(() => cleanup());
+
+  it("puts the id block on the clipboard from the right-click menu", async () => {
+    const { fireEvent, waitFor } = await import("@testing-library/react");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        copyableIds={"session   session-1\nworkspace workspace-1"}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+      />
+    );
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy ids" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("session   session-1\nworkspace workspace-1"));
+    expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
+  });
+
+  it("offers no Copy ids item when the row carries no id block", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+      />
+    );
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    expect(screen.queryByRole("menuitem", { name: "Copy ids" })).not.toBeInTheDocument();
   });
 });

@@ -243,6 +243,29 @@ export const demoSnapshot: DashboardSnapshot = {
       createdAt: "2026-05-08T15:53:58.000Z"
     },
     {
+      id: "event-board-tool-6-s",
+      sessionId: "session-ui-board",
+      type: "command.started",
+      message: "mcp__claude_ai_Slack__slack_search_public",
+      payload: {
+        id: "tu_board_6",
+        name: "mcp__claude_ai_Slack__slack_search_public",
+        input: { query: "attention markers density" }
+      },
+      createdAt: "2026-05-08T15:53:58.500Z"
+    },
+    {
+      id: "event-board-tool-6-c",
+      sessionId: "session-ui-board",
+      type: "command.completed",
+      message: "tool_result",
+      payload: {
+        tool_use_id: "tu_board_6",
+        content: "2 results in #design-system: the gutter markers were agreed at 3 levels (calm, attention, urgent)."
+      },
+      createdAt: "2026-05-08T15:53:59.000Z"
+    },
+    {
       id: "event-board-message",
       sessionId: "session-ui-board",
       type: "message.completed",

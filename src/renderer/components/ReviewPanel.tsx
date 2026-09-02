@@ -1,10 +1,23 @@
-import { Bot, ChevronDown, Folder, FolderOpen, GitBranch, PanelRightClose, X } from "lucide-react";
 import {
+  Bot,
+  ChevronDown,
+  Folder,
+  FolderOpen,
+  GitBranch,
+  Globe,
+  PanelRightClose,
+  SquareTerminal,
+  X
+} from "lucide-react";
+import {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
@@ -20,7 +33,9 @@ import {
 import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentsView } from "./AgentsView.js";
+import { BrowserPanel } from "./BrowserPanel.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
+import { DEFAULT_BROWSER_URL } from "../lib/browserPanel.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
 import { ChangeCount } from "./ChangeCount.js";
@@ -33,6 +48,14 @@ import { WorkspaceTree } from "./WorkspaceTree.js";
 import { FileIcon } from "@react-symbols/icons/utils";
 import { registerReviewFileTabCloseHandler } from "../lib/reviewFilePanel.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
+import { closeTerminalTab, getWorkspaceTerminalState, subscribeTerminalTabs } from "../lib/terminalTabs.js";
+
+// The Terminal view pulls in @xterm/xterm + addons + xterm CSS — heavy, and
+// only needed once the reader actually asks for a shell. SessionPane warms
+// the same chunk on idle, so the first ⌘J paints immediately.
+const TerminalTabsPanel = lazy(async () => ({
+  default: (await import("./TerminalTabsPanel.js")).TerminalTabsPanel
+}));
 
 /** What the Agents view needs from the pane that owns the panel. */
 export interface AgentsPanelContext {
@@ -268,11 +291,29 @@ export function ReviewPanel({
   onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
   review: ReviewState;
 }): JSX.Element {
-  // The Agents tab only exists with `agents`, so a mode that outlived a source
-  // switch (session pane -> launcher) resolves back to Changes.
-  const mode: ReviewPanelMode = review.mode === "agents" && !agents ? "changes" : review.mode;
+  // The Browser tab needs the desktop bridge; the Agents tab only exists with
+  // `agents`, so a mode that outlived a source switch (session pane ->
+  // launcher) resolves back to Changes.
+  const hasBrowser = typeof window !== "undefined" && Boolean(window.argmax?.browser);
+  const terminalWorkspaceId = review.terminalWorkspaceId;
+  const unavailable =
+    (review.mode === "agents" && !agents) ||
+    (review.mode === "browser" && !hasBrowser) ||
+    (review.mode === "terminal" && !terminalWorkspaceId);
+  const mode: ReviewPanelMode = unavailable ? "changes" : review.mode;
   const isChanges = mode === "changes";
   const isAgents = mode === "agents";
+  const isBrowser = mode === "browser";
+  const isTerminal = mode === "terminal";
+  // Terminals outlive the view: once a workspace has tabs the panel keeps them
+  // mounted (hidden) while the reader is on another mode, so coming back is
+  // instant and nothing is torn down. An empty workspace mounts only on
+  // entering Terminal mode — otherwise merely opening the panel would spawn a
+  // shell nobody asked for.
+  const terminalTabs = useSyncExternalStore(subscribeTerminalTabs, () =>
+    getWorkspaceTerminalState(terminalWorkspaceId)
+  );
+  const terminalMounted = terminalWorkspaceId !== null && (isTerminal || terminalTabs.tabs.length > 0);
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
@@ -312,10 +353,25 @@ export function ReviewPanel({
     if (activeToolUseId) review.subagents.closeTab(activeToolUseId);
   }, [review.subagents]);
 
+  const activeTerminalTabId = terminalTabs.activeTabId;
+  const closeActiveTerminalTab = useCallback((): void => {
+    if (terminalWorkspaceId && activeTerminalTabId) {
+      closeTerminalTab(terminalWorkspaceId, activeTerminalTabId);
+    }
+  }, [activeTerminalTabId, terminalWorkspaceId]);
+
   useEffect(() => {
     if (!isFocused) {
       registerReviewFileTabCloseHandler(null);
       return undefined;
+    }
+    if (isTerminal) {
+      if (!activeTerminalTabId) {
+        registerReviewFileTabCloseHandler(null);
+        return undefined;
+      }
+      registerReviewFileTabCloseHandler(closeActiveTerminalTab);
+      return () => registerReviewFileTabCloseHandler(null);
     }
     if (isAgents) {
       if (!review.subagents.activeToolUseId) {
@@ -340,7 +396,17 @@ export function ReviewPanel({
     };
     registerReviewFileTabCloseHandler(closeActiveTab);
     return () => registerReviewFileTabCloseHandler(null);
-  }, [closeActiveAgentTab, isAgents, isFocused, review.mode, review.subagents.activeToolUseId, review.workspaceFiles]);
+  }, [
+    activeTerminalTabId,
+    closeActiveAgentTab,
+    closeActiveTerminalTab,
+    isAgents,
+    isFocused,
+    isTerminal,
+    review.mode,
+    review.subagents.activeToolUseId,
+    review.workspaceFiles
+  ]);
 
   useEffect(() => {
     if (!isFocused) return undefined;
@@ -352,8 +418,6 @@ export function ReviewPanel({
       if (event.shiftKey || event.altKey) return;
       if (event.key.toLowerCase() !== "w") return;
       if (event.isComposing || event.repeat) return;
-      // ⌘W inside the browser panel belongs to its tab strip, not ours.
-      if (event.target instanceof Element && event.target.closest(".browser-panel")) return;
       const panel = panelRef.current;
       if (!panel || !(event.target instanceof Node) || !panel.contains(event.target)) return;
       event.preventDefault();
@@ -443,7 +507,7 @@ export function ReviewPanel({
     [files.buffer]
   );
   const handleFilesModeKeyShortcut = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (isChanges) return;
+    if (isChanges || isBrowser || isTerminal) return;
     if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
     if (event.defaultPrevented || event.nativeEvent.isComposing) return;
     const key = event.key.toLowerCase();
@@ -507,10 +571,40 @@ export function ReviewPanel({
                 title="Agents"
                 onClick={() => review.setMode("agents")}
               >
-                <Bot size={14} aria-hidden="true" />
+                {/* Bot's glyph carries more inner padding than GitBranch/Folder, so it needs 16 to read the same size. */}
+                <Bot size={16} aria-hidden="true" />
                 <span className="review-mode-tab-label">Agents</span>
                 {review.subagents.toolUseIds.length > 1 ? (
                   <span className="review-mode-tab-count">{review.subagents.toolUseIds.length}</span>
+                ) : null}
+              </button>
+            ) : null}
+            {hasBrowser ? (
+              <button
+                role="tab"
+                type="button"
+                aria-label="Browser"
+                aria-selected={isBrowser}
+                title="Browser"
+                onClick={review.openBrowser}
+              >
+                <Globe size={14} aria-hidden="true" />
+                <span className="review-mode-tab-label">Browser</span>
+              </button>
+            ) : null}
+            {terminalWorkspaceId ? (
+              <button
+                role="tab"
+                type="button"
+                aria-label="Terminal"
+                aria-selected={isTerminal}
+                title="Terminal (⌘J)"
+                onClick={review.openTerminal}
+              >
+                <SquareTerminal size={14} aria-hidden="true" />
+                <span className="review-mode-tab-label">Terminal</span>
+                {terminalTabs.tabs.length > 1 ? (
+                  <span className="review-mode-tab-count">{terminalTabs.tabs.length}</span>
                 ) : null}
               </button>
             ) : null}
@@ -529,10 +623,46 @@ export function ReviewPanel({
             ? "review-body review-body-changes"
             : isAgents
               ? "review-body review-body-agents"
-              : "review-body"
+              : isBrowser
+                ? "review-body review-body-browser"
+                : isTerminal
+                  ? "review-body review-body-terminal"
+                  : "review-body"
         }
         onKeyDown={handleFilesModeKeyShortcut}
       >
+        {isBrowser ? (
+          review.browserOwner ? (
+            <BrowserPanel
+              url={review.browserRequest?.url ?? DEFAULT_BROWSER_URL}
+              requestSeq={review.browserRequest?.seq}
+              onClose={review.closePanel}
+            />
+          ) : (
+            // One native surface, one browser: this panel kept Browser mode
+            // but the page went elsewhere — another pane took it over, or the
+            // pane that held it closed its panel.
+            <div className="review-empty">
+              <span className="review-empty-mark" aria-hidden="true">↗</span>
+              <span>The browser moved to another pane.</span>
+              <button type="button" className="review-empty-action" onClick={review.openBrowser}>
+                Show here
+              </button>
+            </div>
+          )
+        ) : null}
+        {terminalMounted && terminalWorkspaceId ? (
+          <Suspense fallback={null}>
+            <div className="review-terminal-mount" hidden={!isTerminal}>
+              <TerminalTabsPanel
+                key={terminalWorkspaceId}
+                workspaceId={terminalWorkspaceId}
+                visible={isTerminal}
+                cwdLabel={review.workspaceFiles.rootPath}
+              />
+            </div>
+          </Suspense>
+        ) : null}
         {isAgents && agents ? (
           <AgentsView
             events={agents.events}
@@ -546,7 +676,7 @@ export function ReviewPanel({
             onOpenFile={review.openInFilesView}
           />
         ) : null}
-        {isChanges || isAgents ? null : (
+        {isChanges || isAgents || isBrowser || isTerminal ? null : (
           <>
             <div className="review-list-col" style={{ width: effectiveLeftColumnWidth }}>
               <WorkspaceTree state={files} toolbar={{ onRefresh: files.refreshList }} />
@@ -560,7 +690,7 @@ export function ReviewPanel({
             />
           </>
         )}
-        {isAgents ? null : (
+        {isAgents || isBrowser || isTerminal ? null : (
         <div className={isChanges ? "review-diff" : "review-diff review-diff-files"}>
           {isChanges ? (
             <>
@@ -650,7 +780,7 @@ export function ReviewPanel({
           <span className="review-footer-text">{summaryStrip}</span>
         </footer>
       ) : null}
-      {isChanges || isAgents ? null : (
+      {isChanges || isAgents || isBrowser || isTerminal ? null : (
         <footer className="review-status-bar" aria-label="File status">
           <span className="review-status-path" title={files.selectedPath ?? sourceLabel}>
             {files.selectedPath ?? entryCountLabel}

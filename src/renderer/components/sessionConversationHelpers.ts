@@ -25,7 +25,7 @@ export async function sendAfterTerminate(
     try {
       await onTerminateSession(sessionId, { restoreLauncherOnEarlyStop: false });
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not terminate session.");
+      onError(error instanceof Error ? error.message : "Could not terminate chat.");
       return false;
     }
   }

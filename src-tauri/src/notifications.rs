@@ -193,14 +193,14 @@ pub fn main_window_focus_probe<R: Runtime>(app: AppHandle<R>) -> FocusProbe {
 fn build_session_options(session: &SessionSummary) -> NotificationOptions {
     if session.state == "complete" {
         return NotificationOptions {
-            title: "Session complete".to_string(),
+            title: "Chat complete".to_string(),
             body: format!("{} finished — open Argmax to review.", session.model_label),
             icon: Some("icon".to_string()),
         };
     }
 
     NotificationOptions {
-        title: "Session failed".to_string(),
+        title: "Chat failed".to_string(),
         body: format!(
             "{} exited with an error. Open Argmax for details.",
             session.model_label
@@ -322,7 +322,7 @@ mod tests {
 
         let fired = sink.fired();
         assert_eq!(fired.len(), 1);
-        assert_eq!(fired[0].title, "Session complete");
+        assert_eq!(fired[0].title, "Chat complete");
         assert!(fired[0].body.contains("Haiku 4.5"));
         assert_eq!(fired[0].icon.as_deref(), Some("icon"));
     }
@@ -410,8 +410,8 @@ mod tests {
 
         let fired = sink.fired();
         assert_eq!(fired.len(), 2);
-        assert_eq!(fired[0].title, "Session complete");
-        assert_eq!(fired[1].title, "Session failed");
+        assert_eq!(fired[0].title, "Chat complete");
+        assert_eq!(fired[1].title, "Chat failed");
     }
 
     #[test]

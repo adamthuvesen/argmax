@@ -172,7 +172,7 @@ export function RemoteSettings(): JSX.Element {
 
           <SettingRow
             label="ntfy topic"
-            description="Push when a session needs approval, blocks, fails, or finishes. Bare names use ntfy.sh, so pick something unguessable."
+            description="Push when a chat needs approval, blocks, fails, or finishes. Bare names use ntfy.sh, so pick something unguessable."
             htmlFor="settings-remote-ntfy"
             control={
               <input

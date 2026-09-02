@@ -93,19 +93,19 @@ describe("App", () => {
     const { unmount } = render(<App />);
 
     expect(await screen.findByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
-    const hideProjectSessions = screen.getByRole("button", { name: "Hide Argmax sessions" });
+    const hideProjectSessions = screen.getByRole("button", { name: "Hide Argmax chats" });
     fireEvent.click(hideProjectSessions);
 
     expect(screen.queryByRole("button", { name: "Build dashboard" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show Argmax sessions" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Show Argmax chats" })).toHaveAttribute("aria-expanded", "false");
 
     unmount();
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Show Argmax sessions" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Show Argmax chats" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Build dashboard" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
     expect(await screen.findByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
   });
 
@@ -140,7 +140,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
 
-    const modelButton = await screen.findByRole("button", { name: "Session model" });
+    const modelButton = await screen.findByRole("button", { name: "Chat model" });
     const initialLabel = modelButton.textContent ?? "";
     expect(initialLabel).toContain("GPT-5.6 Terra");
 
@@ -162,7 +162,7 @@ describe("App", () => {
       });
     });
 
-    const after = await screen.findByRole("button", { name: "Session model" });
+    const after = await screen.findByRole("button", { name: "Chat model" });
     expect(after.textContent ?? "").toBe(initialLabel);
   });
 
@@ -189,7 +189,7 @@ describe("App", () => {
 
     try {
       render(<App />);
-      fireEvent.click(await screen.findByRole("button", { name: "Archive session" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Archive chat" }));
 
       await waitFor(() =>
         expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false })
@@ -226,7 +226,7 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "Close pane" })).toBeInTheDocument();
 
     // Archive the active chat
-    fireEvent.click(screen.getByRole("button", { name: "Archive session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Archive chat" }));
 
     await waitFor(() =>
       expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false })
@@ -261,7 +261,7 @@ describe("App", () => {
 
     try {
       render(<App />);
-      fireEvent.click(await screen.findByRole("button", { name: "Archive session" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Archive chat" }));
 
       await waitFor(() => expect(archiveWorkspace).toHaveBeenCalledTimes(2));
       expect(archiveWorkspace).toHaveBeenNthCalledWith(1, { workspaceId: "workspace-1", force: false });
@@ -433,7 +433,7 @@ describe("App", () => {
     // shiki's highlighter caches across tests (same module-state quirk that
     // P6.01 hit). Wait for the conversation surface to render, then assert
     // against its concatenated textContent so tokenization is invisible.
-    const conversation = await screen.findByRole("region", { name: "Session conversation" });
+    const conversation = await screen.findByRole("region", { name: "Conversation" });
     await waitFor(() => expect(conversation).toHaveTextContent("I'll explore the codebase."));
     expect(conversation).toHaveTextContent("I've explored.");
     expect(screen.getByRole("button", { name: /Explored 1 file, 2 searches/ })).toBeInTheDocument();
@@ -641,7 +641,7 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByTitle("Start agent"));
 
-    const stopButton = await screen.findByRole("button", { name: "Stop session" });
+    const stopButton = await screen.findByRole("button", { name: "Stop chat" });
     expect(stopButton).toBeInTheDocument();
 
     fireEvent.click(stopButton);
@@ -671,13 +671,13 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByTitle("Start agent"));
 
-    const stopButton = await screen.findByRole("button", { name: "Stop session" });
+    const stopButton = await screen.findByRole("button", { name: "Stop chat" });
     fireEvent.click(stopButton);
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-old"));
 
     expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Session prompt")).toBeInTheDocument();
+    expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
   });
 
   it("drops the stored launcher draft as soon as start is pressed", async () => {
@@ -768,7 +768,7 @@ describe("App", () => {
     const newWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-new",
       projectId: "project-1",
-      taskLabel: "New chat",
+      taskLabel: "New session",
       branch: "main",
       baseRef: "main",
       path: "/tmp/argmax",
@@ -791,7 +791,7 @@ describe("App", () => {
       reasoningEffort: "medium",
       permissionMode: "auto-approve",
       providerConversationId: null,
-      prompt: "New chat",
+      prompt: "New session",
       state: "running",
       attention: "normal",
       startedAt: "2026-05-08T16:10:00.000Z",
@@ -802,7 +802,7 @@ describe("App", () => {
       id: "event-new",
       sessionId: "session-new",
       type: "message.completed",
-      message: "New chat answer.",
+      message: "New session answer.",
       payload: {},
       createdAt: "2026-05-08T16:10:01.000Z"
     };
@@ -819,7 +819,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
-      target: { value: "New chat" }
+      target: { value: "New session" }
     });
     fireEvent.click(screen.getByTitle("Start agent"));
 
@@ -832,9 +832,9 @@ describe("App", () => {
       });
     });
 
-    expect(await screen.findByText("New chat answer.")).toBeInTheDocument();
+    expect(await screen.findByText("New session answer.")).toBeInTheDocument();
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "New chat" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: "New session" })).toHaveAttribute("aria-current", "true");
   });
 
   it("displays an @-mention-only launch prompt as the user message in the new session", async () => {
@@ -1082,7 +1082,7 @@ describe("App", () => {
     // workspace's project, undoing the freshly added project's selection.
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     // The chat must actually be open (workspace selected) before adding.
-    await screen.findByLabelText("Session conversation");
+    await screen.findByLabelText("Conversation");
     fireEvent.click(await screen.findByRole("button", { name: "Add Project" }));
 
     // The launcher's own project chip — not the sidebar group — must target

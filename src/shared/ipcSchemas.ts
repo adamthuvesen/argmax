@@ -89,6 +89,8 @@ export const IPC_CHANNELS = [
   "browser:set-bounds",
   "browser:close",
   "browser:fill-credentials",
+  "browser:screenshot",
+  "browser:evaluate",
   "routines:list",
   "routines:upsert",
   "routines:delete",

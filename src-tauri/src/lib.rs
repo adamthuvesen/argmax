@@ -7,6 +7,7 @@ use tauri::{Emitter, Manager};
 
 pub mod approvals;
 pub mod attachments;
+pub mod browser;
 pub mod checks;
 pub mod dock;
 pub mod error;
@@ -15,6 +16,7 @@ pub mod gh;
 pub mod git;
 pub mod ide;
 pub mod ipc;
+pub mod mcp;
 pub mod menu;
 pub mod notifications;
 pub mod persistence;

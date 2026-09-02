@@ -678,6 +678,22 @@ async browserFillCredentials(input: BrowserFillCredentialsInput) : Promise<Resul
     else return { status: "error", error: e  as any };
 }
 },
+async browserScreenshot(input: BrowserScreenshotInput) : Promise<Result<BrowserScreenshot, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_screenshot", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserEvaluate(input: BrowserEvaluateInput) : Promise<Result<BrowserEvaluateResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_evaluate", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async routinesList(input: RoutinesListInput) : Promise<Result<Routine[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("routines_list", { input }) };
@@ -758,6 +774,18 @@ export type BrowserBackInput = { tabId: string }
  */
 export type BrowserBounds = { x: number; y: number; width: number; height: number }
 export type BrowserCloseInput = { tabId: string }
+export type BrowserEvaluateInput = { tabId: string; script: string; 
+/**
+ * Defaults to 5000 ms. A page that never answers must not park the
+ * caller, so the deadline is not optional at the far end.
+ */
+timeoutMs: number | null }
+/**
+ * WebKit's JSON encoding of the script's value. Empty when the script
+ * produced `undefined` — or threw, which WebKit's completion handler does not
+ * distinguish. Catch inside the page when the difference matters.
+ */
+export type BrowserEvaluateResult = { resultJson: string }
 export type BrowserFillCredentialsInput = { tabId: string }
 export type BrowserFillResult = { ok: boolean; 
 /**
@@ -768,6 +796,18 @@ export type BrowserForwardInput = { tabId: string }
 export type BrowserNavigateInput = { url: string; tabId: string }
 export type BrowserOpenInput = { url: string; bounds: BrowserBounds; tabId: string }
 export type BrowserReloadInput = { tabId: string }
+/**
+ * PNG of one tab, base64 so it can ride the JSON IPC envelope. `width` and
+ * `height` are device pixels: on a retina display they are twice the CSS
+ * size of what was captured.
+ */
+export type BrowserScreenshot = { pngBase64: string; width: number; height: number }
+export type BrowserScreenshotInput = { tabId: string; 
+/**
+ * Crop, in the page's own CSS pixels from the top-left of the visible
+ * view. Omitted captures the whole view.
+ */
+rect: BrowserBounds | null }
 export type BrowserSetBoundsInput = { bounds: BrowserBounds; 
 /**
  * False while a renderer overlay (dialog, palette) is open — the native

@@ -102,13 +102,54 @@ specta-typescript = "=0.0.9"
 
 once_cell = "1"
 
+# Official Rust MCP SDK. `argmax mcp` serves the agent tool surface over stdio
+# from this same binary, proxying to the running app over the session-control
+# socket — no sidecar process and no second control plane.
+rmcp = { version = "3.2", default-features = false, features = [
+    "server",
+    "macros",
+    "transport-io",
+] }
+
 # macOS-only: hold an NSProcessInfo activity assertion so App Nap doesn't
 # suspend the WKWebView WebContent process while the window is backgrounded.
 # Without it, `dashboard:delta` events are emitted but the JS that delivers
 # them to the renderer doesn't run until the user refocuses/interacts, so a
 # finished turn looks stuck on the thinking bubble. See util/app_nap.rs.
+#
+# `objc2-web-kit` / `objc2-app-kit` are the browser pane's capture path: wry
+# 0.55 exposes no screenshot API, so `browser:screenshot` reaches the child
+# WKWebView through `Webview::with_webview` and calls
+# `takeSnapshotWithConfiguration:completionHandler:` itself. All of these are
+# already in the tree via wry at the same versions; nothing new is downloaded.
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-foundation = { version = "0.3", features = ["NSProcessInfo", "NSString"] }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = [
+    "NSData",
+    "NSDictionary",
+    "NSError",
+    "NSProcessInfo",
+    "NSString",
+] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSBitmapImageRep",
+    "NSGraphics",
+    "NSImage",
+    "NSImageRep",
+] }
+objc2-web-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "WKSnapshotConfiguration",
+    "WKWebView",
+    "block2",
+    "objc2-app-kit",
+    "objc2-core-foundation",
+] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+] }
+block2 = "0.6"
 
 [dev-dependencies]
 tauri = { version = "2.11", features = ["test"] }

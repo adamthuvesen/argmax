@@ -10,6 +10,8 @@
 //! visibility: it hides the pane (`browser:set-bounds` with `visible: false`)
 //! whenever one of its own overlays would be covered.
 
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Url, Webview, WebviewUrl};
@@ -17,6 +19,7 @@ use tokio::process::Command;
 
 use super::inputs::*;
 use super::system::SystemOk;
+use crate::browser::{encode_base64, eval, snapshot_image, CaptureRect};
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 pub const BROWSER_WEBVIEW_LABEL_PREFIX: &str = "browser-";
@@ -390,6 +393,73 @@ pub fn browser_close(app: AppHandle, input: BrowserCloseInput) -> ArgmaxResult<S
         .close()
         .map_err(|error| ArgmaxError::service("BROWSER_CLOSE_FAILED", error.to_string()))?;
     Ok(SystemOk { ok: true })
+}
+
+// --- Programmatic capture and evaluation ------------------------------------
+
+/// PNG of one tab, base64 so it can ride the JSON IPC envelope. `width` and
+/// `height` are device pixels: on a retina display they are twice the CSS
+/// size of what was captured.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserScreenshot {
+    pub png_base64: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// WebKit's JSON encoding of the script's value. Empty when the script
+/// produced `undefined` — or threw, which WebKit's completion handler does not
+/// distinguish. Catch inside the page when the difference matters.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserEvaluateResult {
+    pub result_json: String,
+}
+
+/// A capture that has not landed in five seconds is a stuck compositor, not a
+/// slow page — WebKit rasterises from layers that are already there.
+const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(5);
+const EVAL_TIMEOUT_DEFAULT_MS: u32 = 5_000;
+const EVAL_TIMEOUT_MAX_MS: u32 = 60_000;
+
+#[tauri::command(rename = "browser:screenshot")]
+#[specta::specta]
+pub async fn browser_screenshot(
+    app: AppHandle,
+    input: BrowserScreenshotInput,
+) -> ArgmaxResult<BrowserScreenshot> {
+    let webview = browser_webview(&app, &input.tab_id)?;
+    let rect = input.rect.map(|rect| CaptureRect {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+    });
+    let captured = snapshot_image::capture(&webview, rect, SCREENSHOT_TIMEOUT).await?;
+    Ok(BrowserScreenshot {
+        png_base64: encode_base64(&captured.png),
+        width: captured.width,
+        height: captured.height,
+    })
+}
+
+#[tauri::command(rename = "browser:evaluate")]
+#[specta::specta]
+pub async fn browser_evaluate(
+    app: AppHandle,
+    input: BrowserEvaluateInput,
+) -> ArgmaxResult<BrowserEvaluateResult> {
+    let webview = browser_webview(&app, &input.tab_id)?;
+    let timeout = Duration::from_millis(
+        input
+            .timeout_ms
+            .unwrap_or(EVAL_TIMEOUT_DEFAULT_MS)
+            .clamp(1, EVAL_TIMEOUT_MAX_MS)
+            .into(),
+    );
+    let result_json = eval::eval_json(&webview, &input.script, timeout).await?;
+    Ok(BrowserEvaluateResult { result_json })
 }
 
 // --- 1Password fill ---------------------------------------------------------

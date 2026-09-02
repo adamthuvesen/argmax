@@ -1,6 +1,8 @@
 use super::{
-    AgentMode, ApprovalSupport, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort,
+    mcp_injection, AgentMode, ApprovalSupport, PermissionMode, ProviderId, ProviderLaunchInput,
+    ReasoningEffort,
 };
+use crate::session_control::SessionLaunchProcessConfig;
 
 const CLAUDE_BYPASS_PERMISSION_ARGS: &[&str] = &["--permission-mode", "bypassPermissions"];
 const CODEX_BYPASS_PERMISSION_ARGS: &[&str] = &["--dangerously-bypass-approvals-and-sandbox"];
@@ -19,8 +21,10 @@ pub struct ProviderLaunchDefinition {
     /// Fast, non-interactive subcommand that reports auth/login status. Exit 0
     /// means authenticated. Used by discovery to tell "installed" from "ready".
     pub status_args: &'static [&'static str],
-    pub structured_args: fn(&ProviderLaunchInput) -> Vec<String>,
-    pub structured_resume_args: fn(&ProviderLaunchInput, &str) -> Vec<String>,
+    pub structured_args:
+        fn(&ProviderLaunchInput, Option<&SessionLaunchProcessConfig>) -> Vec<String>,
+    pub structured_resume_args:
+        fn(&ProviderLaunchInput, &str, Option<&SessionLaunchProcessConfig>) -> Vec<String>,
     pub structured_stdin: fn(&ProviderLaunchInput) -> Option<String>,
     pub approval_support: ApprovalSupport,
 }
@@ -91,11 +95,15 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
     },
 ];
 
-fn claude_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
+fn claude_structured_args(
+    input: &ProviderLaunchInput,
+    mcp: Option<&SessionLaunchProcessConfig>,
+) -> Vec<String> {
     let mut args = vec!["-p".to_string(), "--brief".to_string()];
     args.extend(claude_permission_args(input));
     args.extend(claude_reasoning_args(input));
     args.extend(claude_fast_mode_args(input));
+    args.extend(mcp_injection::mcp_args(ProviderId::Claude, mcp));
     args.extend([
         "--model".to_string(),
         input.model_id.clone(),
@@ -122,6 +130,7 @@ fn claude_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
 fn claude_structured_resume_args(
     input: &ProviderLaunchInput,
     resume_conversation_id: &str,
+    mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
     let mut args = vec![
         "-p".to_string(),
@@ -137,6 +146,7 @@ fn claude_structured_resume_args(
     args.extend(claude_permission_args(input));
     args.extend(claude_reasoning_args(input));
     args.extend(claude_fast_mode_args(input));
+    args.extend(mcp_injection::mcp_args(ProviderId::Claude, mcp));
     args.extend([
         "--model".to_string(),
         input.model_id.clone(),
@@ -153,13 +163,17 @@ fn claude_structured_resume_args(
     args
 }
 
-fn codex_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
+fn codex_structured_args(
+    input: &ProviderLaunchInput,
+    mcp: Option<&SessionLaunchProcessConfig>,
+) -> Vec<String> {
     let mut args = vec!["exec".to_string(), "--json".to_string()];
     args.extend(codex_permission_args(input));
     args.extend(["--model".to_string(), input.model_id.clone()]);
     args.extend(codex_reasoning_summary_args(input));
     args.extend(codex_reasoning_args(input));
     args.extend(codex_fast_mode_args(input));
+    args.extend(mcp_injection::mcp_args(ProviderId::Codex, mcp));
     args.push("-".to_string());
     args
 }
@@ -167,6 +181,7 @@ fn codex_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
 fn codex_structured_resume_args(
     input: &ProviderLaunchInput,
     resume_conversation_id: &str,
+    mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
     // A forked session's first resume diverges into a new CLI session
     // (`exec fork`) instead of appending turns to the conversation it was
@@ -183,6 +198,7 @@ fn codex_structured_resume_args(
     args.extend(codex_reasoning_summary_args(input));
     args.extend(codex_reasoning_args(input));
     args.extend(codex_fast_mode_args(input));
+    args.extend(mcp_injection::mcp_args(ProviderId::Codex, mcp));
     args.extend([resume_conversation_id.to_string(), "-".to_string()]);
     args
 }
@@ -194,7 +210,10 @@ fn codex_structured_stdin(input: &ProviderLaunchInput) -> Option<String> {
 // Cursor exposes both reasoning effort and fast serving as distinct model ids
 // rather than flags, so both are folded into the --model value by
 // cursor_model_for.
-fn cursor_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
+fn cursor_structured_args(
+    input: &ProviderLaunchInput,
+    _mcp: Option<&SessionLaunchProcessConfig>,
+) -> Vec<String> {
     let mut args = vec![
         "agent".to_string(),
         "-p".to_string(),
@@ -281,6 +300,7 @@ fn effort_suffix_capped_at_high(effort: ReasoningEffort) -> &'static str {
 fn cursor_structured_resume_args(
     input: &ProviderLaunchInput,
     resume_conversation_id: &str,
+    _mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
     let mut args = vec![
         "agent".to_string(),
@@ -307,7 +327,10 @@ fn cursor_structured_resume_args(
 // `--thinking` surfaces reasoning parts for models that emit them. Some
 // opencode-go models expose reasoning-effort `--variant` (low/high/max),
 // folded in by opencode_variant_args. Fast mode has no CLI surface.
-fn opencode_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
+fn opencode_structured_args(
+    input: &ProviderLaunchInput,
+    _mcp: Option<&SessionLaunchProcessConfig>,
+) -> Vec<String> {
     let mut args = vec![
         "run".to_string(),
         // The session executes inside opencode's daemonized server, whose own
@@ -337,6 +360,7 @@ fn opencode_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
 fn opencode_structured_resume_args(
     input: &ProviderLaunchInput,
     resume_conversation_id: &str,
+    _mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
     let mut args = vec![
         "run".to_string(),
@@ -407,7 +431,10 @@ fn opencode_variant_args(model_id: &str, effort: Option<ReasoningEffort>) -> Vec
 // path rather than getting one of its own. `--cwd` is passed explicitly: with
 // `[cli] use_leader` enabled the turn runs inside a shared leader process whose
 // own cwd is not this child's, the same trap OpenCode's `--dir` covers.
-fn grok_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
+fn grok_structured_args(
+    input: &ProviderLaunchInput,
+    _mcp: Option<&SessionLaunchProcessConfig>,
+) -> Vec<String> {
     let mut args = vec![
         grok_prompt_arg(&input.prompt),
         "--cwd".to_string(),
@@ -422,6 +449,7 @@ fn grok_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
 fn grok_structured_resume_args(
     input: &ProviderLaunchInput,
     resume_conversation_id: &str,
+    _mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
     let mut args = vec![
         grok_prompt_arg(&input.prompt),
@@ -674,7 +702,7 @@ mod tests {
         let definition = get_provider_definition(ProviderId::Claude);
 
         assert_eq!(
-            (definition.structured_args)(&input),
+            (definition.structured_args)(&input, None),
             vec![
                 "-p",
                 "--brief",
@@ -703,14 +731,14 @@ mod tests {
         let mut input = launch_input(ProviderId::Claude);
         input.resume_fork = true;
         let definition = get_provider_definition(ProviderId::Claude);
-        let args = (definition.structured_resume_args)(&input, "conv-7");
+        let args = (definition.structured_resume_args)(&input, "conv-7", None);
         assert_eq!(
             args[..5],
             ["-p", "--brief", "--resume", "conv-7", "--fork-session"]
         );
 
         input.resume_fork = false;
-        let args = (definition.structured_resume_args)(&input, "conv-7");
+        let args = (definition.structured_resume_args)(&input, "conv-7", None);
         assert!(!args.contains(&"--fork-session".to_string()));
     }
 
@@ -719,12 +747,12 @@ mod tests {
         let mut input = launch_input(ProviderId::Codex);
         input.resume_fork = true;
         let definition = get_provider_definition(ProviderId::Codex);
-        let args = (definition.structured_resume_args)(&input, "conv-7");
+        let args = (definition.structured_resume_args)(&input, "conv-7", None);
         assert_eq!(args[..3], ["exec", "fork", "--json"]);
         assert!(args.contains(&"conv-7".to_string()));
 
         input.resume_fork = false;
-        let args = (definition.structured_resume_args)(&input, "conv-7");
+        let args = (definition.structured_resume_args)(&input, "conv-7", None);
         assert_eq!(args[..3], ["exec", "resume", "--json"]);
     }
 
@@ -733,13 +761,13 @@ mod tests {
         let mut input = launch_input(ProviderId::Opencode);
         input.resume_fork = true;
         let definition = get_provider_definition(ProviderId::Opencode);
-        let args = (definition.structured_resume_args)(&input, "ses_7");
+        let args = (definition.structured_resume_args)(&input, "ses_7", None);
         let session_flag = args.iter().position(|a| a == "-s").unwrap();
         assert_eq!(args[session_flag + 1], "ses_7");
         assert_eq!(args[session_flag + 2], "--fork");
 
         input.resume_fork = false;
-        let args = (definition.structured_resume_args)(&input, "ses_7");
+        let args = (definition.structured_resume_args)(&input, "ses_7", None);
         assert!(!args.contains(&"--fork".to_string()));
     }
 
@@ -749,7 +777,7 @@ mod tests {
         let definition = get_provider_definition(ProviderId::Claude);
 
         assert_eq!(
-            (definition.structured_resume_args)(&input, "conv-7"),
+            (definition.structured_resume_args)(&input, "conv-7", None),
             vec![
                 "-p",
                 "--brief",
@@ -778,7 +806,7 @@ mod tests {
             agent_mode: AgentMode::Plan,
             ..launch_input(ProviderId::Claude)
         };
-        let args = (get_provider_definition(ProviderId::Claude).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Claude).structured_args)(&input, None);
         assert!(args
             .windows(2)
             .any(|window| window == ["--permission-mode", "plan"]));
@@ -791,7 +819,7 @@ mod tests {
             reasoning_effort: Some(ReasoningEffort::High),
             ..launch_input(ProviderId::Claude)
         };
-        let args = (get_provider_definition(ProviderId::Claude).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Claude).structured_args)(&input, None);
         let index = args
             .iter()
             .position(|arg| arg == "--append-system-prompt")
@@ -805,7 +833,7 @@ mod tests {
             fast_mode: true,
             ..launch_input(ProviderId::Claude)
         };
-        let args = (get_provider_definition(ProviderId::Claude).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Claude).structured_args)(&input, None);
         let index = args
             .iter()
             .position(|arg| arg == "--settings")
@@ -819,7 +847,7 @@ mod tests {
         let definition = get_provider_definition(ProviderId::Codex);
 
         assert_eq!(
-            (definition.structured_args)(&input),
+            (definition.structured_args)(&input, None),
             vec![
                 "exec",
                 "--json",
@@ -845,7 +873,7 @@ mod tests {
             reasoning_effort: None,
             ..launch_input(ProviderId::Codex)
         };
-        let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input, None);
         assert!(!args.iter().any(|arg| arg == "--ignore-user-config"));
     }
 
@@ -861,7 +889,8 @@ mod tests {
                     reasoning_effort: Some(effort),
                     ..launch_input(ProviderId::Codex)
                 };
-                let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input);
+                let args =
+                    (get_provider_definition(ProviderId::Codex).structured_args)(&input, None);
                 assert!(
                     args.iter().any(|arg| arg == expected),
                     "{model_id} {effort:?} should send {expected}, got {args:?}"
@@ -877,7 +906,7 @@ mod tests {
             reasoning_effort: Some(ReasoningEffort::Ultra),
             ..launch_input(ProviderId::Codex)
         };
-        let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input, None);
         assert!(
             args.iter()
                 .any(|arg| arg == "model_reasoning_effort=\"max\""),
@@ -889,7 +918,7 @@ mod tests {
             reasoning_effort: Some(ReasoningEffort::Max),
             ..launch_input(ProviderId::Codex)
         };
-        let max_args = (get_provider_definition(ProviderId::Codex).structured_args)(&max);
+        let max_args = (get_provider_definition(ProviderId::Codex).structured_args)(&max, None);
         assert!(
             max_args
                 .iter()
@@ -906,7 +935,7 @@ mod tests {
                 reasoning_effort: Some(effort),
                 ..launch_input(ProviderId::Codex)
             };
-            let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input);
+            let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input, None);
             assert!(
                 args.iter()
                     .any(|arg| arg == "model_reasoning_effort=\"xhigh\""),
@@ -921,19 +950,20 @@ mod tests {
             fast_mode: true,
             ..launch_input(ProviderId::Codex)
         };
-        let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input, None);
         assert!(args
             .windows(2)
             .any(|window| window == ["-c", r#"service_tier="priority""#]));
 
-        let resume_args =
-            (get_provider_definition(ProviderId::Codex).structured_resume_args)(&input, "thread-1");
+        let resume_args = (get_provider_definition(ProviderId::Codex).structured_resume_args)(
+            &input, "thread-1", None,
+        );
         assert!(resume_args
             .windows(2)
             .any(|window| window == ["-c", r#"service_tier="priority""#]));
 
         let off = launch_input(ProviderId::Codex);
-        let off_args = (get_provider_definition(ProviderId::Codex).structured_args)(&off);
+        let off_args = (get_provider_definition(ProviderId::Codex).structured_args)(&off, None);
         assert!(!off_args.iter().any(|arg| arg.starts_with("service_tier")));
     }
 
@@ -955,7 +985,7 @@ mod tests {
         let definition = get_provider_definition(ProviderId::Codex);
 
         assert_eq!(
-            (definition.structured_resume_args)(&input, "thread-1"),
+            (definition.structured_resume_args)(&input, "thread-1", None),
             vec![
                 "exec",
                 "resume",
@@ -979,7 +1009,7 @@ mod tests {
         let definition = get_provider_definition(ProviderId::Cursor);
 
         assert_eq!(
-            (definition.structured_args)(&input),
+            (definition.structured_args)(&input, None),
             vec![
                 "agent",
                 "-p",
@@ -1003,7 +1033,7 @@ mod tests {
             agent_mode: AgentMode::Plan,
             ..launch_input(ProviderId::Cursor)
         };
-        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
         assert!(args.iter().any(|arg| arg == "--plan"));
     }
 
@@ -1032,7 +1062,7 @@ mod tests {
                 fast_mode: true,
                 ..launch_input(ProviderId::Cursor)
             };
-            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
             let i = args
                 .iter()
                 .position(|a| a == "--model")
@@ -1051,8 +1081,9 @@ mod tests {
             fast_mode: true,
             ..launch_input(ProviderId::Cursor)
         };
-        let args =
-            (get_provider_definition(ProviderId::Cursor).structured_resume_args)(&input, "conv-1");
+        let args = (get_provider_definition(ProviderId::Cursor).structured_resume_args)(
+            &input, "conv-1", None,
+        );
         let i = args
             .iter()
             .position(|a| a == "--model")
@@ -1069,7 +1100,7 @@ mod tests {
             fast_mode: true,
             ..launch_input(ProviderId::Cursor)
         };
-        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
         let i = args
             .iter()
             .position(|a| a == "--model")
@@ -1092,7 +1123,7 @@ mod tests {
                 reasoning_effort: Some(effort),
                 ..launch_input(ProviderId::Cursor)
             };
-            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
             let i = args
                 .iter()
                 .position(|a| a == "--model")
@@ -1108,7 +1139,7 @@ mod tests {
             reasoning_effort: Some(ReasoningEffort::High),
             ..launch_input(ProviderId::Cursor)
         };
-        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
         let i = args
             .iter()
             .position(|a| a == "--model")
@@ -1132,7 +1163,7 @@ mod tests {
                 reasoning_effort: Some(effort),
                 ..launch_input(ProviderId::Cursor)
             };
-            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
             let i = args
                 .iter()
                 .position(|a| a == "--model")
@@ -1156,7 +1187,7 @@ mod tests {
                 reasoning_effort: Some(effort),
                 ..launch_input(ProviderId::Cursor)
             };
-            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
             let i = args
                 .iter()
                 .position(|a| a == "--model")
@@ -1173,7 +1204,7 @@ mod tests {
             reasoning_effort: Some(ReasoningEffort::High),
             ..launch_input(ProviderId::Cursor)
         };
-        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
         let i = args
             .iter()
             .position(|a| a == "--model")
@@ -1187,7 +1218,7 @@ mod tests {
         let definition = get_provider_definition(ProviderId::Opencode);
 
         assert_eq!(
-            (definition.structured_args)(&input),
+            (definition.structured_args)(&input, None),
             vec![
                 "run",
                 "--dir",
@@ -1211,7 +1242,7 @@ mod tests {
         let definition = get_provider_definition(ProviderId::Opencode);
 
         assert_eq!(
-            (definition.structured_resume_args)(&input, "ses_123"),
+            (definition.structured_resume_args)(&input, "ses_123", None),
             vec![
                 "run",
                 "--dir",
@@ -1236,7 +1267,7 @@ mod tests {
             agent_mode: AgentMode::Plan,
             ..launch_input(ProviderId::Opencode)
         };
-        let args = (get_provider_definition(ProviderId::Opencode).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Opencode).structured_args)(&input, None);
         assert!(args.windows(2).any(|window| window == ["--agent", "plan"]));
         assert!(!args.iter().any(|arg| arg == "--auto"));
     }
@@ -1254,7 +1285,7 @@ mod tests {
                 ..launch_input(provider_id)
             };
             let definition = get_provider_definition(provider_id);
-            let args = (definition.structured_args)(&input);
+            let args = (definition.structured_args)(&input, None);
             match provider_id {
                 ProviderId::Codex => {
                     assert!(!args.contains(&input.prompt));
@@ -1292,7 +1323,7 @@ mod tests {
                 permission_mode: PermissionMode::AskEachTime,
                 ..launch_input(provider_id)
             };
-            let args = (get_provider_definition(provider_id).structured_args)(&input);
+            let args = (get_provider_definition(provider_id).structured_args)(&input, None);
             assert!(!args.iter().any(|arg| {
                 matches!(
                     arg.as_str(),
@@ -1321,7 +1352,7 @@ mod tests {
                 agent_mode: AgentMode::Plan,
                 ..launch_input(provider_id)
             };
-            let args = (get_provider_definition(provider_id).structured_args)(&input);
+            let args = (get_provider_definition(provider_id).structured_args)(&input, None);
             assert!(
                 !args.iter().any(|arg| {
                     matches!(
@@ -1344,7 +1375,7 @@ mod tests {
         let definition = get_provider_definition(ProviderId::Grok);
 
         assert_eq!(
-            (definition.structured_args)(&input),
+            (definition.structured_args)(&input, None),
             vec![
                 "--single=Implement the task",
                 "--cwd",
@@ -1372,8 +1403,8 @@ mod tests {
         let mut input = launch_input(ProviderId::Grok);
         input.prompt = "--not-a-flag\nsecond line".to_string();
         for args in [
-            (get_provider_definition(ProviderId::Grok).structured_args)(&input),
-            (get_provider_definition(ProviderId::Grok).structured_resume_args)(&input, "c1"),
+            (get_provider_definition(ProviderId::Grok).structured_args)(&input, None),
+            (get_provider_definition(ProviderId::Grok).structured_resume_args)(&input, "c1", None),
         ] {
             assert_eq!(args[0], "--single=--not-a-flag\nsecond line");
             assert!(!args.iter().any(|arg| arg == "-p"));
@@ -1386,7 +1417,7 @@ mod tests {
         let mut input = launch_input(ProviderId::Grok);
         let definition = get_provider_definition(ProviderId::Grok);
 
-        let args = (definition.structured_resume_args)(&input, "conv-7");
+        let args = (definition.structured_resume_args)(&input, "conv-7", None);
         assert_eq!(args[3], "--resume");
         assert_eq!(args[4], "conv-7");
         assert!(!args.contains(&"--fork-session".to_string()));
@@ -1395,7 +1426,7 @@ mod tests {
         assert!(!args.contains(&"--session-id".to_string()));
 
         input.resume_fork = true;
-        let args = (definition.structured_resume_args)(&input, "conv-7");
+        let args = (definition.structured_resume_args)(&input, "conv-7", None);
         assert_eq!(args[5], "--fork-session");
         assert!(!args.contains(&"--session-id".to_string()));
     }
@@ -1416,7 +1447,7 @@ mod tests {
                 reasoning_effort: Some(effort),
                 ..launch_input(ProviderId::Grok)
             };
-            let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input);
+            let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input, None);
             let index = args
                 .iter()
                 .position(|arg| arg == "--reasoning-effort")
@@ -1431,12 +1462,13 @@ mod tests {
             agent_mode: AgentMode::Plan,
             ..launch_input(ProviderId::Grok)
         };
-        let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input, None);
         assert!(args.windows(2).any(|w| w[0] == "--agent" && w[1] == "plan"));
         assert!(!args.contains(&"--always-approve".to_string()));
 
         // And the same on a resumed turn.
-        let args = (get_provider_definition(ProviderId::Grok).structured_resume_args)(&input, "c1");
+        let args =
+            (get_provider_definition(ProviderId::Grok).structured_resume_args)(&input, "c1", None);
         assert!(args.windows(2).any(|w| w[0] == "--agent" && w[1] == "plan"));
         assert!(!args.contains(&"--always-approve".to_string()));
     }
@@ -1447,7 +1479,7 @@ mod tests {
             permission_mode: PermissionMode::AskEachTime,
             ..launch_input(ProviderId::Grok)
         };
-        let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input);
+        let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input, None);
         assert!(!args.contains(&"--always-approve".to_string()));
     }
 
@@ -1458,10 +1490,11 @@ mod tests {
             fast_mode: true,
             ..launch_input(ProviderId::Grok)
         };
-        let on = (get_provider_definition(ProviderId::Grok).structured_args)(&input);
-        let off = (get_provider_definition(ProviderId::Grok).structured_args)(&launch_input(
-            ProviderId::Grok,
-        ));
+        let on = (get_provider_definition(ProviderId::Grok).structured_args)(&input, None);
+        let off = (get_provider_definition(ProviderId::Grok).structured_args)(
+            &launch_input(ProviderId::Grok),
+            None,
+        );
         assert_eq!(on, off);
     }
 

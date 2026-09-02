@@ -5,6 +5,7 @@ pub mod discovery;
 pub mod environment;
 pub mod flush_queue;
 mod follow_up;
+pub mod mcp_injection;
 pub mod measured_diffs;
 pub mod normalizer;
 pub mod one_shot;

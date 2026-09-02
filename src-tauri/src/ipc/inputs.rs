@@ -148,6 +148,25 @@ pub struct BrowserSetBoundsInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserScreenshotInput {
+    pub tab_id: String,
+    /// Crop, in the page's own CSS pixels from the top-left of the visible
+    /// view. Omitted captures the whole view.
+    pub rect: Option<BrowserBounds>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserEvaluateInput {
+    pub tab_id: String,
+    pub script: String,
+    /// Defaults to 5000 ms. A page that never answers must not park the
+    /// caller, so the deadline is not optional at the far end.
+    pub timeout_ms: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsListBranchesInput {
     pub project_id: ProjectId,
 }

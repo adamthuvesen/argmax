@@ -20,8 +20,10 @@
 //!   one-shot PTY path.
 //! - Cursor's ACP stream never reports token usage, so ACP turns record no
 //!   usage/cost row.
-//! - Hosted-agent session-launch credentials are per-process env vars, which a
-//!   shared warm process cannot carry; ACP turns skip that injection.
+//! - The warm process is shared per workspace, so the per-session Argmax
+//!   credential cannot ride in its environment. It rides in the `mcpServers`
+//!   entry of `session/new` / `session/load` instead, which ACP scopes to the
+//!   session being created or loaded.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -40,9 +42,10 @@ use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-use super::{AgentMode, ProviderId, ProviderLaunchInput};
+use super::{mcp_injection, AgentMode, ProviderId, ProviderLaunchInput};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
+use crate::session_control::SessionLaunchProcessConfig;
 use crate::util::sync::LockOrRecover;
 
 /// The only model family routed through ACP today. Composer has no reasoning
@@ -105,8 +108,10 @@ impl CursorAcpSessions {
         &self,
         binary_path: &str,
         input: &ProviderLaunchInput,
+        session_launch: Option<&SessionLaunchProcessConfig>,
         on_event: EventCallback,
     ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
+        let mcp_servers = mcp_injection::acp_mcp_servers(session_launch);
         let workspace = self.workspace_client(binary_path, input).await?;
         let client = Arc::clone(&workspace.client);
 
@@ -128,7 +133,7 @@ impl CursorAcpSessions {
                             json!({
                                 "sessionId": resume_id,
                                 "cwd": input.workspace_path,
-                                "mcpServers": [],
+                                "mcpServers": mcp_servers,
                             }),
                         )
                         .await;
@@ -146,7 +151,7 @@ impl CursorAcpSessions {
                 let response = client
                     .request(
                         "session/new",
-                        json!({ "cwd": input.workspace_path, "mcpServers": [] }),
+                        json!({ "cwd": input.workspace_path, "mcpServers": mcp_servers }),
                     )
                     .await?;
                 let session_id = response

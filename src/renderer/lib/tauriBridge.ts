@@ -5,9 +5,11 @@ import type { IpcChannel } from "../../shared/ipcSchemas.js";
 import type {
   ArgmaxApi,
   AttachmentSaveImageInput,
+  BrowserEvaluateResult,
   BrowserFillResult,
   BrowserNewTabEvent,
   BrowserPageCommandEvent,
+  BrowserScreenshot,
   BrowserStateEvent,
   AttachmentSaveImageResult,
   ChangedFileSummary,
@@ -405,6 +407,8 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       close: (tabId: string) => invokeCommand<{ ok: true }>("browser:close", { tabId }),
       fillCredentials: (tabId: string) =>
         invokeCommand<BrowserFillResult>("browser:fill-credentials", { tabId }),
+      screenshot: (input) => invokeCommand<BrowserScreenshot>("browser:screenshot", input),
+      evaluate: (input) => invokeCommand<BrowserEvaluateResult>("browser:evaluate", input),
       onState: (listener: (event: BrowserStateEvent) => void) =>
         subscribe<BrowserStateEvent>("browser:state", listener),
       onNewTab: (listener: (event: BrowserNewTabEvent) => void) =>

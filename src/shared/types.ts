@@ -722,6 +722,9 @@ export interface ArgmaxApi {
     /** Destroys the tab's webview (history and session included). */
     close: (tabId: string) => Promise<{ ok: true }>;
     fillCredentials: (tabId: string) => Promise<BrowserFillResult>;
+    /** PNG of the tab, base64. The tab must be visible — a hidden webview has nothing to rasterise. */
+    screenshot: (input: { tabId: string; rect?: BrowserBounds }) => Promise<BrowserScreenshot>;
+    evaluate: (input: { tabId: string; script: string; timeoutMs?: number }) => Promise<BrowserEvaluateResult>;
     onState: (listener: (event: BrowserStateEvent) => void) => EventSubscription;
     onNewTab: (listener: (event: BrowserNewTabEvent) => void) => EventSubscription;
     onPageCommand: (listener: (event: BrowserPageCommandEvent) => void) => EventSubscription;
@@ -754,6 +757,18 @@ export interface BrowserNewTabEvent {
 export interface BrowserPageCommandEvent {
   tabId: string;
   command: "close-tab" | "new-tab" | "focus-address" | (string & {});
+}
+
+export interface BrowserScreenshot {
+  pngBase64: string;
+  /** Device pixels: twice the captured CSS size on a retina display. */
+  width: number;
+  height: number;
+}
+
+export interface BrowserEvaluateResult {
+  /** WebKit's JSON encoding of the value. Empty when the script returned `undefined` — or threw. */
+  resultJson: string;
 }
 
 export interface BrowserFillResult {

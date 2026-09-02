@@ -135,6 +135,29 @@ impl SessionLaunchProcessConfig {
         ]
     }
 
+    /// A config with fixed values, for arg-builder and injection tests in
+    /// other modules (the fields are private to this one).
+    #[cfg(test)]
+    pub fn for_tests(socket_path: &str, token: &str, argmax_bin: &str) -> Self {
+        Self {
+            socket_path: PathBuf::from(socket_path),
+            token: token.to_string(),
+            argmax_bin: PathBuf::from(argmax_bin),
+        }
+    }
+
+    pub fn socket_path(&self) -> &Path {
+        &self.socket_path
+    }
+
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+
+    pub fn argmax_bin(&self) -> &Path {
+        &self.argmax_bin
+    }
+
     pub fn prepend_instruction(&self, prompt: &str) -> String {
         format!("{SESSION_LAUNCH_INSTRUCTION}\n\n{prompt}")
     }
@@ -406,7 +429,7 @@ enum SessionControlAction {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct SessionLaunchResponse {
+pub struct SessionLaunchResponse {
     version: u32,
     ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -433,7 +456,7 @@ struct SessionLaunchResponse {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SessionListEntry {
+pub struct SessionListEntry {
     session_id: String,
     project_id: String,
     project_name: String,
@@ -1222,13 +1245,13 @@ fn random_bearer_token() -> String {
 }
 
 #[derive(Debug, PartialEq)]
-enum CliPrompt {
+pub enum CliPrompt {
     Value(String),
     Stdin,
 }
 
 #[derive(Debug, PartialEq)]
-enum SessionControlCliInput {
+pub enum SessionControlCliInput {
     Launch {
         project: Option<String>,
         prompt: CliPrompt,
@@ -1517,7 +1540,7 @@ fn run_session_control_cli(input: SessionControlCliInput) -> i32 {
 }
 
 #[cfg(unix)]
-fn run_session_control_cli_unix(
+pub fn run_session_control_cli_unix(
     input: SessionControlCliInput,
 ) -> Result<SessionLaunchResponse, SessionLaunchProtocolError> {
     use std::net::Shutdown;

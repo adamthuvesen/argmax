@@ -152,7 +152,25 @@ export function isAgentToolName(name: string): boolean {
  * Claude and Cursor prefix with `mcp__`, OpenCode repeats the server, and the
  * backreference is what keeps ordinary snake_case names out.
  */
+// Argmax's own MCP tools, for the one provider that names them bare. Codex
+// rows carry `session_list` or `browser_open` with no namespace at all.
+const ARGMAX_TOOL =
+  /^(session_(list|launch|status|read|message|wait|stop|move)|inbox_read|browser_(open|navigate|back|reload|tabs|close|snapshot|find|get_text|click|type|select|hover|press_key|scroll|wait_for|screenshot|evaluate|handle_dialog))$/;
+
+// Every shape the five providers give Argmax's own server: `mcp__argmax__x`
+// (Claude, Cursor ACP), `mcp__argmax_<8 hex of the session id>__x` (Cursor's
+// PTY path registers it once per session), `argmax__x` (Grok), `argmax_x`
+// (OpenCode), and the bare tool name (Codex).
+function parseArgmaxToolName(name: string): { server: string; tool: string } | null {
+  const namespaced = /^(?:mcp__)?argmax(?:_[0-9a-f]{8})?_{1,2}([a-z][a-z0-9_-]*)$/i.exec(name);
+  const tool = namespaced?.[1] ?? (ARGMAX_TOOL.test(name) ? name : null);
+  if (!tool) return null;
+  return { server: "argmax", tool: tool.split(/[-_]+/).filter(Boolean).join(" ") };
+}
+
 export function parseMcpToolName(name: string): { server: string; tool: string } | null {
+  const argmax = parseArgmaxToolName(name);
+  if (argmax) return argmax;
   const match =
     /^mcp__(.+?)__(.+)$/.exec(name) ??
     /^([a-z0-9-]+)_\1-(.+)$/.exec(name) ??

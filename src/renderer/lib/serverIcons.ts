@@ -72,6 +72,18 @@ const GOOGLE_CALENDAR: ServerIcon = {
   ]
 };
 
+// Linear ships its mark as a badge rather than a bare glyph: near-black
+// rounded square, off-white mark. The padded viewBox leaves the Simple Icons
+// path at its native 0-24 coordinates, centred in a 40-unit square.
+const LINEAR: ServerIcon = {
+  title: siLinear.title,
+  viewBox: "-8 -8 40 40",
+  layers: [
+    { fill: "#08090A", path: "M1-8h22a9 9 0 0 1 9 9v22a9 9 0 0 1-9 9H1a9 9 0 0 1-9-9V1a9 9 0 0 1 9-9Z" },
+    { fill: "#F7F8F8", path: siLinear.path }
+  ]
+};
+
 function fromSimpleIcon(icon: { title: string; path: string; hex: string }): ServerIcon {
   // Notion, GitHub and Vercel are black marks: no tint carries them on
   // charcoal, so they fall back to currentColor like the words beside them.
@@ -93,7 +105,7 @@ const SERVER_ICONS: Record<string, ServerIcon> = {
   gcal: GOOGLE_CALENDAR,
   calendar: GOOGLE_CALENDAR,
   snowflake: fromSimpleIcon(siSnowflake),
-  linear: fromSimpleIcon(siLinear),
+  linear: LINEAR,
   github: fromSimpleIcon(siGithub),
   vercel: fromSimpleIcon(siVercel)
 };

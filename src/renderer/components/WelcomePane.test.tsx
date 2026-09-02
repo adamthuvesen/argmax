@@ -113,11 +113,14 @@ describe("WelcomePane — provider discovery", () => {
 
     render(<WelcomePane onAddProject={vi.fn()} />);
 
-    // Wait for the discovery result to render — the focus listener only
-    // attaches once providers are known and setup is incomplete.
+    // The discovery result renders before React commits the follow-up effect
+    // that attaches the focus listener. Retry the focus event until that
+    // effect is observable instead of racing the effect boundary.
     await screen.findByText("Needs login");
-    fireEvent(window, new Event("focus"));
-    await waitFor(() => expect(discover).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      fireEvent(window, new Event("focus"));
+      expect(discover).toHaveBeenCalledTimes(2);
+    });
     expect(discover).toHaveBeenLastCalledWith(true);
   });
 

@@ -180,6 +180,15 @@ Model reasoning traces (`payload.thinking === true` from Claude thinking deltas,
 - **Provider handoff:** Changing providers on an idle session creates a `session.provider-changed` marker rendered by [ProviderSwitchNotice.tsx](../src/renderer/components/ProviderSwitchNotice.tsx) (`Cursor → Codex · GPT-5.6 Sol`). Follow-ups restart fresh with the capped transcript.
 - **Project handoff:** Moving a session creates a `session.moved` marker rendered by [ProjectMoveNotice.tsx](../src/renderer/components/ProjectMoveNotice.tsx) (`HQ → Argmax · shared checkout`). The destination starts a fresh provider conversation with the capped transcript and checkout path.
 
+## Multitask Cards
+
+A multitask dispatched from the composer writes `multitask.launched` into this chat and `multitask.finished` when the sibling chat's turn ends; both fold into one `multitask` render item drawn by [MultitaskCard.tsx](../src/renderer/components/MultitaskCard.tsx) (`Finished alongside · Fix the changelog date`, with **Stop** while it runs and **Open** for the chat it runs in).
+
+- **A dispatch is not a turn boundary.** The rows are deferred until the turn they landed in closes, so asking for a multitask mid-turn never splits that turn's block in two.
+- **One card per multitask.** The finish row merges into the card the dispatch opened, keyed by child session id, wherever it already sits. A finish whose dispatch has left the transcript window renders on its own.
+
+See [multitask.md](multitask.md) for the dispatch and delivery path.
+
 ## Subagent Activity Panes
 
 Subagent tool calls (Claude `Task`/`Agent`, Codex `spawn_agent`, OpenCode `task`, Cursor `taskToolCall`/ACP `task`) display a launch row in the parent conversation via [AgentLaunchList.tsx](../src/renderer/components/AgentLaunchList.tsx), rendered as a bulleted task list:

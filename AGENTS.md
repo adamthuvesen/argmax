@@ -58,6 +58,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Agent tools (the `argmax` MCP server)** → [agent-tools.md](docs/agent-tools.md)
 - **Session sync (import from provider CLIs)** → [session-sync.md](docs/session-sync.md)
 - **Worktrees, archive, review** → [workspaces.md](docs/workspaces.md)
+- **Multitask (a chat dispatched from inside a chat)** → [multitask.md](docs/multitask.md)
 - **Approvals and checks** → [approvals-checks.md](docs/approvals-checks.md)
 - **Scheduled tasks / routines** → [scheduled-tasks.md](docs/scheduled-tasks.md)
 - **Integrated terminal panel** → [terminal.md](docs/terminal.md)

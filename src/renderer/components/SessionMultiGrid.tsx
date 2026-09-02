@@ -112,6 +112,7 @@ interface SessionMultiGridProps {
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
@@ -165,6 +166,7 @@ export function SessionMultiGrid({
   onSendSessionInput,
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
+  onMultitask,
   pendingMessages,
   onTerminateSession,
   onClearSession,
@@ -409,6 +411,7 @@ export function SessionMultiGrid({
                         onSendSessionInput={onSendSessionInput}
                         onCancelQueuedMessage={onCancelQueuedMessage}
                         onSendQueuedMessageNow={onSendQueuedMessageNow}
+                        onMultitask={onMultitask}
                         pendingMessages={pendingMessages}
                         onTerminateSession={onTerminateSession}
                         onClearSession={onClearSession}

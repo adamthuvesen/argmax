@@ -56,6 +56,7 @@ import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CompactionNotice } from "./CompactionNotice.js";
+import { MultitaskCard } from "./MultitaskCard.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
@@ -135,6 +136,7 @@ export function SessionConversation({
   onSendSessionInput,
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
+  onMultitask,
   pendingMessages = [],
   onTerminateSession,
   onClearSession,
@@ -215,6 +217,7 @@ export function SessionConversation({
   pendingMessages?: PendingMessage[];
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
@@ -942,6 +945,16 @@ export function SessionConversation({
               if (item.kind === "provider-switch") {
                 return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
               }
+              if (item.kind === "multitask") {
+                return (
+                  <MultitaskCard
+                    key={item.id}
+                    notice={item.notice}
+                    onOpenSession={onOpenSession}
+                    onTerminateSession={onTerminateSession}
+                  />
+                );
+              }
               return (
                 <SessionConversationTurn
                   key={item.id}
@@ -1055,6 +1068,7 @@ export function SessionConversation({
           onFastModeEnabledChange={onFastModeEnabledChange}
           onCancelQueuedMessage={onCancelQueuedMessage}
           onSendQueuedMessageNow={onSendQueuedMessageNow}
+          onMultitask={onMultitask}
           onSendSessionInput={sendSessionInput}
           onStartNewSession={onNewSession}
           onTerminateSession={onTerminateSession}

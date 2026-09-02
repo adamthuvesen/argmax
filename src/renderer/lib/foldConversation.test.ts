@@ -227,3 +227,76 @@ describe("foldRenderItems", () => {
     expect(topLevelToolIds(out.find((item) => item.kind === "turn"))).toEqual(["orphan"]);
   });
 });
+
+describe("multitask rows", () => {
+  const items = (events: TimelineEvent[]): RenderItem[] =>
+    foldRenderItems(
+      events.map((e) => ({ kind: "message" as const, event: e })),
+      null,
+      keepToolItems
+    );
+
+  it("does not split the turn it was dispatched during", () => {
+    // The parent's turn keeps running while the multitask starts, so the card
+    // waits for that turn to close instead of cutting its block in two.
+    const rendered = items([
+      event("u1", "user.message", "2026-09-02T10:00:00.000Z"),
+      event("a1", "message.completed", "2026-09-02T10:00:01.000Z"),
+      event("m1", "multitask.launched", "2026-09-02T10:00:02.000Z", "Running alongside: Fix typo", {
+        childSessionId: "child-1",
+        taskLabel: "Fix typo"
+      }),
+      event("a2", "message.completed", "2026-09-02T10:00:03.000Z"),
+      event("u2", "user.message", "2026-09-02T10:00:04.000Z")
+    ]);
+
+    expect(rendered.map((item) => item.kind)).toEqual([
+      "user-message",
+      "turn",
+      "multitask",
+      "user-message"
+    ]);
+    const turn = rendered[1];
+    if (turn?.kind !== "turn") throw new Error("expected a turn");
+    // Both assistant rows stayed in one block, on either side of the dispatch.
+    expect(turn.assistantEvents.map((e) => e.id)).toEqual(["a1", "a2"]);
+  });
+
+  it("folds the finish into the card the dispatch opened", () => {
+    const rendered = items([
+      event("u1", "user.message", "2026-09-02T10:00:00.000Z"),
+      event("m1", "multitask.launched", "2026-09-02T10:00:01.000Z", "Running alongside", {
+        childSessionId: "child-1",
+        taskLabel: "Fix typo",
+        prompt: "Fix typo"
+      }),
+      event("a1", "message.completed", "2026-09-02T10:00:02.000Z"),
+      event("m2", "multitask.finished", "2026-09-02T10:00:09.000Z", "Fix typo finished alongside", {
+        childSessionId: "child-1",
+        taskLabel: "Fix typo",
+        state: "complete",
+        answer: "Fixed it."
+      })
+    ]);
+
+    const cards = rendered.filter((item) => item.kind === "multitask");
+    expect(cards).toHaveLength(1);
+    const [card] = cards;
+    if (card?.kind !== "multitask") throw new Error("expected a multitask card");
+    expect(card.notice.state).toBe("complete");
+    expect(card.notice.answer).toBe("Fixed it.");
+    expect(card.notice.prompt).toBe("Fix typo");
+  });
+
+  it("keeps a finish whose dispatch fell out of the window", () => {
+    // Losing the row would lose the only record that the work happened.
+    const rendered = items([
+      event("m2", "multitask.finished", "2026-09-02T10:00:09.000Z", "Fix typo finished alongside", {
+        childSessionId: "child-1",
+        taskLabel: "Fix typo",
+        state: "complete"
+      })
+    ]);
+    expect(rendered.map((item) => item.kind)).toEqual(["multitask"]);
+  });
+});

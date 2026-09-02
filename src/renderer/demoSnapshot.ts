@@ -271,6 +271,33 @@ export const demoSnapshot: DashboardSnapshot = {
       createdAt: "2026-05-08T15:54:00.000Z"
     },
     {
+      id: "event-board-multitask-launched",
+      sessionId: "session-review-studio",
+      type: "multitask.launched",
+      message: "Running alongside: Fix the changelog date",
+      payload: {
+        childSessionId: "session-multitask-changelog",
+        childWorkspaceId: "workspace-multitask-changelog",
+        taskLabel: "Fix the changelog date",
+        prompt: "The changelog says 2025 for the 0.4 entry — fix it.",
+        worktree: false
+      },
+      createdAt: "2026-05-08T15:53:58.000Z"
+    },
+    {
+      id: "event-board-multitask-finished",
+      sessionId: "session-review-studio",
+      type: "multitask.finished",
+      message: "Fix the changelog date finished alongside",
+      payload: {
+        childSessionId: "session-multitask-changelog",
+        taskLabel: "Fix the changelog date",
+        state: "complete",
+        answer: "Corrected the 0.4 heading to 2026 in CHANGELOG.md."
+      },
+      createdAt: "2026-05-08T15:54:02.000Z"
+    },
+    {
       id: "event-review-complete",
       sessionId: "session-review-studio",
       type: "session.completed",

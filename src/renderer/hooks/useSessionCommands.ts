@@ -25,6 +25,9 @@ export interface SessionCommands {
   ) => Promise<void>;
   cancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   sendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
+  /** Dispatch a prompt as a sibling chat that runs alongside this session's
+   *  turn, in the same checkout. */
+  multitask: (sessionId: string, prompt: string) => Promise<void>;
   runCheck: (workspaceId: string, command: string) => Promise<void>;
   terminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   clearSession: (sessionId: string) => Promise<void>;
@@ -96,6 +99,20 @@ export function useSessionCommands({
     [refreshDashboardStatus, loadSessionEvents]
   );
 
+  // Dispatching never waits on the running turn: the sibling chat is launched
+  // and this session's own turn is untouched. The dashboard refresh is what
+  // brings its sidebar row and the parent's card in.
+  const multitask = useCallback(
+    async (sessionId: string, prompt: string): Promise<void> => {
+      if (!window.argmax) {
+        throw new Error("Open the Tauri app window to run a multitask.");
+      }
+      await window.argmax.session.multitask({ sessionId, prompt });
+      await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
+    },
+    [refreshDashboardStatus, loadSessionEvents]
+  );
+
   const runCheck = useCallback(
     async (workspaceId: string, command: string): Promise<void> => {
       if (!window.argmax) {
@@ -156,6 +173,7 @@ export function useSessionCommands({
     sendSessionInput,
     cancelQueuedMessage,
     sendQueuedMessageNow,
+    multitask,
     runCheck,
     terminateSession,
     clearSession

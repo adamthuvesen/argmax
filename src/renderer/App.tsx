@@ -1131,8 +1131,15 @@ export function App(): JSX.Element {
     ]
   );
 
-  const { sendSessionInput, cancelQueuedMessage, sendQueuedMessageNow, runCheck, terminateSession, clearSession } =
-    useSessionCommands({
+  const {
+    sendSessionInput,
+    cancelQueuedMessage,
+    sendQueuedMessageNow,
+    multitask,
+    runCheck,
+    terminateSession,
+    clearSession
+  } = useSessionCommands({
       refreshDashboardStatus,
       loadSessionEvents,
       setToast,
@@ -1848,6 +1855,7 @@ export function App(): JSX.Element {
           onClose={closeDetailsPopup}
           onLoadSessionEvents={loadSessionEvents}
           onSendQueuedMessageNow={sendQueuedMessageNow}
+          onMultitask={multitask}
           onSendSessionInput={sendSessionInput}
           onTerminateSession={terminateSession}
           onClearSession={clearSession}
@@ -2029,6 +2037,7 @@ export function App(): JSX.Element {
               onSendSessionInput={sendSessionInput}
               onCancelQueuedMessage={cancelQueuedMessage}
               onSendQueuedMessageNow={sendQueuedMessageNow}
+              onMultitask={multitask}
               pendingMessages={snapshot.pendingMessages}
               onTerminateSession={terminateSession}
               onClearSession={clearSession}

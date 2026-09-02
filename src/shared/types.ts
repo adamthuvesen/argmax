@@ -89,6 +89,8 @@ export type EventType =
   | "session.compacted"
   | "session.provider-changed"
   | "session.cleared"
+  | "multitask.launched"
+  | "multitask.finished"
   | "session.move-requested"
   | "session.moved"
   | "session.recovered-from-crash";

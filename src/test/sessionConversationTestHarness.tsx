@@ -176,6 +176,7 @@ type ConversationOptions = {
   // poisons every prop it feeds.
   onCancelQueuedMessage?: ConversationProps["onCancelQueuedMessage"];
   onSendQueuedMessageNow?: ConversationProps["onSendQueuedMessageNow"];
+  onMultitask?: ConversationProps["onMultitask"];
   onSendSessionInput?: ConversationProps["onSendSessionInput"];
   onTerminateSession?: ConversationProps["onTerminateSession"];
   onClearSession?: ConversationProps["onClearSession"];
@@ -207,6 +208,7 @@ function conversationElement(
       {...(options.defaultThinkingExpanded !== undefined ? { defaultThinkingExpanded: options.defaultThinkingExpanded } : {})}
       {...(options.defaultToolCallsDisplay !== undefined ? { defaultToolCallsDisplay: options.defaultToolCallsDisplay } : {})}
       {...(options.defaultToolCallGroupsExpanded !== undefined ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded } : {})}
+      {...(options.onMultitask ? { onMultitask: options.onMultitask } : {})}
       {...(options.onNewSession ? { onNewSession: options.onNewSession } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
       {...(options.onOpenAgent ? { onOpenAgent: options.onOpenAgent } : {})}

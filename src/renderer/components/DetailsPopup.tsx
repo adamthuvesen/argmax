@@ -39,6 +39,7 @@ export function DetailsPopup({
   onClose,
   onLoadSessionEvents,
   onSendQueuedMessageNow,
+  onMultitask,
   onSendSessionInput,
   onTerminateSession,
   onClearSession,
@@ -55,6 +56,7 @@ export function DetailsPopup({
   onClose: () => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
   onSendSessionInput: (
     sessionId: string,
     input: string,
@@ -189,6 +191,7 @@ export function DetailsPopup({
         onClearSession={onClearSession}
         onCancelQueuedMessage={onCancelQueuedMessage}
         onSendQueuedMessageNow={onSendQueuedMessageNow}
+          onMultitask={onMultitask}
         pendingMessages={sessionPendingMessages}
         onToggleLog={() => {}}
         project={project}

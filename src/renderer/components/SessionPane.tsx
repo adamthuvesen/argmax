@@ -86,6 +86,7 @@ export function SessionPane({
   onSendSessionInput,
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
+  onMultitask,
   pendingMessages,
   onTerminateSession,
   onClearSession,
@@ -141,6 +142,7 @@ export function SessionPane({
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
@@ -519,6 +521,7 @@ export function SessionPane({
           onSendSessionInput={onSendSessionInput}
           onCancelQueuedMessage={onCancelQueuedMessage}
           onSendQueuedMessageNow={onSendQueuedMessageNow}
+          onMultitask={onMultitask}
           pendingMessages={sessionId ? (pendingMessages?.[sessionId] ?? []) : []}
           onTerminateSession={onTerminateSession}
           onClearSession={onClearSession}

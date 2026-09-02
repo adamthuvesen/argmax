@@ -1,5 +1,6 @@
 import {
   Bot,
+  Columns2,
   CornerDownLeft,
   Eraser,
   FileDiff,
@@ -61,6 +62,7 @@ import {
   toggleAgentMode
 } from "../lib/agentMode.js";
 import { isClearCommand, type ComposerCommand } from "../lib/composerCommands.js";
+import { multitaskCommandPrompt } from "../lib/multitask.js";
 import { clearDraft } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
@@ -113,6 +115,7 @@ export function SessionComposer({
   onFastModeEnabledChange,
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
+  onMultitask,
   onSendSessionInput,
   onStartNewSession,
   onTerminateSession,
@@ -144,6 +147,9 @@ export function SessionComposer({
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
+  /** Dispatch a prompt as a multitask: a sibling chat in this checkout that
+   *  runs alongside the current turn instead of waiting behind it. */
+  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
   onSendSessionInput: (
     sessionId: string,
     input: string,
@@ -274,6 +280,15 @@ export function SessionComposer({
         run: () => void onClearSession(session.id).catch(() => undefined)
       });
     }
+    if (session && onMultitask) {
+      commands.push({
+        name: "multitask",
+        label: "Multitask",
+        hint: "Run something alongside this chat's turn",
+        icon: Columns2,
+        run: () => setInput("/multitask ")
+      });
+    }
     commands.push({
       name: "attach",
       label: "Attach file",
@@ -304,7 +319,18 @@ export function SessionComposer({
       });
     }
     return commands;
-  }, [changeSummary, nextMode, onClearSession, onTerminateSession, openFilePicker, session, toggleMode, workspace]);
+  }, [
+    changeSummary,
+    nextMode,
+    onClearSession,
+    onMultitask,
+    onTerminateSession,
+    openFilePicker,
+    session,
+    setInput,
+    toggleMode,
+    workspace
+  ]);
 
   const slashAutocomplete = useSlashAutocomplete({
     input,
@@ -446,6 +472,28 @@ export function SessionComposer({
       return;
     }
 
+    // `/multitask <prompt>` dispatches instead of sending: the prompt goes to a
+    // sibling chat in this checkout, and this composer's turn is left alone.
+    const multitaskPrompt = multitaskCommandPrompt(trimmedInput);
+    if (multitaskPrompt && onMultitask) {
+      setIsSending(true);
+      setStatus(null);
+      shouldRefocusInput.current = true;
+      try {
+        await onMultitask(session.id, multitaskPrompt);
+        setInput("");
+        clearDraft(session.id);
+      } catch (error) {
+        setStatus({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not start the multitask."
+        });
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
     const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
     const withRefs = refs.length > 0 ? appendReferencesToPrompt(trimmedInput, refs) : trimmedInput;
     const withAnnotations = prependAnnotationsToPrompt(withRefs, pendingAnnotations);
@@ -524,6 +572,27 @@ export function SessionComposer({
                 setSendingQueuedMessageId(null);
               }
             };
+            // Promoting a queued message never touches the running turn: it
+            // is dropped from the queue and dispatched as its own chat, so
+            // rapid promotions cannot cancel each other the way "send now"
+            // (which stops the turn) has to.
+            const multitaskQueued = async (id: string, content: string): Promise<void> => {
+              if (!session || !onMultitask || sendingQueuedMessageId) return;
+              setSendingQueuedMessageId(id);
+              setStatus(null);
+              try {
+                await onMultitask(session.id, content);
+                await onCancelQueuedMessage?.(session.id, id);
+              } catch (error) {
+                setStatus({
+                  kind: "error",
+                  message:
+                    error instanceof Error ? error.message : "Could not start the multitask."
+                });
+              } finally {
+                setSendingQueuedMessageId(null);
+              }
+            };
             return (
               <div
                 key={entry.id}
@@ -559,6 +628,19 @@ export function SessionComposer({
                   <Send size={13} aria-hidden="true" />
                   <span>Send now</span>
                 </button>
+                {onMultitask ? (
+                  <button
+                    type="button"
+                    className="composer-queued-chip-action"
+                    aria-label={`Multitask queued follow-up: ${entry.content}`}
+                    title="Run it now in a second chat sharing this checkout; the current turn keeps going"
+                    disabled={sendingQueuedMessageId !== null}
+                    onClick={() => void multitaskQueued(entry.id, entry.content)}
+                  >
+                    <Columns2 size={13} aria-hidden="true" />
+                    <span>Multitask</span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="composer-queued-chip-remove"

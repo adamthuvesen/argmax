@@ -106,8 +106,6 @@ function installArgmaxStub(): ArgmaxStub {
   };
 }
 
-function noop(): void {}
-
 describe("TerminalTabsPanel", () => {
   let stub: ArgmaxStub;
 
@@ -142,8 +140,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
 
@@ -162,8 +158,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
 
@@ -181,8 +175,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
 
@@ -206,8 +198,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
 
@@ -228,8 +218,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
 
@@ -245,8 +233,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
 
@@ -268,8 +254,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
@@ -296,8 +280,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
@@ -315,42 +297,24 @@ describe("TerminalTabsPanel", () => {
     );
   });
 
-  it("closing the last tab calls onRequestClose", async () => {
-    const onRequestClose = vi.fn();
+  it("closing the last tab rests on an empty state instead of reseeding", async () => {
     render(
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={onRequestClose}
       />
     );
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: "Close zsh" }));
 
-    await waitFor(() => expect(onRequestClose).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("button", { name: "New terminal" })).toBeInTheDocument();
     expect(stub.terminate).toHaveBeenCalledWith("pty-1");
-  });
+    expect(stub.spawn).toHaveBeenCalledTimes(1);
 
-  it("clicking the header × calls onCollapse without tearing down PTYs", async () => {
-    const onCollapse = vi.fn();
-    const onRequestClose = vi.fn();
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-        onCollapse={onCollapse}
-        onRequestClose={onRequestClose}
-      />
-    );
-    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Hide terminal" }));
-
-    expect(onCollapse).toHaveBeenCalledTimes(1);
-    expect(onRequestClose).not.toHaveBeenCalled();
-    expect(stub.terminate).not.toHaveBeenCalled();
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(2));
   });
 
   it("reuses gaps in tab labels (`zsh`, `zsh 2`, `zsh 3` → close 2 → new `zsh 2`)", async () => {
@@ -358,8 +322,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
@@ -385,8 +347,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
@@ -403,8 +363,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
@@ -434,8 +392,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
@@ -467,8 +423,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
@@ -489,8 +443,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
@@ -510,8 +462,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
@@ -525,8 +475,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
 
@@ -545,8 +493,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-1"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
@@ -556,8 +502,6 @@ describe("TerminalTabsPanel", () => {
       <TerminalTabsPanel
         workspaceId="ws-2"
         visible
-        onCollapse={noop}
-        onRequestClose={noop}
       />
     );
 

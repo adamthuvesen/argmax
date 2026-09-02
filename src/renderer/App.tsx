@@ -45,7 +45,7 @@ import { ScheduleRail } from "./components/scheduled/ScheduleRail.js";
 import { SettingsRail } from "./components/settings/SettingsRail.js";
 import { EMPTY_GRID, MAX_COLS, openWorkspaceInGrid, revertSessionToLauncher, terminalWorkspaceId } from "./lib/gridState.js";
 import { isEarlySessionStop } from "./lib/earlyStop.js";
-import { toggleTerminalPanel } from "./lib/terminalTabs.js";
+import { getWorkspaceTerminalState, requestTerminalVisible } from "./lib/terminalTabs.js";
 import { requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
 import { requestCloseActiveReviewFileTab } from "./lib/reviewFilePanel.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
@@ -527,11 +527,13 @@ export function App(): JSX.Element {
     setIsSettingsOpen(false);
     setIsFullLauncherOpen(false);
     openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
-    // Toggle the workspace-keyed store directly. An earlier design bumped a
-    // counter prop that SessionPane replayed in an effect — a remounted pane
-    // (every session switch) re-saw the historical count and flipped the
-    // persisted panel state on each visit.
-    toggleTerminalPanel(workspaceId);
+    // Address the request to the workspace, not to a component: the pane that
+    // owns the terminal's review panel may only be mounting now (⌘J from
+    // Settings opens the chat first). It consumes the request once, so a pane
+    // that remounts later never replays it. The toggle resolves here, against
+    // the workspace's own remembered state, so a pane mounting into a restored
+    // terminal is told "hide" rather than "flip whatever you came up as".
+    requestTerminalVisible(workspaceId, !getWorkspaceTerminalState(workspaceId).showing);
   }, [
     grid,
     openWorkspaceChat,

@@ -38,6 +38,9 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     openBrowser: () => {},
     browserOwner: false,
     browserRequest: null,
+    terminalWorkspaceId: null,
+    openTerminal: () => {},
+    toggleTerminal: () => {},
     workspaceFiles: {
       entries: [],
       listState: "idle",

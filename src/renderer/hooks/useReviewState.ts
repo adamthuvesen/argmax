@@ -19,6 +19,13 @@ import {
   type BrowserOpenRequest
 } from "../lib/browserPanel.js";
 import { filterToLastTurn } from "../lib/lastTurnFiles.js";
+import {
+  consumeTerminalRequest,
+  getTerminalRequest,
+  getWorkspaceTerminalState,
+  setTerminalShowing,
+  subscribeTerminalRequest
+} from "../lib/terminalTabs.js";
 import { reviewIpcDispatch } from "../lib/reviewIpc.js";
 import { usePersistedSetting } from "./usePersistedSetting.js";
 import { useFilePreview } from "./useFilePreview.js";
@@ -27,7 +34,7 @@ import { useReviewDiff } from "./useReviewDiff.js";
 import { useWorkspaceFileList } from "./useWorkspaceFileList.js";
 
 export type AsyncState = "idle" | "loading" | "ready" | "error";
-export type ReviewPanelMode = "changes" | "files" | "agents" | "browser";
+export type ReviewPanelMode = "changes" | "files" | "agents" | "browser" | "terminal";
 
 /**
  * Which slice of the work the Changes view shows.
@@ -166,6 +173,15 @@ export interface ReviewState {
   openAgent: (parentToolUseId: string) => void;
   /** Open the panel on the Browser view, taking the one native surface. */
   openBrowser: () => void;
+  /** Workspace whose integrated terminal this panel hosts. Null on a
+   *  project-backed panel (the launcher), which has no workspace to run in —
+   *  and so has no Terminal tab. */
+  terminalWorkspaceId: string | null;
+  /** Open the panel on the Terminal view. */
+  openTerminal: () => void;
+  /** ⌘J and the workspace card's Terminal row: show the terminal, or hide the
+   *  panel when it is already the one showing. */
+  toggleTerminal: () => void;
   /** True when this panel holds the browser surface. Only the owner mounts the
    *  browser chrome; every other panel in Browser mode shows a placeholder. */
   browserOwner: boolean;
@@ -223,8 +239,17 @@ export function useReviewState(
     [sourceKind, sourceId]
   );
 
-  const [isPanelOpen, setIsPanelOpen] = useState(options?.initiallyOpen ?? false);
-  const [mode, setMode] = useState<ReviewPanelMode>("changes");
+  const terminalWorkspaceId = source?.kind === "workspace" ? source.workspace.id : null;
+  // A pane dies on every session switch, so the panel's mode cannot remember
+  // that the reader had the terminal up. The workspace-keyed store can, and
+  // seeding from it here is what brings them back to the shell they left
+  // running rather than to the Changes default.
+  const [isPanelOpen, setIsPanelOpen] = useState(
+    () => options?.initiallyOpen ?? getWorkspaceTerminalState(terminalWorkspaceId).showing
+  );
+  const [mode, setMode] = useState<ReviewPanelMode>(() =>
+    getWorkspaceTerminalState(terminalWorkspaceId).showing ? "terminal" : "changes"
+  );
   const [storedScope, setChangesScope] = useState<ReviewChangesScope>(readStoredScope);
   usePersistedSetting(SCOPE_KEY, storedScope);
   const previousSourceId = useRef<string | null>(null);
@@ -421,6 +446,40 @@ export function useReviewState(
     setIsPanelOpen(true);
   }, []);
 
+  const openTerminal = useCallback((): void => {
+    setMode("terminal");
+    setIsPanelOpen(true);
+  }, []);
+
+  const toggleTerminal = useCallback((): void => {
+    if (panelRef.current.isPanelOpen && panelRef.current.mode === "terminal") {
+      setIsPanelOpen(false);
+      return;
+    }
+    openTerminal();
+  }, [openTerminal]);
+
+  // ⌘J is pressed on the window, not on this panel, and the pane it is meant
+  // for may be mounting in the same tick (⌘J from Settings opens the chat
+  // first). So it arrives as a workspace-addressed request that the matching
+  // panel consumes here — once, whenever it gets there.
+  const terminalRequest = useSyncExternalStore(subscribeTerminalRequest, getTerminalRequest);
+  useEffect(() => {
+    if (!terminalRequest || terminalRequest.workspaceId !== terminalWorkspaceId) return;
+    consumeTerminalRequest(terminalRequest.seq);
+    if (terminalRequest.visible) openTerminal();
+    else if (panelRef.current.mode === "terminal") setIsPanelOpen(false);
+  }, [openTerminal, terminalRequest, terminalWorkspaceId]);
+
+  // Report what this panel shows back to the store, for the next panel that
+  // mounts on this workspace. One direction only: nothing here reads it after
+  // the initial state above.
+  const showsTerminal = isPanelOpen && mode === "terminal";
+  useEffect(() => {
+    if (!terminalWorkspaceId) return;
+    setTerminalShowing(terminalWorkspaceId, showsTerminal);
+  }, [showsTerminal, terminalWorkspaceId]);
+
   const workspaceFiles: WorkspaceFilesState = {
     entries: fileListState.entries,
     listState: fileListState.listState,
@@ -474,6 +533,9 @@ export function useReviewState(
     openBrowser,
     browserOwner,
     browserRequest,
+    terminalWorkspaceId,
+    openTerminal,
+    toggleTerminal,
     openFile: diffState.openFile,
     expandDiffContext: diffState.expandDiffContext,
     openPanelInFilesMode,

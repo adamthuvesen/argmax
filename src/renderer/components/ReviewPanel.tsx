@@ -1,10 +1,23 @@
-import { Bot, ChevronDown, Folder, FolderOpen, GitBranch, Globe, PanelRightClose, X } from "lucide-react";
 import {
+  Bot,
+  ChevronDown,
+  Folder,
+  FolderOpen,
+  GitBranch,
+  Globe,
+  PanelRightClose,
+  SquareTerminal,
+  X
+} from "lucide-react";
+import {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
@@ -35,6 +48,14 @@ import { WorkspaceTree } from "./WorkspaceTree.js";
 import { FileIcon } from "@react-symbols/icons/utils";
 import { registerReviewFileTabCloseHandler } from "../lib/reviewFilePanel.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
+import { closeTerminalTab, getWorkspaceTerminalState, subscribeTerminalTabs } from "../lib/terminalTabs.js";
+
+// The Terminal view pulls in @xterm/xterm + addons + xterm CSS — heavy, and
+// only needed once the reader actually asks for a shell. SessionPane warms
+// the same chunk on idle, so the first ⌘J paints immediately.
+const TerminalTabsPanel = lazy(async () => ({
+  default: (await import("./TerminalTabsPanel.js")).TerminalTabsPanel
+}));
 
 /** What the Agents view needs from the pane that owns the panel. */
 export interface AgentsPanelContext {
@@ -274,12 +295,25 @@ export function ReviewPanel({
   // `agents`, so a mode that outlived a source switch (session pane ->
   // launcher) resolves back to Changes.
   const hasBrowser = typeof window !== "undefined" && Boolean(window.argmax?.browser);
+  const terminalWorkspaceId = review.terminalWorkspaceId;
   const unavailable =
-    (review.mode === "agents" && !agents) || (review.mode === "browser" && !hasBrowser);
+    (review.mode === "agents" && !agents) ||
+    (review.mode === "browser" && !hasBrowser) ||
+    (review.mode === "terminal" && !terminalWorkspaceId);
   const mode: ReviewPanelMode = unavailable ? "changes" : review.mode;
   const isChanges = mode === "changes";
   const isAgents = mode === "agents";
   const isBrowser = mode === "browser";
+  const isTerminal = mode === "terminal";
+  // Terminals outlive the view: once a workspace has tabs the panel keeps them
+  // mounted (hidden) while the reader is on another mode, so coming back is
+  // instant and nothing is torn down. An empty workspace mounts only on
+  // entering Terminal mode — otherwise merely opening the panel would spawn a
+  // shell nobody asked for.
+  const terminalTabs = useSyncExternalStore(subscribeTerminalTabs, () =>
+    getWorkspaceTerminalState(terminalWorkspaceId)
+  );
+  const terminalMounted = terminalWorkspaceId !== null && (isTerminal || terminalTabs.tabs.length > 0);
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
@@ -319,10 +353,25 @@ export function ReviewPanel({
     if (activeToolUseId) review.subagents.closeTab(activeToolUseId);
   }, [review.subagents]);
 
+  const activeTerminalTabId = terminalTabs.activeTabId;
+  const closeActiveTerminalTab = useCallback((): void => {
+    if (terminalWorkspaceId && activeTerminalTabId) {
+      closeTerminalTab(terminalWorkspaceId, activeTerminalTabId);
+    }
+  }, [activeTerminalTabId, terminalWorkspaceId]);
+
   useEffect(() => {
     if (!isFocused) {
       registerReviewFileTabCloseHandler(null);
       return undefined;
+    }
+    if (isTerminal) {
+      if (!activeTerminalTabId) {
+        registerReviewFileTabCloseHandler(null);
+        return undefined;
+      }
+      registerReviewFileTabCloseHandler(closeActiveTerminalTab);
+      return () => registerReviewFileTabCloseHandler(null);
     }
     if (isAgents) {
       if (!review.subagents.activeToolUseId) {
@@ -347,7 +396,17 @@ export function ReviewPanel({
     };
     registerReviewFileTabCloseHandler(closeActiveTab);
     return () => registerReviewFileTabCloseHandler(null);
-  }, [closeActiveAgentTab, isAgents, isFocused, review.mode, review.subagents.activeToolUseId, review.workspaceFiles]);
+  }, [
+    activeTerminalTabId,
+    closeActiveAgentTab,
+    closeActiveTerminalTab,
+    isAgents,
+    isFocused,
+    isTerminal,
+    review.mode,
+    review.subagents.activeToolUseId,
+    review.workspaceFiles
+  ]);
 
   useEffect(() => {
     if (!isFocused) return undefined;
@@ -448,7 +507,7 @@ export function ReviewPanel({
     [files.buffer]
   );
   const handleFilesModeKeyShortcut = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (isChanges || isBrowser) return;
+    if (isChanges || isBrowser || isTerminal) return;
     if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
     if (event.defaultPrevented || event.nativeEvent.isComposing) return;
     const key = event.key.toLowerCase();
@@ -533,6 +592,22 @@ export function ReviewPanel({
                 <span className="review-mode-tab-label">Browser</span>
               </button>
             ) : null}
+            {terminalWorkspaceId ? (
+              <button
+                role="tab"
+                type="button"
+                aria-label="Terminal"
+                aria-selected={isTerminal}
+                title="Terminal (⌘J)"
+                onClick={review.openTerminal}
+              >
+                <SquareTerminal size={14} aria-hidden="true" />
+                <span className="review-mode-tab-label">Terminal</span>
+                {terminalTabs.tabs.length > 1 ? (
+                  <span className="review-mode-tab-count">{terminalTabs.tabs.length}</span>
+                ) : null}
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="review-toolbar-actions">
@@ -550,7 +625,9 @@ export function ReviewPanel({
               ? "review-body review-body-agents"
               : isBrowser
                 ? "review-body review-body-browser"
-                : "review-body"
+                : isTerminal
+                  ? "review-body review-body-terminal"
+                  : "review-body"
         }
         onKeyDown={handleFilesModeKeyShortcut}
       >
@@ -574,6 +651,18 @@ export function ReviewPanel({
             </div>
           )
         ) : null}
+        {terminalMounted && terminalWorkspaceId ? (
+          <Suspense fallback={null}>
+            <div className="review-terminal-mount" hidden={!isTerminal}>
+              <TerminalTabsPanel
+                key={terminalWorkspaceId}
+                workspaceId={terminalWorkspaceId}
+                visible={isTerminal}
+                cwdLabel={review.workspaceFiles.rootPath}
+              />
+            </div>
+          </Suspense>
+        ) : null}
         {isAgents && agents ? (
           <AgentsView
             events={agents.events}
@@ -587,7 +676,7 @@ export function ReviewPanel({
             onOpenFile={review.openInFilesView}
           />
         ) : null}
-        {isChanges || isAgents || isBrowser ? null : (
+        {isChanges || isAgents || isBrowser || isTerminal ? null : (
           <>
             <div className="review-list-col" style={{ width: effectiveLeftColumnWidth }}>
               <WorkspaceTree state={files} toolbar={{ onRefresh: files.refreshList }} />
@@ -601,7 +690,7 @@ export function ReviewPanel({
             />
           </>
         )}
-        {isAgents || isBrowser ? null : (
+        {isAgents || isBrowser || isTerminal ? null : (
         <div className={isChanges ? "review-diff" : "review-diff review-diff-files"}>
           {isChanges ? (
             <>
@@ -691,7 +780,7 @@ export function ReviewPanel({
           <span className="review-footer-text">{summaryStrip}</span>
         </footer>
       ) : null}
-      {isChanges || isAgents || isBrowser ? null : (
+      {isChanges || isAgents || isBrowser || isTerminal ? null : (
         <footer className="review-status-bar" aria-label="File status">
           <span className="review-status-path" title={files.selectedPath ?? sourceLabel}>
             {files.selectedPath ?? entryCountLabel}

@@ -1,6 +1,6 @@
 # Browser Panel
 
-Argmax browses inside the review panel: Browser is its fourth mode, beside Changes, Files, and Agents. Links from chat open in the system browser by default; Settings → General → "Web links from chat" can route them to the in-app browser (⌘-click toggles the alternate target). The session actions menu has an "Open browser" item, and the panel's own tab strip has a Browser tab, shown only where the desktop bridge provides `window.argmax.browser` — the mobile remote has none, so the tab is hidden there.
+Argmax browses inside the review panel: Browser is one of its modes, beside Changes, Files, Agents, and [Terminal](terminal.md). Links from chat open in the system browser by default; Settings → General → "Web links from chat" can route them to the in-app browser (⌘-click toggles the alternate target). The session actions menu has an "Open browser" item, and the panel's own tab strip has a Browser tab, shown only where the desktop bridge provides `window.argmax.browser` — the mobile remote has none, so the tab is hidden there.
 
 ## One Surface, One Owner
 

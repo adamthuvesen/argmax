@@ -601,7 +601,7 @@
   display: inline;
 }
 
-/* Agents view: the panel's third mode. Same skeleton as Files — a tab strip
+/* Agents view: another of the panel's modes. Same skeleton as Files — a tab strip
    on top, one scrolling body, a status strip anchored at the bottom — so
    switching modes moves content, not furniture. */
 .review-body-agents {
@@ -798,7 +798,7 @@
   color: var(--accent-deep);
 }
 
-/* Browser view: the panel's fourth mode. Chrome for the native browser child
+/* Browser view: another of the panel's modes. Chrome for the native browser child
    webview, which is a sibling native view glued onto `.browser-panel-surface`
    — that surface is a spacer reserving layout room and reporting its rect
    over IPC. */
@@ -814,6 +814,75 @@
   min-width: 0;
   min-height: 0;
   background: var(--panel);
+}
+
+/* Terminal view: the panel's fifth mode. Same skeleton as Files and Agents —
+   a tab strip on top, one body, a status strip anchored at the bottom — so
+   ⌘J lands the reader somewhere that already looks like the rest of the
+   panel. The xterm surface itself sits on --bg, a shade below the panel, so
+   the shell reads as a window onto the machine rather than more chrome. */
+.review-body-terminal {
+  flex-direction: column;
+}
+
+/* Mounted while the workspace has terminals, laid out only in Terminal mode:
+   switching to Changes and back must not re-fit xterm or lose the viewport. */
+.review-terminal-mount {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* A class with a display beats the UA's [hidden] rule, and this one would
+   paint the terminal straight over the Changes list. */
+.review-terminal-mount[hidden] {
+  display: none;
+}
+
+.review-terminal {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.terminal-tab-bodies {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  background: var(--bg);
+}
+
+.terminal-instance {
+  grid-column: 1;
+  grid-row: 1;
+  min-height: 0;
+  min-width: 0;
+  display: none;
+}
+
+.terminal-instance[data-active="true"] {
+  display: block;
+}
+
+.terminal-surface {
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  padding: 8px 12px 4px 18px;
+  background: var(--bg);
+}
+
+.terminal-surface .xterm {
+  height: 100%;
+}
+
+.terminal-surface .xterm-viewport {
+  background-color: transparent !important;
 }
 
 /* Sits inside the "Browser is open in another pane" placeholder. */

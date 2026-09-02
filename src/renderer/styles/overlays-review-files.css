@@ -205,6 +205,35 @@
   scrollbar-gutter: stable;
 }
 
+/* A strip that can grow tabs on demand (Terminal) puts the + on the shell,
+   outside the scrolling tab list, so it stays reachable at any tab count. */
+.file-tabs-shell:has(> .file-tab-add) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.file-tab-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.file-tab-add:hover {
+  color: var(--text);
+  background: color-mix(in oklab, var(--panel) 60%, var(--panel-sunken));
+}
+
 /* Tabs read as quiet labels: icon plus muted name, no surface. Only the active
    tab lifts to a rounded, hairline-ringed pill, and the close ✕ stays invisible
    (but in flow, so nothing shifts) until the tab is hovered or focused. */

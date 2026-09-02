@@ -1,9 +1,9 @@
 // Per-workspace integrated-terminal tab state that outlives pane mounts.
 //
 // Session panes remount whenever the grid cell or workspace changes; keeping
-// the tab list, active tab, and panel-open flag in this module (instead of
-// component state) is what lets a session switch come back to the same
-// terminals instead of tearing them down. The heavy side — xterm instances
+// the tab list, the active tab, and whether the terminal was on screen in
+// this module (instead of component state) is what lets a session switch come
+// back to the same terminals instead of tearing them down. The heavy side — xterm instances
 // and PTY wiring — lives in `terminalRuntime.ts`, which stays inside the
 // lazy xterm chunk. This module is import-safe from the main bundle.
 //
@@ -20,7 +20,31 @@ export interface TerminalTabMeta {
 export interface WorkspaceTerminalState {
   tabs: readonly TerminalTabMeta[];
   activeTabId: string | null;
-  panelOpen: boolean;
+  /** Whether a review panel was last showing this workspace's terminal. The
+   *  panel's own mode is component state and dies with the pane on every
+   *  session switch; this is what brings the reader back to the terminal
+   *  instead of to the Changes default. */
+  showing: boolean;
+}
+
+/**
+ * A ⌘J press, addressed to a workspace rather than to a component.
+ *
+ * The terminal is a mode of the review panel, whose state lives in that
+ * pane's `useReviewState`. `App` has no handle on it, and the target pane may
+ * not even be mounted when the key is pressed (⌘J from Settings opens the
+ * chat first). So the keypress lands here as a request, and the panel for
+ * that workspace consumes it on its next render. Same shape as the browser's
+ * open request in `browserPanel.ts`.
+ *
+ * The press carries the state it wants, not "toggle": the pane that answers
+ * it may be mounting in the same tick, and a relative instruction there would
+ * flip the panel the latch just restored.
+ */
+export interface TerminalVisibilityRequest {
+  workspaceId: string;
+  visible: boolean;
+  seq: number;
 }
 
 export const MAX_TERMINAL_WORKSPACES = 6;
@@ -28,7 +52,7 @@ export const MAX_TERMINAL_WORKSPACES = 6;
 const EMPTY_STATE: WorkspaceTerminalState = Object.freeze({
   tabs: Object.freeze<TerminalTabMeta[]>([]),
   activeTabId: null,
-  panelOpen: false
+  showing: false
 });
 
 interface WorkspaceEntry {
@@ -76,7 +100,11 @@ export function getWorkspaceTerminalState(workspaceId: string | null): Workspace
 function entryFor(workspaceId: string): WorkspaceEntry {
   let entry = entries.get(workspaceId);
   if (!entry) {
-    entry = { state: { tabs: [], activeTabId: null, panelOpen: false }, attachedCount: 0, lastUsedSeq: ++useSeq };
+    entry = {
+      state: { tabs: [], activeTabId: null, showing: false },
+      attachedCount: 0,
+      lastUsedSeq: ++useSeq
+    };
     entries.set(workspaceId, entry);
   }
   return entry;
@@ -87,29 +115,27 @@ function touch(entry: WorkspaceEntry): void {
 }
 
 function pruneIfEmpty(workspaceId: string, entry: WorkspaceEntry): void {
-  if (entry.state.tabs.length === 0 && !entry.state.panelOpen && entry.attachedCount === 0) {
+  if (entry.state.tabs.length === 0 && !entry.state.showing && entry.attachedCount === 0) {
     entries.delete(workspaceId);
   }
 }
 
-export function setTerminalPanelOpen(workspaceId: string, open: boolean): void {
-  if (open) {
-    const entry = entryFor(workspaceId);
-    touch(entry);
-    if (entry.state.panelOpen) return;
-    entry.state = { ...entry.state, panelOpen: true };
+/** The review panel reports what it is showing; nothing here reads it back
+ *  except the next panel to mount for this workspace. */
+export function setTerminalShowing(workspaceId: string, showing: boolean): void {
+  if (!showing) {
+    const existing = entries.get(workspaceId);
+    if (!existing || !existing.state.showing) return;
+    existing.state = { ...existing.state, showing: false };
+    pruneIfEmpty(workspaceId, existing);
     notify();
     return;
   }
-  const entry = entries.get(workspaceId);
-  if (!entry || !entry.state.panelOpen) return;
-  entry.state = { ...entry.state, panelOpen: false };
-  pruneIfEmpty(workspaceId, entry);
+  const entry = entryFor(workspaceId);
+  touch(entry);
+  if (entry.state.showing) return;
+  entry.state = { ...entry.state, showing: true };
   notify();
-}
-
-export function toggleTerminalPanel(workspaceId: string): void {
-  setTerminalPanelOpen(workspaceId, !getWorkspaceTerminalState(workspaceId).panelOpen);
 }
 
 export function addTerminalTab(workspaceId: string, label: string): string {
@@ -177,11 +203,48 @@ function evictLeastRecentlyUsed(): void {
   }
 }
 
+/** Pending ⌘J, or null once the addressed panel has consumed it. */
+let toggleRequest: TerminalVisibilityRequest | null = null;
+let toggleSeq = 0;
+const requestListeners = new Set<() => void>();
+
+function notifyRequest(): void {
+  for (const listener of requestListeners) listener();
+}
+
+export function subscribeTerminalRequest(listener: () => void): () => void {
+  requestListeners.add(listener);
+  return () => {
+    requestListeners.delete(listener);
+  };
+}
+
+export function getTerminalRequest(): TerminalVisibilityRequest | null {
+  return toggleRequest;
+}
+
+/** ⌘J: ask the review panel for this workspace to show or hide its terminal. */
+export function requestTerminalVisible(workspaceId: string, visible: boolean): void {
+  toggleSeq += 1;
+  toggleRequest = { workspaceId, visible, seq: toggleSeq };
+  notifyRequest();
+}
+
+/** Clears the request so a panel that remounts later never replays it. */
+export function consumeTerminalRequest(seq: number): void {
+  if (toggleRequest?.seq !== seq) return;
+  toggleRequest = null;
+  notifyRequest();
+}
+
 export function resetTerminalTabsForTests(): void {
   // The disposer registration is a module-load side effect of the runtime,
   // so it survives resets deliberately.
   entries.clear();
   listeners.clear();
+  requestListeners.clear();
+  toggleRequest = null;
+  toggleSeq = 0;
   useSeq = 0;
   tabSeq = 0;
 }

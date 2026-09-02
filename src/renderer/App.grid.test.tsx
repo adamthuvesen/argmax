@@ -17,7 +17,10 @@ import {
   terminateProvider
 } from "../test/appTestHarness.js";
 import { startedAgentName } from "../test/agentRowName.js";
-import { resetTerminalTabsForTests } from "./lib/terminalTabs.js";
+import {
+  getWorkspaceTerminalState as getWorkspaceTerminalStateForTest,
+  resetTerminalTabsForTests
+} from "./lib/terminalTabs.js";
 
 vi.mock("./components/TerminalTabsPanel.js", async () => {
   const { useEffect } = await import("react");
@@ -31,7 +34,13 @@ vi.mock("./components/TerminalTabsPanel.js", async () => {
           addTerminalTab(workspaceId, "zsh");
         }
       }, [workspaceId]);
-      return <div data-testid="terminal-tabs-panel" data-visible={String(visible)} />;
+      return (
+        <div
+          data-testid="terminal-tabs-panel"
+          data-workspace={workspaceId}
+          data-visible={String(visible)}
+        />
+      );
     }
   };
 });
@@ -1748,20 +1757,19 @@ describe("App grid", () => {
     fireEvent.keyDown(document, { key: "j", metaKey: true });
 
     expect(await screen.findByRole("group", { name: "Chat panes" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
-    });
+    expect(await screen.findByTestId("terminal-tabs-panel")).toHaveAttribute("data-visible", "true");
 
     fireEvent.keyDown(document, { key: "j", metaKey: true });
 
     await waitFor(() => {
-      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "true");
+      expect(screen.queryByTestId("terminal-tabs-panel")).not.toBeInTheDocument();
     });
   });
 
   it("keeps an open terminal open after switching to another session and back", async () => {
-    // The Cmd+J counter lives in App and outlives every pane; a remounted
-    // pane must not replay the last press and toggle the persisted panel.
+    // Panes are keyed by session, so the review panel's mode dies on every
+    // switch; the workspace-keyed store is what brings the terminal back. The
+    // ⌘J request is consumed once, so the remounted pane must not replay it.
     const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-2",
       projectId: "project-1",
@@ -1806,18 +1814,19 @@ describe("App grid", () => {
     await screen.findByRole("heading", { name: "Argmax" });
     fireEvent.keyDown(document, { key: "j", metaKey: true });
     await waitFor(() => {
-      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
+      expect(screen.getByTestId("terminal-tabs-panel")).toHaveAttribute("data-workspace", "workspace-1");
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Other session" }));
     await waitFor(() => {
-      expect(document.querySelector(".terminal-panel")).toBeNull();
+      expect(screen.queryByTestId("terminal-tabs-panel")).not.toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
     await waitFor(() => {
-      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
+      expect(screen.getByTestId("terminal-tabs-panel")).toHaveAttribute("data-workspace", "workspace-1");
     });
+    expect(getWorkspaceTerminalStateForTest("workspace-1").tabs).toHaveLength(1);
   });
 
   it("returns from Settings and opens the active session terminal on Cmd+J", async () => {
@@ -1831,7 +1840,7 @@ describe("App grid", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("heading", { name: "Settings" })).not.toBeInTheDocument();
-      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
+      expect(screen.getByTestId("terminal-tabs-panel")).toHaveAttribute("data-visible", "true");
     });
   });
 

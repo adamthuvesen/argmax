@@ -21,7 +21,7 @@ Targets defined in [src/test/perf.test.ts](../src/test/perf.test.ts):
 
 - `mergeDashboardDelta` across 200 sessions: p95 < 5 ms.
 - `mergeDashboardDelta` with 500 deltas + tool rows: p95 < 5 ms.
-- `mergeDashboardDelta` with a 1-event delta onto 5,000 events: p95 < 1 ms.
+- `mergeDashboardDelta` with a 1-event delta onto 5,000 events: p95 < 2 ms.
 - `buildFileTree` across 10,000 files: < 75 ms.
 - `searchFilePaths` across 10,000 paths: p95 < 25 ms.
 - `parseUnifiedDiff` across a 500-hunk diff: p95 < 20 ms.

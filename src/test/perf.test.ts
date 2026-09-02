@@ -94,12 +94,14 @@ describe("perf budgets", () => {
     expect(percentile(durations, 0.95)).toBeLessThan(5);
   });
 
-  it("a 1-event delta onto a 5 000-event snapshot stays p95 < 1 ms", () => {
+  it("a 1-event delta onto a 5 000-event snapshot stays p95 < 2 ms", () => {
     // The shape of every streamed chunk: one new row on top of a long
     // transcript, which the renderer pays for once per delta. Measured p95 is
     // 0.23 ms with the append fast path in mergeEventsBounded and 0.47 ms
     // without it, so this budget bounds the cost rather than telling the two
-    // apart — the fast path's own behaviour is pinned in snapshot.test.ts.
+    // apart. Shared CI runners can exceed 1 ms without a regression, so this
+    // is a 2 ms regression ceiling. The fast path's behaviour is pinned in
+    // snapshot.test.ts.
     const base: DashboardSnapshot = {
       ...emptySnapshot,
       events: Array.from({ length: 5_000 }, (_, i): TimelineEvent => ({
@@ -133,7 +135,7 @@ describe("perf budgets", () => {
       durations.push(performance.now() - start);
     }
     durations.sort((a, b) => a - b);
-    expect(percentile(durations, 0.95)).toBeLessThan(1);
+    expect(percentile(durations, 0.95)).toBeLessThan(2);
   });
 
   it("buildFileTree over 10 000 entries completes < 75 ms", () => {

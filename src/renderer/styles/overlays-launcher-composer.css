@@ -1,14 +1,7 @@
 .mascot {
-  /* The fox carries its own palette rather than the chosen accent: it reads as
-     a fox because cream separates from orange, and tinting the whole sprite one
-     accent collapses that back into a blob. Only the thinking rain stays on the
-     accent, so the live-work signal still matches the rest of the chrome. */
-  --fox-fur: #c6663a;
-  --fox-fur-shade: #99442d;
-  --fox-line: #592718;
-  --fox-cream: #ebe1cf;
-  --fox-cream-shade: #bca595;
-  --fox-nose: #110b0f;
+  /* The fox palette lives in tokens.css (`--fox-*`): the tool-row mark for
+     Argmax's own MCP server paints the same head. Only the thinking rain stays
+     on the accent, so the live-work signal still matches the rest of the chrome. */
   --mascot-rain: color-mix(in oklab, var(--accent) 58%, var(--panel));
 
   display: inline-block;
@@ -63,13 +56,6 @@
   transform-box: view-box;
   animation: mascot-blink 4.6s var(--ease) infinite;
   animation-play-state: var(--loop-play-state, running);
-}
-
-/* On charcoal the reference outline is barely off the background, which loses
-   the sprite's edges. Warming it up keeps the silhouette without touching the
-   fur, so the fox stays the same colour in both themes. */
-:root[data-theme="dark"] .mascot {
-  --fox-line: #75381f;
 }
 
 .mascot .mascot-rain-dot {

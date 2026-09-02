@@ -1,4 +1,15 @@
 :root {
+  /* The mascot's palette. The fox carries its own colours rather than the
+     chosen accent: it reads as a fox because cream separates from orange, and
+     tinting the sprite one accent collapses it into a blob. Shared by the
+     launcher mascot and the tool-row mark for Argmax's own MCP server. */
+  --fox-fur: #c6663a;
+  --fox-fur-shade: #99442d;
+  --fox-line: #592718;
+  --fox-cream: #ebe1cf;
+  --fox-cream-shade: #bca595;
+  --fox-nose: #110b0f;
+
   color-scheme: light;
   --font-ui: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-prose: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -369,6 +380,10 @@
    the light-mode drop with an inset top-highlight (one pixel of warm light at
    the top of each elevated surface) plus a heavier drop for separation. */
 :root[data-theme="dark"] {
+  /* On charcoal the reference outline is barely off the background, which
+     loses the sprite's edges. Warming it keeps the silhouette without touching
+     the fur, so the fox stays the same colour in both themes. */
+  --fox-line: #75381f;
   color-scheme: dark;
 
   /* Two-tone charcoal, neutral rather than yellow-leaning. The main view is

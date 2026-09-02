@@ -49,13 +49,15 @@ impl ServerHandler for ArgmaxTools {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
             "Argmax runs this session. The session tools reach the sessions around it: list \
-             them, launch new ones on tasks of their own, message them, and move this session to \
-             another project. Use them on your own initiative whenever the work calls for it — \
-             they act on top-level sidebar sessions the user can see, not on subagents. The \
-             browser tools drive Argmax's own browser: browser_open a page, browser_snapshot to \
-             read it as an accessibility tree with [ref=eN] handles, then click and type by ref. \
-             The user watches those pages in this session's pane. Snapshot first and after every \
-             action; screenshot only when the question is visual.",
+             them, launch new ones on tasks of their own, watch them, read what they did, \
+             message them, stop them, and move this session to another project. Use them on \
+             your own initiative whenever the work calls for it — they act on top-level sidebar \
+             sessions the user can see, not on subagents. The usual shape is launch, then \
+             session_wait, then session_read. The browser tools drive Argmax's own browser: \
+             browser_open a page, browser_snapshot to read it as an accessibility tree with \
+             [ref=eN] handles, then click and type by ref. The user watches those pages in this \
+             session's pane. Snapshot first and after every action; screenshot only when the \
+             question is visual.",
         )
     }
 }

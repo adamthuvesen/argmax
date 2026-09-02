@@ -13,6 +13,7 @@ use argmax_lib::{
     error::ArgmaxResult,
     persistence::{
         database::Database,
+        events::{persist_timeline_event, PersistTimelineEventInput},
         projects::{persist_project, PersistProjectInput, ProjectSettings},
         sessions::{
             find_session_by_id, persist_session, record_session_launch, PersistSessionInput,
@@ -553,4 +554,308 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
             .is_empty(),
         "a refused launch must not reach the provider"
     );
+}
+
+/// The Phase 2 surface end to end over the socket: look at a launched session,
+/// read its transcript, wait on it, stop it, and see the completion notice
+/// land in the launching session as a real turn.
+#[tokio::test]
+async fn observing_stopping_and_waiting_on_a_launched_session() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    {
+        let connection = database.connection();
+        persist_project(
+            &connection,
+            &PersistProjectInput {
+                id: "project-1".to_string(),
+                name: "Argmax".to_string(),
+                repo_path: repo.path().display().to_string(),
+                current_branch: "main".to_string(),
+                default_branch: Some("main".to_string()),
+                settings: ProjectSettings {
+                    worktree_location: repo.path().join("worktrees").display().to_string(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                },
+            },
+        )
+        .expect("project");
+        for (workspace_id, label) in [
+            ("workspace-parent", "Parent"),
+            ("workspace-child", "Count to ten"),
+        ] {
+            persist_workspace(
+                &connection,
+                &PersistWorkspaceInput {
+                    id: workspace_id.to_string(),
+                    project_id: "project-1".to_string(),
+                    task_label: label.to_string(),
+                    branch: "main".to_string(),
+                    base_ref: "main".to_string(),
+                    path: repo.path().display().to_string(),
+                    state: "running".to_string(),
+                    shared_workspace: true,
+                    kind: "git".to_string(),
+                    dirty: false,
+                    changed_files: 0,
+                },
+            )
+            .expect("workspace");
+        }
+        for (session_id, workspace_id, state) in [
+            ("session-parent", "workspace-parent", "complete"),
+            ("session-child", "workspace-child", "running"),
+        ] {
+            persist_session(
+                &connection,
+                &PersistSessionInput {
+                    id: session_id.to_string(),
+                    workspace_id: workspace_id.to_string(),
+                    provider: "codex".to_string(),
+                    model_label: "GPT-5.6 Sol".to_string(),
+                    model_id: "gpt-5.6-sol".to_string(),
+                    reasoning_effort: None,
+                    permission_mode: Some("auto-approve".to_string()),
+                    agent_mode: Some("auto".to_string()),
+                    prompt: "Task".to_string(),
+                    state: state.to_string(),
+                    attention: "normal".to_string(),
+                },
+            )
+            .expect("session");
+        }
+        record_session_launch(&connection, "session-child", "session-parent", 1)
+            .expect("record lineage");
+        for (id, r#type, message, payload) in [
+            (
+                "event-1",
+                "user.message",
+                "Reply with exactly the word pong",
+                json!({ "source": "composer" }),
+            ),
+            (
+                "event-2",
+                "command.started",
+                "shell",
+                json!({ "input": { "command": "echo pong" } }),
+            ),
+            (
+                "event-3",
+                "command.completed",
+                "pong",
+                json!({ "toolName": "shell" }),
+            ),
+            ("event-4", "message.completed", "pong", json!({})),
+        ] {
+            persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: id.to_string(),
+                    session_id: "session-child".to_string(),
+                    r#type: r#type.to_string(),
+                    message: message.to_string(),
+                    payload,
+                    created_at: None,
+                },
+            )
+            .expect("child event");
+        }
+    }
+
+    let launcher = Arc::new(RecordingLauncher::default());
+    let providers =
+        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    providers.set_session_control(Arc::clone(&registry));
+    let credential = |session_id: &str| {
+        let config = registry.issue(&ProviderLaunchInput {
+            provider: ProviderId::Codex,
+            session_id: session_id.to_string(),
+            workspace_path: PathBuf::from(repo.path()),
+            prompt: "Task".to_string(),
+            model_label: "GPT-5.6 Sol".to_string(),
+            model_id: "gpt-5.6-sol".to_string(),
+            reasoning_effort: None,
+            fast_mode: false,
+            resume_conversation_id: None,
+            resume_fork: false,
+            permission_mode: PermissionMode::AutoApprove,
+            agent_mode: AgentMode::Auto,
+            cols: 120,
+            rows: 32,
+        });
+        let environment = config.env_pairs().into_iter().collect::<Vec<_>>();
+        let socket = environment
+            .iter()
+            .find(|(key, _)| key == SESSION_LAUNCH_SOCKET_ENV)
+            .map(|(_, value)| value.clone())
+            .expect("socket env");
+        let token = environment
+            .iter()
+            .find(|(key, _)| key == SESSION_LAUNCH_TOKEN_ENV)
+            .map(|(_, value)| value.clone())
+            .expect("token env");
+        (socket, token)
+    };
+    let (socket, parent_token) = credential("session-parent");
+    let (_, child_token) = credential("session-child");
+    let _server = server
+        .start(
+            None,
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            Arc::clone(&providers),
+        )
+        .expect("start control socket");
+
+    let ask = |request: serde_json::Value| {
+        let socket = socket.clone();
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let mut stream = UnixStream::connect(socket).expect("connect control socket");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(30)))
+                    .expect("read timeout");
+                writeln!(stream, "{request}").expect("write request");
+                stream.shutdown(Shutdown::Write).expect("finish request");
+                let mut response = String::new();
+                stream.read_to_string(&mut response).expect("read response");
+                serde_json::from_str::<serde_json::Value>(&response).expect("response json")
+            })
+            .await
+            .expect("client task")
+        }
+    };
+    let as_parent = |action: serde_json::Value| {
+        ask(json!({ "version": 1, "token": parent_token, "action": action }))
+    };
+    let as_child = |action: serde_json::Value| {
+        ask(json!({ "version": 1, "token": child_token, "action": action }))
+    };
+
+    // Status reads the lineage and the last answer without touching the
+    // transcript.
+    let status = as_parent(json!({ "status": { "sessionId": "session-child" } })).await;
+    assert_eq!(status["status"]["state"], "running");
+    assert_eq!(status["status"]["launchedBySessionId"], "session-parent");
+    assert_eq!(status["status"]["launchDepth"], 1);
+    assert_eq!(status["status"]["lastAssistantText"], "pong");
+    assert_eq!(status["status"]["unreadInbox"], 0);
+
+    // Read returns the normalized timeline, not provider JSON.
+    let read = as_parent(json!({ "read": { "sessionId": "session-child" } })).await;
+    let entries = read["read"]["entries"].as_array().expect("entries");
+    let kinds = entries
+        .iter()
+        .map(|entry| entry["kind"].as_str().unwrap_or_default())
+        .collect::<Vec<_>>();
+    assert_eq!(kinds, vec!["user", "tool", "tool-result", "assistant"]);
+    assert_eq!(entries[1]["text"], "shell echo pong");
+    assert_eq!(entries[2]["text"], "shell -> ok");
+    assert_eq!(entries[3]["text"], "pong");
+    assert!(read["read"]["nextCursor"].as_i64().expect("cursor") > 0);
+
+    // A wait on a session that is still working runs out rather than lying.
+    let timed_out = as_parent(json!({
+        "wait": { "sessions": ["session-child"], "timeoutS": 1 }
+    }))
+    .await;
+    assert_eq!(timed_out["waited"]["timedOut"], true);
+
+    // A session cannot stop its own turn.
+    let stop_self = as_parent(json!({ "stop": { "sessionId": "session-parent" } })).await;
+    assert_eq!(stop_self["error"]["code"], "STOP_SELF");
+
+    // Stopping the child cancels it and leaves the launching session a
+    // completion notice, delivered as an ordinary turn.
+    let stopped = as_parent(json!({ "stop": { "sessionId": "session-child" } })).await;
+    assert_eq!(stopped["stopped"]["sessionId"], "session-child");
+    assert_eq!(stopped["stopped"]["state"], "cancelled");
+    let notice = wait_for(|| {
+        let connection = database.connection();
+        connection
+            .query_row(
+                "SELECT body, kind FROM session_messages WHERE to_session_id = 'session-parent'",
+                [],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+            .ok()
+    })
+    .await
+    .expect("a completion notice for the launching session");
+    assert_eq!(notice.1, "completion");
+    assert!(
+        notice.0.contains("Count to ten")
+            && notice.0.contains("cancelled")
+            && notice.0.contains("pong"),
+        "the notice must name the session, its state, and its answer: {}",
+        notice.0
+    );
+    let origin = wait_for(|| {
+        let connection = database.connection();
+        connection
+            .query_row(
+                "SELECT payload_json FROM events WHERE session_id = 'session-parent' AND type = 'user.message'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .ok()
+    })
+    .await
+    .expect("the notice arrives as a turn in the launching session");
+    let origin: serde_json::Value = serde_json::from_str(&origin).expect("payload json");
+    assert_eq!(origin["origin"]["kind"], "completion");
+    assert_eq!(origin["origin"]["sessionId"], "session-child");
+    assert_eq!(origin["origin"]["label"], "Count to ten");
+
+    // A settled watched session ends the wait immediately.
+    let waited = as_parent(json!({ "wait": { "timeoutS": 30 } })).await;
+    assert_eq!(waited["waited"]["timedOut"], false);
+    assert_eq!(
+        waited["waited"]["sessions"][0]["sessionId"],
+        "session-child"
+    );
+    assert_eq!(waited["waited"]["sessions"][0]["state"], "cancelled");
+
+    // A message to a session that is mid-turn queues, and stays collectable
+    // from that session's inbox until it is read.
+    let first = as_parent(json!({
+        "message": { "sessionId": "session-child", "message": "first" }
+    }))
+    .await;
+    assert_eq!(first["messaged"]["queued"], false);
+    let second = as_parent(json!({
+        "message": { "sessionId": "session-child", "message": "second" }
+    }))
+    .await;
+    assert_eq!(second["messaged"]["queued"], true);
+    let child_status = as_parent(json!({ "status": { "sessionId": "session-child" } })).await;
+    assert_eq!(child_status["status"]["unreadInbox"], 1);
+    let inbox = as_child(json!({ "inbox": {} })).await;
+    let messages = inbox["inbox"]["messages"].as_array().expect("messages");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0]["body"], "second");
+    assert_eq!(messages[0]["kind"], "message");
+    assert_eq!(messages[0]["fromSessionId"], "session-parent");
+    assert_eq!(messages[0]["fromLabel"], "Parent");
+    // Collected once: a second read comes back empty.
+    let drained = as_child(json!({ "inbox": {} })).await;
+    assert!(drained["inbox"]["messages"]
+        .as_array()
+        .expect("messages")
+        .is_empty());
+}
+
+/// Poll a database read until it answers, since the completion notice is
+/// delivered on a background task.
+async fn wait_for<T>(mut read: impl FnMut() -> Option<T>) -> Option<T> {
+    for _ in 0..100 {
+        if let Some(value) = read() {
+            return Some(value);
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    None
 }

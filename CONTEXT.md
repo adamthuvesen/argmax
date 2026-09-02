@@ -106,6 +106,14 @@ _Avoid_: Approval mode, safety mode
 **Approval support**:
 How far a provider can participate in approvals: `respondable` (Argmax can answer the gate), `observable-only` (the request is visible but unanswerable, so the session blocks), or `unsupported` (no detector). Argmax never fakes the answer.
 
+**Inbox**:
+A session's undelivered mail — the `session_messages` rows addressed to it that no one has collected yet. A message is recorded here *and* delivered as a turn; the row is what a session that was mid-turn can still read afterwards with `inbox_read`. Reading collects it.
+_Avoid_: Queue, mailbox, notifications
+
+**Completion notice**:
+The message Argmax writes to a launching session when a session it launched ends a turn: that session's id, label, final state, and last answer. Delivered like any other message, so an idle launcher wakes on a new turn. One per turn end, and only for a session that has a launcher.
+_Avoid_: Completion event, done message, callback
+
 ### What a session produced
 
 **Timeline event**:

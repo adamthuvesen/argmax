@@ -399,6 +399,28 @@ export function Sidebar({
     );
   }, [snapshot.sessions, snapshot.workspaces]);
 
+  // A chat started by another chat's agent (the `argmax` MCP launch tools)
+  // names its parent on the row, so delegated work is not read as something
+  // the user opened. Resolved through the parent session's own workspace
+  // label; a parent that has left the snapshot leaves the row plain.
+  const launchedByLabelByWorkspace = useMemo(() => {
+    const labelByWorkspaceId = new Map(
+      snapshot.workspaces.map((workspace) => [
+        workspace.id,
+        workspace.taskLabel.trim() || workspace.branch
+      ])
+    );
+    const sessionById = new Map(snapshot.sessions.map((session) => [session.id, session]));
+    const labels = new Map<string, string>();
+    for (const session of snapshot.sessions) {
+      if (!session.launchedBySessionId) continue;
+      const parent = sessionById.get(session.launchedBySessionId);
+      const label = parent ? labelByWorkspaceId.get(parent.workspaceId) : undefined;
+      if (label) labels.set(session.workspaceId, label);
+    }
+    return labels;
+  }, [snapshot.sessions, snapshot.workspaces]);
+
   const importedProviderByWorkspace = useMemo(() => {
     const labels = new Map<string, string>();
     for (const session of snapshot.sessions) {
@@ -946,6 +968,7 @@ export function Sidebar({
                 <SidebarSessionRow
                   workspace={workspace}
                   copyableIds={copyableIdsByWorkspace.get(workspace.id)}
+                  launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
                   isSelected={selectedWorkspaceId === workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                   canDragToGrid={canDragWorkspaceToGrid}
@@ -1073,6 +1096,7 @@ export function Sidebar({
                   copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                   subtitle={subtitleFor(workspace.projectId)}
                   importedProvider={importedProviderByWorkspace.get(workspace.id)}
+                  launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
                   isSelected={selectedWorkspaceId === workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                   canDragToGrid={canDragWorkspaceToGrid}
@@ -1129,6 +1153,7 @@ export function Sidebar({
                   copyableIds={copyableIdsByWorkspace.get(entry.workspace.id)}
                   subtitle={subtitleFor(entry.workspace.projectId)}
                   importedProvider={importedProviderByWorkspace.get(entry.workspace.id)}
+                  launchedByLabel={launchedByLabelByWorkspace.get(entry.workspace.id)}
                   isSelected={selectedWorkspaceId === entry.workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(entry.workspace.id)}
                   canDragToGrid={canDragWorkspaceToGrid}
@@ -1209,6 +1234,7 @@ export function Sidebar({
                             copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                             subtitle={subtitleFor(workspace.projectId)}
                             importedProvider={importedProviderByWorkspace.get(workspace.id)}
+                            launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
                             isSelected={selectedWorkspaceId === workspace.id}
                             isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                             canDragToGrid={canDragWorkspaceToGrid}
@@ -1365,6 +1391,7 @@ export function Sidebar({
                       <SidebarSessionRow
                         workspace={workspace}
                         copyableIds={copyableIdsByWorkspace.get(workspace.id)}
+                        launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
                         isSelected={selectedWorkspaceId === workspace.id}
                         isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                         canDragToGrid={canDragWorkspaceToGrid}

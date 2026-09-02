@@ -2,6 +2,7 @@ import {
   Bug,
   ChevronLeft,
   ChevronRight,
+  CornerUpLeft,
   Folder,
   GitBranch,
   Globe,
@@ -27,6 +28,7 @@ export function SessionActionsMenu({
   onBrowseFiles,
   onNewSession,
   onOpenCommitDialog,
+  onOpenLaunchingChat,
   onOpenInIde,
   onToggleLog,
   onToggleWorkspaceCard,
@@ -48,6 +50,10 @@ export function SessionActionsMenu({
   /** Opens a launcher pane beside this one. Absent where the grid isn't the
       host surface (the single-pane preview), which hides the action. */
   onNewSession?: () => void;
+  /** Opens the chat whose agent launched this one. Absent when that chat has
+      left the snapshot, which hides the action — a session names a launcher
+      that may since have been archived. */
+  onOpenLaunchingChat?: () => void;
   onOpenCommitDialog?: () => void;
   onToggleLog: () => void;
   session: SessionSummary | null;
@@ -151,6 +157,23 @@ export function SessionActionsMenu({
                   >
                     <SquarePen size={14} aria-hidden="true" />
                     New chat here
+                  </button>
+                </li>
+              ) : null}
+              {session?.launchedBySessionId && onOpenLaunchingChat ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    title="Open the chat whose agent started this one"
+                    onClick={() => {
+                      closeActions();
+                      onOpenLaunchingChat();
+                    }}
+                  >
+                    <CornerUpLeft size={14} aria-hidden="true" />
+                    Open launching chat
                   </button>
                 </li>
               ) : null}

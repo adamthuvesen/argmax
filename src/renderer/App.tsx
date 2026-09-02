@@ -1063,6 +1063,19 @@ export function App(): JSX.Element {
     },
     [openWorkspaceChat, setIsSettingsOpen, setIsFullLauncherOpen]
   );
+  // Focus another chat by session id: the sender named on an agent message's
+  // bubble, and the chat whose agent launched this one. A session that has
+  // since been pruned resolves to nothing and the click is a no-op.
+  const openSessionById = useCallback(
+    (sessionId: string): void => {
+      const target = snapshot.sessions.find((session) => session.id === sessionId);
+      if (!target) return;
+      setIsSettingsOpen(false);
+      setIsFullLauncherOpen(false);
+      openWorkspaceChat(target.workspaceId, { ctrlOrMeta: false, alt: false });
+    },
+    [snapshot.sessions, openWorkspaceChat, setIsSettingsOpen, setIsFullLauncherOpen]
+  );
   const onOpenLauncherRow = useCallback((): void => {
     setIsSettingsOpen(false);
     setLauncherResetSignal((signal) => signal + 1);
@@ -2006,6 +2019,7 @@ export function App(): JSX.Element {
               onLoadAgentEvents={loadAgentEvents}
               onNewSession={openNewSessionPaneInGrid}
               onOpenSideChat={launchSideChat}
+              onOpenSession={openSessionById}
               onOpenDetails={launchDetailsPopup}
               defaultIde={defaultIde}
               detectedIdes={detectedIdes}

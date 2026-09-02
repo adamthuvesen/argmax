@@ -180,6 +180,15 @@ pub static SESSION_LAUNCH_LINEAGE_COLUMNS: phf::Map<&'static str, &'static [&'st
     ] as &'static [&'static str],
 };
 
+// Post-v24 `session_messages` shape: the inbox one session's agent writes to
+// another's, and the completion notice a launched session leaves behind.
+pub static SESSION_MESSAGES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "session_messages" => &[
+        "body", "created_at", "delivered_at", "from_session_id", "id", "kind",
+        "to_session_id",
+    ] as &'static [&'static str],
+};
+
 // Post-v19 `routines` shape: the scheduled-task table as created.
 pub static ROUTINES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "routines" => &[
@@ -487,6 +496,14 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &PROJECT_DEFAULT_AGENT_REMOVED_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 25,
+        name: "session_messages",
+        up: SESSION_MESSAGES,
+        affected_tables: &["session_messages"],
+        expected_columns: &SESSION_MESSAGES_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 // The default agent is an app-wide setting now, not a per-project one: one
@@ -508,6 +525,26 @@ const SESSION_LAUNCH_LINEAGE: &str = r#"
 ALTER TABLE sessions ADD COLUMN launched_by_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL;
 ALTER TABLE sessions ADD COLUMN launch_depth INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX idx_sessions_launched_by ON sessions(launched_by_session_id);
+"#;
+
+// One session's message to another, and the completion notice a launched
+// session leaves for whoever launched it. The row outlives the delivery: it is
+// what `inbox_read` and `session_wait` read, while `delivered_at` records that
+// the message also reached the recipient as a turn. Both session references
+// go to NULL rather than cascading, so pruning one session never deletes
+// another session's inbox history.
+const SESSION_MESSAGES: &str = r#"
+CREATE TABLE session_messages (
+  id TEXT PRIMARY KEY,
+  from_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  to_session_id TEXT NOT NULL,
+  body TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  delivered_at TEXT
+);
+CREATE INDEX idx_session_messages_inbox
+  ON session_messages(to_session_id, delivered_at);
 "#;
 
 // The branch a PR was opened from, so a workspace can find the PR for the
@@ -1358,6 +1395,7 @@ mod tests {
                 (22, compute_migration_checksum(GH_PR_HEAD_REF_NAME)),
                 (23, compute_migration_checksum(SESSION_LAUNCH_LINEAGE)),
                 (24, compute_migration_checksum(DROP_PROJECT_DEFAULT_AGENT)),
+                (25, compute_migration_checksum(SESSION_MESSAGES)),
             ]
         );
 

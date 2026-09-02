@@ -14,7 +14,8 @@ use rmcp::{
 use serde::Deserialize;
 
 use crate::session_control::{
-    LaunchAction, ListAction, MessageAction, MoveAction, SessionControlAction,
+    InboxAction, LaunchAction, ListAction, MessageAction, MoveAction, ReadAction,
+    SessionControlAction, StatusAction, StopAction, WaitAction,
 };
 
 #[derive(Clone)]
@@ -74,6 +75,41 @@ pub struct SessionMoveParams {
     /// Keep the source workspace open instead of archiving it after the move.
     #[serde(default)]
     pub keep_source: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SessionStatusParams {
+    /// Id of the session to inspect, from session_list or session_launch.
+    pub session: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SessionReadParams {
+    /// Id of the session to read, from session_list or session_launch.
+    pub session: String,
+    /// The `nextCursor` a previous read returned. Omit it to read from the
+    /// start of the transcript.
+    pub cursor: Option<i64>,
+    /// Byte budget for this page. Defaults to 16000, capped at 40000; a page
+    /// cut short comes back with `truncated: true` and a cursor to resume from.
+    pub max_chars: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SessionStopParams {
+    /// Id of the session whose turn should be stopped.
+    pub session: String,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct InboxReadParams {}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct SessionWaitParams {
+    /// Session ids to watch. Omit it to watch every session you launched.
+    pub sessions: Option<Vec<String>>,
+    /// Seconds to block before giving up. Defaults to 120, capped at 600.
+    pub timeout_s: Option<u64>,
 }
 
 #[tool_router(router = tool_router)]
@@ -136,8 +172,8 @@ two levels deep and ten per session."
         description = "Send a message into another Argmax session, as if the user had typed it \
 there. An idle session starts a turn on it; one that is mid-turn receives it when that turn ends, \
 which the result's `queued` field reports. You cannot message yourself, and nothing comes back \
-here — read the reply with session_list and the session's own transcript, or let the user watch it. \
-Message other sessions on your own initiative when coordinating work needs it."
+here — read the reply with session_read, or wait for one with session_wait. Message other sessions \
+on your own initiative when coordinating work needs it."
     )]
     async fn session_message(
         &self,
@@ -146,6 +182,96 @@ Message other sessions on your own initiative when coordinating work needs it."
         call(SessionControlAction::Message(MessageAction {
             session_id: params.session,
             message: params.message,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "session_status",
+        description = "Look at one Argmax session without reading its transcript: its state, how \
+many seconds its current turn has been running, its most recent answer (capped), how many messages \
+are waiting unread in its inbox, and which session launched it. Use it to check on a session you \
+launched before deciding whether to wait, message, or stop it."
+    )]
+    async fn session_status(
+        &self,
+        Parameters(params): Parameters<SessionStatusParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::Status(StatusAction {
+            session_id: params.session,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "session_read",
+        description = "Read another session's conversation: the prompts it was given, the answers \
+it gave, and its tool calls as one-line summaries. Returns a page of entries plus a `nextCursor` — \
+pass that cursor back to read only what has happened since. A page is capped in bytes and reports \
+`truncated` when there is more to fetch. This is how you find out what a session you launched \
+actually did."
+    )]
+    async fn session_read(
+        &self,
+        Parameters(params): Parameters<SessionReadParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::Read(ReadAction {
+            session_id: params.session,
+            cursor: params.cursor,
+            max_chars: params.max_chars,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "session_stop",
+        description = "Stop another session's running turn, the same way the user's Stop button \
+does: the provider process is killed and the session goes to `cancelled`. Its transcript and \
+workspace stay. Use it when a session you launched is stuck or no longer needed. You cannot stop \
+yourself."
+    )]
+    async fn session_stop(
+        &self,
+        Parameters(params): Parameters<SessionStopParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::Stop(StopAction {
+            session_id: params.session,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "inbox_read",
+        description = "Collect the messages other sessions have addressed to you and have not been \
+handed over yet — each with who sent it, whether it is a plain message or the automatic notice that \
+a session you launched has finished, and when it arrived. Reading them marks them collected, so a \
+second call returns only what has arrived since. Messages also reach you as ordinary turns when you \
+are idle; this is how you see the ones that landed while you were working."
+    )]
+    async fn inbox_read(
+        &self,
+        Parameters(_params): Parameters<InboxReadParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::Inbox(InboxAction {})).await
+    }
+
+    #[tool(
+        name = "session_wait",
+        description = "Block until a session you are watching finishes or a message arrives for \
+you, then return what happened. With no arguments it watches every session you launched and waits \
+up to two minutes. It returns as soon as any watched session reaches complete, failed, or \
+cancelled — reporting each one's id and state — and/or with the messages that arrived, which it \
+also marks collected. A wait that runs out returns `{timed_out: true}`; call it again to keep \
+waiting. This is the tool that makes launching a session useful: launch, wait, then session_read \
+its answer."
+    )]
+    async fn session_wait(
+        &self,
+        Parameters(params): Parameters<SessionWaitParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::Wait(WaitAction {
+            sessions: params.sessions,
+            timeout_s: params.timeout_s,
         }))
         .await
     }

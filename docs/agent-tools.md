@@ -1,10 +1,10 @@
 # Agent Tools
 
 Every session Argmax launches gets one MCP server, `argmax`, whose tools reach
-the sessions around it: list them, launch new ones, message them, and move this
-session to another project. The tools are the same across providers, and they
-are the same capabilities the `argmax session …` CLI has always had — one wire
-protocol, two faces.
+the sessions around it: list them, launch new ones, watch them, read what they
+did, message them, stop them, and move this session to another project. The
+tools are the same across providers, and they run on the same wire protocol the
+`argmax session …` CLI has always used — one protocol, two faces.
 
 ## The tools
 
@@ -18,6 +18,11 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `session_list` | `project?`, `all?` | `{sessions: [{sessionId, projectId, projectName, taskLabel, provider, state, lastActivityAt, launchedBySessionId?}], truncated}` — newest activity first, the caller excluded, capped at 40 rows |
 | `session_launch` | `prompt`, `project?`, `provider?`, `model?`, `worktree?`, `taskLabel?` | `{sessionId, workspaceId, projectId, projectName}` |
 | `session_message` | `session`, `message` | `{sessionId, queued}` — `queued` is true when the target was mid-turn |
+| `session_status` | `session` | `{sessionId, taskLabel, provider, modelId, state, turnAgeSeconds?, lastActivityAt, lastAssistantText?, unreadInbox, launchedBySessionId?, launchDepth}` |
+| `session_read` | `session`, `cursor?`, `maxChars?` | `{sessionId, entries: [{at, kind, text}], nextCursor, truncated}` |
+| `session_stop` | `session` | `{sessionId, state}` |
+| `inbox_read` | — | `{messages: [{fromSessionId?, fromLabel?, kind, body, createdAt}]}` |
+| `session_wait` | `sessions?`, `timeoutS?` | `{timedOut, sessions: [{sessionId, taskLabel, state}], messages: […]}` |
 | `session_move` | `project`, `worktree?`, `keepSource?` | `{scheduled, sourceSessionId, projectId, projectName}` |
 
 ### Browser
@@ -96,6 +101,104 @@ has no model-label catalog, that lives in
 A move is scheduled rather than immediate: it runs once the calling turn
 settles, since the agent asking for it is mid-turn.
 
+## Observing another session
+
+`session_read` returns the *normalized* timeline, not provider JSON. Every
+provider's output is translated into `events` rows on the way in
+([data.md](data.md)), so a read is the same query the chat pane makes
+(`session:events-since`) with each row flattened to one line: `user` prompts,
+`assistant` answers, `tool` calls as name plus one argument, `tool-result` as
+`ok` or `error: …`, and `state` for a session ending. Rows the chat hides —
+streaming deltas, subagent traces, lifecycle bookkeeping — are dropped here
+too.
+
+A page is capped in bytes (16 KB by default, 40 KB at most) and each entry is
+capped at 2 000 characters, so one enormous tool result cannot spend the whole
+budget. A page cut short comes back with `truncated: true`; read again from
+`nextCursor` for the rest.
+
+`session_status` answers the cheaper question — is it still working, how long
+has this turn been running, what did it last say, is anyone waiting on it — in
+one row, without paging a transcript.
+
+`session_stop` runs the same `SessionService::terminate` the user's Stop button
+does: the provider process is disposed and the session goes to `cancelled`,
+keeping its transcript and its workspace. A session cannot stop its own turn
+(`STOP_SELF`).
+
+## The inbox
+
+`session_messages` ([data.md](data.md)) is a durable row per message: who sent
+it, who it is for, its body, whether it is a plain `message` or a `completion`
+notice, and when it was handed over.
+
+Delivery and recording are separate on purpose. Every message is *also* sent
+into the recipient as an ordinary turn through the existing queue-until-idle
+path — an idle session starts a turn on it, a working one gets it when its turn
+ends. But a session that is mid-turn cannot see a turn that has not started
+yet, and no provider CLI surfaces a server push into a running model. The row
+is what closes that gap: `inbox_read` hands over everything not yet delivered
+and marks it collected, and `session_wait` wakes on the insert.
+
+A message that reached its recipient as a turn is marked delivered, so it is
+not handed over twice. One that queued behind a running turn stays collectable
+until either the queue drains or the recipient reads its inbox.
+
+## Completion notices
+
+When a session that was launched by another one ends a turn — complete, failed,
+or cancelled — Argmax writes one `completion` message to the launching session:
+
+```
+Session <id> (<label>) finished with state <state>. Final answer:
+<the session's last assistant message, capped at 4 KB>
+```
+
+It is delivered like any other message, so an idle launcher **wakes up on a new
+turn** carrying its child's answer, the way Claude Code's Agent Teams
+idle-notification works.
+
+**The rule, and why it cannot ping-pong.** A session emits a notice on every
+turn end *if and only if it has a launcher*. `launched_by_session_id` is a
+strict tree rooted at the sessions a person or a routine started, and a launch
+is capped at depth 2, so a notice climbs at most two hops and never comes back
+down. That is also the answer to the obvious follow-up — does the turn a parent
+takes purely to read a completion notify *its* launcher? It does, but only when
+the parent was itself launched; a user-started session has no launcher and the
+chain stops there.
+
+The remaining guards are on the writing side: never notify yourself, skip a
+launcher whose workspace is archiving or archived, and use a deterministic
+message id (`completion:<session>:<turn end>`) so a retried turn end writes the
+same row instead of a second notice.
+
+## Waiting
+
+`session_wait` blocks until one of two things happens: a watched session
+reaches a settled state (`complete`, `failed`, `cancelled`), or a message
+arrives for the caller. It returns the settled sessions with their states and
+the messages, which it also marks collected. Nothing happening before the
+timeout returns `{timedOut: true}`; call again to keep waiting. The default
+timeout is 120 seconds and the ceiling is 600.
+
+With no `sessions` the watch list is every session the caller has launched, so
+the useful shape is `session_launch` → `session_wait` → `session_read`. A
+watched session that is *already* settled returns at once rather than blocking,
+as does an inbox that already holds something.
+
+Underneath, the handler subscribes to the provider service's in-process session
+state broadcast and to the inbox broadcast **before** its first database read,
+so an edge landing between subscribing and reading is queued rather than lost.
+A one-second re-read backs both up, for a state written outside the provider
+service or a subscriber that fell behind a burst. Nothing holds a database
+connection across an await, and the handler is fully async — a blocking wait
+must not park a shared worker or the main thread
+([performance.md](performance.md)).
+
+`wait` is the one action whose client keeps the socket open longer than the
+ordinary timeout: `client_read_timeout` gives it its own timeout plus 30
+seconds of slack so a wait that runs the full duration still gets its reply.
+
 ## Policy
 
 Agents may launch, message, and coordinate other sessions **on their own
@@ -112,10 +215,10 @@ passes through:
   `LAUNCH_DEPTH_EXCEEDED`.
 - **Ten launches per session**, refused with `LAUNCH_LIMIT_REACHED`.
 
-A session cannot message itself (`MESSAGE_SELF`). Lineage lives on the session
-row as `launched_by_session_id` and `launch_depth`
-([data.md](data.md)), so both caps are counted from the database rather than
-from anything the agent controls.
+A session cannot message itself (`MESSAGE_SELF`) or stop its own turn
+(`STOP_SELF`). Lineage lives on the session row as `launched_by_session_id` and
+`launch_depth` ([data.md](data.md)), so both caps are counted from the database
+rather than from anything the agent controls.
 
 ## How each provider gets the server
 
@@ -183,6 +286,14 @@ tool means adding a variant, not a second protocol.
 Credentials are per session and revocable: `SessionLaunchRegistry::revoke`
 drops a gone session's token, and every tool then fails with `AUTH_FAILED`.
 
+## What the user sees
+
+A message from another session is not an ordinary prompt, and the chat says so:
+the user bubble carries a "From `<label>`" header that opens the sending chat,
+and the whole group is labelled "Message from another chat"
+([chat-cards.md](chat-cards.md)). A launched session's sidebar row shows
+"launched by `<label>`", and its actions menu offers "Open launching chat".
+
 ## Tool rows in the chat
 
 The chat shows an MCP call like any other tool row. Cursor's ACP path needs
@@ -204,7 +315,13 @@ tools. The proof is tool rows for `session_list` / `session_launch` /
 `launchedBySessionId` names the caller. For the browser tools the proof is a
 `mcp__argmax__browser_*` row per step, an answer that names something only the
 real page could have said, and `browser:list-tabs` showing the tab owned by the
-calling session. The caps have their own test in
+calling session. For the observation tools, prompt a parent to launch a child,
+`session_wait` on it, then `session_read` it: the wait must return the child's
+terminal state, the read must contain the child's answer, and
+`session:events-since` for the parent must then show an origin-tagged
+`user.message` — the completion notice — followed by a fresh assistant reply.
+The caps, the socket actions, the inbox, and the completion notice all have
+tests in
 [src-tauri/tests/session_control.rs](../src-tauri/tests/session_control.rs).
 
 `pgrep -f "argmax mcp"` must come back empty once the app is gone. The ACP pool

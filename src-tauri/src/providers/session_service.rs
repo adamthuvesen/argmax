@@ -18,9 +18,10 @@ use std::{
 
 use crate::util::sync::LockOrRecover;
 use once_cell::sync::OnceCell;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch};
 use uuid::Uuid;
 
 use super::{
@@ -54,11 +55,14 @@ use crate::{
     persistence::{
         database::Database,
         events::{
-            find_event_by_id, list_session_events_since, persist_raw_output,
+            find_event_by_id, latest_agent_message, list_session_events_since, persist_raw_output,
             persist_timeline_event, update_event_payload, PersistRawOutputInput,
             PersistTimelineEventInput, TimelineEvent,
         },
         projects::list_projects,
+        session_messages::{
+            insert_session_message, mark_message_delivered, NewSessionMessage, COMPLETION_KIND,
+        },
         sessions::{
             clear_session_conversation, find_session_by_id, persist_session, session_resume_fork,
             update_session_agent_mode, update_session_model, update_session_provider,
@@ -75,6 +79,10 @@ use crate::{
 };
 
 const MAX_PENDING_QUEUE: usize = 64;
+/// How many state changes a `session_wait` subscriber may fall behind before
+/// it is told to re-read the rows instead. A blocked waiter wakes on every
+/// message, so this only ever fills during a burst.
+const SESSION_STATE_BROADCAST_CAPACITY: usize = 256;
 const STRUCTURED_LAUNCH_COLS: u16 = 120;
 const STRUCTURED_LAUNCH_ROWS: u16 = 32;
 /// After the last stdout/stderr chunk, flush any provider line still sitting in
@@ -104,6 +112,39 @@ fn ensure_permission_mode_supported(
         ));
     }
     Ok(())
+}
+
+/// Where a user turn came from, when it was not the person at the keyboard.
+/// Written onto the `user.message` payload as `origin`, which is what the chat
+/// renders as a "From <label>" bubble instead of an ordinary prompt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageOrigin {
+    /// The session that wrote it.
+    pub session_id: String,
+    /// That session's sidebar task label, resolved once at send time so the
+    /// bubble still names it after the sender is archived.
+    pub label: String,
+    /// `message` when another agent wrote here, `completion` when a session
+    /// this one launched has finished.
+    pub kind: String,
+}
+
+/// A recorded completion notice, on its way to the launching session as a
+/// turn. The row is already in `session_messages`; this is the delivery.
+struct CompletionNotice {
+    message_id: String,
+    to_session_id: String,
+    body: String,
+    origin: MessageOrigin,
+}
+
+/// A session's state as it was just written. Broadcast in-process so a blocked
+/// `session_wait` wakes on the change instead of polling the database.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionStateChange {
+    pub session_id: String,
+    pub state: String,
 }
 
 #[derive(Clone)]
@@ -139,6 +180,8 @@ pub struct ProviderSessionService {
     /// Per-turn git marks, for providers that report a file write without
     /// saying what changed. See `measured_diffs`.
     measured_diffs: Arc<MeasuredDiffs>,
+    /// Every session state this service writes, for `session_wait`.
+    session_states: broadcast::Sender<SessionStateChange>,
 }
 
 /// The result slot a termination job publishes to; `None` while the job runs.
@@ -233,6 +276,7 @@ impl ProviderSessionService {
             approvals,
             session_control: OnceCell::new(),
             measured_diffs: Arc::new(MeasuredDiffs::default()),
+            session_states: broadcast::channel(SESSION_STATE_BROADCAST_CAPACITY).0,
         })
     }
 
@@ -536,6 +580,19 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
+        self.send_input_with_origin(input, None).await
+    }
+
+    /// The same turn, tagged with the session that wrote it. Everything the
+    /// user's composer does goes through `send_input` with no origin; the
+    /// agent tools and the completion notice pass one, and it rides all the
+    /// way to the persisted `user.message` payload — including through the
+    /// queue, when the recipient turns out to be mid-turn.
+    pub async fn send_input_with_origin(
+        self: &Arc<Self>,
+        input: ProvidersSendInput,
+        origin: Option<MessageOrigin>,
+    ) -> ArgmaxResult<SendInputResult> {
         let session_id = input.session_id.as_str().to_string();
         let message = input.input.as_str().trim().to_string();
         if message.is_empty() {
@@ -604,6 +661,7 @@ impl ProviderSessionService {
                     &message,
                     input.agent_mode.unwrap_or(AgentMode::Auto),
                     &input,
+                    origin,
                 )?;
                 drop(admission);
                 self.drain_queue_if_turn_ended(&session_id);
@@ -622,6 +680,7 @@ impl ProviderSessionService {
                 &message,
                 input.agent_mode.unwrap_or(AgentMode::Auto),
                 input.attachments.as_deref(),
+                origin.as_ref(),
             )?;
             drop(admission);
             return Ok(SendInputResult {
@@ -644,6 +703,7 @@ impl ProviderSessionService {
                 &message,
                 input.agent_mode.unwrap_or(AgentMode::Auto),
                 &input,
+                origin,
             )?;
             drop(admission);
             self.drain_queue_if_turn_ended(&session_id);
@@ -772,6 +832,7 @@ impl ProviderSessionService {
                 &message,
                 agent_mode,
                 input.attachments.as_deref(),
+                origin.as_ref(),
             )?;
             let running_session = update_session_state(
                 &connection,
@@ -1090,7 +1151,7 @@ impl ProviderSessionService {
     }
 
     async fn finish_termination(
-        &self,
+        self: &Arc<Self>,
         session_id: &str,
         entry: Option<HandleEntry>,
     ) -> ArgmaxResult<()> {
@@ -1568,6 +1629,7 @@ impl ProviderSessionService {
         let succeeded =
             event.r#type == ProviderRuntimeEventType::Exit && event.exit_code == Some(0);
         let state = if succeeded { "complete" } else { "failed" };
+        let completed_at = event.created_at.clone();
         let raw_output = persist_raw_output(
             &connection,
             &PersistRawOutputInput {
@@ -1640,10 +1702,138 @@ impl ProviderSessionService {
             None => Ok(()),
         };
         self.settle_session_move(&event.session_id);
+        self.notify_launcher_of_turn_end(&event.session_id, state, &completed_at);
         if succeeded {
             self.drain_queue_after_complete(event.session_id);
         }
         approvals_cancelled
+    }
+
+    /// One completion notice per turn end, addressed to whoever launched this
+    /// session.
+    ///
+    /// The notice is both an inbox row (what `inbox_read` and `session_wait`
+    /// read) and an ordinary turn in the launching session, delivered through
+    /// the same queue-until-idle path a person's follow-up takes — so an idle
+    /// parent wakes up on its child finishing.
+    ///
+    /// Why this cannot ping-pong: `launched_by_session_id` is a strict tree
+    /// rooted at the sessions a person or a routine started, and a launch is
+    /// capped at depth 2. A session with no launcher emits nothing, so a
+    /// notice climbs at most two hops and never comes back down. That is also
+    /// the answer to "does the parent's completion-triggered turn notify the
+    /// grandparent?" — it does, but only when the parent was itself launched,
+    /// because otherwise it has no launcher to notify.
+    fn notify_launcher_of_turn_end(self: &Arc<Self>, session_id: &str, state: &str, at: &str) {
+        match self.build_completion_notice(session_id, state, at) {
+            Ok(Some(notice)) => {
+                if let Some(registry) = self.session_control.get() {
+                    registry.notify_inbox(&notice.to_session_id);
+                }
+                let service = Arc::clone(self);
+                tauri::async_runtime::spawn(async move { service.deliver_notice(notice).await });
+            }
+            Ok(None) => {}
+            Err(error) => tracing::warn!(
+                session_id,
+                ?error,
+                "failed to record the completion notice for the launching session"
+            ),
+        }
+    }
+
+    fn build_completion_notice(
+        &self,
+        session_id: &str,
+        state: &str,
+        at: &str,
+    ) -> ArgmaxResult<Option<CompletionNotice>> {
+        let connection = self.database.connection();
+        let session = find_session_by_id(&connection, session_id)?;
+        let Some(parent_id) = session.launched_by_session_id.clone() else {
+            return Ok(None);
+        };
+        if parent_id == session_id {
+            return Ok(None);
+        }
+        let Ok(parent) = find_session_by_id(&connection, &parent_id) else {
+            return Ok(None);
+        };
+        let parent_workspace = find_workspace_by_id(&connection, &parent.workspace_id)?;
+        if matches!(
+            parent_workspace.state.as_str(),
+            "archiving" | "archive-failed" | "archived"
+        ) {
+            return Ok(None);
+        }
+        let label = find_workspace_by_id(&connection, &session.workspace_id)
+            .map(|workspace| workspace.task_label)
+            .unwrap_or_else(|_| session_id.to_string());
+        let answer = latest_agent_message(&connection, session_id)?
+            .filter(|text| !text.trim().is_empty())
+            .unwrap_or_else(|| "(the session produced no assistant message)".to_string());
+        let body = format!(
+            "Session {session_id} ({label}) finished with state {state}. Final answer:\n{answer}"
+        );
+        let message = NewSessionMessage {
+            // Deterministic, so a retry of the same turn end writes the same
+            // row rather than a second notice.
+            id: format!("completion:{session_id}:{at}"),
+            from_session_id: Some(session_id.to_string()),
+            to_session_id: parent_id.clone(),
+            body: body.clone(),
+            kind: COMPLETION_KIND.to_string(),
+        };
+        if !insert_session_message(&connection, &message)? {
+            return Ok(None);
+        }
+        Ok(Some(CompletionNotice {
+            message_id: message.id,
+            to_session_id: parent_id,
+            body,
+            origin: MessageOrigin {
+                session_id: session_id.to_string(),
+                label,
+                kind: COMPLETION_KIND.to_string(),
+            },
+        }))
+    }
+
+    async fn deliver_notice(self: Arc<Self>, notice: CompletionNotice) {
+        let input = match (
+            SessionId::try_from(notice.to_session_id.clone()),
+            Prompt::try_from(notice.body),
+        ) {
+            (Ok(session_id), Ok(input)) => ProvidersSendInput {
+                session_id,
+                input,
+                provider: None,
+                model_label: None,
+                model_id: None,
+                reasoning_effort: None,
+                fast_mode: false,
+                agent_mode: None,
+                attachments: None,
+            },
+            _ => return,
+        };
+        match self
+            .send_input_with_origin(input, Some(notice.origin))
+            .await
+        {
+            Ok(_) => {
+                let connection = self.database.connection();
+                if let Err(error) = mark_message_delivered(&connection, &notice.message_id) {
+                    tracing::warn!(?error, "failed to mark a completion notice delivered");
+                }
+            }
+            // The row stays undelivered, so `inbox_read` still hands it over.
+            Err(error) => tracing::warn!(
+                to_session_id = %notice.to_session_id,
+                ?error,
+                "could not start a turn with the completion notice"
+            ),
+        }
     }
 
     fn record_launch_failure(
@@ -1696,7 +1886,7 @@ impl ProviderSessionService {
         Ok(())
     }
 
-    fn cancel_session(&self, session_id: &str) -> ArgmaxResult<()> {
+    fn cancel_session(self: &Arc<Self>, session_id: &str) -> ArgmaxResult<()> {
         let connection = self.database.connection();
         let current = find_session_by_id(&connection, session_id)?;
         if !matches!(current.state.as_str(), "running" | "waiting" | "blocked") {
@@ -1726,19 +1916,22 @@ impl ProviderSessionService {
                 r#type: "session.cancelled".to_string(),
                 message: "Provider chat cancelled.".to_string(),
                 payload: json!({}),
-                created_at: Some(completed_at),
+                created_at: Some(completed_at.clone()),
             },
         )?;
         self.flush_queue
             .lock_or_recover("flush queue")
             .delete_session(session_id);
-        self.publish(DashboardDelta {
+        let delta = DashboardDelta {
             projects: list_projects(&connection)?,
             workspaces: vec![workspace],
             sessions: vec![session],
             events: vec![event],
             ..DashboardDelta::default()
-        });
+        };
+        drop(connection);
+        self.publish(delta);
+        self.notify_launcher_of_turn_end(session_id, "cancelled", &completed_at);
         Ok(())
     }
 
@@ -1766,6 +1959,7 @@ impl ProviderSessionService {
         message: &str,
         agent_mode: AgentMode,
         attachments: Option<&[ComposerAttachmentInput]>,
+        origin: Option<&MessageOrigin>,
     ) -> ArgmaxResult<()> {
         let connection = self.database.connection();
         let event = self.persist_user_message_locked(
@@ -1774,6 +1968,7 @@ impl ProviderSessionService {
             message,
             agent_mode,
             attachments,
+            origin,
         )?;
         self.publish(DashboardDelta {
             events: vec![event],
@@ -1789,7 +1984,12 @@ impl ProviderSessionService {
         message: &str,
         agent_mode: AgentMode,
         attachments: Option<&[ComposerAttachmentInput]>,
+        origin: Option<&MessageOrigin>,
     ) -> ArgmaxResult<crate::persistence::events::TimelineEvent> {
+        let mut payload = composer_payload(agent_mode, attachments);
+        if let Some(origin) = origin {
+            payload["origin"] = serde_json::to_value(origin).unwrap_or(Value::Null);
+        }
         persist_timeline_event(
             connection,
             &PersistTimelineEventInput {
@@ -1797,7 +1997,7 @@ impl ProviderSessionService {
                 session_id: session_id.to_string(),
                 r#type: "user.message".to_string(),
                 message: message.to_string(),
-                payload: composer_payload(agent_mode, attachments),
+                payload,
                 created_at: None,
             },
         )
@@ -1809,6 +2009,7 @@ impl ProviderSessionService {
         content: &str,
         agent_mode: AgentMode,
         input: &ProvidersSendInput,
+        origin: Option<MessageOrigin>,
     ) -> ArgmaxResult<()> {
         // A drained follow-up always keeps the session's current provider (see
         // pending_message_to_send_input), so when this send asked for a
@@ -1860,6 +2061,7 @@ impl ProviderSessionService {
             reasoning_effort,
             fast_mode,
             attachments: input.attachments.clone().unwrap_or_default(),
+            origin,
             queued_at: now_iso(),
         });
         drop(queues);
@@ -1947,6 +2149,7 @@ impl ProviderSessionService {
         let restore = next.clone();
         let restore_session = session_id.clone();
         tauri::async_runtime::spawn(async move {
+            let origin = next.origin.clone();
             let send_input = match pending_message_to_send_input(session_id, next) {
                 Ok(input) => input,
                 Err(error) => {
@@ -1958,7 +2161,7 @@ impl ProviderSessionService {
                     return;
                 }
             };
-            let result = service.send_input(send_input).await;
+            let result = service.send_input_with_origin(send_input, origin).await;
             if let Err(error) = result {
                 tracing::warn!(
                     session_id = %restore_session,
@@ -2147,9 +2350,25 @@ impl ProviderSessionService {
     }
 
     fn publish(&self, delta: DashboardDelta) {
+        // Before the emptiness check and before the renderer hop: a blocked
+        // `session_wait` is waiting on exactly this edge, and a send to a
+        // channel with no subscribers is a cheap no-op.
+        for session in &delta.sessions {
+            let _ = self.session_states.send(SessionStateChange {
+                session_id: session.id.clone(),
+                state: session.state.clone(),
+            });
+        }
         if !delta.is_empty() {
             (self.publish_delta)(delta);
         }
+    }
+
+    /// Every session state this service writes from now on. `session_wait`
+    /// subscribes before it reads the current states, so an edge that lands
+    /// between the two is queued rather than missed.
+    pub fn subscribe_session_states(&self) -> broadcast::Receiver<SessionStateChange> {
+        self.session_states.subscribe()
     }
 
     /// Mark the worktree where this turn starts, so a provider that reports a
@@ -2568,6 +2787,7 @@ mod tests {
                 reasoning_effort: None,
                 fast_mode: false,
                 attachments: Vec::new(),
+                origin: None,
                 queued_at: now_iso(),
             });
 

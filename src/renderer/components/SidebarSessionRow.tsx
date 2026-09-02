@@ -75,6 +75,10 @@ type SidebarSessionRowProps = {
   /** Provider name shown as a small marker when this session was synced from
    *  that agent's own history rather than started in Argmax. */
   importedProvider?: string | null;
+  /** Task label of the chat whose agent launched this one, when that chat is
+   *  still in the snapshot. Delegated work says who delegated it instead of
+   *  reading as something the user started. */
+  launchedByLabel?: string | null;
   /** Set when the row renders inside the Priority section: why it floated up. */
   priorityAttention?: PriorityAttention;
   /** Priority rows only — right-click "Done" drops the row back to its group. */
@@ -207,6 +211,7 @@ function SidebarSessionRowInner({
   defaultIde,
   subtitle,
   importedProvider,
+  launchedByLabel,
   priorityAttention,
   onRemoveFromPriority,
   onAddToPriority,
@@ -509,7 +514,9 @@ function SidebarSessionRowInner({
         <>
           <button
             aria-current={isSelected ? "true" : undefined}
-            className={`session-link${isSelected ? " active" : ""}${subtitle || importedProvider ? " session-link-stacked" : ""}`}
+            className={`session-link${isSelected ? " active" : ""}${
+              subtitle || importedProvider || launchedByLabel ? " session-link-stacked" : ""
+            }`}
             data-open={isOpenInGrid ? "true" : undefined}
             data-status={workspace.state}
             type="button"
@@ -527,7 +534,7 @@ function SidebarSessionRowInner({
             onDragEnd={handleWorkspaceDragEnd}
           >
             {leadingGlyph ?? <span className="session-link-lead-spacer" aria-hidden="true" />}
-            {subtitle || importedProvider ? (
+            {subtitle || importedProvider || launchedByLabel ? (
               <span className="session-link-text">
                 <span>{displayLabel}</span>
                 <span className="session-link-subtitle">
@@ -535,6 +542,11 @@ function SidebarSessionRowInner({
                   {importedProvider ? (
                     <span className="session-imported-badge" title={`Synced from ${importedProvider}`}>
                       {importedProvider}
+                    </span>
+                  ) : null}
+                  {launchedByLabel ? (
+                    <span className="session-launched-by" title={`Launched by ${launchedByLabel}`}>
+                      launched by {launchedByLabel}
                     </span>
                   ) : null}
                 </span>
@@ -790,6 +802,7 @@ export function sidebarSessionRowEqual(
   if (prev.onWorkspaceDragEnd !== next.onWorkspaceDragEnd) return false;
   if (prev.subtitle !== next.subtitle) return false;
   if (prev.importedProvider !== next.importedProvider) return false;
+  if (prev.launchedByLabel !== next.launchedByLabel) return false;
   if (prev.priorityAttention !== next.priorityAttention) return false;
   if (prev.onRemoveFromPriority !== next.onRemoveFromPriority) return false;
   if (prev.onAddToPriority !== next.onAddToPriority) return false;

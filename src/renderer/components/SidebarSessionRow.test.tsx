@@ -1009,3 +1009,64 @@ describe("SidebarSessionRow copy ids", () => {
     expect(screen.queryByRole("menuitem", { name: "Copy ids" })).not.toBeInTheDocument();
   });
 });
+
+describe("SidebarSessionRow — launch lineage", () => {
+  afterEach(() => cleanup());
+
+  it("names the chat whose agent launched this one", () => {
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        launchedByLabel="Ship the phase-2 branch"
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+      />
+    );
+
+    expect(screen.getByTitle("Launched by Ship the phase-2 branch")).toHaveTextContent(
+      "launched by Ship the phase-2 branch"
+    );
+  });
+
+  it("leaves a row with no launching chat unmarked", () => {
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+      />
+    );
+
+    expect(screen.queryByTitle(/^Launched by/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Build the dashboard/ })).not.toHaveTextContent(
+      "launched by"
+    );
+  });
+
+  it("re-renders the row when the launching chat's label changes", () => {
+    const prev = {
+      workspace: workspaceBase,
+      isSelected: false,
+      isOpenInGrid: false,
+      canDragToGrid: true,
+      onOpenWorkspaceChat: vi.fn(),
+      onArchiveWorkspace: vi.fn(),
+      onOpenInIde: vi.fn(),
+      detectedIdes,
+      defaultIde: "vscode" as const
+    };
+    expect(sidebarSessionRowEqual(prev, { ...prev, launchedByLabel: "Ship it" })).toBe(false);
+  });
+});

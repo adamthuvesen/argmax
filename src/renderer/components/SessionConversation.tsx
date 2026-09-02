@@ -122,6 +122,7 @@ export function SessionConversation({
   onHideWorkspaceCard,
   onNewSession,
   onOpenSideChat,
+  onOpenSession,
   onOpenDetails,
   onAttachToChat,
   headingLabel,
@@ -175,6 +176,9 @@ export function SessionConversation({
   /** Launches a repo-less side chat with the given first message. Enables the
       selection toolbar's "Ask in side chat" action when provided. */
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
+  /** Focus another chat by session id — the origin bubble's "From <label>"
+   *  link, and the actions menu's "Open launching chat". */
+  onOpenSession?: (sessionId: string) => void;
   /** Opens the "More details" explainer popup with the given first message.
       Enables the selection toolbar's "More details" action when provided. */
   onOpenDetails?: (
@@ -843,6 +847,11 @@ export function SessionConversation({
               onOpenCommitDialog={onOpenCommitDialog}
               onToggleLog={onToggleLog}
               onToggleWorkspaceCard={handleToggleWorkspaceCard}
+              onOpenLaunchingChat={
+                session?.launchedBySessionId && onOpenSession
+                  ? () => onOpenSession(session.launchedBySessionId as string)
+                  : undefined
+              }
               session={session}
               setStatus={setStatus}
               workspace={workspace}
@@ -920,6 +929,7 @@ export function SessionConversation({
                     event={item.event}
                     attachments={parseUserMessageAttachments(item)}
                     isTurnAnchor={item.event.id === lastUserMessageId}
+                    onOpenSession={onOpenSession}
                   />
                 );
               }

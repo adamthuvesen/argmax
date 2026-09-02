@@ -114,6 +114,20 @@
   opacity: 0.85;
 }
 
+/* Lineage, not status: a chat another chat's agent started names its parent on
+   the same second line the project subtitle uses, one ink step below it. */
+.session-launched-by {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
 /* Leading marker for rows that carry a live signal: a working ring, an
    awaiting-input ring, a PR glyph, or a red cross when the session failed.
    Calm rows render no marker at all. */

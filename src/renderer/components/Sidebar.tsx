@@ -108,8 +108,8 @@ const BOOT_COLLAPSED_GROUP_KEYS: readonly string[] = [
 ];
 
 const VIEW_MODE_OPTIONS: ReadonlyArray<{ value: SidebarViewMode; label: string; description: string }> = [
-  { value: "projects", label: "Projects", description: "Group sessions under their project" },
-  { value: "sessions", label: "Date", description: "Flat list of all sessions by date" }
+  { value: "projects", label: "Projects", description: "Group chats under their project" },
+  { value: "sessions", label: "Date", description: "Flat list of all chats by date" }
 ];
 
 const SORT_MODE_OPTIONS: ReadonlyArray<{ value: ProjectSortMode; label: string; description: string }> = [
@@ -692,9 +692,9 @@ export function Sidebar({
     (groupKey: string, label: string, isCollapsed: boolean): JSX.Element => (
       <button
         aria-expanded={!isCollapsed}
-        aria-label={`${isCollapsed ? "Show" : "Hide"} ${label} sessions`}
+        aria-label={`${isCollapsed ? "Show" : "Hide"} ${label} chats`}
         className="project-visibility"
-        title={`${isCollapsed ? "Show" : "Hide"} Sessions`}
+        title={`${isCollapsed ? "Show" : "Hide"} chats`}
         type="button"
         onClick={(event) => {
           event.stopPropagation();
@@ -995,14 +995,14 @@ export function Sidebar({
         <button
           className="rail-nav-item rail-nav-cta"
           type="button"
-          title="New Agent"
-          aria-label="New Agent"
+          title="New chat"
+          aria-label="New chat"
           onClick={onOpenLauncher}
         >
           <span className="rail-nav-glyph" aria-hidden="true">
             <Plus size={14} />
           </span>
-          <span className="rail-nav-label">New Agent</span>
+          <span className="rail-nav-label">New chat</span>
           <kbd aria-hidden="true">⌘N</kbd>
         </button>
         <button
@@ -1234,8 +1234,8 @@ export function Sidebar({
                           aria-expanded={showAll}
                           aria-label={
                             showAll
-                              ? `Show fewer ${group.label} sessions`
-                              : `Show ${hiddenCount} more ${group.label} sessions`
+                              ? `Show fewer ${group.label} chats`
+                              : `Show ${hiddenCount} more ${group.label} chats`
                           }
                           onClick={() => toggleDateGroupExpansion(group.key)}
                         >
@@ -1336,9 +1336,9 @@ export function Sidebar({
                 ) : null}
                 <button
                   aria-expanded={!isCollapsed}
-                  aria-label={`${isCollapsed ? "Show" : "Hide"} ${project.name} sessions`}
+                  aria-label={`${isCollapsed ? "Show" : "Hide"} ${project.name} chats`}
                   className="project-visibility"
-                  title={`${isCollapsed ? "Show" : "Hide"} Sessions`}
+                  title={`${isCollapsed ? "Show" : "Hide"} chats`}
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
@@ -1390,8 +1390,8 @@ export function Sidebar({
                       aria-expanded={showAll}
                       aria-label={
                         showAll
-                          ? `Show fewer ${project.name} sessions`
-                          : `Show ${hiddenCount} more ${project.name} sessions`
+                          ? `Show fewer ${project.name} chats`
+                          : `Show ${hiddenCount} more ${project.name} chats`
                       }
                       onClick={() => toggleProjectExpansion(project.id)}
                     >
@@ -1442,7 +1442,7 @@ export function Sidebar({
                 ) : (
                   <li role="none">
                     <p className="project-actions-confirm-text">
-                      Forget <strong>{activeProject.name}</strong> and all its sessions? Files on disk are untouched.
+                      Forget <strong>{activeProject.name}</strong> and all its chats? Files on disk are untouched.
                     </p>
                     <div className="project-actions-confirm-buttons">
                       <button

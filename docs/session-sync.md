@@ -1,6 +1,6 @@
 # Session Sync
 
-Session sync imports sessions started in external provider CLIs (such as running `claude` in a terminal) by reading provider transcript files. Configured in Settings → Agents → Session sync.
+Session sync imports sessions started in external provider CLIs (such as running `claude` in a terminal) by reading provider transcript files. Configured in Settings → Agents → Chat sync (the UI's display name for this).
 
 ## Behavior
 

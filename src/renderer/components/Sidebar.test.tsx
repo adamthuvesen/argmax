@@ -195,10 +195,10 @@ describe("Sidebar — localStorage write isolation", () => {
       </StrictMode>
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
     setItemSpy.mockClear();
 
-    fireEvent.click(screen.getByRole("button", { name: "Hide Argmax sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide Argmax chats" }));
 
     const collapsedWrites = setItemSpy.mock.calls.filter(
       ([key]) => key === collapsedProjectsStorageKey
@@ -244,7 +244,7 @@ describe("Sidebar — localStorage write isolation", () => {
 
     setItemSpy.mockClear();
 
-    const chevron = screen.getByRole("button", { name: "Show Argmax sessions" });
+    const chevron = screen.getByRole("button", { name: "Show Argmax chats" });
     fireEvent.click(chevron);
 
     const collapsedWrites = setItemSpy.mock.calls.filter(
@@ -389,12 +389,12 @@ describe("Sidebar — project removal menu", () => {
     // Click "Remove project" — must NOT trigger removal yet; it swaps to confirm.
     fireEvent.click(removeItem);
     expect(onRemoveProject).not.toHaveBeenCalled();
-    expect(screen.getByText(/and all its sessions/)).toBeInTheDocument();
+    expect(screen.getByText(/and all its chats/)).toBeInTheDocument();
 
     // Cancel returns to nothing and does not remove.
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onRemoveProject).not.toHaveBeenCalled();
-    expect(screen.queryByText(/and all its sessions/)).toBeNull();
+    expect(screen.queryByText(/and all its chats/)).toBeNull();
 
     // Re-open and confirm — now the callback fires with the project id.
     fireEvent.click(screen.getByRole("button", { name: "Actions for Zebra" }));
@@ -474,7 +474,7 @@ describe("Sidebar — workspaces without sessions", () => {
     render(<Sidebar {...baseProps} snapshot={snapshotWithOrphan} />);
 
     // Sidebar boots every project collapsed; expand to see its sessions.
-    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
 
     // The session-backed workspace is visible.
     expect(screen.getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
@@ -490,7 +490,7 @@ describe("Sidebar — workspaces without sessions", () => {
 
     render(<Sidebar {...baseProps} snapshot={snapshot} />);
 
-    expect(screen.getByRole("button", { name: "Show Argmax sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show Argmax chats" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Build dashboard/ })).toBeNull();
   });
 });
@@ -669,12 +669,12 @@ describe("Sidebar — date (sessions) view mode", () => {
 
     // Only the first 5 render; the rest hide behind "Show more".
     expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(5);
-    const showMore = screen.getByRole("button", { name: /Show 7 more Today sessions/ });
+    const showMore = screen.getByRole("button", { name: /Show 7 more Today chats/ });
     fireEvent.click(showMore);
     expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(12);
 
     // The chevron collapses the whole bucket.
-    fireEvent.click(screen.getByRole("button", { name: "Hide Today sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide Today chats" }));
     expect(screen.queryByRole("button", { name: /Today task/ })).toBeNull();
     // Collapse state is persisted.
     expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify(["today"]));
@@ -696,12 +696,12 @@ describe("Sidebar — date (sessions) view mode", () => {
 
     expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(5);
     expect(screen.getByRole("button", { name: /Today task 0/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Show 7 more Today sessions/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Show 7 more Today chats/ })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Show 7 more Today sessions/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Show 7 more Today chats/ }));
     expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(12);
 
-    fireEvent.click(screen.getByRole("button", { name: /Show fewer Today sessions/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Show fewer Today chats/ }));
     expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(5);
     expect(screen.getByRole("button", { name: /Today task 0/ })).toBeInTheDocument();
   });
@@ -723,10 +723,10 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(screen.getAllByRole("button", { name: /Zebra task/ })).toHaveLength(5);
     expect(screen.getByRole("button", { name: /Zebra task 0/ })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Show 7 more Zebra sessions/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Show 7 more Zebra chats/ }));
     expect(screen.getAllByRole("button", { name: /Zebra task/ })).toHaveLength(12);
 
-    fireEvent.click(screen.getByRole("button", { name: /Show fewer Zebra sessions/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Show fewer Zebra chats/ }));
     expect(screen.getAllByRole("button", { name: /Zebra task/ })).toHaveLength(5);
     expect(screen.getByRole("button", { name: /Zebra task 0/ })).toBeInTheDocument();
   });
@@ -875,7 +875,7 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(within(today).getByRole("button", { name: "Add Project" })).toBeInTheDocument();
     expect(within(today).getByRole("button", { name: "Sidebar view options" })).toBeInTheDocument();
     // The header still collapses its own rows.
-    expect(within(today).getByRole("button", { name: "Hide Today sessions" })).toBeInTheDocument();
+    expect(within(today).getByRole("button", { name: "Hide Today chats" })).toBeInTheDocument();
 
     // Older buckets stay plain collapsible labels.
     const older = headerRowFor("Older");
@@ -902,7 +902,7 @@ describe("Sidebar — date (sessions) view mode", () => {
     // The chevron shares the label span so it hugs the word instead of drifting
     // to the row's right edge, where the … / + cluster lives.
     for (const label of ["Today", "Older"]) {
-      const chevron = screen.getByRole("button", { name: `Hide ${label} sessions` });
+      const chevron = screen.getByRole("button", { name: `Hide ${label} chats` });
       expect(chevron.closest(".session-date-label")).toBe(
         screen.getByText(label).closest(".session-date-label")
       );
@@ -981,7 +981,7 @@ describe("Sidebar — date (sessions) view mode", () => {
 
     expect(onAddProject).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: /Zebra task today/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Hide Today sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide Today chats" })).toBeInTheDocument();
   });
 });
 
@@ -1077,7 +1077,7 @@ describe("Sidebar — Priority section", () => {
 
     // Expanding the project group must not produce a second copy of the
     // blocked row — a workspace lives in exactly one section at a time.
-    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
     expect(screen.getAllByRole("button", { name: /Blocked task/ })).toHaveLength(1);
     expect(screen.getByRole("button", { name: /Calm task/ })).toBeInTheDocument();
   });
@@ -1106,7 +1106,7 @@ describe("Sidebar — Priority section", () => {
     // Both flavors of entry go: the attention row and the manually added one.
     expect(onClearPriority).toHaveBeenCalledWith(["w-blocked", "w-calm"]);
     // The click belongs to the button, not the header's collapse toggle.
-    expect(screen.getByRole("button", { name: "Hide Priority sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide Priority chats" })).toBeInTheDocument();
   });
 
   it("shows a project subtitle on priority rows but not under project groups", () => {
@@ -1117,7 +1117,7 @@ describe("Sidebar — Priority section", () => {
     expect(within(blockedRow).getByText("Argmax")).toBeInTheDocument();
 
     // A row under its project group skips the subtitle — the header names it.
-    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
     const calmRow = screen.getByRole("button", { name: /Calm task/ });
     expect(within(calmRow).queryByText("Argmax")).toBeNull();
   });
@@ -1212,7 +1212,7 @@ describe("Sidebar — Priority section", () => {
 
     // The chevron sits inside the label cluster so it hugs the word, matching
     // every recency header.
-    const chevron = screen.getByRole("button", { name: "Hide Priority sessions" });
+    const chevron = screen.getByRole("button", { name: "Hide Priority chats" });
     expect(chevron.closest(".session-date-label")).toBe(
       screen.getByText("Priority").closest(".session-date-label")
     );
@@ -1221,14 +1221,14 @@ describe("Sidebar — Priority section", () => {
     expect(screen.queryByRole("button", { name: /Blocked task/ })).toBeNull();
     expect(screen.getByText("Priority")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Show Priority sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Priority chats" }));
     expect(screen.getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
   });
 
   it("persists the Priority collapse alongside the date groups", () => {
     render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Hide Priority sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide Priority chats" }));
 
     expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toContain(
       "priority"
@@ -1236,7 +1236,7 @@ describe("Sidebar — Priority section", () => {
 
     cleanup();
     render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
-    expect(screen.getByRole("button", { name: "Show Priority sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show Priority chats" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Blocked task/ })).toBeNull();
   });
 
@@ -1254,18 +1254,18 @@ describe("Sidebar — Priority section", () => {
 
     expect(rendersAfter(screen.getByText("Pinned"), screen.getByText("Priority"))).toBe(true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Hide Pinned sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide Pinned chats" }));
     expect(screen.queryByRole("button", { name: /Pinned task/ })).toBeNull();
     // Collapsing one section leaves the other alone.
     expect(screen.getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Show Pinned sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Pinned chats" }));
     expect(screen.getByRole("button", { name: /Pinned task/ })).toBeInTheDocument();
   });
 
   it("omits subtitles entirely when priority mode is off", () => {
     render(<Sidebar {...baseProps} showPriority={false} snapshot={prioritySnapshot} />);
-    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
     const blockedRow = screen.getByRole("button", { name: /Blocked task/ });
     expect(within(blockedRow).queryByText("Argmax")).toBeNull();
   });
@@ -1299,7 +1299,7 @@ describe("Sidebar — Priority section", () => {
     );
 
     // The calm row sits in its project group; its menu offers Add, not Done.
-    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
     fireEvent.contextMenu(screen.getByRole("button", { name: /Calm task/ }));
     expect(screen.queryByRole("menuitem", { name: "Done" })).toBeNull();
     fireEvent.click(screen.getByRole("menuitem", { name: "Add to priority" }));
@@ -1506,7 +1506,7 @@ describe("Sidebar — working rows in Priority", () => {
       )
     ).toBe(true);
     // Both rows left their project group: expanding it must not duplicate them.
-    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
     expect(screen.getAllByRole("button", { name: /Live task/ })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: /Failed task/ })).toHaveLength(1);
   });
@@ -1649,11 +1649,11 @@ describe("Sidebar — boot collapse defaults", () => {
   it("opens with Pinned expanded and every other group collapsed", () => {
     render(<Sidebar {...baseProps} showPriority snapshot={bootSnapshot} />);
 
-    expect(screen.getByRole("button", { name: "Hide Pinned sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide Pinned chats" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Pinned task/ })).toBeInTheDocument();
 
     for (const label of ["Priority", "Older"]) {
-      expect(screen.getByRole("button", { name: `Show ${label} sessions` })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: `Show ${label} chats` })).toBeInTheDocument();
     }
     expect(screen.queryByRole("button", { name: /Blocked task/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Ancient task/ })).toBeNull();
@@ -1662,7 +1662,7 @@ describe("Sidebar — boot collapse defaults", () => {
   it("lets a group stay expanded for the rest of the session", () => {
     render(<Sidebar {...baseProps} showPriority snapshot={bootSnapshot} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Show Older sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Older chats" }));
     expect(screen.getByRole("button", { name: /Ancient task/ })).toBeInTheDocument();
 
     // A re-mount inside the same launch respects the toggle; only a new launch
@@ -1765,7 +1765,7 @@ describe("Sidebar — Side Chats section", () => {
     expect(screen.getByRole("button", { name: /Explain quantization/ })).toBeInTheDocument();
     // Bottom of the list: after the project group rows.
     expect(
-      rendersAfter(screen.getByRole("button", { name: /Argmax sessions/ }), header)
+      rendersAfter(screen.getByRole("button", { name: /Argmax chats/ }), header)
     ).toBe(true);
   });
 

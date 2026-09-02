@@ -518,7 +518,7 @@ export function App(): JSX.Element {
       snapshot.sessions[0]?.workspaceId
     ]);
     if (!workspaceId) {
-      setToast({ kind: "error", message: "Open a session before toggling the terminal." });
+      setToast({ kind: "error", message: "Open a chat before toggling the terminal." });
       return;
     }
 
@@ -559,7 +559,7 @@ export function App(): JSX.Element {
         const forked = await window.argmax.session.fork({ sessionId });
         openWorkspaceChat(forked.workspace.id, { ctrlOrMeta: false, alt: false });
       } catch (error) {
-        showErrorToast(error instanceof Error ? error.message : "Couldn't fork the session.");
+        showErrorToast(error instanceof Error ? error.message : "Couldn't fork the chat.");
       }
     },
     [openWorkspaceChat, showErrorToast]
@@ -763,7 +763,7 @@ export function App(): JSX.Element {
   const toggleWorkspacePinned = useCallback(
     async (workspaceId: string, pinned: boolean): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to pin a session." });
+        setToast({ kind: "error", message: "Open the Tauri app window to pin a chat." });
         return;
       }
       const ok = await withToast(
@@ -785,7 +785,7 @@ export function App(): JSX.Element {
       const ok = await withToast(
         () => window.argmax!.workspaces.setPriorityDismissed({ workspaceId, dismissed: true }),
         setToast,
-        "Could not remove the session from priority."
+        "Could not remove the chat from priority."
       );
       if (ok) await refreshDashboardStatus();
     },
@@ -825,7 +825,7 @@ export function App(): JSX.Element {
       const ok = await withToast(
         () => window.argmax!.workspaces.setPriorityAdded({ workspaceId, added: true }),
         setToast,
-        "Could not add the session to priority."
+        "Could not add the chat to priority."
       );
       if (ok) await refreshDashboardStatus();
     },
@@ -864,13 +864,13 @@ export function App(): JSX.Element {
   const renameWorkspace = useCallback(
     async (workspaceId: string, taskLabel: string): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to rename a session." });
+        setToast({ kind: "error", message: "Open the Tauri app window to rename a chat." });
         return;
       }
       const ok = await withToast(
         () => window.argmax!.workspaces.setLabel({ workspaceId, taskLabel }),
         setToast,
-        "Could not rename session."
+        "Could not rename chat."
       );
       if (ok) await refreshDashboardStatus();
     },
@@ -880,13 +880,13 @@ export function App(): JSX.Element {
   const setWorkspaceIcon = useCallback(
     async (workspaceId: string, icon: string | null, iconColor: string | null): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to change a session icon." });
+        setToast({ kind: "error", message: "Open the Tauri app window to change a chat icon." });
         return;
       }
       const ok = await withToast(
         () => window.argmax!.workspaces.setIcon({ workspaceId, icon, iconColor }),
         setToast,
-        "Could not change the session icon."
+        "Could not change the chat icon."
       );
       if (ok) await refreshDashboardStatus();
     },
@@ -938,13 +938,13 @@ export function App(): JSX.Element {
   // row's conversation updates without a reopen.
   const onSyncNowWorkspaceRow = useCallback((): void => {
     if (!window.argmax) {
-      setToast({ kind: "error", message: "Open the Tauri app window to sync sessions." });
+      setToast({ kind: "error", message: "Open the Tauri app window to sync chats." });
       return;
     }
     void withToast(
       () => window.argmax!.sync.runNow(),
       setToast,
-      "Could not run session sync."
+      "Could not run chat sync."
     );
   }, []);
   const onAddProjectRow = useCallback((): void => {
@@ -1582,7 +1582,7 @@ export function App(): JSX.Element {
       return hits.map((hit) => ({
         id: `${hit.sessionId}:${hit.eventId}`,
         sessionId: hit.sessionId,
-        label: sessionLabelById.get(hit.sessionId) ?? "Unknown session",
+        label: sessionLabelById.get(hit.sessionId) ?? "Unknown chat",
         snippetSegments: parseFtsSnippet(hit.snippet),
         run: () => {
           const target = snapshot.sessions.find((session) => session.id === hit.sessionId);

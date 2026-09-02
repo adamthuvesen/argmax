@@ -44,7 +44,7 @@ describe("SessionConversation open-file context", () => {
     const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
     renderConversation(baseSession(), [], { onSendSessionInput, review: reviewWithOpenTabs() });
 
-    const prompt = screen.getByLabelText("Session prompt");
+    const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "explain this model" } });
     fireEvent.keyDown(prompt, { key: "Enter" });
 
@@ -61,7 +61,7 @@ describe("SessionConversation open-file context", () => {
     fireEvent.click(screen.getByRole("button", { name: "Don't attach open files" }));
     expect(screen.queryByLabelText(/^Attached context:/)).toBeNull();
 
-    const prompt = screen.getByLabelText("Session prompt");
+    const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "explain this model" } });
     fireEvent.keyDown(prompt, { key: "Enter" });
 

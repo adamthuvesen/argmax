@@ -190,7 +190,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
           </summary>
           <p className="welcome-hint">
             Argmax launches each agent with your existing configuration, so MCP servers you add to a
-            CLI show up in Argmax sessions automatically — nothing to configure here.
+            CLI show up in Argmax chats automatically — nothing to configure here.
           </p>
           <ul className="welcome-mcp-list">
             {PROVIDER_SETUP_ORDER.map((providerId) => {
@@ -218,7 +218,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
           <h2 id="welcome-project">Add your first project</h2>
         </div>
         <p className="welcome-hint">
-          Pick any local git repository. Sessions run in your checkout or in isolated worktrees
+          Pick any local git repository. Chats run in your checkout or in isolated worktrees
           under it.
         </p>
         <button

@@ -54,14 +54,14 @@ export const MENU_KEYBINDINGS: readonly MenuKeybinding[] = [
     command: "new-session",
     accelerator: "CmdOrCtrl+N",
     displayAccelerator: "⌘N",
-    label: "New session",
+    label: "New chat",
     menuLocation: "file"
   },
   {
     command: "close-surface",
     accelerator: "CmdOrCtrl+W",
     displayAccelerator: "⌘W",
-    label: "Close browser tab or session pane",
+    label: "Close browser tab or chat pane",
     menuLocation: "file"
   },
   {
@@ -108,7 +108,7 @@ export interface RendererOnlyKeybinding {
 }
 
 export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
-  { displayAccelerator: "⌘1 – ⌘9", label: "Jump to session 1–9" },
+  { displayAccelerator: "⌘1 – ⌘9", label: "Jump to chat 1–9" },
   // ⌘P opens the same palette as ⌘K with the Files filter pre-selected.
   // Tab cycles filters once it is open, so neither chord is a dead end.
   { displayAccelerator: "⌘P", label: "Open command palette on Files" },

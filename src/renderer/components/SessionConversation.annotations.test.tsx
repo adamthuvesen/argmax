@@ -61,7 +61,7 @@ describe("SessionConversation selection annotations", () => {
     selectAssistantText();
     fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
 
-    const prompt = screen.getByLabelText("Session prompt");
+    const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "why is that good?" } });
     fireEvent.keyDown(prompt, { key: "Enter" });
 
@@ -152,7 +152,7 @@ describe("SessionConversation selection annotations", () => {
 
     expect(screen.getByLabelText("Annotation: src/x.ts:9 — why mutable?")).toBeTruthy();
 
-    const prompt = screen.getByLabelText("Session prompt");
+    const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "fix it" } });
     fireEvent.keyDown(prompt, { key: "Enter" });
 
@@ -198,7 +198,7 @@ describe("SessionConversation selection annotations", () => {
 
   it("ignores selections outside the transcript", () => {
     renderConversation(baseSession(), EVENTS);
-    const prompt = screen.getByLabelText("Session prompt");
+    const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "draft text" } });
     const range = document.createRange();
     range.selectNodeContents(prompt.parentElement as HTMLElement);

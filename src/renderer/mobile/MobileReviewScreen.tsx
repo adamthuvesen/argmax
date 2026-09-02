@@ -95,7 +95,7 @@ export function MobileReviewScreen({
     <div className="mobile-review-screen">
       <MobileScreenHeader
         onBack={previewingFile ? () => onFilePreviewOpenChange(false) : onClose}
-        backLabel={previewingFile ? "Back to files" : "Back to session"}
+        backLabel={previewingFile ? "Back to files" : "Back to chat"}
         title={
           <div className="mobile-review-tabs" role="tablist" aria-label="Review mode">
             <button

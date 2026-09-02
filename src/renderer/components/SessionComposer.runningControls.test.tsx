@@ -20,7 +20,7 @@ describe("SessionComposer — running turn controls", () => {
   it("queues on Enter instead of interrupting the running turn", async () => {
     const { onSendSessionInput, onTerminateSession } = runningComposer();
 
-    const prompt = screen.getByLabelText("Session prompt");
+    const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "MCP" } });
     fireEvent.keyDown(prompt, { key: "Enter" });
 
@@ -31,9 +31,9 @@ describe("SessionComposer — running turn controls", () => {
   it("stops without sending the draft when Stop is clicked", async () => {
     const { onSendSessionInput, onTerminateSession } = runningComposer();
 
-    const prompt = screen.getByLabelText("Session prompt");
+    const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "MCP" } });
-    fireEvent.click(screen.getByRole("button", { name: "Stop session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop chat" }));
 
     await waitFor(() => expect(onTerminateSession).toHaveBeenCalledWith("session-a"));
     expect(onSendSessionInput).not.toHaveBeenCalled();
@@ -46,6 +46,6 @@ describe("SessionComposer — running turn controls", () => {
     // Interrupt-and-send lives on the queued chip's "Send now", not here — a
     // second send button beside Stop read as a puzzle.
     expect(screen.queryByRole("button", { name: "Send now" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Stop session" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Stop chat" })).toBeEnabled();
   });
 });

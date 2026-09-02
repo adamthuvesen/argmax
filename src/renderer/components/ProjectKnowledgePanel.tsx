@@ -103,7 +103,7 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
     <div className="settings-card project-knowledge">
       <SettingRow
         label="Project"
-        description="Learnings from this project are injected as a preamble on every new session."
+        description="Learnings from this project are injected as a preamble on every new chat."
         htmlFor="settings-project-knowledge-picker"
         control={
           <SettingsListPicker
@@ -128,7 +128,7 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
       ) : null}
 
       {learnings.length === 0 ? (
-        <p className="settings-note">No learnings captured yet. Complete a session to start filling this list.</p>
+        <p className="settings-note">No learnings captured yet. Complete a chat to start filling this list.</p>
       ) : (
         <ul className="project-knowledge-list" aria-label="Project learnings">
           {learnings.map((learning) => {

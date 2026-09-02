@@ -9,9 +9,9 @@ import type { NewSessionSeed } from "./SessionComposer.js";
 
 /** Open the idle session's picker and choose a model by its label. */
 function pickModel(label: string): void {
-  fireEvent.click(screen.getByRole("button", { name: "Session model" }));
+  fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
   fireEvent.click(
-    within(screen.getByRole("listbox", { name: "Session model" })).getByRole("button", { name: label })
+    within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: label })
   );
 }
 
@@ -25,9 +25,9 @@ describe("SessionComposer provider switch confirmation", () => {
 
     pickModel("Sonnet 5");
 
-    expect(screen.getByRole("dialog", { name: "Switch this session to Claude" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).toBeTruthy();
     // The chip still names the session's own provider until the user commits.
-    expect(screen.getByRole("button", { name: "Session model" }).textContent).not.toContain("Sonnet 5");
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).not.toContain("Sonnet 5");
   });
 
   // The overlay is `position: absolute; inset: 0`, so it fills whichever
@@ -39,7 +39,7 @@ describe("SessionComposer provider switch confirmation", () => {
 
     pickModel("Sonnet 5");
 
-    const dialog = screen.getByRole("dialog", { name: "Switch this session to Claude" });
+    const dialog = screen.getByRole("dialog", { name: "Switch this chat to Claude" });
     expect(dialog.closest(".session-input")).toBeNull();
     expect(dialog.parentElement).toHaveClass("conversation-surface");
   });
@@ -50,8 +50,8 @@ describe("SessionComposer provider switch confirmation", () => {
     pickModel("Sonnet 5");
     fireEvent.click(screen.getByRole("button", { name: "Switch" }));
 
-    expect(screen.queryByRole("dialog", { name: "Switch this session to Claude" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Session model" }).textContent).toContain("Sonnet 5");
+    expect(screen.queryByRole("dialog", { name: "Switch this chat to Claude" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("Sonnet 5");
   });
 
   it("keeps the current provider when the user cancels", () => {
@@ -60,19 +60,19 @@ describe("SessionComposer provider switch confirmation", () => {
     pickModel("Sonnet 5");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    expect(screen.queryByRole("dialog", { name: "Switch this session to Claude" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Session model" }).textContent).not.toContain("Sonnet 5");
+    expect(screen.queryByRole("dialog", { name: "Switch this chat to Claude" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).not.toContain("Sonnet 5");
   });
 
   it("hands the picked model and the half-written follow-up to a new session", () => {
     const onNewSession = vi.fn();
     renderConversation(baseSession({ state: "complete", provider: "codex" }), [], { onNewSession });
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Session prompt" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Chat prompt" }), {
       target: { value: "Try the other agent on this" }
     });
     pickModel("Sonnet 5");
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
 
     expect(onNewSession).toHaveBeenCalledTimes(1);
     const seed = onNewSession.mock.calls[0]?.[0] as NewSessionSeed;
@@ -80,8 +80,8 @@ describe("SessionComposer provider switch confirmation", () => {
     expect(seed.model.label).toBe("Sonnet 5");
     expect(seed.prompt).toBe("Try the other agent on this");
     // The draft moved rather than being copied: it must not still be offered here.
-    expect(screen.getByRole("textbox", { name: "Session prompt" })).toHaveValue("");
-    expect(screen.getByRole("button", { name: "Session model" }).textContent).not.toContain("Sonnet 5");
+    expect(screen.getByRole("textbox", { name: "Chat prompt" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).not.toContain("Sonnet 5");
   });
 
   // `session.provider` stays on the old provider until the backend relaunches
@@ -94,13 +94,13 @@ describe("SessionComposer provider switch confirmation", () => {
     pickModel("Sonnet 5");
     fireEvent.click(screen.getByRole("button", { name: "Switch" }));
 
-    const effortLabelBefore = screen.getByRole("button", { name: "Session model effort" }).textContent;
-    fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
+    const effortLabelBefore = screen.getByRole("button", { name: "Chat model effort" }).textContent;
+    fireEvent.click(screen.getByRole("button", { name: "Chat model effort" }));
     fireEvent.keyDown(screen.getByRole("slider", { name: "Reasoning effort" }), { key: "ArrowLeft" });
-    fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat model effort" }));
 
-    expect(screen.queryByRole("dialog", { name: "Switch this session to Claude" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Session model effort" }).textContent).not.toBe(
+    expect(screen.queryByRole("dialog", { name: "Switch this chat to Claude" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Chat model effort" }).textContent).not.toBe(
       effortLabelBefore
     );
   });
@@ -109,11 +109,11 @@ describe("SessionComposer provider switch confirmation", () => {
     const { rerender } = renderConversation(baseSession({ state: "complete", provider: "codex" }));
 
     pickModel("Sonnet 5");
-    expect(screen.getByRole("dialog", { name: "Switch this session to Claude" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).toBeTruthy();
 
     rerenderConversation(rerender, baseSession({ state: "running", provider: "codex" }));
 
-    expect(screen.queryByRole("dialog", { name: "Switch this session to Claude" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Switch this chat to Claude" })).toBeNull();
   });
 
   it("drops the new-session action when the pane cannot open the launcher", () => {
@@ -121,6 +121,6 @@ describe("SessionComposer provider switch confirmation", () => {
 
     pickModel("Sonnet 5");
 
-    expect(screen.queryByRole("button", { name: "New session" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
   });
 });

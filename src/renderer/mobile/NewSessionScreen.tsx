@@ -9,7 +9,7 @@ import { MobileScreenHeader } from "./MobileScreenHeader.js";
 import type { ProjectSummary } from "../../shared/types.js";
 import { persistLaunchModel, readStoredLaunchModel } from "../lib/launchModelPreference.js";
 import { factoryLaunchModel, type ModelPickerSelection } from "../lib/models.js";
-import { LAUNCHER_TITLE, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
+import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import { titleFromPrompt } from "../lib/projects.js";
 import {
   readStoredWorkspaceMode,
@@ -164,7 +164,7 @@ export function NewSessionScreen({
         .catch(() => undefined);
       await onLaunched(workspace.id);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Launching the session failed.");
+      onError(error instanceof Error ? error.message : "Starting the chat failed.");
       setLaunching(false);
     }
   }, [launching, model, onError, onLaunched, project, prompt, sideChat, workspaceMode]);
@@ -177,7 +177,7 @@ export function NewSessionScreen({
 
   return (
     <div className="mobile-new-screen">
-      <MobileScreenHeader onBack={onClose} backLabel="Back to sessions" title="New session" />
+      <MobileScreenHeader onBack={onClose} backLabel="Back to chats" title="New chat" />
 
       <div className="mobile-new-body">
         <div className="mobile-new-hero launcher-hero">
@@ -213,7 +213,7 @@ export function NewSessionScreen({
             ref={promptRef}
             className="mobile-new-prompt"
             aria-label="Task"
-            placeholder={sideChat ? "Ask anything" : "What are we building?"}
+            placeholder={sideChat ? SIDE_CHAT_PLACEHOLDER : "What are we building?"}
             value={prompt}
             rows={1}
             // The screen opens from a deliberate "+" tap, so raising the
@@ -223,7 +223,7 @@ export function NewSessionScreen({
           />
           <div className="mobile-new-composer-toolbar">
             <LaunchModelSelector
-              ariaLabel="Session model"
+              ariaLabel="Chat model"
               open={openSheet === "model"}
               onOpenChange={(open) => onOpenSheetChange(open ? "model" : null)}
               effortOpen={openSheet === "model-effort"}
@@ -238,7 +238,7 @@ export function NewSessionScreen({
             <button
               type="button"
               className="mobile-new-send"
-              aria-label="Launch session"
+              aria-label="Start chat"
               disabled={launching || prompt.trim().length === 0}
               onClick={() => void launch()}
             >

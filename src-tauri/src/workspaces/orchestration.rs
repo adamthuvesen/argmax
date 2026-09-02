@@ -673,13 +673,13 @@ impl WorkspaceService {
         let source_session = find_session_by_id(&connection, session_id)?;
         if source_session.provider == "cursor" {
             return Err(invalid_workspace(
-                "Cursor sessions can't be forked: cursor-agent has no way to fork a resumed conversation.",
-                "Fork a Claude, Codex, or OpenCode session instead.",
+                "Cursor chats can't be forked: cursor-agent has no way to fork a resumed conversation.",
+                "Fork a Claude, Codex, or OpenCode chat instead.",
             ));
         }
         if matches!(source_session.state.as_str(), "running" | "waiting") {
             return Err(invalid_workspace(
-                "This session is still working; forking mid-turn would copy a partial transcript.",
+                "This chat is still working; forking mid-turn would copy a partial transcript.",
                 "Wait for the turn to finish, then fork.",
             ));
         }
@@ -787,7 +787,7 @@ impl WorkspaceService {
                 "running" | "waiting" | "blocked"
             ) {
                 return Err(invalid_workspace(
-                    "This session is still working. Moving now would copy a partial transcript.",
+                    "This chat is still working. Moving now would copy a partial transcript.",
                     "Wait for the turn to settle, then retry.",
                 ));
             }
@@ -1019,7 +1019,7 @@ impl WorkspaceService {
                     id: Uuid::new_v4().to_string(),
                     session_id: source_session_id.to_string(),
                     r#type: "error".to_string(),
-                    message: format!("Could not move this session: {error}"),
+                    message: format!("Could not move this chat: {error}"),
                     payload: json!({ "operation": "session.move" }),
                     created_at: None,
                 },
@@ -1262,7 +1262,7 @@ impl WorkspaceService {
                     Ok(result) => result,
                     Err(_) => Err(ArgmaxError::service(
                         "WORKSPACE_PROVIDER_TIMEOUT",
-                        "Timed out waiting for agent sessions to terminate.",
+                        "Timed out waiting for agent chats to terminate.",
                     )),
                 }
             } else {

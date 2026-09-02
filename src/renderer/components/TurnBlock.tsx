@@ -281,11 +281,11 @@ function TurnFooter({
         <button
           type="button"
           className="turn-block-footer-action"
-          aria-label="Fork session"
+          aria-label="Fork chat"
           // Not a fork from THIS turn: `fork_session` copies the whole
           // transcript and resumes the session's latest conversation, so
           // "from here" would be a promise the backend does not keep.
-          title="Fork session — copy it into a new session and continue there"
+          title="Fork chat — copy it into a new chat and continue there"
           onClick={onFork}
         >
           <GitFork size={13} aria-hidden />

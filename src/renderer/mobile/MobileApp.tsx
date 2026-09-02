@@ -127,7 +127,7 @@ function MobileSessionRow({
       <button
         type="button"
         className="mobile-session-more"
-        aria-label="Session actions"
+        aria-label="Chat actions"
         title={workspace.taskLabel}
         aria-haspopup="dialog"
         onClick={() => onOpenActions(row)}
@@ -405,7 +405,7 @@ export function MobileApp(): JSX.Element {
       } catch (error) {
         showToast({
           kind: "error",
-          message: error instanceof Error ? error.message : "Couldn't fork the session."
+          message: error instanceof Error ? error.message : "Couldn't fork the chat."
         });
       }
     },
@@ -436,14 +436,14 @@ export function MobileApp(): JSX.Element {
   const renameWorkspace = useCallback(
     async (workspace: WorkspaceSummary): Promise<void> => {
       if (!window.argmax) return;
-      const nextLabel = window.prompt("Session name", workspace.taskLabel)?.trim();
+      const nextLabel = window.prompt("Chat name", workspace.taskLabel)?.trim();
       if (!nextLabel || nextLabel === workspace.taskLabel) return;
       try {
         await window.argmax.workspaces.setLabel({ workspaceId: workspace.id, taskLabel: nextLabel });
       } catch (error) {
         showToast({
           kind: "error",
-          message: error instanceof Error ? error.message : "Couldn't rename the session."
+          message: error instanceof Error ? error.message : "Couldn't rename the chat."
         });
       }
       await refresh();
@@ -561,7 +561,7 @@ export function MobileApp(): JSX.Element {
         <div className="mobile-session-screen">
           <MobileScreenHeader
             onBack={closeSession}
-            backLabel="Back to sessions"
+            backLabel="Back to chats"
             title={selectedWorkspace?.taskLabel ?? ""}
             actions={
               selectedWorkspace ? (
@@ -570,7 +570,7 @@ export function MobileApp(): JSX.Element {
                     type="button"
                     className="mobile-icon-button"
                     onClick={() => void archiveWorkspace(selectedWorkspace)}
-                    aria-label="Archive session"
+                    aria-label="Archive chat"
                   >
                     <Archive size={18} aria-hidden />
                   </button>
@@ -646,7 +646,7 @@ export function MobileApp(): JSX.Element {
               type="button"
               className="mobile-icon-button"
               onClick={() => setNewSessionOpen(true)}
-              aria-label="New session"
+              aria-label="New chat"
             >
               <Plus size={19} aria-hidden />
             </button>
@@ -654,7 +654,7 @@ export function MobileApp(): JSX.Element {
           {connectionBanner}
           {/* The scroller is the list landmark: sections come and go with
               triage, so this is the one stable handle on "the sessions". */}
-          <div className="mobile-list-scroll" role="region" aria-label="Session list">
+          <div className="mobile-list-scroll" role="region" aria-label="Chat list">
             {loadState === "error" ? (
               <div className="mobile-empty" role="alert">
                 <p>Could not reach Argmax.</p>
@@ -665,7 +665,7 @@ export function MobileApp(): JSX.Element {
               </div>
             ) : empty ? (
               <div className="mobile-empty">
-                <p>{loadState === "loading" ? "Connecting…" : "No active sessions."}</p>
+                <p>{loadState === "loading" ? "Connecting…" : "No active chats."}</p>
               </div>
             ) : (
               <>
@@ -686,7 +686,7 @@ export function MobileApp(): JSX.Element {
                   onOpenActions={setActionsRow}
                 />
                 <SessionSection
-                  label={pinnedRows.length > 0 || priorityRows.length > 0 ? "Sessions" : "All sessions"}
+                  label={pinnedRows.length > 0 || priorityRows.length > 0 ? "Chats" : "All chats"}
                   rows={activityRows}
                   projectNamesById={projectNamesById}
                   nowMs={nowMs}
@@ -699,7 +699,7 @@ export function MobileApp(): JSX.Element {
         </div>
       )}
       {actionsRow ? (
-        <BottomSheet label="Session actions" onClose={() => setActionsRow(null)}>
+        <BottomSheet label="Chat actions" onClose={() => setActionsRow(null)}>
           <p className="mobile-sheet-group-label">{actionsRow.workspace.taskLabel}</p>
           <div className="mobile-sheet-group">
             <SheetOption

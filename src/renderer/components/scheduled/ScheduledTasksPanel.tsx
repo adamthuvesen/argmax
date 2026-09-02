@@ -270,7 +270,7 @@ export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }
       setBusy(true);
       try {
         await window.argmax.routines.runNow(routine.id);
-        setStatus(`Started “${routine.name}”. The session is in the sidebar.`);
+        setStatus(`Started “${routine.name}”. The chat is in the sidebar.`);
         await reload();
       } catch (error) {
         setActionError(errorMessage(error, "Could not run the task."));
@@ -284,7 +284,7 @@ export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }
   const removeRoutine = useCallback(
     async (routine: Routine) => {
       if (!window.argmax) return;
-      if (!window.confirm(`Delete “${routine.name}”? Sessions it already started stay in the sidebar.`)) return;
+      if (!window.confirm(`Delete “${routine.name}”? Chats it already started stay in the sidebar.`)) return;
       beginAction();
       try {
         await window.argmax.routines.delete(routine.id);
@@ -358,7 +358,7 @@ export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }
           ) : total === 0 ? (
             <EmptyState
               headline="Nothing scheduled"
-              body="Put a prompt on a clock and Argmax runs it as a normal agent session — a morning triage, an hourly check, a one-off at a set time."
+              body="Put a prompt on a clock and Argmax runs it as a normal agent chat — a morning triage, an hourly check, a one-off at a set time."
               action={
                 <button type="button" className="sched-button sched-button-primary" onClick={startNew}>
                   <Plus size={13} aria-hidden="true" />
@@ -557,7 +557,7 @@ function ScheduledTaskEditor({
                 className="sched-input sched-textarea"
                 rows={4}
                 value={draft.prompt}
-                placeholder="Triage the priority column, summarize blockers, and open follow-up sessions for anything urgent."
+                placeholder="Triage the priority column, summarize blockers, and open follow-up chats for anything urgent."
                 onChange={(event) => patch({ prompt: event.target.value })}
               />
             </div>

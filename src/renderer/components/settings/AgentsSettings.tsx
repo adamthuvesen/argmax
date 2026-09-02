@@ -65,7 +65,7 @@ export function AgentsSettings({
       <SettingGroup id="settings-agent-defaults" label="Defaults">
         <SettingRow
           label="Default model"
-          description="Pre-fills the launcher when you start a session. Stored for the app, not per project."
+          description="Pre-fills the launcher when you start a chat. Stored for the app, not per project."
           htmlFor="settings-default-model"
           control={
             <CombinedModelSelector
@@ -116,7 +116,7 @@ export function AgentsSettings({
         {!askEachTimeAvailable ? (
           <SettingNote>
             No detected provider can answer a live approval request yet. Choose Auto-approve to start a
-            session; Argmax will not pretend that an observable-only gate can be approved in-app.
+            chat; Argmax will not pretend that an observable-only gate can be approved in-app.
           </SettingNote>
         ) : permissionMode === "auto-approve" ? (
           <SettingNote>

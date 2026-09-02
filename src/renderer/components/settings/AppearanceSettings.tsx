@@ -207,7 +207,7 @@ export function AppearanceSettings({
         />
         <SettingRow
           label="Priority section in sidebar"
-          description="Float sessions that need approval, are blocked, failed, or are ready for review to the top. Right-click a row to mark it done."
+          description="Float chats that need approval, are blocked, failed, or are ready for review to the top. Right-click a row to mark it done."
           control={
             <Toggle
               ariaLabel="Priority section in sidebar"
@@ -229,7 +229,7 @@ export function AppearanceSettings({
         />
         <SettingRow
           label="Pixel field in composer"
-          description="As you type a new session, ripple an animated pixel field across the input."
+          description="As you type a new chat, ripple an animated pixel field across the input."
           control={
             <Toggle
               ariaLabel="Pixel field in composer"

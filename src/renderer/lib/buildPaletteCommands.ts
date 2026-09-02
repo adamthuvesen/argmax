@@ -53,7 +53,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
   const actions: PaletteCommand[] = [
     {
       id: "action:new-session",
-      label: "New Session",
+      label: "New Chat",
       subtitle: "Open the launcher",
       group: "Actions",
       icon: Plus,
@@ -78,7 +78,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     {
       id: "action:search-sessions",
       label: "Search Messages",
-      subtitle: "Full-text search across every session timeline (⌘F)",
+      subtitle: "Full-text search across every chat timeline (⌘F)",
       group: "Actions",
       icon: Search,
       run: onOpenSearch
@@ -87,7 +87,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       ? [
           {
             id: "action:stop-session",
-            label: "Stop Current Session",
+            label: "Stop Current Chat",
             subtitle: selectedSession.modelLabel,
             group: "Actions" as const,
             icon: Square,

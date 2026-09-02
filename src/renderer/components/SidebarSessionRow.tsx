@@ -330,7 +330,7 @@ function SidebarSessionRowInner({
       ? "No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
       : null;
 
-  const displayLabel = workspace.taskLabel.trim() || workspace.branch || "Untitled session";
+  const displayLabel = workspace.taskLabel.trim() || workspace.branch || "Untitled chat";
   // Surface the PR in the accessible row title so the marker icon has a name —
   // matched on by the sidebar tests and read aloud by screen readers.
   const prTitle =
@@ -496,7 +496,7 @@ function SidebarSessionRowInner({
               ref={renameInputRef}
               className="session-rename-input"
               value={draftLabel}
-              aria-label="Rename session"
+              aria-label="Rename chat"
               maxLength={200}
               onChange={(event) => setDraftLabel(event.target.value)}
               onKeyDown={handleRenameKeyDown}
@@ -546,8 +546,8 @@ function SidebarSessionRowInner({
       {onTogglePin ? (
         <button
           className="session-row-action session-pin-btn"
-          title={workspace.pinned ? "Unpin session" : "Pin session"}
-          aria-label={workspace.pinned ? "Unpin session" : "Pin session"}
+          title={workspace.pinned ? "Unpin chat" : "Pin chat"}
+          aria-label={workspace.pinned ? "Unpin chat" : "Pin chat"}
           aria-pressed={workspace.pinned}
           type="button"
           onClick={(e) => {
@@ -561,8 +561,8 @@ function SidebarSessionRowInner({
           {showArchive && (
             <button
               className="session-archive-btn"
-              title="Archive session"
-              aria-label="Archive session"
+              title="Archive chat"
+              aria-label="Archive chat"
               type="button"
               onClick={(e) => { e.stopPropagation(); onArchiveWorkspace(workspace.id); }}
             >
@@ -577,7 +577,7 @@ function SidebarSessionRowInner({
               ref={contextMenu.setPopover}
               className="project-picker-popover session-context-menu"
               role="menu"
-              aria-label="Session actions"
+              aria-label="Chat actions"
               style={contextMenu.floatingStyles}
             >
               {onRename ? (

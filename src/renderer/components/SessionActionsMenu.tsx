@@ -119,8 +119,8 @@ export function SessionActionsMenu({
       <button
         className="small-icon"
         type="button"
-        title="Session actions"
-        aria-label="Session actions"
+        title="Chat actions"
+        aria-label="Chat actions"
         aria-haspopup="menu"
         aria-expanded={actionsOpen}
         onClick={() => setActionsOpen((open) => !open)}
@@ -132,7 +132,7 @@ export function SessionActionsMenu({
           ref={menu.setPopover}
           className="project-picker-popover session-actions-popover"
           role="menu"
-          aria-label="Session actions"
+          aria-label="Chat actions"
           style={menu.floatingStyles}
         >
           {actionsMode === "main" && (
@@ -143,14 +143,14 @@ export function SessionActionsMenu({
                     type="button"
                     role="menuitem"
                     className="project-picker-item"
-                    title="Compose a task for any repository beside this session (⌘N)"
+                    title="Compose a task for any repository beside this chat (⌘N)"
                     onClick={() => {
                       closeActions();
                       onNewSession();
                     }}
                   >
                     <SquarePen size={14} aria-hidden="true" />
-                    New session here
+                    New chat here
                   </button>
                 </li>
               ) : null}
@@ -275,7 +275,7 @@ export function SessionActionsMenu({
               <button
                 type="button"
                 className="session-actions-back"
-                aria-label="Back to session actions"
+                aria-label="Back to chat actions"
                 onClick={() => setActionsMode("main")}
               >
                 <ChevronLeft size={12} aria-hidden="true" />

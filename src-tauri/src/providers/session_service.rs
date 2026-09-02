@@ -251,7 +251,7 @@ impl ProviderSessionService {
         {
             return Err(ArgmaxError::service(
                 "MOVE_HAS_QUEUED_MESSAGES",
-                "Send or cancel queued follow-ups before moving this session.",
+                "Send or cancel queued follow-ups before moving this chat.",
             ));
         }
         Ok(())
@@ -265,7 +265,7 @@ impl ProviderSessionService {
         {
             return Err(ArgmaxError::service(
                 "MOVE_ALREADY_PENDING",
-                "This session is moving after the current turn. New follow-ups are disabled.",
+                "This chat is moving after the current turn. New follow-ups are disabled.",
             ));
         }
         Ok(())
@@ -577,7 +577,7 @@ impl ProviderSessionService {
         {
             return Err(ArgmaxError::service(
                 "PROVIDER_TERMINATING",
-                "Provider session is being terminated; wait for cancellation to finish.",
+                "Provider chat is being terminated; wait for cancellation to finish.",
             ));
         }
         ensure_permission_mode_supported(session_provider, session_permission_mode)?;
@@ -1127,7 +1127,7 @@ impl ProviderSessionService {
         if let Some(error) = first_error {
             let _ = self.abort_session_move(
                 session_id,
-                "Could not move this session because the agent process did not stop safely.",
+                "Could not move this chat because the agent process did not stop safely.",
             );
             Err(error)
         } else {
@@ -1724,7 +1724,7 @@ impl ProviderSessionService {
                 id: Uuid::new_v4().to_string(),
                 session_id: session_id.to_string(),
                 r#type: "session.cancelled".to_string(),
-                message: "Provider session cancelled.".to_string(),
+                message: "Provider chat cancelled.".to_string(),
                 payload: json!({}),
                 created_at: Some(completed_at),
             },
@@ -2074,7 +2074,7 @@ impl ProviderSessionService {
             if let Err(error) = handle.terminate().await {
                 let _ = self.abort_session_move(
                     session_id,
-                    "Could not move this session because the Cursor turn did not stop safely.",
+                    "Could not move this chat because the Cursor turn did not stop safely.",
                 );
                 return Err(error);
             }

@@ -51,8 +51,8 @@ describe("App sidebar", () => {
     // The seeded workspace is mid-turn, so it floats into Priority; the seeded
     // snapshot has no Today activity, so that bucket isn't rendered yet — and
     // per-launch defaults would show it collapsed once it appears.
-    await screen.findByRole("button", { name: /Priority sessions/ });
-    expect(screen.queryByRole("button", { name: /Today sessions/ })).not.toBeInTheDocument();
+    await screen.findByRole("button", { name: /Priority chats/ });
+    expect(screen.queryByRole("button", { name: /Today chats/ })).not.toBeInTheDocument();
 
     // A fork (or an agent-launched session) lands as a delta with a fresh
     // workspace the user never clicked. Its group must open so the creation
@@ -94,7 +94,7 @@ describe("App sidebar", () => {
       await Promise.resolve();
     });
 
-    expect(await screen.findByRole("button", { name: /Today sessions/ })).toHaveAttribute(
+    expect(await screen.findByRole("button", { name: /Today chats/ })).toHaveAttribute(
       "aria-expanded",
       "true"
     );
@@ -145,7 +145,7 @@ describe("App sidebar", () => {
     );
 
     // Cmd+1..9 must work even when focus is inside the composer textarea
-    const promptInput = await screen.findByLabelText("Session prompt");
+    const promptInput = await screen.findByLabelText("Chat prompt");
     promptInput.focus();
     expect(promptInput).toHaveFocus();
 
@@ -286,7 +286,7 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Session model" })).toHaveTextContent("Sonnet 5");
+    expect(screen.getByRole("button", { name: "Chat model" })).toHaveTextContent("Sonnet 5");
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
     expect(screen.queryByText("complete")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-current", "true");
@@ -403,7 +403,7 @@ describe("App sidebar", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
-    const input = await screen.findByLabelText("Session prompt");
+    const input = await screen.findByLabelText("Chat prompt");
     fireEvent.change(input, {
       target: { value: "continue with tests" }
     });
@@ -435,7 +435,7 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    const input = await screen.findByLabelText("Session prompt");
+    const input = await screen.findByLabelText("Chat prompt");
     const form = input.closest("form");
     expect(form).not.toBeNull();
 
@@ -465,19 +465,19 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    const input = await screen.findByLabelText("Session prompt");
+    const input = await screen.findByLabelText("Chat prompt");
     // Composer is enabled while running; the actual send is routed to the
     // queue in main (see providerSessionService.queue.test.ts).
     expect(input).toBeEnabled();
     // Stop is still available alongside Send while a turn is in flight.
-    expect(screen.getByRole("button", { name: "Stop session" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop chat" })).toBeInTheDocument();
   });
 
   it("surfaces a Stop button on a running session and terminates it", async () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    const stopButton = await screen.findByRole("button", { name: "Stop session" });
+    const stopButton = await screen.findByRole("button", { name: "Stop chat" });
     // Stop replaces the send/queue button in the same slot while running.
     // Follow-ups are queued via Enter in the textarea, not via a visible button.
     expect(
@@ -499,11 +499,11 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Session model" }));
-    const modelPopover = await screen.findByRole("listbox", { name: "Session model" });
+    fireEvent.click(await screen.findByRole("button", { name: "Chat model" }));
+    const modelPopover = await screen.findByRole("listbox", { name: "Chat model" });
     // GPT-5.6 Sol is effort-capable; selecting it seeds the default Medium effort.
     fireEvent.click(within(modelPopover).getByText("GPT-5.6 Sol"));
-    fireEvent.change(await screen.findByLabelText("Session prompt"), {
+    fireEvent.change(await screen.findByLabelText("Chat prompt"), {
       target: { value: "use the stronger model" }
     });
     fireEvent.click(screen.getByTitle("Send follow-up"));
@@ -617,7 +617,7 @@ describe("App sidebar", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     // Empty changed-files state → Browse files entry is available behind the picker
-    fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Chat actions" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Browse files" }));
 
     // The panel opens directly in Files mode
@@ -686,7 +686,7 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    const input = await screen.findByLabelText("Session prompt");
+    const input = await screen.findByLabelText("Chat prompt");
     fireEvent.keyDown(input, { key: "g", metaKey: true });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
@@ -745,7 +745,7 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Chat actions" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Browse files" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^assets$/ }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^model\.bin$/ }));
@@ -761,7 +761,7 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Chat actions" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Browse files" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^assets$/ }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^logo\.png$/ }));
@@ -809,7 +809,7 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    const input = await screen.findByLabelText("Session prompt");
+    const input = await screen.findByLabelText("Chat prompt");
     fireEvent.change(input, { target: { value: "Plan the follow-up" } });
     fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
 
@@ -902,7 +902,7 @@ describe("App sidebar", () => {
     );
   });
 
-  it("dismisses the launcher review panel when New Agent is clicked", async () => {
+  it("dismisses the launcher review panel when New chat is clicked", async () => {
     listProjectFiles.mockResolvedValue([
       { path: "src-tauri/src/main.ts" },
       { path: "README.md" }
@@ -915,7 +915,7 @@ describe("App sidebar", () => {
     fireEvent.keyDown(prompt, { key: "b", metaKey: true });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "New Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
 
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
@@ -1026,7 +1026,7 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    const input = await screen.findByLabelText<HTMLInputElement>("Session prompt");
+    const input = await screen.findByLabelText<HTMLInputElement>("Chat prompt");
     fireEvent.change(input, { target: { value: "/o" } });
 
     const listbox = await screen.findByRole("listbox", { name: "Slash commands" });
@@ -1081,7 +1081,7 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
 
-    const projectVisibility = screen.getByRole("button", { name: "Hide Argmax sessions" });
+    const projectVisibility = screen.getByRole("button", { name: "Hide Argmax chats" });
     fireEvent.click(screen.getByRole("button", { name: "Argmax" }));
 
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();

@@ -165,7 +165,7 @@ pub fn app_menu_spec(is_dev: bool) -> Vec<MenuSpec> {
         MenuSpec {
             label: "File",
             items: vec![
-                command(MenuCommand::NewSession, "New Session", Some("CmdOrCtrl+N")),
+                command(MenuCommand::NewSession, "New Chat", Some("CmdOrCtrl+N")),
                 MenuEntry::Separator,
                 // Not the predefined Close Window: with focus inside a
                 // native browser tab, its unconditional ⌘W would close the
@@ -514,7 +514,7 @@ mod tests {
             vec![
                 (MenuCommand::OpenSettings, "Settings…", Some("CmdOrCtrl+,")),
                 (MenuCommand::CheckForUpdates, "Check for Updates…", None),
-                (MenuCommand::NewSession, "New Session", Some("CmdOrCtrl+N")),
+                (MenuCommand::NewSession, "New Chat", Some("CmdOrCtrl+N")),
                 (MenuCommand::CloseSurface, "Close", Some("CmdOrCtrl+W")),
                 (
                     MenuCommand::OpenCommandPalette,

@@ -66,7 +66,7 @@ function workspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary 
  * which is what React warns about.
  */
 async function openMenu(): Promise<void> {
-  fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+  fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
   await act(async () => {});
 }
 
@@ -154,7 +154,7 @@ describe("SessionActionsMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Push" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Create pull request" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Back to session actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to chat actions" }));
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
 
     await waitFor(() => {

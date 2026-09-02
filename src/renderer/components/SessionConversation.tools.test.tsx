@@ -699,7 +699,7 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.getByText("It's about 3:30 PM here.")).toBeInTheDocument();
   });
 
-  it("hides the per-session toolbar actions behind a Session actions picker", () => {
+  it("hides the per-session toolbar actions behind a Chat actions picker", () => {
     renderConversation(baseSession({ state: "complete" }));
 
     // None of the consolidated actions are visible until the picker is opened.
@@ -707,7 +707,7 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByRole("menuitem", { name: "Git actions" })).toBeNull();
     expect(screen.queryByRole("menuitemcheckbox", { name: "Toggle debug log" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
 
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Git actions" })).toBeInTheDocument();
@@ -719,7 +719,7 @@ describe("SessionConversation — tools & chrome", () => {
 
   it("dismisses the session actions popover on a mousedown outside the popover", () => {
     renderConversation(baseSession({ state: "complete" }));
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
 
     fireEvent.mouseDown(document.body);
@@ -729,7 +729,7 @@ describe("SessionConversation — tools & chrome", () => {
 
   it("dismisses the session actions popover when clicking inside the conversation area", () => {
     renderConversation(baseSession({ state: "complete" }));
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
 
     const repositoryHeading = screen.getByRole("heading", { level: 2 });
@@ -740,7 +740,7 @@ describe("SessionConversation — tools & chrome", () => {
 
   it("dismisses the session actions popover after toggling the debug log", () => {
     renderConversation(baseSession({ state: "complete" }));
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Toggle debug log" }));
 
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
@@ -749,7 +749,7 @@ describe("SessionConversation — tools & chrome", () => {
   it("swaps the picker contents in place when Git actions is selected", () => {
     renderConversation(baseSession({ state: "complete" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Git actions" }));
 
     // Main menu items are no longer in the DOM; git actions take their place.
@@ -760,7 +760,7 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.getByRole("menuitem", { name: "Create branch" })).toBeInTheDocument();
 
     // Back returns to the main menu.
-    fireEvent.click(screen.getByRole("button", { name: "Back to session actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to chat actions" }));
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Push" })).toBeNull();
   });

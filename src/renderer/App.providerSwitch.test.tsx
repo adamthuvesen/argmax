@@ -32,16 +32,18 @@ describe("provider switch — new session instead", () => {
     render(<App />);
     await openSessionPane();
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Session prompt" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Chat prompt" }), {
       target: { value: "Second opinion on the auth guard" }
     });
-    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
     fireEvent.click(
-      within(screen.getByRole("listbox", { name: "Session model" })).getByRole("button", {
+      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", {
         name: "Sonnet 5"
       })
     );
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "New chat" })
+    );
 
     expect(await screen.findByLabelText("Task prompt")).toHaveValue("Second opinion on the auth guard");
     expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Sonnet 5");

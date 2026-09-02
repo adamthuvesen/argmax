@@ -48,7 +48,7 @@ import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
-import { LAUNCHER_TITLE, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
+import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { preferredLaunchModel, type ModelPickerSelection } from "../lib/models.js";
 import {
@@ -435,7 +435,7 @@ export function LaunchSurface({
   });
 
   const placeholderText = chatMode
-    ? "Ask anything — no repository attached"
+    ? SIDE_CHAT_PLACEHOLDER
     : "Ask your agent to inspect, build, or fix something";
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);

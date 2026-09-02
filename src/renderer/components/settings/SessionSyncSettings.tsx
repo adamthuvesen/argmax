@@ -26,7 +26,7 @@ export function SessionSyncSettings(): JSX.Element {
 
   const load = useCallback(async (): Promise<void> => {
     if (!window.argmax) {
-      setLoadError("Open the Argmax desktop app to configure session sync.");
+      setLoadError("Open the Argmax desktop app to configure chat sync.");
       return;
     }
     try {
@@ -65,7 +65,7 @@ export function SessionSyncSettings(): JSX.Element {
 
   if (loadError) {
     return (
-      <SettingGroup id="settings-session-sync" label="Session sync">
+      <SettingGroup id="settings-session-sync" label="Chat sync">
         <SettingNote role="alert">{loadError}</SettingNote>
       </SettingGroup>
     );
@@ -75,7 +75,7 @@ export function SessionSyncSettings(): JSX.Element {
   const supported = new Set(status?.supportedProviders ?? []);
 
   return (
-    <SettingGroup id="settings-session-sync" label="Session sync">
+    <SettingGroup id="settings-session-sync" label="Chat sync">
       {PROVIDERS.map((provider) => (
         <SettingRow
           key={provider}
@@ -98,7 +98,7 @@ export function SessionSyncSettings(): JSX.Element {
       ))}
       <SettingRow
         label="How far back"
-        description="Older sessions are left in the agent's own history."
+        description="Older chats are left in the agent's own history."
         control={
           <SegmentedControl
             ariaLabel="How far back"
@@ -116,7 +116,7 @@ export function SessionSyncSettings(): JSX.Element {
         }
       />
       <SettingNote>
-        Turning a provider off — or narrowing the window — removes the synced sessions you haven&apos;t
+        Turning a provider off — or narrowing the window — removes the synced chats you haven&apos;t
         continued in Argmax. Nothing is lost: the agent&apos;s own history still has them, and turning
         sync back on brings them back.
       </SettingNote>
@@ -135,8 +135,8 @@ export function SessionSyncSettings(): JSX.Element {
 
 function syncSummary(status: SyncStatus): string {
   const anyEnabled = PROVIDERS.some((provider) => status.config[provider]);
-  if (!anyEnabled) return "Sync off. Synced sessions you never continued were removed.";
-  if (status.importedCount === 0) return "Saved. No new sessions to import.";
-  const plural = status.importedCount === 1 ? "session" : "sessions";
+  if (!anyEnabled) return "Sync off. Synced chats you never continued were removed.";
+  if (status.importedCount === 0) return "Saved. No new chats to import.";
+  const plural = status.importedCount === 1 ? "chat" : "chats";
   return `Saved. Imported ${status.importedCount} ${plural}.`;
 }

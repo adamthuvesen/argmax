@@ -15,15 +15,15 @@ const OPUS_MEDIUM: ProviderModelSelection = {
 
 function openClaudePicker(value: ProviderModelSelection = HAIKU): ReturnType<typeof vi.fn> {
   const onChange = vi.fn();
-  render(<ModelSelector ariaLabel="Session model" provider="claude" value={value} onChange={onChange} />);
-  fireEvent.click(screen.getByRole("button", { name: "Session model" }));
+  render(<ModelSelector ariaLabel="Chat model" provider="claude" value={value} onChange={onChange} />);
+  fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
   return onChange;
 }
 
 describe("ModelSelector — one row per model", () => {
   it("lists one row per model, not one per effort", () => {
     openClaudePicker();
-    const list = screen.getByRole("listbox", { name: "Session model" });
+    const list = screen.getByRole("listbox", { name: "Chat model" });
     // Four Claude models: Fable 5.1, Opus 5, Sonnet, Haiku.
     expect(within(list).getAllByRole("option")).toHaveLength(4);
     expect(within(list).getByText("Fable 5.1")).toBeInTheDocument();
@@ -52,7 +52,7 @@ describe("ModelSelector — one row per model", () => {
 describe("ModelSelector type to filter", () => {
   it("focuses the currently selected model when opened so only one row is highlighted", () => {
     openClaudePicker(OPUS_MEDIUM);
-    const list = screen.getByRole("listbox", { name: "Session model" });
+    const list = screen.getByRole("listbox", { name: "Chat model" });
     const options = within(list).getAllByRole("option");
     // Four Claude models: Fable 5.1 (0), Opus 5 (1), Sonnet 5 (2), Haiku 4.5 (3)
     expect(options[0]).not.toHaveAttribute("data-active");
@@ -65,7 +65,7 @@ describe("ModelSelector type to filter", () => {
 
   it("picks the currently selected model on immediate Enter without typing", () => {
     const onChange = openClaudePicker(OPUS_MEDIUM);
-    const list = screen.getByRole("listbox", { name: "Session model" });
+    const list = screen.getByRole("listbox", { name: "Chat model" });
     fireEvent.keyDown(list, { key: "Enter" });
     expect(onChange).toHaveBeenCalledWith({
       label: "Opus 5",
@@ -76,7 +76,7 @@ describe("ModelSelector type to filter", () => {
 
   it("takes focus on open so typing narrows the list instead of the input behind it", () => {
     openClaudePicker();
-    const list = screen.getByRole("listbox", { name: "Session model" });
+    const list = screen.getByRole("listbox", { name: "Chat model" });
     expect(document.activeElement).toBe(list);
 
     fireEvent.keyDown(list, { key: "h" });
@@ -91,7 +91,7 @@ describe("ModelSelector type to filter", () => {
 
   it("picks the highlighted match on Enter", () => {
     const onChange = openClaudePicker();
-    const list = screen.getByRole("listbox", { name: "Session model" });
+    const list = screen.getByRole("listbox", { name: "Chat model" });
 
     fireEvent.keyDown(list, { key: "o" });
     fireEvent.keyDown(list, { key: "p" });
@@ -106,7 +106,7 @@ describe("ModelSelector type to filter", () => {
 
   it("backspaces out of a query that matches nothing", () => {
     openClaudePicker();
-    const list = screen.getByRole("listbox", { name: "Session model" });
+    const list = screen.getByRole("listbox", { name: "Chat model" });
 
     fireEvent.keyDown(list, { key: "z" });
     expect(within(list).getByText("No models match")).toBeInTheDocument();
@@ -118,14 +118,14 @@ describe("ModelSelector type to filter", () => {
 
   it("forgets the query when the picker closes", () => {
     openClaudePicker();
-    const list = screen.getByRole("listbox", { name: "Session model" });
+    const list = screen.getByRole("listbox", { name: "Chat model" });
     fireEvent.keyDown(list, { key: "h" });
     expect(within(list).getAllByRole("option")).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
-    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
 
-    const reopened = screen.getByRole("listbox", { name: "Session model" });
+    const reopened = screen.getByRole("listbox", { name: "Chat model" });
     expect(within(reopened).getAllByRole("option")).toHaveLength(4);
   });
 });
@@ -404,50 +404,50 @@ describe("LaunchModelSelector — provider availability gating", () => {
 
 describe("ModelSelector — standalone effort slider", () => {
   it("without withEffortSlider the chip shows just the model label, no slider", () => {
-    render(<ModelSelector ariaLabel="Session model" provider="claude" value={OPUS_MEDIUM} onChange={vi.fn()} />);
-    const modelButton = screen.getByRole("button", { name: "Session model" });
+    render(<ModelSelector ariaLabel="Chat model" provider="claude" value={OPUS_MEDIUM} onChange={vi.fn()} />);
+    const modelButton = screen.getByRole("button", { name: "Chat model" });
     expect(modelButton).toHaveTextContent("Opus 5");
     expect(modelButton).toHaveAttribute("title", "Opus 5");
-    expect(screen.queryByRole("button", { name: "Session model effort" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Chat model effort" })).toBeNull();
   });
 
   it("with withEffortSlider the model chip stays effort-free and a separate chip shows it", () => {
     render(
       <ModelSelector
-        ariaLabel="Session model"
+        ariaLabel="Chat model"
         provider="claude"
         value={OPUS_MEDIUM}
         onChange={vi.fn()}
         withEffortSlider
       />
     );
-    const modelButton = screen.getByRole("button", { name: "Session model" });
+    const modelButton = screen.getByRole("button", { name: "Chat model" });
     expect(modelButton).toHaveTextContent("Opus 5");
     expect(modelButton).toHaveAttribute("title", "Opus 5");
-    expect(screen.getByRole("button", { name: "Session model effort" })).toHaveTextContent("Medium");
+    expect(screen.getByRole("button", { name: "Chat model effort" })).toHaveTextContent("Medium");
   });
 
   it("hides the effort chip for a no-effort (fast) model", () => {
     render(
-      <ModelSelector ariaLabel="Session model" provider="claude" value={HAIKU} onChange={vi.fn()} withEffortSlider />
+      <ModelSelector ariaLabel="Chat model" provider="claude" value={HAIKU} onChange={vi.fn()} withEffortSlider />
     );
-    expect(screen.queryByRole("button", { name: "Session model effort" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Chat model effort" })).toBeNull();
   });
 
   it("steps the slider live but commits the draft only on dismiss", () => {
     const onChange = vi.fn();
     render(
       <ModelSelector
-        ariaLabel="Session model"
+        ariaLabel="Chat model"
         provider="claude"
         value={OPUS_MEDIUM}
         onChange={onChange}
         withEffortSlider
       />
     );
-    const chip = screen.getByRole("button", { name: "Session model effort" });
+    const chip = screen.getByRole("button", { name: "Chat model effort" });
     fireEvent.click(chip);
-    const dialog = screen.getByRole("dialog", { name: "Session model effort" });
+    const dialog = screen.getByRole("dialog", { name: "Chat model effort" });
 
     // Claude spans low..ultra as indices 0..5; medium is 1.
     const slider = within(dialog).getByRole("slider", { name: "Reasoning effort" });
@@ -484,9 +484,9 @@ describe("ModelSelector — standalone effort slider", () => {
       modelId: "gpt-5.6-sol",
       reasoningEffort: "medium"
     };
-    render(<LaunchModelSelector ariaLabel="Session model" value={value} onChange={vi.fn()} withEffortSlider />);
-    fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
-    const dialog = screen.getByRole("dialog", { name: "Session model effort" });
+    render(<LaunchModelSelector ariaLabel="Chat model" value={value} onChange={vi.fn()} withEffortSlider />);
+    fireEvent.click(screen.getByRole("button", { name: "Chat model effort" }));
+    const dialog = screen.getByRole("dialog", { name: "Chat model effort" });
     expect(within(dialog).getByRole("slider", { name: "Reasoning effort" })).toHaveAttribute("aria-valuemax", "5");
   });
 
@@ -497,9 +497,9 @@ describe("ModelSelector — standalone effort slider", () => {
       modelId: "gpt-5.6-luna",
       reasoningEffort: "medium"
     };
-    render(<LaunchModelSelector ariaLabel="Session model" value={value} onChange={vi.fn()} withEffortSlider />);
-    fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
-    const dialog = screen.getByRole("dialog", { name: "Session model effort" });
+    render(<LaunchModelSelector ariaLabel="Chat model" value={value} onChange={vi.fn()} withEffortSlider />);
+    fireEvent.click(screen.getByRole("button", { name: "Chat model effort" }));
+    const dialog = screen.getByRole("dialog", { name: "Chat model effort" });
     expect(within(dialog).getByRole("slider", { name: "Reasoning effort" })).toHaveAttribute("aria-valuemax", "4");
   });
 
@@ -511,11 +511,11 @@ describe("ModelSelector — standalone effort slider", () => {
       reasoningEffort: "medium"
     };
     const { unmount } = render(
-      <LaunchModelSelector ariaLabel="Session model" value={gpt} onChange={vi.fn()} withEffortSlider />
+      <LaunchModelSelector ariaLabel="Chat model" value={gpt} onChange={vi.fn()} withEffortSlider />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat model effort" }));
     expect(
-      within(screen.getByRole("dialog", { name: "Session model effort" })).getByRole("slider", {
+      within(screen.getByRole("dialog", { name: "Chat model effort" })).getByRole("slider", {
         name: "Reasoning effort"
       })
     ).toHaveAttribute("aria-valuemax", "4");
@@ -527,10 +527,10 @@ describe("ModelSelector — standalone effort slider", () => {
       modelId: "claude-opus-5-thinking-medium",
       reasoningEffort: "medium"
     };
-    render(<LaunchModelSelector ariaLabel="Session model" value={opus} onChange={vi.fn()} withEffortSlider />);
-    fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
+    render(<LaunchModelSelector ariaLabel="Chat model" value={opus} onChange={vi.fn()} withEffortSlider />);
+    fireEvent.click(screen.getByRole("button", { name: "Chat model effort" }));
     expect(
-      within(screen.getByRole("dialog", { name: "Session model effort" })).getByRole("slider", {
+      within(screen.getByRole("dialog", { name: "Chat model effort" })).getByRole("slider", {
         name: "Reasoning effort"
       })
     ).toHaveAttribute("aria-valuemax", "4");

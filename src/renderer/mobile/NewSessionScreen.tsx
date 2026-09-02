@@ -181,7 +181,7 @@ export function NewSessionScreen({
 
       <div className="mobile-new-body">
         <div className="mobile-new-hero launcher-hero">
-          <Mascot className="launcher-hero-mascot" size={64} />
+          <Mascot className="launcher-hero-mascot" size={72} />
           <h1 className="launcher-hero-title">{sideChat ? SIDE_CHAT_TITLE : LAUNCHER_TITLE}</h1>
         </div>
         {/* Project and workspace stay above the composer. Model and effort

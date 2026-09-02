@@ -23,7 +23,7 @@ export function MobileScreenHeader({
   return (
     <header className="mobile-session-header">
       <button type="button" className="mobile-back" onClick={onBack} aria-label={backLabel}>
-        <ChevronLeft size={22} aria-hidden />
+        <ChevronLeft size={20} aria-hidden />
       </button>
       {typeof title === "string" ? (
         <span className="mobile-session-header-title">{title}</span>

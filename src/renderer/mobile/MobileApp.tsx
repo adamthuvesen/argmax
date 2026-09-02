@@ -466,6 +466,17 @@ export function MobileApp(): JSX.Element {
     [openWorkspaceChat, refresh]
   );
 
+  // A multitask card names the chat it dispatched. Opening it here is the same
+  // move as tapping that chat's row in the list.
+  const openSessionById = useCallback(
+    (sessionId: string): void => {
+      const target = snapshot.sessions.find((session) => session.id === sessionId);
+      if (!target) return;
+      openWorkspaceChat(target.workspaceId);
+    },
+    [openWorkspaceChat, snapshot.sessions]
+  );
+
   const sessionOpen = selectedWorkspaceId !== null && (selectedSession !== null || selectedSessionId !== null);
   // Mirrors the render below: the review screen needs a workspace to draw, and
   // a workspace that drops out of the snapshot must take its history entry
@@ -621,6 +632,8 @@ export function MobileApp(): JSX.Element {
             onCancelQueuedMessage={commands.cancelQueuedMessage}
             onSendQueuedMessageNow={commands.sendQueuedMessageNow}
             onTerminateSession={commands.terminateSession}
+            onMultitask={commands.multitask}
+            onOpenSession={openSessionById}
             onClearSession={commands.clearSession}
             onForkSession={forkSession}
             onOpenFile={(path) => {

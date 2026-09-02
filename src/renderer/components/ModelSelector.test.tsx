@@ -461,6 +461,12 @@ describe("ModelSelector — standalone effort slider", () => {
     expect(onChange).not.toHaveBeenCalled();
     expect(chip).toHaveTextContent("Medium");
 
+    // A stop label under the rail jumps the draft straight to that level.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Set effort to Max" }));
+    expect(slider).toHaveAttribute("aria-valuenow", "4");
+    expect(slider).toHaveAttribute("aria-valuetext", "Max");
+    fireEvent.keyDown(slider, { key: "End" });
+
     // Re-clicking the chip dismisses the picker and commits the final draft.
     fireEvent.click(chip);
     expect(onChange).toHaveBeenCalledTimes(1);

@@ -235,9 +235,9 @@ fn cursor_structured_args(
 // Cursor picks reasoning effort and fast serving through the model id (e.g.
 // gpt-5.6-sol-high, claude-opus-5-thinking-xhigh-fast). Effort: GPT-5.6
 // Luna/Terra/Sol and Opus 5 Thinking are parameterized up to Max; Grok 4.6 and
-// Gemini 3.7 Flash stop at High. Composer has no effort variant and passes
+// Gemini 3.8 Flash stop at High. Composer has no effort variant and passes
 // through. Fast: append "-fast" after the effort suffix for every model that
-// has a fast variant — all but Gemini 3.7 Flash. The renderer only enables the
+// has a fast variant — all but Gemini 3.8 Flash. The renderer only enables the
 // Speed toggle for those, so this mirrors it.
 //
 // Match the picker's exact base ids (see PROVIDER_MODELS in providerModels.ts,
@@ -261,7 +261,7 @@ fn cursor_model_for(
             format!("{family}-{}", effort_suffix(effort))
         }
         (
-            "cursor-grok-4.6-medium" | "cursor-grok-4.5-medium" | "gemini-3.7-flash-medium",
+            "cursor-grok-4.6-medium" | "cursor-grok-4.5-medium" | "gemini-3.8-flash-medium",
             Some(effort),
         ) => {
             let family = model_id.trim_end_matches("-medium");
@@ -269,7 +269,7 @@ fn cursor_model_for(
         }
         _ => model_id.to_string(),
     };
-    if fast_mode && !model_id.starts_with("gemini-3.7-flash") {
+    if fast_mode && !model_id.starts_with("gemini-3.8-flash") {
         format!("{with_effort}-fast")
     } else {
         with_effort
@@ -1093,9 +1093,9 @@ mod tests {
 
     #[test]
     fn cursor_gemini_has_no_fast_variant() {
-        // Gemini 3.7 Flash has no -fast model, so fast mode is a no-op for it.
+        // Gemini 3.8 Flash has no -fast model, so fast mode is a no-op for it.
         let input = ProviderLaunchInput {
-            model_id: "gemini-3.7-flash-medium".to_string(),
+            model_id: "gemini-3.8-flash-medium".to_string(),
             reasoning_effort: Some(ReasoningEffort::High),
             fast_mode: true,
             ..launch_input(ProviderId::Cursor)
@@ -1105,7 +1105,7 @@ mod tests {
             .iter()
             .position(|a| a == "--model")
             .expect("model flag");
-        assert_eq!(args[i + 1], "gemini-3.7-flash-high");
+        assert_eq!(args[i + 1], "gemini-3.8-flash-high");
     }
 
     #[test]

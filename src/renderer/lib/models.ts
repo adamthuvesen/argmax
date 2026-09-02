@@ -51,15 +51,15 @@ export function modelKey(model: Pick<ProviderModelSelection, "modelId">): string
 }
 
 // Cursor serves a faster variant of each model as a `-fast` id suffix — every
-// Cursor model has one except Gemini 3.7 Flash. Claude
+// Cursor model has one except Gemini 3.8 Flash. Claude
 // and Codex fast mode is provider-wide (a settings flag / priority tier), not
 // tied to the model. OpenCode has no fast tier at all. Kept in sync with the
 // Rust cursor adapter's -fast mapping.
 export function modelSupportsFastMode(model: Pick<ModelPickerSelection, "provider" | "modelId">): boolean {
   if (model.provider === "opencode") return false;
   if (model.provider !== "cursor") return true;
-  // Gemini 3.7 Flash has no `-fast` Cursor variant.
-  return !model.modelId.startsWith("gemini-3.7-flash");
+  // Gemini 3.8 Flash has no `-fast` Cursor variant.
+  return !model.modelId.startsWith("gemini-3.8-flash");
 }
 
 const EFFORT_LABELS: Record<ReasoningEffort, string> = {

@@ -166,6 +166,20 @@ pub static SYNCED_SESSIONS_COLUMNS: phf::Map<&'static str, &'static [&'static st
     ] as &'static [&'static str],
 };
 
+// Post-v23 `sessions` shape: adds the lineage an agent-launched session
+// carries — who launched it, and how deep the chain already is.
+pub static SESSION_LAUNCH_LINEAGE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "imported", "input_tokens", "last_activity_at",
+        "last_model_id", "launch_depth", "launched_by_session_id", "model_id",
+        "model_label", "output_tokens", "permission_mode", "prompt", "provider",
+        "provider_conversation_id", "reasoning_effort", "resume_fork",
+        "started_at", "state", "workspace_id",
+    ] as &'static [&'static str],
+};
+
 // Post-v19 `routines` shape: the scheduled-task table as created.
 pub static ROUTINES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "routines" => &[
@@ -447,7 +461,27 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &GH_PR_HEAD_REF_NAME_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 23,
+        name: "session_launch_lineage",
+        up: SESSION_LAUNCH_LINEAGE,
+        affected_tables: &["sessions"],
+        expected_columns: &SESSION_LAUNCH_LINEAGE_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Who launched a session, and how far from a person that launch is. An agent
+// using the `argmax` MCP tools may launch sessions itself, so the caps that
+// keep a runaway chain finite (depth, per-session count) need the lineage on
+// the row. A launch by the user or a routine leaves both at their defaults.
+// The parent reference goes to NULL rather than cascading: a pruned parent
+// must not take its children's transcripts with it.
+const SESSION_LAUNCH_LINEAGE: &str = r#"
+ALTER TABLE sessions ADD COLUMN launched_by_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL;
+ALTER TABLE sessions ADD COLUMN launch_depth INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX idx_sessions_launched_by ON sessions(launched_by_session_id);
+"#;
 
 // The branch a PR was opened from, so a workspace can find the PR for the
 // branch it is on rather than the PRs its own sessions happened to watch.
@@ -1217,7 +1251,8 @@ mod tests {
         // v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PROJECT_DEFAULT_MODEL_ID_COLUMNS, "projects")
             .expect("projects");
-        verify_table_columns(&connection, &SYNCED_SESSIONS_COLUMNS, "sessions").expect("sessions");
+        verify_table_columns(&connection, &SESSION_LAUNCH_LINEAGE_COLUMNS, "sessions")
+            .expect("sessions");
         verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
@@ -1290,6 +1325,7 @@ mod tests {
                     compute_migration_checksum(RESET_CODEX_CORRUPTED_CONTEXT_TOKENS)
                 ),
                 (22, compute_migration_checksum(GH_PR_HEAD_REF_NAME)),
+                (23, compute_migration_checksum(SESSION_LAUNCH_LINEAGE)),
             ]
         );
 

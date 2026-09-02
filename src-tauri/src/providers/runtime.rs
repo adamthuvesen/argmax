@@ -188,11 +188,19 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
             // than in the process environment. Any ACP failure falls through to
             // the proven one-shot path below.
             if super::cursor_acp::is_acp_eligible(&input) {
+                // The ACP prompt carries the short MCP note; the one-shot
+                // fallback below carries the long shell-command instruction,
+                // so the prefix is applied to a copy rather than to `input`.
+                let mut acp_input = input.clone();
+                if let Some(config) = session_launch.as_ref() {
+                    acp_input.prompt =
+                        config.prepend_instruction(input.provider, true, &input.prompt);
+                }
                 match self
                     .cursor_acp
                     .launch_turn(
                         binary_path.as_str(),
-                        &input,
+                        &acp_input,
                         session_launch.as_ref(),
                         Arc::clone(&on_event),
                     )
@@ -208,7 +216,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
             }
 
             if let Some(config) = session_launch.as_ref() {
-                input.prompt = config.prepend_instruction(&input.prompt);
+                input.prompt = config.prepend_instruction(input.provider, false, &input.prompt);
             }
 
             let args = match input.resume_conversation_id.as_deref() {

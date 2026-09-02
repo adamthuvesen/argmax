@@ -5,12 +5,13 @@
 //! the running app over the private Unix socket `session_control` already
 //! listens on, authenticated with the per-session bearer token the launcher put
 //! in the child's environment. No sidecar, no second control plane, and no new
-//! wire protocol — the tools speak the same `SessionLaunchRequest` the
+//! wire protocol — the tools speak the same `SessionControlRequest` the
 //! `argmax session …` CLI does.
 
 use std::ffi::OsString;
 
 mod server;
+mod session_tools;
 
 /// Dispatch `argmax mcp` before the GUI boots, mirroring
 /// [`crate::session_control::try_run_session_control_cli`]. Returns `None` when

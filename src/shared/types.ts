@@ -382,6 +382,9 @@ export interface SessionSummary {
   /** True when the session came from a provider CLI's own transcript store
    *  (Settings → Agents → Session sync) rather than being launched here. */
   imported?: boolean;
+  /** The session whose agent launched this one with the `argmax` MCP tools.
+   *  Absent for a session the user or a routine started. */
+  launchedBySessionId?: string | null;
 }
 
 /**

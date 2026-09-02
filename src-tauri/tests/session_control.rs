@@ -14,7 +14,9 @@ use argmax_lib::{
     persistence::{
         database::Database,
         projects::{persist_project, PersistProjectInput, ProjectSettings},
-        sessions::{find_session_by_id, persist_session, PersistSessionInput},
+        sessions::{
+            find_session_by_id, persist_session, record_session_launch, PersistSessionInput,
+        },
         workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
     },
     providers::{
@@ -220,9 +222,7 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
         let request = json!({
             "version": 1,
             "token": launch_token,
-            "project": null,
-            "prompt": "Summarize this repository quickly",
-            "worktree": false,
+            "action": { "launch": { "prompt": "Summarize this repository quickly" } },
         });
         writeln!(stream, "{request}").expect("write request");
         stream.shutdown(Shutdown::Write).expect("finish request");
@@ -233,16 +233,22 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
     .await
     .expect("client task");
 
-    assert_eq!(response["ok"], true, "launch response: {response}");
-    assert_eq!(response["projectId"], "project-1");
-    let session_id = response["sessionId"].as_str().expect("session id");
-    let workspace_id = response["workspaceId"].as_str().expect("workspace id");
+    let launched = &response["launched"];
+    assert!(response["error"].is_null(), "launch response: {response}");
+    assert_eq!(launched["projectId"], "project-1");
+    let session_id = launched["sessionId"].as_str().expect("session id");
+    let workspace_id = launched["workspaceId"].as_str().expect("workspace id");
     {
         let connection = database.connection();
         let session = find_session_by_id(&connection, session_id).expect("launched session");
         let workspace =
             find_workspace_by_id(&connection, workspace_id).expect("launched workspace");
         assert_eq!(session.prompt, "Summarize this repository quickly");
+        assert_eq!(
+            session.launched_by_session_id.as_deref(),
+            Some("session-parent"),
+            "the sidebar row must say which session launched it"
+        );
         assert_eq!(session.model_id, "gpt-5.6-sol");
         assert_eq!(session.reasoning_effort.as_deref(), Some("high"));
         assert_eq!(workspace.path, repo.path().display().to_string());
@@ -291,11 +297,7 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
         let request = json!({
             "version": 1,
             "token": token,
-            "action": "move",
-            "project": "Destination",
-            "prompt": null,
-            "worktree": false,
-            "keepSource": true,
+            "action": { "move": { "project": "Destination", "keepSource": true } },
         });
         writeln!(stream, "{request}").expect("write move request");
         stream
@@ -309,9 +311,12 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
     })
     .await
     .expect("move client task");
-    assert_eq!(move_response["ok"], true, "move response: {move_response}");
-    assert_eq!(move_response["scheduled"], true);
-    assert_eq!(move_response["projectId"], "project-2");
+    assert!(
+        move_response["error"].is_null(),
+        "move response: {move_response}"
+    );
+    assert_eq!(move_response["scheduled"]["scheduled"], true);
+    assert_eq!(move_response["scheduled"]["projectId"], "project-2");
     assert!(registry.has_pending_move("session-parent"));
     registry.settle_move("session-parent");
     for _ in 0..100 {
@@ -352,4 +357,207 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
         .workspaces
         .iter()
         .any(|workspace| workspace.id == workspace_id)));
+}
+
+/// The caps that keep an agent's launches from running away, checked where
+/// they are enforced: the socket handler, not the tool wrapper.
+#[tokio::test]
+async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    {
+        let connection = database.connection();
+        persist_project(
+            &connection,
+            &PersistProjectInput {
+                id: "project-1".to_string(),
+                name: "Argmax".to_string(),
+                repo_path: repo.path().display().to_string(),
+                current_branch: "main".to_string(),
+                default_branch: Some("main".to_string()),
+                settings: ProjectSettings {
+                    default_provider: "codex".to_string(),
+                    default_model_label: "GPT-5.6 Sol".to_string(),
+                    default_model_id: String::new(),
+                    worktree_location: repo.path().join("worktrees").display().to_string(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                },
+            },
+        )
+        .expect("project");
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "workspace-parent".to_string(),
+                project_id: "project-1".to_string(),
+                task_label: "Parent".to_string(),
+                branch: "main".to_string(),
+                base_ref: "main".to_string(),
+                path: repo.path().display().to_string(),
+                state: "running".to_string(),
+                shared_workspace: true,
+                kind: "git".to_string(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("parent workspace");
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "session-parent".to_string(),
+                workspace_id: "workspace-parent".to_string(),
+                provider: "codex".to_string(),
+                model_label: "GPT-5.6 Sol".to_string(),
+                model_id: "gpt-5.6-sol".to_string(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_string()),
+                agent_mode: Some("auto".to_string()),
+                prompt: "Parent task".to_string(),
+                state: "running".to_string(),
+                attention: "normal".to_string(),
+            },
+        )
+        .expect("parent session");
+    }
+
+    let launcher = Arc::new(RecordingLauncher::default());
+    let providers =
+        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    let process_config = registry.issue(&ProviderLaunchInput {
+        provider: ProviderId::Codex,
+        session_id: "session-parent".to_string(),
+        workspace_path: PathBuf::from(repo.path()),
+        prompt: "Parent task".to_string(),
+        model_label: "GPT-5.6 Sol".to_string(),
+        model_id: "gpt-5.6-sol".to_string(),
+        reasoning_effort: None,
+        fast_mode: false,
+        resume_conversation_id: None,
+        resume_fork: false,
+        permission_mode: PermissionMode::AutoApprove,
+        agent_mode: AgentMode::Auto,
+        cols: 120,
+        rows: 32,
+    });
+    let environment = process_config.env_pairs().into_iter().collect::<Vec<_>>();
+    let socket = environment
+        .iter()
+        .find(|(key, _)| key == SESSION_LAUNCH_SOCKET_ENV)
+        .map(|(_, value)| value.clone())
+        .expect("socket env");
+    let token = environment
+        .iter()
+        .find(|(key, _)| key == SESSION_LAUNCH_TOKEN_ENV)
+        .map(|(_, value)| value.clone())
+        .expect("token env");
+    let _server = server
+        .start(
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            Arc::clone(&providers),
+        )
+        .expect("start control socket");
+
+    let ask = |request: serde_json::Value| {
+        let socket = socket.clone();
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let mut stream = UnixStream::connect(socket).expect("connect control socket");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .expect("read timeout");
+                std::thread::sleep(Duration::from_millis(150));
+                writeln!(stream, "{request}").expect("write request");
+                stream.shutdown(Shutdown::Write).expect("finish request");
+                let mut response = String::new();
+                stream.read_to_string(&mut response).expect("read response");
+                serde_json::from_str::<serde_json::Value>(&response).expect("response json")
+            })
+            .await
+            .expect("client task")
+        }
+    };
+    let launch = json!({
+        "version": 1,
+        "token": token,
+        "action": { "launch": { "prompt": "Go one level deeper" } },
+    });
+
+    // A session two launches away from the user cannot start a third.
+    database
+        .connection()
+        .execute(
+            "UPDATE sessions SET launch_depth = 2 WHERE id = 'session-parent'",
+            [],
+        )
+        .expect("seed depth");
+    let refused = ask(launch.clone()).await;
+    assert_eq!(refused["error"]["code"], "LAUNCH_DEPTH_EXCEEDED");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("2 levels deep"),
+        "the agent has to be told what the cap is: {refused}"
+    );
+
+    // Ten launched sessions is the per-session cap.
+    {
+        let connection = database.connection();
+        connection
+            .execute(
+                "UPDATE sessions SET launch_depth = 0 WHERE id = 'session-parent'",
+                [],
+            )
+            .expect("reset depth");
+        for index in 0..10 {
+            persist_session(
+                &connection,
+                &PersistSessionInput {
+                    id: format!("session-child-{index}"),
+                    workspace_id: "workspace-parent".to_string(),
+                    provider: "codex".to_string(),
+                    model_label: "GPT-5.6 Sol".to_string(),
+                    model_id: "gpt-5.6-sol".to_string(),
+                    reasoning_effort: None,
+                    permission_mode: Some("auto-approve".to_string()),
+                    agent_mode: Some("auto".to_string()),
+                    prompt: "Child task".to_string(),
+                    state: "complete".to_string(),
+                    attention: "normal".to_string(),
+                },
+            )
+            .expect("child session");
+            record_session_launch(
+                &connection,
+                &format!("session-child-{index}"),
+                "session-parent",
+                1,
+            )
+            .expect("record lineage");
+        }
+    }
+    let capped = ask(launch).await;
+    assert_eq!(capped["error"]["code"], "LAUNCH_LIMIT_REACHED");
+
+    let self_message = ask(json!({
+        "version": 1,
+        "token": token,
+        "action": { "message": { "sessionId": "session-parent", "message": "hello me" } },
+    }))
+    .await;
+    assert_eq!(self_message["error"]["code"], "MESSAGE_SELF");
+
+    assert!(
+        launcher
+            .launches
+            .lock()
+            .expect("launches poisoned")
+            .is_empty(),
+        "a refused launch must not reach the provider"
+    );
 }

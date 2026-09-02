@@ -1192,7 +1192,12 @@ imported: boolean;
  * The model's context-window size, when the provider reports it (Codex).
  * The renderer falls back to a per-model table when this is null.
  */
-contextWindow?: number | null }
+contextWindow?: number | null; 
+/**
+ * The session whose agent launched this one with the `argmax` MCP tools.
+ * Null for a session the user or a routine started.
+ */
+launchedBySessionId?: string | null }
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system"
 export type SkillSummary = { name: string; description: string; source: SkillSource }
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }

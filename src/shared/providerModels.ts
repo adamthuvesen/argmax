@@ -137,6 +137,30 @@ export function clampEffort(
 /** Effort an effort-capable model gets when first picked (before Edit). */
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
 
+/**
+ * Effort a model actually runs at, given the app-wide default effort the user
+ * picked in Settings. Models offer different ladders (Grok Build stops at
+ * Extra High, the OpenCode Go variants are discrete sets), so a single global
+ * preference cannot apply verbatim everywhere:
+ *
+ *  - the preferred level when the model offers it;
+ *  - otherwise Medium, the level almost every ladder carries;
+ *  - otherwise the nearest level at or below Medium, and failing that the
+ *    model's lowest.
+ *
+ * Callers gate on `supportsReasoningEffort` — a fast model has no effort at
+ * all, and this function does not look at that flag.
+ */
+export function effortForModel(
+  provider: ProviderId,
+  modelId: string,
+  preferred: ReasoningEffort = DEFAULT_REASONING_EFFORT
+): ReasoningEffort | undefined {
+  const allowed = reasoningEffortsForModel(provider, modelId);
+  if (allowed.includes(preferred)) return preferred;
+  return clampEffort(DEFAULT_REASONING_EFFORT, allowed);
+}
+
 // One entry per model. Effort is chosen separately via the effort control (the
 // standalone slider chip, or the per-row Edit submenu), not by selecting a
 // different row. Models without `supportsReasoningEffort` are fast/no-effort and

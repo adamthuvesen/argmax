@@ -10,8 +10,8 @@
 //! | Claude | `--mcp-config '<inline json>'` | no |
 //! | Codex | `-c mcp_servers.argmax.*` | no |
 //! | Cursor (ACP) | `mcpServers` in `session/new` / `session/load` | no |
-//! | OpenCode | `OPENCODE_CONFIG` → `<workspace>/.argmax/opencode.json` | yes, removed at exit |
-//! | Grok | `<workspace>/.grok/config.toml` | yes, removed at exit |
+//! | OpenCode | `OPENCODE_CONFIG_CONTENT` (inline JSON) | no |
+//! | Grok | `<workspace>/.grok/config.toml` | yes, git-excluded, removed at exit |
 //!
 //! The per-session bearer token rides in the server spec's own `env`, not the
 //! provider process's environment, so a warm shared process (Cursor's ACP pool)
@@ -31,6 +31,35 @@ use super::ProviderId;
 /// The MCP server name; tools reach the model as `mcp__argmax__<tool>`
 /// (Claude, Codex, Cursor) or `argmax__<tool>` (Grok, OpenCode).
 pub const SERVER_NAME: &str = "argmax";
+
+/// What a provider that actually loads the `argmax` server is told. The tool
+/// descriptions carry the rest: what each tool does, and that a launch makes a
+/// visible top-level session rather than a subagent.
+pub const AGENT_TOOLS_INSTRUCTION: &str = "Argmax tools are available as the `argmax` MCP server; use them to launch, list and message other Argmax sessions when the task needs it.";
+
+/// The fallback for a provider whose launch cannot carry an MCP server yet:
+/// Grok (its folder-trust gate refuses a config Argmax wrote) and Cursor's
+/// one-shot PTY path. Same capabilities, spelled as shell commands.
+pub const SHELL_COMMAND_INSTRUCTION: &str = r#"Argmax session controls are available to you. To create a separate top-level session, use "$ARGMAX_BIN" session launch --project <registered name or absolute repo path> --prompt '<task>'. Omit --project to use this session's project. To move this chat to another registered project, use "$ARGMAX_BIN" session move --project <registered name or absolute repo path>. Both commands use the shared checkout by default. Add --worktree for isolation. Moving archives the source workspace after this turn settles. Add --keep-source to keep it. To see what other sessions exist before targeting one, use "$ARGMAX_BIN" session list [--project <name-or-path> | --all]; it prints each session's id, project, task label, provider, and state as JSON, newest activity first. To send a message into an existing session — for example one you just launched, or one the user names — use "$ARGMAX_BIN" session message --session <id> --prompt '<message>'; it queues if that session is mid-turn. Use these on your own initiative when the task needs them. They create and address top-level sidebar sessions, not subagents: every one is visible to the user, spends real tokens, and outlives your turn. Launches are capped at two levels deep and ten per session."#;
+
+/// Which instruction a launch carries. `via_acp` is Cursor's warm composer
+/// path, the only Cursor launch that can hand the CLI an MCP server.
+pub fn instruction(provider: ProviderId, via_acp: bool) -> &'static str {
+    match provider {
+        ProviderId::Claude | ProviderId::Codex | ProviderId::Opencode => AGENT_TOOLS_INSTRUCTION,
+        ProviderId::Cursor if via_acp => AGENT_TOOLS_INSTRUCTION,
+        ProviderId::Cursor | ProviderId::Grok => SHELL_COMMAND_INSTRUCTION,
+    }
+}
+
+/// Strip whichever instruction Argmax prepended, so an imported transcript's
+/// first prompt reads as the user wrote it.
+pub fn strip_instruction(prompt: &str) -> &str {
+    [AGENT_TOOLS_INSTRUCTION, SHELL_COMMAND_INSTRUCTION]
+        .into_iter()
+        .find_map(|instruction| prompt.strip_prefix(instruction))
+        .unwrap_or(prompt)
+}
 
 /// The single subcommand the server is launched with: `argmax mcp`.
 const SERVER_ARGS: [&str; 1] = ["mcp"];
@@ -160,9 +189,11 @@ pub fn launch_files(
     };
     match provider {
         ProviderId::Opencode => {
-            // OPENCODE_CONFIG is merged on top of the global config, never a
-            // replacement for it, so the user's providers and plugins survive.
-            let path = workspace_path.join(".argmax").join("opencode.json");
+            // OPENCODE_CONFIG_CONTENT is parsed after the global and project
+            // configs and deep-merged over them, so the user's providers,
+            // agents, and their own MCP servers all survive. Inline beats
+            // OPENCODE_CONFIG with a file: nothing is written into the
+            // workspace, so nothing has to be cleaned up or git-excluded.
             let body = json!({
                 "$schema": "https://opencode.ai/config.json",
                 "mcp": {
@@ -174,13 +205,10 @@ pub fn launch_files(
                     }
                 }
             });
-            match write_scratch(&path, &format!("{body}\n")) {
-                Some(files) => (
-                    vec![("OPENCODE_CONFIG".to_string(), path.display().to_string())],
-                    files,
-                ),
-                None => (Vec::new(), ScratchConfigFiles::default()),
-            }
+            (
+                vec![("OPENCODE_CONFIG_CONTENT".to_string(), body.to_string())],
+                ScratchConfigFiles::default(),
+            )
         }
         ProviderId::Grok => {
             // Grok's GROK_CONFIG / GROK_CONFIG_PATH overlays are allowlisted to
@@ -201,7 +229,11 @@ pub fn launch_files(
             let body = format!(
                 "[mcp_servers.{SERVER_NAME}]\ncommand = {bin}\nargs = [{args}]\nenv = {{ {env} }}\nenabled = true\n"
             );
-            (Vec::new(), write_scratch(&path, &body).unwrap_or_default())
+            let files = write_scratch(&path, &body).unwrap_or_default();
+            if !files.paths.is_empty() {
+                git_exclude(workspace_path, ".grok/");
+            }
+            (Vec::new(), files)
         }
         ProviderId::Claude | ProviderId::Codex | ProviderId::Cursor => {
             (Vec::new(), ScratchConfigFiles::default())
@@ -222,6 +254,48 @@ fn write_scratch(path: &Path, body: &str) -> Option<ScratchConfigFiles> {
     Some(ScratchConfigFiles {
         paths: vec![path.to_path_buf()],
     })
+}
+
+/// Keep a scratch config out of `git status`. The pattern goes in the
+/// checkout's own exclude file, which is per-repository and never committed —
+/// a shared checkout is the user's real repo, and a launch must not make it
+/// look dirty. A linked worktree keeps `info/` in the common git directory.
+fn git_exclude(workspace_path: &Path, pattern: &str) {
+    let Some(exclude_path) = git_exclude_path(workspace_path) else {
+        return;
+    };
+    let existing = fs::read_to_string(&exclude_path).unwrap_or_default();
+    if existing.lines().any(|line| line.trim() == pattern) {
+        return;
+    }
+    let separator = if existing.is_empty() || existing.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    if let Some(parent) = exclude_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Err(error) = fs::write(&exclude_path, format!("{existing}{separator}{pattern}\n")) {
+        tracing::warn!(?error, path = %exclude_path.display(), "could not update the git exclude file");
+    }
+}
+
+fn git_exclude_path(workspace_path: &Path) -> Option<PathBuf> {
+    let dot_git = workspace_path.join(".git");
+    let git_dir = if dot_git.is_dir() {
+        dot_git
+    } else {
+        // A linked worktree's `.git` is a file: `gitdir: <path>`.
+        let pointer = fs::read_to_string(&dot_git).ok()?;
+        let target = pointer.trim().strip_prefix("gitdir:")?.trim();
+        workspace_path.join(target)
+    };
+    let common_dir = match fs::read_to_string(git_dir.join("commondir")) {
+        Ok(relative) => git_dir.join(relative.trim()),
+        Err(_) => git_dir,
+    };
+    Some(common_dir.join("info").join("exclude"))
 }
 
 /// A quoted, escaped string literal — valid in both JSON and TOML.
@@ -287,37 +361,78 @@ mod tests {
     }
 
     #[test]
-    fn opencode_and_grok_write_config_files_that_are_removed_again() {
+    fn opencode_takes_its_server_inline_and_writes_nothing() {
         let workspace = tempfile::tempdir().expect("temp workspace");
-        let (environment, opencode_files) =
+        let (environment, files) =
             launch_files(ProviderId::Opencode, workspace.path(), Some(&config()));
-        let opencode_config = workspace.path().join(".argmax").join("opencode.json");
-        assert_eq!(
-            environment,
-            vec![(
-                "OPENCODE_CONFIG".to_string(),
-                opencode_config.display().to_string()
-            )]
-        );
-        let written: Value =
-            serde_json::from_str(&std::fs::read_to_string(&opencode_config).expect("written"))
-                .expect("valid JSON");
+        assert_eq!(environment.len(), 1);
+        assert_eq!(environment[0].0, "OPENCODE_CONFIG_CONTENT");
+        let written: Value = serde_json::from_str(&environment[0].1).expect("valid JSON");
         assert_eq!(written["mcp"]["argmax"]["type"], "local");
         assert_eq!(written["mcp"]["argmax"]["command"][1], "mcp");
+        assert_eq!(
+            written["mcp"]["argmax"]["environment"][SESSION_LAUNCH_TOKEN_ENV],
+            "token-123"
+        );
+        assert!(files.paths.is_empty());
+        assert!(!workspace.path().join(".argmax").exists());
+    }
 
-        let (grok_environment, grok_files) =
+    #[test]
+    fn grok_config_is_written_git_excluded_and_removed_again() {
+        let workspace = tempfile::tempdir().expect("temp workspace");
+        fs::create_dir_all(workspace.path().join(".git").join("info")).expect("git dir");
+        let (environment, files) =
             launch_files(ProviderId::Grok, workspace.path(), Some(&config()));
         let grok_config = workspace.path().join(".grok").join("config.toml");
-        assert!(grok_environment.is_empty());
-        let body = std::fs::read_to_string(&grok_config).expect("written");
+        assert!(environment.is_empty());
+        let body = fs::read_to_string(&grok_config).expect("written");
         assert!(body.starts_with("[mcp_servers.argmax]\n"));
         assert!(body.contains(r#"args = ["mcp"]"#));
+        let exclude =
+            fs::read_to_string(workspace.path().join(".git/info/exclude")).expect("exclude");
+        assert_eq!(exclude, ".grok/\n");
 
-        opencode_files.remove();
-        grok_files.remove();
-        assert!(!opencode_config.exists());
+        // A second launch in the same checkout does not double the entry.
+        let (_, second) = launch_files(ProviderId::Grok, workspace.path(), Some(&config()));
+        assert_eq!(
+            fs::read_to_string(workspace.path().join(".git/info/exclude")).expect("exclude"),
+            ".grok/\n"
+        );
+        second.remove();
+
+        files.remove();
         assert!(!grok_config.exists());
-        assert!(!opencode_config.parent().expect("parent").exists());
+        assert!(!grok_config.parent().expect("parent").exists());
+    }
+
+    #[test]
+    fn a_linked_worktree_excludes_through_the_common_git_directory() {
+        let repo = tempfile::tempdir().expect("repo");
+        let common = repo.path().join(".git");
+        fs::create_dir_all(common.join("worktrees").join("wt")).expect("worktree git dir");
+        fs::write(
+            common.join("worktrees").join("wt").join("commondir"),
+            "../..\n",
+        )
+        .expect("commondir");
+        let worktree = repo.path().join("wt");
+        fs::create_dir_all(&worktree).expect("worktree");
+        fs::write(
+            worktree.join(".git"),
+            format!(
+                "gitdir: {}\n",
+                common.join("worktrees").join("wt").display()
+            ),
+        )
+        .expect("git pointer");
+
+        let (_, files) = launch_files(ProviderId::Grok, &worktree, Some(&config()));
+        assert_eq!(
+            fs::read_to_string(common.join("info").join("exclude")).expect("exclude"),
+            ".grok/\n"
+        );
+        files.remove();
     }
 
     #[test]

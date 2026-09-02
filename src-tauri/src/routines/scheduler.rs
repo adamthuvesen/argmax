@@ -139,6 +139,7 @@ pub(crate) async fn fire_routine(
         // auto-approve; the panel offers no other mode.
         permission_mode: PermissionMode::AutoApprove,
         agent_mode: AgentMode::Auto,
+        task_label: None,
     };
     let outcome = session_control::launch_with_spec(
         spec,

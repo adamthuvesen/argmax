@@ -37,6 +37,8 @@ Model Context Protocol (MCP) servers are configured in each provider's native CL
 
 Spawned sessions run in the workspace worktree. Project-scoped `.mcp.json` or `.cursor/mcp.json` files must be committed to git to appear inside isolated worktrees.
 
+Argmax adds one server of its own per launch — `argmax`, the agent tools — through each provider's per-launch mechanism, without disturbing the user's configured servers ([agent-tools.md](agent-tools.md)).
+
 *Codex connectors note:* `codex exec` runs without ChatGPT desktop app connectors (Notion, Linear, Google Drive). Use direct remote MCP URLs via `codex mcp add --url <url>` instead.
 
 ## Session Lifecycle and Follow-ups
@@ -55,7 +57,8 @@ To avoid startup overhead, `composer-2.5` launches run over Agent Client Protoco
 - **Scope:** Restricted to `composer-2.5`. Other models with reasoning variants fall back to one-shot PTY execution.
 - **Turn lifecycle:** ACP notifications translate into standard Cursor stream events. Tool rows are named from `rawInput._toolName` to prevent sub-agents from collapsing into generic `other` tools.
 - **Permissions:** Auto-answered with allow, matching `--force --trust` one-shot semantics.
-- **Cancellation & cleanup:** `terminate` cancels in-flight prompts. Workspace pool entries are evicted when isolated workspaces archive or are removed.
+- **Agent tools:** The `argmax` MCP server rides in `session/new` and `session/load` as an `mcpServers` entry, so the warm shared process still hands each session its own credential ([agent-tools.md](agent-tools.md)).
+- **Cancellation & cleanup:** `terminate` cancels in-flight prompts. Workspace pool entries are evicted when isolated workspaces archive or are removed. The server runs in its own process group and teardown signals the group, so the MCP servers it started die with it.
 
 ## OpenCode
 
@@ -115,37 +118,9 @@ Historical events without `providerInvocationId` use chronological unmatched-pai
 
 ## Agent Session Control
 
-Hosted agents can create a top-level Argmax session when the user explicitly requests one:
-
-```bash
-"$ARGMAX_BIN" session launch --project <name-or-path> --prompt '<task>'
-```
-
-They can also move the current chat to a different registered project:
-
-```bash
-"$ARGMAX_BIN" session move --project <name-or-path> [--worktree] [--keep-source]
-```
-
-The move is scheduled because the command runs inside the active turn. It executes after that turn settles, uses the destination project's shared checkout by default, and archives the source workspace without forcing dirty-worktree deletion. `--worktree` creates an isolated destination. `--keep-source` leaves the source workspace open.
-
-They can list other sessions to find a target — scoped to the current project by default, or across every registered project:
-
-```bash
-"$ARGMAX_BIN" session list [--project <name-or-path> | --all]
-```
-
-This prints a JSON object with a `sessions` array (id, project, task label, provider, state, last activity — newest first, the caller's own session excluded, capped at 40 rows with `truncated: true` if more exist).
-
-And they can send a follow-up message into an existing session, whether it's idle or mid-turn:
-
-```bash
-"$ARGMAX_BIN" session message --session <id> --prompt '<message>'
-```
-
-The message is delivered immediately to an idle session, queued for one that's still running, or used to relaunch a session with no live process. The response's `queued` field says which happened.
-
-The CLI communicates with Argmax over a private local Unix socket using bearer credentials ([session_control.rs](../src-tauri/src/session_control.rs)). The instruction forbids running any of these on the agent's own initiative — only when the user's current request calls for it. Warm Cursor ACP sessions do not receive this control because their shared process cannot safely hold a per-session credential.
+Sessions can launch, list, message, and move other sessions. Every provider
+gets those as tools on the `argmax` MCP server; the two without an injection
+path get them as shell commands. See [agent-tools.md](agent-tools.md).
 
 ## Default Model Selection
 

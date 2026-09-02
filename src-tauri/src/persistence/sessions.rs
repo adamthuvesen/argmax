@@ -96,6 +96,58 @@ pub struct SessionSummary {
     /// The renderer falls back to a per-model table when this is null.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_window: Option<i64>,
+    /// The session whose agent launched this one with the `argmax` MCP tools.
+    /// Null for a session the user or a routine started.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub launched_by_session_id: Option<String>,
+}
+
+/// How far a session sits from a human-started one, and how many sessions it
+/// has launched — the two numbers the launch caps are checked against.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SessionLaunchLineage {
+    pub depth: i64,
+    pub launched: i64,
+}
+
+pub fn session_launch_lineage(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<SessionLaunchLineage> {
+    connection
+        .prepare_cached(
+            r#"
+        SELECT
+          (SELECT launch_depth FROM sessions WHERE id = ?1),
+          (SELECT COUNT(*) FROM sessions WHERE launched_by_session_id = ?1)
+        "#,
+        )
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| {
+            Ok(SessionLaunchLineage {
+                depth: row.get::<_, Option<i64>>(0)?.unwrap_or_default(),
+                launched: row.get(1)?,
+            })
+        })
+        .map_err(sqlite_error)
+}
+
+/// Record which session launched this one. Written after the launch settles,
+/// so the launch path itself stays the one the sidebar and routines use.
+pub fn record_session_launch(
+    connection: &Connection,
+    session_id: &str,
+    launched_by_session_id: &str,
+    depth: i64,
+) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached(
+            "UPDATE sessions SET launched_by_session_id = ?, launch_depth = ? WHERE id = ?",
+        )
+        .map_err(sqlite_error)?
+        .execute((launched_by_session_id, depth, session_id))
+        .map_err(sqlite_error)?;
+    Ok(())
 }
 
 pub fn list_sessions_for_dashboard(
@@ -525,6 +577,7 @@ fn session_row_to_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
         imported: row.get::<_, i64>("imported")? != 0,
         context_tokens: row.get("context_tokens")?,
         context_window: row.get("context_window")?,
+        launched_by_session_id: row.get("launched_by_session_id")?,
     })
 }
 

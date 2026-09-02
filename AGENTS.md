@@ -55,6 +55,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **IPC / `window.argmax`** → [ipc.md](docs/ipc.md)
 - **Database / migrations** → [data.md](docs/data.md)
 - **Providers** → [providers.md](docs/providers.md)
+- **Agent tools (the `argmax` MCP server)** → [agent-tools.md](docs/agent-tools.md)
 - **Session sync (import from provider CLIs)** → [session-sync.md](docs/session-sync.md)
 - **Worktrees, archive, review** → [workspaces.md](docs/workspaces.md)
 - **Approvals and checks** → [approvals-checks.md](docs/approvals-checks.md)

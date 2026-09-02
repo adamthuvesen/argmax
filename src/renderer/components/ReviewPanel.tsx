@@ -507,7 +507,8 @@ export function ReviewPanel({
                 title="Agents"
                 onClick={() => review.setMode("agents")}
               >
-                <Bot size={14} aria-hidden="true" />
+                {/* Bot's glyph carries more inner padding than GitBranch/Folder, so it needs 16 to read the same size. */}
+                <Bot size={16} aria-hidden="true" />
                 <span className="review-mode-tab-label">Agents</span>
                 {review.subagents.toolUseIds.length > 1 ? (
                   <span className="review-mode-tab-count">{review.subagents.toolUseIds.length}</span>

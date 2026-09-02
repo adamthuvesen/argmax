@@ -113,7 +113,7 @@ Browser (tabs are owned by the calling session)
 - `docs/browser.md` — agent section; `docs/agent-tools.md` — full tool reference.
 **Success check:** scenario: "search DuckDuckGo for 'tauri wry', open the first result, screenshot it". Tool rows show snapshot → type → press Enter → wait_for → click → screenshot, and the chat shows the image.
 
-## Phase 5: Providers without an ephemeral injection path, docs, ADR
+## Phase 5: Providers without an ephemeral injection path, docs, ADR — done, 1855368f (review fixes in d56b1a1b)
 
 **Deliverable:** Grok Build and Cursor's non-ACP path get the tools; the design is recorded.
 **Files:**

@@ -347,15 +347,16 @@ html:has(.mobile-shell) body {
 
 /* The desktop surface pads 14px/24px around the grid, and the phone's own
    bottom gap is the home-indicator inset — stacked, that floated the composer
-   ~75px above the bottom edge. `max()` makes the safe area *the* gap rather
-   than something the padding adds to. */
+   ~75px above the bottom edge. The card now stands a small, fixed step above
+   the home indicator: on the indicator line itself it read as sitting too
+   low. */
 .mobile-session-screen .conversation-surface {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   padding-top: 8px;
-  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
 }
 
 /* The composer is the screen's floor, not a card floating on it, so the
@@ -451,9 +452,9 @@ html:has(.mobile-shell) body {
 }
 
 /* Three bands: the hero takes whatever height is left and centres inside it,
-   the context rows and the composer stay welded to the bottom edge. The safe
-   area *is* the bottom gap rather than something added to it, so the composer
-   clears the home indicator without floating a thumb's width above it.
+   the context rows and the composer stay welded to the bottom edge, a small
+   fixed step above the home indicator — the same standoff the chat screen's
+   composer keeps.
 
    `container-type: size` sits on the body and not on .mobile-new-screen
    because size containment makes an element the containing block for
@@ -470,7 +471,7 @@ html:has(.mobile-shell) body {
      height itself, so there is nothing left to distribute. */
   justify-content: flex-end;
   gap: 10px;
-  padding: 8px 16px max(10px, env(safe-area-inset-bottom));
+  padding: 8px 16px calc(12px + env(safe-area-inset-bottom));
 }
 
 .mobile-new-hero {

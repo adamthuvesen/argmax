@@ -1,12 +1,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DashboardSnapshot } from "../../shared/types.js";
+import { SCRATCH_PROJECT_ID, type DashboardSnapshot } from "../../shared/types.js";
 import type { RemoteConnectionState } from "../lib/wsTransport.js";
-import { LAUNCHER_TITLE } from "../lib/launcherTitle.js";
+import { LAUNCHER_TITLE, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import {
   archiveWorkspace,
   createCurrentWorkspace,
   createIsolatedWorkspace,
+  createScratchWorkspace,
   launchProvider,
   listChangedFiles,
   listWorkspaceFiles,
@@ -48,6 +49,45 @@ vi.mock("../lib/wsTransport.js", () => ({
   createWsTransport: vi.fn(),
   subscribeRemoteConnection: remote.subscribe
 }));
+
+// A repo-less side chat: the hidden "Side chats" project, a scratch workspace
+// and its session, and nothing git-backed — so the section a side chat lands
+// in is unambiguous.
+function sideChatSnapshot(): DashboardSnapshot {
+  return {
+    ...snapshot,
+    projects: [
+      {
+        ...snapshot.projects[0],
+        id: SCRATCH_PROJECT_ID,
+        name: "Side chats",
+        repoPath: "/tmp/argmax-data/side-chats"
+      }
+    ],
+    workspaces: [
+      {
+        ...snapshot.workspaces[0],
+        id: "workspace-chat",
+        projectId: SCRATCH_PROJECT_ID,
+        taskLabel: "Explain event sourcing",
+        kind: "scratch",
+        sharedWorkspace: true,
+        state: "complete",
+        dirty: false,
+        changedFiles: 0
+      }
+    ],
+    sessions: [
+      {
+        ...snapshot.sessions[0],
+        id: "session-chat",
+        workspaceId: "workspace-chat",
+        state: "complete",
+        attention: "normal"
+      }
+    ]
+  };
+}
 
 describe("MobileApp", () => {
   afterEach(() => {
@@ -430,6 +470,88 @@ describe("MobileApp", () => {
       );
     });
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("lists a side chat under the Side chats project, outside Priority", async () => {
+    mockDashboardSnapshot(sideChatSnapshot());
+
+    render(<MobileApp />);
+
+    // Side chats never escalate into triage, so the row belongs to the plain
+    // activity section even while its session is the only one on the phone.
+    const section = await screen.findByRole("region", { name: "All sessions" });
+    const row = within(section).getByRole("button", { name: /Explain event sourcing/ });
+    expect(row).toHaveTextContent("Side chats");
+    expect(screen.queryByRole("region", { name: "Priority" })).not.toBeInTheDocument();
+  });
+
+  it("opens a side chat transcript without offering the repo review screen", async () => {
+    mockDashboardSnapshot(sideChatSnapshot());
+
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Session list" });
+    fireEvent.click(screen.getByRole("button", { name: /Explain event sourcing/ }));
+
+    expect(await screen.findByRole("region", { name: "Session conversation" })).toBeInTheDocument();
+    // The scratch directory is app-owned and holds one empty commit, so the
+    // standing Changes/Files entry point would only ever open an empty diff.
+    expect(screen.queryByRole("button", { name: /Files and changes/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Archive session" })).toBeInTheDocument();
+  });
+
+  it("starts a side chat from the + screen", async () => {
+    const chat = sideChatSnapshot();
+    createScratchWorkspace.mockResolvedValue(chat.workspaces[0]);
+    launchProvider.mockResolvedValue(chat.sessions[0]);
+
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Session list" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    const sheet = await screen.findByRole("dialog", { name: "Choose workspace" });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Side chat" }));
+
+    // No repository is involved, so the project row goes with it and the
+    // screen adopts the desktop side-chat title.
+    expect(screen.queryByRole("button", { name: "Project" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(SIDE_CHAT_TITLE);
+
+    fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Explain event sourcing" } });
+    fireEvent.click(screen.getByRole("button", { name: "Launch session" }));
+
+    await waitFor(() => expect(createScratchWorkspace).toHaveBeenCalledTimes(1));
+    const createInput = createScratchWorkspace.mock.calls[0][0];
+    expect(createInput.kind).toBeNull();
+    expect(createInput.taskLabel).toContain("Explain event sourcing");
+    expect(createCurrentWorkspace).not.toHaveBeenCalled();
+    expect(createIsolatedWorkspace).not.toHaveBeenCalled();
+    // Same model default as every other launch from this screen.
+    expect(launchProvider).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "workspace-chat",
+        prompt: "Explain event sourcing",
+        provider: "claude",
+        modelId: "claude-opus-5"
+      })
+    );
+  });
+
+  it("offers only a side chat when no project is registered", async () => {
+    mockDashboardSnapshot({ ...snapshot, projects: [], workspaces: [], sessions: [] });
+
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Session list" });
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+
+    // The old empty state made this screen a dead end on a phone that has
+    // never had a repo added; a side chat needs no repository.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(SIDE_CHAT_TITLE);
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    const sheet = await screen.findByRole("dialog", { name: "Choose workspace" });
+    expect(within(sheet).getByRole("button", { name: "Side chat" })).toBeInTheDocument();
+    expect(within(sheet).queryByRole("button", { name: /Current branch/ })).not.toBeInTheDocument();
+    expect(within(sheet).queryByRole("button", { name: "New worktree" })).not.toBeInTheDocument();
   });
 
   it("archives the open session from the header, confirming the dirty worktree", async () => {

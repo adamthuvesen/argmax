@@ -574,26 +574,33 @@ export function MobileApp(): JSX.Element {
                   >
                     <Archive size={18} aria-hidden />
                   </button>
-                  <button
-                    type="button"
-                    className="mobile-icon-button"
-                    onClick={() => {
-                      setReviewFilePath(null);
-                      setReviewOpen(true);
-                    }}
-                    aria-label={
-                      selectedWorkspace.changedFiles > 0
-                        ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
-                        : "Files and changes"
-                    }
-                  >
-                    <FolderGit2 size={18} aria-hidden />
-                    {selectedWorkspace.changedFiles > 0 ? (
-                      <span className="mobile-header-badge" aria-hidden>
-                        {selectedWorkspace.changedFiles}
-                      </span>
-                    ) : null}
-                  </button>
+                  {/* A side chat runs in an app-owned scratch directory with
+                      one empty commit, so this button would open a permanently
+                      empty diff and an empty tree. Tapping a file the agent
+                      wrote there still opens the review screen from the
+                      transcript — only the standing entry point is dropped. */}
+                  {selectedWorkspace.kind === "git" ? (
+                    <button
+                      type="button"
+                      className="mobile-icon-button"
+                      onClick={() => {
+                        setReviewFilePath(null);
+                        setReviewOpen(true);
+                      }}
+                      aria-label={
+                        selectedWorkspace.changedFiles > 0
+                          ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
+                          : "Files and changes"
+                      }
+                    >
+                      <FolderGit2 size={18} aria-hidden />
+                      {selectedWorkspace.changedFiles > 0 ? (
+                        <span className="mobile-header-badge" aria-hidden>
+                          {selectedWorkspace.changedFiles}
+                        </span>
+                      ) : null}
+                    </button>
+                  ) : null}
                 </>
               ) : undefined
             }

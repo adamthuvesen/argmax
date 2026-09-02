@@ -1007,7 +1007,7 @@ button.tool-call-row-button {
   width: 12px;
   height: 12px;
   margin-right: 1px;
-  fill: color-mix(in oklab, var(--brand, currentColor) 78%, var(--muted-strong));
+  fill: var(--brand, currentColor);
   color: var(--muted-strong);
 }
 

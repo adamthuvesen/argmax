@@ -37,7 +37,7 @@ Model Context Protocol (MCP) servers are configured in each provider's native CL
 
 Spawned sessions run in the workspace worktree. Project-scoped `.mcp.json` or `.cursor/mcp.json` files must be committed to git to appear inside isolated worktrees.
 
-Argmax adds one server of its own per launch — `argmax`, the agent tools — through each provider's per-launch mechanism, without disturbing the user's configured servers ([agent-tools.md](agent-tools.md)).
+Argmax adds one server of its own per launch — `argmax`, the agent tools — through each provider's per-launch mechanism, without disturbing the user's configured servers. For Cursor's one-shot path and for Grok that mechanism is a config file written into the workspace and put back when the child exits; a `.cursor/mcp.json` the user keeps is merged, never replaced ([agent-tools.md](agent-tools.md)).
 
 *Codex connectors note:* `codex exec` runs without ChatGPT desktop app connectors (Notion, Linear, Google Drive). Use direct remote MCP URLs via `codex mcp add --url <url>` instead.
 
@@ -74,6 +74,7 @@ Grok Build runs via `grok "--single=<prompt>" --cwd <workspace> --output-format 
 - **It speaks Claude Code's wire format.** `system/init`, Anthropic `stream_event` content blocks, whole `assistant` messages, and a closing `result` are byte-identical to `claude --output-format stream-json`. Grok therefore has no normalizer of its own: `speaks_claude_stream_json` in [normalizer/mod.rs](../src-tauri/src/providers/normalizer/mod.rs) routes it down Claude's path. If Grok ever forks that format, the fixture test in that file is what fails.
 - **The prompt must ride the `=` form.** `-p`/`--single` takes the prompt as a flag *value*, not the trailing positional Claude and Cursor use. Passed as two argv entries, the CLI rejects any prompt starting with `-` with a bare usage error — a pasted diff or a "- do this" bullet trips it. `--single=<prompt>` is the only form clap always reads as a value.
 - **`--cwd` is passed explicitly** even though the child is already spawned in the worktree: with `[cli] use_leader` enabled the turn runs inside a shared leader process whose cwd is not the child's. Same trap OpenCode's `--dir` covers.
+- **Repo-local MCP servers are gated on folder trust.** `grok inspect --json` reports `projectTrusted: false` for a checkout the user has never accepted, and the `.grok/config.toml` Argmax writes is ignored until it is true. A launch therefore records the workspace in Grok's own `trusted_folders.toml` and gives the entry back at the end ([agent-tools.md](agent-tools.md)).
 - **Plan mode** maps to the bundled read-only `plan` agent (`--agent plan`, `permission_mode: plan`, no edit tools) rather than a prompt prefix.
 - **Skills** come from `.grok/skills`, `.agents/skills`, and — by Grok's own compatibility rules — `.claude/skills`, plus `~/.grok/installed-plugins/<plugin>/skills` and the bundled cache at `~/.grok/bundled/skills`.
 - **Pricing** is the `grok-4.6-build` / `grok-4.5-build` SKU rate, not xAI's published API list price. The rates in `MODEL_PRICING` were solved from the CLI's own `total_cost_usd` and reproduce it exactly; note 4.5 costs twice 4.6, so the default and title model both stay on 4.6.
@@ -119,9 +120,12 @@ Historical events without `providerInvocationId` use chronological unmatched-pai
 
 ## Agent Session Control
 
-Sessions can launch, list, message, and move other sessions. Every provider
-gets those as tools on the `argmax` MCP server; the two without an injection
-path get them as shell commands. See [agent-tools.md](agent-tools.md).
+Sessions can launch, list, message, and move other sessions, and drive Argmax's
+own browser. Every provider gets those as tools on the `argmax` MCP server, and
+every launch carries the same one-line instruction. The `argmax session …` CLI
+still speaks the same socket from a terminal. See
+[agent-tools.md](agent-tools.md) and
+[ADR 0005](adr/0005-agent-tools-are-one-mcp-server.md).
 
 ## Default Model Selection
 

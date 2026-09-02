@@ -390,7 +390,7 @@ mod tests {
     fn argmax_own_launch_preamble_does_not_become_the_title() {
         let raw = format!(
             "{}\n\nGood morning! Status check.",
-            crate::providers::mcp_injection::SHELL_COMMAND_INSTRUCTION
+            crate::providers::mcp_injection::LEGACY_SHELL_COMMAND_INSTRUCTION
         );
 
         assert_eq!(

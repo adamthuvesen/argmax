@@ -130,6 +130,18 @@ results, and the launched session must appear in `dashboard:list` with
 `pgrep -f "argmax mcp"` is the teardown check — empty once the instance is
 gone.
 
+Grok and Cursor's non-composer models reach the tools through a config file
+written into the checkout, so they need two checks the other providers do not.
+Run the Grok scenario and a Cursor one with a *non-composer* `--model-id` (the
+composer path goes through ACP and proves nothing about this), then confirm
+`git status` in the scratch repo is clean, that a `.cursor/mcp.json` seeded with
+the user's own server is byte-identical afterwards, and that no `.grok/` or
+`.cursor/` line is left in `.git/info/exclude`. Point the app at a throwaway
+Grok home first — `GROK_HOME=<dir> node scripts/scratch-app.mjs …`, with
+`auth.json` and `agent_id` copied in — so the folder-trust grant lands there
+and never in the real `~/.grok/trusted_folders.toml`; that file must come back
+unchanged.
+
 `system:debug-snapshot` is served over the bridge precisely for this loop:
 a script can assert on log lines and per-channel latency instead of eyeballing
 the debug panel ([debugging.md](debugging.md)). For performance claims,

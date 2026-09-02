@@ -235,35 +235,100 @@ rather than from anything the agent controls.
 
 The server is `argmax mcp` — the same binary the app runs from, serving MCP over
 stdio and forwarding each call to the running app over the session-control
-socket. No sidecar, no second control plane. The per-session bearer token rides
-in the server spec's own `env`, not the provider process's environment, so a
-warm shared process (Cursor's ACP pool) can still hand each session its own
-credential.
+socket. No sidecar, no second control plane. Wherever the spec is per-launch,
+the per-session bearer token rides in the spec's own `env` rather than the
+provider process's environment, so a warm shared process (Cursor's ACP pool)
+can still hand each session its own credential.
 
-| Provider | Mechanism | Leaves a file? | Instruction |
-|---|---|---|---|
-| Claude | `--mcp-config '<inline json>'` | no | one line |
-| Codex | `-c mcp_servers.argmax.*` | no | one line |
-| Cursor (composer, ACP) | `mcpServers` in `session/new` / `session/load` | no | one line |
-| OpenCode | `OPENCODE_CONFIG_CONTENT` (inline JSON, merged over the user's config) | no | one line |
-| Cursor (other models, PTY) | none yet | — | shell commands |
-| Grok Build | `<workspace>/.grok/config.toml` | yes, git-excluded and removed at exit | shell commands |
+| Provider | Mechanism | Leaves a file? |
+|---|---|---|
+| Claude | `--mcp-config '<inline json>'` | no |
+| Codex | `-c mcp_servers.argmax.*` | no |
+| Cursor (composer, ACP) | `mcpServers` in `session/new` / `session/load` | no |
+| OpenCode | `OPENCODE_CONFIG_CONTENT` (inline JSON, merged over the user's config) | no |
+| Cursor (other models, PTY) | `<workspace>/.cursor/mcp.json`, merged over the user's own | yes, restored at exit |
+| Grok Build | `<workspace>/.grok/config.toml` plus a folder-trust grant | yes, removed at exit |
+
+Every provider now carries the same one-line instruction; the long
+shell-command preamble is gone. The `argmax session …` CLI it described is not
+— it is still the way to reach a session from a terminal, and
+[session_control.rs](../src-tauri/src/session_control.rs) dispatches it from
+exactly the same enum the tools do.
 
 [mcp_injection.rs](../src-tauri/src/providers/mcp_injection.rs) is the one place
-that knows which is which. `--strict-mcp-config` is deliberately not passed to
-Claude, and OpenCode's inline config is merged over the global one, so a user's
-own MCP servers stay loaded either way.
+that knows which is which, and none of the six mechanisms displaces the user's
+own servers: `--strict-mcp-config` is deliberately not passed to Claude,
+OpenCode's inline config is merged over the global one, and a `.cursor/mcp.json`
+the user keeps is parsed and rewritten with one key added. A file Argmax cannot
+parse is left completely alone and the tools stay off for that launch, which
+beats destroying a working config.
 
-The two providers without a working injection path carry the long
-shell-command instruction instead — the same capabilities spelled as
-`"$ARGMAX_BIN" session launch|move|list|message`. Grok's folder-trust gate
-refuses a config Argmax wrote, and Cursor's one-shot path has no per-launch
-flag; closing both is Phase 5 of [the plan](plan/agent-tools.md).
+### The two that write a file
+
+Cursor's one-shot path has no per-launch MCP flag and no config environment
+variable — `CURSOR_CONFIG_DIR` moves the whole of `~/.cursor`, authentication
+included — so the project-scoped `.cursor/mcp.json` the CLI already reads is the
+only way in. Grok's `GROK_CONFIG` / `GROK_CONFIG_PATH` overlays are allowlisted
+to soft settings and cannot spawn a command, so `.grok/config.toml` is the only
+way in there.
 
 A file written into a checkout is added to that checkout's `info/exclude`
-first, so a launch never makes the user's own repository look dirty. A linked
-worktree keeps `info/` in the common git directory, which is where the entry
-goes.
+first, so a launch never makes the user's own repository look dirty, and the
+line is dropped again with the file. Only a `.grok/` or `.cursor/` the launch
+itself created is excluded: a directory the user already keeps is theirs, and
+hiding it from git for good would be a worse surprise than a transient
+untracked file. A linked worktree keeps `info/` in the common git directory,
+which is where the entry goes.
+
+One checkout is one file, and
+[ADR 0004](adr/0004-parallelism-comes-from-workspaces.md) makes several sessions
+over one checkout the normal case, so neither file may hold anything one session
+can overwrite for another. The two CLIs make that easy in different ways, and
+the difference is measured, not assumed:
+
+- **Grok** starts its MCP server with the environment its own process has, so
+  the config carries no credential at all — the token reaches the server the
+  same way it reaches every other Argmax child. Every session writes identical
+  bytes and nothing can collide. (`grok mcp doctor` 1.0.13, with a server that
+  dumps its environment, shows both variables arriving.)
+- **Cursor** sanitises that environment: the same server reports
+  `ENV_MISSING: ARGMAX_SESSION_LAUNCH_SOCKET is not set`. Its spec therefore
+  carries the credential, which makes the entry per-session, so the entry is
+  *named* per session — `argmax_<first 8 of the session id>`. Two sessions
+  merge into one document instead of overwriting each other, and a session
+  takes only its own entry when it leaves. Cursor reports the tool to the model
+  without its namespace, so the suffix does not reach the tool name.
+
+What is per-session either way is a share in the file's lifetime: it is
+ref-counted, so the first session to finish leaves the file in place for the
+second, and the last one out puts the checkout back exactly as it found it.
+
+Cursor needs one flag as well as the file. An entry the CLI has not approved is
+listed and then never started — the model reports the namespace as "not found"
+while the file sits right there — so a launch passes `--approve-mcps`.
+
+### Grok's folder trust
+
+Grok gates repo-local MCP servers — and project hooks, and repo-local LSP
+servers — on whether the folder is trusted, and a config Argmax writes is inert
+until it is. The decision lives in one global file,
+`$GROK_HOME/trusted_folders.toml` (`~/.grok/trusted_folders.toml` by default):
+
+```toml
+[folders."/Users/me/dev/thing"]
+trusted = true
+decided_at = 1788149659
+```
+
+A Grok launch records the workspace there exactly as Grok itself does when the
+user answers its prompt, and gives it back when the launch ends
+([grok_trust.rs](../src-tauri/src/providers/grok_trust.rs)). Grok matches the
+canonicalised path, so that is what is written. Two entries are never touched:
+one that was already there when Argmax first looked, because that is the user's
+own decision, and one whose `decided_at` has changed underneath, because the
+user trusted the folder themselves while Argmax held it. The grant is
+ref-counted alongside the config file, and `GROK_FOLDER_TRUST=0` is deliberately
+not used — it would ungate the repo's hooks too.
 
 ## The wire underneath
 

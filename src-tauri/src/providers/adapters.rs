@@ -212,7 +212,7 @@ fn codex_structured_stdin(input: &ProviderLaunchInput) -> Option<String> {
 // cursor_model_for.
 fn cursor_structured_args(
     input: &ProviderLaunchInput,
-    _mcp: Option<&SessionLaunchProcessConfig>,
+    mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
     let mut args = vec![
         "agent".to_string(),
@@ -223,6 +223,7 @@ fn cursor_structured_args(
     ];
     args.extend(cursor_agent_mode_args(input));
     args.extend(cursor_permission_args(input));
+    args.extend(mcp_injection::mcp_args(ProviderId::Cursor, mcp));
     args.extend([
         "--model".to_string(),
         cursor_model_for(&input.model_id, input.reasoning_effort, input.fast_mode),
@@ -300,7 +301,7 @@ fn effort_suffix_capped_at_high(effort: ReasoningEffort) -> &'static str {
 fn cursor_structured_resume_args(
     input: &ProviderLaunchInput,
     resume_conversation_id: &str,
-    _mcp: Option<&SessionLaunchProcessConfig>,
+    mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
     let mut args = vec![
         "agent".to_string(),
@@ -313,6 +314,7 @@ fn cursor_structured_resume_args(
     ];
     args.extend(cursor_agent_mode_args(input));
     args.extend(cursor_permission_args(input));
+    args.extend(mcp_injection::mcp_args(ProviderId::Cursor, mcp));
     args.extend([
         "--model".to_string(),
         cursor_model_for(&input.model_id, input.reasoning_effort, input.fast_mode),
@@ -1025,6 +1027,34 @@ mod tests {
             ]
         );
         assert_eq!((definition.structured_stdin)(&input), None);
+    }
+
+    #[test]
+    fn a_cursor_launch_with_the_agent_tools_approves_them() {
+        // The server spec is a file in the workspace, but an entry cursor-agent
+        // has not approved is listed and never started, so the model reports
+        // the namespace as missing. Both arg builders must pass the flag.
+        let input = launch_input(ProviderId::Cursor);
+        let definition = get_provider_definition(ProviderId::Cursor);
+        let mcp = SessionLaunchProcessConfig::for_tests(
+            "/tmp/argmax/launch.sock",
+            "token-123",
+            "/Applications/Argmax.app/Contents/MacOS/argmax",
+        );
+
+        for args in [
+            (definition.structured_args)(&input, Some(&mcp)),
+            (definition.structured_resume_args)(&input, "c1", Some(&mcp)),
+        ] {
+            assert!(
+                args.iter().any(|arg| arg == "--approve-mcps"),
+                "cursor needs --approve-mcps to start the server it was given: {args:?}"
+            );
+        }
+        // No credential, no flag: nothing was injected to approve.
+        assert!(!(definition.structured_args)(&input, None)
+            .iter()
+            .any(|arg| arg == "--approve-mcps"));
     }
 
     #[test]

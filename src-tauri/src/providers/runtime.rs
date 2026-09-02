@@ -188,13 +188,11 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
             // than in the process environment. Any ACP failure falls through to
             // the proven one-shot path below.
             if super::cursor_acp::is_acp_eligible(&input) {
-                // The ACP prompt carries the short MCP note; the one-shot
-                // fallback below carries the long shell-command instruction,
-                // so the prefix is applied to a copy rather than to `input`.
+                // The prefix goes on a copy: an ACP launch that fails falls
+                // through to the one-shot path below, which prepends its own.
                 let mut acp_input = input.clone();
                 if let Some(config) = session_launch.as_ref() {
-                    acp_input.prompt =
-                        config.prepend_instruction(input.provider, true, &input.prompt);
+                    acp_input.prompt = config.prepend_instruction(&input.prompt);
                 }
                 match self
                     .cursor_acp
@@ -216,7 +214,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
             }
 
             if let Some(config) = session_launch.as_ref() {
-                input.prompt = config.prepend_instruction(input.provider, false, &input.prompt);
+                input.prompt = config.prepend_instruction(&input.prompt);
             }
 
             let args = match input.resume_conversation_id.as_deref() {
@@ -307,10 +305,15 @@ fn launch_structured_via_pty(
     if let Some(config) = session_launch {
         environment_overrides.extend(config.env_pairs());
     }
-    // OpenCode and Grok have no per-launch MCP flag: their server spec is a
-    // config file in the workspace, removed once the child exits.
-    let (mcp_environment, mcp_scratch_files) =
-        super::mcp_injection::launch_files(input.provider, &input.workspace_path, session_launch);
+    // OpenCode, Grok, and Cursor's one-shot path have no per-launch MCP flag:
+    // their server spec is inline environment or a config file in the
+    // workspace, put back once the child exits.
+    let (mcp_environment, mcp_scratch) = super::mcp_injection::launch_files(
+        input.provider,
+        &input.workspace_path,
+        &input.session_id,
+        session_launch,
+    );
     environment_overrides.extend(mcp_environment);
 
     let mut child = Command::new(binary_path)
@@ -382,7 +385,7 @@ fn launch_structured_via_pty(
     let drain_session_id = input.session_id.clone();
     thread::spawn(move || {
         let status = child.wait();
-        mcp_scratch_files.remove();
+        mcp_scratch.restore();
         wait_reaped.store(true, Ordering::SeqCst);
         let _ = exit_tx.send(());
         if reader_drained_rx

@@ -208,17 +208,12 @@ impl SessionLaunchProcessConfig {
         &self.argmax_bin
     }
 
-    /// The launch instruction ahead of the user's prompt. Which one depends on
-    /// whether this provider's launch could carry the MCP server itself.
-    pub fn prepend_instruction(
-        &self,
-        provider: crate::providers::ProviderId,
-        via_acp: bool,
-        prompt: &str,
-    ) -> String {
+    /// The launch instruction ahead of the user's prompt. One line, the same
+    /// for every provider: every launch now carries the MCP server itself.
+    pub fn prepend_instruction(&self, prompt: &str) -> String {
         format!(
             "{}\n\n{prompt}",
-            crate::providers::mcp_injection::instruction(provider, via_acp)
+            crate::providers::mcp_injection::AGENT_TOOLS_INSTRUCTION
         )
     }
 }
@@ -2864,18 +2859,12 @@ mod tests {
             (SESSION_LAUNCH_TOKEN_ENV.to_string(), "secret".to_string())
         );
         assert_eq!(env[2].0, ARGMAX_BIN_ENV);
-        // A provider that loads the MCP server is told one line; one that
-        // cannot gets the shell commands spelled out.
-        let with_tools = config.prepend_instruction(ProviderId::Claude, false, "Do the work");
+        // Every provider loads the MCP server, so every launch is told the
+        // same one line and no launch spells out shell commands any more.
+        let with_tools = config.prepend_instruction("Do the work");
         assert!(with_tools.starts_with("Argmax tools are available as the `argmax` MCP server"));
         assert!(with_tools.ends_with("\n\nDo the work"));
-        let cursor_pty = config.prepend_instruction(ProviderId::Cursor, false, "Do the work");
-        assert!(cursor_pty.contains("session launch --project"));
-        assert_eq!(
-            config.prepend_instruction(ProviderId::Cursor, true, "Do the work"),
-            with_tools
-        );
-        assert!(config.prepend_instruction(ProviderId::Grok, false, "Do the work") == cursor_pty);
+        assert!(!with_tools.contains("session launch --project"));
     }
 
     #[test]

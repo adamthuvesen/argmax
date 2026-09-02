@@ -997,6 +997,20 @@ button.tool-call-row-button {
   font-weight: 400;
 }
 
+/* Brand mark leading an MCP row. The brand colour is pulled one step toward
+   the row's grey so hue still tells Slack from Notion at a glance without
+   becoming the loudest thing in the transcript; black marks (and the plug
+   for unknown servers) take the text colour. */
+.tool-call-row-server-icon {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  margin-right: 1px;
+  fill: color-mix(in oklab, var(--brand, currentColor) 78%, var(--muted-strong));
+  color: var(--muted-strong);
+}
+
 /* The target rides in the UI face, not monospace: a proportional file name
    reads as the agent narrating what it touched, where a monospace one reads as
    embedded code output. Monospace is reserved for the diff body and for shell

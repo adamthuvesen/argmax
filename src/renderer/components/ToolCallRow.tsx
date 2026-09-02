@@ -5,12 +5,14 @@ import { shortenPathsInText } from "../lib/pathDisplay.js";
 import {
   describeToolAction,
   getToolTypeBucket,
+  parseMcpToolName,
   splitLeadingVerb,
   type ToolCall
 } from "../lib/toolCalls.js";
 import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallDetail, toolCallHasExpandableDetail } from "./ToolCallDetail.js";
+import { ServerIcon } from "./ServerIcon.js";
 import { WorkingNest } from "./WorkingNest.js";
 
 function verbForChanges(changes: FileChange[]): string | null {
@@ -89,6 +91,7 @@ function ToolCallRowInner({
   const verb = overrideVerb ?? baseSplit.verb;
   const target = baseSplit.rest;
   const toolTypeBucket = getToolTypeBucket(tool.name);
+  const mcpServer = parseMcpToolName(tool.name)?.server ?? null;
   const hasLeadingContent = Boolean(childTools && childTools.length > 0);
   const hasDetail = toolCallHasExpandableDetail(tool, { hasLeadingContent });
   const expanded =
@@ -117,6 +120,7 @@ function ToolCallRowInner({
     ) : null;
   const rowContent = (
     <>
+      {mcpServer ? <ServerIcon server={mcpServer} /> : null}
       <span className="tool-call-row-verb">{verb}</span>
       {target ? (
         <span className="tool-call-row-target">{shortenPathsInText(target)}</span>

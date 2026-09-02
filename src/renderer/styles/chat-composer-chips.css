@@ -693,6 +693,45 @@ button.composer-compact-context-row:hover,
   max-width: 100%;
 }
 
+/* Another chat's agent wrote this message rather than the user typing it. The
+   header is provenance, so it stays a quiet tinted line above the bubble
+   instead of a badge competing with the message it introduces. */
+.user-message-origin {
+  align-self: flex-end;
+  max-width: 100%;
+  padding: 2px 10px;
+  border-radius: var(--radius-md);
+  background: var(--panel-sunken);
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-message-origin-open,
+.user-message-origin-label {
+  color: var(--muted-strong);
+  font: inherit;
+}
+
+.user-message-origin-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 2px;
+}
+
+.user-message-origin-open:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+
 .user-message-attachments {
   display: flex;
   flex-wrap: wrap;

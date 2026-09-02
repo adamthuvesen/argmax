@@ -180,6 +180,15 @@ pub static SESSION_LAUNCH_LINEAGE_COLUMNS: phf::Map<&'static str, &'static [&'st
     ] as &'static [&'static str],
 };
 
+// Post-v24 `session_messages` shape: the inbox one session's agent writes to
+// another's, and the completion notice a launched session leaves behind.
+pub static SESSION_MESSAGES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "session_messages" => &[
+        "body", "created_at", "delivered_at", "from_session_id", "id", "kind",
+        "to_session_id",
+    ] as &'static [&'static str],
+};
+
 // Post-v19 `routines` shape: the scheduled-task table as created.
 pub static ROUTINES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "routines" => &[
@@ -217,6 +226,16 @@ pub static PROJECT_DEFAULT_MODEL_ID_COLUMNS: phf::Map<&'static str, &'static [&'
         "default_model_id", "default_model_label", "default_provider", "id", "name",
         "repo_path", "repo_remote_name", "repo_remote_owner", "setup_command",
         "ui_preferences_json", "updated_at", "worktree_location",
+    ] as &'static [&'static str],
+};
+
+// Post-v24 `projects` shape: the per-project default agent is gone — Settings
+// → Agents holds one default model and effort for the whole app.
+pub static PROJECT_DEFAULT_AGENT_REMOVED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &[
+        "check_commands_json", "created_at", "current_branch", "default_branch",
+        "id", "name", "repo_path", "repo_remote_name", "repo_remote_owner",
+        "setup_command", "ui_preferences_json", "updated_at", "worktree_location",
     ] as &'static [&'static str],
 };
 
@@ -469,7 +488,32 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SESSION_LAUNCH_LINEAGE_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 24,
+        name: "drop_project_default_agent",
+        up: DROP_PROJECT_DEFAULT_AGENT,
+        affected_tables: &["projects"],
+        expected_columns: &PROJECT_DEFAULT_AGENT_REMOVED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 25,
+        name: "session_messages",
+        up: SESSION_MESSAGES,
+        affected_tables: &["session_messages"],
+        expected_columns: &SESSION_MESSAGES_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// The default agent is an app-wide setting now, not a per-project one: one
+// default model and effort in Settings → Agents seeds every launch, including
+// the chats Argmax starts on its own. The three columns have no reader left.
+const DROP_PROJECT_DEFAULT_AGENT: &str = r#"
+ALTER TABLE projects DROP COLUMN default_provider;
+ALTER TABLE projects DROP COLUMN default_model_label;
+ALTER TABLE projects DROP COLUMN default_model_id;
+"#;
 
 // Who launched a session, and how far from a person that launch is. An agent
 // using the `argmax` MCP tools may launch sessions itself, so the caps that
@@ -481,6 +525,26 @@ const SESSION_LAUNCH_LINEAGE: &str = r#"
 ALTER TABLE sessions ADD COLUMN launched_by_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL;
 ALTER TABLE sessions ADD COLUMN launch_depth INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX idx_sessions_launched_by ON sessions(launched_by_session_id);
+"#;
+
+// One session's message to another, and the completion notice a launched
+// session leaves for whoever launched it. The row outlives the delivery: it is
+// what `inbox_read` and `session_wait` read, while `delivered_at` records that
+// the message also reached the recipient as a turn. Both session references
+// go to NULL rather than cascading, so pruning one session never deletes
+// another session's inbox history.
+const SESSION_MESSAGES: &str = r#"
+CREATE TABLE session_messages (
+  id TEXT PRIMARY KEY,
+  from_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  to_session_id TEXT NOT NULL,
+  body TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  delivered_at TEXT
+);
+CREATE INDEX idx_session_messages_inbox
+  ON session_messages(to_session_id, delivered_at);
 "#;
 
 // The branch a PR was opened from, so a workspace can find the PR for the
@@ -1249,8 +1313,12 @@ mod tests {
         // projects, sessions, and workspaces gained columns in later
         // migrations, so verify them against the head shapes rather than the
         // v1 EXPECTED_COLUMNS.
-        verify_table_columns(&connection, &PROJECT_DEFAULT_MODEL_ID_COLUMNS, "projects")
-            .expect("projects");
+        verify_table_columns(
+            &connection,
+            &PROJECT_DEFAULT_AGENT_REMOVED_COLUMNS,
+            "projects",
+        )
+        .expect("projects");
         verify_table_columns(&connection, &SESSION_LAUNCH_LINEAGE_COLUMNS, "sessions")
             .expect("sessions");
         verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
@@ -1326,6 +1394,8 @@ mod tests {
                 ),
                 (22, compute_migration_checksum(GH_PR_HEAD_REF_NAME)),
                 (23, compute_migration_checksum(SESSION_LAUNCH_LINEAGE)),
+                (24, compute_migration_checksum(DROP_PROJECT_DEFAULT_AGENT)),
+                (25, compute_migration_checksum(SESSION_MESSAGES)),
             ]
         );
 
@@ -1593,11 +1663,23 @@ mod tests {
         assert!(rows[0].0 < rows[1].0);
     }
 
+    /// This seed is used both mid-history (before v24 dropped them) and at
+    /// head, so the insert follows whichever shape the table has.
+    fn has_default_agent_columns(connection: &Connection) -> bool {
+        connection
+            .prepare("SELECT default_provider FROM projects LIMIT 0")
+            .is_ok()
+    }
+
     fn seed_minimal_session(connection: &Connection) {
         let timestamp = "2026-05-24T10:00:00.000Z";
         connection
             .execute(
-                "INSERT INTO projects (id, name, repo_path, current_branch, default_provider, default_model_label, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', 'claude', 'Sonnet', '~/.argmax', ?, ?)",
+                if has_default_agent_columns(connection) {
+                    "INSERT INTO projects (id, name, repo_path, current_branch, default_provider, default_model_label, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', 'claude', 'Sonnet', '~/.argmax', ?, ?)"
+                } else {
+                    "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', '~/.argmax', ?, ?)"
+                },
                 (timestamp, timestamp),
             )
             .expect("insert project");

@@ -93,6 +93,7 @@ interface SessionMultiGridProps {
   onNewSession: (seed?: NewSessionSeed) => void;
   /** Launches a repo-less side chat seeded with the given first message. */
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
+  onOpenSession?: (sessionId: string) => void;
   onOpenDetails?: (
     seedPrompt: string,
     context?: { attachToChat?: () => void }
@@ -154,6 +155,7 @@ export function SessionMultiGrid({
   onLoadSessionEvents,
   onNewSession,
   onOpenSideChat,
+  onOpenSession,
   onOpenDetails,
   defaultIde = null,
   detectedIdes = [],
@@ -396,6 +398,7 @@ export function SessionMultiGrid({
                         onLoadSessionEvents={onLoadSessionEvents}
                         onNewSession={onNewSession}
                         onOpenSideChat={onOpenSideChat}
+                        onOpenSession={onOpenSession}
                         onOpenDetails={onOpenDetails}
                         defaultIde={defaultIde}
                         detectedIdes={detectedIdes}

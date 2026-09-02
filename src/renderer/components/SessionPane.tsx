@@ -75,6 +75,7 @@ export function SessionPane({
   onNewSession,
   onOpenFile,
   onOpenSideChat,
+  onOpenSession,
   onOpenDetails,
   defaultIde = null,
   detectedIdes = [],
@@ -120,6 +121,7 @@ export function SessionPane({
   /** Opens a launcher pane beside this one. Absent outside the grid. */
   onNewSession?: (seed?: NewSessionSeed) => void;
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
+  onOpenSession?: (sessionId: string) => void;
   onOpenDetails?: (
     seedPrompt: string,
     context?: { attachToChat?: () => void }
@@ -507,6 +509,7 @@ export function SessionPane({
           onFastModeEnabledChange={onFastModeEnabledChange}
           onNewSession={onNewSession}
           onOpenSideChat={onOpenSideChat}
+          onOpenSession={onOpenSession}
           onOpenDetails={onOpenDetails}
           defaultIde={defaultIde}
           detectedIdes={detectedIdes}

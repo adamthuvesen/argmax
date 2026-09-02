@@ -9,6 +9,7 @@ pub mod approvals;
 pub mod attachments;
 pub mod browser;
 pub mod checks;
+pub mod default_agent;
 pub mod dock;
 pub mod error;
 pub mod files;
@@ -618,13 +619,19 @@ pub fn run() {
                             let poller_database = Arc::clone(&database);
                             let poller_providers = Arc::clone(&providers);
                             let poller_notifications = Arc::clone(&notifications);
+                            // The fix chat launches on the app-wide default
+                            // agent, mirrored into the app data dir by the
+                            // renderer (see crate::default_agent).
+                            let poller_data_dir = user_data.clone();
                             let failure_hook = Arc::new(move |context: gh::poller::CheckFailureContext| {
                                 let database = Arc::clone(&poller_database);
                                 let providers = Arc::clone(&poller_providers);
                                 let notifications = Arc::clone(&poller_notifications);
+                                let data_dir = poller_data_dir.clone();
                                 tauri::async_runtime::spawn(async move {
                                     if let Err(error) =
-                                        handle_gh_check_failure(database, providers, notifications, context).await
+                                        handle_gh_check_failure(database, providers, notifications, data_dir, context)
+                                            .await
                                     {
                                         tracing::warn!(?error, "failed to handle gh check failure");
                                     }
@@ -686,6 +693,7 @@ pub fn run() {
                             }
                             if let Some(server) = session_launch_server {
                                 match server.start(
+                                    Some(app.handle().clone()),
                                     Arc::clone(&database),
                                     Arc::clone(&workspaces_for_watchers),
                                     Arc::clone(&providers),
@@ -873,6 +881,7 @@ async fn handle_gh_check_failure(
     notifications: Arc<
         notifications::NotificationService<notifications::TauriNotificationSink<tauri::Wry>>,
     >,
+    app_data_dir: std::path::PathBuf,
     context: gh::poller::CheckFailureContext,
 ) -> error::ArgmaxResult<()> {
     let (session, pr, input) = {
@@ -880,7 +889,7 @@ async fn handle_gh_check_failure(
         let session = persistence::sessions::find_session_by_id(&connection, &context.session_id)?;
         let workspace =
             persistence::workspaces::find_workspace_by_id(&connection, &context.workspace_id)?;
-        let project = persistence::projects::require_project(&connection, &workspace.project_id)?;
+        persistence::projects::require_project(&connection, &workspace.project_id)?;
         let pr = persistence::gh::list_gh_pr_for_session(&connection, &context.session_id)?
             .into_iter()
             .find(|row| row.pr_number == context.pr_number && row.head_sha == context.head_sha)
@@ -897,7 +906,8 @@ async fn handle_gh_check_failure(
                 // rather than guessing it from the workspace's current one.
                 head_ref_name: None,
             });
-        let input = build_check_failure_follow_up_input(&workspace.id, &project, &context)?;
+        let agent = default_agent::read_default_agent(&app_data_dir);
+        let input = build_check_failure_follow_up_input(&workspace.id, &agent, &context)?;
         (session, pr, input)
     };
 
@@ -917,52 +927,39 @@ async fn handle_gh_check_failure(
 
 fn build_check_failure_follow_up_input(
     workspace_id: &str,
-    project: &persistence::projects::ProjectSummary,
+    agent: &default_agent::DefaultAgent,
     context: &gh::poller::CheckFailureContext,
 ) -> error::ArgmaxResult<ipc::inputs::ProvidersLaunchInput> {
-    let defaults = provider_defaults(&project.settings.default_provider);
-    // Honor the project's configured default model when one was chosen; ''
-    // (rows persisted before v14, or never edited) falls back to the built-in
-    // per-provider default. Effort stays the provider default either way —
-    // per-model effort isn't part of project settings.
-    let (model_label, model_id) = if project.settings.default_model_id.is_empty() {
-        (
-            defaults.model_label.to_string(),
-            defaults.model_id.to_string(),
-        )
-    } else {
-        (
-            project.settings.default_model_label.clone(),
-            project.settings.default_model_id.clone(),
-        )
-    };
     serde_json::from_value(json!({
         "workspaceId": workspace_id,
-        "provider": project.settings.default_provider,
+        "provider": agent.provider,
         "prompt": format!(
             "Checks on PR #{} (commit {}) are failing. Run `gh pr checks {}` to see which checks failed, then investigate and fix.",
             context.pr_number,
             context.head_sha.chars().take(12).collect::<String>(),
             context.pr_number
         ),
-        "modelLabel": model_label,
-        "modelId": model_id,
-        "reasoningEffort": defaults.reasoning_effort,
+        "modelLabel": agent.model_label,
+        "modelId": agent.model_id,
+        "reasoningEffort": agent.reasoning_effort,
         "cols": 120,
         "rows": 36
     }))
     .map_err(|error| error::ArgmaxError::service("GH_FOLLOW_UP_INPUT_INVALID", error.to_string()))
 }
 
+/// Per-provider catalog default, mirroring PROVIDER_MODEL_DEFAULTS in
+/// src/shared/providerModels.ts. Used where a provider is already fixed and
+/// only its model needs filling in (session control, imported sessions); the
+/// app-wide default agent lives in [`default_agent`].
 #[derive(Clone, Copy)]
-struct ProviderDefaults {
-    model_label: &'static str,
-    model_id: &'static str,
-    reasoning_effort: Option<&'static str>,
+pub struct ProviderDefaults {
+    pub model_label: &'static str,
+    pub model_id: &'static str,
+    pub reasoning_effort: Option<&'static str>,
 }
 
-fn provider_defaults(provider: &str) -> ProviderDefaults {
-    // Mirrors PROVIDER_MODEL_DEFAULTS in src/shared/providerModels.ts.
+pub fn provider_defaults(provider: &str) -> ProviderDefaults {
     match provider {
         "codex" => ProviderDefaults {
             model_label: "GPT-5.6 Sol",
@@ -1076,34 +1073,6 @@ mod tests {
         );
     }
 
-    fn follow_up_project(
-        default_model_label: &str,
-        default_model_id: &str,
-    ) -> persistence::projects::ProjectSummary {
-        persistence::projects::ProjectSummary {
-            id: "p1".to_string(),
-            name: "Argmax".to_string(),
-            repo_path: "/tmp/repo".to_string(),
-            current_branch: "main".to_string(),
-            default_branch: Some("main".to_string()),
-            settings: persistence::projects::ProjectSettings {
-                default_provider: "codex".to_string(),
-                default_model_label: default_model_label.to_string(),
-                default_model_id: default_model_id.to_string(),
-                worktree_location: "/tmp/repo/.worktrees".to_string(),
-                setup_command: String::new(),
-                check_commands: Vec::new(),
-            },
-            counts: persistence::projects::ProjectCounts {
-                active: 0,
-                blocked: 0,
-                failed: 0,
-                review_ready: 0,
-            },
-            latest_activity_at: None,
-        }
-    }
-
     fn follow_up_context() -> gh::poller::CheckFailureContext {
         gh::poller::CheckFailureContext {
             session_id: "s1".to_string(),
@@ -1114,22 +1083,38 @@ mod tests {
     }
 
     #[test]
-    fn check_failure_follow_up_honors_configured_default_model() {
-        let project = follow_up_project("GPT-5.6 Luna", "gpt-5.6-luna");
-        let input = build_check_failure_follow_up_input("w1", &project, &follow_up_context())
+    fn check_failure_follow_up_launches_on_the_app_default_agent() {
+        let agent = default_agent::DefaultAgent {
+            provider: "codex".to_string(),
+            model_label: "GPT-5.6 Luna".to_string(),
+            model_id: "gpt-5.6-luna".to_string(),
+            reasoning_effort: Some("high".to_string()),
+        };
+        let input = build_check_failure_follow_up_input("w1", &agent, &follow_up_context())
             .expect("follow-up input");
         assert_eq!(input.model_label.as_str(), "GPT-5.6 Luna");
         assert_eq!(input.model_id.as_str(), "gpt-5.6-luna");
+        assert_eq!(
+            input.reasoning_effort.map(|effort| effort.as_str()),
+            Some("high")
+        );
     }
 
     #[test]
-    fn check_failure_follow_up_falls_back_without_model_id() {
-        // Rows persisted before v14 (or never edited) carry '' — the built-in
-        // per-provider default applies, exactly the pre-v14 behavior.
-        let project = follow_up_project("GPT-5.5", "");
-        let input = build_check_failure_follow_up_input("w1", &project, &follow_up_context())
-            .expect("follow-up input");
-        assert_eq!(input.model_label.as_str(), "GPT-5.6 Sol");
-        assert_eq!(input.model_id.as_str(), "gpt-5.6-sol");
+    fn check_failure_follow_up_falls_back_to_the_factory_agent() {
+        // Nothing mirrored yet — a fresh install launches the fix chat on the
+        // same agent the launcher shows: Opus 5 at Medium.
+        let input = build_check_failure_follow_up_input(
+            "w1",
+            &default_agent::DefaultAgent::factory(),
+            &follow_up_context(),
+        )
+        .expect("follow-up input");
+        assert_eq!(input.model_label.as_str(), "Opus 5");
+        assert_eq!(input.model_id.as_str(), "claude-opus-5");
+        assert_eq!(
+            input.reasoning_effort.map(|effort| effort.as_str()),
+            Some("medium")
+        );
     }
 }

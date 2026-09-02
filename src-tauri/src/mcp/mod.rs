@@ -6,10 +6,13 @@
 //! listens on, authenticated with the per-session bearer token the launcher put
 //! in the child's environment. No sidecar, no second control plane, and no new
 //! wire protocol — the tools speak the same `SessionControlRequest` the
-//! `argmax session …` CLI does.
+//! `argmax session …` CLI does. The browser tools ride the same socket, with
+//! their own action; `browser_bridge` holds both ends of that request.
 
 use std::ffi::OsString;
 
+pub mod browser_bridge;
+mod browser_tools;
 mod server;
 mod session_tools;
 

@@ -628,16 +628,44 @@ function markSkillTokens(text: string): ReactNode {
   );
 }
 
+/** The session an incoming `user.message` was written by, not typed in. */
+interface UserMessageOrigin {
+  sessionId: string;
+  label: string;
+}
+
+/**
+ * Reads the `origin` block Rust writes onto a message that arrived from
+ * another session. Either identifier missing (or blank) means there is no
+ * chat to name or open, so the message renders as an ordinary user bubble
+ * rather than a header pointing nowhere.
+ */
+function readMessageOrigin(payload: unknown): UserMessageOrigin | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const origin = (payload as { origin?: unknown }).origin;
+  if (typeof origin !== "object" || origin === null) return null;
+  const { sessionId, label } = origin as { sessionId?: unknown; label?: unknown };
+  if (typeof sessionId !== "string" || sessionId.trim().length === 0) return null;
+  if (typeof label !== "string" || label.trim().length === 0) return null;
+  return { sessionId, label: label.trim() };
+}
+
 /** User-message row from a render item (not a turn). */
 export function SessionConversationUserMessage({
   event,
   attachments,
-  isTurnAnchor = false
+  isTurnAnchor = false,
+  onOpenSession
 }: {
   event: Extract<RenderItem, { kind: "user-message" }>["event"];
   attachments: UserMessageAttachment[];
   isTurnAnchor?: boolean;
+  /** Focuses another session's chat, for a message that came from one. Absent
+   *  on hosts with no way to reach a second chat, which leaves the header's
+   *  label as plain text. */
+  onOpenSession?: (sessionId: string) => void;
 }): JSX.Element {
+  const origin = readMessageOrigin(event.payload);
   let displayMessage = event.message;
   for (const a of attachments) {
     displayMessage = displayMessage.split(`@${a.filePath}`).join("");
@@ -645,7 +673,31 @@ export function SessionConversationUserMessage({
   displayMessage = displayMessage.replace(/[ \t]+(?=\n|$)/g, "").trim();
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   return (
-    <div className="user-message-group" {...(isTurnAnchor ? { "data-turn-anchor": "true" } : {})}>
+    <div
+      className="user-message-group"
+      {...(isTurnAnchor ? { "data-turn-anchor": "true" } : {})}
+      {...(origin ? { role: "article", "aria-label": "Message from another chat" } : {})}
+    >
+      {origin ? (
+        <div className="user-message-origin">
+          From{" "}
+          {onOpenSession ? (
+            <button
+              type="button"
+              className="user-message-origin-open"
+              aria-label={`Open chat: ${origin.label}`}
+              title={`Open chat: ${origin.label}`}
+              onClick={() => onOpenSession(origin.sessionId)}
+            >
+              {origin.label}
+            </button>
+          ) : (
+            <span className="user-message-origin-label" title={origin.label}>
+              {origin.label}
+            </span>
+          )}
+        </div>
+      ) : null}
       {attachments.length > 0 ? (
         <div className="user-message-attachments" aria-label="Attachments">
           {attachments.map((a) => {

@@ -414,6 +414,19 @@ async systemSetTheme(input: SystemSetThemeInput) : Promise<Result<SystemOk, Argm
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Mirrors the renderer's app-wide default agent into the app data dir, where
+ * the autonomous launch paths can read it without a window. Same shape as the
+ * theme cache: a small JSON file, last write wins.
+ */
+async systemSetDefaultAgent(input: SystemSetDefaultAgentInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_set_default_agent", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async systemSetNotificationsEnabled(input: SystemSetNotificationsEnabledInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("system_set_notifications_enabled", { input }) };
@@ -1028,17 +1041,8 @@ export type PermissionMode = "auto-approve" | "ask-each-time"
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
 export type ProjectId = string
-export type ProjectSettings = { defaultProvider: string; defaultModelLabel: string; 
-/**
- * '' means "not chosen yet": launch paths fall back to the built-in
- * per-provider default model.
- */
-defaultModelId: string; worktreeLocation: string; setupCommand: string; checkCommands: string[] }
-export type ProjectSettingsInput = { defaultProvider: ProviderId; defaultModelLabel: NonEmptyString; 
-/**
- * '' keeps "no model chosen": launch paths use the provider default.
- */
-defaultModelId: string; worktreeLocation: NonEmptyString; setupCommand: string; checkCommands: string[] }
+export type ProjectSettings = { worktreeLocation: string; setupCommand: string; checkCommands: string[] }
+export type ProjectSettingsInput = { worktreeLocation: NonEmptyString; setupCommand: string; checkCommands: string[] }
 export type ProjectSummary = { id: string; name: string; repoPath: string; currentBranch: string; defaultBranch: string | null; settings: ProjectSettings; counts: ProjectCounts; latestActivityAt: string | null }
 export type ProjectsListBranchesInput = { projectId: ProjectId }
 export type ProjectsListInput = Record<string, never>
@@ -1235,6 +1239,16 @@ export type SystemDiagnosticsInput = Record<string, never>
 export type SystemListDetectedIdesInput = Record<string, never>
 export type SystemOk = { ok: boolean }
 export type SystemOpenPathInput = { path: OpenPath; cwd: NonEmptyString | null }
+/**
+ * The app-wide default agent (Settings → Agents). The renderer owns the
+ * preference and mirrors it here so the sessions Argmax starts on its own —
+ * the PR check-failure fix chat — launch on the same model the user picked.
+ */
+export type SystemSetDefaultAgentInput = { provider: ProviderId; modelLabel: NonEmptyString; modelId: NonEmptyString; 
+/**
+ * Absent for a fast model that has no effort control at all.
+ */
+reasoningEffort: ReasoningEffort | null }
 export type SystemSetNotificationsEnabledInput = { enabled: boolean }
 export type SystemSetThemeInput = { mode: ThemeMode }
 export type SystemTestNotificationInput = Record<string, never>

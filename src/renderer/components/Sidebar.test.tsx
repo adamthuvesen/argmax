@@ -12,9 +12,6 @@ import {
 import { Sidebar } from "./Sidebar.js";
 
 const projectSettings = {
-  defaultProvider: "codex" as const,
-  defaultModelLabel: "GPT-5.3 Codex",
-  defaultModelId: "",
   worktreeLocation: "/tmp/worktrees",
   setupCommand: "",
   checkCommands: []

@@ -24,7 +24,7 @@ import type {
 import { SCRATCH_PROJECT_ID } from "../shared/types.js";
 import { launcherDraftKey, writeDraftText } from "./lib/composerDrafts.js";
 import type { NewSessionSeed } from "./components/SessionComposer.js";
-import { PROVIDER_TITLE_MODEL } from "../shared/providerModels.js";
+import { effortForModel, PROVIDER_TITLE_MODEL, type ReasoningEffort } from "../shared/providerModels.js";
 import type {
   MessageHit as PaletteMessageHit,
   PaletteScope
@@ -67,7 +67,12 @@ import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange } from "./lib/theme.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import type { WorkspaceMode } from "./lib/workspaceMode.js";
-import { persistLaunchModel, readStoredLaunchModel } from "./lib/launchModelPreference.js";
+import {
+  persistDefaultEffort,
+  persistLaunchModel,
+  readStoredDefaultEffort,
+  readStoredLaunchModel
+} from "./lib/launchModelPreference.js";
 import { factoryLaunchModel, modelPickerSelectionFromSession, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
@@ -125,8 +130,9 @@ function widestGridRowColumnCount(rows: unknown[][]): number {
 }
 
 export function App(): JSX.Element {
+  const [defaultEffort, setDefaultEffort] = useState<ReasoningEffort>(() => readStoredDefaultEffort());
   const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(
-    () => readStoredLaunchModel() ?? factoryLaunchModel()
+    () => readStoredLaunchModel() ?? factoryLaunchModel(readStoredDefaultEffort())
   );
   const {
     isSettingsOpen,
@@ -183,13 +189,42 @@ export function App(): JSX.Element {
       void window.argmax.system.setNotificationsEnabled(desktopNotificationsEnabled);
     }
   }, [desktopNotificationsEnabled]);
+  // Mirror the app-wide default agent to the backend, which has no window to
+  // ask: the chats Argmax starts on its own (the PR check-failure fix) launch
+  // on the same model and effort the launcher shows.
+  useEffect(() => {
+    if (!window.argmax?.system?.setDefaultAgent) return;
+    void window.argmax.system
+      .setDefaultAgent({
+        provider: launchModel.provider,
+        modelLabel: launchModel.label,
+        modelId: launchModel.modelId,
+        reasoningEffort: launchModel.reasoningEffort ?? null
+      })
+      .catch(() => {
+        // The remote bridge doesn't carry this channel, and a failed mirror
+        // only means an autonomous launch uses the built-in default.
+      });
+  }, [launchModel]);
   const handleLaunchModelChange = useCallback(
     (model: ModelPickerSelection): void => {
       setLaunchModel(model);
       persistLaunchModel(model);
+      setDefaultEffort(readStoredDefaultEffort());
     },
     []
   );
+  // Changing the app-wide default effort re-resolves the launcher model: the
+  // level rides along when the model offers it, and falls back when it doesn't.
+  const handleDefaultEffortChange = useCallback((effort: ReasoningEffort): void => {
+    persistDefaultEffort(effort);
+    setDefaultEffort(effort);
+    setLaunchModel((current) => {
+      const resolved = effortForModel(current.provider, current.modelId, effort);
+      if (!current.reasoningEffort || !resolved || resolved === current.reasoningEffort) return current;
+      return { ...current, reasoningEffort: resolved };
+    });
+  }, []);
   const {
     themeMode,
     setThemeMode,
@@ -1027,6 +1062,19 @@ export function App(): JSX.Element {
       openWorkspaceChat(workspaceId, modifiers);
     },
     [openWorkspaceChat, setIsSettingsOpen, setIsFullLauncherOpen]
+  );
+  // Focus another chat by session id: the sender named on an agent message's
+  // bubble, and the chat whose agent launched this one. A session that has
+  // since been pruned resolves to nothing and the click is a no-op.
+  const openSessionById = useCallback(
+    (sessionId: string): void => {
+      const target = snapshot.sessions.find((session) => session.id === sessionId);
+      if (!target) return;
+      setIsSettingsOpen(false);
+      setIsFullLauncherOpen(false);
+      openWorkspaceChat(target.workspaceId, { ctrlOrMeta: false, alt: false });
+    },
+    [snapshot.sessions, openWorkspaceChat, setIsSettingsOpen, setIsFullLauncherOpen]
   );
   const onOpenLauncherRow = useCallback((): void => {
     setIsSettingsOpen(false);
@@ -1879,6 +1927,8 @@ export function App(): JSX.Element {
                 onGroupChange={(group) => openSettingsTarget(group)}
                 defaultModel={launchModel}
                 onDefaultModelChange={handleLaunchModelChange}
+                defaultEffort={defaultEffort}
+                onDefaultEffortChange={handleDefaultEffortChange}
                 chatVerbosity={chatVerbosity}
                 onChatVerbosityChange={setChatVerbosity}
                 sidebarPriorityVisible={sidebarPriorityVisible}
@@ -1969,6 +2019,7 @@ export function App(): JSX.Element {
               onLoadAgentEvents={loadAgentEvents}
               onNewSession={openNewSessionPaneInGrid}
               onOpenSideChat={launchSideChat}
+              onOpenSession={openSessionById}
               onOpenDetails={launchDetailsPopup}
               defaultIde={defaultIde}
               detectedIdes={detectedIdes}

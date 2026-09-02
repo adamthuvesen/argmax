@@ -275,3 +275,64 @@ describe("SessionActionsMenu — Open in IDE", () => {
     expect(screen.getByRole("menuitem", { name: "Open in IDE" })).toBeDisabled();
   });
 });
+
+describe("SessionActionsMenu — launching chat", () => {
+  let listForSession: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    listForSession = vi.fn().mockResolvedValue([]);
+    installArgmax(listForSession);
+  });
+
+  afterEach(() => {
+    cleanup();
+    delete (window as { argmax?: unknown }).argmax;
+  });
+
+  it("opens the chat whose agent launched this one", async () => {
+    const onOpenLaunchingChat = vi.fn();
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        onOpenLaunchingChat={onOpenLaunchingChat}
+        session={{ ...session(), launchedBySessionId: "session-parent" }}
+        workspace={workspace()}
+      />
+    );
+
+    await openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open launching chat" }));
+
+    expect(onOpenLaunchingChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the action for a session nobody launched, and when the launcher is gone", async () => {
+    const { unmount } = render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        onOpenLaunchingChat={vi.fn()}
+        session={session()}
+        workspace={workspace()}
+      />
+    );
+    await openMenu();
+    expect(screen.queryByRole("menuitem", { name: "Open launching chat" })).toBeNull();
+    unmount();
+
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        session={{ ...session(), launchedBySessionId: "session-parent" }}
+        workspace={workspace()}
+      />
+    );
+    await openMenu();
+    expect(screen.queryByRole("menuitem", { name: "Open launching chat" })).toBeNull();
+  });
+});

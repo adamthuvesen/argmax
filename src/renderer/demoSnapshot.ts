@@ -10,9 +10,6 @@ export const demoSnapshot: DashboardSnapshot = {
       currentBranch: "main",
       defaultBranch: "main",
       settings: {
-        defaultProvider: "codex",
-        defaultModelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
-        defaultModelId: PROVIDER_MODEL_DEFAULTS.codex.modelId,
         worktreeLocation: "~/code/.argmax/worktrees",
         setupCommand: "npm install",
         checkCommands: ["npm run lint", "npm test", "npm run tauri:build"]

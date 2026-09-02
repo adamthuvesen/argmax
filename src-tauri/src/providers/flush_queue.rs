@@ -93,6 +93,11 @@ pub struct PendingMessage {
     // an attachment loses the image in the chat UI once the turn sends.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<ComposerAttachmentInput>,
+    // A message another session sent while this one was mid-turn. Carried
+    // through the queue so the drained turn still renders as "From <label>"
+    // rather than as something the user typed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin: Option<super::session_service::MessageOrigin>,
     pub queued_at: String,
 }
 
@@ -845,6 +850,7 @@ mod tests {
             reasoning_effort: None,
             fast_mode: false,
             attachments: Vec::new(),
+            origin: None,
             queued_at: "2026-01-01T00:00:00Z".to_string(),
         };
 
@@ -1171,7 +1177,7 @@ mod tests {
     fn seed_session(connection: &Connection) {
         connection
             .execute(
-                "INSERT INTO projects (id, name, repo_path, current_branch, default_provider, default_model_label, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', 'claude', 'Sonnet', '~/.argmax', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
+                "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', '~/.argmax', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
                 [],
             )
             .expect("insert project");

@@ -10,6 +10,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const SNAPSHOT_JS = readFileSync("src-tauri/src/browser/snapshot.js", "utf8");
 const ACTIONS_JS = readFileSync("src-tauri/src/browser/actions.js", "utf8");
+const DIALOG_JS = readFileSync("src-tauri/src/browser/dialog.js", "utf8");
 
 interface FoundElement {
   ref: string;
@@ -46,6 +47,15 @@ interface AgentApi {
     id: string,
     spec: { text?: string; ref?: string; urlIncludes?: string }
   ) => { ok?: true; pending?: boolean; error?: string };
+  handleDialog: (
+    accept: boolean,
+    promptText?: string | null
+  ) => {
+    ok?: true;
+    error?: string;
+    armed?: boolean;
+    answered?: { kind: string; message: string; autoAnswer: unknown; wasArmed: boolean } | null;
+  };
 }
 
 function api(): AgentApi {
@@ -59,6 +69,13 @@ function api(): AgentApi {
 function install(): void {
   // eslint-disable-next-line @typescript-eslint/no-implied-eval, @typescript-eslint/no-unsafe-call -- loading the shipped script text is what is under test
   new Function(`${SNAPSHOT_JS}\n${ACTIONS_JS}`)();
+}
+
+/** `dialog.js` is an *initialization* script, installed before the page runs
+ *  and only on tabs a session opened, so it loads on its own. */
+function installDialogCapture(): void {
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval, @typescript-eslint/no-unsafe-call -- loading the shipped script text is what is under test
+  new Function(DIALOG_JS)();
 }
 
 beforeAll(() => {
@@ -96,6 +113,7 @@ beforeEach(() => {
   document.title = "Fixture";
   document.body.innerHTML = "";
   delete (window as unknown as { __argmax?: AgentApi }).__argmax;
+  delete (window as unknown as { __argmaxDialog?: unknown }).__argmaxDialog;
 });
 
 describe("snapshot.js", () => {
@@ -363,5 +381,61 @@ describe("regression: a landmark must not swallow its own subtree", () => {
     expect(api().snapshot().tree).toMatch(/^- main$/m);
     expect(api().snapshot({ interactiveOnly: true }).tree).toContain('- link "Next page"');
     expect(api().find("next page").matches).toHaveLength(1);
+  });
+});
+
+describe("dialog.js", () => {
+  // The capture tells Rust a dialog happened by navigating to the
+  // `argmax-newtab:` scheme, the same way the panel's own init script relays a
+  // popup or a shortcut. The app intercepts and blocks it; jsdom has no
+  // interception and logs "Not implemented: navigation" instead. Expected.
+
+  it("dismisses an unexpected confirm and reports it in the snapshot header", () => {
+    installDialogCapture();
+    install();
+
+    expect(window.confirm("Delete this?")).toBe(false);
+
+    const tree = api().snapshot().tree;
+    expect(tree).toContain('dialog: confirm "Delete this?" pending (auto-dismissed with false)');
+  });
+
+  it("answers the next dialog the way handleDialog armed it", () => {
+    installDialogCapture();
+    install();
+
+    const armed = api().handleDialog(true);
+    expect(armed.armed).toBe(true);
+    expect(armed.answered).toBeNull();
+
+    expect(window.confirm("Proceed?")).toBe(true);
+    expect(window.prompt("Name?", "default")).toBeNull();
+    expect(api().snapshot().tree).toContain('dialog: prompt "Name?" pending');
+  });
+
+  it("prompt takes the text it was armed with", () => {
+    installDialogCapture();
+    install();
+
+    api().handleDialog(true, "argmax");
+    expect(window.prompt("Name?", "default")).toBe("argmax");
+    expect(api().snapshot().tree).toContain('dialog: prompt "Name?" answered "argmax"');
+  });
+
+  it("acknowledges the dialog that already fired", () => {
+    installDialogCapture();
+    install();
+
+    window.confirm("Are you sure?");
+    const answered = api().handleDialog(true).answered;
+    expect(answered?.kind).toBe("confirm");
+    expect(answered?.autoAnswer).toBe(false);
+    expect(answered?.wasArmed).toBe(false);
+  });
+
+  it("says so on a tab that does not capture dialogs", () => {
+    install();
+
+    expect(api().handleDialog(true).error).toContain("only tabs a session opened");
   });
 });

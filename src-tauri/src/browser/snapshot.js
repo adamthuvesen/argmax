@@ -252,10 +252,28 @@
     return line;
   }
 
+  /**
+   * Header line for a dialog the page raised in the last 30 seconds, so an
+   * agent whose click hit a `confirm()` sees that it happened instead of
+   * wondering why nothing moved. `dialog.js` installs the recorder, and only
+   * on tabs a session opened.
+   */
+  function dialogLine() {
+    var capture = window.__argmaxDialog;
+    var record = capture && typeof capture.current === "function" ? capture.current() : null;
+    if (!record) return null;
+    var state = record.armed
+      ? "answered " + JSON.stringify(record.answer)
+      : "pending (auto-dismissed with " + JSON.stringify(record.answer) + ")";
+    return "dialog: " + record.kind + " " + JSON.stringify(record.message) + " " + state;
+  }
+
   function snapshot(options) {
     var collected = collect(options);
     var lines = ["url: " + location.href, "title: " + truncate(document.title, MAX_TEXT)];
-    var bytes = lines[0].length + lines[1].length + 2;
+    var dialog = dialogLine();
+    if (dialog) lines.push(dialog);
+    var bytes = lines.join("\n").length + 1;
     var truncated = collected.truncated;
     for (var i = 0; i < collected.entries.length; i += 1) {
       var line = formatEntry(collected.entries[i]);

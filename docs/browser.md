@@ -37,6 +37,16 @@ Two scripts do the work inside the page, embedded with `include_str!`:
 
 Refs live in the DOM as `data-argmax-ref`, so a re-snapshot reuses the attribute a node already carries and a ref stays valid for as long as its element does. A ref that no longer resolves fails with a message saying a fresh snapshot is needed. Both scripts are re-sent with every call, guarded by `window.__argmax.v` — the install costs one property read on a warm page and re-arms itself automatically after a navigation.
 
+A third script, [dialog.js](../src-tauri/src/browser/dialog.js), is different: it is an *initialization* script, fixed when the webview is created, and it is installed **only on tabs a session opened**. A page's `alert` / `confirm` / `prompt` is synchronous — it must return a value before the page's next statement runs — so it cannot wait for an answer from an agent in another process. On an agent's tab the three are therefore overridden, answered on the spot from whatever `browser_handle_dialog` armed (dismissively when nothing did: `confirm` → false, `prompt` → null), and recorded. `snapshot.js` prints the record for 30 seconds as a `dialog:` header line, so the agent whose click hit a confirm box learns that it did. The page also pings Rust through the `argmax-newtab://dialog` scheme, which `on_navigation` intercepts, logs and blocks — there is no push event for it, because the snapshot header is where the agent reads it and the user's own tabs never raise one. Tabs the user opened keep the engine's native dialogs: silently answering a person's confirm box would misreport what they clicked.
+
+## The MCP Path
+
+The tools an agent calls are `mcp__argmax__browser_*`, defined in [browser_tools.rs](../src-tauri/src/mcp/browser_tools.rs) and listed in [agent-tools.md](agent-tools.md). They do not run in the app: the MCP server is a separate `argmax mcp` process with no `AppHandle`, so each tool sends a `SessionControlAction::Browser` over the session-control socket, and [browser_bridge.rs](../src-tauri/src/mcp/browser_bridge.rs) runs it app-side against the same `automation` functions the IPC channels use.
+
+Two rules live in that bridge. **Ownership:** a session may only drive tabs it opened — the user's tabs and other sessions' tabs are refused with `BROWSER_TAB_NOT_OWNED`, and naming no tab resolves to the caller's own most recently used one. **Threading:** the socket handler runs on Tauri's async runtime, so creating, navigating and destroying a webview (AppKit calls, main-thread only) go through `run_on_main_thread`, while reads do not need it — WebKit's `evaluateJavaScript:` and `takeSnapshot` callbacks hop the queue themselves.
+
+A screenshot taken through a tool is rasterised at 720 CSS pixels wide and dropped past 900 KB of base64, because it has to survive the provider's JSON stream: the normalizer refuses lines over 1 MB, and a dropped line takes the tool's completion with it.
+
 ## IPC Channels
 
 - **Request (panel):** `browser:open`, `browser:navigate`, `browser:back`, `browser:forward`, `browser:reload`, `browser:stop`, `browser:set-bounds`, `browser:close`, `browser:fill-credentials`, `browser:evaluate`.
@@ -51,7 +61,7 @@ Closing a tab (`browser:close`) disposes the webview. Leaving Browser mode sets 
 
 Two channels drive a tab programmatically instead of from the toolbar. Both live in [src-tauri/src/browser](../src-tauri/src/browser):
 
-- `browser:screenshot` (`{ tabId, rect? }` → `{ pngBase64, width, height }`) reaches the child `WKWebView` through `Webview::with_webview` and calls `takeSnapshotWithConfiguration:completionHandler:` — wry has no capture API of its own. `rect` crops in the page's CSS pixels; the returned size is device pixels, so twice that on a retina display. WebKit rasterises rather than reading the screen back, so a hidden tab still captures its page.
+- `browser:screenshot` (`{ tabId, rect? }` → `{ pngBase64, width, height }`) reaches the child `WKWebView` through `Webview::with_webview` and calls `takeSnapshotWithConfiguration:completionHandler:` — wry has no capture API of its own. `rect` crops in the page's CSS pixels; the returned size is device pixels, so twice that on a retina display. `WKSnapshotConfiguration`'s `snapshotWidth` narrows the capture at rasterisation time rather than resizing afterwards, which is how the agent path keeps a PNG small enough to travel. WebKit rasterises rather than reading the screen back, so a hidden tab still captures its page.
 - `browser:evaluate` (`{ tabId, script, timeoutMs? }` → `{ resultJson }`) returns WebKit's JSON encoding of the script's value. wry's completion block drops WebKit's `NSError`, so a script that throws is indistinguishable from one returning `undefined` — both arrive as an empty string. `eval::wrap_for_errors` catches inside the page when the difference matters.
 
 Both are async commands with a deadline. WebKit answers on the main queue and the result crosses to the caller over a oneshot, so a page that never answers fails with `BROWSER_EVAL_TIMEOUT` / `BROWSER_SNAPSHOT_TIMEOUT` rather than parking the handler.

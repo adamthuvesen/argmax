@@ -568,6 +568,37 @@ pub fn latest_agent_message(
     Ok(message)
 }
 
+/// When the current turn's prompt landed — what `session_status` ages to
+/// report how long a session has been working. Ignores subagent rows and
+/// anything before the last `/clear`, like the transcript itself does.
+pub fn latest_user_message_at(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT created_at
+            FROM events
+            WHERE session_id = ?
+              AND type = 'user.message'
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = events.session_id
+                  AND cleared.type = 'session.cleared'
+              ), 0)
+              AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+            ORDER BY rowid DESC
+            LIMIT 1
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    statement
+        .query_row((session_id,), |row| row.get::<_, String>(0))
+        .optional()
+        .map_err(sqlite_error)
+}
+
 fn list_event_rows(
     connection: &Connection,
     session_id: &str,

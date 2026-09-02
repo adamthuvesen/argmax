@@ -47,6 +47,20 @@ describe("MCP tool names", () => {
     });
   });
 
+  it("reads Argmax's own server under every provider's naming", () => {
+    const expected = { server: "argmax", tool: "browser snapshot" };
+    expect(parseMcpToolName("mcp__argmax__browser_snapshot")).toEqual(expected); // Claude, Cursor ACP
+    expect(parseMcpToolName("mcp__argmax_25233166__browser_snapshot")).toEqual(expected); // Cursor PTY
+    expect(parseMcpToolName("argmax__browser_snapshot")).toEqual(expected); // Grok
+    expect(parseMcpToolName("argmax_browser_snapshot")).toEqual(expected); // OpenCode
+    expect(parseMcpToolName("browser_snapshot")).toEqual(expected); // Codex, bare
+    expect(parseMcpToolName("inbox_read")).toEqual({ server: "argmax", tool: "inbox read" });
+    expect(parseMcpToolName("session_wait")).toEqual({ server: "argmax", tool: "session wait" });
+    // A bare name that is not one of ours stays a plain tool.
+    expect(parseMcpToolName("browser_use")).toBeNull();
+    expect(parseMcpToolName("session_cookie")).toBeNull();
+  });
+
   it("parses OpenCode's repeated server without swallowing snake_case names", () => {
     expect(parseMcpToolName("notion_notion-fetch")).toEqual({ server: "notion", tool: "fetch" });
     expect(parseMcpToolName("send_message_to_thread")).toBeNull();

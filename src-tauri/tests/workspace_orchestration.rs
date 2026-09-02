@@ -77,9 +77,6 @@ fn build_project_with_setup(
             current_branch: "main".to_owned(),
             default_branch: Some("main".to_owned()),
             settings: ProjectSettings {
-                default_provider: "claude".to_owned(),
-                default_model_label: "Sonnet".to_owned(),
-                default_model_id: String::new(),
                 worktree_location: worktree_location.to_owned(),
                 setup_command: setup_command.to_owned(),
                 check_commands: vec![],
@@ -106,9 +103,6 @@ fn build_named_project(
             current_branch: "main".to_owned(),
             default_branch: Some("main".to_owned()),
             settings: ProjectSettings {
-                default_provider: "claude".to_owned(),
-                default_model_label: "Sonnet".to_owned(),
-                default_model_id: String::new(),
                 worktree_location: worktree_location.to_owned(),
                 setup_command: String::new(),
                 check_commands: vec![],
@@ -410,9 +404,6 @@ async fn create_current_records_project_default_as_base_ref() {
                 current_branch: "feature".to_owned(),
                 default_branch: Some("main".to_owned()),
                 settings: ProjectSettings {
-                    default_provider: "claude".to_owned(),
-                    default_model_label: "Sonnet".to_owned(),
-                    default_model_id: String::new(),
                     worktree_location: repo.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: vec![],

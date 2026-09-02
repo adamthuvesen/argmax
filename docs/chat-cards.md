@@ -26,6 +26,18 @@ A user bubble shows the text that was typed, not markdown: `SessionConversationU
 
 Every `http(s)` link in the surface is one component, [WebLink.tsx](../src/renderer/components/WebLink.tsx), shared with the assistant markdown anchor. It owns the whole routing decision: plain click follows the Settings → General link target, ⌘/Ctrl-click opens the other one, and the system browser needs an explicit `system:open-path` because the Tauri webview swallows `target="_blank"`. Over the remote bridge both desktop routes stand down and the anchor's own target carries the link into the reader's browser.
 
+### A prompt from another session
+
+An agent using the `argmax` tools can send a turn into another session, and
+Argmax itself sends one when a launched session finishes
+([agent-tools.md](agent-tools.md)). Those turns are ordinary `user.message`
+rows carrying an `origin` block on the payload — `{sessionId, label, kind}`,
+where `kind` is `message` or `completion` — and the bubble reads differently
+because of it: a quiet "From `<label>`" header whose label opens the sending
+chat, and `aria-label="Message from another chat"` on the group, so a reader
+never mistakes a machine's prompt for one the user typed. A malformed or
+missing `origin` falls back to the plain bubble rather than failing.
+
 ## Card Architecture
 
 In headless structured mode (`-p --output-format stream-json`), tools like `ExitPlanMode` and `AskUserQuestion` return tool results with status errors to signal pause for input. Argmax extracts the structured payload (`input.plan` or `input.questions`) and displays it as an interactive card instead of a failed tool call.

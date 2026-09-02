@@ -4,6 +4,7 @@ import { readLogBuffer, resetLogBufferForTesting } from "./logger.js";
 import {
   __resetUnknownModelLog,
   costOf,
+  effortForModel,
   MODEL_PRICING,
   normalizeModelId,
   PROVIDER_MODEL_DEFAULTS,
@@ -295,5 +296,28 @@ describe("Grok Build pricing", () => {
     expect(PROVIDER_MODEL_DEFAULTS.grok.modelId).toBe("grok-4.6");
     expect(PROVIDER_TITLE_MODEL.grok).toBe("grok-4.6");
     expect(MODEL_PRICING["grok-4.6"].input).toBeLessThan(MODEL_PRICING["grok-4.5"].input);
+  });
+});
+
+describe("effortForModel", () => {
+  it("keeps the app-wide default effort when the model offers it", () => {
+    expect(effortForModel("claude", "claude-opus-5", "ultra")).toBe("ultra");
+    expect(effortForModel("codex", "gpt-5.6-luna", "max")).toBe("max");
+  });
+
+  it("falls back to Medium when the model's ladder stops lower", () => {
+    // Grok Build's CLI rejects anything above xhigh, and Cursor's Gemini
+    // stops at high — both land on Medium rather than the nearest ceiling.
+    expect(effortForModel("grok", "grok-4.6", "ultra")).toBe("medium");
+    expect(effortForModel("cursor", "gemini-3.8-flash-medium", "max")).toBe("medium");
+  });
+
+  it("clamps onto discrete variant lists that have no Medium", () => {
+    expect(effortForModel("opencode", "opencode-go/glm-5.3-flash", "ultra")).toBe("low");
+    expect(effortForModel("opencode", "opencode-go/kimi-k3", "low")).toBe("max");
+  });
+
+  it("defaults to Medium when no preference is given", () => {
+    expect(effortForModel("claude", "claude-opus-5")).toBe("medium");
   });
 });

@@ -52,7 +52,7 @@ Browser (tabs are owned by the calling session)
 - `browser_screenshot({ tab?, ref? })` → PNG (image content block).
 - `browser_evaluate({ expression })` → JSON result.
 
-## Phase 0: Spikes (bounded, throwaway, one day)
+## Phase 0: Spikes (bounded, throwaway, one day) — done, d2772215
 
 **Deliverable:** five yes/no answers before any production code.
 **Work:**
@@ -63,7 +63,7 @@ Browser (tabs are owned by the calling session)
 5. `evaluate_script_with_callback` returning a 50 KB JSON string from a WKWebView (size and latency).
 **Success check:** each spike either demonstrated in a scratch instance (`scripts/scratch-app.mjs`) or written up as blocked with the exact error. Cursor PTY (non-composer) and Grok results decide whether Phase 5 needs a fallback.
 
-## Phase 1: MCP server with parity to today's CLI
+## Phase 1: MCP server with parity to today's CLI — done, 85318299
 
 **Deliverable:** agents on Claude, Codex, Cursor ACP, and OpenCode get `session_list/launch/message/move` as MCP tools. The prompt-prefix instruction shrinks to one line for those providers and stays as is for Grok/Cursor PTY until Phase 5.
 **Files:**
@@ -77,7 +77,7 @@ Browser (tabs are owned by the calling session)
 - `src-tauri/tests` — arg-builder snapshots per provider; socket protocol round-trip tests.
 **Success check:** rung-3 scratch instance, `scripts/bridge.mjs chat --provider claude --prompt "list argmax sessions with the argmax tool"` shows a `mcp__argmax__session_list` tool row with a JSON result. Repeat for codex, opencode, cursor. `cargo test`, `npm test` green.
 
-## Phase 2: Observe, wait, stop, notify
+## Phase 2: Observe, wait, stop, notify — done, 7794c9fc (inbox is migration v25)
 
 **Deliverable:** a parent session can launch a child, block on it, read its answer, stop it, and receive its completion automatically; any session can message any other.
 **Files:**
@@ -89,7 +89,7 @@ Browser (tabs are owned by the calling session)
 - `docs/providers.md` "Agent Session Control" → moves to new `docs/agent-tools.md`; `CONTEXT.md` adds "inbox", "launched-by".
 **Success check:** scratch scenario script under `scripts/` or `src-tauri/tests`: parent launches child with a prompt that answers "42", calls `session_wait`, then `session_read`, and its final answer contains "42". Second scenario: `session_stop` on a long-running child flips it to cancelled within 2 s. Renderer tests for the bubble and sidebar label by role.
 
-## Phase 3: Browser core
+## Phase 3: Browser core — done, 12dd7f39 (automation) and 2fec2d7d (MCP tools)
 
 **Deliverable:** an agent opens a page, reads a snapshot, clicks and types by ref, reads page text; the user sees it happen in that session's pane.
 **Files:**
@@ -102,7 +102,7 @@ Browser (tabs are owned by the calling session)
 - `src-tauri/src/remote/dispatch.rs` — the new channels join `REMOTE_UNSUPPORTED_CHANNELS`.
 **Success check:** rung-3 scenario: Claude session with prompt "open https://example.com in the argmax browser, snapshot it, click the 'More information' link, tell me the resulting URL". Answer contains `iana.org`. Rung-4 screenshot shows the Browser tab active in that session's pane with the page. Unit tests for `snapshot.js` and `actions.js` run in vitest against jsdom fixtures.
 
-## Phase 4: Browser completeness
+## Phase 4: Browser completeness — folded into Phase 3, 2fec2d7d
 
 **Deliverable:** screenshot, find, wait_for, keys, evaluate, dialogs, multi-tab.
 **Files:**
@@ -113,7 +113,7 @@ Browser (tabs are owned by the calling session)
 - `docs/browser.md` — agent section; `docs/agent-tools.md` — full tool reference.
 **Success check:** scenario: "search DuckDuckGo for 'tauri wry', open the first result, screenshot it". Tool rows show snapshot → type → press Enter → wait_for → click → screenshot, and the chat shows the image.
 
-## Phase 5: Providers without an ephemeral injection path, docs, ADR
+## Phase 5: Providers without an ephemeral injection path, docs, ADR — done, 1855368f (review fixes in d56b1a1b)
 
 **Deliverable:** Grok Build and Cursor's non-ACP path get the tools; the design is recorded.
 **Files:**

@@ -150,6 +150,25 @@ pub fn record_session_launch(
     Ok(())
 }
 
+/// The sessions this one's agent launched, newest first. The default watch
+/// list for `session_wait`.
+pub fn sessions_launched_by(
+    connection: &Connection,
+    launched_by_session_id: &str,
+) -> ArgmaxResult<Vec<String>> {
+    let mut statement = connection
+        .prepare_cached(
+            "SELECT id FROM sessions WHERE launched_by_session_id = ? ORDER BY started_at DESC",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([launched_by_session_id], |row| row.get::<_, String>(0))
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
 pub fn list_sessions_for_dashboard(
     connection: &Connection,
     workspace_ids: Option<&[String]>,

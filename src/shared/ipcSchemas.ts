@@ -56,6 +56,7 @@ export const IPC_CHANNELS = [
   "system:debug-snapshot",
   "system:vacuum-database",
   "system:set-theme",
+  "system:set-default-agent",
   "system:set-notifications-enabled",
   "system:test-notification",
   "session:cost-summary",

@@ -1,4 +1,5 @@
-import { siGithub, siLinear, siNotion, siSnowflake, siVercel } from "simple-icons";
+import { siGithub, siLinear, siNotion, siSnowflake, siSpotify, siVercel } from "simple-icons";
+import sprite from "../../../assets/fox-mascot.txt?raw";
 
 export interface ServerIconLayer {
   path: string;
@@ -72,6 +73,64 @@ const GOOGLE_CALENDAR: ServerIcon = {
   ]
 };
 
+// Linear ships its mark as a badge rather than a bare glyph: near-black
+// rounded square, off-white mark. The padded viewBox leaves the Simple Icons
+// path at its native 0-24 coordinates, centred in a 40-unit square.
+const LINEAR: ServerIcon = {
+  title: siLinear.title,
+  viewBox: "-8 -8 40 40",
+  layers: [
+    { fill: "#08090A", path: "M1-8h22a9 9 0 0 1 9 9v22a9 9 0 0 1-9 9H1a9 9 0 0 1-9-9V1a9 9 0 0 1 9-9Z" },
+    { fill: "#F7F8F8", path: siLinear.path }
+  ]
+};
+
+// Argmax's own tools carry the mascot. The whole fox turns to mush at row-icon
+// size (the sprite file explains why), so this is the head alone: the sprite
+// columns and rows that hold the ears, eyes and muzzle, in the mascot's own
+// colour tokens so it follows the theme like the launcher fox does.
+const FOX_HEAD = { left: 24, top: 0, width: 28, height: 24 };
+const FOX_FILL: Record<string, string> = {
+  K: "var(--fox-line)",
+  o: "var(--fox-fur)",
+  d: "var(--fox-fur-shade)",
+  c: "var(--fox-cream)",
+  t: "var(--fox-cream-shade)",
+  x: "var(--fox-nose)",
+  w: "#ffffff"
+};
+
+function foxHeadIcon(): ServerIcon {
+  const grid = sprite.split("\n").filter((row) => row !== "" && !row.startsWith("#"));
+  const layers = Object.entries(FOX_FILL).map(([cell, fill]) => {
+    // One unit square per cell, merged along the row: at 12px the geometry
+    // count is what matters, not the byte count.
+    const runs: string[] = [];
+    for (let y = FOX_HEAD.top; y < FOX_HEAD.top + FOX_HEAD.height; y += 1) {
+      const row = grid[y] ?? "";
+      let x = FOX_HEAD.left;
+      while (x < FOX_HEAD.left + FOX_HEAD.width) {
+        if (row.charAt(x) !== cell) {
+          x += 1;
+          continue;
+        }
+        let end = x;
+        while (end + 1 < FOX_HEAD.left + FOX_HEAD.width && row.charAt(end + 1) === cell) end += 1;
+        runs.push(`M${x} ${y}h${end - x + 1}v1h-${end - x + 1}z`);
+        x = end + 1;
+      }
+    }
+    return { fill, path: runs.join("") };
+  });
+  return {
+    title: "Argmax",
+    viewBox: `${FOX_HEAD.left} ${FOX_HEAD.top} ${FOX_HEAD.width} ${FOX_HEAD.height}`,
+    layers: layers.filter((layer) => layer.path !== "")
+  };
+}
+
+const ARGMAX = foxHeadIcon();
+
 function fromSimpleIcon(icon: { title: string; path: string; hex: string }): ServerIcon {
   // Notion, GitHub and Vercel are black marks: no tint carries them on
   // charcoal, so they fall back to currentColor like the words beside them.
@@ -83,6 +142,7 @@ function fromSimpleIcon(icon: { title: string; path: string; hex: string }): Ser
 // namespace with client prefixes stripped and `-`/`_` turned into spaces.
 // Aliases cover the ids connectors actually register under.
 const SERVER_ICONS: Record<string, ServerIcon> = {
+  argmax: ARGMAX,
   slack: SLACK,
   notion: fromSimpleIcon(siNotion),
   "google drive": GOOGLE_DRIVE,
@@ -93,7 +153,8 @@ const SERVER_ICONS: Record<string, ServerIcon> = {
   gcal: GOOGLE_CALENDAR,
   calendar: GOOGLE_CALENDAR,
   snowflake: fromSimpleIcon(siSnowflake),
-  linear: fromSimpleIcon(siLinear),
+  spotify: fromSimpleIcon(siSpotify),
+  linear: LINEAR,
   github: fromSimpleIcon(siGithub),
   vercel: fromSimpleIcon(siVercel)
 };

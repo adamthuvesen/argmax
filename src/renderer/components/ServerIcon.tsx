@@ -21,9 +21,12 @@ export function ServerIcon({ server }: { server: string }): JSX.Element {
       height={12}
       role="img"
       aria-label={icon.title}
+      shapeRendering={icon.title === "Argmax" ? "crispEdges" : undefined}
     >
+      {/* A style fill, not the attribute: the mascot's layers are theme tokens,
+          and a presentation attribute cannot hold a var(). */}
       {icon.layers.map((layer, index) => (
-        <path key={index} d={layer.path} fill={layer.fill ?? "currentColor"} />
+        <path key={index} d={layer.path} style={{ fill: layer.fill ?? "currentColor" }} />
       ))}
     </svg>
   );

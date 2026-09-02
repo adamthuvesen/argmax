@@ -31,9 +31,15 @@ pub struct CapturedPng {
 }
 
 /// Captures `rect` (or the whole visible view when `None`) as a PNG.
+///
+/// `max_width_points` caps the capture's width in CSS pixels, letting WebKit
+/// rasterise smaller rather than resizing afterwards. An agent's screenshot
+/// has to survive a base64 round trip through a provider's JSON stream, and a
+/// full retina window easily outgrows the normalizer's per-line cap.
 pub async fn capture(
     webview: &Webview,
     rect: Option<CaptureRect>,
+    max_width_points: Option<f64>,
     timeout: Duration,
 ) -> ArgmaxResult<CapturedPng> {
     let (sender, receiver) = tokio::sync::oneshot::channel::<Result<CapturedPng, String>>();
@@ -41,7 +47,7 @@ pub async fn capture(
     // sender lives behind a take-once slot.
     let slot = Arc::new(Mutex::new(Some(sender)));
 
-    dispatch_snapshot(webview, rect, slot)?;
+    dispatch_snapshot(webview, rect, max_width_points, slot)?;
 
     match tokio::time::timeout(timeout, receiver).await {
         Ok(Ok(Ok(captured))) => Ok(captured),
@@ -63,13 +69,14 @@ type SnapshotSlot = Arc<Mutex<Option<tokio::sync::oneshot::Sender<Result<Capture
 fn dispatch_snapshot(
     webview: &Webview,
     rect: Option<CaptureRect>,
+    max_width_points: Option<f64>,
     slot: SnapshotSlot,
 ) -> ArgmaxResult<()> {
     use block2::RcBlock;
     use objc2::MainThreadMarker;
     use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSImage};
     use objc2_core_foundation::{CGPoint, CGRect, CGSize};
-    use objc2_foundation::{NSDictionary, NSError};
+    use objc2_foundation::{NSDictionary, NSError, NSNumber};
     use objc2_web_kit::{WKSnapshotConfiguration, WKWebView};
 
     webview
@@ -88,6 +95,14 @@ fn dispatch_snapshot(
                         CGPoint::new(rect.x, rect.y),
                         CGSize::new(rect.width, rect.height),
                     ));
+                }
+                // Only ever narrows: asking for more points than the capture
+                // has would upscale a blurry image for nothing.
+                if let Some(max_width) = max_width_points {
+                    let natural = rect.map(|rect| rect.width).unwrap_or(f64::INFINITY);
+                    if max_width > 0.0 && max_width < natural {
+                        config.setSnapshotWidth(Some(&NSNumber::new_f64(max_width)));
+                    }
                 }
 
                 let slot = slot.clone();
@@ -136,6 +151,7 @@ fn dispatch_snapshot(
 fn dispatch_snapshot(
     _webview: &Webview,
     _rect: Option<CaptureRect>,
+    _max_width_points: Option<f64>,
     _slot: SnapshotSlot,
 ) -> ArgmaxResult<()> {
     Err(ArgmaxError::service(

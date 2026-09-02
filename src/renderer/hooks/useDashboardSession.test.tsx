@@ -75,9 +75,6 @@ describe("useDashboardSession — refresh / delta race", () => {
           currentBranch: "main",
           defaultBranch: "main",
           settings: {
-            defaultProvider: "claude",
-            defaultModelLabel: "Haiku 4.5",
-            defaultModelId: "",
             worktreeLocation: "/tmp/wt",
             setupCommand: "",
             checkCommands: []

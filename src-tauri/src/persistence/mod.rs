@@ -8,6 +8,7 @@ pub mod learnings;
 pub mod migrations;
 pub mod projects;
 pub mod routines;
+pub mod session_messages;
 pub mod sessions;
 pub mod synced;
 pub mod time;

@@ -288,6 +288,14 @@ async sessionFork(input: SessionForkInput) : Promise<Result<SessionForkResult, A
     else return { status: "error", error: e  as any };
 }
 },
+async sessionMultitask(input: SessionMultitaskInput) : Promise<Result<MultitaskLaunched, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_multitask", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async sessionClear(input: SessionClearInput) : Promise<Result<SessionSummary, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("session_clear", { input }) };
@@ -1022,6 +1030,11 @@ export type LogEntry = {
  * of the whole 1000-entry ring.
  */
 seq: number; timestamp: string; level: string; scope: string; message: string; fields: Partial<{ [key in string]: string }> }
+/**
+ * The chat the multitask runs in, handed straight back to the composer so it
+ * can show the card without waiting for the dashboard delta.
+ */
+export type MultitaskLaunched = { sessionId: string; workspaceId: string; taskLabel: string }
 export type NonEmptyString = string
 export type NullableExpectedMtimeMs = number | null
 export type OpenIdeChoice = "default" | "vscode" | "cursor" | "windsurf" | "zed" | "terminal" | "iterm"
@@ -1170,6 +1183,21 @@ export type SessionForkResult = { workspace: WorkspaceSummary; session: SessionS
  */
 export type SessionIconToken = string
 export type SessionId = string
+/**
+ * Dispatch a multitask from a chat: a sibling session that runs alongside the
+ * turn already in flight, sharing this chat's checkout unless `worktree` asks
+ * for its own.
+ */
+export type SessionMultitaskInput = { sessionId: SessionId; prompt: Prompt; 
+/**
+ * Defaults to false: the point of a multitask is a fix on the side of the
+ * work you are already doing, in the tree you are already in.
+ */
+worktree?: boolean; 
+/**
+ * Sidebar label for the new chat. Falls back to the prompt's first line.
+ */
+taskLabel: NonEmptyString | null }
 export type SessionSearchInput = { query: SessionSearchQuery; limit: Limit200 | null }
 export type SessionSearchQuery = string
 export type SessionSuggestFollowUpInput = { sessionId: SessionId; provider: ProviderId; modelId: NonEmptyString }

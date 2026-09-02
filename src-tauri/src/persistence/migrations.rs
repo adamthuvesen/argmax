@@ -180,6 +180,20 @@ pub static SESSION_LAUNCH_LINEAGE_COLUMNS: phf::Map<&'static str, &'static [&'st
     ] as &'static [&'static str],
 };
 
+// Post-v26 `sessions` shape: `launch_kind` separates the sessions an agent
+// launched for itself from the multitasks a person dispatched from a chat.
+pub static SESSION_LAUNCH_KIND_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "imported", "input_tokens", "last_activity_at",
+        "last_model_id", "launch_depth", "launch_kind", "launched_by_session_id",
+        "model_id", "model_label", "output_tokens", "permission_mode", "prompt",
+        "provider", "provider_conversation_id", "reasoning_effort", "resume_fork",
+        "started_at", "state", "workspace_id",
+    ] as &'static [&'static str],
+};
+
 // Post-v24 `session_messages` shape: the inbox one session's agent writes to
 // another's, and the completion notice a launched session leaves behind.
 pub static SESSION_MESSAGES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -504,7 +518,26 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SESSION_MESSAGES_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 26,
+        name: "session_launch_kind",
+        up: SESSION_LAUNCH_KIND,
+        affected_tables: &["sessions"],
+        expected_columns: &SESSION_LAUNCH_KIND_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Why a launched session exists, not just who launched it. `agent` is a
+// session an agent started for itself through `session_launch`; `multitask` is
+// one a person dispatched from a chat to run alongside the turn they were
+// watching. The two differ in every way that matters downstream: the caps that
+// stop runaway fan-out count only `agent` launches, and a finished `multitask`
+// must not wake its parent as a turn. Rows that predate this are `agent`,
+// which is what they were.
+const SESSION_LAUNCH_KIND: &str = r#"
+ALTER TABLE sessions ADD COLUMN launch_kind TEXT NOT NULL DEFAULT 'agent';
+"#;
 
 // The default agent is an app-wide setting now, not a per-project one: one
 // default model and effort in Settings → Agents seeds every launch, including
@@ -1319,7 +1352,7 @@ mod tests {
             "projects",
         )
         .expect("projects");
-        verify_table_columns(&connection, &SESSION_LAUNCH_LINEAGE_COLUMNS, "sessions")
+        verify_table_columns(&connection, &SESSION_LAUNCH_KIND_COLUMNS, "sessions")
             .expect("sessions");
         verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
             .expect("workspaces");
@@ -1396,6 +1429,7 @@ mod tests {
                 (23, compute_migration_checksum(SESSION_LAUNCH_LINEAGE)),
                 (24, compute_migration_checksum(DROP_PROJECT_DEFAULT_AGENT)),
                 (25, compute_migration_checksum(SESSION_MESSAGES)),
+                (26, compute_migration_checksum(SESSION_LAUNCH_KIND)),
             ]
         );
 

@@ -39,6 +39,7 @@ export const IPC_CHANNELS = [
   "session:events-since",
   "session:agent-events",
   "session:fork",
+  "session:multitask",
   "session:clear",
   "session:suggest-follow-up",
   "review:list-changed-files",

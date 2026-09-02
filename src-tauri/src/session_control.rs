@@ -44,7 +44,7 @@ use crate::{
         },
         sessions::{
             find_session_by_id, list_sessions_for_dashboard, record_session_launch,
-            session_launch_lineage, sessions_launched_by,
+            session_launch_lineage, sessions_launched_by, LAUNCH_KIND_AGENT,
         },
         workspaces::{find_workspace_by_id, list_workspaces, WorkspaceSummary},
     },
@@ -1060,8 +1060,14 @@ async fn launch_session(
     .await?;
     {
         let connection = database.connection();
-        record_session_launch(&connection, &outcome.session_id, &parent.session_id, depth)
-            .map_err(argmax_protocol_error)?;
+        record_session_launch(
+            &connection,
+            &outcome.session_id,
+            &parent.session_id,
+            depth,
+            LAUNCH_KIND_AGENT,
+        )
+        .map_err(argmax_protocol_error)?;
     }
     Ok(SessionControlResponse::new(SessionControlResult::Launched(
         LaunchedSession {
@@ -1909,7 +1915,7 @@ fn resolve_project(
     ))
 }
 
-fn task_label(prompt: &str) -> String {
+pub(crate) fn task_label(prompt: &str) -> String {
     let first_line = prompt.lines().next().unwrap_or_default().trim();
     if first_line.is_empty() {
         return DEFAULT_TASK_LABEL.to_string();

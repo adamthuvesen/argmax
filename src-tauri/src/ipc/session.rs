@@ -152,6 +152,41 @@ pub async fn session_fork(
         .map_err(|error| ArgmaxError::service("SESSION_FORK_JOIN", error.to_string()))?
 }
 
+#[tauri::command(rename = "session:multitask")]
+#[specta::specta]
+pub async fn session_multitask(
+    state: State<'_, AppState>,
+    input: SessionMultitaskInput,
+) -> ArgmaxResult<crate::multitask::MultitaskLaunched> {
+    session_multitask_impl(&state, input).await
+}
+
+pub(crate) async fn session_multitask_impl(
+    state: &AppState,
+    input: SessionMultitaskInput,
+) -> ArgmaxResult<crate::multitask::MultitaskLaunched> {
+    let database = live_database(state)?;
+    let workspaces = live_workspaces(state)?;
+    let providers = state.providers.get().cloned().ok_or_else(|| {
+        ArgmaxError::service(
+            "PROVIDER_SERVICE_NOT_READY",
+            "provider service is not initialized",
+        )
+    })?;
+    crate::multitask::dispatch(
+        crate::multitask::MultitaskRequest {
+            parent_session_id: input.session_id.into_string(),
+            prompt: input.prompt.into_string(),
+            worktree: input.worktree,
+            task_label: input.task_label.map(|label| label.into_string()),
+        },
+        database,
+        workspaces,
+        providers,
+    )
+    .await
+}
+
 pub(crate) fn session_fork_impl(
     state: &AppState,
     input: SessionForkInput,

@@ -19,6 +19,7 @@ pub mod ide;
 pub mod ipc;
 pub mod mcp;
 pub mod menu;
+pub mod multitask;
 pub mod notifications;
 pub mod persistence;
 pub mod providers;

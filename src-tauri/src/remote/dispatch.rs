@@ -250,6 +250,10 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
             let input: SessionForkInput = parse(channel, input)?;
             encode(session::session_fork_impl(state, input)?)
         }
+        "session:multitask" => {
+            let input: SessionMultitaskInput = parse(channel, input)?;
+            encode(session::session_multitask_impl(state, input).await?)
+        }
         "session:clear" => {
             let input: SessionClearInput = parse(channel, input)?;
             encode(session::session_clear_impl(state, input).await?)

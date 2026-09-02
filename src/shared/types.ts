@@ -135,6 +135,7 @@ export type SessionClearInput = Bindings.SessionClearInput;
 export type SessionSuggestFollowUpInput = Bindings.SessionSuggestFollowUpInput;
 export type FollowUpSuggestion = Bindings.FollowUpSuggestion;
 export type SessionForkResult = Bindings.SessionForkResult;
+export type MultitaskLaunched = Bindings.MultitaskLaunched;
 export type SessionCostSummaryInput = Bindings.SessionCostSummaryInput;
 export type WorkspaceStatusInput = OptionalNullable<Bindings.WorkspaceStatusInput, "workspaceIds">;
 export type TerminalSpawnInput = Bindings.TerminalSpawnInput;
@@ -608,6 +609,14 @@ export interface ArgmaxApi {
     eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;
     agentEvents: (input: SessionAgentEventsInput) => Promise<SessionEventsSinceResult>;
     fork: (input: SessionForkInput) => Promise<SessionForkResult>;
+    /** Dispatch a multitask: a sibling chat that runs alongside this one's
+     *  turn, in the same checkout unless `worktree` asks for its own. */
+    multitask: (input: {
+      sessionId: string;
+      prompt: string;
+      worktree?: boolean;
+      taskLabel?: string | null;
+    }) => Promise<MultitaskLaunched>;
     clear: (input: SessionClearInput) => Promise<SessionSummary>;
     /** A composer placeholder proposed by the cheap helper model from the
      *  agent's last message. `suggestion` is null when there is nothing to

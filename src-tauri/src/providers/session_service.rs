@@ -64,11 +64,11 @@ use crate::{
             insert_session_message, mark_message_delivered, NewSessionMessage, COMPLETION_KIND,
         },
         sessions::{
-            clear_session_conversation, find_session_by_id, persist_session, session_resume_fork,
-            update_session_agent_mode, update_session_model, update_session_provider,
-            update_session_provider_conversation_id, update_session_state, PersistSessionInput,
-            SessionAgentModeInput, SessionModelInput, SessionProviderInput, SessionStateInput,
-            SessionSummary,
+            clear_session_conversation, find_session_by_id, persist_session, session_launch_kind,
+            session_resume_fork, update_session_agent_mode, update_session_model,
+            update_session_provider, update_session_provider_conversation_id, update_session_state,
+            PersistSessionInput, SessionAgentModeInput, SessionModelInput, SessionProviderInput,
+            SessionStateInput, SessionSummary, LAUNCH_KIND_MULTITASK,
         },
         time::now_iso,
         usage::session_usage_since_conversation_start,
@@ -839,6 +839,15 @@ impl ProviderSessionService {
                 &message,
                 resume_conversation_id.is_some(),
             )?;
+            // A multitask that finished while this session was busy is told to
+            // the agent here, on the front of the prompt — never as a turn of
+            // its own. The person's own message is persisted unchanged: the
+            // timeline already carries the finish marker.
+            let launch_prompt = match crate::multitask::results_preamble(&connection, &session_id)?
+            {
+                Some(results) => format!("{results}\n\n{launch_prompt}"),
+                None => launch_prompt,
+            };
             let user_message = self.persist_user_message_locked(
                 &connection,
                 &session_id,
@@ -1738,6 +1747,19 @@ impl ProviderSessionService {
     /// grandparent?" — it does, but only when the parent was itself launched,
     /// because otherwise it has no launcher to notify.
     fn notify_launcher_of_turn_end(self: &Arc<Self>, session_id: &str, state: &str, at: &str) {
+        // A multitask is the one launch whose finish must not wake its parent:
+        // the person dispatched it while watching another turn, and a turn that
+        // says "noted" costs a provider relaunch to interrupt what they were
+        // reading. Its result lands in the parent's timeline and inbox instead,
+        // and rides along on the next thing they type. See crate::multitask.
+        let is_multitask = matches!(
+            session_launch_kind(&self.database.connection(), session_id).as_deref(),
+            Ok(LAUNCH_KIND_MULTITASK)
+        );
+        if is_multitask {
+            self.record_multitask_finish(session_id, state, at);
+            return;
+        }
         match self.build_completion_notice(session_id, state, at) {
             Ok(Some(notice)) => {
                 if let Some(registry) = self.session_control.get() {
@@ -1753,6 +1775,40 @@ impl ProviderSessionService {
                 "failed to record the completion notice for the launching session"
             ),
         }
+    }
+
+    /// Passive delivery of a finished multitask: a timeline row the parent's
+    /// chat renders as a tail marker, plus the inbox row `inbox_read` and the
+    /// next prompt's preamble pick up. No turn is started.
+    fn record_multitask_finish(&self, session_id: &str, state: &str, at: &str) {
+        let (parent_id, event) =
+            match crate::multitask::record_finished(&self.database, session_id, state, at) {
+                Ok(Some(recorded)) => recorded,
+                Ok(None) => return,
+                Err(error) => {
+                    tracing::warn!(
+                        session_id,
+                        ?error,
+                        "failed to record the finished multitask"
+                    );
+                    return;
+                }
+            };
+        if let Some(registry) = self.session_control.get() {
+            registry.notify_inbox(&parent_id);
+        }
+        // The parent is not otherwise touched by this turn ending, so its
+        // timeline row needs its own delta to reach the renderer.
+        let connection = self.database.connection();
+        let Ok(parent) = find_session_by_id(&connection, &parent_id) else {
+            return;
+        };
+        drop(connection);
+        self.publish(DashboardDelta {
+            sessions: vec![parent],
+            events: vec![event],
+            ..DashboardDelta::default()
+        });
     }
 
     fn build_completion_notice(

@@ -57,6 +57,7 @@ import type {
   SessionAgentEventsInput,
   SessionClearInput,
   SessionForkInput,
+  MultitaskLaunched,
   SessionForkResult,
   FollowUpSuggestion,
   SessionCostSummary,
@@ -293,6 +294,12 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       agentEvents: (input: SessionAgentEventsInput) =>
         invokeCommand<SessionEventsSinceResult>("session:agent-events", input),
       fork: (input: SessionForkInput) => invokeCommand<SessionForkResult>("session:fork", input),
+      multitask: (input) =>
+        invokeCommand<MultitaskLaunched>("session:multitask", {
+          ...input,
+          worktree: input.worktree ?? false,
+          taskLabel: input.taskLabel ?? null
+        }),
       clear: (input: SessionClearInput) => invokeCommand<SessionSummary>("session:clear", input),
       suggestFollowUp: (input) =>
         invokeCommand<FollowUpSuggestion>("session:suggest-follow-up", input),

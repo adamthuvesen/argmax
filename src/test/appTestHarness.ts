@@ -87,6 +87,7 @@ export type AppTestMocks = {
   diagnosticsStub: AppTestMockFn<ArgmaxApi["system"]["diagnostics"]>;
   vacuumDatabaseStub: AppTestMockFn<ArgmaxApi["system"]["vacuumDatabase"]>;
   setNotificationsEnabledStub: AppTestMockFn<ArgmaxApi["system"]["setNotificationsEnabled"]>;
+  multitaskStub: AppTestMockFn<ArgmaxApi["session"]["multitask"]>;
   testNotificationStub: AppTestMockFn<ArgmaxApi["system"]["testNotification"]>;
   workspaceStatus: AppTestMockFn<ArgmaxApi["workspaces"]["status"]>;
   skillsList: AppTestMockFn<ArgmaxApi["skills"]["list"]>;
@@ -125,6 +126,7 @@ export let providersDiscover: AppTestMocks["providersDiscover"];
 export let diagnosticsStub: AppTestMocks["diagnosticsStub"];
 export let vacuumDatabaseStub: AppTestMocks["vacuumDatabaseStub"];
 export let setNotificationsEnabledStub: AppTestMocks["setNotificationsEnabledStub"];
+export let multitaskStub: AppTestMocks["multitaskStub"];
 export let testNotificationStub: AppTestMocks["testNotificationStub"];
 export let workspaceStatus: AppTestMocks["workspaceStatus"];
 export let skillsList: AppTestMocks["skillsList"];
@@ -279,6 +281,11 @@ export function setupAppTestMocks(): void {
     .fn<ArgmaxApi["system"]["setNotificationsEnabled"]>()
     .mockResolvedValue({ ok: true });
   testNotificationStub = vi.fn<ArgmaxApi["system"]["testNotification"]>().mockResolvedValue({ ok: true });
+  multitaskStub = vi.fn<ArgmaxApi["session"]["multitask"]>().mockResolvedValue({
+    sessionId: "multitask-session",
+    workspaceId: "multitask-workspace",
+    taskLabel: "Side fix"
+  });
   menuCommandListener = null;
   workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
   listChangedFiles = vi.fn<ArgmaxApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
@@ -465,6 +472,7 @@ export function setupAppTestMocks(): void {
       eventsSince: sessionEventsSince,
       agentEvents: sessionAgentEvents,
       fork: () => Promise.reject(new Error("session fork not stubbed")),
+      multitask: multitaskStub,
       clear: () => Promise.reject(new Error("session clear not stubbed")),
       suggestFollowUp: () => Promise.resolve({ suggestion: null }),
       costSummary: sessionCostSummary,

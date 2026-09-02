@@ -1,4 +1,4 @@
-import { siGithub, siLinear, siNotion, siSnowflake, siVercel } from "simple-icons";
+import { siGithub, siLinear, siNotion, siSnowflake, siSpotify, siVercel } from "simple-icons";
 
 export interface ServerIconLayer {
   path: string;
@@ -105,6 +105,7 @@ const SERVER_ICONS: Record<string, ServerIcon> = {
   gcal: GOOGLE_CALENDAR,
   calendar: GOOGLE_CALENDAR,
   snowflake: fromSimpleIcon(siSnowflake),
+  spotify: fromSimpleIcon(siSpotify),
   linear: LINEAR,
   github: fromSimpleIcon(siGithub),
   vercel: fromSimpleIcon(siVercel)

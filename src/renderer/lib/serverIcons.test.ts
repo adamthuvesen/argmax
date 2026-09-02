@@ -7,6 +7,7 @@ describe("serverIconFor", () => {
     expect(serverIconFor("google_drive")?.title).toBe("Google Drive");
     expect(serverIconFor("Google Calendar")?.title).toBe("Google Calendar");
     expect(serverIconFor("snowflake")?.layers).toEqual([expect.objectContaining({ fill: "#29B5E8" })]);
+    expect(serverIconFor("spotify")?.layers).toEqual([expect.objectContaining({ fill: "#1ED760" })]);
   });
 
   it("gives black marks no fill so they take the row's text colour", () => {

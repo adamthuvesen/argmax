@@ -579,7 +579,7 @@ mod tests {
     fn seed_project(connection: &rusqlite::Connection) {
         connection
             .execute(
-                "INSERT OR IGNORE INTO projects (id, name, repo_path, current_branch, default_provider, default_model_label, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', 'claude', 'Sonnet', '~/.argmax', '2026-05-24T09:00:00.000Z', '2026-05-24T09:00:00.000Z')",
+                "INSERT OR IGNORE INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', '~/.argmax', '2026-05-24T09:00:00.000Z', '2026-05-24T09:00:00.000Z')",
                 [],
             )
             .expect("insert project");

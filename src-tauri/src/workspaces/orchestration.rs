@@ -2064,9 +2064,6 @@ fn ensure_scratch_project(
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),
             settings: ProjectSettings {
-                default_provider: "claude".to_string(),
-                default_model_label: String::new(),
-                default_model_id: String::new(),
                 worktree_location: scratch_root.display().to_string(),
                 setup_command: String::new(),
                 check_commands: Vec::new(),

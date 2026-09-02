@@ -220,6 +220,16 @@ pub static PROJECT_DEFAULT_MODEL_ID_COLUMNS: phf::Map<&'static str, &'static [&'
     ] as &'static [&'static str],
 };
 
+// Post-v24 `projects` shape: the per-project default agent is gone — Settings
+// → Agents holds one default model and effort for the whole app.
+pub static PROJECT_DEFAULT_AGENT_REMOVED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &[
+        "check_commands_json", "created_at", "current_branch", "default_branch",
+        "id", "name", "repo_path", "repo_remote_name", "repo_remote_owner",
+        "setup_command", "ui_preferences_json", "updated_at", "worktree_location",
+    ] as &'static [&'static str],
+};
+
 pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "projects" => &[
         "check_commands_json", "created_at", "current_branch", "default_branch",
@@ -469,7 +479,24 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SESSION_LAUNCH_LINEAGE_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 24,
+        name: "drop_project_default_agent",
+        up: DROP_PROJECT_DEFAULT_AGENT,
+        affected_tables: &["projects"],
+        expected_columns: &PROJECT_DEFAULT_AGENT_REMOVED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// The default agent is an app-wide setting now, not a per-project one: one
+// default model and effort in Settings → Agents seeds every launch, including
+// the chats Argmax starts on its own. The three columns have no reader left.
+const DROP_PROJECT_DEFAULT_AGENT: &str = r#"
+ALTER TABLE projects DROP COLUMN default_provider;
+ALTER TABLE projects DROP COLUMN default_model_label;
+ALTER TABLE projects DROP COLUMN default_model_id;
+"#;
 
 // Who launched a session, and how far from a person that launch is. An agent
 // using the `argmax` MCP tools may launch sessions itself, so the caps that
@@ -1249,8 +1276,12 @@ mod tests {
         // projects, sessions, and workspaces gained columns in later
         // migrations, so verify them against the head shapes rather than the
         // v1 EXPECTED_COLUMNS.
-        verify_table_columns(&connection, &PROJECT_DEFAULT_MODEL_ID_COLUMNS, "projects")
-            .expect("projects");
+        verify_table_columns(
+            &connection,
+            &PROJECT_DEFAULT_AGENT_REMOVED_COLUMNS,
+            "projects",
+        )
+        .expect("projects");
         verify_table_columns(&connection, &SESSION_LAUNCH_LINEAGE_COLUMNS, "sessions")
             .expect("sessions");
         verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
@@ -1326,6 +1357,7 @@ mod tests {
                 ),
                 (22, compute_migration_checksum(GH_PR_HEAD_REF_NAME)),
                 (23, compute_migration_checksum(SESSION_LAUNCH_LINEAGE)),
+                (24, compute_migration_checksum(DROP_PROJECT_DEFAULT_AGENT)),
             ]
         );
 
@@ -1593,11 +1625,23 @@ mod tests {
         assert!(rows[0].0 < rows[1].0);
     }
 
+    /// This seed is used both mid-history (before v24 dropped them) and at
+    /// head, so the insert follows whichever shape the table has.
+    fn has_default_agent_columns(connection: &Connection) -> bool {
+        connection
+            .prepare("SELECT default_provider FROM projects LIMIT 0")
+            .is_ok()
+    }
+
     fn seed_minimal_session(connection: &Connection) {
         let timestamp = "2026-05-24T10:00:00.000Z";
         connection
             .execute(
-                "INSERT INTO projects (id, name, repo_path, current_branch, default_provider, default_model_label, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', 'claude', 'Sonnet', '~/.argmax', ?, ?)",
+                if has_default_agent_columns(connection) {
+                    "INSERT INTO projects (id, name, repo_path, current_branch, default_provider, default_model_label, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', 'claude', 'Sonnet', '~/.argmax', ?, ?)"
+                } else {
+                    "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', '~/.argmax', ?, ?)"
+                },
                 (timestamp, timestamp),
             )
             .expect("insert project");

@@ -1,19 +1,13 @@
 import { useCallback, useMemo, useState, type JSX } from "react";
 import type { ProjectSummary } from "../../../shared/types.js";
-import {
-  allModelOptions,
-  modelDefaultForProvider,
-  type ModelPickerSelection
-} from "../../lib/models.js";
-import { CombinedModelSelector } from "../ModelSelector.js";
 import { SettingGroup, SettingRow, SettingsListPicker } from "./settingsPrimitives.js";
 
 /**
  * Per-project settings editor (Settings → Projects). Every field here is
  * consumed by the runtime: worktree location places isolated worktrees, the
  * setup command runs once in each fresh worktree before the agent launches,
- * check commands run from the changed-files card, and the default agent/model
- * seeds sessions Argmax launches on its own (e.g. PR check-failure fixes).
+ * and check commands run from the changed-files card. The model is not a
+ * project setting — Settings → Agents holds one default agent for the app.
  */
 export function ProjectsSettings({
   projects,
@@ -57,21 +51,6 @@ export function ProjectsSettings({
   );
 }
 
-/** The project's stored default model, resolved against the catalog. Falls
- *  back to the provider's default when the stored pair no longer matches. */
-function storedModelSelection(project: ProjectSummary): ModelPickerSelection {
-  const { defaultProvider, defaultModelId, defaultModelLabel } = project.settings;
-  const matched = allModelOptions.find(
-    (option) =>
-      option.provider === defaultProvider &&
-      (option.modelId === defaultModelId || (defaultModelId === "" && option.label === defaultModelLabel))
-  );
-  if (matched) {
-    return { provider: matched.provider, label: matched.label, modelId: matched.modelId };
-  }
-  return { provider: defaultProvider, ...modelDefaultForProvider(defaultProvider) };
-}
-
 /** Keyed by project id, so switching projects remounts with fresh values. */
 function ProjectSettingsForm({
   project,
@@ -80,7 +59,6 @@ function ProjectSettingsForm({
   project: ProjectSummary;
   onProjectUpdated: (updated: ProjectSummary) => void;
 }): JSX.Element {
-  const [defaultModel, setDefaultModel] = useState<ModelPickerSelection>(() => storedModelSelection(project));
   const [worktreeLocation, setWorktreeLocation] = useState(project.settings.worktreeLocation);
   const [setupCommand, setSetupCommand] = useState(project.settings.setupCommand);
   const [checkCommandsText, setCheckCommandsText] = useState(project.settings.checkCommands.join("\n"));
@@ -97,8 +75,6 @@ function ProjectSettingsForm({
   );
 
   const dirty =
-    defaultModel.provider !== project.settings.defaultProvider ||
-    defaultModel.modelId !== project.settings.defaultModelId ||
     worktreeLocation.trim() !== project.settings.worktreeLocation ||
     setupCommand.trim() !== project.settings.setupCommand ||
     checkCommands.join("\n") !== project.settings.checkCommands.join("\n");
@@ -121,9 +97,6 @@ function ProjectSettingsForm({
       const updated = await window.argmax.projects.updateSettings({
         projectId: project.id,
         settings: {
-          defaultProvider: defaultModel.provider,
-          defaultModelLabel: defaultModel.label,
-          defaultModelId: defaultModel.modelId,
           setupCommand: setupCommand.trim(),
           worktreeLocation: location,
           checkCommands
@@ -139,7 +112,7 @@ function ProjectSettingsForm({
     } finally {
       setSaving(false);
     }
-  }, [project, defaultModel, worktreeLocation, setupCommand, checkCommands, onProjectUpdated]);
+  }, [project, worktreeLocation, setupCommand, checkCommands, onProjectUpdated]);
 
   return (
     <div className="settings-card">
@@ -147,20 +120,6 @@ function ProjectSettingsForm({
         <span className="settings-field-label">Repository</span>
         <p className="settings-note">{project.repoPath}</p>
       </div>
-
-      <SettingRow
-        label="Default agent"
-        description="Used when Argmax starts a chat for this project on its own — for example the automatic fix chat when a PR check fails."
-        htmlFor="settings-project-model"
-        control={
-          <CombinedModelSelector
-            ariaLabel="Default agent"
-            inputId="settings-project-model"
-            value={defaultModel}
-            onChange={setDefaultModel}
-          />
-        }
-      />
 
       <div className="settings-field">
         <label className="settings-field-label" htmlFor="settings-project-worktrees">

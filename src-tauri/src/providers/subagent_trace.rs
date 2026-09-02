@@ -2875,9 +2875,6 @@ mod tests {
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
-                    default_provider: provider.to_string(),
-                    default_model_label: "Model".to_string(),
-                    default_model_id: String::new(),
                     worktree_location: "/tmp/worktrees".to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),

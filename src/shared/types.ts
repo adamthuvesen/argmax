@@ -94,10 +94,6 @@ export type EventType =
   | "session.recovered-from-crash";
 
 export interface ProjectSettings {
-  defaultProvider: ProviderId;
-  defaultModelLabel: string;
-  /** "" means "not chosen yet" — launch paths fall back to the provider default. */
-  defaultModelId: string;
   worktreeLocation: string;
   setupCommand: string;
   checkCommands: string[];
@@ -668,6 +664,12 @@ export interface ArgmaxApi {
     debugSnapshot: (input?: { afterLogSeq?: number }) => Promise<DebugSnapshot>;
     vacuumDatabase: () => Promise<{ ok: true }>;
     setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
+    setDefaultAgent: (input: {
+      provider: ProviderId;
+      modelLabel: string;
+      modelId: string;
+      reasoningEffort?: ReasoningEffort | null;
+    }) => Promise<{ ok: true }>;
     setNotificationsEnabled: (enabled: boolean) => Promise<{ ok: true }>;
     testNotification: () => Promise<{ ok: true }>;
   };

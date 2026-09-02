@@ -349,6 +349,11 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         invokeCommand<DebugSnapshot>("system:debug-snapshot", { afterLogSeq: input?.afterLogSeq ?? null }),
       vacuumDatabase: () => invokeCommand<{ ok: true }>("system:vacuum-database"),
       setTheme: (mode) => invokeCommand<{ ok: true }>("system:set-theme", { mode }),
+      setDefaultAgent: (input) =>
+        invokeCommand<{ ok: true }>("system:set-default-agent", {
+          ...input,
+          reasoningEffort: input.reasoningEffort ?? null
+        }),
       setNotificationsEnabled: (enabled) =>
         invokeCommand<{ ok: true }>("system:set-notifications-enabled", { enabled }),
       testNotification: () => invokeCommand<{ ok: true }>("system:test-notification")

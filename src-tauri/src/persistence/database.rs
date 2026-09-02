@@ -461,7 +461,7 @@ mod tests {
         let timestamp = "2026-05-24T10:00:00.000Z";
         connection
             .execute(
-                "INSERT INTO projects (id, name, repo_path, current_branch, default_provider, default_model_label, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', 'claude', 'Sonnet', '~/.argmax', ?, ?)",
+                "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', '~/.argmax', ?, ?)",
                 (timestamp, timestamp),
             )
             .expect("insert project");

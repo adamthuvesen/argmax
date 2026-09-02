@@ -33,9 +33,6 @@ function project(): ProjectSummary {
     currentBranch: "main",
     defaultBranch: "main",
     settings: {
-      defaultProvider: "claude",
-      defaultModelLabel: "Opus 5",
-      defaultModelId: "claude-opus-5",
       worktreeLocation: "/tmp/worktrees",
       setupCommand: "",
       checkCommands: []

@@ -46,17 +46,12 @@ fn project_workspace_and_session_repositories_round_trip() {
     assert_eq!(project.settings.check_commands, vec!["npm test"]);
 
     let updated_settings = ProjectSettings {
-        default_provider: "codex".to_owned(),
-        default_model_label: "GPT-5.6 Sol".to_owned(),
-        default_model_id: "gpt-5.6-sol".to_owned(),
         worktree_location: "~/.argmax/worktrees".to_owned(),
         setup_command: "npm install".to_owned(),
         check_commands: vec!["npm test".to_owned(), "npm run lint".to_owned()],
     };
     let updated = update_project_settings(&connection, "p1", &updated_settings)
         .expect("update project settings");
-    assert_eq!(updated.settings.default_provider, "codex");
-    assert_eq!(updated.settings.default_model_id, "gpt-5.6-sol");
     assert_eq!(updated.settings.setup_command, "npm install");
     assert_eq!(updated.settings.check_commands.len(), 2);
 
@@ -827,9 +822,6 @@ fn project_input() -> PersistProjectInput {
         current_branch: "main".to_owned(),
         default_branch: Some("main".to_owned()),
         settings: ProjectSettings {
-            default_provider: "claude".to_owned(),
-            default_model_label: "Sonnet".to_owned(),
-            default_model_id: String::new(),
             worktree_location: "~/.argmax".to_owned(),
             setup_command: String::new(),
             check_commands: vec!["npm test".to_owned()],

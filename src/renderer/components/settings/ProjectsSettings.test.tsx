@@ -16,9 +16,6 @@ function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
     currentBranch: "main",
     defaultBranch: "main",
     settings: {
-      defaultProvider: "codex",
-      defaultModelLabel: "GPT-5.6 Sol",
-      defaultModelId: "gpt-5.6-sol",
       worktreeLocation: "/Users/dev/argmax/.argmax/worktrees",
       setupCommand: "npm install",
       checkCommands: ["npm run lint"]
@@ -51,7 +48,7 @@ describe("ProjectsSettings", () => {
     expect(screen.getByRole("button", { name: "Save project settings" })).toBeDisabled();
   });
 
-  it("saves edited settings including the resolved default model", async () => {
+  it("saves edited settings", async () => {
     const saved = project();
     const updateSettings = vi.fn().mockResolvedValue(saved);
     installUpdateStub(updateSettings);
@@ -69,9 +66,6 @@ describe("ProjectsSettings", () => {
     expect(updateSettings).toHaveBeenCalledWith({
       projectId: "project-1",
       settings: {
-        defaultProvider: "codex",
-        defaultModelLabel: "GPT-5.6 Sol",
-        defaultModelId: "gpt-5.6-sol",
         setupCommand: "npm ci",
         worktreeLocation: "/Users/dev/argmax/.argmax/worktrees",
         checkCommands: ["npm run lint", "npm test"]
@@ -79,43 +73,6 @@ describe("ProjectsSettings", () => {
     });
     await waitFor(() => expect(onProjectUpdated).toHaveBeenCalledWith(saved));
     expect(screen.getByRole("status")).toHaveTextContent("Project settings saved.");
-  });
-
-  it("changing the default agent via the picker enables Save and persists the new model", async () => {
-    const updateSettings = vi.fn().mockResolvedValue(project());
-    installUpdateStub(updateSettings);
-
-    render(<ProjectsSettings projects={[project()]} onProjectUpdated={vi.fn()} />);
-
-    expect(screen.getByRole("button", { name: "Save project settings" })).toBeDisabled();
-
-    fireEvent.click(screen.getByLabelText("Default agent"));
-    fireEvent.click(await screen.findByText("Opus 5"));
-
-    const saveButton = screen.getByRole("button", { name: "Save project settings" });
-    expect(saveButton).not.toBeDisabled();
-    fireEvent.click(saveButton);
-
-    await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));
-    expect(updateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        settings: expect.objectContaining({
-          defaultProvider: "claude",
-          defaultModelLabel: "Opus 5",
-          defaultModelId: "claude-opus-5"
-        }) as unknown
-      })
-    );
-  });
-
-  it("starts dirty for a legacy row without a stored model id, so saving backfills it", () => {
-    const legacy = project();
-    legacy.settings = { ...legacy.settings, defaultModelId: "" };
-
-    render(<ProjectsSettings projects={[legacy]} onProjectUpdated={vi.fn()} />);
-
-    // The label still resolves against the catalog; saving persists the id.
-    expect(screen.getByRole("button", { name: "Save project settings" })).not.toBeDisabled();
   });
 
   it("rejects a relative worktree location without calling the backend", async () => {
@@ -151,9 +108,6 @@ describe("ProjectsSettings", () => {
       name: "Other",
       repoPath: "/Users/dev/other",
       settings: {
-        defaultProvider: "claude",
-        defaultModelLabel: "Opus 5",
-        defaultModelId: "claude-opus-5",
         worktreeLocation: "/Users/dev/other/.argmax/worktrees",
         setupCommand: "",
         checkCommands: []

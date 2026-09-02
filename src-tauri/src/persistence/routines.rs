@@ -289,10 +289,10 @@ mod tests {
                 .execute(
                     r#"
                 INSERT INTO projects (
-                    id, name, repo_path, current_branch, default_provider,
-                    default_model_label, worktree_location, created_at, updated_at
+                    id, name, repo_path, current_branch,
+                    worktree_location, created_at, updated_at
                 )
-                VALUES ('p1', 'Demo', '/tmp/demo', 'main', 'claude', 'Opus 5',
+                VALUES ('p1', 'Demo', '/tmp/demo', 'main',
                         '/tmp/worktrees', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')
                 "#,
                     [],

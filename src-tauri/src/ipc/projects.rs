@@ -109,9 +109,6 @@ pub(crate) fn projects_update_settings_impl(
     let database = live_database(state)?;
     let connection = database.connection();
     let settings = ProjectSettings {
-        default_provider: input.settings.default_provider.as_str().to_owned(),
-        default_model_label: input.settings.default_model_label.as_str().to_owned(),
-        default_model_id: input.settings.default_model_id,
         worktree_location: input.settings.worktree_location.as_str().to_owned(),
         setup_command: input.settings.setup_command,
         check_commands: input.settings.check_commands,
@@ -437,12 +434,7 @@ async fn assert_valid_ref_name(repo_path: &Path, reference: &str) -> ArgmaxResul
 }
 
 fn default_settings(repo_path: &Path) -> ProjectSettings {
-    // Mirrors PROVIDER_MODEL_DEFAULTS.claude in src/shared/providerModels.ts —
-    // the app default agent, same as the factory launch model.
     ProjectSettings {
-        default_provider: "claude".to_string(),
-        default_model_label: "Opus 5".to_string(),
-        default_model_id: "claude-opus-5".to_string(),
         worktree_location: repo_path
             .join(".argmax")
             .join("worktrees")

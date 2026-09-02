@@ -205,6 +205,19 @@ pub fn system_set_theme(app: AppHandle, input: SystemSetThemeInput) -> ArgmaxRes
     Ok(SystemOk { ok: true })
 }
 
+/// Mirrors the renderer's app-wide default agent into the app data dir, where
+/// the autonomous launch paths can read it without a window. Same shape as the
+/// theme cache: a small JSON file, last write wins.
+#[tauri::command(rename = "system:set-default-agent")]
+#[specta::specta]
+pub fn system_set_default_agent(
+    app: AppHandle,
+    input: SystemSetDefaultAgentInput,
+) -> ArgmaxResult<SystemOk> {
+    persist_default_agent(&app, &input)?;
+    Ok(SystemOk { ok: true })
+}
+
 #[tauri::command(rename = "system:set-notifications-enabled")]
 #[specta::specta]
 pub fn system_set_notifications_enabled(
@@ -299,6 +312,30 @@ fn persist_theme<R: Runtime>(app: &AppHandle<R>, mode: ThemeMode) -> ArgmaxResul
     .map_err(|error| ArgmaxError::service("THEME_SERIALIZE", error.to_string()))?;
     fs::write(app_data.join("theme.json"), body)
         .map_err(|error| ArgmaxError::service("THEME_WRITE", error.to_string()))
+}
+
+fn persist_default_agent<R: Runtime>(
+    app: &AppHandle<R>,
+    input: &SystemSetDefaultAgentInput,
+) -> ArgmaxResult<()> {
+    let app_data = crate::util::data_dir::app_data_dir(app)
+        .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
+    fs::create_dir_all(&app_data)
+        .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_DIR", error.to_string()))?;
+    let body = serde_json::to_vec(&crate::default_agent::DefaultAgent {
+        provider: input.provider.as_str().to_string(),
+        model_label: input.model_label.as_str().to_string(),
+        model_id: input.model_id.as_str().to_string(),
+        reasoning_effort: input
+            .reasoning_effort
+            .map(|effort| effort.as_str().to_string()),
+    })
+    .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_SERIALIZE", error.to_string()))?;
+    fs::write(
+        app_data.join(crate::default_agent::DEFAULT_AGENT_FILE),
+        body,
+    )
+    .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_WRITE", error.to_string()))
 }
 
 fn apply_theme<R: Runtime>(app: &AppHandle<R>, mode: ThemeMode) -> ArgmaxResult<()> {

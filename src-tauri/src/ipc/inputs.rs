@@ -61,10 +61,6 @@ pub struct ProvidersDiscoverInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectSettingsInput {
-    pub default_provider: ProviderId,
-    pub default_model_label: NonEmptyString,
-    /// '' keeps "no model chosen": launch paths use the provider default.
-    pub default_model_id: String,
     pub worktree_location: NonEmptyString,
     pub setup_command: String,
     pub check_commands: Vec<String>,
@@ -784,6 +780,19 @@ pub struct SystemSetThemeInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemSetNotificationsEnabledInput {
     pub enabled: bool,
+}
+
+/// The app-wide default agent (Settings → Agents). The renderer owns the
+/// preference and mirrors it here so the sessions Argmax starts on its own —
+/// the PR check-failure fix chat — launch on the same model the user picked.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemSetDefaultAgentInput {
+    pub provider: ProviderId,
+    pub model_label: NonEmptyString,
+    pub model_id: NonEmptyString,
+    /// Absent for a fast model that has no effort control at all.
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

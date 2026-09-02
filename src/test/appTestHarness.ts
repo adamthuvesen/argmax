@@ -500,6 +500,7 @@ export function setupAppTestMocks(): void {
         Promise.resolve({ generatedAt: "2026-05-14T11:00:05.000Z", ipcStats: [], logs: [] }),
       vacuumDatabase: vacuumDatabaseStub,
       setTheme: () => Promise.resolve({ ok: true }),
+      setDefaultAgent: vi.fn(() => Promise.resolve({ ok: true }) as Promise<{ ok: true }>),
       setNotificationsEnabled: setNotificationsEnabledStub,
       testNotification: testNotificationStub
     },

@@ -129,9 +129,6 @@ export const project: ProjectSummary = {
   currentBranch: "main",
   defaultBranch: "main",
   settings: {
-    defaultProvider: "codex",
-    defaultModelLabel: "GPT-5.3 Codex",
-    defaultModelId: "",
     worktreeLocation: "/tmp/worktrees",
     setupCommand: "",
     checkCommands: []

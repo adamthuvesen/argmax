@@ -189,6 +189,23 @@ export function App(): JSX.Element {
       void window.argmax.system.setNotificationsEnabled(desktopNotificationsEnabled);
     }
   }, [desktopNotificationsEnabled]);
+  // Mirror the app-wide default agent to the backend, which has no window to
+  // ask: the chats Argmax starts on its own (the PR check-failure fix) launch
+  // on the same model and effort the launcher shows.
+  useEffect(() => {
+    if (!window.argmax?.system?.setDefaultAgent) return;
+    void window.argmax.system
+      .setDefaultAgent({
+        provider: launchModel.provider,
+        modelLabel: launchModel.label,
+        modelId: launchModel.modelId,
+        reasoningEffort: launchModel.reasoningEffort ?? null
+      })
+      .catch(() => {
+        // The remote bridge doesn't carry this channel, and a failed mirror
+        // only means an autonomous launch uses the built-in default.
+      });
+  }, [launchModel]);
   const handleLaunchModelChange = useCallback(
     (model: ModelPickerSelection): void => {
       setLaunchModel(model);

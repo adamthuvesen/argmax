@@ -10,9 +10,6 @@ const PROJECT: ProjectSummary = {
   currentBranch: "main",
   defaultBranch: "main",
   settings: {
-    defaultProvider: "claude",
-    defaultModelLabel: "Haiku 4.5",
-    defaultModelId: "",
     worktreeLocation: "/repo/argmax/.worktrees",
     setupCommand: "",
     checkCommands: []

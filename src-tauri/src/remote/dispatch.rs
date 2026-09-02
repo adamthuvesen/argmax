@@ -30,6 +30,8 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "system:open-path",
     "system:diagnostics",
     "system:set-theme",
+    // The default agent is mirrored into the desktop app's own app-data dir.
+    "system:set-default-agent",
     "system:set-notifications-enabled",
     "system:test-notification",
     "remote:get-status",

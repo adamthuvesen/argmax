@@ -85,9 +85,6 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
-                    default_provider: "codex".to_string(),
-                    default_model_label: "GPT-5.6 Sol".to_string(),
-                    default_model_id: String::new(),
                     worktree_location: repo.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -104,9 +101,6 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
-                    default_provider: "codex".to_string(),
-                    default_model_label: "GPT-5.6 Sol".to_string(),
-                    default_model_id: String::new(),
                     worktree_location: destination_repo
                         .path()
                         .join("worktrees")
@@ -376,9 +370,6 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
-                    default_provider: "codex".to_string(),
-                    default_model_label: "GPT-5.6 Sol".to_string(),
-                    default_model_id: String::new(),
                     worktree_location: repo.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),

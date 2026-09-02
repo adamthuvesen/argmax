@@ -51,9 +51,6 @@ fn build_project(database: &Database, repo_path: &str) {
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),
             settings: ProjectSettings {
-                default_provider: "claude".to_owned(),
-                default_model_label: "Opus 5".to_owned(),
-                default_model_id: "claude-opus-5".to_owned(),
                 worktree_location: String::new(),
                 setup_command: String::new(),
                 check_commands: vec![],

@@ -23,6 +23,8 @@ File and review operations use a `{ kind: "workspace" | "project", id }` target 
 
 Scheduled tasks ("routines") expose `routines:list`, `routines:upsert`, `routines:delete`, `routines:set-enabled`, and `routines:run-now`.
 
+The browser pane's own commands (`browser:open`, `browser:navigate`, …) address one tab by id. The agent-facing ones (`browser:list-tabs`, `browser:open-for-session`, `browser:snapshot`, `browser:find`, `browser:get-text`, `browser:act`, and `browser:screenshot`) take `{ tabId? , sessionId? }` instead: naming a session acts on the tab that session touched most recently. All of them are desktop-only — see [browser.md](browser.md).
+
 ## Push Channels
 
 Subscribed in `tauriBridge.ts`:
@@ -34,6 +36,8 @@ Subscribed in `tauriBridge.ts`:
 - `browser:state`
 - `browser:new-tab`
 - `browser:page-command`
+- `browser:tabs`
+- `browser:agent-open`
 
 Push channels are not listed in `channels.txt`.
 

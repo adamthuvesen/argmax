@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getBrowserOwnerId,
   openInBrowserPanel,
-  resetBrowserSurfaceForTests
+  requestAgentBrowserOpen,
+  resetBrowserSurfaceForTests,
+  resetBrowserTabsForTests
 } from "../lib/browserPanel.js";
 import { useReviewState } from "./useReviewState.js";
 
@@ -20,9 +22,10 @@ function stubBridge(): void {
   });
 }
 
-function renderPanel(claimsBrowserRequests: boolean) {
+function renderPanel(claimsBrowserRequests: boolean, sessionId?: string) {
   return renderHook(
-    ({ claims }: { claims: boolean }) => useReviewState(null, null, { claimsBrowserRequests: claims }),
+    ({ claims }: { claims: boolean }) =>
+      useReviewState(null, null, { claimsBrowserRequests: claims, sessionId }),
     { initialProps: { claims: claimsBrowserRequests } }
   );
 }
@@ -37,7 +40,36 @@ describe("useReviewState — browser mode", () => {
   afterEach(() => {
     cleanup();
     resetBrowserSurfaceForTests();
+    resetBrowserTabsForTests();
     delete (window as unknown as { argmax?: unknown }).argmax;
+  });
+
+  it("shows a session's agent tab in that session's pane and nowhere else", () => {
+    const mine = renderPanel(false, "session-a");
+    const other = renderPanel(true, "session-b");
+    const launcher = renderPanel(true);
+
+    act(() => requestAgentBrowserOpen("session-a", "agent-1", "https://example.com"));
+
+    expect(mine.result.current.mode).toBe("browser");
+    expect(mine.result.current.isPanelOpen).toBe(true);
+    expect(mine.result.current.browserOwner).toBe(true);
+    expect(mine.result.current.browserRequest).toMatchObject({
+      url: "https://example.com",
+      tabId: "agent-1"
+    });
+    // Focus does not enter into it: the pane showing the session does.
+    expect(other.result.current.mode).toBe("changes");
+    expect(launcher.result.current.mode).toBe("changes");
+  });
+
+  it("does not replay an agent tab opened before the pane mounted", () => {
+    act(() => requestAgentBrowserOpen("session-a", "agent-1", "https://example.com"));
+    const late = renderPanel(false, "session-a");
+
+    // The tab is in the strip either way; yanking a pane into Browser mode
+    // when the reader arrives minutes later is not what they asked for.
+    expect(late.result.current.mode).toBe("changes");
   });
 
   it("routes an open request to the panel taking them and leaves the other alone", () => {

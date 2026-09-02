@@ -592,9 +592,19 @@ export function setupAppTestMocks(): void {
       fillCredentials: () => Promise.resolve({ ok: true, itemTitle: "Test Login" }),
       screenshot: () => Promise.resolve({ pngBase64: "", width: 0, height: 0 }),
       evaluate: () => Promise.resolve({ resultJson: "" }),
+      listTabs: () => Promise.resolve({ tabs: [] }),
+      openForSession: () => Promise.resolve({ tabId: "agent-1" }),
+      snapshot: () =>
+        Promise.resolve({ tabId: "agent-1", url: "", title: "", tree: "", truncated: false }),
+      find: () => Promise.resolve({ tabId: "agent-1", matches: [] }),
+      getText: () =>
+        Promise.resolve({ tabId: "agent-1", url: "", title: "", text: "", truncated: false }),
+      act: () => Promise.resolve({ tabId: "agent-1", url: "", detail: null }),
       onState: () => () => undefined,
       onNewTab: () => () => undefined,
-      onPageCommand: () => () => undefined
+      onPageCommand: () => () => undefined,
+      onTabs: () => () => undefined,
+      onAgentOpen: () => () => undefined
     }
   };
 }

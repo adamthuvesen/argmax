@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, BrowserStateEvent } from "../../shared/types.js";
 import { BROWSER_HISTORY_KEY } from "../lib/browserHistory.js";
 import {
+  applyBrowserTabs,
   getActiveBrowserTabId,
   requestCloseActiveBrowserTab,
   resetBrowserTabsForTests,
@@ -94,6 +95,46 @@ describe("BrowserPanel", () => {
     );
     expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue("https://github.com");
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("github.com");
+  });
+
+  it("shows an agent's tab instead of navigating the user's, and badges it", () => {
+    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    const userTab = activeTabId();
+    browserStub.open.mockClear();
+    browserStub.navigate.mockClear();
+
+    // The app opened a tab for a session and pushed the new list.
+    act(() =>
+      applyBrowserTabs([
+        { tabId: userTab, ownerSessionId: null, url: "https://github.com", title: null, loading: false },
+        {
+          tabId: "agent-1",
+          ownerSessionId: "session-a",
+          url: "https://example.com",
+          title: "Example Domain",
+          loading: false
+        }
+      ])
+    );
+
+    expect(screen.getByRole("tab", { name: /Example Domain/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Opened by the agent" })).toBeInTheDocument();
+
+    // Asking for that tab switches to it; the webview already exists, so it is
+    // glued in place rather than re-created or navigated.
+    act(() => {
+      render(
+        <BrowserPanel
+          url="https://example.com"
+          requestSeq={2}
+          requestTabId="agent-1"
+          onClose={() => undefined}
+        />
+      );
+    });
+    expect(getActiveBrowserTabId()).toBe("agent-1");
+    expect(browserStub.open).not.toHaveBeenCalled();
+    expect(browserStub.navigate).not.toHaveBeenCalled();
   });
 
   it("navigates on address submit after normalizing the input", () => {

@@ -114,6 +114,11 @@ pub struct BrowserOpenInput {
     pub url: String,
     pub bounds: BrowserBounds,
     pub tab_id: String,
+    /// Session that owns the tab. `None` for a tab the user opened, and for
+    /// the renderer re-materializing a tab it restored from a previous run —
+    /// the registry keeps the owner it already has in that case.
+    #[serde(default)]
+    pub owner_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -149,10 +154,84 @@ pub struct BrowserSetBoundsInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserScreenshotInput {
-    pub tab_id: String,
+    /// Names a tab directly, or leaves it to `session_id`.
+    #[serde(default)]
+    pub tab_id: Option<String>,
+    /// Captures the session's current tab. Ignored when `tab_id` is given.
+    #[serde(default)]
+    pub session_id: Option<String>,
     /// Crop, in the page's own CSS pixels from the top-left of the visible
     /// view. Omitted captures the whole view.
+    #[serde(default)]
     pub rect: Option<BrowserBounds>,
+    /// Crop to one element from a snapshot instead. Scrolls it into view
+    /// first, and wins over `rect`.
+    #[serde(default, rename = "ref")]
+    pub element_ref: Option<String>,
+}
+
+// Every agent-facing browser command addresses a tab the same way: by id, or
+// by the session whose current tab it is (its most recently used one).
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserListTabsInput {
+    /// Only this session's tabs. Omitted lists every live tab.
+    #[serde(default)]
+    pub session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserOpenForSessionInput {
+    pub url: String,
+    pub session_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserSnapshotInput {
+    #[serde(default)]
+    pub tab_id: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    /// Drops plain text and non-heading structure, leaving only what can be
+    /// clicked or typed into.
+    #[serde(default)]
+    pub interactive_only: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserFindInput {
+    #[serde(default)]
+    pub tab_id: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    /// Case-insensitive substring over role, name, value and text.
+    pub query: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserGetTextInput {
+    #[serde(default)]
+    pub tab_id: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    /// Defaults to 20 000 characters.
+    #[serde(default)]
+    pub max_chars: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserActInput {
+    #[serde(default)]
+    pub tab_id: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    pub action: crate::browser::automation::BrowserAction,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

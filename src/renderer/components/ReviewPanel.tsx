@@ -636,6 +636,7 @@ export function ReviewPanel({
             <BrowserPanel
               url={review.browserRequest?.url ?? DEFAULT_BROWSER_URL}
               requestSeq={review.browserRequest?.seq}
+              requestTabId={review.browserRequest?.tabId}
               onClose={review.closePanel}
             />
           ) : (

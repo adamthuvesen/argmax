@@ -1,9 +1,13 @@
 //! In-app browser pane: one child webview per tab (label `browser-<tabId>`)
-//! glued to a renderer placeholder. The children are plain WKWebViews the
-//! user browses in; nothing drives them programmatically except explicit
-//! toolbar actions. The renderer owns the tab list and keeps exactly one tab
+//! glued to a renderer placeholder. The renderer keeps exactly one tab
 //! visible; the others stay hidden but alive, so each keeps its history,
 //! scroll position, and session.
+//!
+//! The tab *list* lives in `browser::registry`, not in the renderer: a session
+//! can open a tab with no pane on screen to ask. Every command here folds its
+//! change into that registry and pushes `browser:tabs`, and the strip mirrors
+//! it. The agent-facing verbs (snapshot, click, type) are thin wrappers over
+//! `browser::automation`, which the MCP layer calls directly.
 //!
 //! Uses Tauri's `unstable` multiwebview API (`Window::add_child`). A child
 //! webview always paints above the main webview's DOM, so the renderer owns
@@ -19,8 +23,13 @@ use tokio::process::Command;
 
 use super::inputs::*;
 use super::system::SystemOk;
+use crate::browser::automation::{
+    self, ActionOutcome, PageFindResult, PageSnapshot, PageText, TabTarget,
+};
+use crate::browser::registry::{self, BrowserAgentOpenEvent, BrowserTabRegistry, BrowserTabsEvent};
 use crate::browser::{encode_base64, eval, snapshot_image, CaptureRect};
 use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::state::AppState;
 
 pub const BROWSER_WEBVIEW_LABEL_PREFIX: &str = "browser-";
 
@@ -174,7 +183,7 @@ fn tab_label(tab_id: &str) -> ArgmaxResult<String> {
     Ok(format!("{BROWSER_WEBVIEW_LABEL_PREFIX}{tab_id}"))
 }
 
-fn browser_webview(app: &AppHandle, tab_id: &str) -> ArgmaxResult<Webview> {
+pub(crate) fn browser_webview(app: &AppHandle, tab_id: &str) -> ArgmaxResult<Webview> {
     app.get_webview(&tab_label(tab_id)?)
         .ok_or_else(|| ArgmaxError::service("BROWSER_NOT_OPEN", "browser tab is not open"))
 }
@@ -186,7 +195,15 @@ fn bounds_rect(bounds: &BrowserBounds) -> tauri::Rect {
     }
 }
 
+fn tab_registry(app: &AppHandle) -> std::sync::Arc<BrowserTabRegistry> {
+    std::sync::Arc::clone(&app.state::<AppState>().browser_tabs)
+}
+
 fn emit_state(app: &AppHandle, tab_id: String, url: String, title: Option<String>, loading: bool) {
+    let tabs = tab_registry(app);
+    if tabs.update_state(&tab_id, &url, title.clone(), loading) {
+        registry::publish(app, &tabs);
+    }
     let _ = app.emit_to(
         "main",
         "browser:state",
@@ -195,6 +212,36 @@ fn emit_state(app: &AppHandle, tab_id: String, url: String, title: Option<String
             url,
             title,
             loading,
+        },
+    );
+}
+
+/// A tab a session opened is created at the window's own size and then
+/// hidden: laying it out at 1×1 would collapse the page, and every snapshot
+/// after that would see a document with no visible boxes.
+pub(crate) fn hidden_tab_bounds(app: &AppHandle) -> BrowserBounds {
+    let logical = app.get_window("main").and_then(|window| {
+        let scale = window.scale_factor().ok()?;
+        let size = window.inner_size().ok()?.to_logical::<f64>(scale);
+        Some((size.width, size.height))
+    });
+    let (width, height) = logical.unwrap_or((1280.0, 900.0));
+    BrowserBounds {
+        x: 0.0,
+        y: 0.0,
+        width: width.max(1000.0),
+        height: height.max(760.0),
+    }
+}
+
+pub(crate) fn emit_agent_open(app: &AppHandle, session_id: &str, tab_id: &str, url: &str) {
+    let _ = app.emit_to(
+        "main",
+        "browser:agent-open",
+        BrowserAgentOpenEvent {
+            session_id: session_id.to_string(),
+            tab_id: tab_id.to_string(),
+            url: url.to_string(),
         },
     );
 }
@@ -232,16 +279,47 @@ fn page_command(url: &Url) -> Option<&'static str> {
 #[tauri::command(rename = "browser:open")]
 #[specta::specta]
 pub fn browser_open(app: AppHandle, input: BrowserOpenInput) -> ArgmaxResult<SystemOk> {
-    let url = validated_browser_url(&input.url)?;
-    let label = tab_label(&input.tab_id)?;
+    open_tab(
+        &app,
+        &input.tab_id,
+        &input.url,
+        input.bounds,
+        true,
+        input.owner_session_id,
+    )?;
+    Ok(SystemOk { ok: true })
+}
+
+/// Creates the tab's webview, or navigates and re-shows one that exists.
+/// `visible` is false for a tab a session opened while nobody is watching:
+/// a child webview paints over the DOM, so it stays hidden until the pane
+/// showing that session glues it to its surface.
+pub(crate) fn open_tab(
+    app: &AppHandle,
+    tab_id: &str,
+    raw_url: &str,
+    bounds: BrowserBounds,
+    visible: bool,
+    owner_session_id: Option<String>,
+) -> ArgmaxResult<()> {
+    let url = validated_browser_url(raw_url)?;
+    let label = tab_label(tab_id)?;
+    let tabs = tab_registry(app);
 
     if let Some(webview) = app.get_webview(&label) {
-        webview
-            .set_bounds(bounds_rect(&input.bounds))
-            .and_then(|_| webview.show())
-            .and_then(|_| webview.navigate(url))
-            .map_err(|error| ArgmaxError::service("BROWSER_NAVIGATE_FAILED", error.to_string()))?;
-        return Ok(SystemOk { ok: true });
+        if visible {
+            webview
+                .set_bounds(bounds_rect(&bounds))
+                .and_then(|_| webview.show())
+        } else {
+            webview.hide()
+        }
+        .and_then(|_| webview.navigate(url))
+        .map_err(|error| ArgmaxError::service("BROWSER_NAVIGATE_FAILED", error.to_string()))?;
+        if tabs.insert(tab_id, owner_session_id, raw_url) {
+            registry::publish(app, &tabs);
+        }
+        return Ok(());
     }
 
     let window = app
@@ -249,9 +327,9 @@ pub fn browser_open(app: AppHandle, input: BrowserOpenInput) -> ArgmaxResult<Sys
         .ok_or_else(|| ArgmaxError::service("BROWSER_NO_MAIN_WINDOW", "main window missing"))?;
 
     let nav_app = app.clone();
-    let nav_tab = input.tab_id.clone();
+    let nav_tab = tab_id.to_string();
     let load_app = app.clone();
-    let load_tab = input.tab_id.clone();
+    let load_tab = tab_id.to_string();
     let builder = tauri::webview::WebviewBuilder::new(&label, WebviewUrl::External(url))
         // WKWebView's default UA reads as an embedded webview; Google (and
         // others) then warn "browser no longer supported" and refuse OAuth.
@@ -316,25 +394,34 @@ pub fn browser_open(app: AppHandle, input: BrowserOpenInput) -> ArgmaxResult<Sys
             }
         });
 
-    window
+    let created = window
         .add_child(
             builder,
-            LogicalPosition::new(input.bounds.x, input.bounds.y),
-            LogicalSize::new(input.bounds.width.max(1.0), input.bounds.height.max(1.0)),
+            LogicalPosition::new(bounds.x, bounds.y),
+            LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)),
         )
         .map_err(|error| ArgmaxError::service("BROWSER_CREATE_FAILED", error.to_string()))?;
-    tracing::info!(tab = %input.tab_id, "browser tab webview created");
-    Ok(SystemOk { ok: true })
+    if !visible {
+        let _ = created.hide();
+    }
+    tabs.insert(tab_id, owner_session_id, raw_url);
+    registry::publish(app, &tabs);
+    tracing::info!(tab = %tab_id, visible, "browser tab webview created");
+    Ok(())
 }
 
 #[tauri::command(rename = "browser:navigate")]
 #[specta::specta]
 pub fn browser_navigate(app: AppHandle, input: BrowserNavigateInput) -> ArgmaxResult<SystemOk> {
-    let url = validated_browser_url(&input.url)?;
-    browser_webview(&app, &input.tab_id)?
-        .navigate(url)
-        .map_err(|error| ArgmaxError::service("BROWSER_NAVIGATE_FAILED", error.to_string()))?;
+    navigate_tab(&app, &input.tab_id, &input.url)?;
     Ok(SystemOk { ok: true })
+}
+
+pub(crate) fn navigate_tab(app: &AppHandle, tab_id: &str, raw_url: &str) -> ArgmaxResult<()> {
+    let url = validated_browser_url(raw_url)?;
+    browser_webview(app, tab_id)?
+        .navigate(url)
+        .map_err(|error| ArgmaxError::service("BROWSER_NAVIGATE_FAILED", error.to_string()))
 }
 
 #[tauri::command(rename = "browser:back")]
@@ -386,13 +473,22 @@ pub fn browser_set_bounds(app: AppHandle, input: BrowserSetBoundsInput) -> Argma
 #[tauri::command(rename = "browser:close")]
 #[specta::specta]
 pub fn browser_close(app: AppHandle, input: BrowserCloseInput) -> ArgmaxResult<SystemOk> {
-    // Destroys the tab's webview — history and session go with it. The tab
-    // strip is the only caller; hiding the whole pane goes through
-    // `browser:set-bounds` with `visible: false`, which keeps sessions alive.
-    browser_webview(&app, &input.tab_id)?
+    close_tab(&app, &input.tab_id)?;
+    Ok(SystemOk { ok: true })
+}
+
+/// Destroys the tab's webview — history and session go with it. Hiding the
+/// pane goes through `browser:set-bounds` with `visible: false` instead, which
+/// keeps those alive.
+pub(crate) fn close_tab(app: &AppHandle, tab_id: &str) -> ArgmaxResult<()> {
+    browser_webview(app, tab_id)?
         .close()
         .map_err(|error| ArgmaxError::service("BROWSER_CLOSE_FAILED", error.to_string()))?;
-    Ok(SystemOk { ok: true })
+    let tabs = tab_registry(app);
+    if tabs.remove(tab_id) {
+        registry::publish(app, &tabs);
+    }
+    Ok(())
 }
 
 // --- Programmatic capture and evaluation ------------------------------------
@@ -429,19 +525,100 @@ pub async fn browser_screenshot(
     app: AppHandle,
     input: BrowserScreenshotInput,
 ) -> ArgmaxResult<BrowserScreenshot> {
-    let webview = browser_webview(&app, &input.tab_id)?;
-    let rect = input.rect.map(|rect| CaptureRect {
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-    });
-    let captured = snapshot_image::capture(&webview, rect, SCREENSHOT_TIMEOUT).await?;
+    // A ref crops to one element and needs the page's help to locate it, so
+    // that path goes through automation; an explicit rect (or none) does not.
+    let captured = match input.element_ref {
+        Some(element_ref) => {
+            let target = TabTarget::from_inputs(input.tab_id, input.session_id)?;
+            automation::screenshot(&app, &target, Some(&element_ref)).await?
+        }
+        None => {
+            let target = TabTarget::from_inputs(input.tab_id, input.session_id)?;
+            let tab_id = automation::resolve_tab(&app, &target)?;
+            let webview = browser_webview(&app, &tab_id)?;
+            let rect = input.rect.map(|rect| CaptureRect {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
+            });
+            snapshot_image::capture(&webview, rect, SCREENSHOT_TIMEOUT).await?
+        }
+    };
     Ok(BrowserScreenshot {
         png_base64: encode_base64(&captured.png),
         width: captured.width,
         height: captured.height,
     })
+}
+
+// --- Agent automation -------------------------------------------------------
+//
+// Six channels over `browser::automation`. They exist so the renderer and the
+// verification harness reach the same code an agent's MCP tools will, rather
+// than a parallel implementation that drifts.
+
+/// A tab a session opened. The renderer learns about it through
+/// `browser:agent-open` and `browser:tabs`, not from this reply.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserOpenedTab {
+    pub tab_id: String,
+}
+
+#[tauri::command(rename = "browser:list-tabs")]
+#[specta::specta]
+pub fn browser_list_tabs(
+    app: AppHandle,
+    input: BrowserListTabsInput,
+) -> ArgmaxResult<BrowserTabsEvent> {
+    Ok(BrowserTabsEvent {
+        tabs: automation::tabs(&app, input.session_id.as_deref()),
+    })
+}
+
+#[tauri::command(rename = "browser:open-for-session")]
+#[specta::specta]
+pub fn browser_open_for_session(
+    app: AppHandle,
+    input: BrowserOpenForSessionInput,
+) -> ArgmaxResult<BrowserOpenedTab> {
+    let tab_id = automation::open(&app, Some(&input.session_id), &input.url)?;
+    Ok(BrowserOpenedTab { tab_id })
+}
+
+#[tauri::command(rename = "browser:snapshot")]
+#[specta::specta]
+pub async fn browser_snapshot(
+    app: AppHandle,
+    input: BrowserSnapshotInput,
+) -> ArgmaxResult<PageSnapshot> {
+    let target = TabTarget::from_inputs(input.tab_id, input.session_id)?;
+    automation::snapshot(&app, &target, input.interactive_only.unwrap_or(false)).await
+}
+
+#[tauri::command(rename = "browser:find")]
+#[specta::specta]
+pub async fn browser_find(app: AppHandle, input: BrowserFindInput) -> ArgmaxResult<PageFindResult> {
+    let target = TabTarget::from_inputs(input.tab_id, input.session_id)?;
+    automation::find(&app, &target, &input.query).await
+}
+
+#[tauri::command(rename = "browser:get-text")]
+#[specta::specta]
+pub async fn browser_get_text(
+    app: AppHandle,
+    input: BrowserGetTextInput,
+) -> ArgmaxResult<PageText> {
+    let target = TabTarget::from_inputs(input.tab_id, input.session_id)?;
+    automation::get_text(&app, &target, input.max_chars).await
+}
+
+#[tauri::command(rename = "browser:act")]
+#[specta::specta]
+pub async fn browser_act(app: AppHandle, input: BrowserActInput) -> ArgmaxResult<ActionOutcome> {
+    let target = TabTarget::from_inputs(input.tab_id, input.session_id)?;
+    automation::act(&app, &target, &input.action).await
 }
 
 #[tauri::command(rename = "browser:evaluate")]

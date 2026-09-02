@@ -712,7 +712,15 @@ export interface ArgmaxApi {
     onExit: (listener: (event: TerminalExitEvent) => void) => EventSubscription;
   };
   browser: {
-    open: (input: { url: string; bounds: BrowserBounds; tabId: string }) => Promise<{ ok: true }>;
+    open: (input: {
+      url: string;
+      bounds: BrowserBounds;
+      tabId: string;
+      /** Session the tab belongs to. Omitted for tabs the user opened, and
+       *  when re-materializing a restored tab — the registry keeps the owner
+       *  it already has. */
+      ownerSessionId?: string | null;
+    }) => Promise<{ ok: true }>;
     navigate: (url: string, tabId: string) => Promise<{ ok: true }>;
     back: (tabId: string) => Promise<{ ok: true }>;
     forward: (tabId: string) => Promise<{ ok: true }>;
@@ -722,12 +730,30 @@ export interface ArgmaxApi {
     /** Destroys the tab's webview (history and session included). */
     close: (tabId: string) => Promise<{ ok: true }>;
     fillCredentials: (tabId: string) => Promise<BrowserFillResult>;
-    /** PNG of the tab, base64. The tab must be visible — a hidden webview has nothing to rasterise. */
-    screenshot: (input: { tabId: string; rect?: BrowserBounds }) => Promise<BrowserScreenshot>;
+    /** PNG of the tab, base64. WebKit rasterises on demand, so a hidden tab still captures. */
+    screenshot: (input: {
+      tabId?: string;
+      sessionId?: string;
+      rect?: BrowserBounds;
+      /** Crop to one snapshot ref; wins over `rect`. */
+      ref?: string;
+    }) => Promise<BrowserScreenshot>;
     evaluate: (input: { tabId: string; script: string; timeoutMs?: number }) => Promise<BrowserEvaluateResult>;
+    /** Live tabs, optionally only one session's. */
+    listTabs: (input: { sessionId?: string }) => Promise<{ tabs: BrowserTabInfo[] }>;
+    /** Opens a page in a tab owned by a session; the webview starts hidden. */
+    openForSession: (input: { url: string; sessionId: string }) => Promise<{ tabId: string }>;
+    snapshot: (input: BrowserTabTarget & { interactiveOnly?: boolean }) => Promise<BrowserPageSnapshot>;
+    find: (input: BrowserTabTarget & { query: string }) => Promise<BrowserFindResult>;
+    getText: (input: BrowserTabTarget & { maxChars?: number }) => Promise<BrowserPageText>;
+    act: (input: BrowserTabTarget & { action: BrowserAction }) => Promise<BrowserActionOutcome>;
     onState: (listener: (event: BrowserStateEvent) => void) => EventSubscription;
     onNewTab: (listener: (event: BrowserNewTabEvent) => void) => EventSubscription;
     onPageCommand: (listener: (event: BrowserPageCommandEvent) => void) => EventSubscription;
+    /** Whole tab list, pushed whenever it changes. The strip mirrors this. */
+    onTabs: (listener: (event: { tabs: BrowserTabInfo[] }) => void) => EventSubscription;
+    /** A session opened a tab; its pane switches to Browser mode to show it. */
+    onAgentOpen: (listener: (event: BrowserAgentOpenEvent) => void) => EventSubscription;
   };
 }
 
@@ -775,6 +801,74 @@ export interface BrowserFillResult {
   ok: boolean;
   itemTitle: string;
 }
+
+/** One live browser tab, as the app (not the renderer) knows it. */
+export interface BrowserTabInfo {
+  tabId: string;
+  /** Session that opened it; null for tabs the user opened. */
+  ownerSessionId: string | null;
+  url: string;
+  title: string | null;
+  loading: boolean;
+}
+
+export interface BrowserAgentOpenEvent {
+  sessionId: string;
+  tabId: string;
+  url: string;
+}
+
+/** Name a tab directly, or let the session's current tab answer. */
+export interface BrowserTabTarget {
+  tabId?: string;
+  sessionId?: string;
+}
+
+export interface BrowserPageSnapshot {
+  tabId: string;
+  url: string;
+  title: string;
+  /** Indented aria tree; interactive lines carry `[ref=eN]` handles. */
+  tree: string;
+  truncated: boolean;
+}
+
+export interface BrowserFoundElement {
+  ref: string;
+  role: string;
+  name: string;
+  value: string;
+}
+
+export interface BrowserFindResult {
+  tabId: string;
+  matches: BrowserFoundElement[];
+}
+
+export interface BrowserPageText {
+  tabId: string;
+  url: string;
+  title: string;
+  text: string;
+  truncated: boolean;
+}
+
+export interface BrowserActionOutcome {
+  tabId: string;
+  /** URL after the action — a click that navigated says so here. */
+  url: string;
+  detail: string | null;
+}
+
+/** One interaction, addressed by a `[ref=eN]` handle from a snapshot. */
+export type BrowserAction =
+  | { kind: "click"; ref: string }
+  | { kind: "type"; ref: string; text: string; submit?: boolean }
+  | { kind: "select"; ref: string; value: string }
+  | { kind: "hover"; ref: string }
+  | { kind: "pressKey"; key: string; modifiers?: string[] }
+  | { kind: "scroll"; ref?: string; direction: "up" | "down" | "left" | "right"; amount?: number }
+  | { kind: "waitFor"; text?: string; ref?: string; urlIncludes?: string; timeoutMs?: number };
 
 export interface GhPrRecord {
   sessionId: string;

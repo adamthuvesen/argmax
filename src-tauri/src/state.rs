@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 use crate::approvals::service::ApprovalService;
+use crate::browser::registry::BrowserTabRegistry;
 use crate::checks::service::CheckService;
 use crate::dock::{DockBadgeService, TauriDockBadgeSink};
 use crate::gh::poller::GhPoller;
@@ -77,6 +78,10 @@ pub struct AppState {
     /// Skill discovery, held here so its per-provider cache survives across
     /// calls: a fresh registry per `skills:list` re-walks every skill tree.
     pub skills: Arc<SkillRegistry>,
+    /// Live browser tabs and who opened each one. The renderer used to own
+    /// this list; an agent opening a page has no renderer to ask, so the app
+    /// keeps it and pushes `browser:tabs` for the strip to mirror.
+    pub browser_tabs: Arc<BrowserTabRegistry>,
 }
 
 // Hand-written because `broadcast::Sender` has no `Default`; every other field
@@ -105,6 +110,7 @@ impl Default for AppState {
             sync_report: std::sync::Mutex::new(None),
             sync_sweep: Arc::new(std::sync::Mutex::new(())),
             skills: Arc::new(SkillRegistry::from_env()),
+            browser_tabs: Arc::default(),
         }
     }
 }

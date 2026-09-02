@@ -10,6 +10,8 @@
  * away, while that pane switching to Browser takes it over deliberately.
  */
 
+import type { BrowserTabInfo } from "../../shared/types.js";
+
 /** Start page when the browser (or a fresh tab) is opened without a target. */
 export const DEFAULT_BROWSER_URL = "https://www.google.com";
 
@@ -23,6 +25,9 @@ export interface BrowserOpenRequest {
   /** Bumped on every request: asking again for the URL the page is already on
    *  has to stay a change, or the panel never navigates back to it. */
   seq: number;
+  /** Show this existing tab instead of navigating the active one. Set when a
+   *  session's tab is what the pane was asked to show. */
+  tabId?: string;
 }
 
 let openRequest: BrowserOpenRequest | null = null;
@@ -105,9 +110,13 @@ export function resetBrowserSurfaceForTests(): void {
 // Module-level so tabs survive the panel unmounting: the native webviews stay
 // alive (hidden) when the pane closes, and this list is what maps them back to
 // a tab strip on reopen. Ids are never reused within an app run — they become
-// native webview labels, and a destroyed label must not come back. The list
-// also persists to localStorage so a restart restores the strip; the webviews
-// themselves die with the process and are recreated lazily on activation.
+// native webview labels, and a destroyed label must not come back.
+//
+// The app, not this module, is the source of truth for which tabs exist: a
+// session can open one with no pane on screen to ask. `applyBrowserTabs`
+// folds in the `browser:tabs` push, and localStorage now only remembers URLs
+// across a restart — the webviews themselves die with the process and are
+// recreated lazily on activation.
 
 export interface BrowserTab {
   id: string;
@@ -115,6 +124,8 @@ export interface BrowserTab {
   title: string | null;
   /** True while the tab's page is loading. Not persisted. */
   loading: boolean;
+  /** Session that opened the tab; null for tabs the user opened. */
+  ownerSessionId: string | null;
 }
 
 const TABS_KEY = "argmax.browser.tabs";
@@ -175,7 +186,8 @@ function restoreTabs(): void {
     id: tab.id,
     url: tab.url,
     title: typeof tab.title === "string" ? tab.title : null,
-    loading: false
+    loading: false,
+    ownerSessionId: null
   }));
   activeTabId =
     typeof snapshot.activeTabId === "string" && tabs.some((tab) => tab.id === snapshot.activeTabId)
@@ -242,7 +254,13 @@ export function getActiveBrowserTabId(): string | null {
 }
 
 export function createBrowserTab(url: string, activate = true): BrowserTab {
-  const tab: BrowserTab = { id: `tab-${nextTabSeq}`, url, title: null, loading: false };
+  const tab: BrowserTab = {
+    id: `tab-${nextTabSeq}`,
+    url,
+    title: null,
+    loading: false,
+    ownerSessionId: null
+  };
   nextTabSeq += 1;
   tabs = [...tabs, tab];
   if (activate) activeTabId = tab.id;
@@ -292,9 +310,135 @@ export function resetBrowserTabsForTests(): void {
   activeTabId = null;
   nextTabSeq = 1;
   materializedTabs.clear();
+  registrySeen.clear();
   recentlyClosedUrls.length = 0;
+  agentOpenRequest = null;
+  tabSyncStarted = false;
   if (typeof window !== "undefined") window.localStorage.removeItem(TABS_KEY);
   for (const listener of tabListeners) listener();
+  for (const listener of agentOpenListeners) listener();
+}
+
+// --- Mirroring the app's tab registry ---------------------------------------
+
+/** Tabs the app has reported at least once. A tab that was in a push and then
+ *  is not has been closed; one that has never appeared is either a restored
+ *  URL with no webview yet or a local tab whose `browser:open` is still in
+ *  flight, and dropping either would be a race. */
+const registrySeen = new Set<string>();
+
+/** Folds a `browser:tabs` push into the strip. */
+export function applyBrowserTabs(incoming: readonly BrowserTabInfo[]): void {
+  const byId = new Map(incoming.map((tab) => [tab.tabId, tab]));
+  const next: BrowserTab[] = [];
+  for (const tab of tabs) {
+    const live = byId.get(tab.id);
+    if (live) {
+      next.push({
+        id: tab.id,
+        url: live.url,
+        // The registry learns a title on load-finish; until then keep the one
+        // the strip already showed rather than blanking the label.
+        title: live.title ?? tab.title,
+        loading: live.loading,
+        ownerSessionId: live.ownerSessionId
+      });
+      byId.delete(tab.id);
+    } else if (!registrySeen.has(tab.id)) {
+      next.push(tab);
+    }
+  }
+  // Whatever is left is new to this renderer — a tab a session just opened.
+  for (const tab of incoming) {
+    if (!byId.has(tab.tabId)) continue;
+    next.push({
+      id: tab.tabId,
+      url: tab.url,
+      title: tab.title,
+      loading: tab.loading,
+      ownerSessionId: tab.ownerSessionId
+    });
+    // The app created the webview, so it exists in this run already.
+    materializedTabs.add(tab.tabId);
+  }
+  for (const tab of incoming) registrySeen.add(tab.tabId);
+
+  const unchanged =
+    next.length === tabs.length &&
+    next.every((tab, index) => {
+      const current = tabs[index];
+      return (
+        current !== undefined &&
+        current.id === tab.id &&
+        current.url === tab.url &&
+        current.title === tab.title &&
+        current.loading === tab.loading &&
+        current.ownerSessionId === tab.ownerSessionId
+      );
+    });
+  if (unchanged) return;
+  tabs = next;
+  if (activeTabId !== null && !tabs.some((tab) => tab.id === activeTabId)) {
+    activeTabId = tabs[0]?.id ?? null;
+  }
+  notifyTabListeners();
+}
+
+// --- Agent-opened tabs ------------------------------------------------------
+
+/**
+ * A session opened a page. Addressed to the session rather than to a
+ * component, because the pane showing it may not be mounted — same shape as
+ * the ⌘J terminal request in `terminalTabs.ts`. The pane for that session
+ * consumes it on its next render; nobody consuming it is a valid outcome.
+ */
+export interface AgentBrowserOpenRequest {
+  sessionId: string;
+  tabId: string;
+  url: string;
+  seq: number;
+}
+
+let agentOpenRequest: AgentBrowserOpenRequest | null = null;
+const agentOpenListeners = new Set<() => void>();
+
+export function subscribeAgentBrowserOpen(listener: () => void): () => void {
+  agentOpenListeners.add(listener);
+  return () => {
+    agentOpenListeners.delete(listener);
+  };
+}
+
+export function getAgentBrowserOpen(): AgentBrowserOpenRequest | null {
+  return agentOpenRequest;
+}
+
+export function requestAgentBrowserOpen(sessionId: string, tabId: string, url: string): void {
+  agentOpenRequest = { sessionId, tabId, url, seq: (agentOpenRequest?.seq ?? 0) + 1 };
+  for (const listener of agentOpenListeners) listener();
+}
+
+let tabSyncStarted = false;
+
+/**
+ * Subscribes the tab store to the app's registry. Idempotent, and called from
+ * every review panel's mount: the pushes have to arrive even when no browser
+ * chrome is on screen, since that is exactly when a session opens a tab.
+ */
+export function ensureBrowserTabSync(): void {
+  if (tabSyncStarted) return;
+  const browser = typeof window === "undefined" ? null : (window.argmax?.browser ?? null);
+  if (!browser?.onTabs) return;
+  tabSyncStarted = true;
+  browser.onTabs((event) => applyBrowserTabs(event.tabs));
+  browser.onAgentOpen((event) => {
+    lastUrl = event.url;
+    requestAgentBrowserOpen(event.sessionId, event.tabId, event.url);
+  });
+  void browser
+    .listTabs({})
+    .then((result) => applyBrowserTabs(result.tabs))
+    .catch(() => undefined);
 }
 
 export function updateBrowserTabState(id: string, url: string, title: string | null): void {

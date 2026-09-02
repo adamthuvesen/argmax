@@ -5,12 +5,18 @@ import type { IpcChannel } from "../../shared/ipcSchemas.js";
 import type {
   ArgmaxApi,
   AttachmentSaveImageInput,
+  BrowserActionOutcome,
+  BrowserAgentOpenEvent,
   BrowserEvaluateResult,
   BrowserFillResult,
+  BrowserFindResult,
   BrowserNewTabEvent,
   BrowserPageCommandEvent,
+  BrowserPageSnapshot,
+  BrowserPageText,
   BrowserScreenshot,
   BrowserStateEvent,
+  BrowserTabInfo,
   AttachmentSaveImageResult,
   ChangedFileSummary,
   CheckRun,
@@ -409,12 +415,22 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         invokeCommand<BrowserFillResult>("browser:fill-credentials", { tabId }),
       screenshot: (input) => invokeCommand<BrowserScreenshot>("browser:screenshot", input),
       evaluate: (input) => invokeCommand<BrowserEvaluateResult>("browser:evaluate", input),
+      listTabs: (input) => invokeCommand<{ tabs: BrowserTabInfo[] }>("browser:list-tabs", input),
+      openForSession: (input) => invokeCommand<{ tabId: string }>("browser:open-for-session", input),
+      snapshot: (input) => invokeCommand<BrowserPageSnapshot>("browser:snapshot", input),
+      find: (input) => invokeCommand<BrowserFindResult>("browser:find", input),
+      getText: (input) => invokeCommand<BrowserPageText>("browser:get-text", input),
+      act: (input) => invokeCommand<BrowserActionOutcome>("browser:act", input),
       onState: (listener: (event: BrowserStateEvent) => void) =>
         subscribe<BrowserStateEvent>("browser:state", listener),
       onNewTab: (listener: (event: BrowserNewTabEvent) => void) =>
         subscribe<BrowserNewTabEvent>("browser:new-tab", listener),
       onPageCommand: (listener: (event: BrowserPageCommandEvent) => void) =>
-        subscribe<BrowserPageCommandEvent>("browser:page-command", listener)
+        subscribe<BrowserPageCommandEvent>("browser:page-command", listener),
+      onTabs: (listener: (event: { tabs: BrowserTabInfo[] }) => void) =>
+        subscribe<{ tabs: BrowserTabInfo[] }>("browser:tabs", listener),
+      onAgentOpen: (listener: (event: BrowserAgentOpenEvent) => void) =>
+        subscribe<BrowserAgentOpenEvent>("browser:agent-open", listener)
     }
   };
 }

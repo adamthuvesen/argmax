@@ -1,13 +1,19 @@
 //! Programmatic control of the in-app browser's child webviews.
 //!
 //! The panel's own toolbar drives its webviews through `ipc::browser`; this
-//! module is the part agents need instead — capture what a tab looks like, and
-//! run a script in it and get the value back. Both are callback-shaped on the
-//! macOS side (a WebKit completion handler that runs on the main thread), so
-//! both wrap that callback in a oneshot channel with a deadline: a page that
-//! never answers must not park the caller forever.
+//! module is the part agents need instead — capture what a tab looks like, run
+//! a script in it and get the value back, and read and drive the page through
+//! the two injected scripts. Capture and eval are callback-shaped on the macOS
+//! side (a WebKit completion handler that runs on the main thread), so both
+//! wrap that callback in a oneshot channel with a deadline: a page that never
+//! answers must not park the caller forever.
+//!
+//! `registry` is the app's list of live tabs and who owns each one; the
+//! renderer mirrors it rather than owning it.
 
+pub mod automation;
 pub mod eval;
+pub mod registry;
 pub mod snapshot_image;
 
 /// Rect in the tab's own view coordinates (CSS pixels, origin top-left).

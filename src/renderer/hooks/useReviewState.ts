@@ -10,10 +10,13 @@ import type {
 } from "../../shared/types.js";
 import {
   claimBrowserSurface,
+  ensureBrowserTabSync,
+  getAgentBrowserOpen,
   getBrowserOwnerId,
   getBrowserRequest,
   lastBrowsedUrl,
   releaseBrowserSurface,
+  subscribeAgentBrowserOpen,
   subscribeBrowserOwner,
   subscribeBrowserRequest,
   type BrowserOpenRequest
@@ -222,6 +225,9 @@ export function useReviewState(
      *  this panel. True for the focused pane, and for a launcher that is the
      *  only surface on screen. Defaults to false. */
     claimsBrowserRequests?: boolean;
+    /** Session this panel belongs to. A tab that session's agent opens is
+     *  shown here, so the user watches it browse. Null on the launcher. */
+    sessionId?: string | null;
   }
 ): ReviewState {
   const sourceKind = source?.kind ?? null;
@@ -262,12 +268,12 @@ export function useReviewState(
   const browserOwner = useSyncExternalStore(subscribeBrowserOwner, getBrowserOwnerId) === panelId;
 
   const openBrowserAt = useCallback(
-    (url: string): void => {
+    (url: string, tabId?: string): void => {
       // Claim here, not only in the effect below: a demoted panel is already
       // in Browser mode with the panel open, so neither of the effect's deps
       // changes and "Show here" would be a no-op.
       claimBrowserSurface(panelId);
-      setBrowserRequest((current) => ({ url, seq: (current?.seq ?? 0) + 1 }));
+      setBrowserRequest((current) => ({ url, tabId, seq: (current?.seq ?? 0) + 1 }));
       setMode("browser");
       setIsPanelOpen(true);
     },
@@ -289,6 +295,11 @@ export function useReviewState(
   // tracks the sequence, so one that was unfocused when a request landed does
   // not act on it later when focus arrives; only the panel taking requests
   // right now switches itself to Browser mode.
+  // The tab list is pushed by the app, and a session can open a tab with no
+  // browser chrome on screen — so the subscription has to exist wherever a
+  // review panel does, not only where one is showing the browser.
+  useEffect(() => ensureBrowserTabSync(), []);
+
   const pendingBrowserRequest = useSyncExternalStore(subscribeBrowserRequest, getBrowserRequest);
   const claimsBrowserRequests = useRef(options?.claimsBrowserRequests ?? false);
   claimsBrowserRequests.current = options?.claimsBrowserRequests ?? false;
@@ -299,6 +310,20 @@ export function useReviewState(
     if (!claimsBrowserRequests.current) return;
     openBrowserAt(pendingBrowserRequest.url);
   }, [openBrowserAt, pendingBrowserRequest]);
+
+  // A tab this panel's session opened: show it here, so the user watches the
+  // agent browse. Every panel sees the request; only the one whose session
+  // matches acts, and a session with no panel mounted simply gets a tab in
+  // the strip the next time someone opens the browser.
+  const paneSessionId = options?.sessionId ?? null;
+  const agentBrowserOpen = useSyncExternalStore(subscribeAgentBrowserOpen, getAgentBrowserOpen);
+  const handledAgentSeq = useRef(agentBrowserOpen?.seq ?? 0);
+  useEffect(() => {
+    if (!agentBrowserOpen || agentBrowserOpen.seq === handledAgentSeq.current) return;
+    handledAgentSeq.current = agentBrowserOpen.seq;
+    if (!paneSessionId || agentBrowserOpen.sessionId !== paneSessionId) return;
+    openBrowserAt(agentBrowserOpen.url, agentBrowserOpen.tabId);
+  }, [agentBrowserOpen, openBrowserAt, paneSessionId]);
 
   const hasTranscript = lastTurnPaths !== null;
   const availableScopes: ReviewChangesScope[] = useMemo(

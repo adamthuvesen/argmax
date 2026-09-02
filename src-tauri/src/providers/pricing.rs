@@ -27,7 +27,8 @@ pub struct UsageCounts {
 }
 
 pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
-    "claude-fable-5" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
+    // Fable 5.1 keeps Fable 5's per-token rates; cache reads are a quarter of Fable 5's.
+    "claude-fable-5-1" => ModelPricing { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5 },
     "claude-opus-5" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-sonnet-5" => ModelPricing { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 3.75 },
     "claude-haiku-4-5" => ModelPricing { input: 1.0, output: 5.0, cache_read: 0.1, cache_write: 1.25 },
@@ -67,6 +68,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
 };
 
 static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_map! {
+    "claude-fable-5" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
     "claude-opus-4-8" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-opus-4-7" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-opus-4-6" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },

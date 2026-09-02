@@ -24,9 +24,9 @@ describe("ModelSelector — one row per model", () => {
   it("lists one row per model, not one per effort", () => {
     openClaudePicker();
     const list = screen.getByRole("listbox", { name: "Session model" });
-    // Four Claude models: Fable, Opus 5, Sonnet, Haiku.
+    // Four Claude models: Fable 5.1, Opus 5, Sonnet, Haiku.
     expect(within(list).getAllByRole("option")).toHaveLength(4);
-    expect(within(list).getByText("Fable 5")).toBeInTheDocument();
+    expect(within(list).getByText("Fable 5.1")).toBeInTheDocument();
     expect(within(list).getByText("Opus 5")).toBeInTheDocument();
     expect(within(list).getByText("Sonnet 5")).toBeInTheDocument();
     expect(within(list).getByText("Haiku 4.5")).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe("ModelSelector type to filter", () => {
     openClaudePicker(OPUS_MEDIUM);
     const list = screen.getByRole("listbox", { name: "Session model" });
     const options = within(list).getAllByRole("option");
-    // Four Claude models: Fable 5 (0), Opus 5 (1), Sonnet 5 (2), Haiku 4.5 (3)
+    // Four Claude models: Fable 5.1 (0), Opus 5 (1), Sonnet 5 (2), Haiku 4.5 (3)
     expect(options[0]).not.toHaveAttribute("data-active");
     expect(options[0]).toHaveAttribute("aria-selected", "false");
     expect(options[1]).toHaveAttribute("data-active", "true");

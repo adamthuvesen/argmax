@@ -32,7 +32,10 @@ use crate::{
         database::Database,
         events::{persist_timeline_event, PersistTimelineEventInput},
         projects::{list_projects, ProjectSummary},
-        sessions::{find_session_by_id, list_sessions_for_dashboard},
+        sessions::{
+            find_session_by_id, list_sessions_for_dashboard, record_session_launch,
+            session_launch_lineage,
+        },
         workspaces::{find_workspace_by_id, list_workspaces, WorkspaceSummary},
     },
     providers::{session_service::ProviderSessionService, ProviderLaunchInput},
@@ -46,6 +49,10 @@ const SERVER_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_IO_TIMEOUT: Duration = Duration::from_secs(75);
 const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const SESSION_LIST_LIMIT: usize = 40;
+/// A session the user started is depth 0, so two levels of agent-launched
+/// sessions exist below it and the third is refused.
+const MAX_LAUNCH_DEPTH: i64 = 2;
+const MAX_LAUNCHES_PER_SESSION: i64 = 10;
 const DEFAULT_TASK_LABEL: &str = "Local agent task";
 const MAX_TASK_LABEL_CHARS: usize = 64;
 const MAX_TASK_LABEL_BYTES: usize = 200;
@@ -54,10 +61,6 @@ const TASK_LABEL_ELLIPSIS: &str = "...";
 pub const SESSION_LAUNCH_SOCKET_ENV: &str = "ARGMAX_SESSION_LAUNCH_SOCKET";
 pub const SESSION_LAUNCH_TOKEN_ENV: &str = "ARGMAX_SESSION_LAUNCH_TOKEN";
 pub const ARGMAX_BIN_ENV: &str = "ARGMAX_BIN";
-
-// `pub(crate)` so session sync can strip it back off an imported transcript's
-// first prompt: Argmax prepends it, so it must not become the session's title.
-pub(crate) const SESSION_LAUNCH_INSTRUCTION: &str = r#"Argmax session controls are available only when the user explicitly asks. To create a separate session, use "$ARGMAX_BIN" session launch --project <registered name or absolute repo path> --prompt '<task>'. Omit --project to use this session's project. To move this chat to another registered project, use "$ARGMAX_BIN" session move --project <registered name or absolute repo path>. Both commands use the shared checkout by default. Add --worktree for isolation. Moving archives the source workspace after this turn settles. Add --keep-source to keep it. To see what other sessions exist before targeting one, use "$ARGMAX_BIN" session list [--project <name-or-path> | --all]; it prints each session's id, project, task label, provider, and state as JSON, newest activity first. To send a message into an existing session — for example one you just launched, or one the user names — use "$ARGMAX_BIN" session message --session <id> --prompt '<message>'; it queues if that session is mid-turn. These commands create and address top-level sidebar sessions, not subagents. Never launch, move, list, or message sessions on your own initiative — only when this turn's user request calls for it."#;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SessionLaunchError {
@@ -135,8 +138,41 @@ impl SessionLaunchProcessConfig {
         ]
     }
 
-    pub fn prepend_instruction(&self, prompt: &str) -> String {
-        format!("{SESSION_LAUNCH_INSTRUCTION}\n\n{prompt}")
+    /// A config with fixed values, for arg-builder and injection tests in
+    /// other modules (the fields are private to this one).
+    #[cfg(test)]
+    pub fn for_tests(socket_path: &str, token: &str, argmax_bin: &str) -> Self {
+        Self {
+            socket_path: PathBuf::from(socket_path),
+            token: token.to_string(),
+            argmax_bin: PathBuf::from(argmax_bin),
+        }
+    }
+
+    pub fn socket_path(&self) -> &Path {
+        &self.socket_path
+    }
+
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+
+    pub fn argmax_bin(&self) -> &Path {
+        &self.argmax_bin
+    }
+
+    /// The launch instruction ahead of the user's prompt. Which one depends on
+    /// whether this provider's launch could carry the MCP server itself.
+    pub fn prepend_instruction(
+        &self,
+        provider: crate::providers::ProviderId,
+        via_acp: bool,
+        prompt: &str,
+    ) -> String {
+        format!(
+            "{}\n\n{prompt}",
+            crate::providers::mcp_injection::instruction(provider, via_acp)
+        )
     }
 }
 
@@ -204,7 +240,7 @@ impl SessionLaunchRegistry {
         &self,
         session_id: &str,
         settled: oneshot::Sender<()>,
-    ) -> Result<(), SessionLaunchProtocolError> {
+    ) -> Result<(), SessionControlError> {
         let mut pending = self
             .inner
             .pending_moves
@@ -375,173 +411,163 @@ impl Drop for SessionLaunchServer {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+/// One request on the session-control socket.
+///
+/// This is the whole wire protocol: the `argmax session …` CLI and the
+/// `argmax mcp` tools both build a [`SessionControlAction`] and hand it to
+/// [`send_session_control`], and the socket handler matches on the same enum.
+/// Each action carries exactly the fields it uses, so a nonsense combination
+/// (a project selector on a message, a prompt on a move) cannot be encoded.
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct SessionLaunchRequest {
-    version: u32,
-    token: String,
+pub struct SessionControlRequest {
+    pub version: u32,
+    pub token: String,
+    pub action: SessionControlAction,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub enum SessionControlAction {
+    Launch(LaunchAction),
+    Move(MoveAction),
+    List(ListAction),
+    Message(MessageAction),
+}
+
+/// Start a new top-level session. Provider and model default to the calling
+/// session's own, so an agent that names neither gets a peer of itself.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LaunchAction {
+    pub prompt: String,
     #[serde(default)]
-    action: SessionControlAction,
-    project: Option<String>,
+    pub project: Option<String>,
     #[serde(default)]
-    prompt: Option<String>,
-    worktree: bool,
+    pub worktree: bool,
     #[serde(default)]
-    keep_source: bool,
+    pub provider: Option<crate::providers::ProviderId>,
     #[serde(default)]
-    session_id: Option<String>,
+    pub model: Option<String>,
     #[serde(default)]
-    all: bool,
+    pub task_label: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MoveAction {
+    pub project: String,
+    #[serde(default)]
+    pub worktree: bool,
+    #[serde(default)]
+    pub keep_source: bool,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-enum SessionControlAction {
-    #[default]
-    Launch,
-    Move,
-    List,
-    Message,
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListAction {
+    #[serde(default)]
+    pub project: Option<String>,
+    #[serde(default)]
+    pub all: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct SessionLaunchResponse {
-    version: u32,
-    ok: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    workspace_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    project_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    project_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    scheduled: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    source_session_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sessions: Option<Vec<SessionListEntry>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    truncated: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    queued: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<SessionLaunchProtocolError>,
+pub struct MessageAction {
+    pub session_id: String,
+    pub message: String,
+}
+
+/// The response to one request. `result` is flattened, so a launch reads
+/// `{"version":1,"launched":{…}}`, a list `{"version":1,"listed":{…}}`, and a
+/// failure `{"version":1,"error":{…}}`.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionControlResponse {
+    pub version: u32,
+    #[serde(flatten)]
+    pub result: SessionControlResult,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SessionListEntry {
-    session_id: String,
-    project_id: String,
-    project_name: String,
-    task_label: String,
-    provider: String,
-    state: String,
-    last_activity_at: String,
+pub enum SessionControlResult {
+    Launched(LaunchedSession),
+    Scheduled(ScheduledMove),
+    Listed(SessionList),
+    Messaged(MessageDelivery),
+    Error(SessionControlError),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SessionLaunchProtocolError {
-    pub(crate) code: String,
-    pub(crate) message: String,
+pub struct LaunchedSession {
+    pub session_id: String,
+    pub workspace_id: String,
+    pub project_id: String,
+    pub project_name: String,
 }
 
-impl SessionLaunchResponse {
-    fn success(
-        session_id: String,
-        workspace_id: String,
-        project_id: String,
-        project_name: String,
-    ) -> Self {
-        Self {
-            version: PROTOCOL_VERSION,
-            ok: true,
-            session_id: Some(session_id),
-            workspace_id: Some(workspace_id),
-            project_id: Some(project_id),
-            project_name: Some(project_name),
-            scheduled: None,
-            source_session_id: None,
-            sessions: None,
-            truncated: None,
-            queued: None,
-            error: None,
-        }
-    }
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScheduledMove {
+    pub scheduled: bool,
+    pub source_session_id: String,
+    pub project_id: String,
+    pub project_name: String,
+}
 
-    fn scheduled(source_session_id: String, project_id: String, project_name: String) -> Self {
-        Self {
-            version: PROTOCOL_VERSION,
-            ok: true,
-            session_id: None,
-            workspace_id: None,
-            project_id: Some(project_id),
-            project_name: Some(project_name),
-            scheduled: Some(true),
-            source_session_id: Some(source_session_id),
-            sessions: None,
-            truncated: None,
-            queued: None,
-            error: None,
-        }
-    }
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionList {
+    pub sessions: Vec<SessionListEntry>,
+    pub truncated: bool,
+}
 
-    fn sessions(entries: Vec<SessionListEntry>, truncated: bool) -> Self {
-        Self {
-            version: PROTOCOL_VERSION,
-            ok: true,
-            session_id: None,
-            workspace_id: None,
-            project_id: None,
-            project_name: None,
-            scheduled: None,
-            source_session_id: None,
-            sessions: Some(entries),
-            truncated: Some(truncated),
-            queued: None,
-            error: None,
-        }
-    }
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MessageDelivery {
+    pub session_id: String,
+    /// True when the target was mid-turn and the message waits for turn end.
+    pub queued: bool,
+}
 
-    fn messaged(session_id: String, queued: bool) -> Self {
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionListEntry {
+    pub session_id: String,
+    pub project_id: String,
+    pub project_name: String,
+    pub task_label: String,
+    pub provider: String,
+    pub state: String,
+    pub last_activity_at: String,
+    /// The session that launched this one, when an agent did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub launched_by_session_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionControlError {
+    pub code: String,
+    pub message: String,
+}
+
+impl SessionControlResponse {
+    fn new(result: SessionControlResult) -> Self {
         Self {
             version: PROTOCOL_VERSION,
-            ok: true,
-            session_id: Some(session_id),
-            workspace_id: None,
-            project_id: None,
-            project_name: None,
-            scheduled: None,
-            source_session_id: None,
-            sessions: None,
-            truncated: None,
-            queued: Some(queued),
-            error: None,
+            result,
         }
     }
 
     fn failure(code: impl Into<String>, message: impl Into<String>) -> Self {
-        Self {
-            version: PROTOCOL_VERSION,
-            ok: false,
-            session_id: None,
-            workspace_id: None,
-            project_id: None,
-            project_name: None,
-            scheduled: None,
-            source_session_id: None,
-            sessions: None,
-            truncated: None,
-            queued: None,
-            error: Some(SessionLaunchProtocolError {
-                code: code.into(),
-                message: message.into(),
-            }),
-        }
+        Self::new(SessionControlResult::Error(SessionControlError {
+            code: code.into(),
+            message: message.into(),
+        }))
     }
 }
 
@@ -554,7 +580,7 @@ fn handle_connection(
     registry: Arc<SessionLaunchRegistry>,
 ) {
     if let Err(error) = stream.set_nonblocking(false) {
-        let response = SessionLaunchResponse::failure(
+        let response = SessionControlResponse::failure(
             "STREAM_SETUP_FAILED",
             format!("Could not prepare session launch connection: {error}"),
         );
@@ -563,16 +589,16 @@ fn handle_connection(
     }
     let _ = stream.set_read_timeout(Some(SERVER_IO_TIMEOUT));
     let _ = stream.set_write_timeout(Some(SERVER_IO_TIMEOUT));
-    let request = match read_json_line::<SessionLaunchRequest>(&mut stream, MAX_REQUEST_BYTES) {
+    let request = match read_json_line::<SessionControlRequest>(&mut stream, MAX_REQUEST_BYTES) {
         Ok(request) => request,
         Err(error) => {
-            let response = SessionLaunchResponse::failure(error.code, error.message);
+            let response = SessionControlResponse::failure(error.code, error.message);
             let _ = write_json_line(&mut stream, &response);
             return;
         }
     };
     let Some(parent) = registry.resolve(&request.token) else {
-        let response = SessionLaunchResponse::failure(
+        let response = SessionControlResponse::failure(
             "AUTH_FAILED",
             "Session launch credential is missing or invalid.",
         );
@@ -583,7 +609,7 @@ fn handle_connection(
         let response =
             handle_session_control(request, parent, database, workspaces, providers, registry)
                 .await
-                .unwrap_or_else(|error| SessionLaunchResponse::failure(error.code, error.message));
+                .unwrap_or_else(|error| SessionControlResponse::failure(error.code, error.message));
         let _ = write_json_line(&mut stream, &response);
     });
 }
@@ -629,7 +655,7 @@ fn read_json_line<T: for<'de> Deserialize<'de>>(
     })
 }
 
-fn write_json_line(writer: &mut impl Write, response: &SessionLaunchResponse) -> io::Result<()> {
+fn write_json_line(writer: &mut impl Write, response: &SessionControlResponse) -> io::Result<()> {
     serde_json::to_writer(&mut *writer, response)?;
     writer.write_all(b"\n")?;
     writer.flush()
@@ -649,6 +675,9 @@ pub(crate) struct LaunchSpec {
     pub fast_mode: bool,
     pub permission_mode: crate::providers::PermissionMode,
     pub agent_mode: crate::providers::AgentMode,
+    /// Sidebar label for the new workspace. Falls back to the prompt's first
+    /// line, which is what every launch used before agents could name one.
+    pub task_label: Option<String>,
 }
 
 pub(crate) struct LaunchOutcome {
@@ -666,10 +695,14 @@ pub(crate) async fn launch_with_spec(
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
     fallback_project_id: &str,
-) -> Result<LaunchOutcome, SessionLaunchProtocolError> {
+) -> Result<LaunchOutcome, SessionControlError> {
     let prompt = Prompt::try_from(spec.prompt).map_err(invalid_input_error)?;
-    let task_label =
-        TaskLabel::try_from(task_label(prompt.as_str())).map_err(invalid_input_error)?;
+    let label = spec
+        .task_label
+        .as_deref()
+        .map(task_label)
+        .unwrap_or_else(|| task_label(prompt.as_str()));
+    let task_label = TaskLabel::try_from(label).map_err(invalid_input_error)?;
     let projects = {
         let connection = database.connection();
         list_projects(&connection).map_err(argmax_protocol_error)?
@@ -738,67 +771,121 @@ pub(crate) async fn launch_with_spec(
 }
 
 async fn launch_session(
-    request: SessionLaunchRequest,
+    action: LaunchAction,
     parent: ParentLaunchSettings,
     database: Arc<Database>,
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
-) -> Result<SessionLaunchResponse, SessionLaunchProtocolError> {
-    let prompt = request.prompt.ok_or_else(|| {
-        protocol_error(
-            "PROMPT_REQUIRED",
-            "Session launch requires --prompt or --prompt-stdin.",
-        )
-    })?;
-    if request.keep_source {
-        return Err(protocol_error(
-            "ARGUMENT_INVALID",
-            "--keep-source is valid only for session move.",
-        ));
-    }
-    let parent_project_id = {
+) -> Result<SessionControlResponse, SessionControlError> {
+    let (parent_project_id, lineage) = {
         let connection = database.connection();
         let parent_session =
             find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
-        find_workspace_by_id(&connection, &parent_session.workspace_id)
+        let project_id = find_workspace_by_id(&connection, &parent_session.workspace_id)
             .map_err(argmax_protocol_error)?
-            .project_id
+            .project_id;
+        let lineage = session_launch_lineage(&connection, &parent.session_id)
+            .map_err(argmax_protocol_error)?;
+        (project_id, lineage)
     };
+    let depth = lineage.depth + 1;
+    if depth > MAX_LAUNCH_DEPTH {
+        return Err(protocol_error(
+            "LAUNCH_DEPTH_EXCEEDED",
+            format!(
+                "Launched sessions may go {MAX_LAUNCH_DEPTH} levels deep and this session is already at {}. Do the work here, or message a session nearer the top to launch it.",
+                lineage.depth
+            ),
+        ));
+    }
+    if lineage.launched >= MAX_LAUNCHES_PER_SESSION {
+        return Err(protocol_error(
+            "LAUNCH_LIMIT_REACHED",
+            format!(
+                "This session has already launched {MAX_LAUNCHES_PER_SESSION} sessions, which is the per-session cap. Message one of them instead."
+            ),
+        ));
+    }
+    let provider = action.provider.unwrap_or(parent.provider);
+    // A model id names a model the CLI accepts; Rust has no label catalog
+    // (labels live in `src/shared/providerModels.ts`), so an explicit id is
+    // its own sidebar label — the same fallback session sync uses.
+    let (model_label, model_id, reasoning_effort) =
+        match (action.model, provider == parent.provider) {
+            (Some(model), _) => (model.clone(), model, provider_effort(provider, &parent)),
+            (None, true) => (
+                parent.model_label.clone(),
+                parent.model_id.clone(),
+                parent.reasoning_effort,
+            ),
+            (None, false) => {
+                let defaults = crate::provider_defaults(provider.as_str());
+                (
+                    defaults.model_label.to_string(),
+                    defaults.model_id.to_string(),
+                    parse_reasoning_effort(defaults.reasoning_effort),
+                )
+            }
+        };
     let outcome = launch_with_spec(
         LaunchSpec {
-            project: request.project,
-            prompt,
-            worktree: request.worktree,
-            provider: parent.provider,
-            model_label: parent.model_label,
-            model_id: parent.model_id,
-            reasoning_effort: parent.reasoning_effort,
+            project: action.project,
+            prompt: action.prompt,
+            worktree: action.worktree,
+            provider,
+            model_label,
+            model_id,
+            reasoning_effort,
             fast_mode: parent.fast_mode,
             permission_mode: parent.permission_mode,
             agent_mode: parent.agent_mode,
+            task_label: action.task_label,
         },
-        database,
+        Arc::clone(&database),
         workspaces,
         providers,
         &parent_project_id,
     )
     .await?;
-    Ok(SessionLaunchResponse::success(
-        outcome.session_id,
-        outcome.workspace_id,
-        outcome.project_id,
-        outcome.project_name,
-    ))
+    {
+        let connection = database.connection();
+        record_session_launch(&connection, &outcome.session_id, &parent.session_id, depth)
+            .map_err(argmax_protocol_error)?;
+    }
+    Ok(SessionControlResponse::new(SessionControlResult::Launched(
+        LaunchedSession {
+            session_id: outcome.session_id,
+            workspace_id: outcome.workspace_id,
+            project_id: outcome.project_id,
+            project_name: outcome.project_name,
+        },
+    )))
+}
+
+/// The effort to carry onto an explicitly named model: the caller's own when
+/// it stays on its provider, that provider's default otherwise.
+fn provider_effort(
+    provider: crate::providers::ProviderId,
+    parent: &ParentLaunchSettings,
+) -> Option<crate::providers::ReasoningEffort> {
+    if provider == parent.provider {
+        return parent.reasoning_effort;
+    }
+    parse_reasoning_effort(crate::provider_defaults(provider.as_str()).reasoning_effort)
+}
+
+fn parse_reasoning_effort(value: Option<&str>) -> Option<crate::providers::ReasoningEffort> {
+    serde_json::from_value(serde_json::json!(value?)).ok()
 }
 
 async fn handle_session_control(
-    request: SessionLaunchRequest,
+    request: SessionControlRequest,
     parent: ParentLaunchSettings,
     database: Arc<Database>,
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
     registry: Arc<SessionLaunchRegistry>,
-) -> Result<SessionLaunchResponse, SessionLaunchProtocolError> {
+) -> Result<SessionControlResponse, SessionControlError> {
     if request.version != PROTOCOL_VERSION {
         return Err(protocol_error(
             "VERSION_UNSUPPORTED",
@@ -809,36 +896,26 @@ async fn handle_session_control(
         ));
     }
     match request.action {
-        SessionControlAction::Launch => {
-            launch_session(request, parent, database, workspaces, providers).await
+        SessionControlAction::Launch(action) => {
+            launch_session(action, parent, database, workspaces, providers).await
         }
-        SessionControlAction::Move => {
-            schedule_session_move(request, parent, database, workspaces, providers, registry).await
+        SessionControlAction::Move(action) => {
+            schedule_session_move(action, parent, database, workspaces, providers, registry).await
         }
-        SessionControlAction::List => list_sessions_action(request, parent, database).await,
-        SessionControlAction::Message => message_session(request, parent, providers).await,
+        SessionControlAction::List(action) => list_sessions_action(action, parent, database).await,
+        SessionControlAction::Message(action) => message_session(action, parent, providers).await,
     }
 }
 
 async fn list_sessions_action(
-    request: SessionLaunchRequest,
+    action: ListAction,
     parent: ParentLaunchSettings,
     database: Arc<Database>,
-) -> Result<SessionLaunchResponse, SessionLaunchProtocolError> {
-    if request.session_id.is_some()
-        || request.prompt.is_some()
-        || request.worktree
-        || request.keep_source
-    {
+) -> Result<SessionControlResponse, SessionControlError> {
+    if action.all && action.project.is_some() {
         return Err(protocol_error(
             "ARGUMENT_INVALID",
-            "Session list accepts only --project and --all.",
-        ));
-    }
-    if request.all && request.project.is_some() {
-        return Err(protocol_error(
-            "ARGUMENT_INVALID",
-            "--all cannot be combined with --project.",
+            "A session list is scoped either by project or across all of them, not both.",
         ));
     }
     let connection = database.connection();
@@ -850,7 +927,7 @@ async fn list_sessions_action(
             .map_err(argmax_protocol_error)?
             .project_id
     };
-    let scoped_projects = if request.all {
+    let scoped_projects = if action.all {
         all_projects
             .into_iter()
             .filter(|project| project.id != crate::workspaces::SCRATCH_PROJECT_ID)
@@ -858,7 +935,7 @@ async fn list_sessions_action(
     } else {
         vec![resolve_project(
             &all_projects,
-            request.project.as_deref(),
+            action.project.as_deref(),
             &parent_project_id,
         )?]
     };
@@ -899,43 +976,34 @@ async fn list_sessions_action(
                 provider: session.provider,
                 state: session.state,
                 last_activity_at: session.last_activity_at,
+                launched_by_session_id: session.launched_by_session_id,
             })
         })
         .collect();
     entries.sort_by(|left, right| right.last_activity_at.cmp(&left.last_activity_at));
     let truncated = entries.len() > SESSION_LIST_LIMIT;
     entries.truncate(SESSION_LIST_LIMIT);
-    Ok(SessionLaunchResponse::sessions(entries, truncated))
+    Ok(SessionControlResponse::new(SessionControlResult::Listed(
+        SessionList {
+            sessions: entries,
+            truncated,
+        },
+    )))
 }
 
 async fn message_session(
-    request: SessionLaunchRequest,
+    action: MessageAction,
     parent: ParentLaunchSettings,
     providers: Arc<ProviderSessionService>,
-) -> Result<SessionLaunchResponse, SessionLaunchProtocolError> {
-    if request.project.is_some() || request.worktree || request.keep_source || request.all {
-        return Err(protocol_error(
-            "ARGUMENT_INVALID",
-            "Session message accepts only --session and --prompt.",
-        ));
-    }
-    let session_id = request.session_id.ok_or_else(|| {
-        protocol_error("SESSION_ID_REQUIRED", "Session message requires --session.")
-    })?;
-    if session_id == parent.session_id {
+) -> Result<SessionControlResponse, SessionControlError> {
+    if action.session_id == parent.session_id {
         return Err(protocol_error(
             "MESSAGE_SELF",
-            "Session message must target a different session; this is the current session.",
+            "A session cannot message itself; name another session's id.",
         ));
     }
-    let prompt = request.prompt.ok_or_else(|| {
-        protocol_error(
-            "PROMPT_REQUIRED",
-            "Session message requires --prompt or --prompt-stdin.",
-        )
-    })?;
-    let target = SessionId::try_from(session_id.clone()).map_err(invalid_input_error)?;
-    let message = Prompt::try_from(prompt).map_err(invalid_input_error)?;
+    let target = SessionId::try_from(action.session_id.clone()).map_err(invalid_input_error)?;
+    let message = Prompt::try_from(action.message).map_err(invalid_input_error)?;
     let result = providers
         .send_input(ProvidersSendInput {
             session_id: target,
@@ -950,29 +1018,23 @@ async fn message_session(
         })
         .await
         .map_err(argmax_protocol_error)?;
-    Ok(SessionLaunchResponse::messaged(session_id, result.queued))
+    Ok(SessionControlResponse::new(SessionControlResult::Messaged(
+        MessageDelivery {
+            session_id: action.session_id,
+            queued: result.queued,
+        },
+    )))
 }
 
 async fn schedule_session_move(
-    request: SessionLaunchRequest,
+    action: MoveAction,
     parent: ParentLaunchSettings,
     database: Arc<Database>,
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
     registry: Arc<SessionLaunchRegistry>,
-) -> Result<SessionLaunchResponse, SessionLaunchProtocolError> {
-    if request.prompt.is_some() {
-        return Err(protocol_error(
-            "ARGUMENT_INVALID",
-            "Session move does not accept a prompt.",
-        ));
-    }
-    let selector = request.project.as_deref().ok_or_else(|| {
-        protocol_error(
-            "PROJECT_REQUIRED",
-            "Session move requires --project with a different registered project.",
-        )
-    })?;
+) -> Result<SessionControlResponse, SessionControlError> {
+    let selector = action.project.as_str();
     let (source_session, source_workspace, destination) = {
         let connection = database.connection();
         let source_session =
@@ -1008,8 +1070,8 @@ async fn schedule_session_move(
                 payload: serde_json::json!({
                     "destinationProjectId": destination.id,
                     "destinationProjectName": destination.name,
-                    "worktree": request.worktree,
-                    "keepSource": request.keep_source,
+                    "worktree": action.worktree,
+                    "keepSource": action.keep_source,
                 }),
                 created_at: None,
             },
@@ -1038,8 +1100,8 @@ async fn schedule_session_move(
             .move_session_to_project(
                 &source_session_id,
                 &scheduled_destination_project_id,
-                request.worktree,
-                request.keep_source,
+                action.worktree,
+                action.keep_source,
             )
             .await;
         if let Err(error) = result {
@@ -1061,10 +1123,13 @@ async fn schedule_session_move(
         move_registry.finish_move(&source_session_id);
     });
 
-    Ok(SessionLaunchResponse::scheduled(
-        parent.session_id,
-        destination_project_id,
-        destination_project_name,
+    Ok(SessionControlResponse::new(
+        SessionControlResult::Scheduled(ScheduledMove {
+            scheduled: true,
+            source_session_id: parent.session_id,
+            project_id: destination_project_id,
+            project_name: destination_project_name,
+        }),
     ))
 }
 
@@ -1072,7 +1137,7 @@ fn resolve_project(
     projects: &[ProjectSummary],
     selector: Option<&str>,
     parent_project_id: &str,
-) -> Result<ProjectSummary, SessionLaunchProtocolError> {
+) -> Result<ProjectSummary, SessionControlError> {
     // The hidden scratch project is not a repository: routing a launch at it
     // would run `create_current` against the app-owned side-chats root.
     let projects: Vec<ProjectSummary> = projects
@@ -1168,7 +1233,7 @@ fn task_label(prompt: &str) -> String {
     format!("{prefix}{TASK_LABEL_ELLIPSIS}")
 }
 
-fn terminal_cols(value: u16) -> Result<TerminalCols, SessionLaunchProtocolError> {
+fn terminal_cols(value: u16) -> Result<TerminalCols, SessionControlError> {
     serde_json::from_value(serde_json::json!(value)).map_err(|error| {
         protocol_error(
             "INTERNAL_INPUT_INVALID",
@@ -1177,7 +1242,7 @@ fn terminal_cols(value: u16) -> Result<TerminalCols, SessionLaunchProtocolError>
     })
 }
 
-fn terminal_rows(value: u16) -> Result<TerminalRows, SessionLaunchProtocolError> {
+fn terminal_rows(value: u16) -> Result<TerminalRows, SessionControlError> {
     serde_json::from_value(serde_json::json!(value)).map_err(|error| {
         protocol_error(
             "INTERNAL_INPUT_INVALID",
@@ -1186,11 +1251,11 @@ fn terminal_rows(value: u16) -> Result<TerminalRows, SessionLaunchProtocolError>
     })
 }
 
-fn invalid_input_error(error: crate::error::InvalidInputIssue) -> SessionLaunchProtocolError {
+fn invalid_input_error(error: crate::error::InvalidInputIssue) -> SessionControlError {
     protocol_error(error.code, error.message)
 }
 
-fn argmax_protocol_error(error: ArgmaxError) -> SessionLaunchProtocolError {
+fn argmax_protocol_error(error: ArgmaxError) -> SessionControlError {
     match error {
         ArgmaxError::InvalidInput { issues } => issues.into_iter().next().map_or_else(
             || protocol_error("INVALID_INPUT", "Input is invalid."),
@@ -1200,18 +1265,15 @@ fn argmax_protocol_error(error: ArgmaxError) -> SessionLaunchProtocolError {
             protocol_error("RECORD_NOT_FOUND", format!("{kind} '{id}' was not found."))
         }
         ArgmaxError::MigrationDrift { detail } => protocol_error("MIGRATION_DRIFT", detail),
-        ArgmaxError::ServiceError { sub_code, message } => SessionLaunchProtocolError {
+        ArgmaxError::ServiceError { sub_code, message } => SessionControlError {
             code: sub_code,
             message,
         },
     }
 }
 
-fn protocol_error(
-    code: impl Into<String>,
-    message: impl Into<String>,
-) -> SessionLaunchProtocolError {
-    SessionLaunchProtocolError {
+fn protocol_error(code: impl Into<String>, message: impl Into<String>) -> SessionControlError {
+    SessionControlError {
         code: code.into(),
         message: message.into(),
     }
@@ -1222,13 +1284,13 @@ fn random_bearer_token() -> String {
 }
 
 #[derive(Debug, PartialEq)]
-enum CliPrompt {
+pub enum CliPrompt {
     Value(String),
     Stdin,
 }
 
 #[derive(Debug, PartialEq)]
-enum SessionControlCliInput {
+pub enum SessionControlCliInput {
     Launch {
         project: Option<String>,
         prompt: CliPrompt,
@@ -1247,6 +1309,52 @@ enum SessionControlCliInput {
         session_id: String,
         prompt: CliPrompt,
     },
+}
+
+impl SessionControlCliInput {
+    /// Resolve `--prompt-stdin` and hand back the wire action. Parsing never
+    /// reads stdin, so the argv shape and the protocol stay separate types.
+    fn into_action(self) -> Result<SessionControlAction, SessionControlError> {
+        Ok(match self {
+            SessionControlCliInput::Launch {
+                project,
+                prompt,
+                worktree,
+            } => SessionControlAction::Launch(LaunchAction {
+                prompt: prompt.read()?,
+                project,
+                worktree,
+                ..LaunchAction::default()
+            }),
+            SessionControlCliInput::Move {
+                project,
+                worktree,
+                keep_source,
+            } => SessionControlAction::Move(MoveAction {
+                project,
+                worktree,
+                keep_source,
+            }),
+            SessionControlCliInput::List { project, all } => {
+                SessionControlAction::List(ListAction { project, all })
+            }
+            SessionControlCliInput::Message { session_id, prompt } => {
+                SessionControlAction::Message(MessageAction {
+                    session_id,
+                    message: prompt.read()?,
+                })
+            }
+        })
+    }
+}
+
+impl CliPrompt {
+    fn read(self) -> Result<String, SessionControlError> {
+        match self {
+            CliPrompt::Value(value) => Ok(value),
+            CliPrompt::Stdin => read_bounded_stdin(),
+        }
+    }
 }
 
 pub fn try_run_session_control_cli<I, S>(args: I) -> Option<i32>
@@ -1499,7 +1607,7 @@ fn run_session_control_cli(input: SessionControlCliInput) -> i32 {
     }
     #[cfg(unix)]
     {
-        match run_session_control_cli_unix(input) {
+        match input.into_action().and_then(send_session_control) {
             Ok(response) => {
                 println!(
                     "{}",
@@ -1516,10 +1624,13 @@ fn run_session_control_cli(input: SessionControlCliInput) -> i32 {
     }
 }
 
+/// One round trip on the session-control socket. Every caller — the CLI, the
+/// MCP tools — goes through here, so the framing, the timeouts, and the size
+/// caps have one implementation.
 #[cfg(unix)]
-fn run_session_control_cli_unix(
-    input: SessionControlCliInput,
-) -> Result<SessionLaunchResponse, SessionLaunchProtocolError> {
+pub fn send_session_control(
+    action: SessionControlAction,
+) -> Result<SessionControlResponse, SessionControlError> {
     use std::net::Shutdown;
     use std::os::unix::net::UnixStream;
 
@@ -1535,68 +1646,10 @@ fn run_session_control_cli_unix(
             format!("{SESSION_LAUNCH_TOKEN_ENV} is not set. Run this command inside Argmax."),
         )
     })?;
-    let (action, project, prompt, worktree, keep_source, session_id, all) = match input {
-        SessionControlCliInput::Launch {
-            project,
-            prompt,
-            worktree,
-        } => (
-            SessionControlAction::Launch,
-            project,
-            Some(match prompt {
-                CliPrompt::Value(value) => value,
-                CliPrompt::Stdin => read_bounded_stdin()?,
-            }),
-            worktree,
-            false,
-            None,
-            false,
-        ),
-        SessionControlCliInput::Move {
-            project,
-            worktree,
-            keep_source,
-        } => (
-            SessionControlAction::Move,
-            Some(project),
-            None,
-            worktree,
-            keep_source,
-            None,
-            false,
-        ),
-        SessionControlCliInput::List { project, all } => (
-            SessionControlAction::List,
-            project,
-            None,
-            false,
-            false,
-            None,
-            all,
-        ),
-        SessionControlCliInput::Message { session_id, prompt } => (
-            SessionControlAction::Message,
-            None,
-            Some(match prompt {
-                CliPrompt::Value(value) => value,
-                CliPrompt::Stdin => read_bounded_stdin()?,
-            }),
-            false,
-            false,
-            Some(session_id),
-            false,
-        ),
-    };
-    let request = SessionLaunchRequest {
+    let request = SessionControlRequest {
         version: PROTOCOL_VERSION,
         token,
         action,
-        project,
-        prompt,
-        worktree,
-        keep_source,
-        session_id,
-        all,
     };
     let mut encoded = serde_json::to_vec(&request).map_err(|error| {
         protocol_error(
@@ -1632,7 +1685,7 @@ fn run_session_control_cli_unix(
     stream
         .shutdown(Shutdown::Write)
         .map_err(|error| protocol_error("REQUEST_WRITE_FAILED", error.to_string()))?;
-    let response = read_json_line::<SessionLaunchResponse>(&mut stream, MAX_RESPONSE_BYTES)
+    let response = read_json_line::<SessionControlResponse>(&mut stream, MAX_RESPONSE_BYTES)
         .map_err(|error| protocol_error(error.code, error.message))?;
     if response.version != PROTOCOL_VERSION {
         return Err(protocol_error(
@@ -1640,41 +1693,27 @@ fn run_session_control_cli_unix(
             format!("Argmax returned protocol version {}.", response.version),
         ));
     }
-    if !response.ok {
-        return Err(response.error.unwrap_or_else(|| {
-            protocol_error(
-                "RESPONSE_INVALID",
-                "Argmax returned an invalid error response.",
-            )
-        }));
-    }
-    let complete = match request.action {
-        SessionControlAction::Launch => {
-            response.session_id.is_some()
-                && response.workspace_id.is_some()
-                && response.project_id.is_some()
-                && response.project_name.is_some()
-                && response.scheduled.is_none()
-        }
-        SessionControlAction::Move => {
-            response.source_session_id.is_some()
-                && response.project_id.is_some()
-                && response.project_name.is_some()
-                && response.scheduled == Some(true)
-        }
-        SessionControlAction::List => response.sessions.is_some(),
-        SessionControlAction::Message => response.session_id.is_some() && response.queued.is_some(),
+    let matches_action = match (&request.action, &response.result) {
+        (_, SessionControlResult::Error(_)) => true,
+        (SessionControlAction::Launch(_), SessionControlResult::Launched(_)) => true,
+        (SessionControlAction::Move(_), SessionControlResult::Scheduled(_)) => true,
+        (SessionControlAction::List(_), SessionControlResult::Listed(_)) => true,
+        (SessionControlAction::Message(_), SessionControlResult::Messaged(_)) => true,
+        _ => false,
     };
-    if !complete || response.error.is_some() {
+    if !matches_action {
         return Err(protocol_error(
             "RESPONSE_INVALID",
-            "Argmax returned an incomplete success response.",
+            "Argmax answered with a result that does not match the request.",
         ));
     }
-    Ok(response)
+    match response.result {
+        SessionControlResult::Error(error) => Err(error),
+        result => Ok(SessionControlResponse::new(result)),
+    }
 }
 
-fn read_bounded_stdin() -> Result<String, SessionLaunchProtocolError> {
+fn read_bounded_stdin() -> Result<String, SessionControlError> {
     let mut bytes = Vec::new();
     io::stdin()
         .take((MAX_REQUEST_BYTES + 1) as u64)
@@ -1900,20 +1939,122 @@ mod tests {
 
     #[test]
     fn request_rejects_unknown_fields_and_requires_newline() {
-        let with_unknown = b"{\"version\":1,\"token\":\"x\",\"project\":null,\"prompt\":\"p\",\"worktree\":false,\"extra\":true}\n";
+        let with_unknown =
+            b"{\"version\":1,\"token\":\"x\",\"action\":{\"list\":{\"all\":true}},\"extra\":true}\n";
         assert_eq!(
-            read_json_line::<SessionLaunchRequest>(&mut with_unknown.as_slice(), MAX_REQUEST_BYTES)
-                .unwrap_err()
-                .code,
+            read_json_line::<SessionControlRequest>(
+                &mut with_unknown.as_slice(),
+                MAX_REQUEST_BYTES
+            )
+            .unwrap_err()
+            .code,
             "REQUEST_INVALID"
         );
-        let no_newline =
-            br#"{"version":1,"token":"x","project":null,"prompt":"p","worktree":false}"#;
+        // A field that belongs to another action is rejected with it.
+        let wrong_action =
+            b"{\"version\":1,\"token\":\"x\",\"action\":{\"list\":{\"keepSource\":true}}}\n";
         assert_eq!(
-            read_json_line::<SessionLaunchRequest>(&mut no_newline.as_slice(), MAX_REQUEST_BYTES)
+            read_json_line::<SessionControlRequest>(
+                &mut wrong_action.as_slice(),
+                MAX_REQUEST_BYTES
+            )
+            .unwrap_err()
+            .code,
+            "REQUEST_INVALID"
+        );
+        let no_newline = br#"{"version":1,"token":"x","action":{"list":{"all":false}}}"#;
+        assert_eq!(
+            read_json_line::<SessionControlRequest>(&mut no_newline.as_slice(), MAX_REQUEST_BYTES)
                 .unwrap_err()
                 .code,
             "REQUEST_NOT_TERMINATED"
+        );
+    }
+
+    #[test]
+    fn the_wire_round_trips_every_action_and_result() {
+        let request = SessionControlRequest {
+            version: PROTOCOL_VERSION,
+            token: "t".to_string(),
+            action: SessionControlAction::Launch(LaunchAction {
+                prompt: "Do it".to_string(),
+                project: Some("Argmax".to_string()),
+                worktree: true,
+                provider: Some(ProviderId::Claude),
+                model: Some("claude-opus-5".to_string()),
+                task_label: Some("Side quest".to_string()),
+            }),
+        };
+        let encoded = serde_json::to_value(&request).expect("encode");
+        assert_eq!(encoded["action"]["launch"]["provider"], "claude");
+        assert_eq!(
+            serde_json::from_value::<SessionControlRequest>(encoded).expect("decode"),
+            request
+        );
+
+        for action in [
+            SessionControlAction::Move(MoveAction {
+                project: "Other".to_string(),
+                worktree: false,
+                keep_source: true,
+            }),
+            SessionControlAction::List(ListAction::default()),
+            SessionControlAction::Message(MessageAction {
+                session_id: "s1".to_string(),
+                message: "ping".to_string(),
+            }),
+        ] {
+            let encoded = serde_json::to_string(&action).expect("encode");
+            assert_eq!(
+                serde_json::from_str::<SessionControlAction>(&encoded).expect("decode"),
+                action
+            );
+        }
+
+        // The result is flattened, so an agent reads `{"version":1,"messaged":…}`.
+        let response =
+            SessionControlResponse::new(SessionControlResult::Messaged(MessageDelivery {
+                session_id: "s1".to_string(),
+                queued: true,
+            }));
+        let encoded = serde_json::to_value(&response).expect("encode");
+        assert_eq!(encoded["messaged"]["queued"], true);
+        assert_eq!(encoded["version"], PROTOCOL_VERSION);
+    }
+
+    #[test]
+    fn the_cli_resolves_its_prompt_into_one_wire_action() {
+        let action = SessionControlCliInput::Launch {
+            project: Some("Argmax".to_string()),
+            prompt: CliPrompt::Value("Ship it".to_string()),
+            worktree: true,
+        }
+        .into_action()
+        .expect("action");
+        assert_eq!(
+            action,
+            SessionControlAction::Launch(LaunchAction {
+                prompt: "Ship it".to_string(),
+                project: Some("Argmax".to_string()),
+                worktree: true,
+                provider: None,
+                model: None,
+                task_label: None,
+            })
+        );
+
+        let message = SessionControlCliInput::Message {
+            session_id: "abc".to_string(),
+            prompt: CliPrompt::Value("Ping".to_string()),
+        }
+        .into_action()
+        .expect("action");
+        assert_eq!(
+            message,
+            SessionControlAction::Message(MessageAction {
+                session_id: "abc".to_string(),
+                message: "Ping".to_string(),
+            })
         );
     }
 
@@ -1996,13 +2137,18 @@ mod tests {
             (SESSION_LAUNCH_TOKEN_ENV.to_string(), "secret".to_string())
         );
         assert_eq!(env[2].0, ARGMAX_BIN_ENV);
-        let prompt = config.prepend_instruction("Do the work");
-        assert!(prompt.starts_with("Argmax session controls"));
-        assert!(prompt.ends_with("\n\nDo the work"));
-        assert!(prompt.contains("not subagents"));
-        assert!(
-            prompt.contains("Never launch, move, list, or message sessions on your own initiative")
+        // A provider that loads the MCP server is told one line; one that
+        // cannot gets the shell commands spelled out.
+        let with_tools = config.prepend_instruction(ProviderId::Claude, false, "Do the work");
+        assert!(with_tools.starts_with("Argmax tools are available as the `argmax` MCP server"));
+        assert!(with_tools.ends_with("\n\nDo the work"));
+        let cursor_pty = config.prepend_instruction(ProviderId::Cursor, false, "Do the work");
+        assert!(cursor_pty.contains("session launch --project"));
+        assert_eq!(
+            config.prepend_instruction(ProviderId::Cursor, true, "Do the work"),
+            with_tools
         );
+        assert!(config.prepend_instruction(ProviderId::Grok, false, "Do the work") == cursor_pty);
     }
 
     #[test]

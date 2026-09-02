@@ -65,7 +65,7 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
  * models run the full low→ultra list. Codex Sol/Terra match that (their CLI
  * catalog lists max and ultra). Codex Luna stops at Max. Cursor's GPT-5.6
  * Luna/Terra/Sol and Opus 5 Thinking go to Max (no Ultra suffix). Cursor Grok
- * 4.6 and Gemini 3.7 Flash stop at High. OpenCode Go (opencode-go/*) models
+ * 4.6 and Gemini 3.8 Flash stop at High. OpenCode Go (opencode-go/*) models
  * ship non-prefix variant lists because their CLI exposes only certain
  * discrete levels (e.g. low/high/max). Kept in sync with the Rust adapters'
  * effort → model mapping.
@@ -90,7 +90,7 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
     provider === "cursor" &&
     (modelId.startsWith("cursor-grok-4.6") ||
       modelId.startsWith("cursor-grok-4.5") ||
-      modelId.startsWith("gemini-3.7-flash"))
+      modelId.startsWith("gemini-3.8-flash"))
   ) {
     return REASONING_EFFORTS.slice(0, 3); // low → high
   }
@@ -137,6 +137,30 @@ export function clampEffort(
 /** Effort an effort-capable model gets when first picked (before Edit). */
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
 
+/**
+ * Effort a model actually runs at, given the app-wide default effort the user
+ * picked in Settings. Models offer different ladders (Grok Build stops at
+ * Extra High, the OpenCode Go variants are discrete sets), so a single global
+ * preference cannot apply verbatim everywhere:
+ *
+ *  - the preferred level when the model offers it;
+ *  - otherwise Medium, the level almost every ladder carries;
+ *  - otherwise the nearest level at or below Medium, and failing that the
+ *    model's lowest.
+ *
+ * Callers gate on `supportsReasoningEffort` — a fast model has no effort at
+ * all, and this function does not look at that flag.
+ */
+export function effortForModel(
+  provider: ProviderId,
+  modelId: string,
+  preferred: ReasoningEffort = DEFAULT_REASONING_EFFORT
+): ReasoningEffort | undefined {
+  const allowed = reasoningEffortsForModel(provider, modelId);
+  if (allowed.includes(preferred)) return preferred;
+  return clampEffort(DEFAULT_REASONING_EFFORT, allowed);
+}
+
 // One entry per model. Effort is chosen separately via the effort control (the
 // standalone slider chip, or the per-row Edit submenu), not by selecting a
 // different row. Models without `supportsReasoningEffort` are fast/no-effort and
@@ -171,8 +195,8 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       contextWindow: 1_000_000
     },
     {
-      label: "Gemini 3.7 Flash (Cursor)",
-      modelId: "gemini-3.7-flash-medium",
+      label: "Gemini 3.8 Flash (Cursor)",
+      modelId: "gemini-3.8-flash-medium",
       supportsReasoningEffort: true,
       contextWindow: 1_000_000
     },
@@ -307,7 +331,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // layer.
   "composer-2.5":                     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "cursor-grok-4.6-medium":           { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gemini-3.7-flash-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gemini-3.8-flash-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-sol-medium":               { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-terra-medium":             { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-luna-medium":              { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -376,6 +400,7 @@ const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
   "gpt-5.5-medium":         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-3.5-flash":       { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-3.6-flash-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gemini-3.7-flash-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "cursor-grok-4.5-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 };
 

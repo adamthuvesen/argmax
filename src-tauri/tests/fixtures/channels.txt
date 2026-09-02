@@ -84,6 +84,14 @@ browser:stop
 browser:set-bounds
 browser:close
 browser:fill-credentials
+browser:screenshot
+browser:evaluate
+browser:list-tabs
+browser:open-for-session
+browser:snapshot
+browser:find
+browser:get-text
+browser:act
 routines:list
 routines:upsert
 routines:delete

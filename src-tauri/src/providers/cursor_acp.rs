@@ -20,8 +20,10 @@
 //!   one-shot PTY path.
 //! - Cursor's ACP stream never reports token usage, so ACP turns record no
 //!   usage/cost row.
-//! - Hosted-agent session-launch credentials are per-process env vars, which a
-//!   shared warm process cannot carry; ACP turns skip that injection.
+//! - The warm process is shared per workspace, so the per-session Argmax
+//!   credential cannot ride in its environment. It rides in the `mcpServers`
+//!   entry of `session/new` / `session/load` instead, which ACP scopes to the
+//!   session being created or loaded.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -40,9 +42,10 @@ use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-use super::{AgentMode, ProviderId, ProviderLaunchInput};
+use super::{mcp_injection, AgentMode, ProviderId, ProviderLaunchInput};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
+use crate::session_control::SessionLaunchProcessConfig;
 use crate::util::sync::LockOrRecover;
 
 /// The only model family routed through ACP today. Composer has no reasoning
@@ -105,8 +108,10 @@ impl CursorAcpSessions {
         &self,
         binary_path: &str,
         input: &ProviderLaunchInput,
+        session_launch: Option<&SessionLaunchProcessConfig>,
         on_event: EventCallback,
     ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
+        let mcp_servers = mcp_injection::acp_mcp_servers(session_launch);
         let workspace = self.workspace_client(binary_path, input).await?;
         let client = Arc::clone(&workspace.client);
 
@@ -128,7 +133,7 @@ impl CursorAcpSessions {
                             json!({
                                 "sessionId": resume_id,
                                 "cwd": input.workspace_path,
-                                "mcpServers": [],
+                                "mcpServers": mcp_servers,
                             }),
                         )
                         .await;
@@ -146,7 +151,7 @@ impl CursorAcpSessions {
                 let response = client
                     .request(
                         "session/new",
-                        json!({ "cwd": input.workspace_path, "mcpServers": [] }),
+                        json!({ "cwd": input.workspace_path, "mcpServers": mcp_servers }),
                     )
                     .await?;
                 let session_id = response
@@ -471,6 +476,9 @@ struct TurnTranslation {
 struct ToolInfo {
     key: String,
     args: Value,
+    /// Whether the `started` line has been emitted. An MCP call arrives
+    /// nameless and is named by a later update, so its start waits for that.
+    started: bool,
 }
 
 impl TurnTranslation {
@@ -502,22 +510,32 @@ impl TurnTranslation {
                 let Some(call_id) = update.get("toolCallId").and_then(Value::as_str) else {
                     return Vec::new();
                 };
-                let key = tool_key(update);
-                let args = update
-                    .get("rawInput")
-                    .cloned()
-                    .unwrap_or_else(|| title_args(update));
-                let started = json!({
-                    "type": "tool_call",
-                    "subtype": "started",
-                    "call_id": call_id,
-                    "tool_call": { key.clone(): { "args": args.clone() } },
-                });
-                self.tools
-                    .insert(call_id.to_string(), ToolInfo { key, args });
-                let mut lines = vec![started];
+                let named = mcp_identity(update).is_some() || !is_placeholder(update);
+                let (key, args) = match mcp_identity(update) {
+                    Some(identity) => identity,
+                    None => (
+                        tool_key(update),
+                        update
+                            .get("rawInput")
+                            .cloned()
+                            .unwrap_or_else(|| title_args(update)),
+                    ),
+                };
+                self.tools.insert(
+                    call_id.to_string(),
+                    ToolInfo {
+                        key,
+                        args,
+                        started: false,
+                    },
+                );
+                let mut lines = Vec::new();
+                if named {
+                    lines.extend(self.started_line(call_id));
+                }
                 // Some agents emit tool_call already terminal; close it out.
                 if is_terminal_status(update) {
+                    lines.extend(self.started_line(call_id));
                     lines.extend(self.completion_line(call_id, update));
                 }
                 lines
@@ -526,13 +544,45 @@ impl TurnTranslation {
                 let Some(call_id) = update.get("toolCallId").and_then(Value::as_str) else {
                     return Vec::new();
                 };
-                if !is_terminal_status(update) {
-                    return Vec::new();
+                // The identity of an MCP call arrives here, not on the
+                // `tool_call` that opened it: Cursor sends a nameless
+                // "MCP: tool" placeholder first, then an update carrying
+                // `{providerIdentifier, toolName, args}`.
+                if let Some((key, args)) = mcp_identity(update) {
+                    if let Some(info) = self.tools.get_mut(call_id) {
+                        if !info.started {
+                            info.key = key;
+                            info.args = args;
+                        }
+                    }
                 }
-                self.completion_line(call_id, update)
+                let mut lines = self.started_line(call_id);
+                if is_terminal_status(update) {
+                    lines.extend(self.completion_line(call_id, update));
+                }
+                lines
             }
             _ => Vec::new(),
         }
+    }
+
+    /// The `started` line, once. Called again for the same tool it yields
+    /// nothing, so a nameless call can wait for its name without the row
+    /// appearing twice.
+    fn started_line(&mut self, call_id: &str) -> Vec<Value> {
+        let Some(info) = self.tools.get_mut(call_id) else {
+            return Vec::new();
+        };
+        if info.started {
+            return Vec::new();
+        }
+        info.started = true;
+        vec![json!({
+            "type": "tool_call",
+            "subtype": "started",
+            "call_id": call_id,
+            "tool_call": { info.key.clone(): { "args": info.args.clone() } },
+        })]
     }
 
     fn completion_line(&mut self, call_id: &str, update: &Value) -> Vec<Value> {
@@ -582,6 +632,31 @@ fn tool_key(update: &Value) -> String {
         Some(kind) if !kind.is_empty() => kind.to_string(),
         _ => "tool_call".to_string(),
     }
+}
+
+/// An MCP call's real name and arguments. Cursor reports them as
+/// `rawInput: {providerIdentifier, toolName, args}`; naming the row
+/// `mcp__<server>__<tool>` matches what Claude's own stream shows.
+fn mcp_identity(update: &Value) -> Option<(String, Value)> {
+    let raw_input = update.get("rawInput")?;
+    let server = raw_input
+        .get("providerIdentifier")
+        .and_then(Value::as_str)?;
+    let tool = raw_input.get("toolName").and_then(Value::as_str)?;
+    let args = raw_input.get("args").cloned().unwrap_or_else(|| json!({}));
+    Some((format!("mcp__{server}__{tool}"), args))
+}
+
+/// A `tool_call` that names nothing: the bucket kind with no arguments, which
+/// is how an MCP call opens before Cursor identifies it.
+fn is_placeholder(update: &Value) -> bool {
+    let bucket_kind = matches!(update.get("kind").and_then(Value::as_str), Some("other"));
+    let empty_input = match update.get("rawInput") {
+        None => true,
+        Some(Value::Object(fields)) => fields.is_empty(),
+        Some(_) => false,
+    };
+    bucket_kind && empty_input
 }
 
 fn title_args(update: &Value) -> Value {
@@ -724,6 +799,85 @@ mod tests {
             "echo hi"
         );
         assert_eq!(completed[0]["tool_call"]["shell"]["result"]["output"], "hi");
+    }
+
+    #[test]
+    fn mcp_calls_are_named_by_the_update_that_identifies_them() {
+        // Recorded from `cursor-agent acp`: the call opens as a nameless
+        // "MCP: tool" placeholder and is identified by the next update.
+        let mut translation = TurnTranslation::default();
+        let placeholder = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "tool-1",
+            "title": "MCP: tool",
+            "kind": "other",
+            "status": "pending",
+            "rawInput": {},
+        })));
+        assert!(
+            placeholder.is_empty(),
+            "a nameless row would read as an anonymous 'other' tool"
+        );
+
+        let named = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "title": "argmax: session_list",
+            "rawInput": {
+                "providerIdentifier": "argmax",
+                "toolName": "session_list",
+                "args": { "all": true },
+            },
+        })));
+        assert_eq!(named.len(), 1);
+        assert_eq!(named[0]["subtype"], "started");
+        assert_eq!(
+            named[0]["tool_call"]["mcp__argmax__session_list"]["args"]["all"],
+            json!(true)
+        );
+
+        // The in-progress update does not repeat the row.
+        assert!(translation
+            .translate(&update(json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tool-1",
+                "status": "in_progress",
+            })))
+            .is_empty());
+
+        let completed = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "status": "completed",
+            "rawOutput": { "success": true },
+        })));
+        assert_eq!(completed.len(), 1);
+        assert_eq!(
+            completed[0]["tool_call"]["mcp__argmax__session_list"]["result"]["success"],
+            json!(true)
+        );
+    }
+
+    #[test]
+    fn a_nameless_tool_that_is_never_identified_still_reports_a_pair() {
+        let mut translation = TurnTranslation::default();
+        assert!(translation
+            .translate(&update(json!({
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tool-1",
+                "kind": "other",
+                "status": "pending",
+                "rawInput": {},
+            })))
+            .is_empty());
+        let lines = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "status": "completed",
+        })));
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0]["subtype"], "started");
+        assert_eq!(lines[1]["subtype"], "completed");
     }
 
     #[test]

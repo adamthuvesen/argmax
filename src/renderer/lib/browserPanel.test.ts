@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { BrowserTabInfo } from "../../shared/types.js";
 import {
+  activateBrowserTab,
+  applyBrowserTabs,
   claimBrowserSurface,
+  createBrowserTab,
+  getActiveBrowserTabId,
+  getAgentBrowserOpen,
+  getBrowserTabs,
   getBrowserOwnerId,
   getBrowserRequest,
   lastBrowsedUrl,
@@ -9,12 +16,17 @@ import {
   onBrowserCloseActiveTabRequest,
   openBrowserPanel,
   openInBrowserPanel,
+  isBrowserTabMaterialized,
   releaseBrowserSurface,
+  requestAgentBrowserOpen,
   requestCloseActiveBrowserTab,
   resetBrowserSurfaceForTests,
+  resetBrowserTabsForTests,
   resolveBrowserInput,
+  subscribeAgentBrowserOpen,
   subscribeBrowserOwner,
-  subscribeBrowserRequest
+  subscribeBrowserRequest,
+  subscribeBrowserTabs
 } from "./browserPanel.js";
 
 describe("resolveBrowserInput", () => {
@@ -163,5 +175,95 @@ describe("tab persistence", () => {
 
     fresh.resetBrowserTabsForTests();
     window.localStorage.removeItem("argmax.browser.tabs");
+  });
+});
+
+describe("mirroring the app's tab registry", () => {
+  afterEach(() => resetBrowserTabsForTests());
+
+  const registryTab = (
+    tabId: string,
+    overrides: Partial<BrowserTabInfo> = {}
+  ): BrowserTabInfo => ({
+    tabId,
+    ownerSessionId: null,
+    url: `https://${tabId}.example`,
+    title: null,
+    loading: false,
+    ...overrides
+  });
+
+  it("adds tabs the app opened, marking them live in this run", () => {
+    applyBrowserTabs([registryTab("agent-1", { ownerSessionId: "s1", title: "Example" })]);
+
+    const [tab] = getBrowserTabs();
+    expect(tab?.id).toBe("agent-1");
+    expect(tab?.ownerSessionId).toBe("s1");
+    expect(tab?.title).toBe("Example");
+    // The app created the webview, so no lazy re-open is needed.
+    expect(isBrowserTabMaterialized("agent-1")).toBe(true);
+  });
+
+  it("drops a tab that the registry has stopped reporting", () => {
+    applyBrowserTabs([registryTab("agent-1"), registryTab("agent-2")]);
+    applyBrowserTabs([registryTab("agent-2")]);
+
+    expect(getBrowserTabs().map((tab) => tab.id)).toEqual(["agent-2"]);
+  });
+
+  it("leaves a local tab alone until the registry has seen it once", () => {
+    // A tab whose browser:open is still in flight, or one restored from a
+    // previous run: absent from the push, but not closed.
+    const local = createBrowserTab("https://argmax.dev");
+    applyBrowserTabs([registryTab("agent-1")]);
+    expect(getBrowserTabs().map((tab) => tab.id)).toEqual([local.id, "agent-1"]);
+
+    applyBrowserTabs([registryTab("agent-1"), registryTab(local.id)]);
+    applyBrowserTabs([registryTab("agent-1")]);
+    expect(getBrowserTabs().map((tab) => tab.id)).toEqual(["agent-1"]);
+  });
+
+  it("keeps a title the strip already showed when the push carries none", () => {
+    applyBrowserTabs([registryTab("agent-1", { title: "Example Domain" })]);
+    applyBrowserTabs([registryTab("agent-1", { title: null, loading: true })]);
+
+    const [tab] = getBrowserTabs();
+    expect(tab?.title).toBe("Example Domain");
+    expect(tab?.loading).toBe(true);
+  });
+
+  it("re-points the active tab when the registry closes the one showing", () => {
+    applyBrowserTabs([registryTab("agent-1"), registryTab("agent-2")]);
+    activateBrowserTab("agent-2");
+    applyBrowserTabs([registryTab("agent-1")]);
+
+    expect(getActiveBrowserTabId()).toBe("agent-1");
+  });
+
+  it("does not notify subscribers when nothing changed", () => {
+    applyBrowserTabs([registryTab("agent-1")]);
+    const listener = vi.fn();
+    const unsubscribe = subscribeBrowserTabs(listener);
+    applyBrowserTabs([registryTab("agent-1")]);
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+});
+
+describe("agent-opened tabs", () => {
+  afterEach(() => resetBrowserTabsForTests());
+
+  it("publishes an addressed request every time, so a repeat still lands", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeAgentBrowserOpen(listener);
+
+    requestAgentBrowserOpen("s1", "agent-1", "https://example.com");
+    const first = getAgentBrowserOpen();
+    expect(first).toMatchObject({ sessionId: "s1", tabId: "agent-1", url: "https://example.com" });
+
+    requestAgentBrowserOpen("s1", "agent-1", "https://example.com");
+    expect(getAgentBrowserOpen()?.seq).toBeGreaterThan(first?.seq ?? 0);
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
   });
 });

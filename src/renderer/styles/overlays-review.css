@@ -1078,6 +1078,28 @@
   line-height: 1;
 }
 
+/* Marks a tab a session's agent opened, so the user can tell it apart from
+   the ones they opened themselves. */
+.browser-tab-agent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: 13px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--panel-sunken);
+  color: var(--muted-strong);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-ui);
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.browser-tab[aria-selected="true"] .browser-tab-agent {
+  color: var(--text);
+}
+
 .browser-tab-close {
   display: inline-flex;
   align-items: center;

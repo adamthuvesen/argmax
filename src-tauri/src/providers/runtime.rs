@@ -175,17 +175,35 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                 ));
             };
 
+            let session_launch = self
+                .session_launch_registry
+                .as_ref()
+                .map(|registry| registry.issue(&input));
+
             // Warm-process fast path: eligible Cursor launches run as ACP
             // prompts on a per-workspace `cursor-agent acp` process instead of
-            // paying the ~5.5 s one-shot client boot per turn. ACP turns skip
-            // the hosted-agent session-launch injection — its credentials are
-            // per-process env vars a shared warm process cannot carry — so the
-            // prompt stays unmodified here. Any ACP failure falls through to
+            // paying the ~5.5 s one-shot client boot per turn. The warm process
+            // is shared per workspace, so the per-session credential rides in
+            // the `mcpServers` entry of `session/new` / `session/load` rather
+            // than in the process environment. Any ACP failure falls through to
             // the proven one-shot path below.
             if super::cursor_acp::is_acp_eligible(&input) {
+                // The ACP prompt carries the short MCP note; the one-shot
+                // fallback below carries the long shell-command instruction,
+                // so the prefix is applied to a copy rather than to `input`.
+                let mut acp_input = input.clone();
+                if let Some(config) = session_launch.as_ref() {
+                    acp_input.prompt =
+                        config.prepend_instruction(input.provider, true, &input.prompt);
+                }
                 match self
                     .cursor_acp
-                    .launch_turn(binary_path.as_str(), &input, Arc::clone(&on_event))
+                    .launch_turn(
+                        binary_path.as_str(),
+                        &acp_input,
+                        session_launch.as_ref(),
+                        Arc::clone(&on_event),
+                    )
                     .await
                 {
                     Ok(handle) => return Ok(handle),
@@ -197,17 +215,15 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                 }
             }
 
-            let session_launch = self
-                .session_launch_registry
-                .as_ref()
-                .map(|registry| registry.issue(&input));
             if let Some(config) = session_launch.as_ref() {
-                input.prompt = config.prepend_instruction(&input.prompt);
+                input.prompt = config.prepend_instruction(input.provider, false, &input.prompt);
             }
 
             let args = match input.resume_conversation_id.as_deref() {
-                Some(resume_id) => (definition.structured_resume_args)(&input, resume_id),
-                None => (definition.structured_args)(&input),
+                Some(resume_id) => {
+                    (definition.structured_resume_args)(&input, resume_id, session_launch.as_ref())
+                }
+                None => (definition.structured_args)(&input, session_launch.as_ref()),
             };
 
             launch_structured_via_pty(
@@ -291,6 +307,11 @@ fn launch_structured_via_pty(
     if let Some(config) = session_launch {
         environment_overrides.extend(config.env_pairs());
     }
+    // OpenCode and Grok have no per-launch MCP flag: their server spec is a
+    // config file in the workspace, removed once the child exits.
+    let (mcp_environment, mcp_scratch_files) =
+        super::mcp_injection::launch_files(input.provider, &input.workspace_path, session_launch);
+    environment_overrides.extend(mcp_environment);
 
     let mut child = Command::new(binary_path)
         .args(&args)
@@ -361,6 +382,7 @@ fn launch_structured_via_pty(
     let drain_session_id = input.session_id.clone();
     thread::spawn(move || {
         let status = child.wait();
+        mcp_scratch_files.remove();
         wait_reaped.store(true, Ordering::SeqCst);
         let _ = exit_tx.send(());
         if reader_drained_rx

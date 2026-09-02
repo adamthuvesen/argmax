@@ -307,10 +307,7 @@ fn title_from_prompt(raw: &str) -> Option<String> {
         return non_empty(&title);
     }
 
-    let stripped = text
-        .strip_prefix(crate::session_control::SESSION_LAUNCH_INSTRUCTION)
-        .unwrap_or(text);
-    non_empty(stripped)
+    non_empty(crate::providers::mcp_injection::strip_instruction(text))
 }
 
 /// Contents of the first `<tag>…</tag>` pair, trimmed. Not a parser: these are
@@ -393,7 +390,7 @@ mod tests {
     fn argmax_own_launch_preamble_does_not_become_the_title() {
         let raw = format!(
             "{}\n\nGood morning! Status check.",
-            crate::session_control::SESSION_LAUNCH_INSTRUCTION
+            crate::providers::mcp_injection::SHELL_COMMAND_INSTRUCTION
         );
 
         assert_eq!(

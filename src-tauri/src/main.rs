@@ -10,5 +10,8 @@ fn main() {
     {
         std::process::exit(exit_code);
     }
+    if let Some(exit_code) = argmax_lib::mcp::try_run_mcp_cli(std::env::args_os()) {
+        std::process::exit(exit_code);
+    }
     argmax_lib::run();
 }

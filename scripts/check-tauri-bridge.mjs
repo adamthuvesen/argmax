@@ -47,9 +47,11 @@ if (duplicateFixtureChannels.length || missing.length || extra.length) {
 }
 
 const expectedPushChannels = [
+  "browser:agent-open",
   "browser:new-tab",
   "browser:page-command",
   "browser:state",
+  "browser:tabs",
   "dashboard:delta",
   "menu:command",
   "terminal:data",

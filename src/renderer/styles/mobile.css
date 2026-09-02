@@ -42,8 +42,8 @@ html:has(.mobile-shell) body {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: calc(6px + env(safe-area-inset-top)) 8px 6px 16px;
+  gap: 2px;
+  padding: calc(8px + env(safe-area-inset-top)) 10px 8px 20px;
   border-bottom: 1px solid var(--line-soft);
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   -webkit-backdrop-filter: blur(12px);
@@ -53,8 +53,8 @@ html:has(.mobile-shell) body {
 
 .mobile-list-header h1 {
   flex: 1;
-  font-size: var(--text-lg-tight);
-  font-weight: 650;
+  font-size: var(--text-md-plus);
+  font-weight: 600;
   letter-spacing: -0.01em;
   margin: 0;
 }
@@ -72,8 +72,8 @@ html:has(.mobile-shell) body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border: none;
   border-radius: 10px;
   background: none;
@@ -121,15 +121,21 @@ html:has(.mobile-shell) body {
 }
 
 .mobile-section {
-  margin-top: 14px;
+  margin-top: 18px;
+}
+
+/* The first label sits under the header's hairline, which already reads as a
+   separator — so it needs less air above it than the labels between lists. */
+.mobile-section:first-child {
+  margin-top: 10px;
 }
 
 .mobile-section-label {
   margin: 0;
-  padding: 0 16px 6px;
+  padding: 0 20px 6px;
   font-size: var(--text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -141,11 +147,24 @@ html:has(.mobile-shell) body {
 }
 
 /* The row and its actions button are siblings, so the separator moves to the
-   wrapper — otherwise the two draw their own hairlines at different widths. */
+   wrapper — otherwise the two draw their own hairlines at different widths.
+   It is drawn as a pseudo-element rather than an inset shadow so it can start
+   at the row's text gutter: a full-bleed hairline runs under the marker column
+   and turns a list of chats into a stack of boxes. */
 .mobile-session-item {
+  position: relative;
   display: flex;
   align-items: stretch;
-  box-shadow: inset 0 -1px 0 var(--line-soft);
+}
+
+.mobile-session-item::after {
+  content: "";
+  position: absolute;
+  left: 20px;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--line-soft);
 }
 
 .mobile-session-row {
@@ -154,8 +173,8 @@ html:has(.mobile-shell) body {
   gap: 12px;
   flex: 1;
   min-width: 0;
-  min-height: 60px;
-  padding: 10px 4px 10px 16px;
+  min-height: 56px;
+  padding: 10px 4px 10px 20px;
   background: none;
   border: none;
   color: inherit;
@@ -168,7 +187,8 @@ html:has(.mobile-shell) body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
+  width: 40px;
+  margin-right: 8px;
   border: none;
   background: none;
   color: var(--muted);
@@ -185,7 +205,7 @@ html:has(.mobile-shell) body {
 .mobile-session-text {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
   flex: 1;
 }
@@ -193,14 +213,13 @@ html:has(.mobile-shell) body {
 .mobile-session-title-line {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   min-width: 0;
 }
 
 .mobile-session-title {
-  font-size: var(--text-md-tight);
-  font-weight: 550;
-  letter-spacing: -0.005em;
+  font-size: var(--text-base-plus);
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -232,8 +251,8 @@ html:has(.mobile-shell) body {
    agent is stalled on you, a pulsing accent dot while a turn runs. */
 .mobile-session-marker {
   flex: none;
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--amber);
 }
@@ -265,9 +284,12 @@ html:has(.mobile-shell) body {
   flex: 1;
 }
 
+/* Only the gutters differ from the list header: the chevron carries its own
+   optical inset, so the 20px text gutter would push it too far in. Vertical
+   padding is shared, which is what keeps the two headers the same height. */
 .mobile-session-header {
-  padding-left: 4px;
-  padding-right: 12px;
+  padding-left: 6px;
+  padding-right: 10px;
 }
 
 .mobile-back {
@@ -275,8 +297,8 @@ html:has(.mobile-shell) body {
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 44px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   background: none;
   border: none;
   border-radius: 10px;
@@ -301,7 +323,7 @@ html:has(.mobile-shell) body {
 /* Balances the back button so the centered title stays centered. */
 .mobile-header-spacer {
   flex: none;
-  width: 44px;
+  width: 36px;
 }
 
 /* The reused SessionPane fills the remaining height. Its desktop grid
@@ -323,11 +345,25 @@ html:has(.mobile-shell) body {
   min-height: 0;
 }
 
+/* The desktop surface pads 14px/24px around the grid, and the phone's own
+   bottom gap is the home-indicator inset — stacked, that floated the composer
+   ~75px above the bottom edge. The card now stands a small, fixed step above
+   the home indicator: on the indicator line itself it read as sitting too
+   low. */
 .mobile-session-screen .conversation-surface {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  padding-top: 8px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+/* The composer is the screen's floor, not a card floating on it, so the
+   desktop's 16px standoff from the transcript halves. Its side gutter stays
+   the transcript's own, which keeps the card's edges under the bubbles. */
+.mobile-session-screen .session-composer-stack {
+  margin-top: 8px;
 }
 
 /* The composer's compact layout is container-query driven, and its container
@@ -415,28 +451,61 @@ html:has(.mobile-shell) body {
   flex: 1;
 }
 
-/* Everything anchors to the bottom, Codex-style: quiet space on top, context
-   rows above the composer, thumb-reach for all of it. */
+/* Three bands: the hero takes whatever height is left and centres inside it,
+   the context rows and the composer stay welded to the bottom edge, a small
+   fixed step above the home indicator — the same standoff the chat screen's
+   composer keeps.
+
+   `container-type: size` sits on the body and not on .mobile-new-screen
+   because size containment makes an element the containing block for
+   fixed-position descendants — and the pickers' bottom sheets, which measure
+   the visual viewport, are rendered inside the screen. */
 .mobile-new-body {
+  container-type: size;
+  container-name: mobile-new-body;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* Only bites once the hero is gone: with the hero in place it takes the free
+     height itself, so there is nothing left to distribute. */
   justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  gap: 10px;
+  padding: 8px 16px calc(12px + env(safe-area-inset-bottom));
 }
 
 .mobile-new-hero {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  place-content: center;
+  gap: 12px;
   padding: 0 4px;
 }
 
+/* Keyboard up: the free height collapses and the fox would be squeezed into a
+   sliver above the composer. It leaves instead. The threshold is on the body's
+   own box because a media query measures the layout viewport, which iOS never
+   shrinks for the keyboard — the shell tracks the visual one. */
+@container mobile-new-body (max-height: 470px) {
+  .mobile-new-hero {
+    display: none;
+  }
+}
+
 .mobile-new-hero .launcher-hero-title {
+  font-size: var(--text-lg-tight);
+  font-weight: 400;
   line-height: 1.2;
 }
 
+/* The sprite's viewBox squares off below the fox (56 wide, 40 tall), so a 72px
+   mascot carries ~21px of empty rows under its feet; pulling them back makes
+   the gap above the title the hero's own gap. Keep in step with the size the
+   screen passes to <Mascot>. */
 .mobile-new-hero .launcher-hero-mascot {
-  margin-block-end: -18px;
+  margin-block-end: -21px;
 }
 
 .mobile-new-context {
@@ -449,8 +518,9 @@ html:has(.mobile-shell) body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 4px;
-  border-bottom: 1px solid var(--line);
+  min-height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .mobile-new-row:last-child {
@@ -470,7 +540,7 @@ html:has(.mobile-shell) body {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
-  font-size: var(--text-md);
+  font-size: var(--text-base);
 }
 
 .mobile-new-row-caret {
@@ -516,8 +586,8 @@ html:has(.mobile-shell) body {
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   background: var(--panel);
-  border-top-left-radius: 16px;
-  border-top-right-radius: 16px;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
   border-top: 1px solid var(--line);
   padding: 6px 16px calc(16px + env(safe-area-inset-bottom, 0px));
 }
@@ -543,7 +613,8 @@ html:has(.mobile-shell) body {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 12px 4px;
+  min-height: 48px;
+  padding: 8px 4px;
   border: 0;
   border-bottom: 1px solid var(--line-soft);
   background: transparent;
@@ -568,10 +639,10 @@ html:has(.mobile-shell) body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
-  padding: 10px;
+  gap: 4px;
+  padding: 12px 12px 8px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--panel);
 }
 
@@ -579,16 +650,17 @@ html:has(.mobile-shell) body {
   border-color: var(--accent);
 }
 
-/* The session composer's field metrics, so the two grow the same way: a 52px
-   floor, a 168px ceiling, 8px padding. The height between them is driven by
-   useAutoGrowTextArea, not by `rows`. The inherited font-size is >=16px, which
-   is what keeps iOS Safari from zooming the page on focus. */
+/* The session composer's field metrics, so the two grow the same way: a 48px
+   floor and a 168px ceiling, with the card's own padding standing in for the
+   field's. The height between them is driven by useAutoGrowTextArea, not by
+   `rows`. The inherited font-size is >=16px, which is what keeps iOS Safari
+   from zooming the page on focus. */
 .mobile-new-prompt {
   width: 100%;
   min-width: 0;
-  min-height: 52px;
+  min-height: 48px;
   max-height: 168px;
-  padding: 8px;
+  padding: 0;
   border: none;
   background: transparent;
   color: var(--text);
@@ -601,6 +673,7 @@ html:has(.mobile-shell) body {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-height: 32px;
   min-width: 0;
 }
 
@@ -635,8 +708,8 @@ html:has(.mobile-shell) body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   border: none;
   border-radius: 50%;
@@ -690,7 +763,7 @@ html:has(.mobile-shell) body {
      bury the toast; the inset lifts it clear of one. */
   bottom: calc(16px + env(safe-area-inset-bottom) + var(--mobile-keyboard-inset, 0px));
   padding: 12px 14px;
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--panel);
   border: 1px solid var(--line);
   color: var(--text);
@@ -721,15 +794,15 @@ html:has(.mobile-shell) body {
   position: absolute;
   top: 3px;
   right: 1px;
-  min-width: 15px;
-  height: 15px;
+  min-width: 14px;
+  height: 14px;
   padding: 0 4px;
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--accent-deep);
   color: var(--panel);
-  font-size: var(--text-2xs);
+  font-size: var(--text-3xs);
   font-weight: 600;
-  line-height: 15px;
+  line-height: 14px;
   text-align: center;
 }
 

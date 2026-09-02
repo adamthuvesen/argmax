@@ -45,6 +45,13 @@ interface BrowserPanelProps {
    * last sent to still re-navigates after the user browsed away.
    */
   requestSeq?: number;
+  /**
+   * Show this existing tab rather than navigating the active one. Set when
+   * the request came from a session opening its own tab — that tab already
+   * exists, and pointing the user's tab at the same URL would be a different
+   * page with a different set of refs.
+   */
+  requestTabId?: string;
   onClose: () => void;
 }
 
@@ -96,7 +103,12 @@ function TabFavicon({ url }: { url: string }): JSX.Element {
  * the browser between panes is a plain unmount/mount: the unmount effect hides
  * the webview and the mount effect re-glues it to the new panel's surface.
  */
-export function BrowserPanel({ url, requestSeq, onClose }: BrowserPanelProps): JSX.Element {
+export function BrowserPanel({
+  url,
+  requestSeq,
+  requestTabId,
+  onClose
+}: BrowserPanelProps): JSX.Element {
   const browser = window.argmax?.browser ?? null;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -256,6 +268,18 @@ export function BrowserPanel({ url, requestSeq, onClose }: BrowserPanelProps): J
   // no webview yet; opening it recreates one at the requested URL.
   useEffect(() => {
     if (!browser) return;
+    // A tab the app already created (a session's) is switched to, not
+    // navigated to: its webview exists and holds the refs the agent is using.
+    const requested = requestTabId
+      ? (getBrowserTabs().find((tab) => tab.id === requestTabId) ?? null)
+      : null;
+    if (requested) {
+      const previous = getActiveBrowserTabId();
+      if (previous && previous !== requested.id) hideTabWebview(previous);
+      activateBrowserTab(requested.id);
+      showTabWebview(requested);
+      return;
+    }
     const active = getBrowserTabs().find((tab) => tab.id === getActiveBrowserTabId()) ?? null;
     if (!active) {
       openTabWebview(createBrowserTab(url));
@@ -272,7 +296,17 @@ export function BrowserPanel({ url, requestSeq, onClose }: BrowserPanelProps): J
     syncBounds();
     if (active.url === url) return;
     void browser.navigate(url, active.id).catch(reportError);
-  }, [browser, openTabWebview, reportError, requestSeq, syncBounds, url]);
+  }, [
+    browser,
+    hideTabWebview,
+    openTabWebview,
+    reportError,
+    requestSeq,
+    requestTabId,
+    showTabWebview,
+    syncBounds,
+    url
+  ]);
 
   // Popups / target="_blank" inside a page arrive as new-tab events.
   useEffect(() => {
@@ -714,6 +748,16 @@ export function BrowserPanel({ url, requestSeq, onClose }: BrowserPanelProps): J
               )}
               <span className="browser-tab-text">{tabLabel(tab)}</span>
             </button>
+            {tab.ownerSessionId ? (
+              <span
+                className="browser-tab-agent"
+                role="img"
+                aria-label="Opened by the agent"
+                title="Opened by the agent"
+              >
+                agent
+              </span>
+            ) : null}
             <button
               type="button"
               className="browser-tab-close"

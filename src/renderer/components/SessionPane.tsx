@@ -178,7 +178,8 @@ export function SessionPane({
   // "Last turn" scope. Null without a session: there is no turn to scope to.
   const lastTurnPaths = useMemo(() => lastTurnEditedPaths(visibleEvents), [visibleEvents]);
   const reviewState = useReviewState(reviewSource, session ? lastTurnPaths : null, {
-    claimsBrowserRequests: isFocused
+    claimsBrowserRequests: isFocused,
+    sessionId
   });
   const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);

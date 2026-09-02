@@ -55,7 +55,8 @@ impl AcpClient {
         cwd: &std::path::Path,
         environment: impl IntoIterator<Item = (String, String)>,
     ) -> ArgmaxResult<Arc<Self>> {
-        let mut child = tokio::process::Command::new(binary_path)
+        let mut command = tokio::process::Command::new(binary_path);
+        command
             .arg("acp")
             .current_dir(cwd)
             .env_clear()
@@ -65,14 +66,19 @@ impl AcpClient {
             .stderr(Stdio::null())
             // The acp server does not exit on stdin EOF (verified empirically),
             // so tie its lifetime to this handle: dropping the pool kills it.
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|error| {
-                ArgmaxError::service(
-                    "ACP_SPAWN_FAILED",
-                    format!("could not spawn ACP server: {error}"),
-                )
-            })?;
+            .kill_on_drop(true);
+        // Its own process group, so teardown reaches what it spawned. The ACP
+        // server starts the MCP servers named in `session/new`, and those
+        // children outlive a signal aimed at the server alone — an `argmax mcp`
+        // process would then survive the app that started it.
+        #[cfg(unix)]
+        command.process_group(0);
+        let mut child = command.spawn().map_err(|error| {
+            ArgmaxError::service(
+                "ACP_SPAWN_FAILED",
+                format!("could not spawn ACP server: {error}"),
+            )
+        })?;
 
         let stdin = child.stdin.take().ok_or_else(|| {
             ArgmaxError::service("ACP_SPAWN_FAILED", "ACP child had no stdin pipe")
@@ -311,10 +317,18 @@ impl AcpClient {
             .send(json!({ "jsonrpc": "2.0", "method": method, "params": params }).to_string());
     }
 
-    /// Kill the child process. Used on pool eviction; Drop also kills via
-    /// `kill_on_drop`.
+    /// Kill the child process and everything it spawned. Used on pool eviction
+    /// and at app exit; `kill_on_drop` covers only the server itself, so the
+    /// signal goes to its process group first.
     pub fn kill(&self) {
         if let Some(child) = self.child.lock_or_recover("acp child").as_mut() {
+            #[cfg(unix)]
+            if let Some(pid) = child.id() {
+                crate::util::process_control::signal_target_term_and_kill_blocking(
+                    crate::util::process_control::SignalTarget::ProcessGroup(pid),
+                    None,
+                );
+            }
             let _ = child.start_kill();
         }
         self.mark_dead();

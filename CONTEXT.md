@@ -77,6 +77,10 @@ _Avoid_: Reset, new session, wipe
 **Turn**:
 One user message and everything the agent produced in response, up to the next user message. The unit the chat surface renders and groups cards into.
 
+**Launched by**:
+The session whose agent started this one with the `argmax` MCP tools, held on the row as `launched_by_session_id` with the chain's depth in `launch_depth`. It names lineage, not hierarchy: a launched session is a top-level sidebar session that outlives its launcher, not a subagent, and it is what the launch caps (two levels deep, ten per session) are counted over.
+_Avoid_: Parent session, child session, spawned session, subagent
+
 **Session state**:
 Where a session is in its lifecycle: `created`, `running`, `waiting`, `blocked`, `complete`, `failed`, `cancelled`.
 

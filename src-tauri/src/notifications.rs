@@ -526,6 +526,7 @@ mod tests {
             },
             context_tokens: 0,
             context_window: None,
+            launched_by_session_id: None,
         }
     }
 

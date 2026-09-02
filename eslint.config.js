@@ -9,6 +9,10 @@ export default tseslint.config(
       "dist",
       "node_modules",
       "src-tauri/target/**",
+      // Injected page scripts. They are `include_str!` payloads for the Rust
+      // browser automation, not part of the renderer's TS program, so the
+      // type-checked rules have no tsconfig to resolve them against.
+      "src-tauri/src/browser/*.js",
       "src/shared/bindings.d.ts",
       ".claude/**",
       "eslint.config.js",

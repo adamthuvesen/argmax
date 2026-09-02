@@ -123,6 +123,13 @@ transcript, then sample `.agent-activity-scroll` (`scrollTop`, `scrollHeight`,
 entrance animation firing on a bubble that already existed is a remount, and a
 `scrollHeight` decrease while pinned to the bottom is the drop a reader sees.
 
+For the agent tools, prompt a `chat` run to use them and read the tool rows out
+of the NDJSON stream: `mcp__argmax__session_list` and friends must show JSON
+results, and the launched session must appear in `dashboard:list` with
+`launchedBySessionId` naming the caller ([agent-tools.md](agent-tools.md)).
+`pgrep -f "argmax mcp"` is the teardown check — empty once the instance is
+gone.
+
 `system:debug-snapshot` is served over the bridge precisely for this loop:
 a script can assert on log lines and per-channel latency instead of eyeballing
 the debug panel ([debugging.md](debugging.md)). For performance claims,

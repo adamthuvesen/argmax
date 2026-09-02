@@ -678,6 +678,70 @@ async browserFillCredentials(input: BrowserFillCredentialsInput) : Promise<Resul
     else return { status: "error", error: e  as any };
 }
 },
+async browserScreenshot(input: BrowserScreenshotInput) : Promise<Result<BrowserScreenshot, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_screenshot", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserEvaluate(input: BrowserEvaluateInput) : Promise<Result<BrowserEvaluateResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_evaluate", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserListTabs(input: BrowserListTabsInput) : Promise<Result<BrowserTabsEvent, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_list_tabs", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserOpenForSession(input: BrowserOpenForSessionInput) : Promise<Result<BrowserOpenedTab, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_open_for_session", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserSnapshot(input: BrowserSnapshotInput) : Promise<Result<PageSnapshot, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_snapshot", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserFind(input: BrowserFindInput) : Promise<Result<PageFindResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_find", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserGetText(input: BrowserGetTextInput) : Promise<Result<PageText, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_get_text", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserAct(input: BrowserActInput) : Promise<Result<ActionOutcome, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_act", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async routinesList(input: RoutinesListInput) : Promise<Result<Routine[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("routines_list", { input }) };
@@ -730,6 +794,15 @@ async routinesRunNow(input: RoutinesRunNowInput) : Promise<Result<Routine, Argma
 
 /** user-defined types **/
 
+export type ActionOutcome = { tabId: string; 
+/**
+ * URL after the action — a click that navigated says so here.
+ */
+url: string; 
+/**
+ * What the action touched, for a tool row a person can read.
+ */
+detail: string | null }
 export type AgentMode = "auto" | "plan"
 export type ApprovalId = string
 export type ApprovalRequest = { id: string; sessionId: string; command: string; cwd: string; provider: string; providerInvocationId: string | null; providerRequestId: string | null; riskLevel: string; status: string; createdAt: string; resolvedAt: string | null }
@@ -750,6 +823,12 @@ export type AttachmentsSaveImageInput = { sessionId: SessionId; mimeType: Attach
 export type Base64ImageData = string
 export type BaseRef = string
 export type BranchName = string
+export type BrowserActInput = { tabId?: string | null; sessionId?: string | null; action: BrowserAction }
+/**
+ * One interaction. Serialized tagged so a tool layer can pass it straight
+ * through without a verb-per-command explosion on the IPC surface.
+ */
+export type BrowserAction = { kind: "click"; ref: string } | { kind: "type"; ref: string; text: string; submit?: boolean } | { kind: "select"; ref: string; value: string } | { kind: "hover"; ref: string } | { kind: "pressKey"; key: string; modifiers?: string[] } | { kind: "scroll"; ref?: string | null; direction: string; amount?: number | null } | { kind: "waitFor"; text?: string | null; ref?: string | null; urlIncludes?: string | null; timeoutMs?: number | null }
 export type BrowserBackInput = { tabId: string }
 /**
  * Logical (CSS-pixel) rect of the renderer placeholder the browser webview
@@ -758,16 +837,80 @@ export type BrowserBackInput = { tabId: string }
  */
 export type BrowserBounds = { x: number; y: number; width: number; height: number }
 export type BrowserCloseInput = { tabId: string }
+export type BrowserEvaluateInput = { tabId: string; script: string; 
+/**
+ * Defaults to 5000 ms. A page that never answers must not park the
+ * caller, so the deadline is not optional at the far end.
+ */
+timeoutMs: number | null }
+/**
+ * WebKit's JSON encoding of the script's value. Empty when the script
+ * produced `undefined` — or threw, which WebKit's completion handler does not
+ * distinguish. Catch inside the page when the difference matters.
+ */
+export type BrowserEvaluateResult = { resultJson: string }
 export type BrowserFillCredentialsInput = { tabId: string }
 export type BrowserFillResult = { ok: boolean; 
 /**
  * Title of the 1Password item that was filled.
  */
 itemTitle: string }
+export type BrowserFindInput = { tabId?: string | null; sessionId?: string | null; 
+/**
+ * Case-insensitive substring over role, name, value and text.
+ */
+query: string }
 export type BrowserForwardInput = { tabId: string }
+export type BrowserGetTextInput = { tabId?: string | null; sessionId?: string | null; 
+/**
+ * Defaults to 20 000 characters.
+ */
+maxChars?: number | null }
+export type BrowserListTabsInput = { 
+/**
+ * Only this session's tabs. Omitted lists every live tab.
+ */
+sessionId?: string | null }
 export type BrowserNavigateInput = { url: string; tabId: string }
-export type BrowserOpenInput = { url: string; bounds: BrowserBounds; tabId: string }
+export type BrowserOpenForSessionInput = { url: string; sessionId: string }
+export type BrowserOpenInput = { url: string; bounds: BrowserBounds; tabId: string; 
+/**
+ * Session that owns the tab. `None` for a tab the user opened, and for
+ * the renderer re-materializing a tab it restored from a previous run —
+ * the registry keeps the owner it already has in that case.
+ */
+ownerSessionId?: string | null }
+/**
+ * A tab a session opened. The renderer learns about it through
+ * `browser:agent-open` and `browser:tabs`, not from this reply.
+ */
+export type BrowserOpenedTab = { tabId: string }
 export type BrowserReloadInput = { tabId: string }
+/**
+ * PNG of one tab, base64 so it can ride the JSON IPC envelope. `width` and
+ * `height` are device pixels: on a retina display they are twice the CSS
+ * size of what was captured.
+ */
+export type BrowserScreenshot = { pngBase64: string; width: number; height: number }
+export type BrowserScreenshotInput = { 
+/**
+ * Names a tab directly, or leaves it to `session_id`.
+ */
+tabId?: string | null; 
+/**
+ * Captures the session's current tab. Ignored when `tab_id` is given.
+ */
+sessionId?: string | null; 
+/**
+ * Crop, in the page's own CSS pixels from the top-left of the visible
+ * view. Omitted captures the whole view.
+ */
+rect?: BrowserBounds | null; 
+/**
+ * Crop to one element from a snapshot instead. Scrolls it into view
+ * first, and wins over `rect`.
+ */
+ref?: string | null }
 export type BrowserSetBoundsInput = { bounds: BrowserBounds; 
 /**
  * False while a renderer overlay (dialog, palette) is open — the native
@@ -775,7 +918,23 @@ export type BrowserSetBoundsInput = { bounds: BrowserBounds;
  * false for tabs behind the active one.
  */
 visible: boolean; tabId: string }
+export type BrowserSnapshotInput = { tabId?: string | null; sessionId?: string | null; 
+/**
+ * Drops plain text and non-heading structure, leaving only what can be
+ * clicked or typed into.
+ */
+interactiveOnly?: boolean | null }
 export type BrowserStopInput = { tabId: string }
+export type BrowserTabInfo = { tabId: string; 
+/**
+ * Session that opened the tab. `None` for tabs the user opened.
+ */
+ownerSessionId: string | null; url: string; title: string | null; loading: boolean }
+/**
+ * Full list, pushed on every change — a delta would have to be reconciled
+ * against a renderer list that is no longer the source of truth.
+ */
+export type BrowserTabsEvent = { tabs: BrowserTabInfo[] }
 export type ChangedFileSummary = { path: string; status: string; additions: number; deletions: number; oldPath?: string | null }
 export type CheckRun = { id: string; workspaceId: string; command: string; status: string; exitCode: number | null; summary: string | null; startedAt: string; completedAt: string | null }
 export type ChecksRunInput = { workspaceId: WorkspaceId; command: CommandText }
@@ -806,6 +965,7 @@ export type FileContent = string
  * both mean "keep the static placeholder".
  */
 export type FollowUpSuggestion = { suggestion: string | null }
+export type FoundElement = { ref: string; role: string; name: string; value: string }
 export type GhPrRecord = { 
 /**
  * The session that observed this PR. Provenance only — sidebar markers
@@ -853,6 +1013,17 @@ export type NonEmptyString = string
 export type NullableExpectedMtimeMs = number | null
 export type OpenIdeChoice = "default" | "vscode" | "cursor" | "windsurf" | "zed" | "terminal" | "iterm"
 export type OpenPath = string
+export type PageFindResult = { tabId: string; matches: FoundElement[] }
+export type PageSnapshot = { tabId: string; url: string; title: string; 
+/**
+ * Indented aria tree; interactive lines carry `[ref=eN]` handles.
+ */
+tree: string; 
+/**
+ * True when the node or byte cap cut the tree short.
+ */
+truncated: boolean }
+export type PageText = { tabId: string; url: string; title: string; text: string; truncated: boolean }
 export type PermissionMode = "auto-approve" | "ask-each-time"
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
@@ -1021,7 +1192,12 @@ imported: boolean;
  * The model's context-window size, when the provider reports it (Codex).
  * The renderer falls back to a per-model table when this is null.
  */
-contextWindow?: number | null }
+contextWindow?: number | null; 
+/**
+ * The session whose agent launched this one with the `argmax` MCP tools.
+ * Null for a session the user or a routine started.
+ */
+launchedBySessionId?: string | null }
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system"
 export type SkillSummary = { name: string; description: string; source: SkillSource }
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }

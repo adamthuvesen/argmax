@@ -6,12 +6,18 @@ describe("serverIconFor", () => {
     expect(serverIconFor("Slack")?.title).toBe("Slack");
     expect(serverIconFor("google_drive")?.title).toBe("Google Drive");
     expect(serverIconFor("Google Calendar")?.title).toBe("Google Calendar");
-    expect(serverIconFor("snowflake")?.hex).toBe("29B5E8");
+    expect(serverIconFor("snowflake")?.layers).toEqual([expect.objectContaining({ fill: "#29B5E8" })]);
   });
 
-  it("gives black marks no brand colour so they take the row's text colour", () => {
-    expect(serverIconFor("notion")?.hex).toBeNull();
-    expect(serverIconFor("github")?.hex).toBeNull();
+  it("gives black marks no fill so they take the row's text colour", () => {
+    expect(serverIconFor("notion")?.layers[0]?.fill).toBeNull();
+    expect(serverIconFor("github")?.layers[0]?.fill).toBeNull();
+  });
+
+  it("keeps the multi-coloured Google marks in their own colours", () => {
+    const fills = serverIconFor("gmail")?.layers.map((layer) => layer.fill);
+    expect(fills).toContain("#EA4335");
+    expect(fills).toContain("#34A853");
   });
 
   it("returns null for a server with no mark wired up", () => {

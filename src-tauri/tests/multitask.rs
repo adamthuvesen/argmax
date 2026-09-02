@@ -439,6 +439,39 @@ async fn the_result_rides_on_the_parents_next_prompt_but_not_on_the_persisted_me
 }
 
 #[tokio::test]
+async fn a_multitask_starts_its_own_lineage_however_deep_the_parent_sits() {
+    let fixture = fixture();
+    {
+        let connection = fixture.database.connection();
+        // The parent is itself two agent launches deep — the last level an
+        // agent may launch from.
+        record_session_launch(
+            &connection,
+            "session-parent",
+            "session-parent",
+            2,
+            LAUNCH_KIND_AGENT,
+        )
+        .expect("record parent lineage");
+    }
+
+    let child = multitask(&fixture, "Fix the changelog date", false).await;
+
+    let connection = fixture.database.connection();
+    let lineage = session_launch_lineage(&connection, &child).expect("lineage");
+    // A person asked for this chat, so it is not another rung on the agent
+    // ladder: it starts at the top and can still launch agents of its own.
+    assert_eq!(lineage.depth, 0);
+    assert_eq!(
+        find_session_by_id(&connection, &child)
+            .expect("child")
+            .launched_by_session_id
+            .as_deref(),
+        Some("session-parent")
+    );
+}
+
+#[tokio::test]
 async fn multitasks_do_not_count_against_the_agent_launch_cap() {
     let fixture = fixture();
     for index in 0..3 {

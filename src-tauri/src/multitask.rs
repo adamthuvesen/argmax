@@ -22,7 +22,8 @@
 //!   timeline and its inbox, and rides along as a preamble on the next thing
 //!   the person actually types.
 //!
-//! See `docs/multitask.md` and `docs/adr/0006-multitask-is-a-sibling-session.md`.
+//! See `docs/multitask.md` and
+//! `docs/adr/0006-a-multitask-is-a-sibling-session.md`.
 
 use std::sync::Arc;
 
@@ -40,7 +41,7 @@ use crate::persistence::session_messages::{
     NewSessionMessage,
 };
 use crate::persistence::sessions::{
-    find_session_by_id, record_session_launch, session_launch_lineage, LAUNCH_KIND_MULTITASK,
+    find_session_by_id, record_session_launch, LAUNCH_KIND_MULTITASK,
 };
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::persistence::Database;
@@ -94,12 +95,11 @@ pub async fn dispatch(
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
 ) -> ArgmaxResult<MultitaskLaunched> {
-    let (parent, parent_workspace, depth) = {
+    let (parent, parent_workspace) = {
         let connection = database.connection();
         let parent = find_session_by_id(&connection, &request.parent_session_id)?;
         let workspace = find_workspace_by_id(&connection, &parent.workspace_id)?;
-        let depth = session_launch_lineage(&connection, &request.parent_session_id)?.depth + 1;
-        (parent, workspace, depth)
+        (parent, workspace)
     };
     if matches!(
         parent_workspace.state.as_str(),
@@ -159,11 +159,16 @@ pub async fn dispatch(
     .map_err(|error| ArgmaxError::service(error.code, error.message))?;
 
     let connection = database.connection();
+    // Launch depth exists to stop an agent from launching agents without end.
+    // A multitask is a person asking for one more chat, so it starts its own
+    // lineage at depth 0: a multitask dispatched from a chat two agents deep
+    // must not inherit a budget that leaves it unable to launch anything. The
+    // parent id is still recorded, so both chats keep the link back.
     record_session_launch(
         &connection,
         &outcome.session_id,
         &request.parent_session_id,
-        depth,
+        0,
         LAUNCH_KIND_MULTITASK,
     )?;
     persist_timeline_event(

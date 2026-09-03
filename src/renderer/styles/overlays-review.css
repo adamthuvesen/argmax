@@ -661,9 +661,10 @@
 .multitask-panel .conversation-surface {
   display: flex;
   flex-direction: column;
-  /* The pane's chat pads itself off the window chrome; here the tab strip is
-     above and the status strip below, so that padding only reads as a gap. */
-  padding: 6px 0 8px;
+  /* The heading is hidden here so the top padding has nothing to clear, but the
+     bottom keeps the pane's value: the two composers sit side by side and a
+     shorter gap under this one reads as a misalignment, not as tightening. */
+  padding: 6px 0 24px;
 }
 
 .multitask-panel .conversation-scroll {

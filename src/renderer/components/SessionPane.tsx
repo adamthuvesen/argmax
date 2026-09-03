@@ -612,6 +612,9 @@ export function SessionPane({
           <ReviewPanel
             agents={{
               events: visibleEvents,
+              defaultToolCallsDisplay,
+              defaultToolCallGroupsExpanded,
+              defaultThinkingExpanded,
               parentSession: session,
               workspace,
               onLoadAgentEvents,

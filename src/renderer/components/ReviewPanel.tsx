@@ -60,6 +60,7 @@ import { FileIcon } from "@react-symbols/icons/utils";
 import { registerReviewFileTabCloseHandler } from "../lib/reviewFilePanel.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import { closeTerminalTab, getWorkspaceTerminalState, subscribeTerminalTabs } from "../lib/terminalTabs.js";
+import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 
 // The Terminal view pulls in @xterm/xterm + addons + xterm CSS — heavy, and
 // only needed once the reader actually asks for a shell. SessionPane warms
@@ -71,6 +72,11 @@ const TerminalTabsPanel = lazy(async () => ({
 /** What the Agents view needs from the pane that owns the panel. */
 export interface AgentsPanelContext {
   events: TimelineEvent[];
+  /** Chat verbosity, so a subagent's transcript reads at the same detail as
+   *  the chat that launched it. */
+  defaultToolCallsDisplay?: ToolCallsDisplay;
+  defaultToolCallGroupsExpanded?: boolean;
+  defaultThinkingExpanded?: boolean;
   parentSession: SessionSummary | null;
   workspace: WorkspaceSummary | null;
   onLoadAgentEvents?: (sessionId: string, parentToolUseId: string) => Promise<void>;
@@ -699,6 +705,9 @@ export function ReviewPanel({
         {isAgents && agents ? (
           <AgentsView
             events={agents.events}
+            defaultToolCallsDisplay={agents.defaultToolCallsDisplay}
+            defaultToolCallGroupsExpanded={agents.defaultToolCallGroupsExpanded}
+            defaultThinkingExpanded={agents.defaultThinkingExpanded}
             isFocused={isFocused}
             parentSession={agents.parentSession}
             agentTabs={review.agentTabs}

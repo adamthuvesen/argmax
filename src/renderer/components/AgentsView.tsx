@@ -15,6 +15,7 @@ import { multitaskTabId, readAgentTab } from "../lib/agentTabs.js";
 import { assignAgentCodenames, fallbackCodename } from "../lib/agentNames.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
+import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentActivity } from "./AgentActivity.js";
@@ -50,6 +51,9 @@ interface DockTab {
  */
 export function AgentsView({
   events,
+  defaultToolCallsDisplay,
+  defaultToolCallGroupsExpanded,
+  defaultThinkingExpanded,
   isFocused,
   multitasks,
   multitaskEvents,
@@ -70,6 +74,11 @@ export function AgentsView({
   onTerminateSession
 }: {
   events: TimelineEvent[];
+  /** Chat verbosity, forwarded so a subagent's transcript is as quiet or as
+   *  detailed as the chat that launched it. */
+  defaultToolCallsDisplay?: ToolCallsDisplay;
+  defaultToolCallGroupsExpanded?: boolean;
+  defaultThinkingExpanded?: boolean;
   isFocused?: boolean;
   /** Multitasks dispatched from this pane's session, with the workspace each
    *  runs in. Empty when the surface cannot host their chats. */
@@ -296,6 +305,9 @@ export function AgentsView({
                 <AgentActivity
                   events={events}
                   codename={tab.name}
+                  defaultToolCallsDisplay={defaultToolCallsDisplay}
+                  defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+                  defaultThinkingExpanded={defaultThinkingExpanded}
                   isFocused={isFocused && isActive}
                   onLoadAgentEvents={onLoadAgentEvents}
                   onLoadSessionEvents={onLoadSessionEvents}

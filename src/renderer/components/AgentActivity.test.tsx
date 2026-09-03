@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { AgentActivity } from "./AgentActivity.js";
@@ -59,7 +59,7 @@ describe("AgentActivity", () => {
     cleanup();
   });
 
-  it("keeps running child tool rows compact instead of flashing expanded details", () => {
+  it("folds a run into collapsed group headers, the same shape as the chat", () => {
     render(
       <AgentActivity
         events={[
@@ -68,6 +68,12 @@ describe("AgentActivity", () => {
             name: "Bash",
             parent_tool_use_id: "task-1",
             input: { command: "git status --short" }
+          }),
+          event("child-bash-2", "command.started", "2026-05-12T15:00:03.000Z", "Bash", {
+            id: "child-bash-2",
+            name: "Bash",
+            parent_tool_use_id: "task-1",
+            input: { command: "git log --oneline" }
           }),
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
             id: "task-1",
@@ -82,9 +88,102 @@ describe("AgentActivity", () => {
     );
 
     const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
-    expect(within(pane).getByText("git status --short")).toBeInTheDocument();
-    expect(within(pane).queryByRole("button", { name: "Ran git status --short" })).toBeNull();
+    expect(within(pane).getByRole("button", { name: /Ran 2 commands/ })).toBeInTheDocument();
+    // Collapsed: neither the per-tool rows nor their expanded detail are here.
+    expect(within(pane).queryByText("git log --oneline")).toBeNull();
     expect(within(pane).queryByText("Command")).toBeNull();
+  });
+
+  it("expands every group and thought from the run's own chip", () => {
+    render(
+      <AgentActivity
+        events={[
+          event("child-think", "message.delta", "2026-05-12T15:00:02.000Z", "Weighing options.", {
+            parent_tool_use_id: "task-1",
+            thinking: true
+          }),
+          event("child-bash", "command.started", "2026-05-12T15:00:03.000Z", "Bash", {
+            id: "child-bash",
+            name: "Bash",
+            parent_tool_use_id: "task-1",
+            input: { command: "git status --short" }
+          }),
+          event("child-bash-done", "command.completed", "2026-05-12T15:00:04.000Z", "Bash", {
+            tool_use_id: "child-bash",
+            output: "clean"
+          }),
+          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+            id: "task-1",
+            name: "Task",
+            input: { description: "Explore repo", prompt: "Map the repo." }
+          })
+        ]}
+        parentSession={{ ...session, state: "complete" }}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
+    );
+
+    const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
+    const chip = within(pane).getByRole("button", { name: /^Worked/ });
+    expect(chip).toHaveAttribute("aria-expanded", "false");
+    expect(within(pane).queryByText("git status --short")).toBeNull();
+
+    fireEvent.click(chip);
+
+    expect(chip).toHaveAttribute("aria-expanded", "true");
+    expect(within(pane).getByText("git status --short")).toBeInTheDocument();
+    expect(within(pane).getByText("Weighing options.")).toBeInTheDocument();
+
+    fireEvent.click(chip);
+
+    expect(within(pane).queryByText("git status --short")).toBeNull();
+    expect(within(pane).queryByText("Weighing options.")).toBeNull();
+  });
+
+  it("keeps a finished run to one chip and its result at minimal verbosity", () => {
+    render(
+      <AgentActivity
+        events={[
+          event("child-narration", "message.completed", "2026-05-12T15:00:02.000Z", "Reading the repo now.", {
+            parent_tool_use_id: "task-1"
+          }),
+          event("child-bash", "command.started", "2026-05-12T15:00:03.000Z", "Bash", {
+            id: "child-bash",
+            name: "Bash",
+            parent_tool_use_id: "task-1",
+            input: { command: "git status --short" }
+          }),
+          event("child-bash-done", "command.completed", "2026-05-12T15:00:04.000Z", "Bash", {
+            tool_use_id: "child-bash",
+            output: "clean"
+          }),
+          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+            id: "task-1",
+            name: "Task",
+            input: { description: "Explore repo", prompt: "Map the repo." }
+          }),
+          event("task-done", "command.completed", "2026-05-12T15:00:05.000Z", "Task", {
+            tool_use_id: "task-1",
+            output: "The repo has one crate."
+          })
+        ]}
+        defaultToolCallsDisplay="single-line"
+        parentSession={{ ...session, state: "complete" }}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
+    );
+
+    const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
+    expect(within(pane).getByRole("button", { name: /^Worked/ })).toBeInTheDocument();
+    // The work and the prose that narrated it are behind the chip; the result
+    // is what a finished run is read for.
+    expect(within(pane).queryByRole("button", { name: /Ran 1 command/ })).toBeNull();
+    expect(within(pane).queryByText("Reading the repo now.")).toBeNull();
+    expect(
+      within(screen.getByRole("region", { name: "Agent result" })).getByText("The repo has one crate.")
+    ).toBeInTheDocument();
   });
 
   it("names the agent in the region label so the panel's tab and body agree", () => {

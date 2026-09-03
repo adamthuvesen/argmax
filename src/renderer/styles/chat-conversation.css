@@ -553,13 +553,6 @@
   font-size: var(--text-sm);
 }
 
-.agent-activity-items {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 16px;
-}
-
 .agent-tabs-pane {
   display: flex;
   min-width: 0;

@@ -467,8 +467,9 @@ function SidebarSessionRowInner({
     prState: workspace.prState,
     priorityAttention
   });
+  const hasCustomIcon = workspace.icon ? resolveSessionIcon(workspace.icon) !== null : false;
   const leadingGlyph =
-    workspace.icon && statusOverlay !== "working" ? (
+    workspace.icon && hasCustomIcon && statusOverlay !== "working" ? (
       <CustomIconMarker
         icon={workspace.icon}
         iconColor={workspace.iconColor}
@@ -489,7 +490,7 @@ function SidebarSessionRowInner({
     <div
       className="session-row"
       data-workspace-id={workspace.id}
-      data-icon-color={workspace.icon ? resolveSessionIconColor(workspace.iconColor) : undefined}
+      data-icon-color={hasCustomIcon ? resolveSessionIconColor(workspace.iconColor) : undefined}
     >
       {isEditing ? (
         // The row keeps its glyph, layout, and subtitle; only the title text

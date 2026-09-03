@@ -373,6 +373,41 @@ describe("SidebarSessionRow", () => {
     expect(done.querySelector('[data-icon-color="violet"]')).not.toBeNull();
   });
 
+  it("falls back to default markers when a persisted icon name is no longer recognized", () => {
+    const { rerender } = render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, state: "running", icon: "RetiredIcon", iconColor: "violet" }}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+      />
+    );
+
+    expect(document.querySelector('[data-working="true"]')).not.toBeNull();
+    expect(document.querySelector(".session-row")).not.toHaveAttribute("data-icon-color");
+
+    rerender(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, state: "failed", icon: "RetiredIcon", iconColor: "violet" }}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+      />
+    );
+    expect(document.querySelector(".status-marker")).not.toBeNull();
+    expect(document.querySelector(".session-custom-icon")).toBeNull();
+  });
+
   it.each([
     ["failed" as const, undefined, undefined, "failed"],
     ["complete" as const, "MERGED" as const, 12, "pr-merged"],

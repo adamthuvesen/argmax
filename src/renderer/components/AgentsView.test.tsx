@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
-import type { SubagentTabsState } from "../hooks/useSubagentTabs.js";
+import type { AgentTabsState } from "../hooks/useAgentTabs.js";
 import { AgentsView } from "./AgentsView.js";
 
 function event(
@@ -56,22 +56,22 @@ function launch(id: string, description: string): TimelineEvent {
   });
 }
 
-function subagents(overrides: Partial<SubagentTabsState> = {}): SubagentTabsState {
+function agentTabs(overrides: Partial<AgentTabsState> = {}): AgentTabsState {
   return {
-    toolUseIds: [],
-    activeToolUseId: null,
+    tabIds: [],
+    activeTabId: null,
     selectTab: vi.fn(),
     closeTab: vi.fn(),
     ...overrides
   };
 }
 
-function renderView(state: SubagentTabsState, events: TimelineEvent[]): void {
+function renderView(state: AgentTabsState, events: TimelineEvent[]): void {
   render(
     <AgentsView
       events={events}
       parentSession={session}
-      subagents={state}
+      agentTabs={state}
       workspace={workspace}
     />
   );
@@ -83,14 +83,14 @@ describe("AgentsView", () => {
   });
 
   it("points at the transcript when nothing is open", () => {
-    renderView(subagents(), [launch("task-1", "Explore repo")]);
+    renderView(agentTabs(), [launch("task-1", "Explore repo")]);
 
-    expect(screen.getByText(/No subagents open/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing open here/)).toBeInTheDocument();
   });
 
   it("names each open subagent in the tab strip and shows the active one", () => {
     renderView(
-      subagents({ toolUseIds: ["task-1", "task-2"], activeToolUseId: "task-2" }),
+      agentTabs({ tabIds: ["task-1", "task-2"], activeTabId: "task-2" }),
       [launch("task-1", "Explore repo"), launch("task-2", "Write tests")]
     );
 
@@ -105,7 +105,7 @@ describe("AgentsView", () => {
 
   it("reads the active subagent's state and model in the status bar", () => {
     renderView(
-      subagents({ toolUseIds: ["task-1"], activeToolUseId: "task-1" }),
+      agentTabs({ tabIds: ["task-1"], activeTabId: "task-1" }),
       [
         launch("task-1", "Explore repo"),
         event("child", "message.completed", "2026-05-12T15:00:02.000Z", "Mapped it.", {
@@ -125,7 +125,7 @@ describe("AgentsView", () => {
   it("closes a subagent from its tab", () => {
     const closeTab = vi.fn();
     renderView(
-      subagents({ toolUseIds: ["task-1"], activeToolUseId: "task-1", closeTab }),
+      agentTabs({ tabIds: ["task-1"], activeTabId: "task-1", closeTab }),
       [launch("task-1", "Explore repo")]
     );
 

@@ -32,7 +32,8 @@ import {
 import { reviewIpcDispatch } from "../lib/reviewIpc.js";
 import { usePersistedSetting } from "./usePersistedSetting.js";
 import { useFilePreview } from "./useFilePreview.js";
-import { useSubagentTabs, type SubagentTabsState } from "./useSubagentTabs.js";
+import { multitaskTabId } from "../lib/agentTabs.js";
+import { useAgentTabs, type AgentTabsState } from "./useAgentTabs.js";
 import { useReviewDiff } from "./useReviewDiff.js";
 import { useWorkspaceFileList } from "./useWorkspaceFileList.js";
 
@@ -169,11 +170,14 @@ export interface ReviewState {
    *  is active. */
   comparisonBaseLabel: string | null;
   workspaceFiles: WorkspaceFilesState;
-  /** Subagents open in the Agents view. Empty until one is opened from the
-   *  transcript, which is also the only way one gets here. */
-  subagents: SubagentTabsState;
+  /** Subagents and multitasks open in the Agents view. Empty until one is
+   *  opened from the transcript, which is also the only way one gets here. */
+  agentTabs: AgentTabsState;
   /** Open the panel on a subagent, adding its tab if it is not open yet. */
   openAgent: (parentToolUseId: string) => void;
+  /** Open the panel on a multitask's chat, adding its tab if it is not open
+   *  yet. Same dock as the subagents: both are work running alongside. */
+  openMultitask: (sessionId: string) => void;
   /** Open the panel on the Browser view, taking the one native surface. */
   openBrowser: () => void;
   /** Workspace whose integrated terminal this panel hosts. Null on a
@@ -385,10 +389,10 @@ export function useReviewState(
   const { resetForSourceChange: resetFilePreview, openFile: openWorkspaceFile, ...previewState } = filePreview;
 
   const {
-    openTab: openSubagentTab,
-    resetForSourceChange: resetSubagents,
-    ...subagents
-  } = useSubagentTabs();
+    openTab: openAgentTab,
+    resetForSourceChange: resetAgentTabs,
+    ...agentTabs
+  } = useAgentTabs();
 
   useEffect(() => {
     if (previousSourceId.current !== sourceId) {
@@ -396,7 +400,7 @@ export function useReviewState(
       resetDiff();
       resetFileList();
       resetFilePreview();
-      resetSubagents();
+      resetAgentTabs();
       // An open panel survives a source switch (picking another project from
       // the palette while browsing its files re-targets the view in place);
       // the resets above already swap the content. A closed panel drops back
@@ -409,7 +413,7 @@ export function useReviewState(
     if (!window.argmax || ((!sourceId || !sourceKind) && panelRef.current.mode !== "browser")) {
       setIsPanelOpen(false);
     }
-  }, [sourceId, sourceKind, resetDiff, resetFileList, resetFilePreview, resetSubagents]);
+  }, [sourceId, sourceKind, resetDiff, resetFileList, resetFilePreview, resetAgentTabs]);
 
   const openInFilesView = useCallback(
     (filePath: string): void => {
@@ -424,9 +428,18 @@ export function useReviewState(
     (parentToolUseId: string): void => {
       setMode("agents");
       setIsPanelOpen(true);
-      openSubagentTab(parentToolUseId);
+      openAgentTab(parentToolUseId);
     },
-    [openSubagentTab]
+    [openAgentTab]
+  );
+
+  const openMultitask = useCallback(
+    (sessionId: string): void => {
+      setMode("agents");
+      setIsPanelOpen(true);
+      openAgentTab(multitaskTabId(sessionId));
+    },
+    [openAgentTab]
   );
 
   const openPanelInFilesMode = useCallback((): void => {
@@ -553,8 +566,9 @@ export function useReviewState(
     availableScopes,
     comparisonBaseLabel,
     workspaceFiles,
-    subagents,
+    agentTabs,
     openAgent,
+    openMultitask,
     openBrowser,
     browserOwner,
     browserRequest,

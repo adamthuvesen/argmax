@@ -30,7 +30,18 @@ import {
   type ReviewState,
   type WorkspaceFilesState
 } from "../hooks/useReviewState.js";
-import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
+import type {
+  AgentMode,
+  ComposerAttachment,
+  PendingMessage,
+  RawProviderOutput,
+  SessionSummary,
+  TimelineEvent,
+  WorkspaceSummary
+} from "../../shared/types.js";
+import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
+import type { ModelPickerSelection } from "../lib/models.js";
+import type { MultitaskChild } from "../lib/multitask.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentsView } from "./AgentsView.js";
 import { BrowserPanel } from "./BrowserPanel.js";
@@ -65,6 +76,27 @@ export interface AgentsPanelContext {
   onLoadAgentEvents?: (sessionId: string, parentToolUseId: string) => Promise<void>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onOpenAgent?: (tool: ToolCall) => void;
+  /** Multitasks dispatched from this session. Their chats run in this dock, so
+   *  the panel needs both the sessions and the commands to drive them. */
+  multitasks?: MultitaskChild[];
+  /** Every session's events. `events` above is scoped to this pane's session,
+   *  which is exactly what a subagent transcript needs and exactly what a
+   *  multitask's own chat does not. */
+  multitaskEvents?: TimelineEvent[];
+  pendingMessages?: Record<string, PendingMessage[]>;
+  rawOutputs?: RawProviderOutput[];
+  onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
+  onClearSession?: (sessionId: string) => Promise<void>;
+  onOpenFullChat?: (sessionId: string) => void;
+  onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
+  onSendSessionInput?: (
+    sessionId: string,
+    input: string,
+    model: ModelPickerSelection,
+    agentMode: AgentMode,
+    attachments?: ComposerAttachment[]
+  ) => Promise<void>;
+  onTerminateSession?: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
 }
 
 function fileBasename(path: string): string {
@@ -349,9 +381,9 @@ export function ReviewPanel({
   // ⌘W closes the active tab whichever strip owns it, so a subagent tab
   // behaves like the file tab beside it.
   const closeActiveAgentTab = useCallback((): void => {
-    const activeToolUseId = review.subagents.activeToolUseId;
-    if (activeToolUseId) review.subagents.closeTab(activeToolUseId);
-  }, [review.subagents]);
+    const activeTabId = review.agentTabs.activeTabId;
+    if (activeTabId) review.agentTabs.closeTab(activeTabId);
+  }, [review.agentTabs]);
 
   const activeTerminalTabId = terminalTabs.activeTabId;
   const closeActiveTerminalTab = useCallback((): void => {
@@ -374,7 +406,7 @@ export function ReviewPanel({
       return () => registerReviewFileTabCloseHandler(null);
     }
     if (isAgents) {
-      if (!review.subagents.activeToolUseId) {
+      if (!review.agentTabs.activeTabId) {
         registerReviewFileTabCloseHandler(null);
         return undefined;
       }
@@ -404,7 +436,7 @@ export function ReviewPanel({
     isFocused,
     isTerminal,
     review.mode,
-    review.subagents.activeToolUseId,
+    review.agentTabs.activeTabId,
     review.workspaceFiles
   ]);
 
@@ -574,8 +606,8 @@ export function ReviewPanel({
                 {/* Bot's glyph carries more inner padding than GitBranch/Folder, so it needs 16 to read the same size. */}
                 <Bot size={16} aria-hidden="true" />
                 <span className="review-mode-tab-label">Agents</span>
-                {review.subagents.toolUseIds.length > 1 ? (
-                  <span className="review-mode-tab-count">{review.subagents.toolUseIds.length}</span>
+                {review.agentTabs.tabIds.length > 1 ? (
+                  <span className="review-mode-tab-count">{review.agentTabs.tabIds.length}</span>
                 ) : null}
               </button>
             ) : null}
@@ -669,12 +701,22 @@ export function ReviewPanel({
             events={agents.events}
             isFocused={isFocused}
             parentSession={agents.parentSession}
-            subagents={review.subagents}
+            agentTabs={review.agentTabs}
             workspace={agents.workspace}
             onLoadAgentEvents={agents.onLoadAgentEvents}
             onLoadSessionEvents={agents.onLoadSessionEvents}
             onOpenAgent={agents.onOpenAgent}
             onOpenFile={review.openInFilesView}
+            multitasks={agents.multitasks}
+            multitaskEvents={agents.multitaskEvents}
+            pendingMessages={agents.pendingMessages}
+            rawOutputs={agents.rawOutputs}
+            onCancelQueuedMessage={agents.onCancelQueuedMessage}
+            onClearSession={agents.onClearSession}
+            onOpenFullChat={agents.onOpenFullChat}
+            onSendQueuedMessageNow={agents.onSendQueuedMessageNow}
+            onSendSessionInput={agents.onSendSessionInput}
+            onTerminateSession={agents.onTerminateSession}
           />
         ) : null}
         {isChanges || isAgents || isBrowser || isTerminal ? null : (

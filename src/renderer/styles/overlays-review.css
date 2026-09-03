@@ -636,6 +636,53 @@
   display: flex;
 }
 
+/* A multitask tab holds a whole chat, composer included, so it fills the panel
+   the way the transcript above it does. The "open as full chat" line sits under
+   it rather than in the status strip: it is a way out of the dock, not a fact
+   about what is running. */
+.multitask-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The tab already names the multitask, so the chat's own heading would say it
+   twice in a column this narrow. */
+.multitask-panel .section-heading {
+  display: none;
+}
+
+/* The pane's own chat gets its gutter from the centred chat width; in a docked
+   column there is none, so bubbles would sit flush against the panel edge. */
+.multitask-panel .conversation-scroll {
+  padding-inline: var(--space-3);
+}
+
+.multitask-panel-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px var(--space-3) 6px;
+}
+
+.multitask-panel-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.multitask-panel-open:hover {
+  color: var(--text);
+}
+
 /* A running subagent's nest sits in the tab; a settled one shows the bot mark,
    rose when the run failed. */
 .file-tab-icon[data-status="error"] {

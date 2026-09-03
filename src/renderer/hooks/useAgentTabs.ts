@@ -1,56 +1,56 @@
 import { useCallback, useState } from "react";
 
 /**
- * The subagents open in the review panel's Agents view, in the order they were
- * opened. One list per pane, because a subagent belongs to that pane's session.
+ * What is open in the review panel's Agents dock, in the order it was opened:
+ * subagents of this pane's session and multitasks dispatched from it, sharing
+ * one tab strip. Ids are encoded by `lib/agentTabs.ts`. One list per pane,
+ * because everything in it belongs to that pane's session.
  */
-export interface SubagentTabsState {
-  toolUseIds: string[];
-  /** Always a member of `toolUseIds`, or null when none are open. */
-  activeToolUseId: string | null;
-  selectTab: (parentToolUseId: string) => void;
-  closeTab: (parentToolUseId: string) => void;
+export interface AgentTabsState {
+  tabIds: string[];
+  /** Always a member of `tabIds`, or null when none are open. */
+  activeTabId: string | null;
+  selectTab: (tabId: string) => void;
+  closeTab: (tabId: string) => void;
 }
 
-export interface SubagentTabs extends SubagentTabsState {
-  openTab: (parentToolUseId: string) => void;
+export interface AgentTabs extends AgentTabsState {
+  openTab: (tabId: string) => void;
   resetForSourceChange: () => void;
 }
 
-export function useSubagentTabs(): SubagentTabs {
-  const [toolUseIds, setToolUseIds] = useState<string[]>([]);
-  const [activeToolUseId, setActiveToolUseId] = useState<string | null>(null);
+export function useAgentTabs(): AgentTabs {
+  const [tabIds, setTabIds] = useState<string[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
 
-  const openTab = useCallback((parentToolUseId: string): void => {
-    setToolUseIds((current) =>
-      current.includes(parentToolUseId) ? current : [...current, parentToolUseId]
-    );
-    setActiveToolUseId(parentToolUseId);
+  const openTab = useCallback((tabId: string): void => {
+    setTabIds((current) => (current.includes(tabId) ? current : [...current, tabId]));
+    setActiveTabId(tabId);
   }, []);
 
-  const selectTab = useCallback((parentToolUseId: string): void => {
-    setActiveToolUseId((current) => (current === parentToolUseId ? current : parentToolUseId));
+  const selectTab = useCallback((tabId: string): void => {
+    setActiveTabId((current) => (current === tabId ? current : tabId));
   }, []);
 
   // Closing the active tab activates the right neighbour, else the left — the
   // rule the file tabs beside it already follow.
   const closeTab = useCallback(
-    (parentToolUseId: string): void => {
-      const index = toolUseIds.indexOf(parentToolUseId);
+    (tabId: string): void => {
+      const index = tabIds.indexOf(tabId);
       if (index === -1) return;
-      const remaining = toolUseIds.filter((openId) => openId !== parentToolUseId);
-      setToolUseIds(remaining);
-      if (activeToolUseId === parentToolUseId) {
-        setActiveToolUseId(remaining[index] ?? remaining[index - 1] ?? null);
+      const remaining = tabIds.filter((openId) => openId !== tabId);
+      setTabIds(remaining);
+      if (activeTabId === tabId) {
+        setActiveTabId(remaining[index] ?? remaining[index - 1] ?? null);
       }
     },
-    [activeToolUseId, toolUseIds]
+    [activeTabId, tabIds]
   );
 
   const resetForSourceChange = useCallback((): void => {
-    setToolUseIds([]);
-    setActiveToolUseId(null);
+    setTabIds([]);
+    setActiveTabId(null);
   }, []);
 
-  return { toolUseIds, activeToolUseId, openTab, selectTab, closeTab, resetForSourceChange };
+  return { tabIds, activeTabId, openTab, selectTab, closeTab, resetForSourceChange };
 }

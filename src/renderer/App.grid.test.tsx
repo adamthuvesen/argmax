@@ -597,7 +597,7 @@ describe("App grid", () => {
 
     fireEvent.click(screen.getByRole("button", { name: startedAgentName("Write tests") }));
 
-    const tablist = await screen.findByRole("tablist", { name: "Subagents" });
+    const tablist = await screen.findByRole("tablist", { name: "Subagents and multitasks" });
     const tabLabels = within(tablist).getAllByRole("tab").map((tab) => tab.textContent);
     expect(tabLabels).toHaveLength(2);
     // Each spawn gets its own distinct moon-name codename as the tab label.
@@ -679,7 +679,7 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Write tests") }));
     await screen.findByRole("region", { name: /^Agent activity: / });
     fireEvent.click(screen.getByRole("button", { name: startedAgentName("Map renderer") }));
-    const subagentTabs = await screen.findByRole("tablist", { name: "Subagents" });
+    const subagentTabs = await screen.findByRole("tablist", { name: "Subagents and multitasks" });
     expect(within(subagentTabs).getAllByRole("tab")).toHaveLength(2);
 
     await act(async () => {
@@ -1881,7 +1881,7 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
     await screen.findByRole("region", { name: /^Agent activity: / });
     fireEvent.click(screen.getByRole("button", { name: startedAgentName("Write tests") }));
-    await screen.findByRole("tablist", { name: "Subagents" });
+    await screen.findByRole("tablist", { name: "Subagents and multitasks" });
 
     // task-2 is active; task-1 is hidden but still running.
     expect(screen.getByRole("tab", { name: "Triton" })).toHaveAttribute("aria-selected", "false");

@@ -38,13 +38,14 @@ function reviewStub(): ReviewState {
     setChangesScope: vi.fn(),
     availableScopes: ["branch", "committed", "uncommitted", "lastTurn"],
     comparisonBaseLabel: "main",
-    subagents: {
-      toolUseIds: [],
-      activeToolUseId: null,
+    agentTabs: {
+      tabIds: [],
+      activeTabId: null,
       selectTab: vi.fn(),
       closeTab: vi.fn()
     },
     openAgent: vi.fn(),
+    openMultitask: vi.fn(),
     openBrowser: vi.fn(),
     browserOwner: false,
     browserRequest: null,

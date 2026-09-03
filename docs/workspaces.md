@@ -18,7 +18,9 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
 
 ### Session Moves
 
-`$ARGMAX_BIN session move --project <name-or-path>` schedules an explicit cross-project handoff from inside an active agent turn. When the turn settles, `WorkspaceService` creates a destination workspace, copies the timeline into a fresh session, and leaves the provider conversation id empty. The source workspace is never retargeted.
+`$ARGMAX_BIN session move --project <name-or-path> --prompt <what-to-do-there>` schedules an explicit cross-project handoff from inside an active agent turn. When the turn settles, `WorkspaceService` creates a destination workspace, copies the timeline into a fresh session, and leaves the provider conversation id empty. The source workspace is never retargeted.
+
+The prompt is required because a move relocates work in progress: it starts the destination chat's first turn there, so the chat carries on in the new checkout instead of waiting for a person. The destination keeps the source's launch lineage, so whoever dispatched the chat still hears when it finishes and the launch caps still count it. A chat that has arrived somewhere by moving more than three times stops continuing on its own and says so. See [agent-tools.md](agent-tools.md).
 
 The destination uses the shared checkout by default. `--worktree` creates an isolated workspace and runs its setup command. The source archives after a successful copy unless `--keep-source` was passed. Archive never uses `force`, so an isolated source with uncommitted changes returns to `kept`.
 

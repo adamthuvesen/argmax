@@ -599,6 +599,25 @@ pub fn latest_user_message_at(
         .map_err(sqlite_error)
 }
 
+/// How many times this chat has arrived somewhere by being moved. A move
+/// copies the transcript, so the seams of earlier moves ride along and the
+/// count is the whole chain rather than the last hop.
+pub fn count_move_arrivals(connection: &Connection, session_id: &str) -> ArgmaxResult<i64> {
+    connection
+        .query_row(
+            r#"
+            SELECT COUNT(*)
+            FROM events
+            WHERE session_id = ?
+              AND type = 'session.moved'
+              AND json_extract(payload_json, '$.direction') = 'destination'
+            "#,
+            (session_id,),
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(sqlite_error)
+}
+
 fn list_event_rows(
     connection: &Connection,
     session_id: &str,

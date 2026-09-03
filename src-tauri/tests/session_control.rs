@@ -300,7 +300,13 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
         let request = json!({
             "version": 1,
             "token": token,
-            "action": { "move": { "project": "Destination", "keepSource": true } },
+            "action": {
+                "move": {
+                    "project": "Destination",
+                    "prompt": "Port the fix to this repo",
+                    "keepSource": true,
+                }
+            },
         });
         writeln!(stream, "{request}").expect("write move request");
         stream
@@ -350,6 +356,40 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
             .expect("moved session");
         assert_eq!(moved_count, 1);
     }
+
+    // The move is only half the point: the chat has to pick the work up in the
+    // destination checkout, which is a launch there with the prompt the mover
+    // wrote and the handoff note that says where "here" now is.
+    for _ in 0..100 {
+        if launcher.launches.lock().expect("launches poisoned").len() > 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let launches = launcher.launches.lock().expect("launches poisoned");
+    assert_eq!(
+        launches.len(),
+        2,
+        "the moved chat launched once in the destination"
+    );
+    let continuation = launches.last().expect("destination launch");
+    assert_eq!(
+        continuation.workspace_path,
+        destination_repo.path().to_path_buf()
+    );
+    assert!(
+        continuation.prompt.contains("Port the fix to this repo"),
+        "the destination turn carries the mover's prompt: {}",
+        continuation.prompt
+    );
+    assert!(
+        continuation
+            .prompt
+            .contains("This chat moved from Argmax to Destination"),
+        "the destination turn carries the handoff note: {}",
+        continuation.prompt
+    );
+    drop(launches);
 
     let deltas = deltas.lock().expect("deltas poisoned");
     assert!(deltas.iter().any(|delta| delta

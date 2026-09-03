@@ -33,9 +33,9 @@ use crate::{
         dashboard::DASHBOARD_ROW_LIMIT,
         database::Database,
         events::{
-            latest_agent_message, latest_user_message_at, list_session_events_since,
-            persist_timeline_event, PersistTimelineEventInput, TimelineEvent,
-            SESSION_EVENT_PAGE_LIMIT,
+            count_move_arrivals, latest_agent_message, latest_user_message_at,
+            list_session_events_since, persist_timeline_event, PersistTimelineEventInput,
+            TimelineEvent, SESSION_EVENT_PAGE_LIMIT,
         },
         projects::{list_projects, ProjectSummary},
         session_messages::{
@@ -69,6 +69,10 @@ const SESSION_LIST_LIMIT: usize = 40;
 /// sessions exist below it and the third is refused.
 const MAX_LAUNCH_DEPTH: i64 = 2;
 const MAX_LAUNCHES_PER_SESSION: i64 = 10;
+/// How many moves a chat may pick the work up after. A move starts a turn in
+/// the destination, and that turn can move again; past this the chat lands,
+/// says why it stopped, and waits for a person.
+const MAX_CONTINUED_MOVES: i64 = 3;
 /// `session_read`'s byte budget: the default an agent gets when it names none,
 /// and the ceiling it may ask for. The ceiling leaves headroom under
 /// `MAX_RESPONSE_BYTES` for the envelope and for JSON escaping.
@@ -530,6 +534,9 @@ pub struct LaunchAction {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MoveAction {
     pub project: String,
+    /// The turn the destination chat opens with. A move relocates work in
+    /// progress, so the destination has to be told what to pick up there.
+    pub prompt: String,
     #[serde(default)]
     pub worktree: bool,
     #[serde(default)]
@@ -1767,6 +1774,12 @@ async fn schedule_session_move(
     providers: Arc<ProviderSessionService>,
     registry: Arc<SessionLaunchRegistry>,
 ) -> Result<SessionControlResponse, SessionControlError> {
+    // Validated before anything is scheduled: a move whose continuation could
+    // never be delivered would strand the chat in the destination. Trimmed
+    // first — `Prompt` allows whitespace, but a blank turn is dropped on the
+    // way to the provider, which is the same dead end.
+    let continuation =
+        Prompt::try_from(action.prompt.trim().to_string()).map_err(invalid_input_error)?;
     let selector = action.project.as_str();
     let (source_session, source_workspace, destination) = {
         let connection = database.connection();
@@ -1837,23 +1850,38 @@ async fn schedule_session_move(
                 action.keep_source,
             )
             .await;
-        if let Err(error) = result {
-            tracing::warn!(
-                ?error,
-                session_id = %source_session_id,
-                "scheduled session move failed"
-            );
-            if let Err(record_error) =
-                workspaces.record_session_move_failure(&source_session_id, &error)
-            {
-                tracing::error!(
-                    ?record_error,
+        // The pending-move guard belongs to the source and the move is over
+        // either way. Holding it across the destination's launch would refuse
+        // a follow-up in a kept source chat that is no longer going anywhere.
+        move_registry.finish_move(&source_session_id);
+        match result {
+            Ok(moved) => {
+                continue_moved_session(
+                    &database,
+                    &workspaces,
+                    &providers,
+                    &moved.session.id,
+                    continuation,
+                )
+                .await
+            }
+            Err(error) => {
+                tracing::warn!(
+                    ?error,
                     session_id = %source_session_id,
-                    "failed to record session move failure"
+                    "scheduled session move failed"
                 );
+                if let Err(record_error) =
+                    workspaces.record_session_move_failure(&source_session_id, &error)
+                {
+                    tracing::error!(
+                        ?record_error,
+                        session_id = %source_session_id,
+                        "failed to record session move failure"
+                    );
+                }
             }
         }
-        move_registry.finish_move(&source_session_id);
     });
 
     Ok(SessionControlResponse::new(
@@ -1864,6 +1892,117 @@ async fn schedule_session_move(
             project_name: destination_project_name,
         }),
     ))
+}
+
+/// The destination's first turn. A move carries the transcript over but not
+/// the provider conversation, so nothing runs there until a turn is sent —
+/// this is that turn, the handoff the moving agent wrote. `send_input`
+/// composes it with the move seam's own handoff note (`providers::follow_up`),
+/// so the agent that wakes up in the destination is told where it is and what
+/// came before.
+async fn continue_moved_session(
+    database: &Database,
+    workspaces: &Arc<WorkspaceService>,
+    providers: &Arc<ProviderSessionService>,
+    destination_session_id: &str,
+    prompt: Prompt,
+) {
+    let arrivals = {
+        let connection = database.read_connection();
+        count_move_arrivals(&connection, destination_session_id)
+    };
+    match arrivals {
+        // Two agents that each conclude the work belongs in the other repo
+        // would otherwise bounce a live turn between them, unattended. The
+        // prompt rides along in the note: whoever takes over needs to know
+        // what the chat was about to do.
+        Ok(arrivals) if arrivals > MAX_CONTINUED_MOVES => {
+            record_move_continuation_note(
+                database,
+                workspaces,
+                destination_session_id,
+                format!(
+                    "This chat has moved {arrivals} times, so it is not picking the work up on its own again. Send the next message yourself. It was about to start on: {prompt}"
+                ),
+            );
+            return;
+        }
+        Ok(_) => {}
+        Err(error) => tracing::warn!(
+            ?error,
+            session_id = destination_session_id,
+            "could not count this chat's moves; continuing anyway"
+        ),
+    }
+
+    let session_id = match SessionId::try_from(destination_session_id.to_string()) {
+        Ok(session_id) => session_id,
+        Err(error) => {
+            tracing::error!(?error, "the moved session's id did not validate");
+            return;
+        }
+    };
+    let asked = prompt.as_str().to_string();
+    if let Err(error) = providers
+        .send_input(ProvidersSendInput {
+            session_id,
+            input: prompt,
+            provider: None,
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            agent_mode: None,
+            attachments: None,
+        })
+        .await
+    {
+        // The move is already committed and the source is likely archived, so
+        // this lands on the destination — the only chat still worth reading.
+        // A turn that failed after its user message was persisted has spent
+        // the seam's handoff note, so the note says where the work was headed
+        // rather than assuming the next message will carry it.
+        record_move_continuation_note(
+            database,
+            workspaces,
+            destination_session_id,
+            format!("Moved here, but the work could not start: {error}. It was about to start on: {asked}"),
+        );
+    }
+}
+
+/// Says on the destination chat why it is sitting still after a move. The
+/// source is usually archived by now, so a note there would go unread.
+fn record_move_continuation_note(
+    database: &Database,
+    workspaces: &Arc<WorkspaceService>,
+    session_id: &str,
+    message: String,
+) {
+    let recorded = (|| {
+        let connection = database.connection();
+        let session = find_session_by_id(&connection, session_id)?;
+        let event = persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: Uuid::new_v4().to_string(),
+                session_id: session_id.to_string(),
+                r#type: "error".to_string(),
+                message,
+                payload: serde_json::json!({ "operation": "session.move-continuation" }),
+                created_at: None,
+            },
+        )?;
+        Ok::<_, ArgmaxError>((session, event))
+    })();
+    match recorded {
+        Ok((session, event)) => workspaces.publish_session_with_events(session, vec![event]),
+        Err(error) => tracing::warn!(
+            ?error,
+            session_id,
+            "could not record why the moved chat did not continue"
+        ),
+    }
 }
 
 fn resolve_project(
@@ -2031,6 +2170,7 @@ pub enum SessionControlCliInput {
     },
     Move {
         project: String,
+        prompt: CliPrompt,
         worktree: bool,
         keep_source: bool,
     },
@@ -2061,10 +2201,12 @@ impl SessionControlCliInput {
             }),
             SessionControlCliInput::Move {
                 project,
+                prompt,
                 worktree,
                 keep_source,
             } => SessionControlAction::Move(MoveAction {
                 project,
+                prompt: prompt.read()?,
                 worktree,
                 keep_source,
             }),
@@ -2180,6 +2322,7 @@ fn parse_session_launch_cli(args: &[OsString]) -> Result<SessionControlCliInput,
 
 fn parse_session_move_cli(args: &[OsString]) -> Result<SessionControlCliInput, String> {
     let mut project = None;
+    let mut prompt = None;
     let mut worktree = false;
     let mut keep_source = false;
     let mut index = 3;
@@ -2214,12 +2357,30 @@ fn parse_session_move_cli(args: &[OsString]) -> Result<SessionControlCliInput, S
                 }
                 keep_source = true;
             }
+            "--prompt" => {
+                if prompt.is_some() {
+                    return Err("provide exactly one of --prompt or --prompt-stdin".to_string());
+                }
+                index += 1;
+                let value = args
+                    .get(index)
+                    .and_then(|value| value.to_str())
+                    .ok_or_else(|| "--prompt requires a UTF-8 value".to_string())?;
+                prompt = Some(CliPrompt::Value(value.to_string()));
+            }
+            "--prompt-stdin" => {
+                if prompt.is_some() {
+                    return Err("provide exactly one of --prompt or --prompt-stdin".to_string());
+                }
+                prompt = Some(CliPrompt::Stdin);
+            }
             _ => return Err(format!("unknown session move argument '{flag}'")),
         }
         index += 1;
     }
     Ok(SessionControlCliInput::Move {
         project: project.ok_or_else(session_move_usage)?,
+        prompt: prompt.ok_or_else(session_move_usage)?,
         worktree,
         keep_source,
     })
@@ -2320,7 +2481,8 @@ fn session_launch_usage() -> String {
 }
 
 fn session_move_usage() -> String {
-    "usage: argmax session move --project VALUE [--worktree] [--keep-source]".to_string()
+    "usage: argmax session move --project VALUE (--prompt VALUE | --prompt-stdin) [--worktree] [--keep-source]"
+        .to_string()
 }
 
 fn session_message_usage() -> String {
@@ -2586,6 +2748,8 @@ mod tests {
             "move",
             "--project",
             "Other",
+            "--prompt",
+            "Port the fix here",
             "--worktree",
             "--keep-source",
         ]
@@ -2594,6 +2758,7 @@ mod tests {
             parse_session_control_cli(&args).unwrap(),
             SessionControlCliInput::Move {
                 project: "Other".to_string(),
+                prompt: CliPrompt::Value("Port the fix here".to_string()),
                 worktree: true,
                 keep_source: true,
             }
@@ -2601,6 +2766,9 @@ mod tests {
 
         for args in [
             vec!["argmax", "session", "move"],
+            // A move without a prompt would land the chat in the destination
+            // with nothing to work on.
+            vec!["argmax", "session", "move", "--project", "Other"],
             vec![
                 "argmax",
                 "session",
@@ -2608,7 +2776,8 @@ mod tests {
                 "--project",
                 "Other",
                 "--prompt",
-                "no",
+                "here",
+                "--wat",
             ],
         ] {
             let args = args.into_iter().map(OsString::from).collect::<Vec<_>>();
@@ -2752,6 +2921,7 @@ mod tests {
         for action in [
             SessionControlAction::Move(MoveAction {
                 project: "Other".to_string(),
+                prompt: "Port the fix here".to_string(),
                 worktree: false,
                 keep_source: true,
             }),

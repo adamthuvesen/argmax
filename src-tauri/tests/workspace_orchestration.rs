@@ -23,9 +23,15 @@ use argmax_lib::ipc::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
 use argmax_lib::persistence::{
     checks::list_checks,
     database::Database,
-    events::{list_all_session_events, persist_timeline_event, PersistTimelineEventInput},
+    events::{
+        count_move_arrivals, list_all_session_events, persist_timeline_event,
+        PersistTimelineEventInput,
+    },
     projects::{persist_project, PersistProjectInput, ProjectSettings},
-    sessions::{persist_session, update_session_provider_conversation_id, PersistSessionInput},
+    sessions::{
+        persist_session, record_session_launch, session_launch_lineage,
+        update_session_provider_conversation_id, PersistSessionInput, LAUNCH_KIND_AGENT,
+    },
     workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
 };
 use argmax_lib::providers::flush_queue::DashboardDelta;
@@ -1693,12 +1699,36 @@ async fn move_session_copies_history_without_native_resume_and_can_keep_source()
         })
         .expect("source workspace");
     seed_completed_session(&database, &source_workspace.id, "source-session");
+    // Launched by another agent, so the move has a lineage to carry: the
+    // destination now runs a turn of its own, and its finish is owed to the
+    // session that dispatched the work.
+    let parent_workspace = service
+        .create_current(WorkspacesCreateCurrentInput {
+            project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Parent chat".to_string()).expect("task label"),
+        })
+        .expect("parent workspace");
+    seed_completed_session(&database, &parent_workspace.id, "parent-session");
+    record_session_launch(
+        &database.connection(),
+        "source-session",
+        "parent-session",
+        1,
+        LAUNCH_KIND_AGENT,
+    )
+    .expect("source lineage");
 
     let moved = service
         .move_session_to_project("source-session", "destination-project", false, true)
         .await
         .expect("move session");
 
+    assert_eq!(
+        moved.session.launched_by_session_id.as_deref(),
+        Some("parent-session"),
+        "a moved chat still reports to whoever launched it"
+    );
+    assert_eq!(moved.session.launch_kind, LAUNCH_KIND_AGENT);
     assert_eq!(moved.workspace.project_id, "destination-project");
     assert_eq!(
         moved.workspace.path,
@@ -1710,6 +1740,13 @@ async fn move_session_copies_history_without_native_resume_and_can_keep_source()
     let connection = database.connection();
     let source = find_workspace_by_id(&connection, &source_workspace.id).expect("source workspace");
     assert_ne!(source.state, "archived");
+    assert_eq!(
+        session_launch_lineage(&connection, &moved.session.id)
+            .expect("destination lineage")
+            .depth,
+        1,
+        "the launch caps still count the chat where it now sits"
+    );
     let copied = list_all_session_events(&connection, &moved.session.id).expect("copied events");
     assert!(copied.iter().any(|event| event.message == "Source answer"));
     let seam = copied
@@ -1825,5 +1862,59 @@ async fn move_session_keeps_dirty_isolated_source_without_forcing_archive() {
             .expect("source workspace")
             .state,
         "kept"
+    );
+}
+
+/// The seams a move copies are what bound an auto-continued chain: each hop
+/// adds one and carries the earlier ones, so the count is the chat's whole
+/// history of arrivals rather than the last one.
+#[tokio::test]
+async fn each_move_adds_an_arrival_the_copied_transcript_carries_on() {
+    let repos = [
+        seed_git_repo(&[("README.md", "first")]),
+        seed_git_repo(&[("README.md", "second")]),
+        seed_git_repo(&[("README.md", "third")]),
+    ];
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    for (index, repo) in repos.iter().enumerate() {
+        ensure_main_branch(repo.path());
+        build_named_project(
+            &database,
+            &format!("project-{index}"),
+            &format!("Project {index}"),
+            &repo.path().display().to_string(),
+            &repo.path().join("worktrees").display().to_string(),
+        );
+    }
+    let service = WorkspaceService::new(Arc::clone(&database));
+    let source_workspace = service
+        .create_current(WorkspacesCreateCurrentInput {
+            project_id: ProjectId::try_from("project-0".to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Move twice".to_string()).expect("task label"),
+        })
+        .expect("source workspace");
+    seed_completed_session(&database, &source_workspace.id, "source-session");
+
+    let first = service
+        .move_session_to_project("source-session", "project-1", false, true)
+        .await
+        .expect("first move");
+    let second = service
+        .move_session_to_project(&first.session.id, "project-2", false, true)
+        .await
+        .expect("second move");
+
+    let connection = database.connection();
+    assert_eq!(
+        count_move_arrivals(&connection, "source-session").expect("source arrivals"),
+        0
+    );
+    assert_eq!(
+        count_move_arrivals(&connection, &first.session.id).expect("first arrivals"),
+        1
+    );
+    assert_eq!(
+        count_move_arrivals(&connection, &second.session.id).expect("second arrivals"),
+        2
     );
 }

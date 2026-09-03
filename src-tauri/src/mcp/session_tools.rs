@@ -68,6 +68,10 @@ pub struct SessionMoveParams {
     /// The registered project to move to, by name or absolute repo path. It
     /// must be a different project from the current one.
     pub project: String,
+    /// What to do once you are there. It becomes your first turn in the
+    /// destination, where the CLI starts cold and sees only the last few turns
+    /// of this transcript, so write it to stand on its own.
+    pub prompt: String,
     /// Create an isolated worktree in the destination instead of using its
     /// shared checkout.
     #[serde(default)]
@@ -279,9 +283,11 @@ its answer."
 
     #[tool(
         name = "session_move",
-        description = "Move this session to a different registered project. The move is scheduled: \
-it runs once the current turn settles, carries the transcript over, and archives the source \
-workspace unless keep_source is set. Use it when the work turns out to belong in another repository."
+        description = "Move this session to a different registered project and carry on working \
+there. The move is scheduled: it runs once the current turn settles, carries the transcript over, \
+and archives the source workspace unless keep_source is set. Your `prompt` then starts your first \
+turn in the destination checkout, so call this as the last action of a turn. Use it when the work \
+turns out to belong in another repository."
     )]
     async fn session_move(
         &self,
@@ -289,6 +295,7 @@ workspace unless keep_source is set. Use it when the work turns out to belong in
     ) -> Result<CallToolResult, ErrorData> {
         call(SessionControlAction::Move(MoveAction {
             project: params.project,
+            prompt: params.prompt,
             worktree: params.worktree,
             keep_source: params.keep_source,
         }))

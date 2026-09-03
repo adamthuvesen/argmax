@@ -10,7 +10,13 @@ import { parsePlan } from "../lib/parsePlan.js";
 import type { RenderItem } from "../lib/foldConversation.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { isSupportedImageMime } from "../lib/composerAttachments.js";
-import { assistantGroupHasVisibleChat, buildTurnRenderState, liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
+import {
+  assistantGroupHasVisibleChat,
+  buildTurnRenderState,
+  liveThoughtOwnsProgress,
+  preToolNarrationGroupIds
+} from "../lib/sessionTurnView.js";
+import { foldToolRunsToSummaries } from "../lib/turnChildren.js";
 import { isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { codenameForTool } from "../lib/agentNames.js";
@@ -252,36 +258,22 @@ function SessionConversationTurnInner({
   const lastToolCreatedAt = latestToolCreatedAt(item.toolItems);
   // Finished Minimal keeps the answer: assistant text after the last tool.
   // Claude, Codex, Grok, and OpenCode write progress as `message.completed`
-  // before each tool, so those lines look like thinking if they stay visible.
-  // Claude and Grok emit that text and the following `command.started` from
-  // the same envelope, so they share a timestamp. Treat same-timestamp prose
-  // as work (`<=`), not as the answer. Expanding the chip restores the
-  // narration with the tools. Live turns keep it so the user can watch the
-  // agent talk while tools run. If the turn ended on a tool, keep the last
-  // prose group so the chip is not empty.
+  // before each tool. Expanding the chip restores the narration with the
+  // tools. Live turns keep it so the user can watch the agent talk while tools
+  // run.
   // This turn's own liveness, not the session's: keying off `sessionIsLive`
   // alone re-expanded every finished turn the moment a new turn started.
   const turnIsLive = isLatestTurn && sessionIsLive;
-  const hidePreToolNarration =
-    minimalActivity && !turnIsLive && !toolsExpanded && lastToolCreatedAt !== null;
-  const lastAnswerGroupId = [...visibleAssistantGroups]
-    .reverse()
-    .find((group) => !group.thinking && !group.error)?.id;
+  const hiddenNarrationIds = preToolNarrationGroupIds(
+    visibleAssistantGroups,
+    minimalActivity && !turnIsLive && !toolsExpanded ? lastToolCreatedAt : null
+  );
   const assistantChildren: AnnotatedChild[] = visibleAssistantGroups
     .map((group): AnnotatedChild | null => {
       // Single-line mode folds completed Thought blocks away entirely — only
       // the live "Thinking" indicator (governed by thinkingLive) survives.
       if (minimalActivity && group.thinking && !thinkingLive) return null;
-      if (
-        hidePreToolNarration &&
-        lastToolCreatedAt !== null &&
-        !group.thinking &&
-        !group.error &&
-        group.id !== lastAnswerGroupId &&
-        group.lastActivityAt <= lastToolCreatedAt
-      ) {
-        return null;
-      }
+      if (hiddenNarrationIds.has(group.id)) return null;
       if (group.thinking) {
         const node = (
           <ThoughtBlock
@@ -462,32 +454,17 @@ function SessionConversationTurnInner({
   // Single-line mode: every consecutive run of tool children between two
   // anchors (assistant text, agent launch, or a card) collapses into ONE line.
   // Agent launches pass through untouched — they are the only extra row
-  // allowed between replies. The merged child anchors on the run's first tool
-  // id so the line mutates in place ("Read 1 file" → "Read 2 files, edited 1
-  // file") as the run grows instead of appending.
-  let bodySource: AnnotatedChild[] = coalescedChildren;
-  if (minimalActivity) {
-    const activityChildren: AnnotatedChild[] = [];
-    let run: { tools: ToolCall[]; anchor: AnnotatedChild } | null = null;
-    const flushRun = (): void => {
-      if (!run) return;
-      const { tools, anchor } = run;
-      run = null;
-      const first = tools[0];
-      // A run of one has nothing to summarize: the line and the row it hides
-      // are the same sentence with different pluralization ("Fetched 1 URL"
-      // over "Fetched URL"). Show the row, which opens straight to detail.
-      const only = tools.length === 1 ? first : undefined;
-      activityChildren.push({
-        kind: "tool",
-        id: first ? `activity-${first.id}` : anchor.id,
-        createdAt: anchor.createdAt,
-        sortAt: anchor.sortAt,
-        node: only ? (
+  // allowed between replies.
+  const bodySource: AnnotatedChild[] = minimalActivity
+    ? foldToolRunsToSummaries(coalescedChildren, (tools) =>
+        // A run of one has nothing to summarize: the line and the row it hides
+        // are the same sentence with different pluralization ("Fetched 1 URL"
+        // over "Fetched URL"). Show the row, which opens straight to detail.
+        tools.length === 1 && tools[0] ? (
           <ToolCallRow
-            tool={only}
+            tool={tools[0]}
             workspaceCwd={workspace?.path ?? null}
-            agentCodename={codenameForTool(only, agentCodenames)}
+            agentCodename={codenameForTool(tools[0], agentCodenames)}
             onOpenFile={onOpenFile}
             onOpenAgent={onOpenAgent}
           />
@@ -500,20 +477,8 @@ function SessionConversationTurnInner({
             onOpenAgent={onOpenAgent}
           />
         )
-      });
-    };
-    for (const child of coalescedChildren) {
-      if (child.kind === "tool" && child.runTools && child.runTools.length > 0) {
-        if (run) run.tools.push(...child.runTools);
-        else run = { tools: [...child.runTools], anchor: child };
-        continue;
-      }
-      flushRun();
-      activityChildren.push(child);
-    }
-    flushRun();
-    bodySource = activityChildren;
-  }
+      )
+    : coalescedChildren;
   const bodyChildren: TurnBodyChild[] = bodySource.map((child) => {
     if (child.agentTools) {
       const first = child.agentTools[0];

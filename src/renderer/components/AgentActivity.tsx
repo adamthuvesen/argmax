@@ -4,17 +4,28 @@ import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shar
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { SCROLL_INTENT_KEYS, useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
-import { assistantGroupHasVisibleChat, coalesceAssistantGroups, type AssistantGroup } from "../lib/sessionTurnView.js";
-import type { ToolCall } from "../lib/toolCalls.js";
-import { groupToolRuns, type TurnBodyChild } from "../lib/turnChildren.js";
+import { foldConversationItems } from "../lib/foldConversation.js";
+import {
+  assistantGroupHasVisibleChat,
+  coalesceAssistantGroups,
+  preToolNarrationGroupIds,
+  type AssistantGroup
+} from "../lib/sessionTurnView.js";
+import type { ToolCall, TurnToolItem } from "../lib/toolCalls.js";
+import { foldToolRunsToSummaries, type TurnBodyChild } from "../lib/turnChildren.js";
+import { foldTurnToolItems, latestToolCreatedAt } from "../lib/turnToolItems.js";
+import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
+import { ActivitySummaryLine } from "./ActivitySummaryLine.js";
 import { ChatBubble } from "./ChatBubble.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { LogBlock } from "./LogBlock.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
+import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
+import { TurnBlock } from "./TurnBlock.js";
 
 const PROMPT_COLLAPSE_THRESHOLD = 560;
 
@@ -27,12 +38,17 @@ function isLongPrompt(prompt: string | null): boolean {
 function renderAssistantGroup({
   group,
   thinkingLive,
+  thoughtExpanded,
+  holdThoughtOpen,
   agentKey,
   workspace,
   onOpenFile
 }: {
   group: AssistantGroup;
   thinkingLive: boolean;
+  /** Saved thinking default, or the pane chip's explicit override. */
+  thoughtExpanded: boolean | undefined;
+  holdThoughtOpen: boolean;
   /** Namespaces this pane's group ids, which only count within one agent run. */
   agentKey: string | null;
   workspace: WorkspaceSummary | null;
@@ -42,12 +58,12 @@ function renderAssistantGroup({
     return (
       <ThoughtBlock
         key={group.id}
-        defaultExpanded={thinkingLive}
+        defaultExpanded={thoughtExpanded}
         live={thinkingLive}
         // Never fold in place: the pane follows its own scroll to the bottom,
         // so losing the reasoning's height the moment the answer starts would
-        // yank the view up. It opens collapsed again on the pane's next visit.
-        holdOpen
+        // yank the view up. An explicit fold from the pane chip still wins.
+        holdOpen={holdThoughtOpen}
         durationMs={thoughtDurationMs(group.createdAt, group.lastActivityAt)}
       >
         {/* Same as the chat surface: a live thought streams so the committed
@@ -107,6 +123,9 @@ function AgentResult({
 export function AgentActivity({
   events,
   codename,
+  defaultToolCallsDisplay,
+  defaultToolCallGroupsExpanded,
+  defaultThinkingExpanded,
   isFocused,
   onLoadAgentEvents,
   onLoadSessionEvents,
@@ -118,6 +137,11 @@ export function AgentActivity({
 }: {
   events: TimelineEvent[];
   codename?: string;
+  /** The same chat-verbosity settings the transcript reads, so a subagent's
+   *  run is as quiet or as detailed as the chat that launched it. */
+  defaultToolCallsDisplay?: ToolCallsDisplay;
+  defaultToolCallGroupsExpanded?: boolean;
+  defaultThinkingExpanded?: boolean;
   isFocused?: boolean;
   onLoadAgentEvents?: (sessionId: string, parentToolUseId: string) => Promise<void>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
@@ -155,25 +179,58 @@ export function AgentActivity({
     [activity.items, finalOutput, activity.status]
   );
   const streaming = parentSession?.state === "running" && activity.status === "running";
-  const activityChildren = useMemo((): TurnBodyChild[] => {
+  // A subagent run is one turn, so it plays the part the chat's *latest* turn
+  // plays: the pane chip governs the whole run's tools and reasoning at once,
+  // and the saved verbosity decides where it starts. Minimal never expands —
+  // the run reads as one self-updating line, and a finished one keeps only its
+  // result until the chip is opened.
+  const minimalActivity = defaultToolCallsDisplay === "single-line";
+  const activityExpandedDefault =
+    !minimalActivity && (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded");
+  const [activityExpandOverride, setActivityExpandOverride] = useState<boolean | null>(null);
+  const activityExpanded = activityExpandOverride ?? activityExpandedDefault;
+  const { activityChildren, toolItems, assistantTimestamps } = useMemo((): {
+    activityChildren: TurnBodyChild[];
+    toolItems: TurnToolItem[];
+    assistantTimestamps: number[];
+  } => {
     const assistantEvents = activity.items.flatMap((item) =>
       item.kind === "message" ? [item.event] : []
     );
-    const toolItems = activity.items.flatMap((item) =>
-      item.kind === "tool" ? [item.tool] : []
+    const tools = activity.items.flatMap((item) => (item.kind === "tool" ? [item.tool] : []));
+    // Same two folds the transcript runs: consecutive calls become one group
+    // row, then bash-like runs merge and a subagent's own children nest under
+    // the launch that spawned them.
+    const folded = foldTurnToolItems(
+      foldConversationItems([], tools).flatMap((item): TurnToolItem[] =>
+        item.kind === "message" ? [] : [item]
+      )
     );
     const assistantGroups = coalesceAssistantGroups(assistantEvents, {
-      splitAt: toolItems.map((tool) => tool.createdAt).sort(),
+      splitAt: tools.map((tool) => tool.createdAt).sort(),
       streaming
     });
     const hasAnswerText = assistantGroups.some(
       (group) => !group.thinking && assistantGroupHasVisibleChat(group)
     );
     const thinkingLive = streaming && !hasAnswerText;
+    const hiddenNarrationIds = preToolNarrationGroupIds(
+      assistantGroups,
+      minimalActivity && !streaming && !activityExpanded ? latestToolCreatedAt(folded) : null,
+      // The pane renders the run's answer as its own result panel, so there is
+      // no last prose group worth keeping to stand in for one.
+      { separateAnswer: finalOutput !== null }
+    );
     const assistantChildren = assistantGroups.flatMap((group) => {
+      // Minimal folds settled Thought blocks away entirely — only the live
+      // "Thinking" indicator survives.
+      if (minimalActivity && group.thinking && !thinkingLive) return [];
+      if (hiddenNarrationIds.has(group.id)) return [];
       const node = renderAssistantGroup({
         group,
         thinkingLive,
+        thoughtExpanded: activityExpandOverride ?? defaultThinkingExpanded,
+        holdThoughtOpen: activityExpandOverride !== false,
         agentKey,
         workspace,
         onOpenFile
@@ -189,30 +246,92 @@ export function AgentActivity({
         }
       ];
     });
-    const toolChildren = toolItems.map((tool) => ({
-      kind: "tool" as const,
-      id: `tool-${tool.id}`,
-      createdAt: tool.createdAt,
-      sortAt: tool.createdAt,
-      node: (
-        <ToolCallRow
-          key={tool.id}
-          tool={tool}
-          defaultExpanded={false}
-          workspaceCwd={workspace?.path ?? null}
-          onOpenFile={onOpenFile}
-          onOpenAgent={onOpenAgent}
-        />
-      )
-    }));
-    return [...assistantChildren, ...toolChildren]
-      .sort((a, b) => {
-        const cmp = a.sortAt.localeCompare(b.sortAt);
-        if (cmp !== 0) return cmp;
-        return (a.kind === "assistant" ? -1 : 0) - (b.kind === "assistant" ? -1 : 0);
-      })
-      .map(({ kind, id, node }) => ({ kind, id, node }));
-  }, [activity.items, agentKey, onOpenAgent, onOpenFile, streaming, workspace]);
+    const toolChildren = folded.map((item) => {
+      if (item.kind === "tool") {
+        return {
+          kind: "tool" as const,
+          id: `tool-${item.tool.id}`,
+          createdAt: item.tool.createdAt,
+          sortAt: item.tool.createdAt,
+          runTools: [item.tool, ...(item.children ?? [])],
+          node: (
+            <ToolCallRow
+              key={item.tool.id}
+              tool={item.tool}
+              childTools={item.children}
+              defaultExpanded={activityExpanded}
+              workspaceCwd={workspace?.path ?? null}
+              onOpenFile={onOpenFile}
+              onOpenAgent={onOpenAgent}
+            />
+          )
+        };
+      }
+      const firstCreatedAt = item.group.tools[0]?.createdAt ?? "";
+      return {
+        kind: "tool" as const,
+        id: `tool-${item.group.id}`,
+        createdAt: firstCreatedAt,
+        sortAt: firstCreatedAt,
+        runTools: item.group.tools,
+        node: (
+          <ToolCallGroupBubble
+            key={item.group.id}
+            group={item.group}
+            defaultExpanded={activityExpanded}
+            workspaceCwd={workspace?.path ?? null}
+            onOpenFile={onOpenFile}
+            onOpenAgent={onOpenAgent}
+          />
+        )
+      };
+    });
+    const sorted = [...assistantChildren, ...toolChildren].sort((a, b) => {
+      const cmp = a.sortAt.localeCompare(b.sortAt);
+      if (cmp !== 0) return cmp;
+      return (a.kind === "assistant" ? -1 : 0) - (b.kind === "assistant" ? -1 : 0);
+    });
+    const bodySource = minimalActivity
+      ? foldToolRunsToSummaries(sorted, (runTools) =>
+          // A run of one is not a summary: the line and the row it would hide
+          // are the same sentence, so show the row.
+          runTools.length === 1 && runTools[0] ? (
+            <ToolCallRow
+              tool={runTools[0]}
+              workspaceCwd={workspace?.path ?? null}
+              onOpenFile={onOpenFile}
+              onOpenAgent={onOpenAgent}
+            />
+          ) : (
+            <ActivitySummaryLine
+              tools={runTools}
+              workspaceCwd={workspace?.path ?? null}
+              onOpenFile={onOpenFile}
+              onOpenAgent={onOpenAgent}
+            />
+          )
+        )
+      : sorted;
+    return {
+      activityChildren: bodySource.map(({ kind, id, node }) => ({ kind, id, node })),
+      toolItems: folded,
+      assistantTimestamps: assistantEvents
+        .map((event) => Date.parse(event.createdAt))
+        .filter((ms) => Number.isFinite(ms))
+    };
+  }, [
+    activity.items,
+    activityExpandOverride,
+    activityExpanded,
+    agentKey,
+    defaultThinkingExpanded,
+    finalOutput,
+    minimalActivity,
+    onOpenAgent,
+    onOpenFile,
+    streaming,
+    workspace
+  ]);
   // Restored turns must not replay their entrance animation on every reopen.
   const restoringTranscript = useRestoreWithoutMotion();
   const {
@@ -264,9 +383,19 @@ export function AgentActivity({
 
   useEffect(() => {
     setInstructionsExpanded(false);
+    setActivityExpandOverride(null);
   }, [parentToolUseId]);
 
-  const hasRenderedActivity = activityChildren.length > 0 || finalOutput !== null;
+  // The launch is when the run started, so the chip's clock counts from there
+  // rather than from the subagent's first visible event.
+  const launchedAtMs = useMemo(() => {
+    const ms = Date.parse(activity.parentTool?.createdAt ?? "");
+    return Number.isFinite(ms) ? ms : null;
+  }, [activity.parentTool?.createdAt]);
+  // Minimal collapses the whole body away, so a run with tools but no visible
+  // child is still a rendered run, not a pane still waiting for one.
+  const hasRenderedActivity =
+    activityChildren.length > 0 || toolItems.length > 0 || finalOutput !== null;
   const initialAgentEventsLoadPending = Boolean(
     agentKey && onLoadAgentEvents && loadedAgentKey !== agentKey
   );
@@ -372,10 +501,20 @@ export function AgentActivity({
           </div>
         ) : null}
 
-        {activityChildren.length > 0 ? (
-          <div className="agent-activity-items turn-block-body">
-            {groupToolRuns(activityChildren)}
-          </div>
+        {activityChildren.length > 0 || toolItems.length > 0 ? (
+          // The same block the transcript wraps a turn in, so the run carries
+          // the same "Worked for Xs" chip: one control over every tool group
+          // and Thought block below it.
+          <TurnBlock
+            toolItems={toolItems}
+            assistantTimestamps={assistantTimestamps}
+            {...(launchedAtMs !== null ? { turnStartedAtMs: launchedAtMs } : {})}
+            isTurnActive={streaming}
+            toolsExpanded={activityExpanded}
+            onToggleTools={() => setActivityExpandOverride(!activityExpanded)}
+            hideWorkingWhenCollapsed={minimalActivity}
+            body={activityChildren}
+          />
         ) : !showLimitedNotice && !showAgentActivityThinking ? (
           <div className="agent-activity-empty" role="status">
             Waiting for agent activity.

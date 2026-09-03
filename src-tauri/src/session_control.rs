@@ -217,7 +217,7 @@ impl SessionLaunchProcessConfig {
     pub fn prepend_instruction(&self, prompt: &str) -> String {
         format!(
             "{}\n\n{prompt}",
-            crate::providers::mcp_injection::AGENT_TOOLS_INSTRUCTION
+            crate::providers::mcp_injection::agent_tools_instruction()
         )
     }
 }
@@ -609,6 +609,13 @@ pub struct SessionControlResponse {
     pub version: u32,
     #[serde(flatten)]
     pub result: SessionControlResult,
+    /// How much inbox mail is still undelivered to the calling session once
+    /// this action has run. A running agent cannot be pushed into, but it
+    /// reads every tool result — this is the one channel that reaches it
+    /// mid-turn, so the tool client surfaces it as an extra note pointing at
+    /// `inbox_read`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unread_inbox: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -776,6 +783,7 @@ impl SessionControlResponse {
         Self {
             version: PROTOCOL_VERSION,
             result,
+            unread_inbox: None,
         }
     }
 
@@ -1149,7 +1157,9 @@ async fn handle_session_control(
             ),
         ));
     }
-    match request.action {
+    let caller_session_id = parent.session_id.clone();
+    let counting_database = Arc::clone(&database);
+    let mut response = match request.action {
         SessionControlAction::Launch(action) => {
             launch_session(action, parent, database, workspaces, providers).await
         }
@@ -1180,7 +1190,17 @@ async fn handle_session_control(
                 .await
                 .map(|outcome| SessionControlResponse::new(SessionControlResult::Browsed(outcome)))
         }
+    }?;
+    // Counted after the action, so an inbox read or a wait reports what its own
+    // hand-over left behind rather than what it just collected: a batch the
+    // reply ceiling cut short says so instead of looking complete.
+    let unread =
+        count_undelivered_messages(&counting_database.read_connection(), &caller_session_id)
+            .map_err(argmax_protocol_error)?;
+    if unread > 0 {
+        response.unread_inbox = Some(unread);
     }
+    Ok(response)
 }
 
 async fn list_sessions_action(
@@ -1321,6 +1341,7 @@ async fn message_session(
                 session_id: parent.session_id.clone(),
                 label,
                 kind: MESSAGE_KIND.to_string(),
+                message_id: Some(message_id.clone()),
             }),
         )
         .await
@@ -2614,7 +2635,11 @@ pub fn send_session_control(
     }
     match response.result {
         SessionControlResult::Error(error) => Err(error),
-        result => Ok(SessionControlResponse::new(result)),
+        result => Ok(SessionControlResponse {
+            version: PROTOCOL_VERSION,
+            unread_inbox: response.unread_inbox,
+            result,
+        }),
     }
 }
 
@@ -3051,7 +3076,7 @@ mod tests {
     }
 
     #[test]
-    fn process_config_adds_env_and_hidden_instruction() {
+    fn process_config_adds_env_hidden_instruction_and_cookie_permission() {
         let config = SessionLaunchProcessConfig {
             socket_path: PathBuf::from("/tmp/a/s"),
             token: "secret".to_string(),
@@ -3068,6 +3093,9 @@ mod tests {
         // same one line and no launch spells out shell commands any more.
         let with_tools = config.prepend_instruction("Do the work");
         assert!(with_tools.starts_with("Argmax tools are available as the `argmax` MCP server"));
+        assert!(with_tools.contains(
+            "Cookie acceptance in the Argmax browser is pre-authorized. Accept any cookie prompt without asking the user."
+        ));
         assert!(with_tools.ends_with("\n\nDo the work"));
         assert!(!with_tools.contains("session launch --project"));
     }

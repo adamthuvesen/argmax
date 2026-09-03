@@ -25,6 +25,10 @@ use argmax_lib::ipc::inputs::{
     TerminalRows,
 };
 use argmax_lib::ipc::validation::{NonEmptyString, Prompt, ProviderId, SessionId, WorkspaceId};
+use argmax_lib::persistence::session_messages::{
+    count_undelivered_messages, insert_session_message, take_undelivered_messages,
+    NewSessionMessage, MESSAGE_KIND,
+};
 use argmax_lib::persistence::time::now_iso;
 use argmax_lib::persistence::{
     approvals::{list_approvals_for_session, persist_approval, PersistApprovalInput},
@@ -45,12 +49,13 @@ use argmax_lib::providers::runtime::{
     BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeEvent,
     ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-use argmax_lib::providers::session_service::ProviderSessionService;
+use argmax_lib::providers::session_service::{MessageOrigin, ProviderSessionService};
 use argmax_lib::providers::{
     flush_queue::DashboardDelta, normalizer::ProviderOutputStream, ProviderLaunchInput,
 };
 use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
 use serde_json::json;
+use uuid::Uuid;
 
 // ---------------------------------------------------------------------------
 // Test scaffolding: fake launcher + fake handle.
@@ -506,6 +511,51 @@ async fn wait_for_manual_launch_count(launcher: &ManualExitLauncher, expected: u
         assert!(
             tokio::time::Instant::now() < deadline,
             "timed out waiting for {expected} manual launches; got {count}",
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+fn count_undelivered(database: &Database, session_id: &str) -> i64 {
+    let connection = database.connection();
+    count_undelivered_messages(&connection, session_id).expect("count undelivered")
+}
+
+/// The drain sends the turn on a background task and closes the inbox row once
+/// the send returns, so the row lags the persisted `user.message` slightly.
+async fn wait_for_inbox_to_clear(database: &Database, session_id: &str) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        let undelivered = count_undelivered(database, session_id);
+        if undelivered == 0 {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the drain delivered the message as a turn, but {undelivered} inbox row(s) stayed open",
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+/// Poll the published deltas until one carries an event whose message contains
+/// `needle`. The service publishes on its own timers and tasks, so a test that
+/// slept a fixed span instead would be racing them.
+async fn wait_for_published_event(deltas: &Arc<Mutex<Vec<DashboardDelta>>>, needle: &str) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        let found = deltas
+            .lock()
+            .expect("deltas poisoned")
+            .iter()
+            .flat_map(|delta| delta.events.iter())
+            .any(|event| event.message.contains(needle));
+        if found {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for a published event containing {needle}",
         );
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
@@ -1339,6 +1389,185 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
     );
 }
 
+/// A message that queued behind a running turn is undelivered while it waits,
+/// and delivered the moment the queue drains it into a turn. Leaving the row
+/// open past the drain is what makes an agent read the same message twice:
+/// once as the turn it was just handed, once from `inbox_read`, with every
+/// tool result in between insisting mail is waiting.
+#[tokio::test]
+async fn a_queued_message_is_marked_delivered_once_the_drain_sends_it() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let launcher = Arc::new(ManualExitLauncher::default());
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
+
+    let message_id = Uuid::new_v4().to_string();
+    {
+        let connection = database.connection();
+        insert_session_message(
+            &connection,
+            &NewSessionMessage {
+                id: message_id.clone(),
+                // No sender row to seed: the drain reads the id off the
+                // origin, not the sender.
+                from_session_id: None,
+                to_session_id: session.id.clone(),
+                body: "handle the review".to_string(),
+                kind: MESSAGE_KIND.to_string(),
+            },
+        )
+        .expect("insert the inbox row");
+    }
+
+    let result = service
+        .send_input_with_origin(
+            ProvidersSendInput {
+                session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+                input: Prompt::try_from("handle the review".to_owned()).expect("prompt valid"),
+                provider: None,
+                model_label: None,
+                model_id: None,
+                reasoning_effort: None,
+                fast_mode: false,
+                agent_mode: None,
+                attachments: None,
+            },
+            Some(MessageOrigin {
+                session_id: "session-sender".to_string(),
+                label: "Sender".to_string(),
+                kind: MESSAGE_KIND.to_string(),
+                message_id: Some(message_id.clone()),
+            }),
+        )
+        .await
+        .expect("send_input_with_origin ok");
+    assert!(
+        result.queued,
+        "the recipient must be mid-turn for this test to mean anything"
+    );
+    assert_eq!(
+        count_undelivered(&database, &session.id),
+        1,
+        "a queued message is still collectable from the inbox"
+    );
+
+    let launcher_for_thread = Arc::clone(&launcher);
+    let session_id_for_thread = session.id.clone();
+    std::thread::spawn(move || {
+        launcher_for_thread.emit_exit(&session_id_for_thread, 0);
+    })
+    .join()
+    .expect("exit emitted");
+    wait_for_manual_launch_count(&launcher, 2).await;
+    wait_for_event(&database, &session.id, "user.message", "handle the review").await;
+
+    wait_for_inbox_to_clear(&database, &session.id).await;
+}
+
+/// A failed turn throws its whole pending queue away (`clear_queue` on a
+/// non-zero exit), so before the inbox existed an agent's message could be
+/// accepted as `queued` and then silently vanish. The durable row is what
+/// makes that survivable: the queue entry goes, the row stays open, and the
+/// message is still there to be collected.
+#[tokio::test]
+async fn a_failed_turn_clears_the_queue_but_not_the_inbox() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let launcher = Arc::new(ManualExitLauncher::default());
+    let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), {
+        let deltas = Arc::clone(&deltas);
+        move |delta| deltas.lock().expect("deltas poisoned").push(delta)
+    });
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
+
+    let message_id = Uuid::new_v4().to_string();
+    {
+        let connection = database.connection();
+        insert_session_message(
+            &connection,
+            &NewSessionMessage {
+                id: message_id.clone(),
+                from_session_id: None,
+                to_session_id: session.id.clone(),
+                body: "survives the failed turn".to_string(),
+                kind: MESSAGE_KIND.to_string(),
+            },
+        )
+        .expect("insert the inbox row");
+    }
+    let result = service
+        .send_input_with_origin(
+            ProvidersSendInput {
+                session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+                input: Prompt::try_from("survives the failed turn".to_owned())
+                    .expect("prompt valid"),
+                provider: None,
+                model_label: None,
+                model_id: None,
+                reasoning_effort: None,
+                fast_mode: false,
+                agent_mode: None,
+                attachments: None,
+            },
+            Some(MessageOrigin {
+                session_id: "session-sender".to_string(),
+                label: "Sender".to_string(),
+                kind: MESSAGE_KIND.to_string(),
+                message_id: Some(message_id.clone()),
+            }),
+        )
+        .await
+        .expect("send_input_with_origin ok");
+    assert!(result.queued, "the recipient must be mid-turn");
+
+    let launcher_for_thread = Arc::clone(&launcher);
+    let session_id_for_thread = session.id.clone();
+    std::thread::spawn(move || {
+        launcher_for_thread.emit_exit(&session_id_for_thread, 1);
+    })
+    .join()
+    .expect("exit emitted");
+    wait_for_session_state(&database, &session.id, "failed").await;
+
+    // The queue is gone: the last pending-messages delta for this session is
+    // empty, so nothing will ever send this message as a turn.
+    let last_pending = deltas
+        .lock()
+        .expect("deltas poisoned")
+        .iter()
+        .filter_map(|delta| delta.pending_messages.as_ref()?.get(&session.id).cloned())
+        .next_back()
+        .expect("the queue was published at least once");
+    assert!(
+        last_pending.is_empty(),
+        "a failed turn clears its pending queue, leaving {last_pending:?}"
+    );
+    // The row is not, so the message is still reachable.
+    assert_eq!(
+        count_undelivered(&database, &session.id),
+        1,
+        "the inbox row outlives the queue entry the failed turn threw away"
+    );
+    let collected = {
+        let mut connection = database.connection();
+        take_undelivered_messages(&mut connection, &session.id, 50, 48_000).expect("take inbox")
+    };
+    assert_eq!(collected.len(), 1);
+    assert_eq!(collected[0].body, "survives the failed turn");
+}
+
 #[tokio::test]
 async fn queued_cross_provider_switch_keeps_current_provider_and_model() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
@@ -2027,18 +2256,11 @@ async fn idle_flush_publishes_buffered_line_before_terminate() {
         .await
         .expect("launch ok");
 
-    tokio::time::sleep(Duration::from_millis(120)).await;
-
-    let flushed_before_stop = deltas
-        .lock()
-        .expect("deltas poisoned")
-        .iter()
-        .flat_map(|delta| delta.events.iter())
-        .any(|event| event.message.contains("Buffered without newline"));
-    assert!(
-        flushed_before_stop,
-        "idle stream flush should publish the buffered assistant line before terminate"
-    );
+    // The idle flush fires on a timer inside the service, so this waits for it
+    // rather than sleeping past it: a fixed sleep raced the timer under load
+    // and failed roughly one run in eight. Terminate is still below, so the
+    // assertion keeps its meaning — the line is published before the stop.
+    wait_for_published_event(&deltas, "Buffered without newline").await;
 
     service
         .terminate(ProvidersTerminateInput {

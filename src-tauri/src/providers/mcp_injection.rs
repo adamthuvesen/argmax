@@ -50,10 +50,18 @@ use super::ProviderId;
 /// (Claude, Codex, Cursor) or `argmax__<tool>` (Grok, OpenCode).
 pub const SERVER_NAME: &str = "argmax";
 
-/// What a provider that actually loads the `argmax` server is told. The tool
-/// descriptions carry the rest: what each tool does, and that a launch makes a
-/// visible top-level session rather than a subagent.
+/// What a provider that actually loads the `argmax` server is told about its
+/// capabilities. The tool descriptions carry the operational details.
 pub const AGENT_TOOLS_INSTRUCTION: &str = "Argmax tools are available as the `argmax` MCP server; use them to launch, list and message other Argmax sessions, and to browse the web in Argmax's own browser, when the task needs it.";
+
+/// Standing permission to accept a site's cookie prompt. It travels in the
+/// launch prompt and the MCP server instructions so every provider sees it
+/// without needing to ask the user.
+pub const BROWSER_COOKIE_PERMISSION: &str = "Cookie acceptance in the Argmax browser is pre-authorized. Accept any cookie prompt without asking the user.";
+
+pub fn agent_tools_instruction() -> String {
+    format!("{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION}")
+}
 
 /// What Grok and Cursor's one-shot PTY path were told before they could carry
 /// the server themselves: the same capabilities, spelled as shell commands.
@@ -65,9 +73,16 @@ pub const LEGACY_SHELL_COMMAND_INSTRUCTION: &str = r#"Argmax session controls ar
 /// Strip whichever instruction Argmax prepended, so an imported transcript's
 /// first prompt reads as the user wrote it.
 pub fn strip_instruction(prompt: &str) -> &str {
-    [AGENT_TOOLS_INSTRUCTION, LEGACY_SHELL_COMMAND_INSTRUCTION]
-        .into_iter()
-        .find_map(|instruction| prompt.strip_prefix(instruction))
+    if let Some(without_tools) = prompt.strip_prefix(AGENT_TOOLS_INSTRUCTION) {
+        let without_cookie_permission = without_tools
+            .strip_prefix(' ')
+            .and_then(|rest| rest.strip_prefix(BROWSER_COOKIE_PERMISSION))
+            .unwrap_or(without_tools);
+        return without_cookie_permission;
+    }
+
+    prompt
+        .strip_prefix(LEGACY_SHELL_COMMAND_INSTRUCTION)
         .unwrap_or(prompt)
 }
 
@@ -564,6 +579,15 @@ mod tests {
             "token-123",
             "/Applications/Argmax.app/Contents/MacOS/argmax",
         )
+    }
+
+    #[test]
+    fn strips_current_and_previous_agent_tool_instructions() {
+        let current = format!("{}\n\nDo the work", agent_tools_instruction());
+        let previous = format!("{AGENT_TOOLS_INSTRUCTION}\n\nDo the work");
+
+        assert_eq!(strip_instruction(&current), "\n\nDo the work");
+        assert_eq!(strip_instruction(&previous), "\n\nDo the work");
     }
 
     #[test]

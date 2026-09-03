@@ -174,10 +174,12 @@ two levels deep and ten per session."
     #[tool(
         name = "session_message",
         description = "Send a message into another Argmax session, as if the user had typed it \
-there. An idle session starts a turn on it; one that is mid-turn receives it when that turn ends, \
-which the result's `queued` field reports. You cannot message yourself, and nothing comes back \
-here — read the reply with session_read, or wait for one with session_wait. Message other sessions \
-on your own initiative when coordinating work needs it."
+        there. An idle session starts a turn on it. One that is mid-turn is flagged at its next \
+        tool result and can collect the message mid-turn with inbox_read; otherwise it arrives \
+        when that turn ends, which the result's `queued` field reports. You cannot message \
+        yourself, and nothing comes back here — read the reply with session_read, or wait for one \
+        with session_wait. Message other sessions on your own initiative when coordinating work \
+        needs it."
     )]
     async fn session_message(
         &self,
@@ -231,8 +233,11 @@ actually did."
         name = "session_stop",
         description = "Stop another session's running turn, the same way the user's Stop button \
 does: the provider process is killed and the session goes to `cancelled`. Its transcript and \
-workspace stay. Use it when a session you launched is stuck or no longer needed. You cannot stop \
-yourself."
+workspace stay. Use it when a session you launched is stuck or no longer needed — and to \
+interrupt one: a session_message sent after a stop starts a fresh turn straight away instead of \
+queueing behind the turn you cut short, so stop then message is how you redirect an agent that is \
+working on the wrong thing. The redirected session keeps its transcript, so say what changed \
+rather than repeating the whole task. You cannot stop yourself."
     )]
     async fn session_stop(
         &self,
@@ -247,11 +252,13 @@ yourself."
     #[tool(
         name = "inbox_read",
         description = "Collect the messages other sessions have addressed to you and have not been \
-handed over yet — each with who sent it, whether it is a plain message or the automatic notice that \
-a session you launched has finished, and when it arrived. Reading them marks them collected, so a \
-second call returns only what has arrived since; a batch too large for one reply comes back over \
-several calls. Messages also reach you as ordinary turns when you \
-are idle; this is how you see the ones that landed while you were working."
+        handed over yet — each with who sent it, whether it is a plain message or the automatic notice that \
+        a session you launched has finished, and when it arrived. Reading them marks them collected, so a \
+        second call returns only what has arrived since; a batch too large for one reply comes back over \
+        several calls. Messages also reach you as ordinary turns when you \
+        are idle; this is how you see the ones that landed while you were working. Every other argmax tool \
+        result carries an unread-inbox note when something is waiting here, so you can collect mail \
+        mid-turn without ending your current turn."
     )]
     async fn inbox_read(
         &self,
@@ -318,18 +325,31 @@ fn parse_provider(value: &str) -> Result<crate::providers::ProviderId, String> {
 }
 
 /// One socket round trip, off the async runtime because the client is
-/// blocking, with the response handed back as the JSON the agent reads.
+/// blocking, with the response handed back as the JSON the agent reads. When
+/// the app flags unread inbox mail, a second content block says so — the one
+/// way to reach an agent that is mid-turn, at the tool boundary it is already
+/// reading.
 #[cfg(unix)]
 async fn call(action: SessionControlAction) -> Result<CallToolResult, ErrorData> {
     let outcome = tokio::task::spawn_blocking(move || {
-        crate::session_control::send_session_control(action)
-            .map(|response| serde_json::to_string(&response.result))
+        crate::session_control::send_session_control(action).map(|response| {
+            (
+                serde_json::to_string(&response.result),
+                response.unread_inbox,
+            )
+        })
     })
     .await
     .map_err(|error| ErrorData::internal_error(format!("the tool call panicked: {error}"), None))?;
     match outcome {
-        Ok(Ok(json)) => Ok(CallToolResult::success(vec![ContentBlock::text(json)])),
-        Ok(Err(error)) => Err(ErrorData::internal_error(
+        Ok((Ok(json), unread_inbox)) => {
+            let mut blocks = vec![ContentBlock::text(json)];
+            if let Some(count) = unread_inbox.filter(|count| *count > 0) {
+                blocks.push(ContentBlock::text(inbox_notice(count)));
+            }
+            Ok(CallToolResult::success(blocks))
+        }
+        Ok((Err(error), _)) => Err(ErrorData::internal_error(
             format!("could not encode the response: {error}"),
             None,
         )),
@@ -340,6 +360,18 @@ async fn call(action: SessionControlAction) -> Result<CallToolResult, ErrorData>
             error.code, error.message
         ))])),
     }
+}
+
+/// The mid-turn mail flag, as the agent reads it. Every session tool result
+/// can carry it; `inbox_read` is how the agent answers it, without waiting
+/// for its turn to end.
+pub(super) fn inbox_notice(count: i64) -> String {
+    let plural = if count == 1 { "" } else { "s" };
+    format!(
+        "{count} message{plural} from other sessions \
+are waiting unread in your Argmax inbox. Call inbox_read to collect \
+them mid-turn, without ending your current turn."
+    )
 }
 
 #[cfg(not(unix))]

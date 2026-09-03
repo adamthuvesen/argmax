@@ -539,6 +539,8 @@
   align-items: center;
   white-space: nowrap;
   font-weight: 500;
+  /* Ticking digits hold their width mid-count so the row doesn't jitter. */
+  font-variant-numeric: tabular-nums;
 }
 
 .additions {

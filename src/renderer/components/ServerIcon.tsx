@@ -1,6 +1,16 @@
-import { Globe, Plug } from "lucide-react";
+import { Plug } from "lucide-react";
 import type { JSX } from "react";
 import { serverIconFor } from "../lib/serverIcons.js";
+
+// A filled globe rather than Lucide's stroked one: the marks beside it are
+// solid badges, and a hairline circle reads as a lighter class of thing. The
+// grid lines are holes rather than painted strokes, so the row background
+// shows through and the mark stays right on any surface.
+const WEB_GLOBE =
+  "M2 12a10 10 0 1 0 20 0 10 10 0 1 0-20 0Z" +
+  "M2.1 11.05h19.8v1.9H2.1Z" +
+  "M12 2.1a5 9.9 0 1 0 0 19.8 5 9.9 0 1 0 0-19.8Z" +
+  "M12 4a3.1 7.9 0 1 0 0 15.8 3.1 7.9 0 1 0 0-15.8Z";
 
 /**
  * Leading mark on a tool row: the server's brand mark in its own colours, a
@@ -26,7 +36,16 @@ export function ServerIcon({
     // browser-MCP row that says "the web" when the server name does not.
     if (web)
       return (
-        <Globe size={12} className="tool-call-row-server-icon" role="img" aria-label="Web" />
+        <svg
+          className="tool-call-row-server-icon"
+          viewBox="0 0 24 24"
+          width={12}
+          height={12}
+          role="img"
+          aria-label="Web"
+        >
+          <path fill="currentColor" fillRule="evenodd" d={WEB_GLOBE} />
+        </svg>
       );
     if (!server) return null;
     return <Plug size={12} className="tool-call-row-server-icon" aria-hidden="true" />;

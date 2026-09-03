@@ -225,6 +225,15 @@ describe("App sidebar", () => {
         name: "Argmax → Dotfiles, shared checkout"
       })
     ).toBeInTheDocument();
+    // The sidebar has to name the repo the agent is working in now, not the
+    // one it left.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Dotfiles" })).toHaveAttribute(
+        "aria-current",
+        "true"
+      )
+    );
+    expect(screen.getByRole("button", { name: "Argmax" })).not.toHaveAttribute("aria-current");
   });
 
   it("opens a sidebar session", async () => {

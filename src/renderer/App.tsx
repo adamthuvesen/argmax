@@ -370,10 +370,17 @@ export function App(): JSX.Element {
       const destination = sessionMoveDestination(event);
       if (!destination) continue;
       if (seenSessionMoveEvents.current.has(event.id)) continue;
-      seenSessionMoveEvents.current.add(event.id);
-      if (destination.sourceSessionId !== selectedSession.id) continue;
+      if (destination.sourceSessionId !== selectedSession.id) {
+        seenSessionMoveEvents.current.add(event.id);
+        continue;
+      }
+      // The seam can reach the renderer a tick before the rows it points at.
+      // Leaving the id unseen lets the next snapshot redirect, where marking
+      // it here would drop the move for good and strand the view on the
+      // archived source.
       if (!sessionsById.has(destination.destinationSessionId)) continue;
       if (!workspacesById.has(destination.destinationWorkspaceId)) continue;
+      seenSessionMoveEvents.current.add(event.id);
       openWorkspaceChat(destination.destinationWorkspaceId, {
         ctrlOrMeta: false,
         alt: false

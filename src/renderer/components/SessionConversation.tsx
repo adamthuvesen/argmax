@@ -56,6 +56,7 @@ import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CompactionNotice } from "./CompactionNotice.js";
+import type { MultitaskChild } from "../lib/multitask.js";
 import { MultitaskRow } from "./MultitaskRow.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
@@ -148,6 +149,7 @@ export function SessionConversation({
   onOpenFile,
   onOpenAgent,
   onOpenMultitask,
+  multitasks,
   onExpandToFullChat,
   pendingApprovalCount = 0,
   project,
@@ -232,6 +234,10 @@ export function SessionConversation({
   onOpenAgent?: (tool: ToolCall) => void;
   /** Opens a multitask's chat in this pane's dock, beside the subagents. */
   onOpenMultitask?: (sessionId: string) => void;
+  /** Multitasks dispatched from this session. Their rows read state from the
+   *  session row rather than from the timeline, which only knows what was
+   *  written. */
+  multitasks?: MultitaskChild[];
   /** Docked chats only: promote this chat to the pane beside the panel. */
   onExpandToFullChat?: () => void;
   pendingApprovalCount?: number;
@@ -319,6 +325,12 @@ export function SessionConversation({
     [events, rawOutputs]
   );
   const conversationEvents = useMemo(() => buildConversationEvents(liveEvents), [liveEvents]);
+  // Child session state by id: a multitask row believes this over its own
+  // timeline, which cannot know about a turn that ended while the app was shut.
+  const multitaskStates = useMemo(
+    () => new Map((multitasks ?? []).map((child) => [child.session.id, child.session.state])),
+    [multitasks]
+  );
   const askSideChat = useMemo(() => {
     if (!onOpenSideChat) return undefined;
     return (selection: ChatSelection): void => {
@@ -952,13 +964,16 @@ export function SessionConversation({
                 return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
               }
               if (item.kind === "multitask") {
+                const childId = item.notice.childSessionId;
                 return (
                   <MultitaskRow
                     key={item.id}
                     notice={item.notice}
+                    liveState={childId ? (multitaskStates.get(childId) ?? null) : null}
                     // The dock is where a multitask is read; a surface without
                     // one (mobile) opens it as a full chat instead.
                     onOpen={onOpenMultitask ?? onOpenSession}
+                    onStop={(sessionId) => void onTerminateSession(sessionId)}
                   />
                 );
               }

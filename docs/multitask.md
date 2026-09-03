@@ -29,6 +29,8 @@ Delivery is passive on purpose: the parent is told, but never interrupted.
 2. When the child's turn ends, `notify_launcher_of_turn_end` routes it to `record_multitask_finish` instead of the ordinary completion notice ([session_service.rs](../src-tauri/src/providers/session_service.rs)): a `multitask.finished` row lands in the parent's timeline, and a `multitask`-kind inbox row is recorded. A multitask never wakes the parent with a turn of its own.
 3. The next time the person sends a message in the parent chat, up to `MAX_RESULTS_PER_PROMPT` undelivered results ride in as a preamble on the launch prompt. The persisted `user.message` stays exactly what the person typed.
 
+A multitask that was mid-turn when the app went down never reaches step 2, so `recover_orphaned_sessions` writes the finish row itself while it marks the orphan `failed` — the same passive delivery, one boot later.
+
 ## In the chat
 
 `multitask.launched` / `multitask.finished` are conversation-visible event types ([sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts)), folded into a `multitask` render item by [foldConversation.ts](../src/renderer/lib/foldConversation.ts) and drawn by [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx).
@@ -37,6 +39,8 @@ The row has the shape of a subagent launch row above it, because that is what a 
 
 - **A dispatch is not a turn boundary.** Multitask rows are deferred and emitted when the turn they landed in closes, so dispatching one mid-turn never splits that turn's block into two — which would read as an interruption the agent never had.
 - **One row per multitask.** The dispatch row opens it and the finish row, which can arrive a whole turn later, merges into it wherever it already sits (keyed by child session id). A finish whose dispatch has fallen out of the transcript window renders on its own, without a link, since there is nothing left to open.
+- **The session outranks the timeline.** The row takes its state from the child's session row whenever that session is still in the snapshot, and falls back to the events otherwise. The timeline only knows what was written, so a multitask whose turn ended while the app was shut would otherwise claim to be running for good.
+- **Stop rides the row.** A running multitask can be stopped without opening it; the button appears on hover, and whenever it is tabbed to.
 
 ## Not in the sidebar
 

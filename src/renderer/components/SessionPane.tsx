@@ -546,6 +546,7 @@ export function SessionPane({
           onOpenFile={handleOpenFile}
           onOpenAgent={handleOpenAgent}
           onOpenMultitask={handleOpenMultitask}
+          multitasks={multitasks}
           onToggleLog={toggleLog}
           isTerminalOpen={terminalOpen}
           onToggleTerminal={reviewState.toggleTerminal}

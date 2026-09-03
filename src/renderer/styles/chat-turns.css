@@ -1503,3 +1503,33 @@ button.tool-call-row-button {
 .multitask-row .agent-launch-identity {
   color: var(--accent);
 }
+
+/* Stop is the one action worth having without opening the multitask, but it is
+   not what the row is for: it appears on hover, and whenever it is tabbed to. */
+.multitask-row-stop {
+  display: grid;
+  flex: 0 0 auto;
+  /* At the row's right edge, clear of the label: the row is for reading, and
+     this is the one thing you can do to it from here. */
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.multitask-row:hover .multitask-row-stop,
+.multitask-row-stop:focus-visible {
+  opacity: 1;
+}
+
+.multitask-row-stop:hover {
+  color: var(--text);
+}

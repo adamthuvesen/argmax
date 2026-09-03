@@ -41,6 +41,36 @@ describe("MultitaskRow", () => {
     expect(screen.getByText("Multitask · isolated")).toBeInTheDocument();
   });
 
+  it("stops the multitask from the row", () => {
+    const onStop = vi.fn();
+    render(<MultitaskRow notice={notice()} onOpen={vi.fn()} onStop={onStop} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop multitask: Fix the README typo" }));
+    expect(onStop).toHaveBeenCalledWith("child-1");
+  });
+
+  it("offers no stop once it has stopped", () => {
+    render(<MultitaskRow notice={notice({ state: "complete" })} onOpen={vi.fn()} onStop={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /^Stop multitask/ })).toBeNull();
+  });
+
+  it("believes the session over a timeline that never saw it end", () => {
+    // The app went down mid-turn, so no finish row was ever written; the
+    // session row is what knows the process did not survive.
+    render(<MultitaskRow notice={notice()} liveState="failed" onOpen={vi.fn()} onStop={vi.fn()} />);
+
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.queryByText("Running alongside")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Stop multitask/ })).toBeNull();
+  });
+
+  it("is running again when the session is, whatever the last finish row said", () => {
+    render(
+      <MultitaskRow notice={notice({ state: "complete" })} liveState="running" onOpen={vi.fn()} />
+    );
+    expect(screen.getByText("Running alongside")).toBeInTheDocument();
+  });
+
   it("is a plain row when there is nothing to open", () => {
     // A finish row whose dispatch fell out of the transcript window carries no
     // session id: it still says what happened, it just goes nowhere.

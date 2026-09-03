@@ -33,6 +33,7 @@ pub mod state;
 pub mod sync;
 pub mod terminal;
 pub mod updater;
+pub mod usage;
 pub mod util;
 pub mod workspace_assets;
 pub mod workspaces;
@@ -298,6 +299,20 @@ pub fn run() {
                             let state = tauri::Manager::state::<state::AppState>(app);
                             if state.db.set(Arc::clone(&database)).is_err() {
                                 tracing::warn!("database state was already initialized");
+                            }
+                            let usage_scanner = Arc::new(usage::scanner::UsageScanner::new(
+                                Arc::clone(&database),
+                                sync::home_dir(),
+                            ));
+                            // A ledger that has completed before is refreshed
+                            // in the background so the page opens fresh. The
+                            // first cold sweep reads gigabytes and waits for
+                            // the user to ask for it.
+                            if usage_scanner.has_completed_once() {
+                                usage::scanner::spawn_sweep(&usage_scanner);
+                            }
+                            if state.usage_scanner.set(usage_scanner).is_err() {
+                                tracing::warn!("usage scanner was already initialized");
                             }
                             let dock_badge = Arc::new(dock::DockBadgeService::new(
                                 dock::TauriDockBadgeSink::new(app.handle().clone()),

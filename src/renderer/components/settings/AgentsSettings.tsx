@@ -1,4 +1,4 @@
-import { AlertTriangle, ExternalLink, RefreshCcw } from "lucide-react";
+import { AlertTriangle, ChartNoAxesColumn, ExternalLink, RefreshCcw } from "lucide-react";
 import { useMemo, type JSX } from "react";
 import { REASONING_EFFORTS, type ReasoningEffort } from "../../../shared/providerModels.js";
 import type { DiscoveredProvider } from "../../../shared/types.js";
@@ -34,7 +34,8 @@ export function AgentsSettings({
   providers,
   providerLoadError,
   refreshingProviders,
-  refreshProviders
+  refreshProviders,
+  onOpenUsage
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
@@ -52,6 +53,8 @@ export function AgentsSettings({
   providerLoadError: string | null;
   refreshingProviders: boolean;
   refreshProviders: () => void;
+  /** Leaves settings for the Usage page — what these providers have cost. */
+  onOpenUsage: () => void;
 }): JSX.Element {
   // Mirror discovery into the default-model picker so uninstalled providers are
   // disabled and unauthenticated ones are annotated, matching the launcher.
@@ -185,20 +188,26 @@ export function AgentsSettings({
         id="settings-providers"
         label="Providers"
         action={
-          <button
-            type="button"
-            className="settings-button"
-            onClick={() => void refreshProviders()}
-            disabled={refreshingProviders}
-            aria-label="Refresh provider discovery"
-          >
-            {refreshingProviders ? (
-              <WorkingNest active size={13} />
-            ) : (
-              <RefreshCcw size={13} aria-hidden="true" />
-            )}
-            <span>{refreshingProviders ? "Refreshing…" : "Refresh"}</span>
-          </button>
+          <>
+            <button type="button" className="settings-button" onClick={onOpenUsage}>
+              <ChartNoAxesColumn size={13} aria-hidden="true" />
+              <span>View usage</span>
+            </button>
+            <button
+              type="button"
+              className="settings-button"
+              onClick={() => void refreshProviders()}
+              disabled={refreshingProviders}
+              aria-label="Refresh provider discovery"
+            >
+              {refreshingProviders ? (
+                <WorkingNest active size={13} />
+              ) : (
+                <RefreshCcw size={13} aria-hidden="true" />
+              )}
+              <span>{refreshingProviders ? "Refreshing…" : "Refresh"}</span>
+            </button>
+          </>
         }
       >
         {providerLoadError ? <SettingNote role="alert">{providerLoadError}</SettingNote> : null}

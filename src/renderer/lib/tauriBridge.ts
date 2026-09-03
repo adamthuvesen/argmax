@@ -53,6 +53,8 @@ import type {
   ReviewComparison,
   Routine,
   RoutineUpsertInput,
+  UsageSummary,
+  UsageSummaryInput,
   RunCheckInput,
   SessionAgentEventsInput,
   SessionClearInput,
@@ -382,6 +384,9 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       setEnabled: (id: string, enabled: boolean) =>
         invokeCommand<Routine>("routines:set-enabled", { id, enabled }),
       runNow: (id: string) => invokeCommand<Routine>("routines:run-now", { id })
+    },
+    usage: {
+      summary: (input: UsageSummaryInput) => invokeCommand<UsageSummary>("usage:summary", input)
     },
     menu: {
       onCommand: (listener) => subscribe<MenuCommand>("menu:command", listener)

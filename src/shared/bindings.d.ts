@@ -802,6 +802,14 @@ async routinesRunNow(input: RoutinesRunNowInput) : Promise<Result<Routine, Argma
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async usageSummary(input: UsageSummaryInput) : Promise<Result<UsageSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("usage_summary", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -1300,7 +1308,86 @@ export type TerminalTerminateInput = { terminalId: TerminalId }
 export type TerminalWriteInput = { terminalId: TerminalId; data: StreamChunk }
 export type ThemeMode = "light" | "dark" | "system"
 export type TimelineEvent = { id: string; sessionId: string; type: string; message: string; payload: JsonValue; createdAt: string; rowCursor: number | null }
+/**
+ * Where a dollar figure came from. `provider_reported` is the CLI's own
+ * accounting (Grok ticks, OpenCode cost); `list_price` is our table applied
+ * to the token counts; `unpriced` means a model the table does not know, so
+ * tokens are counted but no dollars are claimed; `mixed` is a bucket that
+ * combines more than one of those.
+ */
+export type UsageCostSource = "provider_reported" | "list_price" | "unpriced" | "mixed"
 export type UsageCounts = { input: number; output: number; cacheRead: number; cacheWrite: number }
+export type UsageDayRow = { bucketStart: string; sessions: number; tokens: UsageTokenTotals; costUsd: number; costSource: UsageCostSource }
+export type UsageModelRow = { provider: ProviderId; modelId: string; sessions: number; tokens: UsageTokenTotals; costUsd: number; costSource: UsageCostSource }
+export type UsageProviderSummary = { provider: ProviderId; 
+/**
+ * `false` when the provider has no local usage source (Cursor). Such a
+ * row carries zeros and the page says so instead of showing $0.
+ */
+available: boolean; sessions: number; tokens: UsageTokenTotals; costUsd: number; 
+/**
+ * What the cached input would have cost at the uncached rate, minus what
+ * it did cost.
+ */
+cacheSavingsUsd: number; costSource: UsageCostSource }
+export type UsageResolution = "hour" | "day"
+export type UsageScanPhase = "idle" | "scanning"
+export type UsageScanState = { phase: UsageScanPhase; filesTotal: number; filesDone: number; 
+/**
+ * RFC 3339 UTC; `None` before the first scan finishes.
+ */
+lastCompletedAt: string | null; pricingAsOf: string }
+/**
+ * One chart bucket: an hour for the 24h window, a local calendar day
+ * otherwise. `bucket_start` is the bucket's first instant as RFC 3339 UTC;
+ * the renderer formats it in `UsageSummary::time_zone`.
+ */
+export type UsageSeriesPoint = { bucketStart: string; values: UsageSeriesValue[] }
+export type UsageSeriesValue = { provider: ProviderId; costUsd: number; 
+/**
+ * Processed tokens in the bucket.
+ */
+tokens: number }
+export type UsageSummary = { window: UsageWindow; 
+/**
+ * The provider the totals, series, models, and days are narrowed to;
+ * `None` is every provider. `providers` is never narrowed.
+ */
+provider: ProviderId | null; 
+/**
+ * IANA zone the renderer asked for; day buckets follow it.
+ */
+timeZone: string; 
+/**
+ * RFC 3339 UTC instants bounding the window, start inclusive, end
+ * exclusive.
+ */
+rangeStart: string; rangeEnd: string; resolution: UsageResolution; scan: UsageScanState; 
+/**
+ * Distinct sessions with at least one record in the window, across all
+ * providers. Per-provider counts do not sum to this when a session
+ * switched provider mid-way, which is why it is carried separately.
+ */
+sessions: number; tokens: UsageTokenTotals; costUsd: number; cacheSavingsUsd: number; costSource: UsageCostSource; providers: UsageProviderSummary[]; series: UsageSeriesPoint[]; models: UsageModelRow[]; days: UsageDayRow[] }
+export type UsageSummaryInput = { window: UsageWindow; 
+/**
+ * IANA zone name, e.g. `Europe/Stockholm`. Day buckets follow it.
+ */
+timeZone: NonEmptyString; 
+/**
+ * Narrow the totals, chart, and breakdowns to one provider. The
+ * per-provider rows always cover every provider, so the page can still
+ * offer the others. Cursor keeps no local usage log and is rejected.
+ */
+provider?: ProviderId | null }
+/**
+ * Token counts for one bucket. `input_uncached` excludes cache reads and
+ * writes, so processed tokens are the sum of the first four fields.
+ * `reasoning` is the part of `output` the model spent thinking, never added
+ * on top of it.
+ */
+export type UsageTokenTotals = { inputUncached: number; cacheRead: number; cacheWrite: number; output: number; reasoning: number }
+export type UsageWindow = "24h" | "7d" | "30d"
 export type WorkspaceContentSearchFile = { path: string; matches: WorkspaceContentSearchMatch[] }
 export type WorkspaceContentSearchMatch = { line: number; preview: string }
 export type WorkspaceContentSearchResult = { files: WorkspaceContentSearchFile[]; truncated: boolean }

@@ -203,6 +203,22 @@ pub static SESSION_MESSAGES_COLUMNS: phf::Map<&'static str, &'static [&'static s
     ] as &'static [&'static str],
 };
 
+// v27: the usage dashboard's scan of every provider transcript on disk.
+pub static USAGE_SCAN_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "usage_scan_files" => &[
+        "cursor_offset", "guard_hash", "mtime_ms", "path", "provider",
+        "scanned_at", "session_id", "size",
+    ] as &'static [&'static str],
+    "usage_hourly" => &[
+        "cache_read", "cache_write_1h", "cache_write_5m", "hour_utc",
+        "input_uncached", "model_id", "output", "provider", "reasoning",
+        "records", "reported_cost_usd", "reported_records", "session_id",
+        "source_path",
+    ] as &'static [&'static str],
+    "usage_dedupe_keys" => &["hour_utc", "key", "source_path"] as &'static [&'static str],
+    "usage_scan_meta" => &["key", "value"] as &'static [&'static str],
+};
+
 // Post-v19 `routines` shape: the scheduled-task table as created.
 pub static ROUTINES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "routines" => &[
@@ -526,6 +542,19 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SESSION_LAUNCH_KIND_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 27,
+        name: "usage_scan",
+        up: USAGE_SCAN,
+        affected_tables: &[
+            "usage_scan_files",
+            "usage_hourly",
+            "usage_dedupe_keys",
+            "usage_scan_meta",
+        ],
+        expected_columns: &USAGE_SCAN_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 // Why a launched session exists, not just who launched it. `agent` is a
@@ -578,6 +607,62 @@ CREATE TABLE session_messages (
 );
 CREATE INDEX idx_session_messages_inbox
   ON session_messages(to_session_id, delivered_at);
+"#;
+
+// The usage dashboard reads every provider transcript on disk, not just the
+// sessions Argmax launched, and keeps what it found here so a page open is a
+// query, not a rescan. `usage_scan_files` is the per-file cursor: an unchanged
+// (size, mtime) skips the file, a grown file whose bytes before the cursor
+// still match `guard_hash` parses only the tail, anything else drops the
+// file's rows and parses it again. `usage_hourly` is the token ledger, one row
+// per provider, model, session, source file, and UTC hour; the file is part of
+// the key so a rewritten file can replace exactly its own rows. Dollar figures
+// are computed at query time from the pricing table, except
+// `reported_cost_usd`, which is the CLI's own accounting where it keeps one.
+// `usage_dedupe_keys` remembers billed calls across files, because a resumed
+// or forked session repeats history under the same ids. `usage_scan_meta`
+// holds the parser version; a bump truncates everything and rescans.
+const USAGE_SCAN: &str = r#"
+CREATE TABLE usage_scan_files (
+  path TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  session_id TEXT,
+  size INTEGER NOT NULL,
+  mtime_ms INTEGER NOT NULL,
+  cursor_offset INTEGER NOT NULL DEFAULT 0,
+  guard_hash TEXT,
+  scanned_at TEXT NOT NULL
+);
+CREATE TABLE usage_hourly (
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  source_path TEXT NOT NULL,
+  hour_utc INTEGER NOT NULL,
+  input_uncached INTEGER NOT NULL DEFAULT 0,
+  cache_read INTEGER NOT NULL DEFAULT 0,
+  cache_write_5m INTEGER NOT NULL DEFAULT 0,
+  cache_write_1h INTEGER NOT NULL DEFAULT 0,
+  output INTEGER NOT NULL DEFAULT 0,
+  reasoning INTEGER NOT NULL DEFAULT 0,
+  reported_cost_usd REAL,
+  reported_records INTEGER NOT NULL DEFAULT 0,
+  records INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (provider, model_id, session_id, source_path, hour_utc)
+);
+CREATE INDEX idx_usage_hourly_hour ON usage_hourly(hour_utc);
+CREATE INDEX idx_usage_hourly_source ON usage_hourly(source_path);
+CREATE TABLE usage_dedupe_keys (
+  key TEXT PRIMARY KEY,
+  source_path TEXT NOT NULL,
+  hour_utc INTEGER NOT NULL
+);
+CREATE INDEX idx_usage_dedupe_keys_source ON usage_dedupe_keys(source_path);
+CREATE INDEX idx_usage_dedupe_keys_hour ON usage_dedupe_keys(hour_utc);
+CREATE TABLE usage_scan_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 "#;
 
 // The branch a PR was opened from, so a workspace can find the PR for the
@@ -1430,6 +1515,7 @@ mod tests {
                 (24, compute_migration_checksum(DROP_PROJECT_DEFAULT_AGENT)),
                 (25, compute_migration_checksum(SESSION_MESSAGES)),
                 (26, compute_migration_checksum(SESSION_LAUNCH_KIND)),
+                (27, compute_migration_checksum(USAGE_SCAN)),
             ]
         );
 

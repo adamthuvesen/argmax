@@ -1,5 +1,6 @@
 import {
   Activity,
+  ChartNoAxesColumn,
   Check,
   ChevronDown,
   ChevronRight,
@@ -163,6 +164,7 @@ export function Sidebar({
   onOpenProviders,
   onOpenProject,
   onOpenScheduledTasks,
+  onOpenUsage,
   onOpenSettings,
   onOpenWorkspaceChat,
   onRemoveProject,
@@ -201,6 +203,7 @@ export function Sidebar({
   onOpenProviders: () => void;
   onOpenProject: (projectId: string) => void;
   onOpenScheduledTasks: () => void;
+  onOpenUsage: () => void;
   onOpenSettings: () => void;
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
   onRemoveProject?: (projectId: string) => void;
@@ -1061,6 +1064,18 @@ export function Sidebar({
             <Clock size={14} />
           </span>
           <span className="rail-nav-label">Schedule</span>
+        </button>
+        <button
+          className="rail-nav-item"
+          type="button"
+          title="Usage"
+          aria-label="Usage"
+          onClick={onOpenUsage}
+        >
+          <span className="rail-nav-glyph" aria-hidden="true">
+            <ChartNoAxesColumn size={14} />
+          </span>
+          <span className="rail-nav-label">Usage</span>
         </button>
         <button
           className="rail-nav-item"

@@ -81,7 +81,8 @@ export function SettingsPanel({
   onDesktopNotificationsEnabledChange,
   projects,
   onProjectUpdated,
-  navigationTarget
+  navigationTarget,
+  onOpenUsage
 }: {
   activeGroup: SettingsGroupId;
   onGroupChange: (group: SettingsGroupId) => void;
@@ -131,6 +132,8 @@ export function SettingsPanel({
   projects: ProjectSummary[];
   onProjectUpdated: (updated: ProjectSummary) => void;
   navigationTarget?: SettingsNavigationTarget | null;
+  /** Leaves settings for the Usage page. */
+  onOpenUsage: () => void;
 }): JSX.Element {
   // First load reuses the cached reports; every explicit "Refresh" (retry)
   // forces a re-probe so a provider installed after boot is actually detected.
@@ -315,6 +318,7 @@ export function SettingsPanel({
               refreshProviders={() => {
                 void refreshProviders();
               }}
+              onOpenUsage={onOpenUsage}
             />
             <SessionSyncSettings />
           </>

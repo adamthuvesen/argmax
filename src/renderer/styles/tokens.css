@@ -117,6 +117,21 @@
   --session-icon-amber: #b5872f;
   --session-icon-pink: #c4527d;
   --session-icon-red: #c84151;
+
+  /* Usage page series colours — one per provider, assigned by identity so a
+     window that reorders the rows never repaints them. Chosen against --bg
+     and --panel with the dataviz validator: worst all-pairs CVD ΔE 8.8,
+     normal-vision ΔE 16.7, every slot >= 3:1 on both surfaces. Claude carries
+     Anthropic's terracotta (the fox's own hue family); Codex is deliberately
+     the neutral ink — it sits under the validator's chroma floor on purpose,
+     and pays for it with the dot, the glyph, the name, and the chart's
+     hidden table all naming the series. See docs/styling.md. */
+  --usage-claude: #c1683e;
+  --usage-codex: #535048;
+  --usage-cursor: #5f8bd9;
+  --usage-opencode: #229677;
+  --usage-grok: #965493;
+
   --pr-merged: #8250df;
   --pr-open: var(--sage);
   --stop: #c4726c;
@@ -456,6 +471,17 @@
   --session-icon-amber: #d9a566;
   --session-icon-pink: #ec8bad;
   --session-icon-red: #f0707f;
+
+  /* Usage series, stepped for charcoal rather than flipped: same five hues,
+     more light and less chroma, revalidated on --panel and --bg (worst
+     all-pairs CVD ΔE 8.3, normal-vision ΔE 16.4). Codex stays the ink, which
+     in dark means the light warm gray --muted-strong sits at. */
+  --usage-claude: #be6e4a;
+  --usage-codex: #b7b3a9;
+  --usage-cursor: #6199ed;
+  --usage-opencode: #2ba388;
+  --usage-grok: #aa64b3;
+
   /* Lifted violet so the merged glyph glows on charcoal; open reuses sage. */
   --pr-merged: #b392f0;
   --pr-open: var(--sage);

@@ -1,0 +1,134 @@
+/* ============================================================
+   Usage chart — one overlaid area per provider, drawn by hand
+   into SVG (Argmax ships no chart library).
+
+   The component sets geometry through SVG attributes only, so
+   everything visual lives here: stroke weight, fill strength,
+   grid recession, and the hover layer.
+   ============================================================ */
+
+.usage-chart {
+  position: relative;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.usage-chart-svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.usage-chart-svg:focus-visible {
+  outline: none;
+  border-radius: var(--radius-md);
+  box-shadow: var(--ring);
+}
+
+/* ---------- Axes and grid: recessive by construction ---------- */
+
+.usage-chart-gridline {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+
+.usage-chart-gridline[data-baseline="true"] {
+  stroke: var(--line);
+}
+
+.usage-chart-tick,
+.usage-chart-xlabel {
+  fill: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-chart-xlabel {
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Series ---------- */
+
+.usage-chart-line {
+  fill: none;
+  stroke: var(--usage-series);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The fill is atmosphere, not a second encoding: four overlaid areas have to
+   stay readable through one another, so each is a wash rather than a slab. */
+.usage-chart-area {
+  fill: var(--usage-series);
+  fill-opacity: 0.1;
+  stroke: none;
+}
+
+.usage-chart-point {
+  fill: var(--usage-series);
+  stroke: var(--panel);
+  stroke-width: 2;
+}
+
+.usage-chart-series {
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+/* ---------- Hover / keyboard cursor ---------- */
+
+.usage-chart-crosshair {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.usage-chart-marker {
+  fill: var(--usage-series);
+  stroke: var(--panel);
+  stroke-width: 1.75;
+}
+
+.usage-chart-tooltip-box {
+  fill: var(--panel);
+  stroke: var(--line);
+  stroke-width: 0.5;
+  filter: drop-shadow(0 8px 20px rgb(0 0 0 / 12%));
+}
+
+.usage-chart-tooltip-title {
+  fill: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.usage-chart-tooltip-name {
+  fill: var(--text-soft);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.usage-chart-tooltip-value {
+  fill: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-chart-tooltip-empty {
+  fill: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.usage-chart-tooltip-dot {
+  fill: var(--usage-series);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-chart-series {
+    transition: none;
+  }
+}

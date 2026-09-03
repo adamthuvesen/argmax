@@ -57,6 +57,7 @@ import {
   type ProjectSortMode,
   type SidebarViewMode
 } from "../lib/projects.js";
+import { hiddenMultitaskWorkspaceIds } from "../lib/multitask.js";
 import { computePriorityEntries, nextPriorityIdleAt } from "../lib/priority.js";
 import { formatSessionIds } from "../lib/sessionIds.js";
 import { Mascot } from "./Mascot.js";
@@ -439,10 +440,18 @@ export function Sidebar({
   // Priority rows leave their date/project group and drop back when
   // resolved, marked done, or gone quiet.
   // Popup workspaces (the "More details" mini-sessions) never surface in the
-  // sidebar in any section.
+  // sidebar in any section, and neither does a multitask: it belongs to the
+  // chat that dispatched it, which shows it in its own dock.
+  const hiddenMultitasks = useMemo(
+    () => hiddenMultitaskWorkspaceIds(snapshot.sessions),
+    [snapshot.sessions]
+  );
   const sidebarWorkspaces = useMemo(
-    () => snapshot.workspaces.filter((workspace) => workspace.kind !== "popup"),
-    [snapshot.workspaces]
+    () =>
+      snapshot.workspaces.filter(
+        (workspace) => workspace.kind !== "popup" && !hiddenMultitasks.has(workspace.id)
+      ),
+    [hiddenMultitasks, snapshot.workspaces]
   );
 
   // Side chats live in their own bottom section and are conversational by
@@ -1276,7 +1285,7 @@ export function Sidebar({
           : orderedProjects.map((project) => {
               const manualOrder = workspaceOrders[project.id] ?? [];
               const liveWorkspaces = sortWorkspaceGroup(
-                snapshot.workspaces.filter(
+                sidebarWorkspaces.filter(
                   (workspace) =>
                     !workspace.pinned &&
                     workspace.projectId === project.id &&

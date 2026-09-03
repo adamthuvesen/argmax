@@ -109,6 +109,7 @@ import {
   useChatVerbosityPreference
 } from "./lib/uiPreferences.js";
 import { randomSessionIcon } from "./lib/sessionIcons.js";
+import { multitasksByParentSession } from "./lib/multitask.js";
 import { loadDashboardSnapshot } from "./lib/loadDashboardSnapshot.js";
 import { buildPaletteCommands, buildSessionLabelById } from "./lib/buildPaletteCommands.js";
 import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
@@ -1569,6 +1570,14 @@ export function App(): JSX.Element {
   // on each streamed event delta. The other slices are handed over empty rather
   // than threaded through, which would leak the palette's appetite into the
   // shape everything else passes around.
+  // A multitask has no sidebar row: it belongs to the chat that dispatched it,
+  // which hosts it in its dock. Grouped once per snapshot so each pane can read
+  // its own without rebuilding the list.
+  const multitasksByParent = useMemo(
+    () => multitasksByParentSession(snapshot.sessions, snapshot.workspaces),
+    [snapshot.sessions, snapshot.workspaces]
+  );
+
   const paletteSnapshot = useMemo(
     () => ({
       projects: snapshot.projects,
@@ -2007,6 +2016,7 @@ export function App(): JSX.Element {
               projectsById={projectsById}
               workspacesById={workspacesById}
               sessionsById={sessionsById}
+              multitasksByParent={multitasksByParent}
               defaultToolCallsDisplay={toolCallsDisplay}
               defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
               defaultThinkingExpanded={thinkingExpanded}

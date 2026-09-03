@@ -1,4 +1,9 @@
-import type { EventType, TimelineEvent } from "../../shared/types.js";
+import type {
+  EventType,
+  SessionSummary,
+  TimelineEvent,
+  WorkspaceSummary
+} from "../../shared/types.js";
 
 /** Dispatch row, written into the parent chat the moment a multitask starts. */
 export const MULTITASK_LAUNCHED: EventType = "multitask.launched";
@@ -68,4 +73,63 @@ export function mergeMultitaskNotice(
 export function multitaskCommandPrompt(input: string): string | null {
   const match = /^\/multitask\s+([\s\S]+)$/i.exec(input.trim());
   return match?.[1]?.trim() || null;
+}
+
+/** `sessions.launch_kind` for a chat dispatched from inside another chat. */
+export const MULTITASK_LAUNCH_KIND = "multitask";
+
+export function isMultitaskSession(session: SessionSummary): boolean {
+  return session.launchKind === MULTITASK_LAUNCH_KIND;
+}
+
+/**
+ * A multitask belongs to the chat that dispatched it, which shows it as a tab
+ * in its subagent dock — so it is not a sidebar row of its own.
+ *
+ * An orphan is the exception: with its launching chat gone from the snapshot
+ * there is nowhere left to reach it from, so it comes back to the sidebar
+ * rather than disappearing with its uncommitted work.
+ */
+export function hiddenMultitaskWorkspaceIds(
+  sessions: readonly SessionSummary[]
+): Set<string> {
+  const sessionIds = new Set(sessions.map((session) => session.id));
+  const hidden = new Set<string>();
+  for (const session of sessions) {
+    if (!isMultitaskSession(session)) continue;
+    const launcher = session.launchedBySessionId;
+    if (launcher && sessionIds.has(launcher)) hidden.add(session.workspaceId);
+  }
+  return hidden;
+}
+
+/** A multitask of `sessionId`, paired with the workspace it runs in. */
+export interface MultitaskChild {
+  session: SessionSummary;
+  workspace: WorkspaceSummary | null;
+}
+
+/**
+ * Every multitask, grouped by the session that dispatched it. Built once per
+ * snapshot rather than per pane: a pane reads its own entry, and the array
+ * identity stays stable between snapshots so the dock's tab list is not
+ * rebuilt on every render.
+ */
+export function multitasksByParentSession(
+  sessions: readonly SessionSummary[],
+  workspaces: readonly WorkspaceSummary[]
+): Map<string, MultitaskChild[]> {
+  const byParent = new Map<string, MultitaskChild[]>();
+  for (const session of sessions) {
+    const launcher = session.launchedBySessionId;
+    if (!isMultitaskSession(session) || !launcher) continue;
+    const child: MultitaskChild = {
+      session,
+      workspace: workspaces.find((workspace) => workspace.id === session.workspaceId) ?? null
+    };
+    const existing = byParent.get(launcher);
+    if (existing) existing.push(child);
+    else byParent.set(launcher, [child]);
+  }
+  return byParent;
 }

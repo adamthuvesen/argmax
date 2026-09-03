@@ -56,7 +56,7 @@ import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CompactionNotice } from "./CompactionNotice.js";
-import { MultitaskCard } from "./MultitaskCard.js";
+import { MultitaskRow } from "./MultitaskRow.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
@@ -147,6 +147,7 @@ export function SessionConversation({
   onToggleWorkspaceCard,
   onOpenFile,
   onOpenAgent,
+  onOpenMultitask,
   pendingApprovalCount = 0,
   project,
   rawOutputs,
@@ -228,6 +229,8 @@ export function SessionConversation({
       ⌘/Ctrl-click flagged via `preferIde` for the external IDE shortcut. */
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onOpenAgent?: (tool: ToolCall) => void;
+  /** Opens a multitask's chat in this pane's dock, beside the subagents. */
+  onOpenMultitask?: (sessionId: string) => void;
   pendingApprovalCount?: number;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
@@ -947,11 +950,12 @@ export function SessionConversation({
               }
               if (item.kind === "multitask") {
                 return (
-                  <MultitaskCard
+                  <MultitaskRow
                     key={item.id}
                     notice={item.notice}
-                    onOpenSession={onOpenSession}
-                    onTerminateSession={onTerminateSession}
+                    // The dock is where a multitask is read; a surface without
+                    // one (mobile) opens it as a full chat instead.
+                    onOpen={onOpenMultitask ?? onOpenSession}
                   />
                 );
               }

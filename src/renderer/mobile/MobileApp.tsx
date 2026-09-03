@@ -466,7 +466,8 @@ export function MobileApp(): JSX.Element {
     [openWorkspaceChat, refresh]
   );
 
-  // A multitask card names the chat it dispatched. Opening it here is the same
+  // The phone has no dock: with no `multitasks` handed to the pane, a multitask
+  // row opens the chat itself rather than a tab beside this one. Opening it here is the same
   // move as tapping that chat's row in the list.
   const openSessionById = useCallback(
     (sessionId: string): void => {

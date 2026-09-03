@@ -131,6 +131,29 @@ function foxHeadIcon(): ServerIcon {
 
 const ARGMAX = foxHeadIcon();
 
+// Engram and Trace are local tools with no brand mark, so they get matched
+// lettermarks: the same badge silhouette as Linear's, a hue each, and a
+// letterform with no counters to close up at 12px.
+const BADGE = "M5.5 0h13A5.5 5.5 0 0 1 24 5.5v13a5.5 5.5 0 0 1-5.5 5.5h-13A5.5 5.5 0 0 1 0 18.5v-13A5.5 5.5 0 0 1 5.5 0Z";
+
+const ENGRAM: ServerIcon = {
+  title: "Engram",
+  viewBox: "0 0 24 24",
+  layers: [
+    { fill: "#6E56CF", path: BADGE },
+    { fill: "#FFFFFF", path: "M7 4.5h10v3.4H7zM7 4.5h3.4v15H7zM7 10.3h8.4v3.4H7zM7 16.1h10v3.4H7z" }
+  ]
+};
+
+const TRACE: ServerIcon = {
+  title: "Trace",
+  viewBox: "0 0 24 24",
+  layers: [
+    { fill: "#B45309", path: BADGE },
+    { fill: "#FFFFFF", path: "M6 4.5h12v3.6H6zM10.2 4.5h3.6v15h-3.6z" }
+  ]
+};
+
 function fromSimpleIcon(icon: { title: string; path: string; hex: string }): ServerIcon {
   // Notion, GitHub and Vercel are black marks: no tint carries them on
   // charcoal, so they fall back to currentColor like the words beside them.
@@ -156,7 +179,10 @@ const SERVER_ICONS: Record<string, ServerIcon> = {
   spotify: fromSimpleIcon(siSpotify),
   linear: LINEAR,
   github: fromSimpleIcon(siGithub),
-  vercel: fromSimpleIcon(siVercel)
+  vercel: fromSimpleIcon(siVercel),
+  engram: ENGRAM,
+  trace: TRACE,
+  "trace hq": TRACE
 };
 
 /** The brand mark for an MCP server name, or null when none is wired up. */

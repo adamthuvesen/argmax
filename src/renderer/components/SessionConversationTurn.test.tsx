@@ -51,6 +51,7 @@ const edit: ToolCall = {
 const turn: Extract<RenderItem, { kind: "turn" }> = {
   kind: "turn",
   id: "turn-user-1",
+  multitasks: [],
   assistantEvents: [
     {
       id: "answer",

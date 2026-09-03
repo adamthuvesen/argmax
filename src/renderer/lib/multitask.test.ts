@@ -40,7 +40,8 @@ describe("multitaskNoticeFor", () => {
       prompt: "Fix the README typo",
       worktree: false,
       state: null,
-      answer: null
+      answer: null,
+      createdAt: "2026-09-02T10:00:00.000Z"
     });
   });
 
@@ -76,7 +77,9 @@ describe("mergeMultitaskNotice", () => {
       prompt: "Fix the README typo",
       worktree: true,
       state: "complete",
-      answer: "Fixed it."
+      answer: "Fixed it.",
+      // The dispatch is where the row sits, so its timestamp survives too.
+      createdAt: "2026-09-02T10:00:00.000Z"
     });
   });
 });

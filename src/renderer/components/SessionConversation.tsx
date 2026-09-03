@@ -57,7 +57,6 @@ import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CompactionNotice } from "./CompactionNotice.js";
 import type { MultitaskChild } from "../lib/multitask.js";
-import { MultitaskRow } from "./MultitaskRow.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
@@ -383,7 +382,10 @@ export function SessionConversation({
   const agentCodenames = useMemo(() => assignAgentCodenames(toolCalls), [toolCalls]);
   // The workspace card's Subagents section reads the same tool list the agent
   // tabs do, so its avatars and counts can never disagree with the tabs.
-  const subagentCluster = useMemo(() => buildSubagentCluster(toolCalls, agentCodenames), [toolCalls, agentCodenames]);
+  const subagentCluster = useMemo(
+    () => buildSubagentCluster(toolCalls, agentCodenames, multitasks ?? []),
+    [toolCalls, agentCodenames, multitasks]
+  );
 
   const conversationItems = useMemo(
     () => foldConversationItems(conversationEvents, toolCalls),
@@ -963,20 +965,6 @@ export function SessionConversation({
               if (item.kind === "provider-switch") {
                 return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
               }
-              if (item.kind === "multitask") {
-                const childId = item.notice.childSessionId;
-                return (
-                  <MultitaskRow
-                    key={item.id}
-                    notice={item.notice}
-                    liveState={childId ? (multitaskStates.get(childId) ?? null) : null}
-                    // The dock is where a multitask is read; a surface without
-                    // one (mobile) opens it as a full chat instead.
-                    onOpen={onOpenMultitask ?? onOpenSession}
-                    onStop={(sessionId) => void onTerminateSession(sessionId)}
-                  />
-                );
-              }
               return (
                 <SessionConversationTurn
                   key={item.id}
@@ -989,6 +977,10 @@ export function SessionConversation({
                   agentCodenames={agentCodenames}
                   onOpenFile={onOpenFile}
                   onOpenAgent={onOpenAgent}
+                  // The dock is where a multitask is read; a surface without
+                  // one (mobile) opens it as a full chat instead.
+                  onOpenMultitask={onOpenMultitask ?? onOpenSession}
+                  multitaskStates={multitaskStates}
                   onTerminateSession={onTerminateSession}
                   onForkSession={onForkSession}
                   onSendSessionInput={sendSessionInput}

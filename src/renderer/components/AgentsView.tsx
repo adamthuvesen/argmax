@@ -14,7 +14,7 @@ import { buildAgentActivity, type AgentModel } from "../lib/agentActivity.js";
 import { multitaskTabId, readAgentTab } from "../lib/agentTabs.js";
 import { assignAgentCodenames, fallbackCodename } from "../lib/agentNames.js";
 import type { ModelPickerSelection } from "../lib/models.js";
-import type { MultitaskChild } from "../lib/multitask.js";
+import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
 import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentActivity } from "./AgentActivity.js";
@@ -29,14 +29,6 @@ type AgentStatus = "running" | "done" | "error" | "missing";
  *  commands; these keep the optional props honest without a crash if one is
  *  ever missing. */
 const noop = async (): Promise<void> => {};
-
-/** A multitask's chat state in the words the dock uses for a subagent: the tab
- *  mark is where either one says whether it is still working. */
-function multitaskStatus(state: string): AgentStatus {
-  if (state === "failed" || state === "cancelled") return "error";
-  if (state === "complete") return "done";
-  return "running";
-}
 
 interface DockTab {
   id: string;
@@ -131,7 +123,7 @@ export function AgentsView({
         return {
           id,
           title: label,
-          status: child ? multitaskStatus(child.session.state) : "missing",
+          status: child ? multitaskRowStatus(child.session.state) : "missing",
           model: child
             ? { label: child.session.modelLabel, effort: child.session.reasoningEffort ?? null }
             : null,

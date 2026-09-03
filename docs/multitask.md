@@ -33,14 +33,17 @@ A multitask that was mid-turn when the app went down never reaches step 2, so `r
 
 ## In the chat
 
-`multitask.launched` / `multitask.finished` are conversation-visible event types ([sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts)), folded into a `multitask` render item by [foldConversation.ts](../src/renderer/lib/foldConversation.ts) and drawn by [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx).
+`multitask.launched` / `multitask.finished` are conversation-visible event types ([sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts)). [foldConversation.ts](../src/renderer/lib/foldConversation.ts) hangs them on the turn they were dispatched from, and [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx) draws each one among that turn's tool rows with [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx).
 
-The row has the shape of a subagent launch row above it, because that is what a multitask is to the reader: work running alongside this turn, opened in the same dock — not another chat in the sidebar. Two rules shape where it sits:
+The row has the shape of a subagent launch row, because that is what a multitask is to the reader: work running alongside this turn, opened in the same dock — not another chat in the sidebar. Five rules shape it:
 
-- **A dispatch is not a turn boundary.** Multitask rows are deferred and emitted when the turn they landed in closes, so dispatching one mid-turn never splits that turn's block into two — which would read as an interruption the agent never had.
-- **One row per multitask.** The dispatch row opens it and the finish row, which can arrive a whole turn later, merges into it wherever it already sits (keyed by child session id). A finish whose dispatch has fallen out of the transcript window renders on its own, without a link, since there is nothing left to open.
+- **It sits inside the turn, where the work forked.** The row is sorted into the turn's body by the dispatch's timestamp, the same way a subagent launch is. It is not a seam — it joins the turn instead of ending it, so dispatching one mid-turn never splits that turn's block in two, which would read as an interruption the agent never had.
+- **One row per multitask.** The dispatch row opens it and the finish row, which can arrive a whole turn later, merges into it wherever it already sits (keyed by child session id) — so a multitask that finishes during a later turn still updates the row in the turn that started it. A finish whose dispatch has fallen out of the transcript window renders on its own, without a link, since there is nothing left to open.
 - **The session outranks the timeline.** The row takes its state from the child's session row whenever that session is still in the snapshot, and falls back to the events otherwise. The timeline only knows what was written, so a multitask whose turn ended while the app was shut would otherwise claim to be running for good.
+- **The mark says which it is.** Running, it shares the subagents' working nest — at that moment they are doing the same thing. Settled, it carries the Split glyph its dock tab uses, so the transcript and the tab strip name a multitask the same way. Its status words are the launch row's own (`Running` / `Completed` / `Failed`) plus `Stopped`.
 - **Stop rides the row.** A running multitask can be stopped without opening it; the button appears on hover, and whenever it is tabbed to. Stopping one stops only that session: the early-stop rule that hands a pane back to the launcher ([earlyStop.ts](../src/renderer/lib/earlyStop.ts)) is a pane behaviour, and a multitask has no pane, so the chat that dispatched it stays exactly where it was — launcher draft included.
+
+Because a multitask shares the dock's tab strip with the subagents, it is counted in the workspace card's section beside it too ([subagentSummary.ts](../src/renderer/lib/subagentSummary.ts)); that section is named `Alongside` rather than `Subagents` once a multitask is in it.
 
 ## Not in the sidebar
 
@@ -61,7 +64,7 @@ A surface that hands the pane no multitasks has no dock to host them — the pho
 ## Testing
 
 - Rust: [src-tauri/tests/multitask.rs](../src-tauri/tests/multitask.rs) — same-checkout sibling with inherited settings and guardrail prompt, isolated worktree, finishing without starting a turn in the parent, results riding the next prompt but not the persisted message, lineage and launch caps.
-- Renderer: `multitask.test.ts` (notices, sidebar hiding, grouping), `agentTabs.test.ts`, `foldConversation.test.ts` (turn splitting and row merging), `MultitaskRow.test.tsx`, `SessionComposer.multitask.test.tsx`, and `App.multitask.test.tsx` end to end — no sidebar row, and the row opens a dock tab carrying the multitask's own transcript.
+- Renderer: `multitask.test.ts` (notices, sidebar hiding, grouping), `agentTabs.test.ts`, `foldConversation.test.ts` (the row riding inside its turn, and merging across turns), `MultitaskRow.test.tsx`, `subagentSummary.test.ts` (multitasks in the card's count), `SessionComposer.multitask.test.tsx`, and `App.multitask.test.tsx` end to end — no sidebar row, the row inside the turn block, the dock tab carrying the multitask's own transcript, and a stop that leaves the dispatching chat alone.
 
 ## Related
 

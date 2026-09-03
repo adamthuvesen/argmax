@@ -3,6 +3,7 @@ import type { EventType, TimelineEvent } from "../../shared/types.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "./foldConversation.js";
 import { foldTurnToolItems } from "./turnToolItems.js";
 import type { ConversationItem, ToolCall, TurnToolItem } from "./toolCalls.js";
+import type { MultitaskNotice } from "./multitask.js";
 
 function event(
   id: string,
@@ -235,10 +236,12 @@ describe("multitask rows", () => {
       null,
       keepToolItems
     );
+  const multitasksOf = (rendered: RenderItem[]): MultitaskNotice[] =>
+    rendered.flatMap((item) => (item.kind === "turn" ? item.multitasks : []));
 
-  it("does not split the turn it was dispatched during", () => {
-    // The parent's turn keeps running while the multitask starts, so the card
-    // waits for that turn to close instead of cutting its block in two.
+  it("rides inside the turn it was dispatched during, without splitting it", () => {
+    // The parent's turn keeps running while the multitask starts, so the row
+    // joins that turn's body instead of cutting its block in two.
     const rendered = items([
       event("u1", "user.message", "2026-09-02T10:00:00.000Z"),
       event("a1", "message.completed", "2026-09-02T10:00:01.000Z"),
@@ -250,19 +253,17 @@ describe("multitask rows", () => {
       event("u2", "user.message", "2026-09-02T10:00:04.000Z")
     ]);
 
-    expect(rendered.map((item) => item.kind)).toEqual([
-      "user-message",
-      "turn",
-      "multitask",
-      "user-message"
-    ]);
+    expect(rendered.map((item) => item.kind)).toEqual(["user-message", "turn", "user-message"]);
     const turn = rendered[1];
     if (turn?.kind !== "turn") throw new Error("expected a turn");
     // Both assistant rows stayed in one block, on either side of the dispatch.
     expect(turn.assistantEvents.map((e) => e.id)).toEqual(["a1", "a2"]);
+    expect(turn.multitasks.map((notice) => notice.childSessionId)).toEqual(["child-1"]);
+    // The row sorts by the dispatch, so it lands between the two answers.
+    expect(turn.multitasks[0]?.createdAt).toBe("2026-09-02T10:00:02.000Z");
   });
 
-  it("folds the finish into the card the dispatch opened", () => {
+  it("folds the finish into the row the dispatch opened, a turn later", () => {
     const rendered = items([
       event("u1", "user.message", "2026-09-02T10:00:00.000Z"),
       event("m1", "multitask.launched", "2026-09-02T10:00:01.000Z", "Running alongside", {
@@ -271,7 +272,9 @@ describe("multitask rows", () => {
         prompt: "Fix typo"
       }),
       event("a1", "message.completed", "2026-09-02T10:00:02.000Z"),
-      event("m2", "multitask.finished", "2026-09-02T10:00:09.000Z", "Fix typo finished alongside", {
+      event("u2", "user.message", "2026-09-02T10:00:08.000Z"),
+      event("a2", "message.completed", "2026-09-02T10:00:09.000Z"),
+      event("m2", "multitask.finished", "2026-09-02T10:00:10.000Z", "Fix typo finished alongside", {
         childSessionId: "child-1",
         taskLabel: "Fix typo",
         state: "complete",
@@ -279,13 +282,16 @@ describe("multitask rows", () => {
       })
     ]);
 
-    const cards = rendered.filter((item) => item.kind === "multitask");
-    expect(cards).toHaveLength(1);
-    const [card] = cards;
-    if (card?.kind !== "multitask") throw new Error("expected a multitask card");
-    expect(card.notice.state).toBe("complete");
-    expect(card.notice.answer).toBe("Fixed it.");
-    expect(card.notice.prompt).toBe("Fix typo");
+    const notices = multitasksOf(rendered);
+    expect(notices).toHaveLength(1);
+    const [notice] = notices;
+    expect(notice?.state).toBe("complete");
+    expect(notice?.answer).toBe("Fixed it.");
+    expect(notice?.prompt).toBe("Fix typo");
+    // It stayed in the turn that dispatched it, not the one that was open when
+    // the finish row landed.
+    const firstTurn = rendered.find((item) => item.kind === "turn");
+    expect(firstTurn?.kind === "turn" && firstTurn.multitasks).toHaveLength(1);
   });
 
   it("keeps a finish whose dispatch fell out of the window", () => {
@@ -297,6 +303,9 @@ describe("multitask rows", () => {
         state: "complete"
       })
     ]);
-    expect(rendered.map((item) => item.kind)).toEqual(["multitask"]);
+    const turn = rendered[0];
+    expect(turn?.kind).toBe("turn");
+    if (turn?.kind !== "turn") throw new Error("expected a turn");
+    expect(turn.multitasks.map((notice) => notice.taskLabel)).toEqual(["Fix typo"]);
   });
 });

@@ -11,6 +11,7 @@ function notice(overrides: Partial<MultitaskNotice> = {}): MultitaskNotice {
     worktree: false,
     state: null,
     answer: null,
+    createdAt: "2026-09-02T10:00:02.000Z",
     ...overrides
   };
 }
@@ -18,18 +19,18 @@ function notice(overrides: Partial<MultitaskNotice> = {}): MultitaskNotice {
 describe("MultitaskRow", () => {
   afterEach(cleanup);
 
-  it("says it is running alongside, and opens the chat it dispatched", () => {
+  it("says it is running, and opens the chat it dispatched", () => {
     const onOpen = vi.fn();
     render(<MultitaskRow notice={notice()} onOpen={onOpen} />);
 
-    expect(screen.getByText("Running alongside")).toBeInTheDocument();
+    expect(screen.getByText("Running")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open multitask: Fix the README typo" }));
     expect(onOpen).toHaveBeenCalledWith("child-1");
   });
 
   it("says how it ended once it has", () => {
     render(<MultitaskRow notice={notice({ state: "complete" })} onOpen={vi.fn()} />);
-    expect(screen.getByText("Finished alongside")).toBeInTheDocument();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
 
     cleanup();
     render(<MultitaskRow notice={notice({ state: "cancelled" })} onOpen={vi.fn()} />);
@@ -60,7 +61,7 @@ describe("MultitaskRow", () => {
     render(<MultitaskRow notice={notice()} liveState="failed" onOpen={vi.fn()} onStop={vi.fn()} />);
 
     expect(screen.getByText("Failed")).toBeInTheDocument();
-    expect(screen.queryByText("Running alongside")).toBeNull();
+    expect(screen.queryByText("Running")).toBeNull();
     expect(screen.queryByRole("button", { name: /^Stop multitask/ })).toBeNull();
   });
 
@@ -68,7 +69,7 @@ describe("MultitaskRow", () => {
     render(
       <MultitaskRow notice={notice({ state: "complete" })} liveState="running" onOpen={vi.fn()} />
     );
-    expect(screen.getByText("Running alongside")).toBeInTheDocument();
+    expect(screen.getByText("Running")).toBeInTheDocument();
   });
 
   it("is a plain row when there is nothing to open", () => {

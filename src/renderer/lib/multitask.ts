@@ -22,6 +22,16 @@ export interface MultitaskNotice {
   worktree: boolean;
   state: string | null;
   answer: string | null;
+  /** When it was dispatched. The row sorts by this among the turn's tool rows,
+   *  so it sits where the work actually forked. */
+  createdAt: string;
+}
+
+/** Row status in the three words a launch row knows, from a chat state. */
+export function multitaskRowStatus(state: string | null): "running" | "done" | "error" {
+  if (state === "failed" || state === "cancelled") return "error";
+  if (state === "complete") return "done";
+  return "running";
 }
 
 export function isMultitaskEvent(event: TimelineEvent): boolean {
@@ -39,7 +49,8 @@ export function multitaskNoticeFor(event: TimelineEvent): MultitaskNotice {
     prompt: nonEmptyString(event.payload.prompt),
     worktree: event.payload.worktree === true,
     state: nonEmptyString(event.payload.state),
-    answer: nonEmptyString(event.payload.answer)
+    answer: nonEmptyString(event.payload.answer),
+    createdAt: event.createdAt
   };
 }
 
@@ -60,7 +71,12 @@ export function mergeMultitaskNotice(
     prompt: incoming.prompt ?? existing.prompt,
     worktree: incoming.worktree || existing.worktree,
     state: incoming.state ?? existing.state,
-    answer: incoming.answer ?? existing.answer
+    answer: incoming.answer ?? existing.answer,
+    // The dispatch is where the row belongs, and it is the earlier of the two.
+    createdAt:
+      incoming.createdAt && incoming.createdAt < existing.createdAt
+        ? incoming.createdAt
+        : existing.createdAt
   };
 }
 

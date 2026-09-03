@@ -182,10 +182,12 @@ Model reasoning traces (`payload.thinking === true` from Claude thinking deltas,
 
 ## Multitask Rows
 
-A multitask dispatched from the composer writes `multitask.launched` into this chat and `multitask.finished` when the sibling chat's turn ends; both fold into one `multitask` render item drawn by [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx), in the same shape as the subagent launch rows below (`Fix the changelog date  Multitask` / `Finished alongside`).
+A multitask dispatched from the composer writes `multitask.launched` into this chat and `multitask.finished` when the sibling chat's turn ends; both fold into one notice on the turn they were dispatched from, drawn by [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx) in the same shape as the subagent launch rows beside it (`Fix the changelog date  Multitask` / `Completed`).
 
-- **A dispatch is not a turn boundary.** The rows are deferred until the turn they landed in closes, so asking for a multitask mid-turn never splits that turn's block in two.
-- **One row per multitask.** The finish row merges into the row the dispatch opened, keyed by child session id, wherever it already sits. A finish whose dispatch has left the transcript window renders on its own, without a link.
+- **It rides inside the turn it came from.** The notice is carried on that turn's render item and drawn among its tool rows, sorted by the dispatch's own timestamp, so the row sits where the work actually forked. A dispatch is not a seam: it joins the turn's body rather than ending it, so asking for a multitask mid-turn never splits that turn's block in two.
+- **One row per multitask.** The finish row merges into the row the dispatch opened, keyed by child session id, wherever it already sits — including a turn that closed minutes ago. A finish whose dispatch has left the transcript window renders on its own, without a link.
+- **The mark names it.** A running multitask shares the subagents' working nest, because at that moment they are doing the same thing; a settled one carries the Split glyph its dock tab uses. The status words are the launch row's own (`Running` / `Completed` / `Failed`), plus `Stopped` — the one thing a person can do to a multitask that a subagent has no equivalent for.
+- **Stop rides the row**, revealed on hover or focus. It stops that chat only: the early-stop launcher restore is a pane behaviour and a multitask has no pane.
 - **Clicking opens the dock, not another chat.** A multitask has no sidebar row; it opens as a tab in this pane's Agents view beside the subagents, carrying its own chat. See [multitask.md](multitask.md).
 
 ## Subagent Activity Panes

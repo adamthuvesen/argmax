@@ -1,28 +1,28 @@
-import { Square } from "lucide-react";
+import { Split, Square } from "lucide-react";
 import type { JSX } from "react";
-import type { MultitaskNotice } from "../lib/multitask.js";
+import { multitaskRowStatus, type MultitaskNotice } from "../lib/multitask.js";
 import { WorkingNest } from "./WorkingNest.js";
 
 type RowStatus = "running" | "done" | "error";
 
-function rowStatus(state: string | null): RowStatus {
-  if (state === null) return "running";
-  if (state === "running" || state === "waiting" || state === "blocked") return "running";
-  return state === "failed" || state === "cancelled" ? "error" : "done";
-}
-
+/** The subagent launch words, plus the one a subagent has no equivalent for:
+ *  a multitask is a chat, so a person can stop it. */
 function statusLabel(state: string | null, status: RowStatus): string {
-  if (status === "running") return "Running alongside";
-  if (status === "done") return "Finished alongside";
+  if (status === "running") return "Running";
+  if (status === "done") return "Completed";
   return state === "cancelled" ? "Stopped" : "Failed";
 }
 
 /**
- * A multitask in the chat that dispatched it, shaped like the subagent launch
- * rows above it — because that is what it is to the reader: work running
+ * A multitask inside the turn that dispatched it, drawn as a launch row among
+ * that turn's tools — because that is what it is to the reader: work running
  * alongside this turn, opened in the same dock, not another chat in the
  * sidebar. The row says what it is doing; the answer and everything else lives
  * in the dock tab it opens.
+ *
+ * The one thing that separates it from a subagent row is the mark a settled
+ * one carries: the same Split glyph its dock tab uses, so both surfaces name a
+ * multitask the same way.
  */
 export function MultitaskRow({
   notice,
@@ -40,7 +40,7 @@ export function MultitaskRow({
   onStop?: (sessionId: string) => void;
 }): JSX.Element {
   const state = liveState ?? notice.state;
-  const status = rowStatus(state);
+  const status = multitaskRowStatus(state);
   const childSessionId = notice.childSessionId;
   const identity = notice.worktree ? "Multitask · isolated" : "Multitask";
   const headline = (
@@ -65,11 +65,9 @@ export function MultitaskRow({
               phaseKey={childSessionId ?? notice.taskLabel}
             />
           ) : (
-            <span
-              className="agent-launch-mark agent-launch-bullet"
-              aria-hidden="true"
-              data-launch-mark={status === "error" ? "error" : "done"}
-            />
+            <span className="agent-launch-mark multitask-row-mark" aria-hidden="true">
+              <Split size={13} />
+            </span>
           )}
           {childSessionId && onOpen ? (
             <button

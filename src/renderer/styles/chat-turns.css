@@ -1496,12 +1496,27 @@ button.tool-call-row-button {
   text-align: right;
 }
 
-/* A multitask reads as a launch row, the same shape as the subagents above it:
-   it is work running alongside this turn, opened in the same dock. The row
-   borrows `.agent-launch-*`; only the identity word is tinted, so a multitask
-   is distinguishable from a subagent at a glance without a second style. */
-.multitask-row .agent-launch-identity {
-  color: var(--accent);
+/* A multitask reads as a launch row among the turn's tools, the same shape as
+   the subagents beside it: it is work running alongside this turn, opened in
+   the same dock. The row borrows `.agent-launch-*` wholesale; a settled one is
+   marked with the Split glyph its dock tab already uses, which is the only
+   thing that has to say "multitask, not subagent" — the running state shares
+   the nest, because at that moment they are doing the same thing. */
+.multitask-row-mark {
+  display: inline-grid;
+  place-items: center;
+  color: var(--muted);
+  animation: working-nest-enter var(--motion-fast) var(--ease-out);
+}
+
+.agent-launch-row[data-status="error"] .multitask-row-mark {
+  color: var(--rose);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .multitask-row-mark {
+    animation: none;
+  }
 }
 
 /* Stop is the one action worth having without opening the multitask, but it is

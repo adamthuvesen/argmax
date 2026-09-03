@@ -29,13 +29,14 @@ export type RenderItem =
   | { kind: "compaction"; id: string; notice: CompactionNotice }
   | { kind: "project-move"; id: string; notice: ProjectMoveNotice }
   | { kind: "provider-switch"; id: string; notice: ProviderSwitchNotice }
-  | { kind: "multitask"; id: string; notice: MultitaskNotice }
   | {
       kind: "turn";
       id: string;
       assistantEvents: TimelineEvent[];
       toolItems: TurnToolItem[];
       assistantTimestamps: number[];
+      /** Multitasks dispatched during this turn, drawn among its tool rows. */
+      multitasks: MultitaskNotice[];
     };
 
 /**
@@ -110,7 +111,12 @@ export function foldRenderItems(
 ): RenderItem[] {
   const out: RenderItem[] = [];
   let pending:
-    | { assistantEvents: TimelineEvent[]; toolItems: TurnToolItem[]; firstId: string | null }
+    | {
+        assistantEvents: TimelineEvent[];
+        toolItems: TurnToolItem[];
+        multitasks: MultitaskNotice[];
+        firstId: string | null;
+      }
     | null = null;
   let activeTurnId: string | null = null;
   // A subagent's child rows belong to the launch that spawned them, not to
@@ -139,48 +145,47 @@ export function foldRenderItems(
     if (typeof parent !== "string" || parent === tool.toolUseId) return true;
     return !agentLaunchIds.has(parent) || turnLaunchIds.has(parent);
   };
-  // A multitask row is not a seam: the turn it lands in keeps running, and
-  // splitting that turn's block in two would read as an interruption the agent
-  // never had. The rows are held back and emitted when the turn they belong to
-  // closes, so each card sits directly under the work it was dispatched from
-  // while the turn stays one block.
-  let deferred: RenderItem[] = [];
-  const flushDeferred = (): void => {
-    if (deferred.length === 0) return;
-    out.push(...deferred);
-    deferred = [];
-  };
+  // A multitask row belongs to the turn it was dispatched from, among that
+  // turn's tool rows — the same place a subagent launch sits, because that is
+  // what it is to the reader. It is not a seam: it joins the turn's body
+  // instead of ending it, so dispatching one mid-turn never splits that turn's
+  // block in two, which would read as an interruption the agent never had.
+  //
   // The dispatch and the finish are two rows about one multitask, and they can
-  // be a whole turn apart. The second one updates the card the first one
-  // opened — wherever it already sits — so the chat carries one card per
+  // be a whole turn apart. The second one updates the row the first one
+  // opened — wherever it already sits — so the chat carries one row per
   // multitask rather than a start marker and an unrelated end marker.
   const pushMultitask = (event: TimelineEvent): void => {
     const notice = multitaskNoticeFor(event);
     const key = notice.childSessionId;
     if (key) {
-      for (const list of [deferred, out]) {
-        const at = list.findIndex(
-          (candidate) =>
-            candidate.kind === "multitask" && candidate.notice.childSessionId === key
-        );
+      const lists = [
+        ...(pending ? [pending.multitasks] : []),
+        ...out.flatMap((candidate) => (candidate.kind === "turn" ? [candidate.multitasks] : []))
+      ];
+      for (const list of lists) {
+        const at = list.findIndex((candidate) => candidate.childSessionId === key);
         const existing = at >= 0 ? list[at] : undefined;
-        if (existing?.kind === "multitask") {
-          list[at] = { ...existing, notice: mergeMultitaskNotice(existing.notice, notice) };
+        if (existing) {
+          list[at] = mergeMultitaskNotice(existing, notice);
           return;
         }
       }
     }
-    deferred.push({ kind: "multitask", id: `multitask-${key ?? event.id}`, notice });
+    if (!pending) {
+      pending = { assistantEvents: [], toolItems: [], multitasks: [], firstId: activeTurnId };
+    }
+    pending.multitasks.push(notice);
   };
   const flush = (): void => {
     turnLaunchIds = new Set();
-    if (!pending) {
-      flushDeferred();
-      return;
-    }
-    if (pending.assistantEvents.length === 0 && pending.toolItems.length === 0) {
+    if (!pending) return;
+    if (
+      pending.assistantEvents.length === 0 &&
+      pending.toolItems.length === 0 &&
+      pending.multitasks.length === 0
+    ) {
       pending = null;
-      flushDeferred();
       return;
     }
     out.push({
@@ -188,10 +193,10 @@ export function foldRenderItems(
       id: pending.firstId ?? `turn-${out.length}`,
       assistantEvents: pending.assistantEvents,
       toolItems: foldTurnToolItems(pending.toolItems),
-      assistantTimestamps: pending.assistantEvents.map((e) => Date.parse(e.createdAt))
+      assistantTimestamps: pending.assistantEvents.map((e) => Date.parse(e.createdAt)),
+      multitasks: pending.multitasks
     });
     pending = null;
-    flushDeferred();
   };
   // Compaction is a seam in the conversation, so it ends the turn it lands in
   // and the work that follows opens a fresh one. The provider emits a start and
@@ -251,7 +256,9 @@ export function foldRenderItems(
     if (item.kind === "tool" && !belongsToThisTurn(item.tool)) continue;
     const groupTools = item.kind === "tool-group" ? item.group.tools.filter(belongsToThisTurn) : [];
     if (item.kind === "tool-group" && groupTools.length === 0) continue;
-    if (!pending) pending = { assistantEvents: [], toolItems: [], firstId: activeTurnId };
+    if (!pending) {
+      pending = { assistantEvents: [], toolItems: [], multitasks: [], firstId: activeTurnId };
+    }
     if (item.kind === "message") {
       pending.assistantEvents.push(item.event);
       if (!pending.firstId) pending.firstId = `turn-${item.event.id}`;
@@ -275,7 +282,6 @@ export function foldRenderItems(
     }
   }
   flush();
-  flushDeferred();
   // Bridge the brief window between launch and the first user.message event
   // arriving over dashboard:delta. `session.prompt` is set synchronously on
   // launch, so we can show it as a placeholder bubble until the real event

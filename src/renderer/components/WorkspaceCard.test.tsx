@@ -9,12 +9,13 @@ import { WorkspaceCard } from "./WorkspaceCard.js";
 function subagentCluster(overrides: Partial<SubagentCluster> = {}): SubagentCluster {
   return {
     entries: [
-      { toolUseId: "spawn-1", codename: "Io", title: "Map the renderer", status: "done", iconColor: "blue" },
-      { toolUseId: "spawn-2", codename: "Titan", title: "Sweep tests", status: "running", iconColor: "amber" }
+      { toolUseId: "spawn-1", codename: "Io", title: "Map the renderer", status: "done", iconColor: "blue", multitask: false },
+      { toolUseId: "spawn-2", codename: "Titan", title: "Sweep tests", status: "running", iconColor: "amber", multitask: false }
     ],
     running: 1,
     done: 1,
     failed: 0,
+    hasMultitask: false,
     ...overrides
   };
 }
@@ -227,15 +228,23 @@ describe("WorkspaceCard", () => {
       codename: `Moon${index}`,
       title: `Agent ${index}`,
       status: index === 6 ? ("error" as const) : ("done" as const),
-      iconColor: "blue"
+      iconColor: "blue",
+      multitask: false
     }));
-    renderCard({ subagents: { entries, running: 0, done: 6, failed: 1 } });
+    renderCard({ subagents: { entries, running: 0, done: 6, failed: 1, hasMultitask: false } });
 
     const section = screen.getByRole("region", { name: "Subagents" });
     expect(section.querySelectorAll(".workspace-card-agent")).toHaveLength(6); // 5 chips + "+2"
     expect(section.textContent).toContain("+2");
     expect(section.textContent).toContain("1 failed");
     expect(section.textContent).toContain("6 done");
+  });
+
+  it("names the section for what is in it once a multitask joins", () => {
+    renderCard({ subagents: subagentCluster({ hasMultitask: true }) });
+
+    expect(screen.getByRole("region", { name: "Alongside" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
   });
 
   it("keeps the subagents section out of a session that never spawned one", () => {

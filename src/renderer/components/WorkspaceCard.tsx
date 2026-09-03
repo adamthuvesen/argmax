@@ -196,10 +196,14 @@ export function WorkspaceCard({
 }
 
 /**
- * The Subagents section, Codex-card style: a labeled group with one colored
- * avatar per launch and a quiet count beside it. Not clickable on purpose —
- * the agent tabs and the activity pane own the deep view; this row answers
- * "is anything working, and did the team finish" at a glance.
+ * The work-alongside section, Codex-card style: a labeled group with one
+ * colored avatar per launch and a quiet count beside it. Not clickable on
+ * purpose — the dock tabs and the activity pane own the deep view; this row
+ * answers "is anything working, and did the team finish" at a glance.
+ *
+ * It counts what the dock's tab strip counts: this session's subagents, plus
+ * the multitasks dispatched from it. The label follows — "Alongside" once a
+ * multitask is in there, since they are not subagents.
  */
 function SubagentsSection({ cluster }: { cluster: SubagentCluster }): JSX.Element {
   const visible = cluster.entries.slice(0, SUBAGENT_AVATAR_LIMIT);
@@ -211,12 +215,14 @@ function SubagentsSection({ cluster }: { cluster: SubagentCluster }): JSX.Elemen
   const roster = cluster.entries
     .map((entry) => `${entry.codename} — ${agentStatusLabel(entry.status)}`)
     .join(", ");
-  const title = `${cluster.entries.length} ${cluster.entries.length === 1 ? "subagent" : "subagents"}: ${roster}`;
+  const noun = cluster.hasMultitask ? "running alongside" : cluster.entries.length === 1 ? "subagent" : "subagents";
+  const title = `${cluster.entries.length} ${noun}: ${roster}`;
   const firstRunningId = cluster.entries.find((entry) => entry.status === "running")?.toolUseId;
+  const label = cluster.hasMultitask ? "Alongside" : "Subagents";
 
   return (
-    <section className="workspace-card-section" aria-label="Subagents">
-      <div className="workspace-card-section-label">Subagents</div>
+    <section className="workspace-card-section" aria-label={label}>
+      <div className="workspace-card-section-label">{label}</div>
       <div className="workspace-card-subagents" title={title}>
         <span className="workspace-card-agent-stack" aria-hidden="true">
           {visible.map((entry) => (

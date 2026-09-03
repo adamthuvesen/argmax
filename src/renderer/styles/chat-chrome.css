@@ -893,7 +893,6 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-family: var(--font-code);
   font-size: var(--text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;

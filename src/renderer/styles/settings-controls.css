@@ -386,7 +386,7 @@
 .settings-remote-qr {
   flex: none;
   padding: 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: #fff;
   color: #000;
   border: 1px solid var(--line);

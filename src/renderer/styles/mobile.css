@@ -75,7 +75,7 @@ html:has(.mobile-shell) body {
   width: 36px;
   height: 36px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: none;
   color: var(--muted-strong);
 }
@@ -301,7 +301,7 @@ html:has(.mobile-shell) body {
   height: 36px;
   background: none;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   color: var(--accent-deep);
 }
 
@@ -586,8 +586,8 @@ html:has(.mobile-shell) body {
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   background: var(--panel);
-  border-top-left-radius: 20px;
-  border-top-right-radius: 20px;
+  border-top-left-radius: var(--radius-2xl);
+  border-top-right-radius: var(--radius-2xl);
   border-top: 1px solid var(--line);
   padding: 6px 16px calc(16px + env(safe-area-inset-bottom, 0px));
 }
@@ -595,7 +595,7 @@ html:has(.mobile-shell) body {
 .mobile-sheet-grabber {
   width: 36px;
   height: 4px;
-  border-radius: 2px;
+  border-radius: 999px;
   margin: 6px auto 10px;
   background: var(--line-strong);
 }
@@ -642,7 +642,7 @@ html:has(.mobile-shell) body {
   gap: 4px;
   padding: 12px 12px 8px;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: var(--radius-2xl);
   background: var(--panel);
 }
 
@@ -744,7 +744,7 @@ html:has(.mobile-shell) body {
 .mobile-retry {
   padding: 8px 18px;
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--panel);
   color: var(--text);
   font: inherit;
@@ -763,7 +763,7 @@ html:has(.mobile-shell) body {
      bury the toast; the inset lifts it clear of one. */
   bottom: calc(16px + env(safe-area-inset-bottom) + var(--mobile-keyboard-inset, 0px));
   padding: 12px 14px;
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   background: var(--panel);
   border: 1px solid var(--line);
   color: var(--text);
@@ -797,7 +797,7 @@ html:has(.mobile-shell) body {
   min-width: 14px;
   height: 14px;
   padding: 0 4px;
-  border-radius: 7px;
+  border-radius: 999px;
   background: var(--accent-deep);
   color: var(--panel);
   font-size: var(--text-3xs);

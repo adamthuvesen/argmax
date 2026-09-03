@@ -1570,7 +1570,7 @@
    chip does: `--accent` is the bubble's own background. */
 .user-skill-token {
   padding: 0 4px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: color-mix(in oklab, var(--user-message-fg) 14%, transparent);
   font-weight: 600;
 }

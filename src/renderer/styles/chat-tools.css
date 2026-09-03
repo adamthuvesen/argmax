@@ -275,7 +275,7 @@
   top: 0;
   bottom: 0;
   background: var(--line-strong);
-  border-radius: 1px;
+  border-radius: 999px;
   transition: background var(--duration-fast) var(--ease);
 }
 

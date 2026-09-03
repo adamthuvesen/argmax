@@ -712,6 +712,16 @@ export function isBashLikeTool(name: string): boolean {
 
 export type ToolTypeBucket = "bash" | "edit" | "read" | "search" | "web" | "agent" | "other";
 
+/**
+ * Whether a tool reaches the web. Deliberately not `getToolTypeBucket(name) ===
+ * "web"`: that ladder tests `search` first, so `WebSearch` lands in the search
+ * bucket and keeps its "Searched for x" wording. The mark follows the
+ * capability, the wording follows the bucket.
+ */
+export function isWebToolName(name: string): boolean {
+  return /web|browser|navigate|fetch|url|http/.test(name.toLowerCase());
+}
+
 export function getToolTypeBucket(name: string): ToolTypeBucket {
   const lower = name.toLowerCase();
   if (parseMcpToolName(name)) return "other";

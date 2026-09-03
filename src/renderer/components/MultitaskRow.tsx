@@ -1,6 +1,6 @@
 import { Split, Square } from "lucide-react";
 import type { JSX } from "react";
-import { multitaskRowStatus, type MultitaskNotice } from "../lib/multitask.js";
+import { multitaskAnswerPreview, multitaskRowStatus, type MultitaskNotice } from "../lib/multitask.js";
 import { WorkingNest } from "./WorkingNest.js";
 
 type RowStatus = "running" | "done" | "error";
@@ -43,13 +43,19 @@ export function MultitaskRow({
   const status = multitaskRowStatus(state);
   const childSessionId = notice.childSessionId;
   const identity = notice.worktree ? "Multitask · isolated" : "Multitask";
+  // What it found, in one line, so a finished multitask says something more
+  // than that it finished. The whole answer is a click away in its dock tab.
+  const answer = multitaskAnswerPreview(notice.answer);
   const headline = (
     <>
       <span className="agent-launch-headline">
         <span className="agent-launch-title">{notice.taskLabel}</span>
         <span className="agent-launch-identity">{identity}</span>
       </span>
-      <span className="agent-launch-status">{statusLabel(state, status)}</span>
+      <span className="agent-launch-status">
+        {statusLabel(state, status)}
+        {answer ? <span className="multitask-row-answer"> · {answer}</span> : null}
+      </span>
     </>
   );
 

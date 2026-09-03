@@ -27,6 +27,35 @@ export interface MultitaskNotice {
   createdAt: string;
 }
 
+/** How much of the answer the chat row shows before it is cut. Long enough for
+ *  a real sentence, short enough that the row stays one line. */
+const ANSWER_PREVIEW_CHARS = 120;
+
+/**
+ * The one line of a finished multitask's answer that its chat row carries.
+ *
+ * The full answer is a whole reply in the dock tab; here it only has to say
+ * what happened, so this takes the first line with something in it and strips
+ * the markdown it was written in — a row is not the place to render a heading
+ * or a bullet.
+ */
+export function multitaskAnswerPreview(answer: string | null): string | null {
+  if (!answer) return null;
+  const line = answer
+    .split(/\r?\n/)
+    .map((raw) =>
+      raw
+        .replace(/^\s*(?:[#>*+-]+\s+|\d+[.)]\s+)/, "")
+        .replace(/[*_`]/g, "")
+        .trim()
+    )
+    .find((candidate) => candidate.length > 0);
+  if (!line) return null;
+  return line.length > ANSWER_PREVIEW_CHARS
+    ? `${line.slice(0, ANSWER_PREVIEW_CHARS - 1).trimEnd()}…`
+    : line;
+}
+
 /** Row status in the three words a launch row knows, from a chat state. */
 export function multitaskRowStatus(state: string | null): "running" | "done" | "error" {
   if (state === "failed" || state === "cancelled") return "error";

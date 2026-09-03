@@ -4,6 +4,7 @@ import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shar
 import {
   hiddenMultitaskWorkspaceIds,
   mergeMultitaskNotice,
+  multitaskAnswerPreview,
   multitaskCommandPrompt,
   multitaskNoticeFor,
   multitasksByParentSession,
@@ -81,6 +82,28 @@ describe("mergeMultitaskNotice", () => {
       // The dispatch is where the row sits, so its timestamp survives too.
       createdAt: "2026-09-02T10:00:00.000Z"
     });
+  });
+});
+
+describe("multitaskAnswerPreview", () => {
+  it("takes the first real line, without the markdown it was written in", () => {
+    expect(multitaskAnswerPreview("## Done\n\n- Corrected the **0.4** heading to `2026`.")).toBe(
+      "Done"
+    );
+    expect(multitaskAnswerPreview("\n\n- Corrected the **0.4** heading to `2026`.")).toBe(
+      "Corrected the 0.4 heading to 2026."
+    );
+  });
+
+  it("cuts a long line rather than letting it run the row's width", () => {
+    const preview = multitaskAnswerPreview("x".repeat(400));
+    expect(preview).toHaveLength(120);
+    expect(preview?.endsWith("…")).toBe(true);
+  });
+
+  it("has nothing to show for an answer that never arrived", () => {
+    expect(multitaskAnswerPreview(null)).toBeNull();
+    expect(multitaskAnswerPreview("   \n  ")).toBeNull();
   });
 });
 

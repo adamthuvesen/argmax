@@ -37,6 +37,17 @@ describe("MultitaskRow", () => {
     expect(screen.getByText("Stopped")).toBeInTheDocument();
   });
 
+  it("says what it found, in one line, once it has finished", () => {
+    render(
+      <MultitaskRow
+        notice={notice({ state: "complete", answer: "Corrected the 0.4 heading to 2026." })}
+        onOpen={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/Corrected the 0.4 heading to 2026\./)).toBeInTheDocument();
+  });
+
   it("marks an isolated one, which is not sharing this checkout", () => {
     render(<MultitaskRow notice={notice({ worktree: true })} onOpen={vi.fn()} />);
     expect(screen.getByText("Multitask · isolated")).toBeInTheDocument();

@@ -1519,6 +1519,15 @@ button.tool-call-row-button {
   }
 }
 
+/* The finished multitask's first line of answer, riding the status line so the
+   row stays two lines tall whether or not an answer landed. Always quiet, even
+   on a failed row where the status word beside it is rose: the status is the
+   thing to read, this is the detail. */
+.multitask-row-answer {
+  color: var(--muted);
+  opacity: 0.85;
+}
+
 /* Stop is the one action worth having without opening the multitask, but it is
    not what the row is for: it appears on hover, and whenever it is tabbed to. */
 .multitask-row-stop {

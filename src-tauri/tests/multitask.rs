@@ -10,7 +10,7 @@ use std::{
 };
 
 use argmax_lib::{
-    error::ArgmaxResult,
+    error::{ArgmaxError, ArgmaxResult},
     multitask::{dispatch, MultitaskRequest, FINISHED_EVENT, LAUNCHED_EVENT, MULTITASK_KIND},
     persistence::{
         database::Database,
@@ -42,6 +42,8 @@ use support::git_repo::seed_git_repo;
 struct ScriptedLauncher {
     launches: Mutex<Vec<ProviderLaunchInput>>,
     callbacks: Mutex<HashMap<String, EventCallback>>,
+    /// When set, every launch fails the way a missing or broken CLI does.
+    fail_launches: Mutex<bool>,
 }
 
 struct IdleHandle;
@@ -75,11 +77,24 @@ impl ProviderProcessLauncher for ScriptedLauncher {
             .expect("callbacks poisoned")
             .insert(input.session_id.clone(), on_event);
         self.launches.lock().expect("launches poisoned").push(input);
-        Box::pin(async { Ok(Arc::new(IdleHandle) as Arc<dyn ProviderRuntimeHandle>) })
+        let fails = *self.fail_launches.lock().expect("fail_launches poisoned");
+        Box::pin(async move {
+            if fails {
+                return Err(ArgmaxError::service(
+                    "PROVIDER_LAUNCH_FAILED",
+                    "no such CLI",
+                ));
+            }
+            Ok(Arc::new(IdleHandle) as Arc<dyn ProviderRuntimeHandle>)
+        })
     }
 }
 
 impl ScriptedLauncher {
+    fn fail_launches(&self) {
+        *self.fail_launches.lock().expect("fail_launches poisoned") = true;
+    }
+
     fn launches(&self) -> Vec<ProviderLaunchInput> {
         self.launches.lock().expect("launches poisoned").clone()
     }
@@ -494,6 +509,44 @@ async fn a_cursor_multitask_reports_back_even_though_its_process_never_exits() {
     assert!(pending[0]
         .body
         .contains("Yes, in models/4_semantic_models."));
+}
+
+/// A multitask whose CLI never starts still ends this session's turn, and the
+/// chat that dispatched it is owed that news: the row falls back to the finish
+/// event once the failed session ages out of the snapshot, so without one it
+/// would claim to be running for as long as the transcript lives.
+#[tokio::test]
+async fn a_multitask_that_cannot_start_still_reports_back() {
+    let fixture = fixture();
+    fixture.launcher.fail_launches();
+
+    let child_id = dispatch(
+        MultitaskRequest {
+            parent_session_id: "session-parent".to_string(),
+            prompt: "Fix the README typo".to_string(),
+            worktree: false,
+            task_label: None,
+        },
+        Arc::clone(&fixture.database),
+        Arc::clone(&fixture.workspaces),
+        Arc::clone(&fixture.providers),
+    )
+    .await
+    .expect("dispatch survives a launch that fails")
+    .session_id;
+
+    wait_for_state(&fixture.database, &child_id, "failed").await;
+    wait_for_event(&fixture.database, "session-parent", FINISHED_EVENT).await;
+
+    let connection = fixture.database.connection();
+    let finished = list_session_events_since(&connection, "session-parent", None, None)
+        .expect("list events")
+        .events
+        .into_iter()
+        .find(|event| event.r#type == FINISHED_EVENT)
+        .expect("a finish row in the parent");
+    assert_eq!(finished.payload["state"], "failed");
+    assert_eq!(finished.payload["childSessionId"], child_id);
 }
 
 #[tokio::test]

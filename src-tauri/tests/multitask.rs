@@ -101,6 +101,26 @@ impl ScriptedLauncher {
             .unwrap_or_else(|| panic!("no callback registered for {session_id}"))
     }
 
+    /// The way a Cursor turn ends: an assistant message and a `result/success`
+    /// row, with the process left alive for the next prompt. There is no exit
+    /// event at all, which is why this is its own seam.
+    fn finish_cursor_turn(&self, session_id: &str, answer: &str) {
+        let callback = self.callback(session_id);
+        for line in [
+            serde_json::json!({"type": "assistant", "message": {"content": [{"type": "text", "text": answer}]}}),
+            serde_json::json!({"type": "result", "subtype": "success"}),
+        ] {
+            callback(ProviderRuntimeEvent {
+                session_id: session_id.to_string(),
+                r#type: ProviderRuntimeEventType::Output,
+                stream: ProviderOutputStream::Stdout,
+                message: format!("{line}\n"),
+                exit_code: None,
+                created_at: now_iso(),
+            });
+        }
+    }
+
     /// One assistant answer, then a clean exit — the shape every turn ends in.
     fn finish_turn(&self, session_id: &str, answer: &str) {
         let callback = self.callback(session_id);
@@ -440,6 +460,40 @@ async fn a_finished_multitask_reports_back_without_starting_a_turn() {
             .expect("inbox");
     assert_eq!(pending.len(), 1);
     assert!(pending[0].body.contains("Fixed the typo in README.md."));
+}
+
+/// Cursor ends a turn on `result/success` and keeps its process alive, so it
+/// never reaches the exit handler every other provider reports back from.
+#[tokio::test]
+async fn a_cursor_multitask_reports_back_even_though_its_process_never_exits() {
+    let fixture = fixture();
+    {
+        let connection = fixture.database.connection();
+        connection
+            .execute(
+                "UPDATE sessions SET provider = 'cursor', model_id = 'composer-2.5', \
+                 model_label = 'Composer 2.5 (Cursor)' WHERE id = 'session-parent'",
+                [],
+            )
+            .expect("make the parent a Cursor chat");
+    }
+    let child_id = multitask(&fixture, "Do we have a semantic layer?", false).await;
+
+    fixture
+        .launcher
+        .finish_cursor_turn(&child_id, "Yes, in models/4_semantic_models.");
+    wait_for_state(&fixture.database, &child_id, "complete").await;
+    wait_for_event(&fixture.database, "session-parent", FINISHED_EVENT).await;
+
+    // The row the chat draws, carrying what the multitask actually found.
+    let connection = fixture.database.connection();
+    let pending =
+        list_undelivered_messages_of_kind(&connection, "session-parent", MULTITASK_KIND, 10)
+            .expect("inbox");
+    assert_eq!(pending.len(), 1);
+    assert!(pending[0]
+        .body
+        .contains("Yes, in models/4_semantic_models."));
 }
 
 #[tokio::test]

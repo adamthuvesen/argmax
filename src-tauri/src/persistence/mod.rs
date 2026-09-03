@@ -13,6 +13,7 @@ pub mod sessions;
 pub mod synced;
 pub mod time;
 pub mod usage;
+pub mod usage_scan;
 pub mod workspaces;
 
 pub use database::Database;

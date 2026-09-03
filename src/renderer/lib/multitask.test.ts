@@ -95,6 +95,26 @@ describe("multitaskAnswerPreview", () => {
     );
   });
 
+  it("keeps the identifiers, which is usually the whole point of the line", () => {
+    // Stripping every underscore turned `user_id` into "userid" — the row's
+    // one statement of what happened, misreported.
+    expect(multitaskAnswerPreview("Renamed `user_id` to `userId` in session_service.rs")).toBe(
+      "Renamed user_id to userId in session_service.rs"
+    );
+  });
+
+  it("skips a line that says nothing a status word does not", () => {
+    expect(multitaskAnswerPreview("---\n\nFixed the date.")).toBe("Fixed the date.");
+    // What the backend writes when the multitask produced no message at all.
+    expect(multitaskAnswerPreview("(no answer)")).toBeNull();
+  });
+
+  it("cuts on a character, not half of one", () => {
+    const preview = multitaskAnswerPreview(`${"x".repeat(118)}🎉 and more`);
+    expect(preview?.endsWith("🎉…")).toBe(true);
+    expect(preview).not.toContain("\uFFFD");
+  });
+
   it("cuts a long line rather than letting it run the row's width", () => {
     const preview = multitaskAnswerPreview("x".repeat(400));
     expect(preview).toHaveLength(120);

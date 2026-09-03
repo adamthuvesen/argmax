@@ -48,6 +48,26 @@ describe("MultitaskRow", () => {
     expect(screen.getByText(/Corrected the 0.4 heading to 2026\./)).toBeInTheDocument();
   });
 
+  it("drops a stale answer the moment it is running again", () => {
+    // Answered again from its dock tab: the old result beside a live status
+    // would read as this turn's.
+    render(
+      <MultitaskRow
+        notice={notice({ state: "complete", answer: "Corrected the 0.4 heading to 2026." })}
+        liveState="running"
+        onOpen={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.queryByText(/Corrected the 0.4 heading/)).toBeNull();
+  });
+
+  it("says a blocked multitask is waiting on the person, not running", () => {
+    render(<MultitaskRow notice={notice({ state: "blocked" })} onOpen={vi.fn()} />);
+    expect(screen.getByText("Waiting for you")).toBeInTheDocument();
+  });
+
   it("marks an isolated one, which is not sharing this checkout", () => {
     render(<MultitaskRow notice={notice({ worktree: true })} onOpen={vi.fn()} />);
     expect(screen.getByText("Multitask · isolated")).toBeInTheDocument();

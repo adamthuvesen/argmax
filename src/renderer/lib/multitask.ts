@@ -35,9 +35,13 @@ const ANSWER_PREVIEW_CHARS = 120;
  * The one line of a finished multitask's answer that its chat row carries.
  *
  * The full answer is a whole reply in the dock tab; here it only has to say
- * what happened, so this takes the first line with something in it and strips
+ * what happened, so this takes the first line with something in it and unwraps
  * the markdown it was written in — a row is not the place to render a heading
  * or a bullet.
+ *
+ * Only paired inline markers are unwrapped. Stripping every `_` and backtick
+ * turned `Renamed \`user_id\` to \`userId\`` into "Renamed userid to userId",
+ * which misreports the one thing the row exists to say.
  */
 export function multitaskAnswerPreview(answer: string | null): string | null {
   if (!answer) return null;
@@ -46,14 +50,29 @@ export function multitaskAnswerPreview(answer: string | null): string | null {
     .map((raw) =>
       raw
         .replace(/^\s*(?:[#>*+-]+\s+|\d+[.)]\s+)/, "")
-        .replace(/[*_`]/g, "")
+        .replace(/`([^`]+)`/g, "$1")
+        .replace(/\*\*([^*]+)\*\*/g, "$1")
+        .replace(/(^|\s)\*([^*]+)\*(?=\s|$)/g, "$1$2")
         .trim()
     )
-    .find((candidate) => candidate.length > 0);
+    .find(isAnswerLine);
   if (!line) return null;
-  return line.length > ANSWER_PREVIEW_CHARS
-    ? `${line.slice(0, ANSWER_PREVIEW_CHARS - 1).trimEnd()}…`
+  // Cut by character, not by UTF-16 unit: slicing mid-surrogate leaves a lone
+  // half that renders as a replacement glyph.
+  const characters = Array.from(line);
+  return characters.length > ANSWER_PREVIEW_CHARS
+    ? `${characters.slice(0, ANSWER_PREVIEW_CHARS - 1).join("").trimEnd()}…`
     : line;
+}
+
+/**
+ * A line worth showing. A rule (`---`), a bare heading marker, and the
+ * placeholder the backend writes when the multitask produced no message at all
+ * are all "it finished" said twice — the status word already says that.
+ */
+function isAnswerLine(line: string): boolean {
+  if (line.length === 0 || line === "(no answer)") return false;
+  return /[\p{L}\p{N}]/u.test(line);
 }
 
 /** Row status in the three words a launch row knows, from a chat state. */
@@ -156,9 +175,10 @@ export interface MultitaskChild {
 
 /**
  * Every multitask, grouped by the session that dispatched it. Built once per
- * snapshot rather than per pane: a pane reads its own entry, and the array
- * identity stays stable between snapshots so the dock's tab list is not
- * rebuilt on every render.
+ * snapshot rather than per pane, so a pane reads its own entry rather than
+ * scanning every session. The map and its arrays are rebuilt whenever the
+ * snapshot's session or workspace array changes identity, so a consumer that
+ * feeds a memoized component keys on the values it needs, not on this array.
  */
 export function multitasksByParentSession(
   sessions: readonly SessionSummary[],

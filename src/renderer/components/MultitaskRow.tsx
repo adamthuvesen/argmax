@@ -8,6 +8,9 @@ type RowStatus = "running" | "done" | "error";
 /** The subagent launch words, plus the one a subagent has no equivalent for:
  *  a multitask is a chat, so a person can stop it. */
 function statusLabel(state: string | null, status: RowStatus): string {
+  // A blocked chat is waiting on a person, and its approval lives in the pane,
+  // not the dock — saying "Running" here left it stuck with no explanation.
+  if (state === "blocked") return "Waiting for you";
   if (status === "running") return "Running";
   if (status === "done") return "Completed";
   return state === "cancelled" ? "Stopped" : "Failed";
@@ -45,7 +48,9 @@ export function MultitaskRow({
   const identity = notice.worktree ? "Multitask · isolated" : "Multitask";
   // What it found, in one line, so a finished multitask says something more
   // than that it finished. The whole answer is a click away in its dock tab.
-  const answer = multitaskAnswerPreview(notice.answer);
+  // Only while it is settled: answering it again in the dock puts it back to
+  // running, and the old result beside a live status reads as this turn's.
+  const answer = status === "running" ? null : multitaskAnswerPreview(notice.answer);
   const headline = (
     <>
       <span className="agent-launch-headline">

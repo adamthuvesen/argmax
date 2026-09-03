@@ -15,7 +15,7 @@ Both call `session:multitask` ([ipc/session.rs](../src-tauri/src/ipc/session.rs)
 
 `dispatch` reads the parent session and its workspace, then launches through the ordinary `launch_with_spec` path:
 
-- **Same checkout by default.** The new workspace points at the parent's checkout, so the fix lands on the branch the person is already on. `worktree: true` is the escape hatch for work expected to collide, and the chat row then reads `Multitask · isolated`.
+- **Same checkout by default.** The new workspace points at the *parent workspace's* checkout — the worktree the dispatching chat runs in, not the project root — so the fix lands in the tree and on the branch the person is already looking at, which is also the branch the guardrail preamble names. `worktree: true` is the escape hatch for work expected to collide, and the chat row then reads `Multitask · isolated`; it is a dispatch-level flag today, reachable over the bridge and the IPC channel, and neither composer path sets it yet.
 - **Inherited launch settings.** Provider, model, reasoning effort, permission mode, and agent mode come from the parent, so a multitask runs like the chat it came from. Fast mode does not: it is a per-launch choice, and a side fix is not where you spend it.
 - **Fresh context.** The multitask is a new provider conversation, not a fork of the parent's transcript. Nothing about the parent's session — its handle, its provider process, its `provider_conversation_id` — is reused, which is exactly why the parent's turn keeps running undisturbed.
 - **Shared-checkout guardrails.** When it shares the checkout, the prompt carries a preamble naming the branch and task already in progress and asking the agent to stage only its own files. An isolated multitask gets the bare prompt.
@@ -27,7 +27,7 @@ Delivery is passive on purpose: the parent is told, but never interrupted.
 
 1. On dispatch, a `multitask.launched` row is written to the **parent's** timeline with the child's session and workspace ids, the label, and the prompt.
 2. When the child's turn ends, `notify_launcher_of_turn_end` routes it to `record_multitask_finish` instead of the ordinary completion notice ([session_service.rs](../src-tauri/src/providers/session_service.rs)): a `multitask.finished` row lands in the parent's timeline, and a `multitask`-kind inbox row is recorded. A multitask never wakes the parent with a turn of its own.
-3. The next time the person sends a message in the parent chat, up to `MAX_RESULTS_PER_PROMPT` undelivered results ride in as a preamble on the launch prompt. The persisted `user.message` stays exactly what the person typed.
+3. The next time the person sends a message in the parent chat, up to `MAX_RESULTS_PER_PROMPT` undelivered results ride in as a preamble on the launch prompt. The persisted `user.message` stays exactly what the person typed. They are marked delivered only once that prompt has actually reached the provider: a launch that fails would otherwise spend results the agent never saw.
 
 A multitask that was mid-turn when the app went down never reaches step 2, so `recover_orphaned_sessions` writes the finish row itself while it marks the orphan `failed` — the same passive delivery, one boot later.
 
@@ -58,7 +58,7 @@ Clicking the row opens the multitask as a tab in the review panel's Agents view,
 
 A multitask is a real session, so its tab is the ordinary chat surface rather than a read-only transcript: it can be answered and steered without leaving the chat you were watching. The panel takes every session's events (the pane-scoped `events` a subagent transcript reads belong to the parent), keeps the review state inert — the dock *is* the review panel — and drops the checks card, which the parent chat already carries for the same checkout. The composer carries an expand button — the way back to a full pane, for when a side errand turns into the work.
 
-The chat a multitask was dispatched from is reachable the other way too: the session actions menu offers "Open launching chat".
+The chat a multitask was dispatched from is reachable the other way too, once the multitask has a pane of its own: the session actions menu offers "Open launching chat". The docked panel has no actions menu — the chat that dispatched it is the one already on screen beside it.
 
 A surface that hands the pane no multitasks has no dock to host them — the phone — and its rows open the chat itself instead.
 

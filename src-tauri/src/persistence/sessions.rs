@@ -181,14 +181,17 @@ pub fn session_launch_kind(connection: &Connection, session_id: &str) -> ArgmaxR
 }
 
 /// The sessions this one's agent launched, newest first. The default watch
-/// list for `session_wait`.
+/// list for `session_wait`, which is why it counts agent launches only: a
+/// multitask is a chat the *person* dispatched from this one, and an agent
+/// waiting on "the sessions I launched" never launched it.
 pub fn sessions_launched_by(
     connection: &Connection,
     launched_by_session_id: &str,
 ) -> ArgmaxResult<Vec<String>> {
     let mut statement = connection
         .prepare_cached(
-            "SELECT id FROM sessions WHERE launched_by_session_id = ? ORDER BY started_at DESC",
+            "SELECT id FROM sessions WHERE launched_by_session_id = ? AND launch_kind = 'agent' \
+             ORDER BY started_at DESC",
         )
         .map_err(sqlite_error)?;
     let rows = statement

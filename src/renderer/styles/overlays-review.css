@@ -644,6 +644,14 @@
   /* The transcript's edge fades dissolve into the surface behind them, which
      here is the panel, not the pane. */
   --conversation-fade: var(--panel);
+  /* The gutter is declared on `.session-main-column`, and the dock is that
+     div's sibling, not its child. Without it here `.conversation-list`'s
+     `padding: <fade> <gutter> <tail>` shorthand is invalid at computed-value
+     time and collapses to zero on all four sides — which took the vertical
+     padding the edge fades need to land on, and the tail that keeps the newest
+     line clear of the composer. Narrower than the pane's, the way the subagent
+     transcript beside it is (`.agent-activity`). */
+  --session-inline-padding: clamp(14px, calc((100% - var(--chat-content-width)) / 2), 2000px);
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -670,15 +678,12 @@
 .multitask-panel .conversation-scroll {
   flex: 1 1 auto;
   min-height: 0;
-  /* The pane's own chat gets its gutter from the centred chat width; a docked
-     column has none, so bubbles would sit flush against the panel edge. */
-  padding-inline: var(--space-3);
 }
 
 /* The pane's composer is a card inset from the transcript gutter; docked, it
    was stretched edge to edge and its top read as a rule across the panel. */
 .multitask-panel .session-composer-stack {
-  margin-inline: var(--space-3);
+  margin-inline: var(--session-inline-padding);
 }
 
 .multitask-panel .section-heading,

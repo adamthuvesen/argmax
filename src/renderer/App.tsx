@@ -42,6 +42,7 @@ import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/Sess
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { ScheduleRail } from "./components/scheduled/ScheduleRail.js";
+import { UsageRail } from "./components/usage/UsageRail.js";
 import { SettingsRail } from "./components/settings/SettingsRail.js";
 import { EMPTY_GRID, MAX_COLS, findSessionCell, openWorkspaceInGrid, revertSessionToLauncher, terminalWorkspaceId } from "./lib/gridState.js";
 import { isEarlySessionStop } from "./lib/earlyStop.js";
@@ -58,6 +59,7 @@ import {
   CommandPalette,
   ScheduledTasksPanel,
   SettingsPanel,
+  UsagePanel,
   useLazyOverlayPrefetch
 } from "./hooks/useLazyOverlayPrefetch.js";
 import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
@@ -140,12 +142,14 @@ export function App(): JSX.Element {
     setIsSettingsOpen,
     isScheduledTasksOpen,
     setIsScheduledTasksOpen,
+    isUsageOpen,
+    setIsUsageOpen,
     isPaletteOpen,
     setIsPaletteOpen,
     isCheatSheetOpen,
     setIsCheatSheetOpen
   } = useOverlays();
-  const standalonePageOpen = isSettingsOpen || isScheduledTasksOpen;
+  const standalonePageOpen = isSettingsOpen || isScheduledTasksOpen || isUsageOpen;
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const workspaceRef = useRef<HTMLElement | null>(null);
@@ -1047,6 +1051,13 @@ export function App(): JSX.Element {
     // Opening the panel closes settings for us: the two share the slot.
     setIsScheduledTasksOpen(true);
   }, [setIsFullLauncherOpen, setIsPaletteOpen, setIsScheduledTasksOpen]);
+  const onOpenUsageRow = useCallback((): void => {
+    setIsPaletteOpen(false);
+    setIsFullLauncherOpen(false);
+    // Opening the page closes settings and schedule for us: the three share
+    // the workspace slot.
+    setIsUsageOpen(true);
+  }, [setIsFullLauncherOpen, setIsPaletteOpen, setIsUsageOpen]);
   const onOpenProvidersRow = useCallback((): void => {
     openSettingsTarget("agents", "settings-providers");
   }, [openSettingsTarget]);
@@ -1614,6 +1625,7 @@ export function App(): JSX.Element {
         onNewSession: () => handleMenuCommand("new-session"),
         onOpenSettings: () => openSettingsTarget("general"),
         onOpenScheduledTasks: onOpenScheduledTasksRow,
+        onOpenUsage: onOpenUsageRow,
         onOpenSettingsSection: (group, sectionId) => openSettingsTarget(group, sectionId),
         onOpenSearch: openMessagePalette,
         onStopSession: (sessionId) => void terminateSession(sessionId),
@@ -1630,6 +1642,7 @@ export function App(): JSX.Element {
       selectedSession,
       handleMenuCommand,
       onOpenScheduledTasksRow,
+      onOpenUsageRow,
       openSettingsTarget,
       terminateSession,
       openWorkspaceChat,
@@ -1812,6 +1825,7 @@ export function App(): JSX.Element {
       data-review-panel-side={reviewPanelSide}
       data-settings-open={isSettingsOpen ? "true" : undefined}
       data-schedule-open={isScheduledTasksOpen ? "true" : undefined}
+      data-usage-open={isUsageOpen ? "true" : undefined}
       data-sidebar-collapsed={sidebarCollapsed && !standalonePageOpen ? "true" : undefined}
       data-sidebar-peek={sidebarCollapsed && sidebarPeek ? "true" : undefined}
     >
@@ -1899,6 +1913,8 @@ export function App(): JSX.Element {
         />
       ) : isScheduledTasksOpen ? (
         <ScheduleRail onBack={() => setIsScheduledTasksOpen(false)} />
+      ) : isUsageOpen ? (
+        <UsageRail onBack={() => setIsUsageOpen(false)} />
       ) : (
         <Sidebar
           loadState={loadState}
@@ -1918,6 +1934,7 @@ export function App(): JSX.Element {
           onOpenInIde={onOpenInIdeRow}
           onOpenProject={onOpenProjectRow}
           onOpenScheduledTasks={onOpenScheduledTasksRow}
+          onOpenUsage={onOpenUsageRow}
           onOpenSettings={onOpenSettingsRow}
           onOpenProviders={onOpenProvidersRow}
           onOpenDiagnostics={onOpenDiagnosticsRow}
@@ -2012,11 +2029,16 @@ export function App(): JSX.Element {
                 projects={realProjects}
                 onProjectUpdated={handleProjectUpdated}
                 navigationTarget={settingsNavigationTarget}
+                onOpenUsage={onOpenUsageRow}
               />
             </Suspense>
           ) : isScheduledTasksOpen ? (
             <Suspense fallback={<SkeletonPane />}>
               <ScheduledTasksPanel projects={realProjects} />
+            </Suspense>
+          ) : isUsageOpen ? (
+            <Suspense fallback={<SkeletonPane />}>
+              <UsagePanel />
             </Suspense>
           ) : isFullLauncherOpen ? (
             renderLaunchSurface(launcherProject)

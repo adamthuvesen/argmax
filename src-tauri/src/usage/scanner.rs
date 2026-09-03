@@ -209,11 +209,18 @@ impl UsageScanner {
                 _ => None,
             }
         }, cutoff_ms, &mut files);
-        // Codex: <sessions>/<year>/<month>/<day>/rollout-*.jsonl.
-        walk(&self.home.join(".codex").join("sessions"), 4, &mut |path, _| {
-            (path.extension().and_then(|ext| ext.to_str()) == Some("jsonl"))
-                .then_some((ProviderId::Codex, None))
-        }, cutoff_ms, &mut files);
+        // Codex: <sessions>/<year>/<month>/<day>/rollout-*.jsonl, and the
+        // flat <archived_sessions>/rollout-*.jsonl a user moves finished
+        // threads into. Both are billed calls.
+        for root in [
+            self.home.join(".codex").join("sessions"),
+            self.home.join(".codex").join("archived_sessions"),
+        ] {
+            walk(&root, 4, &mut |path, _| {
+                (path.extension().and_then(|ext| ext.to_str()) == Some("jsonl"))
+                    .then_some((ProviderId::Codex, None))
+            }, cutoff_ms, &mut files);
+        }
         // Grok Build: <sessions>/<encoded cwd>/<session>/updates.jsonl. The
         // sibling logs are large and carry no usage.
         walk(&self.home.join(".grok").join("sessions"), 3, &mut |path, depth| {

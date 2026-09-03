@@ -8,6 +8,9 @@ export interface OverlayState {
   /** Scheduled tasks panel. */
   isScheduledTasksOpen: boolean;
   setIsScheduledTasksOpen: (open: boolean) => void;
+  /** Usage page. */
+  isUsageOpen: boolean;
+  setIsUsageOpen: (open: boolean) => void;
   /** Command palette (Cmd+K). */
   isPaletteOpen: boolean;
   setIsPaletteOpen: (open: boolean) => void;
@@ -31,6 +34,7 @@ export interface OverlayState {
 export function useOverlays(): OverlayState {
   const [isSettingsOpen, setIsSettingsOpenRaw] = useState<boolean>(false);
   const [isScheduledTasksOpen, setIsScheduledTasksOpenRaw] = useState<boolean>(false);
+  const [isUsageOpen, setIsUsageOpenRaw] = useState<boolean>(false);
   const [isPaletteOpen, setIsPaletteOpenRaw] = useState<boolean>(false);
   const [isCheatSheetOpen, setIsCheatSheetOpenRaw] = useState<boolean>(false);
 
@@ -38,24 +42,35 @@ export function useOverlays(): OverlayState {
   // in `useCallback` indirection so consumers can list them in dep arrays
   // without flagging exhaustive-deps (the lint can't see useState's identity
   // guarantee through the hook boundary).
-  // Settings and scheduled tasks are the two full-screen panels, and they
+  // Settings, scheduled tasks, and usage are the full-screen pages, and they
   // occupy the same slot in the workspace column — so they close together.
   // Every navigation site in App already dismisses settings before showing a
-  // session, project, or launcher; routing scheduled tasks through the same
-  // setter means those sites cannot leave the panel stranded over the grid.
+  // session, project, or launcher; routing the other two through the same
+  // setter means those sites cannot leave a page stranded over the grid.
   const setIsSettingsOpen = useCallback((open: boolean) => {
     setIsSettingsOpenRaw(open);
     setIsScheduledTasksOpenRaw(false);
+    setIsUsageOpenRaw(false);
   }, []);
   const setIsScheduledTasksOpen = useCallback((open: boolean) => {
     setIsScheduledTasksOpenRaw(open);
-    if (open) setIsSettingsOpenRaw(false);
+    if (open) {
+      setIsSettingsOpenRaw(false);
+      setIsUsageOpenRaw(false);
+    }
+  }, []);
+  const setIsUsageOpen = useCallback((open: boolean) => {
+    setIsUsageOpenRaw(open);
+    if (open) {
+      setIsSettingsOpenRaw(false);
+      setIsScheduledTasksOpenRaw(false);
+    }
   }, []);
   const setIsPaletteOpen = useCallback((open: boolean) => setIsPaletteOpenRaw(open), []);
   const setIsCheatSheetOpen = useCallback((open: boolean) => setIsCheatSheetOpenRaw(open), []);
 
   // Esc precedence — closes one overlay per press, from topmost to deepest:
-  // palette → cheat sheet → settings → scheduled tasks. Typing-target guard
+  // palette → cheat sheet → settings → scheduled tasks → usage. Typing-target guard
   // means Esc inside contenteditable / textarea / role=textbox stays in the
   // input (e.g. cancels an inline edit) instead of dismissing chrome.
   const handleEscape = useCallback((): boolean => {
@@ -75,8 +90,12 @@ export function useOverlays(): OverlayState {
       setIsScheduledTasksOpenRaw(false);
       return true;
     }
+    if (isUsageOpen) {
+      setIsUsageOpenRaw(false);
+      return true;
+    }
     return false;
-  }, [isPaletteOpen, isCheatSheetOpen, isSettingsOpen, isScheduledTasksOpen]);
+  }, [isPaletteOpen, isCheatSheetOpen, isSettingsOpen, isScheduledTasksOpen, isUsageOpen]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -95,6 +114,8 @@ export function useOverlays(): OverlayState {
     setIsSettingsOpen,
     isScheduledTasksOpen,
     setIsScheduledTasksOpen,
+    isUsageOpen,
+    setIsUsageOpen,
     isPaletteOpen,
     setIsPaletteOpen,
     isCheatSheetOpen,

@@ -38,6 +38,13 @@ describe("formatTokens", () => {
     expect(formatTokens(1_500_000_000)).toBe("1.5B");
   });
 
+  it("promotes a unit rather than printing a four-digit mantissa", () => {
+    expect(formatTokens(999_700)).toBe("1M");
+    expect(formatTokens(999_400)).toBe("999k");
+    expect(formatTokens(999_700_000)).toBe("1B");
+    expect(formatTokens(999_400_000)).toBe("999M");
+  });
+
   it("preserves a negative sign rather than collapsing to zero", () => {
     expect(formatTokens(-500)).toBe("-0.5k");
     expect(formatTokens(-12_300)).toBe("-12.3k");

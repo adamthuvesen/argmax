@@ -255,6 +255,14 @@
   min-height: 22px;
 }
 
+/* A group can carry more than one control on its line (Providers has both
+   View usage and Refresh), so the slot is a row rather than a single child. */
+.settings-group-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .settings-group-label {
   margin: 0;
   font-size: var(--text-xs);

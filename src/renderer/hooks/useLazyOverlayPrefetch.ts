@@ -8,6 +8,7 @@ import { lazy, useEffect } from "react";
 const importCommandPalette = () => import("../components/CommandPalette.js");
 const importSettingsPanel = () => import("../components/SettingsPanel.js");
 const importScheduledTasksPanel = () => import("../components/scheduled/ScheduledTasksPanel.js");
+const importUsagePanel = () => import("../components/usage/UsagePanel.js");
 // ReviewPanel pulls in CodeMirror + every @codemirror/lang-* package — ~680KB.
 // LaunchSurface and SessionPane each lazy-import it locally; warming it from
 // here means the first ⌘P Enter (which opens ReviewPanel in Files mode) hits a
@@ -24,6 +25,9 @@ export const SettingsPanel = lazy(async () => ({
 }));
 export const ScheduledTasksPanel = lazy(async () => ({
   default: (await importScheduledTasksPanel()).ScheduledTasksPanel
+}));
+export const UsagePanel = lazy(async () => ({
+  default: (await importUsagePanel()).UsagePanel
 }));
 
 /** Warm lazy overlay chunks after first paint so the first ⌘K / ⌘F / Settings open isn't paying for transform+fetch+parse on the keypress. */
@@ -51,6 +55,7 @@ export function useLazyOverlayPrefetch(): void {
     const warmHeavy = (): void => {
       importSettingsPanel().catch(swallow);
       importScheduledTasksPanel().catch(swallow);
+      importUsagePanel().catch(swallow);
       importReviewPanel().catch(swallow);
     };
     const scheduleHeavy = (): void => {

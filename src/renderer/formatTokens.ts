@@ -10,17 +10,18 @@
  *
  * Negative values are preserved with a leading minus rather than collapsed —
  * if an upstream sign bug ever ships, we want it visible, not hidden.
+ *
+ * Unit boundaries sit where the mantissa *rounds* to 1000, not where the
+ * value crosses the unit: 999.7M is "1B", never "1000M".
  */
 export function formatTokens(value: number | null | undefined): string {
   const v = value ?? 0;
   if (!Number.isFinite(v) || v === 0) return "0";
   const sign = v < 0 ? "-" : "";
   const abs = Math.abs(v);
-  if (abs < 1_000_000) {
-    if (abs < 100) return `${sign}${Math.round(abs)}`;
-    return `${sign}${trim(abs / 1_000)}k`;
-  }
-  if (abs < 1_000_000_000) return `${sign}${trim(abs / 1_000_000)}M`;
+  if (abs < 100) return `${sign}${Math.round(abs)}`;
+  if (abs < 999_500) return `${sign}${trim(abs / 1_000)}k`;
+  if (abs < 999_500_000) return `${sign}${trim(abs / 1_000_000)}M`;
   return `${sign}${trim(abs / 1_000_000_000)}B`;
 }
 

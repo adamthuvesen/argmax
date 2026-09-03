@@ -11,6 +11,7 @@ import {
   secondProject,
   workspaceStatusSnapshot
 } from "./fixtures/dashboardSnapshot.js";
+import { usageSummaryFixture, usageSummaryFor } from "./fixtures/usageSummary.js";
 
 // Resolve the panels App.tsx mounts through `React.lazy` before any test runs.
 //
@@ -29,11 +30,14 @@ import {
 await Promise.all([
   import("../renderer/components/SettingsPanel.js"),
   import("../renderer/components/scheduled/ScheduledTasksPanel.js"),
+  import("../renderer/components/usage/UsagePanel.js"),
   import("../renderer/components/CommandPalette.js"),
   import("../renderer/components/ReviewPanel.js")
 ]);
 
 export const snapshot = defaultDashboardSnapshot;
+
+export { usageSummaryFixture, usageSummaryFor };
 
 export {
   dashboardListSnapshot,
@@ -95,6 +99,7 @@ export type AppTestMocks = {
   listDetectedIdes: AppTestMockFn<ArgmaxApi["system"]["listDetectedIdes"]>;
   setWorkspaceIcon: AppTestMockFn<ArgmaxApi["workspaces"]["setIcon"]>;
   setPriorityDismissed: AppTestMockFn<ArgmaxApi["workspaces"]["setPriorityDismissed"]>;
+  usageSummary: AppTestMockFn<ArgmaxApi["usage"]["summary"]>;
 };
 
 export let createCurrentWorkspace: AppTestMocks["createCurrentWorkspace"];
@@ -134,6 +139,9 @@ export let openInIde: AppTestMocks["openInIde"];
 export let listDetectedIdes: AppTestMocks["listDetectedIdes"];
 export let setWorkspaceIcon: AppTestMocks["setWorkspaceIcon"];
 export let setPriorityDismissed: AppTestMocks["setPriorityDismissed"];
+/** Override with `usageSummary.mockResolvedValue(usageSummaryFixture({ … }))`
+ *  to put the Usage page into a specific state. */
+export let usageSummary: AppTestMocks["usageSummary"];
 export let menuCommandListener: ((command: MenuCommand) => void) | null = null;
 
 export function setupAppTestMocks(): void {
@@ -312,6 +320,9 @@ export function setupAppTestMocks(): void {
     size: 0
   });
   skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([]);
+  usageSummary = vi
+    .fn<ArgmaxApi["usage"]["summary"]>()
+    .mockImplementation((input) => Promise.resolve(usageSummaryFor(input)));
   openInIde = vi.fn<ArgmaxApi["workspaces"]["openInIde"]>().mockResolvedValue({ ok: true });
   listDetectedIdes = vi.fn<ArgmaxApi["system"]["listDetectedIdes"]>().mockResolvedValue([
     { id: "vscode", label: "VS Code", appPath: "/Applications/Visual Studio Code.app", hasCli: true },
@@ -350,30 +361,7 @@ export function setupAppTestMocks(): void {
       }
     },
     usage: {
-      summary: (input) =>
-        Promise.resolve({
-          window: input.window,
-          timeZone: input.timeZone,
-          rangeStart: "",
-          rangeEnd: "",
-          resolution: input.window === "24h" ? "hour" : "day",
-          scan: {
-            phase: "idle",
-            filesTotal: 0,
-            filesDone: 0,
-            lastCompletedAt: null,
-            pricingAsOf: "2026-09-03"
-          },
-          sessions: 0,
-          tokens: { inputUncached: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0 },
-          costUsd: 0,
-          cacheSavingsUsd: 0,
-          costSource: "list_price",
-          providers: [],
-          series: [],
-          models: [],
-          days: []
-        })
+      summary: usageSummary
     },
     routines: {
       list: () => Promise.resolve([]),

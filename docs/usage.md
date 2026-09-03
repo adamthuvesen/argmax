@@ -18,7 +18,7 @@ their logs; those win over the table and are marked *provider reported*.
 | Provider | Files | Usage record |
 |---|---|---|
 | Claude | `~/.claude/projects/<slug>/<session>.jsonl` and `<session>/subagents/*.jsonl` | `type:"assistant"` → `message.usage` |
-| Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | `event_msg` / `token_count` → `info.last_token_usage` |
+| Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` and `~/.codex/archived_sessions/rollout-*.jsonl` | `event_msg` / `token_count` → `info.last_token_usage` |
 | Grok Build | `~/.grok/sessions/<cwd>/<session>/updates.jsonl` | `turn_completed` → `usage` and `usage.modelUsage` |
 | OpenCode | `~/.local/share/opencode/opencode.db` (`message.data`, read-only) | `tokens` and `cost` on assistant rows |
 | Cursor | none | Cursor keeps no local token log; the page says so |

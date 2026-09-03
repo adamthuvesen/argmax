@@ -1,4 +1,5 @@
 import {
+  ChartNoAxesColumn,
   Clock,
   Folder,
   MessageSquare,
@@ -20,6 +21,7 @@ export type BuildPaletteCommandsInput = {
   onNewSession: () => void;
   onOpenSettings: () => void;
   onOpenScheduledTasks: () => void;
+  onOpenUsage: () => void;
   /** Jumps straight to one settings section — feeds the palette's Settings scope. */
   onOpenSettingsSection: (group: SettingsGroupId, sectionId: string) => void;
   /** Reopens the palette on its Messages tab — the mouse path to ⌘F. */
@@ -38,6 +40,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     onNewSession,
     onOpenSettings,
     onOpenScheduledTasks,
+    onOpenUsage,
     onOpenSettingsSection,
     onOpenSearch,
     onStopSession,
@@ -74,6 +77,14 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       group: "Actions",
       icon: Clock,
       run: onOpenScheduledTasks
+    },
+    {
+      id: "action:open-usage",
+      label: "Open Usage",
+      subtitle: "Tokens and cost per provider",
+      group: "Actions",
+      icon: ChartNoAxesColumn,
+      run: onOpenUsage
     },
     {
       id: "action:search-sessions",

@@ -26,6 +26,15 @@ Targets defined in [src/test/perf.test.ts](../src/test/perf.test.ts):
 - `searchFilePaths` across 10,000 paths: p95 < 25 ms.
 - `parseUnifiedDiff` across a 500-hunk diff: p95 < 20 ms.
 
+## Usage Scan
+
+The Usage page's transcript sweep ([usage/scanner.rs](../src-tauri/src/usage/scanner.rs))
+is incremental, so only the first sweep is expensive. Measured 2026-09-03 on
+a release build over this machine's 90-day window (5,235 transcripts, about
+2 GB of JSONL): cold sweep 25 s, run in the background with progress on the
+page; warm sweep 0.2 s, run inline on every `usage:summary`. A warm sweep
+must stay well under a second, since the page refreshes every 60 s while open.
+
 ## Main Thread
 
 Tauri resolves a synchronous `#[tauri::command]` body inline on the macOS main

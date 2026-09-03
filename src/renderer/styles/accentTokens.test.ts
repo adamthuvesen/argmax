@@ -30,7 +30,7 @@ function cssRuleBody(source: string, selector: string): string {
 }
 
 describe("accent CSS contract", () => {
-  it("keeps multitasks attached to the composer's content gutter", () => {
+  it("draws multitasks on a card cut from the composer's surface, sat just above it", () => {
     const chatTools = readSource("src/renderer/styles/chat-tools.css");
     const laneRule = cssRuleBody(chatTools, ".multitask-composer-lane");
     const attachedComposerRule = cssRuleBody(
@@ -40,8 +40,10 @@ describe("accent CSS contract", () => {
 
     expect(laneRule).toContain("max-height: min(180px, 30vh);");
     expect(laneRule).toContain("margin: 16px var(--session-inline-padding) 0;");
-    expect(laneRule).toContain("padding: 0 14px;");
-    expect(attachedComposerRule).toContain("margin-top: 0;");
+    expect(laneRule).toContain("padding: 6px 15px;");
+    expect(laneRule).toContain("border-radius: var(--radius-xl);");
+    expect(laneRule).toContain("background: var(--composer-surface);");
+    expect(attachedComposerRule).toContain("margin-top: 8px;");
   });
 
   it("keeps text sizes and font families behind typography tokens", () => {

@@ -43,6 +43,34 @@ pub struct NavigateParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DuplicateParams {
+    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
+    /// session used last.
+    pub tab: Option<String>,
+    /// Show the copy immediately. Defaults to true.
+    pub activate: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GroupTabsParams {
+    /// One to 50 tab ids from browser_tabs.
+    pub tabs: Vec<String>,
+    /// Group label. Omit or pass an empty string to remove the tabs from a group.
+    pub group: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct OpenLinkParams {
+    /// Link handle from browser_snapshot or browser_find.
+    #[serde(rename = "ref")]
+    pub element_ref: String,
+    /// Source tab. Defaults to the tab this session used last.
+    pub tab: Option<String>,
+    /// Show the new tab immediately. Defaults to false.
+    pub activate: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TabParams {
     /// Tab id from browser_open or browser_tabs. Defaults to the tab this
     /// session used last.
@@ -82,6 +110,15 @@ pub struct GetTextParams {
     /// session used last.
     pub tab: Option<String>,
     /// Cap on the characters returned. Defaults to 20000.
+    pub max_chars: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ExtractParams {
+    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
+    /// session used last.
+    pub tab: Option<String>,
+    /// Character budget for section text. Defaults to 30000.
     pub max_chars: Option<u32>,
 }
 
@@ -145,6 +182,32 @@ pub struct ScrollParams {
     /// Handle of a scrollable element to scroll instead of the page.
     #[serde(rename = "ref")]
     pub element_ref: Option<String>,
+    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
+    /// session used last.
+    pub tab: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DragParams {
+    /// Handle to press and drag, from browser_snapshot or browser_find.
+    #[serde(rename = "ref")]
+    pub element_ref: String,
+    /// Optional destination handle. Use this for drag-and-drop.
+    pub to_ref: Option<String>,
+    /// Horizontal start coordinate inside ref. Defaults to its center.
+    pub start_x: Option<f64>,
+    /// Vertical start coordinate inside ref. Defaults to its center.
+    pub start_y: Option<f64>,
+    /// Horizontal destination coordinate inside to_ref. Defaults to its center.
+    pub end_x: Option<f64>,
+    /// Vertical destination coordinate inside to_ref. Defaults to its center.
+    pub end_y: Option<f64>,
+    /// Horizontal distance in CSS pixels when to_ref is omitted.
+    pub delta_x: Option<f64>,
+    /// Vertical distance in CSS pixels when to_ref is omitted.
+    pub delta_y: Option<f64>,
+    /// Number of intermediate pointer moves. Defaults to 10, capped at 60.
+    pub steps: Option<u8>,
     /// Tab id from browser_open or browser_tabs. Defaults to the tab this
     /// session used last.
     pub tab: Option<String>,
@@ -215,6 +278,63 @@ this session; you cannot touch the user's tabs or another session's."
         Parameters(params): Parameters<OpenParams>,
     ) -> Result<CallToolResult, ErrorData> {
         call(BrowserRequest::Open { url: params.url }).await
+    }
+
+    #[tool(
+        name = "browser_activate",
+        description = "Show one of this session's existing tabs in its Browser panel and make it the default for later tool calls."
+    )]
+    async fn browser_activate(
+        &self,
+        Parameters(params): Parameters<TabParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(BrowserRequest::Activate { tab: params.tab }).await
+    }
+
+    #[tool(
+        name = "browser_duplicate",
+        description = "Copy a tab at its current URL into a new tab owned by this session. The copy inherits the source tab's group."
+    )]
+    async fn browser_duplicate(
+        &self,
+        Parameters(params): Parameters<DuplicateParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(BrowserRequest::Duplicate {
+            tab: params.tab,
+            activate: params.activate.unwrap_or(true),
+        })
+        .await
+    }
+
+    #[tool(
+        name = "browser_group_tabs",
+        description = "Assign a visible group label to related tabs. Omit group or pass an empty string to ungroup them. A session can group only its own tabs."
+    )]
+    async fn browser_group_tabs(
+        &self,
+        Parameters(params): Parameters<GroupTabsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(BrowserRequest::GroupTabs {
+            tabs: params.tabs,
+            group: params.group,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "browser_open_link",
+        description = "Open a link ref in a new tab without disturbing the source page. The new tab stays in the background unless activate is true."
+    )]
+    async fn browser_open_link(
+        &self,
+        Parameters(params): Parameters<OpenLinkParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(BrowserRequest::OpenLink {
+            tab: params.tab,
+            element_ref: params.element_ref,
+            activate: params.activate.unwrap_or(false),
+        })
+        .await
     }
 
     #[tool(
@@ -325,6 +445,21 @@ article or a result; use browser_snapshot when you need to act on something."
         Parameters(params): Parameters<GetTextParams>,
     ) -> Result<CallToolResult, ErrorData> {
         call(BrowserRequest::GetText {
+            tab: params.tab,
+            max_chars: params.max_chars,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "browser_extract",
+        description = "Extract bounded, structured page content: metadata, headings, sections, tables, and unique http(s) links. Use it to read articles and compare sources without processing the accessibility tree."
+    )]
+    async fn browser_extract(
+        &self,
+        Parameters(params): Parameters<ExtractParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(BrowserRequest::Extract {
             tab: params.tab,
             max_chars: params.max_chars,
         })
@@ -448,6 +583,36 @@ snapshot already covers the whole document, so scroll for pages that load more c
     }
 
     #[tool(
+        name = "browser_drag",
+        description = "Drag from a ref to another ref, or by a CSS-pixel delta. It sends stepped pointer, mouse, and HTML drag events, and updates range inputs. Use it for drag-and-drop, sliders, resize handles, and canvas controls."
+    )]
+    async fn browser_drag(
+        &self,
+        Parameters(params): Parameters<DragParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        if params.to_ref.is_none() && params.delta_x.is_none() && params.delta_y.is_none() {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "browser_drag needs to_ref or delta_x/delta_y.",
+            )]));
+        }
+        act(
+            params.tab,
+            BrowserAction::Drag {
+                element_ref: params.element_ref,
+                to_ref: params.to_ref,
+                start_x: params.start_x,
+                start_y: params.start_y,
+                end_x: params.end_x,
+                end_y: params.end_y,
+                delta_x: params.delta_x,
+                delta_y: params.delta_y,
+                steps: params.steps.map(|steps| steps.clamp(1, 60)),
+            },
+        )
+        .await
+    }
+
+    #[tool(
         name = "browser_wait_for",
         description = "Block until the page catches up: until some text appears, an element \
 becomes visible, or the URL contains a substring. Name at least one of them. This is what to use \
@@ -537,7 +702,9 @@ async fn act(tab: Option<String>, action: BrowserAction) -> Result<CallToolResul
 
 /// One socket round trip, off the async runtime because the client is
 /// blocking. A screenshot's PNG comes back beside the JSON and becomes an MCP
-/// image block; everything else is the JSON alone.
+/// image block; everything else is the JSON alone. When the app flags unread
+/// inbox mail, a final text block says so — a mid-turn agent reads tool
+/// results, which makes this the one channel that can tap it on the shoulder.
 #[cfg(unix)]
 async fn call(request: BrowserRequest) -> Result<CallToolResult, ErrorData> {
     let outcome = tokio::task::spawn_blocking(move || {
@@ -546,13 +713,22 @@ async fn call(request: BrowserRequest) -> Result<CallToolResult, ErrorData> {
     .await
     .map_err(|error| ErrorData::internal_error(format!("the tool call panicked: {error}"), None))?;
     match outcome {
-        Ok(response) => match response.result {
-            SessionControlResult::Browsed(outcome) => Ok(CallToolResult::success(blocks(outcome))),
-            other => Err(ErrorData::internal_error(
-                format!("Argmax answered a browser action with {other:?}"),
-                None,
-            )),
-        },
+        Ok(response) => {
+            let unread_inbox = response.unread_inbox;
+            match response.result {
+                SessionControlResult::Browsed(outcome) => {
+                    let mut blocks = blocks(outcome);
+                    if let Some(count) = unread_inbox.filter(|count| *count > 0) {
+                        blocks.push(ContentBlock::text(super::session_tools::inbox_notice(count)));
+                    }
+                    Ok(CallToolResult::success(blocks))
+                }
+                other => Err(ErrorData::internal_error(
+                    format!("Argmax answered a browser action with {other:?}"),
+                    None,
+                )),
+            }
+        }
         // A refused action (a tab this session does not own, a stale ref) is
         // the agent's to read and act on, not a transport failure.
         Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(

@@ -789,6 +789,7 @@ export interface ArgmaxApi {
     snapshot: (input: BrowserTabTarget & { interactiveOnly?: boolean }) => Promise<BrowserPageSnapshot>;
     find: (input: BrowserTabTarget & { query: string }) => Promise<BrowserFindResult>;
     getText: (input: BrowserTabTarget & { maxChars?: number }) => Promise<BrowserPageText>;
+    extract: (input: BrowserTabTarget & { maxChars?: number }) => Promise<BrowserPageExtraction>;
     act: (input: BrowserTabTarget & { action: BrowserAction }) => Promise<BrowserActionOutcome>;
     onState: (listener: (event: BrowserStateEvent) => void) => EventSubscription;
     onNewTab: (listener: (event: BrowserNewTabEvent) => void) => EventSubscription;
@@ -853,6 +854,8 @@ export interface BrowserTabInfo {
   url: string;
   title: string | null;
   loading: boolean;
+  /** Optional label used to organize related tabs in the strip. */
+  group: string | null;
 }
 
 export interface BrowserAgentOpenEvent {
@@ -896,6 +899,27 @@ export interface BrowserPageText {
   truncated: boolean;
 }
 
+export interface BrowserPageExtraction {
+  tabId: string;
+  url: string;
+  title: string;
+  metadata: {
+    title: string;
+    description: string | null;
+    canonicalUrl: string | null;
+    language: string | null;
+    author: string | null;
+    publishedTime: string | null;
+    modifiedTime: string | null;
+    siteName: string | null;
+  };
+  headings: Array<{ level: number; text: string }>;
+  sections: Array<{ heading: string | null; level: number | null; text: string }>;
+  tables: Array<{ caption: string | null; headers: string[]; rows: string[][] }>;
+  links: Array<{ text: string | null; url: string }>;
+  truncated: boolean;
+}
+
 export interface BrowserActionOutcome {
   tabId: string;
   /** URL after the action — a click that navigated says so here. */
@@ -909,6 +933,18 @@ export type BrowserAction =
   | { kind: "type"; ref: string; text: string; submit?: boolean }
   | { kind: "select"; ref: string; value: string }
   | { kind: "hover"; ref: string }
+  | {
+      kind: "drag";
+      ref: string;
+      toRef?: string;
+      startX?: number;
+      startY?: number;
+      endX?: number;
+      endY?: number;
+      deltaX?: number;
+      deltaY?: number;
+      steps?: number;
+    }
   | { kind: "pressKey"; key: string; modifiers?: string[] }
   | { kind: "scroll"; ref?: string; direction: "up" | "down" | "left" | "right"; amount?: number }
   | { kind: "waitFor"; text?: string; ref?: string; urlIncludes?: string; timeoutMs?: number };

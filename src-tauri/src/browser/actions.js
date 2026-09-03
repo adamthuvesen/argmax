@@ -25,7 +25,15 @@
     return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
   }
 
-  function pointerEvent(type, element, point) {
+  function pointIn(element, x, y) {
+    var box = element.getBoundingClientRect();
+    return {
+      x: box.left + (typeof x === "number" ? x : box.width / 2),
+      y: box.top + (typeof y === "number" ? y : box.height / 2)
+    };
+  }
+
+  function pointerEvent(type, element, point, buttons) {
     var init = {
       bubbles: true,
       cancelable: true,
@@ -33,7 +41,12 @@
       clientX: point.x,
       clientY: point.y,
       button: 0,
-      buttons: type === "mousedown" || type === "pointerdown" ? 1 : 0
+      buttons:
+        typeof buttons === "number"
+          ? buttons
+          : type === "mousedown" || type === "pointerdown"
+            ? 1
+            : 0
     };
     var event =
       typeof PointerEvent === "function" && type.indexOf("pointer") === 0
@@ -176,6 +189,201 @@
     pointerEvent("pointermove", element, point);
     pointerEvent("mousemove", element, point);
     return done({ target: describe(element) });
+  }
+
+  function htmlDragEvent(type, element, point, dataTransfer) {
+    var init = {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX: point.x,
+      clientY: point.y,
+      dataTransfer: dataTransfer
+    };
+    var event = typeof DragEvent === "function" ? new DragEvent(type, init) : new MouseEvent(type, init);
+    if (dataTransfer && !("dataTransfer" in event)) {
+      try {
+        Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
+      } catch (_) {}
+    }
+    element.dispatchEvent(event);
+  }
+
+  function updateRange(element, point) {
+    if (!(element instanceof HTMLInputElement) || element.type !== "range") return;
+    var box = element.getBoundingClientRect();
+    var min = Number(element.min || 0);
+    var max = Number(element.max || 100);
+    var step = element.step === "any" ? 0 : Number(element.step || 1);
+    var ratio = box.width > 0 ? Math.max(0, Math.min(1, (point.x - box.left) / box.width)) : 0;
+    var value = min + ratio * (max - min);
+    if (step > 0) value = min + Math.round((value - min) / step) * step;
+    setNativeValue(element, String(Math.max(min, Math.min(max, value))));
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  // A drag is three calls, not one, because Rust drives the steps. Dispatching
+  // every pointermove in a single task never lets the page render between
+  // them, and the libraries that matter need exactly that: dnd-kit measures
+  // its drop targets in an effect after the drag-start commit, and
+  // react-beautiful-dnd throttles moves through requestAnimationFrame. A
+  // separate evaluateJavaScript: per step is a fresh macrotask, which is all
+  // React needs to commit and flush — and unlike a page-side rAF stepper it
+  // keeps working on the hidden tabs agents actually browse in.
+  var drags = {};
+
+  // A hidden WKWebView never fires requestAnimationFrame. Verified on a real
+  // agent tab: between two of our calls `setTimeout` and microtasks both run,
+  // and rAF stays at zero forever. Agent tabs are created hidden, and drag
+  // libraries schedule their measuring and their move handling on frames
+  // (react-beautiful-dnd throttles with raf-schd), so that work would never
+  // run and the drop would land nowhere while the tool reported success — a
+  // false success being the worst outcome available. For the length of the
+  // gesture only, frames are therefore also flushed by hand, one flush per
+  // step, which is the "let the page render between moves" beat a real drag
+  // has. The native frame is still requested, so on a visible tab a real
+  // frame can win the race; `done` keeps a callback from running twice.
+  function installFrameFlush(drag) {
+    if (typeof window.requestAnimationFrame !== "function") return;
+    drag.nativeRaf = window.requestAnimationFrame;
+    drag.nativeCancel = window.cancelAnimationFrame;
+    drag.frames = [];
+    window.requestAnimationFrame = function (callback) {
+      var entry = { callback: callback, done: false, handle: 0 };
+      entry.handle = drag.nativeRaf.call(window, function (stamp) {
+        runFrame(entry, stamp);
+      });
+      drag.frames.push(entry);
+      return entry.handle;
+    };
+    window.cancelAnimationFrame = function (handle) {
+      for (var i = 0; i < drag.frames.length; i += 1) {
+        if (drag.frames[i].handle === handle) drag.frames[i].done = true;
+      }
+      if (drag.nativeCancel) drag.nativeCancel.call(window, handle);
+    };
+  }
+
+  function runFrame(entry, stamp) {
+    if (entry.done) return;
+    entry.done = true;
+    entry.callback(stamp);
+  }
+
+  function flushFrames(drag) {
+    if (!drag.frames || !drag.frames.length) return;
+    var due = drag.frames;
+    drag.frames = [];
+    var stamp =
+      typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+    for (var i = 0; i < due.length; i += 1) runFrame(due[i], stamp);
+  }
+
+  function restoreFrames(drag) {
+    if (!drag.nativeRaf) return;
+    window.requestAnimationFrame = drag.nativeRaf;
+    if (drag.nativeCancel) window.cancelAnimationFrame = drag.nativeCancel;
+    drag.nativeRaf = null;
+  }
+
+  function dragBegin(id, spec) {
+    var options = spec || {};
+    var found = resolve(options.ref);
+    if (found.error) return found;
+    var source = found.element;
+    var destination = null;
+    if (options.toRef) {
+      var destinationFound = resolve(options.toRef);
+      if (destinationFound.error) return destinationFound;
+      destination = destinationFound.element;
+    }
+    var hasDelta = typeof options.deltaX === "number" || typeof options.deltaY === "number";
+    if (!destination && !hasDelta) return { error: "drag needs toRef or deltaX/deltaY" };
+
+    // "nearest" for both: centering the destination can scroll the source off
+    // screen, and then every hit test in the gesture misses it.
+    source.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (destination) destination.scrollIntoView({ block: "nearest", inline: "nearest" });
+    var start = pointIn(source, options.startX, options.startY);
+    var end = destination
+      ? pointIn(destination, options.endX, options.endY)
+      : { x: start.x + (Number(options.deltaX) || 0), y: start.y + (Number(options.deltaY) || 0) };
+    var steps = Math.max(1, Math.min(60, Math.round(Number(options.steps) || 10)));
+    var dataTransfer = typeof DataTransfer === "function" ? new DataTransfer() : null;
+
+    var drag = {
+      source: source,
+      destination: destination,
+      start: start,
+      end: end,
+      steps: steps,
+      dataTransfer: dataTransfer,
+      currentTarget: source
+    };
+    // Armed before the press, so the frame the page schedules in response to
+    // pointerdown is one this gesture can flush.
+    installFrameFlush(drag);
+    drags[id] = drag;
+
+    pointerEvent("pointerover", source, start);
+    pointerEvent("mouseover", source, start);
+    pointerEvent("pointerdown", source, start, 1);
+    pointerEvent("mousedown", source, start, 1);
+    htmlDragEvent("dragstart", source, start, dataTransfer);
+    return { ok: true, steps: steps };
+  }
+
+  function dragStep(id, index) {
+    var drag = drags[id];
+    if (!drag) return { error: "drag " + id + " is not in progress" };
+    // Whatever the previous step's events scheduled on a frame runs now,
+    // before this step's pointer lands on a page that has not caught up.
+    flushFrames(drag);
+    var progress = Math.max(0, Math.min(1, Number(index) / drag.steps));
+    var point = {
+      x: drag.start.x + (drag.end.x - drag.start.x) * progress,
+      y: drag.start.y + (drag.end.y - drag.start.y) * progress
+    };
+    var hit =
+      typeof document.elementFromPoint === "function"
+        ? document.elementFromPoint(point.x, point.y)
+        : null;
+    var target = hit || drag.destination || drag.source;
+    if (target !== drag.currentTarget) {
+      // Highlight-on-hover drop zones clear themselves on dragleave; without
+      // it every zone the gesture crosses stays lit.
+      htmlDragEvent("dragleave", drag.currentTarget, point, drag.dataTransfer);
+      htmlDragEvent("dragenter", target, point, drag.dataTransfer);
+    }
+    pointerEvent("pointermove", target, point, 1);
+    pointerEvent("mousemove", target, point, 1);
+    htmlDragEvent("dragover", target, point, drag.dataTransfer);
+    updateRange(drag.source, point);
+    drag.currentTarget = target;
+    return { ok: true };
+  }
+
+  function dragEnd(id, cancel) {
+    var drag = drags[id];
+    if (!drag) return { error: "drag " + id + " is not in progress" };
+    delete drags[id];
+    flushFrames(drag);
+    restoreFrames(drag);
+    if (cancel) {
+      // The button is still down. Release it as a cancel so the page does not
+      // keep a half-finished gesture armed.
+      pointerEvent("pointercancel", drag.currentTarget, drag.end, 0);
+      htmlDragEvent("dragend", drag.source, drag.end, drag.dataTransfer);
+      return { ok: true, cancelled: true, target: describe(drag.source) };
+    }
+    pointerEvent("pointerup", drag.currentTarget, drag.end, 0);
+    pointerEvent("mouseup", drag.currentTarget, drag.end, 0);
+    htmlDragEvent("drop", drag.currentTarget, drag.end, drag.dataTransfer);
+    htmlDragEvent("dragend", drag.source, drag.end, drag.dataTransfer);
+    if (drag.source instanceof HTMLInputElement && drag.source.type === "range") {
+      drag.source.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    return done({ target: describe(drag.source), droppedOn: describe(drag.currentTarget) });
   }
 
   function pressKey(key, modifiers) {
@@ -327,6 +535,9 @@
   api.type = typeText;
   api.select = select;
   api.hover = hover;
+  api.dragBegin = dragBegin;
+  api.dragStep = dragStep;
+  api.dragEnd = dragEnd;
   api.pressKey = pressKey;
   api.scroll = scroll;
   api.waitFor = waitFor;

@@ -106,13 +106,21 @@ describe("BrowserPanel", () => {
     // The app opened a tab for a session and pushed the new list.
     act(() =>
       applyBrowserTabs([
-        { tabId: userTab, ownerSessionId: null, url: "https://github.com", title: null, loading: false },
+        {
+          tabId: userTab,
+          ownerSessionId: null,
+          url: "https://github.com",
+          title: null,
+          loading: false,
+          group: null
+        },
         {
           tabId: "agent-1",
           ownerSessionId: "session-a",
           url: "https://example.com",
           title: "Example Domain",
-          loading: false
+          loading: false,
+          group: null
         }
       ])
     );
@@ -135,6 +143,38 @@ describe("BrowserPanel", () => {
     expect(getActiveBrowserTabId()).toBe("agent-1");
     expect(browserStub.open).not.toHaveBeenCalled();
     expect(browserStub.navigate).not.toHaveBeenCalled();
+  });
+
+  it("shows a session's group label on the tabs it grouped", () => {
+    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    const userTab = activeTabId();
+
+    act(() =>
+      applyBrowserTabs([
+        {
+          tabId: userTab,
+          ownerSessionId: null,
+          url: "https://github.com",
+          title: null,
+          loading: false,
+          group: null
+        },
+        {
+          tabId: "agent-1",
+          ownerSessionId: "session-a",
+          url: "https://example.com",
+          title: "Example Domain",
+          loading: false,
+          group: "Pricing research"
+        }
+      ])
+    );
+
+    expect(
+      screen.getByRole("img", { name: "Opened by the agent, in Pricing research" })
+    ).toHaveTextContent("Pricing research");
+    // The user's own tab is never grouped, so it carries no chip at all.
+    expect(screen.queryByRole("img", { name: "Opened by the agent" })).not.toBeInTheDocument();
   });
 
   it("navigates on address submit after normalizing the input", () => {

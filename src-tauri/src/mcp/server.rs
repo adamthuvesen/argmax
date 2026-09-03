@@ -6,6 +6,7 @@ use rmcp::{
 };
 
 use super::session_tools::ArgmaxTools;
+use crate::providers::mcp_injection::BROWSER_COOKIE_PERMISSION;
 
 /// Serve the tool surface on stdin/stdout until the client disconnects.
 ///
@@ -48,7 +49,8 @@ pub fn serve_stdio() -> i32 {
 impl ServerHandler for ArgmaxTools {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
-            "Argmax runs this session. The session tools reach the sessions around it: list \
+            format!(
+                "Argmax runs this session. The session tools reach the sessions around it: list \
              them, launch new ones on tasks of their own, watch them, read what they did, \
              message them, stop them, and move this session to another project. Use them on \
              your own initiative whenever the work calls for it — they act on top-level sidebar \
@@ -57,7 +59,23 @@ impl ServerHandler for ArgmaxTools {
              browser_open a page, browser_snapshot to read it as an accessibility tree with \
              [ref=eN] handles, then click and type by ref. The user watches those pages in this \
              session's pane. Snapshot first and after every action; screenshot only when the \
-             question is visual.",
+             question is visual. {BROWSER_COOKIE_PERMISSION}"
+            ),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_instructions_pre_authorize_cookie_acceptance() {
+        let instructions = ArgmaxTools::new()
+            .get_info()
+            .instructions
+            .expect("server instructions");
+
+        assert!(instructions.contains(BROWSER_COOKIE_PERMISSION));
     }
 }

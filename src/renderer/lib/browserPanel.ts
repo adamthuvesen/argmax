@@ -126,6 +126,9 @@ export interface BrowserTab {
   loading: boolean;
   /** Session that opened the tab; null for tabs the user opened. */
   ownerSessionId: string | null;
+  /** Label a session gave a set of related tabs. Not persisted: grouping
+   *  belongs to the run that did the research. */
+  group: string | null;
 }
 
 const TABS_KEY = "argmax.browser.tabs";
@@ -187,7 +190,8 @@ function restoreTabs(): void {
     url: tab.url,
     title: typeof tab.title === "string" ? tab.title : null,
     loading: false,
-    ownerSessionId: null
+    ownerSessionId: null,
+    group: null
   }));
   activeTabId =
     typeof snapshot.activeTabId === "string" && tabs.some((tab) => tab.id === snapshot.activeTabId)
@@ -259,7 +263,8 @@ export function createBrowserTab(url: string, activate = true): BrowserTab {
     url,
     title: null,
     loading: false,
-    ownerSessionId: null
+    ownerSessionId: null,
+    group: null
   };
   nextTabSeq += 1;
   tabs = [...tabs, tab];
@@ -341,7 +346,8 @@ export function applyBrowserTabs(incoming: readonly BrowserTabInfo[]): void {
         // the strip already showed rather than blanking the label.
         title: live.title ?? tab.title,
         loading: live.loading,
-        ownerSessionId: live.ownerSessionId
+        ownerSessionId: live.ownerSessionId,
+        group: live.group
       });
       byId.delete(tab.id);
     } else if (!registrySeen.has(tab.id)) {
@@ -356,7 +362,8 @@ export function applyBrowserTabs(incoming: readonly BrowserTabInfo[]): void {
       url: tab.url,
       title: tab.title,
       loading: tab.loading,
-      ownerSessionId: tab.ownerSessionId
+      ownerSessionId: tab.ownerSessionId,
+      group: tab.group
     });
     // The app created the webview, so it exists in this run already.
     materializedTabs.add(tab.tabId);
@@ -373,7 +380,8 @@ export function applyBrowserTabs(incoming: readonly BrowserTabInfo[]): void {
         current.url === tab.url &&
         current.title === tab.title &&
         current.loading === tab.loading &&
-        current.ownerSessionId === tab.ownerSessionId
+        current.ownerSessionId === tab.ownerSessionId &&
+        current.group === tab.group
       );
     });
   if (unchanged) return;

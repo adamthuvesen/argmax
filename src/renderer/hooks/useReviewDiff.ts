@@ -26,9 +26,18 @@ export function useReviewDiff(args: {
   changedFilesKey: string | null;
   comparison: ReviewComparison;
   dispatch: ReviewIpcDispatch | null;
+  autoSelectFirstFile: boolean;
   onOpenChanges: () => void;
 }): UseReviewDiffResult {
-  const { sourceId, sourceKind, changedFilesKey, comparison, dispatch, onOpenChanges } = args;
+  const {
+    sourceId,
+    sourceKind,
+    changedFilesKey,
+    comparison,
+    dispatch,
+    autoSelectFirstFile,
+    onOpenChanges
+  } = args;
 
   const [files, setFiles] = useState<ChangedFileSummary[]>([]);
   const [filesState, setFilesState] = useState<AsyncState>("idle");
@@ -114,8 +123,8 @@ export function useReviewDiff(args: {
         const sorted = [...result].sort((left, right) => left.path.localeCompare(right.path));
         setFiles(sorted);
         setFilesState("ready");
-        // Keep the open file selected if it survived the refresh; never pick
-        // one for the reader — changed files stay collapsed until clicked.
+        // Keep the open file selected if it survived the refresh. Opening the
+        // Changes view selects a replacement in the effect below.
         setSelectedFilePath((currentPath) =>
           currentPath && sorted.some((file) => file.path === currentPath) ? currentPath : null
         );
@@ -129,6 +138,12 @@ export function useReviewDiff(args: {
         setFilesError(errorMessage(error) || "Could not load changed files.");
       });
   }, [sourceId, sourceKind, changedFilesKey, comparison, dispatch]);
+
+  useEffect(() => {
+    const firstFile = files[0];
+    if (!autoSelectFirstFile || selectedFilePath || !firstFile) return;
+    setSelectedFilePath(firstFile.path);
+  }, [autoSelectFirstFile, files, selectedFilePath]);
 
   useEffect(() => {
     const token = ++diffLoadToken.current;

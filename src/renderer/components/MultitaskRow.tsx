@@ -17,11 +17,9 @@ function statusLabel(state: string | null, status: RowStatus): string {
 }
 
 /**
- * A multitask inside the turn that dispatched it, drawn as a launch row among
- * that turn's tools — because that is what it is to the reader: work running
- * alongside this turn, opened in the same dock, not another chat in the
- * sidebar. The row says what it is doing; the answer and everything else lives
- * in the dock tab it opens.
+ * A multitask attached above the chat's composer, drawn in the same launch-row
+ * shape as a subagent. It stays visible after the parent turn ends and opens in
+ * the same dock, without becoming another chat in the sidebar.
  *
  * The one thing that separates it from a subagent row is the mark a settled
  * one carries: the same Split glyph its dock tab uses, so both surfaces name a

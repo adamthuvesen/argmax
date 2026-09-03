@@ -13,6 +13,7 @@ import type {
   BrowserNewTabEvent,
   BrowserPageCommandEvent,
   BrowserPageSnapshot,
+  BrowserPageExtraction,
   BrowserPageText,
   BrowserScreenshot,
   BrowserStateEvent,
@@ -437,6 +438,7 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       snapshot: (input) => invokeCommand<BrowserPageSnapshot>("browser:snapshot", input),
       find: (input) => invokeCommand<BrowserFindResult>("browser:find", input),
       getText: (input) => invokeCommand<BrowserPageText>("browser:get-text", input),
+      extract: (input) => invokeCommand<BrowserPageExtraction>("browser:extract", input),
       act: (input) => invokeCommand<BrowserActionOutcome>("browser:act", input),
       onState: (listener: (event: BrowserStateEvent) => void) =>
         subscribe<BrowserStateEvent>("browser:state", listener),

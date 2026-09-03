@@ -239,9 +239,9 @@ describe("multitask rows", () => {
   const multitasksOf = (rendered: RenderItem[]): MultitaskNotice[] =>
     rendered.flatMap((item) => (item.kind === "turn" ? item.multitasks : []));
 
-  it("rides inside the turn it was dispatched during, without splitting it", () => {
-    // The parent's turn keeps running while the multitask starts, so the row
-    // joins that turn's body instead of cutting its block in two.
+  it("keeps the notice with its dispatch turn without splitting the turn", () => {
+    // The fold records the dispatch association while presentation can lift
+    // the visible row above the composer.
     const rendered = items([
       event("u1", "user.message", "2026-09-02T10:00:00.000Z"),
       event("a1", "message.completed", "2026-09-02T10:00:01.000Z"),

@@ -98,6 +98,7 @@ export const IPC_CHANNELS = [
   "browser:snapshot",
   "browser:find",
   "browser:get-text",
+  "browser:extract",
   "browser:act",
   "routines:list",
   "routines:upsert",

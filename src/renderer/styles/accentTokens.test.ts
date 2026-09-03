@@ -1184,4 +1184,24 @@ describe("accent CSS contract", () => {
     // has to inherit for a nested scale to reach the terminal.
     expect(registration?.groups?.body).toContain("inherits: true");
   });
+
+  it("clears the collapsed-sidebar repo title past the fixed sidebar toggle", () => {
+    const shellLayout = readSource("src/renderer/styles/shell-layout.css");
+    const chatConversation = readSource("src/renderer/styles/chat-conversation.css");
+    const appShellRule = cssRuleBody(shellLayout, ".app-shell");
+    const toggleRule = cssRuleBody(shellLayout, ".sidebar-toggle");
+    const headingRule = cssRuleBody(
+      chatConversation,
+      '.app-shell[data-sidebar-collapsed="true"]\n  .session-multigrid-cell:first-child\n  .conversation-surface\n  > .section-heading'
+    );
+
+    expect(appShellRule).toContain("--titlebar-leading-inset:");
+    expect(appShellRule).toContain("--titlebar-center:");
+    expect(appShellRule).toContain("--titlebar-strip-height:");
+    expect(toggleRule).toContain("left: var(--titlebar-toggle-left);");
+    expect(toggleRule).toContain("top: calc(var(--titlebar-center) - 15px);");
+    expect(headingRule).toContain("padding-left: var(--titlebar-leading-inset);");
+    expect(headingRule).toContain("min-height: var(--titlebar-strip-height);");
+    expect(headingRule).toContain("padding-top: calc(var(--titlebar-center) - 15px);");
+  });
 });

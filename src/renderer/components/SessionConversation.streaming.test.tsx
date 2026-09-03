@@ -1640,7 +1640,7 @@ describe("SessionConversation — streaming & composer", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Send queued follow-up now: use the simpler approach"
+        name: "Send queued follow-up: use the simpler approach"
       })
     );
 

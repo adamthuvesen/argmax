@@ -647,13 +647,13 @@ export function SessionComposer({
                 <button
                   type="button"
                   className="composer-queued-chip-action"
-                  aria-label={`Send queued follow-up now: ${entry.content}`}
-                  title="Send now, interrupting the current turn"
+                  aria-label={`Send queued follow-up: ${entry.content}`}
+                  title="Send, interrupting the current turn"
                   disabled={sendingQueuedMessageId !== null}
                   onClick={() => void sendQueuedNow()}
                 >
                   <Send size={13} aria-hidden="true" />
-                  <span>Send now</span>
+                  <span>Send</span>
                 </button>
                 {onMultitask ? (
                   <button

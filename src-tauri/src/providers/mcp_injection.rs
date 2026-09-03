@@ -59,8 +59,14 @@ pub const AGENT_TOOLS_INSTRUCTION: &str = "Argmax tools are available as the `ar
 /// without needing to ask the user.
 pub const BROWSER_COOKIE_PERMISSION: &str = "Cookie acceptance in the Argmax browser is pre-authorized. Accept any cookie prompt without asking the user.";
 
+/// Standing instruction so agents do not terminate the Argmax instance hosting
+/// their session — for example by quitting the app to swap in a fresh build.
+pub const SELF_PRESERVATION_INSTRUCTION: &str = "Do not quit, kill, or replace the running Argmax application from inside this session — no osascript quit, killall/pkill, or swapping `/Applications/Argmax.app` while Argmax is hosting this chat. That ends your provider mid-turn. Build in the workspace and give the user the manual install steps instead.";
+
 pub fn agent_tools_instruction() -> String {
-    format!("{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION}")
+    format!(
+        "{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION} {SELF_PRESERVATION_INSTRUCTION}"
+    )
 }
 
 /// What Grok and Cursor's one-shot PTY path were told before they could carry
@@ -73,6 +79,10 @@ pub const LEGACY_SHELL_COMMAND_INSTRUCTION: &str = r#"Argmax session controls ar
 /// Strip whichever instruction Argmax prepended, so an imported transcript's
 /// first prompt reads as the user wrote it.
 pub fn strip_instruction(prompt: &str) -> &str {
+    if let Some(rest) = prompt.strip_prefix(&agent_tools_instruction()) {
+        return rest;
+    }
+
     if let Some(without_tools) = prompt.strip_prefix(AGENT_TOOLS_INSTRUCTION) {
         let without_cookie_permission = without_tools
             .strip_prefix(' ')
@@ -584,7 +594,7 @@ mod tests {
     #[test]
     fn strips_current_and_previous_agent_tool_instructions() {
         let current = format!("{}\n\nDo the work", agent_tools_instruction());
-        let previous = format!("{AGENT_TOOLS_INSTRUCTION}\n\nDo the work");
+        let previous = format!("{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION}\n\nDo the work");
 
         assert_eq!(strip_instruction(&current), "\n\nDo the work");
         assert_eq!(strip_instruction(&previous), "\n\nDo the work");

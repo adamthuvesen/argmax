@@ -46,7 +46,7 @@ use crate::persistence::sessions::{
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::persistence::Database;
 use crate::providers::session_service::ProviderSessionService;
-use crate::session_control::{launch_with_spec, task_label, LaunchSpec};
+use crate::session_control::{launch_with_spec, task_label, AlongsideCheckout, LaunchSpec};
 use crate::workspaces::orchestration::WorkspaceService;
 
 /// Written into the parent's timeline the moment a multitask is dispatched.
@@ -129,6 +129,15 @@ pub async fn dispatch(
     let outcome = launch_with_spec(
         LaunchSpec {
             project: None,
+            // The chat this was dispatched from owns the checkout the person is
+            // looking at. Its workspace is the project root only when that chat
+            // is not in a worktree, and the guardrail preamble below names its
+            // branch — so the tree has to match what the preamble claims.
+            alongside: Some(AlongsideCheckout {
+                path: parent_workspace.path.clone(),
+                branch: parent_workspace.branch.clone(),
+                base_ref: parent_workspace.base_ref.clone(),
+            }),
             prompt: prompt_with_preamble(
                 &request,
                 &parent_workspace.task_label,
@@ -287,17 +296,23 @@ pub fn record_finished(
 /// the person is better served by opening the chats than by a wall of preamble.
 const MAX_RESULTS_PER_PROMPT: usize = 5;
 
-/// The results block that goes ahead of the parent's next prompt, and marks
-/// those rows delivered.
+/// The results block that goes ahead of the parent's next prompt, plus the ids
+/// of the rows it carries — `mark_results_delivered` spends them once the
+/// prompt has actually launched.
 ///
 /// This is the passive half of the delivery: the person sees the finish in
 /// their timeline the moment it happens, and the *agent* learns about it here,
 /// the next time the person says something — which is the first moment the
 /// knowledge can matter to it.
+pub struct PendingResults {
+    pub block: String,
+    pub ids: Vec<String>,
+}
+
 pub fn results_preamble(
     connection: &rusqlite::Connection,
     session_id: &str,
-) -> ArgmaxResult<Option<String>> {
+) -> ArgmaxResult<Option<PendingResults>> {
     let pending = list_undelivered_messages_of_kind(
         connection,
         session_id,
@@ -310,17 +325,34 @@ pub fn results_preamble(
     let mut block = String::from(
         "While you were working, these ran alongside you in this same checkout and finished:\n",
     );
+    let mut ids = Vec::with_capacity(pending.len());
     for message in &pending {
         block.push_str("\n");
         block.push_str(&message.body);
         block.push_str("\n");
-        mark_message_delivered(connection, &message.id)?;
+        ids.push(message.id.clone());
     }
     block.push_str(
         "\nTheir edits are already in the working tree. Take them into account, but do not redo \
 them.",
     );
-    Ok(Some(block))
+    Ok(Some(PendingResults { block, ids }))
+}
+
+/// Mark the results this preamble carried as delivered.
+///
+/// Called only once the prompt carrying them has actually started a turn: a
+/// launch that fails never reaches the agent, and marking on the way out would
+/// spend the results on a prompt that was never sent — the parent would never
+/// hear about those multitasks again, on this turn or any later one.
+pub fn mark_results_delivered(
+    connection: &rusqlite::Connection,
+    ids: &[String],
+) -> ArgmaxResult<()> {
+    for id in ids {
+        mark_message_delivered(connection, id)?;
+    }
+    Ok(())
 }
 
 fn cap_chars(value: &str, max: usize) -> String {

@@ -294,6 +294,50 @@ async fn wait_for_event(database: &Database, session_id: &str, event_type: &str)
     }
 }
 
+/// The parent is in a worktree, which is the app's headline case: its checkout
+/// is not the project root, so "the same checkout" has to mean the parent's.
+#[tokio::test]
+async fn a_multitask_shares_the_parents_worktree_not_the_projects_checkout() {
+    let fixture = fixture();
+    let worktree_path = format!("{}/.argmax/worktrees/rewrite-auth", fixture.repo_path);
+    {
+        let connection = fixture.database.connection();
+        connection
+            .execute(
+                "UPDATE workspaces SET path = ?, branch = ?, base_ref = ?, shared_workspace = 0 \
+                 WHERE id = 'workspace-parent'",
+                rusqlite::params![&worktree_path, "argmax/rewrite-auth", "main"],
+            )
+            .expect("point the parent at a worktree");
+    }
+
+    let child_id = multitask(&fixture, "Fix the README typo", false).await;
+
+    let connection = fixture.database.connection();
+    let child = find_session_by_id(&connection, &child_id).expect("child session");
+    let child_workspace =
+        find_workspace_by_id(&connection, &child.workspace_id).expect("child workspace");
+    drop(connection);
+
+    // The tree the person is looking at, on the branch the guardrail preamble
+    // names. Taking the project's checkout put the fix on another branch
+    // entirely while both agents were told they shared a tree.
+    assert_eq!(child_workspace.path, worktree_path);
+    assert_eq!(child_workspace.branch, "argmax/rewrite-auth");
+    assert!(child_workspace.shared_workspace);
+    let launch = fixture
+        .launcher
+        .launches()
+        .into_iter()
+        .find(|launch| launch.session_id == child_id)
+        .expect("the child launched");
+    assert!(
+        launch.prompt.contains("argmax/rewrite-auth"),
+        "the preamble names the branch the child is actually on: {}",
+        launch.prompt
+    );
+}
+
 #[tokio::test]
 async fn a_multitask_runs_in_the_parents_checkout_without_touching_its_turn() {
     let fixture = fixture();

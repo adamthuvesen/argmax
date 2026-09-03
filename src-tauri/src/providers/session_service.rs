@@ -726,7 +726,7 @@ impl ProviderSessionService {
             });
         }
 
-        let (provider, launch_input, session_tokens) = {
+        let (provider, launch_input, session_tokens, pending_results) = {
             let connection = self.database.connection();
             let mut session = find_session_by_id(&connection, &session_id)?;
             let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
@@ -843,9 +843,9 @@ impl ProviderSessionService {
             // the agent here, on the front of the prompt — never as a turn of
             // its own. The person's own message is persisted unchanged: the
             // timeline already carries the finish marker.
-            let launch_prompt = match crate::multitask::results_preamble(&connection, &session_id)?
-            {
-                Some(results) => format!("{results}\n\n{launch_prompt}"),
+            let pending_results = crate::multitask::results_preamble(&connection, &session_id)?;
+            let launch_prompt = match &pending_results {
+                Some(results) => format!("{}\n\n{launch_prompt}", results.block),
                 None => launch_prompt,
             };
             let user_message = self.persist_user_message_locked(
@@ -904,7 +904,7 @@ impl ProviderSessionService {
             // passes the old lifetime total.
             let conversation_tokens =
                 session_usage_since_conversation_start(&connection, &session_id)?;
-            (provider, launch_input, conversation_tokens)
+            (provider, launch_input, conversation_tokens, pending_results)
         };
 
         let provider_invocation_id = Uuid::new_v4().to_string();
@@ -980,6 +980,20 @@ impl ProviderSessionService {
                 });
             }
         };
+        // The prompt carrying them reached the provider, so the results are
+        // spent. Marking them while the preamble was built would have lost
+        // them to a launch that then failed.
+        if let Some(results) = &pending_results {
+            let connection = self.database.connection();
+            if let Err(error) = crate::multitask::mark_results_delivered(&connection, &results.ids)
+            {
+                tracing::warn!(
+                    session_id,
+                    ?error,
+                    "failed to mark multitask results delivered"
+                );
+            }
+        }
         // Drain ops the renderer queued while the launch future was in
         // flight — most notably resize ops issued from the very first
         // render of the resumed session. Mirrors the launch() path.

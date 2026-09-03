@@ -82,7 +82,7 @@ The session whose agent started this one with the `argmax` MCP tools, held on th
 _Avoid_: Parent session, child session, spawned session, subagent
 
 **Multitask**:
-A chat dispatched from inside another chat while its agent is mid-turn — the small, often unrelated fix you think of halfway through something else. It is a sibling session with a fresh context, running by default in the same checkout, and never a second turn in the chat that started it. The result appears on a card in that chat and reaches its agent only on the next thing the person types.
+A chat dispatched from inside another chat while its agent is mid-turn — the small, often unrelated fix you think of halfway through something else. It is a sibling session with a fresh context, running by default in the same checkout, and never a second turn in the chat that started it. It has no sidebar row: it reads as a launch row in the chat that dispatched it and opens in that chat's subagent dock. The result reaches that chat's agent only on the next thing the person types.
 _Avoid_: Side task, background task, parallel turn, subagent
 
 **Session state**:

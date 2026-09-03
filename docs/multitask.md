@@ -15,7 +15,7 @@ Both call `session:multitask` ([ipc/session.rs](../src-tauri/src/ipc/session.rs)
 
 `dispatch` reads the parent session and its workspace, then launches through the ordinary `launch_with_spec` path:
 
-- **Same checkout by default.** The new workspace points at the parent's checkout, so the fix lands on the branch the person is already on. `worktree: true` is the escape hatch for work expected to collide, and the card then shows an **Isolated** badge.
+- **Same checkout by default.** The new workspace points at the parent's checkout, so the fix lands on the branch the person is already on. `worktree: true` is the escape hatch for work expected to collide, and the chat row then reads `Multitask · isolated`.
 - **Inherited launch settings.** Provider, model, reasoning effort, permission mode, and agent mode come from the parent, so a multitask runs like the chat it came from. Fast mode does not: it is a per-launch choice, and a side fix is not where you spend it.
 - **Fresh context.** The multitask is a new provider conversation, not a fork of the parent's transcript. Nothing about the parent's session — its handle, its provider process, its `provider_conversation_id` — is reused, which is exactly why the parent's turn keeps running undisturbed.
 - **Shared-checkout guardrails.** When it shares the checkout, the prompt carries a preamble naming the branch and task already in progress and asking the agent to stage only its own files. An isolated multitask gets the bare prompt.
@@ -31,19 +31,33 @@ Delivery is passive on purpose: the parent is told, but never interrupted.
 
 ## In the chat
 
-`multitask.launched` / `multitask.finished` are conversation-visible event types ([sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts)), folded into a `multitask` render item by [foldConversation.ts](../src/renderer/lib/foldConversation.ts) and drawn by [MultitaskCard.tsx](../src/renderer/components/MultitaskCard.tsx).
+`multitask.launched` / `multitask.finished` are conversation-visible event types ([sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts)), folded into a `multitask` render item by [foldConversation.ts](../src/renderer/lib/foldConversation.ts) and drawn by [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx).
 
-Two rules shape how the card sits in the transcript:
+The row has the shape of a subagent launch row above it, because that is what a multitask is to the reader: work running alongside this turn, opened in the same dock — not another chat in the sidebar. Two rules shape where it sits:
 
 - **A dispatch is not a turn boundary.** Multitask rows are deferred and emitted when the turn they landed in closes, so dispatching one mid-turn never splits that turn's block into two — which would read as an interruption the agent never had.
-- **One card per multitask.** The dispatch row opens the card and the finish row, which can arrive a whole turn later, merges into it wherever it already sits (keyed by child session id). A finish whose dispatch has fallen out of the transcript window still renders on its own.
+- **One row per multitask.** The dispatch row opens it and the finish row, which can arrive a whole turn later, merges into it wherever it already sits (keyed by child session id). A finish whose dispatch has fallen out of the transcript window renders on its own, without a link, since there is nothing left to open.
 
-The card carries the label, the state, **Stop** while it runs, and **Open** to jump into the child chat. From the child, the session actions menu offers "Open launching chat" — the same link in reverse.
+## Not in the sidebar
+
+A multitask belongs to the chat that dispatched it, so it has no sidebar row: `hiddenMultitaskWorkspaceIds` ([multitask.ts](../src/renderer/lib/multitask.ts)) drops its workspace from every sidebar section. The one exception is an orphan — a multitask whose launching chat has left the snapshot. There is nowhere else to reach it from and its checkout may hold uncommitted work, so its row comes back.
+
+This is the only thing `sessions.launch_kind` reaches the renderer for: an agent-launched session is a chat in its own right and keeps its row, and only `multitask` loses one.
+
+## In the dock
+
+Clicking the row opens the multitask as a tab in the review panel's Agents view, beside this session's subagents ([AgentsView.tsx](../src/renderer/components/AgentsView.tsx)). A tab id is a provider tool-use id for a subagent and `multitask:<sessionId>` for a multitask ([agentTabs.ts](../src/renderer/lib/agentTabs.ts)); the view resolves each to either `AgentActivity` or [MultitaskPanel.tsx](../src/renderer/components/MultitaskPanel.tsx).
+
+A multitask is a real session, so its tab is the ordinary chat surface rather than a read-only transcript: it can be answered and steered without leaving the chat you were watching. The panel takes every session's events (the pane-scoped `events` a subagent transcript reads belong to the parent), keeps the review state inert — the dock *is* the review panel — and drops the checks card, which the parent chat already carries for the same checkout. "Open as full chat" is there for when a side errand turns into the work.
+
+The chat a multitask was dispatched from is reachable the other way too: the session actions menu offers "Open launching chat".
+
+A surface that hands the pane no multitasks has no dock to host them — the phone — and its rows open the chat itself instead.
 
 ## Testing
 
 - Rust: [src-tauri/tests/multitask.rs](../src-tauri/tests/multitask.rs) — same-checkout sibling with inherited settings and guardrail prompt, isolated worktree, finishing without starting a turn in the parent, results riding the next prompt but not the persisted message, lineage and launch caps.
-- Renderer: `multitask.test.ts`, `foldConversation.test.ts` (turn splitting and card merging), `MultitaskCard.test.tsx`, `SessionComposer.multitask.test.tsx`.
+- Renderer: `multitask.test.ts` (notices, sidebar hiding, grouping), `agentTabs.test.ts`, `foldConversation.test.ts` (turn splitting and row merging), `MultitaskRow.test.tsx`, `SessionComposer.multitask.test.tsx`, and `App.multitask.test.tsx` end to end — no sidebar row, and the row opens a dock tab carrying the multitask's own transcript.
 
 ## Related
 

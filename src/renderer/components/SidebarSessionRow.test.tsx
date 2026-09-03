@@ -336,7 +336,7 @@ describe("SidebarSessionRow", () => {
     expect(screen.queryByRole("button", { name: "Rocket" })).toBeNull();
   });
 
-  it("a running turn hides the custom icon and restores it when the turn ends", () => {
+  it("a running turn uses the custom icon color and restores the icon when the turn ends", () => {
     const props = {
       isSelected: false,
       isOpenInGrid: false,
@@ -355,10 +355,12 @@ describe("SidebarSessionRow", () => {
       />
     );
 
-    // The working nest owns the cell alone, with no glyph behind it.
+    // The working nest owns the cell alone, with no glyph behind it, but the
+    // row keeps the custom color available to the animation.
     const running = screen.getByTitle(/Build the dashboard — running/);
     expect(running.querySelector('[data-working="true"]')).not.toBeNull();
-    expect(running.querySelector('[data-icon-color="violet"]')).toBeNull();
+    expect(running.closest(".session-row")).toHaveAttribute("data-icon-color", "violet");
+    expect(running.querySelector(".session-custom-icon")).toBeNull();
 
     rerender(
       <SidebarSessionRow
@@ -791,6 +793,13 @@ describe("SidebarSessionRow", () => {
     // The running marker wears the configurable accent, like the mascot...
     const colorRule = /\.status-marker\[data-working="true"\]\s*\{[^}]*color:\s*var\(--accent\)/i.exec(css);
     expect(colorRule, "expected accent color rule for the working marker").not.toBeNull();
+
+    // A sidebar row with a custom icon overrides every animated color stop.
+    const iconColorRule = /\.session-row\[data-icon-color\]\s+\.session-link\[data-status\]\s+\.status-marker\[data-working="true"\]\s*\{([^}]*)\}/i.exec(css);
+    expect(iconColorRule, "expected custom icon color rule for the working marker").not.toBeNull();
+    expect(iconColorRule?.[1]).toContain("--working-nest-lead: var(--session-row-icon-color)");
+    expect(iconColorRule?.[1]).toContain("--working-nest-rest: color-mix(in oklab, var(--session-row-icon-color)");
+    expect(iconColorRule?.[1]).toContain("color: var(--session-row-icon-color)");
 
     // ...its dots share the asymmetric relay and stable phase offset...
     const dotRule = /\.working-nest\[data-active="true"\]\s\.working-nest-dot\s*\{[^}]*animation:\s*working-nest-relay/i.exec(css);

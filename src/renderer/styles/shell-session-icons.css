@@ -6,6 +6,48 @@
    to a small corner dot so awaiting / failed / PR never goes missing. A running
    turn keeps the marker's working nest instead of this glyph.
    The dot sits outside the glyph box so it reads against the row background. */
+.session-row[data-icon-color="green"] {
+  --session-row-icon-color: var(--session-icon-green);
+}
+
+.session-row[data-icon-color="teal"] {
+  --session-row-icon-color: var(--session-icon-teal);
+}
+
+.session-row[data-icon-color="blue"] {
+  --session-row-icon-color: var(--session-icon-blue);
+}
+
+.session-row[data-icon-color="violet"] {
+  --session-row-icon-color: var(--session-icon-violet);
+}
+
+.session-row[data-icon-color="plum"] {
+  --session-row-icon-color: var(--session-icon-plum);
+}
+
+.session-row[data-icon-color="clay"] {
+  --session-row-icon-color: var(--session-icon-clay);
+}
+
+.session-row[data-icon-color="amber"] {
+  --session-row-icon-color: var(--session-icon-amber);
+}
+
+.session-row[data-icon-color="pink"] {
+  --session-row-icon-color: var(--session-icon-pink);
+}
+
+.session-row[data-icon-color="red"] {
+  --session-row-icon-color: var(--session-icon-red);
+}
+
+.session-row[data-icon-color] .session-link[data-status] .status-marker[data-working="true"] {
+  --working-nest-lead: var(--session-row-icon-color);
+  --working-nest-rest: color-mix(in oklab, var(--session-row-icon-color) 45%, var(--muted));
+  color: var(--session-row-icon-color);
+}
+
 .session-custom-icon {
   position: relative;
   display: inline-flex;

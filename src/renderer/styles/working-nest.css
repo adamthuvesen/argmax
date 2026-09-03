@@ -2,9 +2,10 @@
    by the sidebar's session rows, sub-agent launch rows in the transcript, agent
    tabs, and the agent pane header (components/WorkingNest.tsx).
 
-   A live nest wears the configurable accent, the same tint as the mascot, so
-   running work reads in the app's own color instead of a fixed green. A settled
-   nest stays muted and still. That is what "done" should look like. */
+   A live nest wears the configurable accent by default, the same tint as the
+   mascot. A surface with its own identity color can override the three working
+   nest color properties. A settled nest stays muted and still. That is what
+   "done" should look like. */
 .working-nest {
   --working-nest-phase: 0;
   --working-nest-phase-offset: calc(var(--working-nest-cycle) * var(--working-nest-phase) / -4);

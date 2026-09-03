@@ -12,6 +12,8 @@ use tokio::{
 };
 
 use crate::error::{ArgmaxError, ArgmaxResult};
+#[cfg(unix)]
+use crate::util::login_shell;
 
 pub const GIT_DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 pub const GIT_STDOUT_CAP_BYTES: usize = 8 * 1024 * 1024;
@@ -230,6 +232,16 @@ async fn run_git_command(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    // Launched from Finder/Dock, Argmax inherits launchd's stripped PATH, which
+    // has no `/opt/homebrew/bin`. Git hooks then can't find the tools they call,
+    // and a post-checkout hook's exit status *is* the command's — so a hook that
+    // fails to find `lefthook` makes `git worktree add` exit 127, and Argmax
+    // discards the worktree it just created. Hand git the PATH the user's own
+    // terminal would give it. Only PATH: a `GIT_DIR` or `GIT_CONFIG` exported in
+    // someone's `.zshrc` would silently retarget every command we run.
+    #[cfg(unix)]
+    command.env("PATH", login_shell::path());
+    // After the injected PATH, so a caller can still override it.
     for (key, value) in &options.env {
         command.env(key, value);
     }

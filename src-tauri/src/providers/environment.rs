@@ -1,11 +1,6 @@
-use std::{
-    collections::BTreeSet,
-    env,
-    ffi::OsString,
-    path::{Path, PathBuf},
-    process::Command,
-    sync::OnceLock,
-};
+use std::env;
+
+use crate::util::login_shell;
 
 pub fn build_provider_environment(
     overrides: impl IntoIterator<Item = (String, String)>,
@@ -17,7 +12,7 @@ pub fn build_provider_environment(
     // `claude`/`codex`/`cursor` need to resolve credentials. That's the
     // "works in `tauri dev`, fails in the packaged app, claude says not logged
     // in" symptom. Hydrating the login shell makes both launch paths identical.
-    merge_provider_environment(login_shell_environment(), env::vars(), overrides)
+    merge_provider_environment(login_shell::environment(), env::vars(), overrides)
 }
 
 /// Merge a login-shell base, the current process env, and explicit overrides
@@ -53,7 +48,7 @@ fn merge_provider_environment(
     let current_path = env_map
         .iter()
         .find_map(|(key, value)| (key == "PATH").then_some(value.as_str()));
-    let path = provider_path(current_path);
+    let path = login_shell::path_from(current_path);
     if let Some((_, current)) = env_map.iter_mut().find(|(key, _)| key == "PATH") {
         *current = path;
     } else {
@@ -62,119 +57,9 @@ fn merge_provider_environment(
     env_map
 }
 
-/// The user's login-shell environment, resolved once and cached.
-///
-/// Empty when resolution fails or on non-Unix platforms — callers then fall
-/// back to the process environment alone, matching the pre-hydration behavior.
-fn login_shell_environment() -> Vec<(String, String)> {
-    static CACHE: OnceLock<Vec<(String, String)>> = OnceLock::new();
-    CACHE.get_or_init(resolve_login_shell_environment).clone()
-}
-
-#[cfg(unix)]
-fn resolve_login_shell_environment() -> Vec<(String, String)> {
-    use std::process::Stdio;
-
-    // A sentinel separates any startup chatter the rc files print from our
-    // env dump. `env -0` is NUL-delimited so values containing newlines (and
-    // any noise before the sentinel) can't corrupt the parse.
-    const SENTINEL: &str = "__ARGMAX_ENV_BOUNDARY__";
-    let shell = provider_shell();
-    // `-l` runs login files (~/.zprofile), `-i` runs interactive rc files
-    // (~/.zshrc, where exports like CLAUDE_CONFIG_DIR usually live).
-    let output = Command::new(&shell)
-        .args(["-lic", &format!("printf %s {SENTINEL}; env -0")])
-        .stdin(Stdio::null())
-        .output();
-    let Ok(output) = output else {
-        return Vec::new();
-    };
-    if !output.status.success() {
-        return Vec::new();
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let Some(boundary) = stdout.find(SENTINEL) else {
-        return Vec::new();
-    };
-    let blob = &stdout[boundary + SENTINEL.len()..];
-    blob.split('\0')
-        .filter_map(|entry| entry.split_once('='))
-        .filter(|(key, _)| {
-            !key.is_empty() && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        })
-        .map(|(key, value)| (key.to_string(), value.to_string()))
-        .collect()
-}
-
-#[cfg(not(unix))]
-fn resolve_login_shell_environment() -> Vec<(String, String)> {
-    Vec::new()
-}
-
-pub fn provider_shell() -> String {
-    match env::var("SHELL") {
-        Ok(shell) if shell.starts_with('/') => shell,
-        _ => "/bin/zsh".to_string(),
-    }
-}
-
-pub fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
-pub fn provider_path(current_path: Option<&str>) -> String {
-    let mut seen = BTreeSet::<OsString>::new();
-    let mut entries = Vec::<PathBuf>::new();
-
-    if let Some(current_path) = current_path {
-        for path in env::split_paths(current_path) {
-            if seen.insert(path.as_os_str().to_os_string()) {
-                entries.push(path);
-            }
-        }
-    }
-
-    for path in fallback_path_entries() {
-        if seen.insert(path.as_os_str().to_os_string()) {
-            entries.push(path);
-        }
-    }
-
-    env::join_paths(entries)
-        .unwrap_or_else(|_| OsString::new())
-        .to_string_lossy()
-        .into_owned()
-}
-
-fn fallback_path_entries() -> Vec<PathBuf> {
-    let mut entries = Vec::new();
-    if let Some(home) = env::var_os("HOME") {
-        let home = Path::new(&home);
-        entries.push(home.join("bin"));
-        entries.push(home.join(".local/bin"));
-        entries.push(home.join(".npm-global/bin"));
-        entries.push(home.join(".bun/bin"));
-    }
-    entries.extend([
-        PathBuf::from("/opt/homebrew/bin"),
-        PathBuf::from("/opt/homebrew/sbin"),
-        PathBuf::from("/usr/local/bin"),
-        PathBuf::from("/usr/bin"),
-        PathBuf::from("/bin"),
-        PathBuf::from("/usr/sbin"),
-        PathBuf::from("/sbin"),
-    ]);
-    entries
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn shell_quote_escapes_single_quotes() {
-        assert_eq!(shell_quote("it's fine"), "'it'\\''s fine'");
-    }
 
     fn pairs(items: &[(&str, &str)]) -> Vec<(String, String)> {
         items
@@ -236,20 +121,5 @@ mod tests {
             Some("/Users/me/.claude")
         );
         assert!(lookup(&merged, "PATH").is_some());
-    }
-
-    #[test]
-    fn provider_path_preserves_order_and_dedupes() {
-        let path = provider_path(Some("/bin:/usr/bin:/bin"));
-        let parts = env::split_paths(&path).collect::<Vec<_>>();
-        assert_eq!(parts[0], PathBuf::from("/bin"));
-        assert_eq!(parts[1], PathBuf::from("/usr/bin"));
-        assert_eq!(
-            parts
-                .iter()
-                .filter(|entry| entry == &&PathBuf::from("/bin"))
-                .count(),
-            1
-        );
     }
 }

@@ -6,6 +6,7 @@ pub mod gh_runner;
 pub mod instance_lock;
 pub mod ipc_latency;
 pub mod log_buffer;
+pub mod login_shell;
 pub mod process_control;
 pub mod protocol_url;
 pub mod startup_timer;

@@ -165,11 +165,7 @@ impl UsageScanner {
             }
         }
         usage_scan::prune_before(&connection, hour_start_secs(ledger_cutoff_ms))?;
-        usage_scan::set_meta(
-            &connection,
-            usage_scan::META_LAST_COMPLETED_AT,
-            &now_iso(),
-        )?;
+        usage_scan::set_meta(&connection, usage_scan::META_LAST_COMPLETED_AT, &now_iso())?;
         Ok(())
     }
 
@@ -191,24 +187,30 @@ impl UsageScanner {
         let mut files = Vec::new();
         // Claude: <projects>/<slug>/<session>.jsonl and
         // <projects>/<slug>/<session>/subagents/<agent>.jsonl.
-        walk(&self.home.join(".claude").join("projects"), 4, &mut |path, depth| {
-            if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
-                return None;
-            }
-            match depth {
-                2 => Some((ProviderId::Claude, None)),
-                4 if path.parent().and_then(Path::file_name) == Some("subagents".as_ref()) => {
-                    let session = path
-                        .parent()
-                        .and_then(Path::parent)
-                        .and_then(Path::file_name)
-                        .and_then(|name| name.to_str())
-                        .map(str::to_owned);
-                    Some((ProviderId::Claude, session))
+        walk(
+            &self.home.join(".claude").join("projects"),
+            4,
+            &mut |path, depth| {
+                if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
+                    return None;
                 }
-                _ => None,
-            }
-        }, cutoff_ms, &mut files);
+                match depth {
+                    2 => Some((ProviderId::Claude, None)),
+                    4 if path.parent().and_then(Path::file_name) == Some("subagents".as_ref()) => {
+                        let session = path
+                            .parent()
+                            .and_then(Path::parent)
+                            .and_then(Path::file_name)
+                            .and_then(|name| name.to_str())
+                            .map(str::to_owned);
+                        Some((ProviderId::Claude, session))
+                    }
+                    _ => None,
+                }
+            },
+            cutoff_ms,
+            &mut files,
+        );
         // Codex: <sessions>/<year>/<month>/<day>/rollout-*.jsonl, and the
         // flat <archived_sessions>/rollout-*.jsonl a user moves finished
         // threads into. Both are billed calls.
@@ -216,17 +218,29 @@ impl UsageScanner {
             self.home.join(".codex").join("sessions"),
             self.home.join(".codex").join("archived_sessions"),
         ] {
-            walk(&root, 4, &mut |path, _| {
-                (path.extension().and_then(|ext| ext.to_str()) == Some("jsonl"))
-                    .then_some((ProviderId::Codex, None))
-            }, cutoff_ms, &mut files);
+            walk(
+                &root,
+                4,
+                &mut |path, _| {
+                    (path.extension().and_then(|ext| ext.to_str()) == Some("jsonl"))
+                        .then_some((ProviderId::Codex, None))
+                },
+                cutoff_ms,
+                &mut files,
+            );
         }
         // Grok Build: <sessions>/<encoded cwd>/<session>/updates.jsonl. The
         // sibling logs are large and carry no usage.
-        walk(&self.home.join(".grok").join("sessions"), 3, &mut |path, depth| {
-            (depth == 3 && path.file_name() == Some("updates.jsonl".as_ref()))
-                .then_some((ProviderId::Grok, None))
-        }, cutoff_ms, &mut files);
+        walk(
+            &self.home.join(".grok").join("sessions"),
+            3,
+            &mut |path, depth| {
+                (depth == 3 && path.file_name() == Some("updates.jsonl".as_ref()))
+                    .then_some((ProviderId::Grok, None))
+            },
+            cutoff_ms,
+            &mut files,
+        );
         files.sort_by_key(|file| file.mtime_ms);
         files
     }
@@ -244,7 +258,11 @@ impl UsageScanner {
             }
             Some(record)
                 if file.size >= record.cursor_offset
-                    && guard_matches(&file.path, record.cursor_offset, record.guard_hash.as_deref())? =>
+                    && guard_matches(
+                        &file.path,
+                        record.cursor_offset,
+                        record.guard_hash.as_deref(),
+                    )? =>
             {
                 (record.cursor_offset, false)
             }
@@ -313,7 +331,11 @@ impl UsageScanner {
         let connection = self.database.connection();
         let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
         fold_records(&transaction, &path_key, records)?;
-        usage_scan::set_meta(&transaction, META_OPENCODE_SCANNED_AT_MS, &now_ms.to_string())?;
+        usage_scan::set_meta(
+            &transaction,
+            META_OPENCODE_SCANNED_AT_MS,
+            &now_ms.to_string(),
+        )?;
         transaction.commit().map_err(sqlite_error)
     }
 }
@@ -350,7 +372,12 @@ fn fold_records(
         }
         let model_id = normalize_model_id(&record.model_id);
         let delta = deltas
-            .entry((record.provider, model_id.clone(), record.session_id.clone(), hour_utc))
+            .entry((
+                record.provider,
+                model_id.clone(),
+                record.session_id.clone(),
+                hour_utc,
+            ))
             .or_insert_with(|| HourlyBucketDelta {
                 provider: provider_key(record.provider).to_owned(),
                 model_id,
@@ -482,7 +509,9 @@ fn guard_hash_at(path: &Path, offset: u64) -> ArgmaxResult<Option<String>> {
     file.read_exact(&mut bytes)
         .map_err(|error| io_error(path, error))?;
     let digest = Sha256::digest(&bytes);
-    Ok(Some(digest.iter().map(|byte| format!("{byte:02x}")).collect()))
+    Ok(Some(
+        digest.iter().map(|byte| format!("{byte:02x}")).collect(),
+    ))
 }
 
 fn guard_matches(path: &Path, cursor_offset: i64, expected: Option<&str>) -> ArgmaxResult<bool> {
@@ -538,10 +567,7 @@ fn modified_ms(metadata: &fs::Metadata) -> i64 {
 }
 
 fn io_error(path: &Path, error: std::io::Error) -> ArgmaxError {
-    ArgmaxError::service(
-        "USAGE_SCAN_IO",
-        format!("{}: {error}", path.display()),
-    )
+    ArgmaxError::service("USAGE_SCAN_IO", format!("{}: {error}", path.display()))
 }
 
 fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
@@ -610,7 +636,12 @@ mod tests {
         assert!(scanner.has_completed_once());
         let rows = ledger(&scanner);
         assert_eq!(rows.iter().map(|row| row.records).sum::<i64>(), 2);
-        assert_eq!(rows.iter().map(|row| row.tokens.input_uncached).sum::<i64>(), 200);
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.tokens.input_uncached)
+                .sum::<i64>(),
+            200
+        );
         assert_eq!(rows[0].provider, "claude");
         assert_eq!(rows[0].session_id, "sess1");
 
@@ -618,11 +649,19 @@ mod tests {
         let path_key = transcript.to_string_lossy().into_owned();
         let cursor_before = {
             let connection = scanner.database.connection();
-            usage_scan::find_scan_file(&connection, &path_key).unwrap().unwrap()
+            usage_scan::find_scan_file(&connection, &path_key)
+                .unwrap()
+                .unwrap()
         };
-        assert_eq!(cursor_before.cursor_offset as u64, fs::metadata(&transcript).unwrap().len());
+        assert_eq!(
+            cursor_before.cursor_offset as u64,
+            fs::metadata(&transcript).unwrap().len()
+        );
         assert!(scanner.sweep().unwrap());
-        assert_eq!(ledger(&scanner).iter().map(|row| row.records).sum::<i64>(), 2);
+        assert_eq!(
+            ledger(&scanner).iter().map(|row| row.records).sum::<i64>(),
+            2
+        );
 
         // Grown: only the tail is parsed, and the cursor moves to the new end.
         let mut file = fs::File::options().append(true).open(&transcript).unwrap();
@@ -631,19 +670,34 @@ mod tests {
         drop(file);
         set_mtime(&transcript, settled + std::time::Duration::from_secs(1));
         assert!(scanner.sweep().unwrap());
-        assert_eq!(ledger(&scanner).iter().map(|row| row.records).sum::<i64>(), 3);
+        assert_eq!(
+            ledger(&scanner).iter().map(|row| row.records).sum::<i64>(),
+            3
+        );
         let cursor_after = {
             let connection = scanner.database.connection();
-            usage_scan::find_scan_file(&connection, &path_key).unwrap().unwrap()
+            usage_scan::find_scan_file(&connection, &path_key)
+                .unwrap()
+                .unwrap()
         };
         assert!(cursor_after.cursor_offset > cursor_before.cursor_offset);
-        assert_eq!(cursor_after.cursor_offset as u64, fs::metadata(&transcript).unwrap().len());
+        assert_eq!(
+            cursor_after.cursor_offset as u64,
+            fs::metadata(&transcript).unwrap().len()
+        );
 
         // Rewritten with one line: the old rows go, the file is parsed again.
-        fs::write(&transcript, claude_line("m1", now - Duration::minutes(30), 100)).unwrap();
+        fs::write(
+            &transcript,
+            claude_line("m1", now - Duration::minutes(30), 100),
+        )
+        .unwrap();
         set_mtime(&transcript, settled + std::time::Duration::from_secs(2));
         assert!(scanner.sweep().unwrap());
-        assert_eq!(ledger(&scanner).iter().map(|row| row.records).sum::<i64>(), 1);
+        assert_eq!(
+            ledger(&scanner).iter().map(|row| row.records).sum::<i64>(),
+            1
+        );
 
         // Deleted: forgotten.
         fs::remove_file(&transcript).unwrap();
@@ -665,7 +719,10 @@ mod tests {
 
         let scanner = scanner_in(home.path());
         assert!(scanner.sweep().unwrap());
-        assert_eq!(ledger(&scanner).iter().map(|row| row.records).sum::<i64>(), 1);
+        assert_eq!(
+            ledger(&scanner).iter().map(|row| row.records).sum::<i64>(),
+            1
+        );
 
         // Once the file settles the trailing line counts.
         set_mtime(
@@ -673,7 +730,10 @@ mod tests {
             SystemTime::now() - std::time::Duration::from_secs(600),
         );
         assert!(scanner.sweep().unwrap());
-        assert_eq!(ledger(&scanner).iter().map(|row| row.records).sum::<i64>(), 2);
+        assert_eq!(
+            ledger(&scanner).iter().map(|row| row.records).sum::<i64>(),
+            2
+        );
     }
 
     #[test]
@@ -691,7 +751,10 @@ mod tests {
 
         let scanner = scanner_in(home.path());
         assert!(scanner.sweep().unwrap());
-        assert_eq!(ledger(&scanner).iter().map(|row| row.records).sum::<i64>(), 1);
+        assert_eq!(
+            ledger(&scanner).iter().map(|row| row.records).sum::<i64>(),
+            1
+        );
     }
 
     #[test]

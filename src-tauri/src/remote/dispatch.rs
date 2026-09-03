@@ -17,7 +17,7 @@ use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::ipc::inputs::*;
 use crate::ipc::{
     approvals, checks, dashboard, git_ops, health, learnings, projects, providers, prs, review,
-    session, skills, system, terminal, workspace_files, workspaces,
+    session, skills, system, terminal, usage, workspace_files, workspaces,
 };
 use crate::state::AppState;
 
@@ -66,7 +66,6 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "routines:delete",
     "routines:set-enabled",
     "routines:run-now",
-    "usage:summary",
 ];
 
 pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxResult<Value> {
@@ -115,6 +114,10 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
         "dashboard:list" => {
             let _input: DashboardListInput = parse(channel, input)?;
             encode(dashboard::dashboard_list_impl(state).await?)
+        }
+        "usage:summary" => {
+            let input: UsageSummaryInput = parse(channel, input)?;
+            encode(usage::usage_summary_impl(state, input).await?)
         }
         "workspace:status" => {
             let input: WorkspaceStatusInput = parse(channel, input)?;

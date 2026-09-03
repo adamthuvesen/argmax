@@ -55,7 +55,11 @@ where
             Some("--scan") => scan = true,
             Some("--days") => {
                 index += 1;
-                match args.get(index).and_then(|value| value.to_str()).and_then(|value| value.parse().ok()) {
+                match args
+                    .get(index)
+                    .and_then(|value| value.to_str())
+                    .and_then(|value| value.parse().ok())
+                {
                     Some(value) if (1..=90).contains(&value) => days = value,
                     _ => {
                         eprintln!("argmax: --days takes a number from 1 to 90");
@@ -141,7 +145,11 @@ fn sweep_in_place(path: &std::path::Path) -> crate::error::ArgmaxResult<()> {
     let progress = scanner.progress();
     eprintln!(
         "argmax: usage sweep {} in {:.2}s over {} sources",
-        if ran { "finished" } else { "skipped (another sweep was running)" },
+        if ran {
+            "finished"
+        } else {
+            "skipped (another sweep was running)"
+        },
         started.elapsed().as_secs_f64(),
         progress.files_total
     );
@@ -152,7 +160,11 @@ fn sweep_in_place(path: &std::path::Path) -> crate::error::ArgmaxResult<()> {
 /// provider-reported dollars.
 type ModelTotals = std::collections::BTreeMap<
     (String, String),
-    (UsageRecordTokens, std::collections::BTreeSet<String>, Option<f64>),
+    (
+        UsageRecordTokens,
+        std::collections::BTreeSet<String>,
+        Option<f64>,
+    ),
 >;
 
 /// The last `days` local calendar days including today, oldest first, each
@@ -178,9 +190,9 @@ fn daily_report(connection: &Connection, days: i64) -> crate::error::ArgmaxResul
     let buckets = usage_scan::list_hourly_between(connection, from_hour, to_hour)?;
 
     let mut days_out: Vec<(String, ModelTotals)> = day_starts
-            .iter()
-            .map(|(date, _)| (date.clone(), Default::default()))
-            .collect();
+        .iter()
+        .map(|(date, _)| (date.clone(), Default::default()))
+        .collect();
     for bucket in buckets {
         let Some(index) = day_starts
             .iter()
@@ -209,22 +221,28 @@ fn daily_report(connection: &Connection, days: i64) -> crate::error::ArgmaxResul
         .map(|(date, models)| {
             let mut models: Vec<ModelReport> = models
                 .into_iter()
-                .map(|((provider, model_id), (tokens, sessions, reported))| ModelReport {
-                    provider,
-                    model_id,
-                    input_uncached: tokens.input_uncached,
-                    cache_read: tokens.cache_read,
-                    cache_write: tokens.cache_write(),
-                    output: tokens.output,
-                    total: tokens.input_uncached
-                        + tokens.cache_read
-                        + tokens.cache_write()
-                        + tokens.output,
-                    sessions: sessions.len(),
-                    reported_cost_usd: reported,
-                })
+                .map(
+                    |((provider, model_id), (tokens, sessions, reported))| ModelReport {
+                        provider,
+                        model_id,
+                        input_uncached: tokens.input_uncached,
+                        cache_read: tokens.cache_read,
+                        cache_write: tokens.cache_write(),
+                        output: tokens.output,
+                        total: tokens.input_uncached
+                            + tokens.cache_read
+                            + tokens.cache_write()
+                            + tokens.output,
+                        sessions: sessions.len(),
+                        reported_cost_usd: reported,
+                    },
+                )
                 .collect();
-            models.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.model_id.cmp(&b.model_id)));
+            models.sort_by(|a, b| {
+                b.total
+                    .cmp(&a.total)
+                    .then_with(|| a.model_id.cmp(&b.model_id))
+            });
             DayReport { date, models }
         })
         .collect())

@@ -100,7 +100,10 @@ pub fn forget_file(connection: &Connection, path: &str) -> ArgmaxResult<()> {
         .execute("DELETE FROM usage_hourly WHERE source_path = ?", [path])
         .map_err(sqlite_error)?;
     connection
-        .execute("DELETE FROM usage_dedupe_keys WHERE source_path = ?", [path])
+        .execute(
+            "DELETE FROM usage_dedupe_keys WHERE source_path = ?",
+            [path],
+        )
         .map_err(sqlite_error)?;
     connection
         .execute("DELETE FROM usage_scan_files WHERE path = ?", [path])
@@ -254,7 +257,10 @@ pub fn prune_before(connection: &Connection, before_hour: i64) -> ArgmaxResult<(
         .execute("DELETE FROM usage_hourly WHERE hour_utc < ?", [before_hour])
         .map_err(sqlite_error)?;
     connection
-        .execute("DELETE FROM usage_dedupe_keys WHERE hour_utc < ?", [before_hour])
+        .execute(
+            "DELETE FROM usage_dedupe_keys WHERE hour_utc < ?",
+            [before_hour],
+        )
         .map_err(sqlite_error)?;
     Ok(())
 }
@@ -393,16 +399,29 @@ mod tests {
         record.size = 20;
         record.cursor_offset = 20;
         upsert_scan_file(&connection, &record).unwrap();
-        assert_eq!(find_scan_file(&connection, "a.jsonl").unwrap(), Some(record));
-        assert_eq!(list_scan_file_paths(&connection, "codex").unwrap(), vec!["a.jsonl"]);
+        assert_eq!(
+            find_scan_file(&connection, "a.jsonl").unwrap(),
+            Some(record)
+        );
+        assert_eq!(
+            list_scan_file_paths(&connection, "codex").unwrap(),
+            vec!["a.jsonl"]
+        );
 
         assert_eq!(get_meta(&connection, META_PARSER_VERSION).unwrap(), None);
         set_meta(&connection, META_PARSER_VERSION, "1").unwrap();
         set_meta(&connection, META_PARSER_VERSION, "2").unwrap();
-        assert_eq!(get_meta(&connection, META_PARSER_VERSION).unwrap().as_deref(), Some("2"));
+        assert_eq!(
+            get_meta(&connection, META_PARSER_VERSION)
+                .unwrap()
+                .as_deref(),
+            Some("2")
+        );
 
         prune_before(&connection, 7200).unwrap();
         clear_all(&connection).unwrap();
-        assert!(list_scan_file_paths(&connection, "codex").unwrap().is_empty());
+        assert!(list_scan_file_paths(&connection, "codex")
+            .unwrap()
+            .is_empty());
     }
 }

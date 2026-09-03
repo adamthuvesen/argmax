@@ -361,8 +361,14 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2026, 9, 3, 14, 25, 0).unwrap();
         let starts = bucket_starts(UsageWindow::Past24h, now);
         assert_eq!(starts.len(), 24);
-        assert_eq!(starts[23], Utc.with_ymd_and_hms(2026, 9, 3, 14, 0, 0).unwrap());
-        assert_eq!(starts[0], Utc.with_ymd_and_hms(2026, 9, 2, 15, 0, 0).unwrap());
+        assert_eq!(
+            starts[23],
+            Utc.with_ymd_and_hms(2026, 9, 3, 14, 0, 0).unwrap()
+        );
+        assert_eq!(
+            starts[0],
+            Utc.with_ymd_and_hms(2026, 9, 2, 15, 0, 0).unwrap()
+        );
     }
 
     #[test]
@@ -371,7 +377,10 @@ mod tests {
         let starts = bucket_starts(UsageWindow::Past7d, now);
         assert_eq!(starts.len(), 7);
         let last_local = starts[6].with_timezone(&Local);
-        assert_eq!(last_local.date_naive(), now.with_timezone(&Local).date_naive());
+        assert_eq!(
+            last_local.date_naive(),
+            now.with_timezone(&Local).date_naive()
+        );
         assert_eq!((last_local.hour(), last_local.minute()), (0, 0));
         assert!(starts[6] <= now);
         assert_eq!(bucket_starts(UsageWindow::Past30d, now).len(), 30);
@@ -382,7 +391,10 @@ mod tests {
         let database = Database::open_in_memory().expect("db");
         let connection = database.connection();
         let now = Utc.with_ymd_and_hms(2026, 9, 3, 14, 25, 0).unwrap();
-        let this_hour = Utc.with_ymd_and_hms(2026, 9, 3, 14, 0, 0).unwrap().timestamp();
+        let this_hour = Utc
+            .with_ymd_and_hms(2026, 9, 3, 14, 0, 0)
+            .unwrap()
+            .timestamp();
         let million = UsageRecordTokens {
             input_uncached: 1_000_000,
             ..UsageRecordTokens::default()
@@ -395,7 +407,14 @@ mod tests {
         .unwrap();
         usage_scan::add_hourly_bucket(
             &connection,
-            &delta("claude", "claude-opus-5", "s2", this_hour - 3600, million, None),
+            &delta(
+                "claude",
+                "claude-opus-5",
+                "s2",
+                this_hour - 3600,
+                million,
+                None,
+            ),
         )
         .unwrap();
         usage_scan::add_hourly_bucket(
@@ -411,7 +430,14 @@ mod tests {
         // Outside the window.
         usage_scan::add_hourly_bucket(
             &connection,
-            &delta("claude", "claude-opus-5", "s5", this_hour - 48 * 3600, million, None),
+            &delta(
+                "claude",
+                "claude-opus-5",
+                "s5",
+                this_hour - 48 * 3600,
+                million,
+                None,
+            ),
         )
         .unwrap();
 

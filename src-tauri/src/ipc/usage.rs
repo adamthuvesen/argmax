@@ -18,7 +18,14 @@ pub async fn usage_summary(
     state: State<'_, AppState>,
     input: UsageSummaryInput,
 ) -> ArgmaxResult<UsageSummary> {
-    let database = live_database(&state)?;
+    usage_summary_impl(&state, input).await
+}
+
+pub async fn usage_summary_impl(
+    state: &AppState,
+    input: UsageSummaryInput,
+) -> ArgmaxResult<UsageSummary> {
+    let database = live_database(state)?;
     let window = input.window;
     let time_zone = input.time_zone.into_string();
     let Some(scanner) = state.usage_scanner.get().cloned() else {
@@ -45,7 +52,9 @@ pub async fn usage_summary(
 
 fn scan_state(progress: &ScanProgress) -> UsageScanState {
     UsageScanState {
-        phase: if progress.scanning {
+        // Before the first sweep has completed, the ledger is partial by
+        // definition, whether the sweep has reached the file loop yet or not.
+        phase: if progress.scanning || progress.last_completed_at.is_none() {
             UsageScanPhase::Scanning
         } else {
             UsageScanPhase::Idle

@@ -33,6 +33,36 @@ export type AssistantGroup = {
   error?: boolean;
 };
 
+/**
+ * Minimal verbosity, finished and collapsed: the prose Claude, Codex, Grok,
+ * and OpenCode write before each tool is progress, not the answer, so it hides
+ * with the tools it narrates. Returns the group ids to drop — everything at or
+ * before the last tool except the last prose group, which is kept so collapsing
+ * can never leave the chip standing over nothing. A surface that renders the
+ * answer itself (the agent pane's result panel) passes `separateAnswer` and
+ * keeps nothing.
+ *
+ * Claude and Grok emit that text and the following `command.started` from one
+ * envelope, so they share a timestamp: same-timestamp prose counts as work.
+ */
+export function preToolNarrationGroupIds(
+  groups: readonly AssistantGroup[],
+  lastToolCreatedAt: string | null,
+  options: { separateAnswer?: boolean } = {}
+): ReadonlySet<string> {
+  const hidden = new Set<string>();
+  if (lastToolCreatedAt === null) return hidden;
+  const lastAnswerId = options.separateAnswer
+    ? undefined
+    : [...groups].reverse().find((group) => !group.thinking && !group.error)?.id;
+  for (const group of groups) {
+    if (group.thinking || group.error) continue;
+    if (group.id === lastAnswerId) continue;
+    if (group.lastActivityAt <= lastToolCreatedAt) hidden.add(group.id);
+  }
+  return hidden;
+}
+
 function cursorAssistantSnapshot(event: TimelineEvent): string | null {
   if (event.type !== "message.delta" || event.payload.type !== "assistant") {
     return null;

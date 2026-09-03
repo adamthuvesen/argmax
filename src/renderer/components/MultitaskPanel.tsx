@@ -1,4 +1,3 @@
-import { ArrowUpRight } from "lucide-react";
 import { useEffect, useMemo, type JSX } from "react";
 import type {
   AgentMode,
@@ -20,8 +19,9 @@ import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
  *
  * It is a real session, so this is the ordinary chat surface rather than a
  * read-only transcript: the multitask can be answered and steered here without
- * leaving the chat you were watching. "Open as full chat" is for when a side
- * errand turns into the work.
+ * leaving the chat you were watching. The panel's own heading and checks card
+ * are hidden by the dock's stylesheet: the tab already names it, and the chat
+ * that owns the checkout already runs the checks.
  */
 export function MultitaskPanel({
   events,
@@ -34,7 +34,6 @@ export function MultitaskPanel({
   onClearSession,
   onLoadSessionEvents,
   onOpenFile,
-  onOpenFullChat,
   onSendQueuedMessageNow,
   onSendSessionInput,
   onTerminateSession
@@ -49,7 +48,6 @@ export function MultitaskPanel({
   onClearSession: (sessionId: string) => Promise<void>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
-  onOpenFullChat?: (sessionId: string) => void;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
   onSendSessionInput: (
     sessionId: string,
@@ -104,19 +102,6 @@ export function MultitaskPanel({
         workspaceCardEnabled={false}
         workspace={workspace}
       />
-      {onOpenFullChat ? (
-        <div className="multitask-panel-footer">
-          <button
-            type="button"
-            className="multitask-panel-open"
-            title="Open this multitask as a full chat"
-            onClick={() => onOpenFullChat(session.id)}
-          >
-            Open as full chat
-            <ArrowUpRight size={12} aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

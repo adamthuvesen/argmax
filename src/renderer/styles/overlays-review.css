@@ -648,39 +648,38 @@
   min-height: 0;
 }
 
-/* The tab already names the multitask, so the chat's own heading would say it
-   twice in a column this narrow. */
-.multitask-panel .section-heading {
-  display: none;
+/* The chat surface lays itself out on a four-row grid (heading, scroll, meta
+   cards, composer). In the dock two of those rows have nothing to show — the
+   tab already names the multitask, and the checks card belongs to the chat that
+   owns the checkout — and a `display: none` grid item does not vacate its row:
+   it hands its track to the next child, which is how an empty meta strip came
+   to absorb 269px above the composer. A flex column has no fixed tracks, so
+   hidden children cost nothing and the transcript takes the slack. */
+.multitask-panel .conversation-surface {
+  display: flex;
+  flex-direction: column;
+  /* The pane's chat pads itself off the window chrome; here the tab strip is
+     above and the status strip below, so that padding only reads as a gap. */
+  padding: 6px 0 8px;
 }
 
-/* The pane's own chat gets its gutter from the centred chat width; in a docked
-   column there is none, so bubbles would sit flush against the panel edge. */
 .multitask-panel .conversation-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* The pane's own chat gets its gutter from the centred chat width; a docked
+     column has none, so bubbles would sit flush against the panel edge. */
   padding-inline: var(--space-3);
 }
 
-.multitask-panel-footer {
-  display: flex;
-  justify-content: flex-end;
-  padding: 4px var(--space-3) 6px;
+/* The pane's composer is a card inset from the transcript gutter; docked, it
+   was stretched edge to edge and its top read as a rule across the panel. */
+.multitask-panel .session-composer-stack {
+  margin-inline: var(--space-3);
 }
 
-.multitask-panel-open {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: 0;
-  background: none;
-  padding: 2px 4px;
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.multitask-panel-open:hover {
-  color: var(--text);
+.multitask-panel .section-heading,
+.multitask-panel .session-meta-cards {
+  display: none;
 }
 
 /* A running subagent's nest sits in the tab; a settled one shows the bot mark,
@@ -708,6 +707,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The way out of the dock, sitting where a subagent's model would: it is the
+   one thing about a multitask this strip can say that its own chat cannot. */
+.review-agents-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.review-agents-open:hover {
+  color: var(--text);
 }
 
 /* The model is the fact, the effort qualifies it. */

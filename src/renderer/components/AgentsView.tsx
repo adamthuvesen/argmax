@@ -1,4 +1,4 @@
-import { Bot, Split, X } from "lucide-react";
+import { ArrowUpRight, Bot, Split, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   AgentMode,
@@ -315,7 +315,6 @@ export function AgentsView({
                   onClearSession={onClearSession ?? noop}
                   onOpenFile={onOpenFile}
                   onLoadSessionEvents={onLoadSessionEvents}
-                  onOpenFullChat={onOpenFullChat}
                   onSendQueuedMessageNow={onSendQueuedMessageNow ?? noop}
                   onSendSessionInput={onSendSessionInput ?? noop}
                   onTerminateSession={onTerminateSession ?? noop}
@@ -347,7 +346,22 @@ export function AgentsView({
             ) : null}
             {statusLabel(active.status)}
           </span>
-          {active.model ? (
+          {/* A multitask's own composer already names its model, and the way out
+              of the dock belongs on this strip rather than in a band of its
+              own above it. */}
+          {active.multitask ? (
+            onOpenFullChat ? (
+              <button
+                type="button"
+                className="review-agents-open"
+                title="Open this multitask as a full chat"
+                onClick={() => onOpenFullChat(active.multitask?.session.id ?? "")}
+              >
+                Open as full chat
+                <ArrowUpRight size={12} aria-hidden="true" />
+              </button>
+            ) : null
+          ) : active.model ? (
             <span className="review-agents-model" title={modelTitle(active.model)}>
               {active.model.label}
               {active.model.effort ? (

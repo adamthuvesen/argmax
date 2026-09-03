@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getBrowserRequest, subscribeBrowserRequest } from "../lib/browserPanel.js";
 import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
 import type * as MermaidRuntime from "../lib/mermaidRuntime.js";
+import { ATTACHMENT_PROTOCOL_SCHEME } from "../../shared/attachmentProtocol.js";
+import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
 
 const renderMermaidDiagram = vi.hoisted(() =>
@@ -33,6 +35,80 @@ afterEach(() => {
 });
 
 describe("<StreamingMarkdown />", () => {
+  const workspace = {
+    id: "workspace-1",
+    path: "/Users/me/repo"
+  } as Parameters<typeof StreamingMarkdown>[0]["workspace"];
+
+  it("renders workspace and managed attachment images through guarded protocols", () => {
+    const { container } = render(
+      <StreamingMarkdown
+        text={[
+          "![workspace](scratch/lane.png)",
+          "![attachment](</Users/me/Library/Application Support/com.argmax.rs/local-state/attachments/s/shot.png>)"
+        ].join("\n\n")}
+        streaming={false}
+        workspace={workspace}
+      />
+    );
+
+    const sources = Array.from(container.querySelectorAll("img")).map((image) => image.src);
+    expect(sources.some((source) => source.startsWith(`${WORKSPACE_ASSET_PROTOCOL_SCHEME}://`))).toBe(true);
+    expect(sources.some((source) => source.startsWith(`${ATTACHMENT_PROTOCOL_SCHEME}://`))).toBe(true);
+  });
+
+  it("preserves an explicit managed attachment URL for image rendering", () => {
+    const source = `${ATTACHMENT_PROTOCOL_SCHEME}://file/attachments/session/shot.png`;
+    render(<StreamingMarkdown text={`![attachment](${source})`} streaming={false} workspace={workspace} />);
+
+    expect(screen.getByRole("img", { name: "attachment" })).toHaveAttribute("src", source);
+  });
+
+  it("keeps unsafe URL schemes stripped while allowing managed images", () => {
+    render(
+      <StreamingMarkdown
+        text="[bad](javascript:alert(1)) ![bad image](javascript:alert(1))"
+        streaming={false}
+        workspace={workspace}
+      />
+    );
+
+    expect(screen.getByText("bad").closest("a")).toHaveAttribute("href", "");
+    expect(screen.queryByRole("img", { name: "bad image" })).not.toBeInTheDocument();
+  });
+
+  it("falls back to a file chip when a local image cannot load", () => {
+    render(
+      <StreamingMarkdown
+        text="![lane](/tmp/lane.png)"
+        streaming={false}
+        workspace={workspace}
+      />
+    );
+
+    fireEvent.error(screen.getByRole("img", { name: "lane" }));
+    expect(screen.getByRole("button", { name: "Open /tmp/lane.png" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "lane" })).not.toBeInTheDocument();
+  });
+
+  it("normalizes absolute workspace file links before opening them", () => {
+    const onOpenFile = vi.fn();
+    render(
+      <StreamingMarkdown
+        text="Open [the app](/Users/me/repo/src/renderer/App.tsx)."
+        streaming={false}
+        workspace={workspace}
+        onOpenFile={onOpenFile}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open src/renderer/App.tsx" }));
+    expect(onOpenFile).toHaveBeenCalledWith("src/renderer/App.tsx", {
+      line: null,
+      preferIde: false
+    });
+  });
+
   it("reveals large streaming chunks at a steady cadence", () => {
     vi.useFakeTimers();
     const text = "A".repeat(120);

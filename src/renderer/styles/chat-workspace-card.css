@@ -291,8 +291,23 @@
   gap: var(--space-2);
   min-height: 30px;
   padding: 5px var(--space-2);
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
   border-radius: var(--radius-md);
   cursor: default;
+}
+
+button.workspace-card-subagents:focus-visible,
+.workspace-card-subagents:hover {
+  background: var(--panel-soft);
+}
+
+button.workspace-card-subagents {
+  width: 100%;
+  cursor: pointer;
 }
 
 .workspace-card-agent-stack {

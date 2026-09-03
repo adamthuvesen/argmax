@@ -1,11 +1,11 @@
 import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type JSX } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import type { WorkspaceSummary } from "../../shared/types.js";
-import { matchFileChip } from "../lib/fileChipPath.js";
+import { matchFileChip, normalizeFileChipPath } from "../lib/fileChipPath.js";
 import { splitLogSegments } from "../lib/logDump.js";
 import { isMermaidFenceClass } from "../lib/mermaidFence.js";
 import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters.js";
@@ -13,6 +13,7 @@ import { CodeBlock } from "./CodeBlock.js";
 import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
 import { LogBlock } from "./LogBlock.js";
 import { MarkdownTable } from "./MarkdownTable.js";
+import { MarkdownImage } from "./MarkdownImage.js";
 import { StreamingCodeContext } from "./streamingCodeContext.js";
 import { WebLink } from "./WebLink.js";
 
@@ -26,6 +27,11 @@ const SMOOTH_STREAM_MIN_CHARS = 80;
 /** Blocks to remember reveal progress for. Bounded so a long-running app can't
     accumulate an entry per streamed block for the rest of the process. */
 const MAX_REMEMBERED_BLOCKS = 200;
+
+function chatUrlTransform(value: string): string {
+  if (/^argmax-(?:asset|attachment):\/\//i.test(value)) return value;
+  return defaultUrlTransform(value);
+}
 
 /**
  * How much of each block the reader has already watched appear, kept outside
@@ -201,6 +207,7 @@ const MarkdownBody = memo(function MarkdownBody({
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+      urlTransform={chatUrlTransform}
       components={{
         code: ({ className, children, ...rest }) => {
           const hasLanguage = typeof className === "string" && className.includes("language-");
@@ -221,9 +228,10 @@ const MarkdownBody = memo(function MarkdownBody({
           }
           const match = matchFileChip(codeText);
           if (match) {
+            const path = normalizeFileChipPath(match.path, workspace?.path);
             return (
               <FileChip
-                path={match.path}
+                path={path}
                 line={match.line}
                 workspaceId={workspace?.id ?? null}
                 workspaceCwd={workspace?.path ?? null}
@@ -259,7 +267,8 @@ const MarkdownBody = memo(function MarkdownBody({
               </a>
             );
           }
-          const match = matchFileChip(href);
+          const normalizedHref = normalizeFileChipPath(href, workspace?.path);
+          const match = matchFileChip(normalizedHref);
           if (!match) {
             return (
               <a href={href} {...rest}>
@@ -277,6 +286,14 @@ const MarkdownBody = memo(function MarkdownBody({
             />
           );
         },
+        img: ({ src, alt }) => (
+          <MarkdownImage
+            src={src}
+            alt={alt}
+            workspace={workspace}
+            onOpenFile={onOpenFile}
+          />
+        ),
         table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
         pre: ({ children }) => <>{children}</>
       }}

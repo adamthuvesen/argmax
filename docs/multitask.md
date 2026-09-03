@@ -33,14 +33,14 @@ Step 2 hangs off the provider's turn-end seam, and Cursor has its own: it ends a
 
 A multitask that was mid-turn when the app went down never reaches step 2, so `recover_orphaned_sessions` writes the finish row itself while it marks the orphan `failed` — the same passive delivery, one boot later.
 
-## In the chat
+## Above the composer
 
-`multitask.launched` / `multitask.finished` are conversation-visible event types ([sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts)). [foldConversation.ts](../src/renderer/lib/foldConversation.ts) hangs them on the turn they were dispatched from, and [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx) draws each one among that turn's tool rows with [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx).
+`multitask.launched` / `multitask.finished` are conversation-visible event types ([sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts)). [foldConversation.ts](../src/renderer/lib/foldConversation.ts) keeps each notice associated with its dispatch turn so a later finish can merge into it. [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) collects those notices and draws them above the composer with [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx).
 
-The row has the shape of a subagent launch row, because that is what a multitask is to the reader: work running alongside this turn, opened in the same dock — not another chat in the sidebar. Six rules shape it:
+The row keeps the shape of a subagent launch row, because that is what a multitask is to the reader: work running alongside this chat, opened in the same dock, not another sidebar item. Six rules shape it:
 
-- **It sits inside the turn, where the work forked.** The row is sorted into the turn's body by the dispatch's timestamp, the same way a subagent launch is. It is not a seam — it joins the turn instead of ending it, so dispatching one mid-turn never splits that turn's block in two, which would read as an interruption the agent never had.
-- **One row per multitask.** The dispatch row opens it and the finish row, which can arrive a whole turn later, merges into it wherever it already sits (keyed by child session id) — so a multitask that finishes during a later turn still updates the row in the turn that started it. A finish whose dispatch has fallen out of the transcript window renders on its own, without a link, since there is nothing left to open.
+- **It stays attached to the composer.** The row remains visible when the parent turn has finished or the dispatch point has scrolled away. It uses the composer's content inset and sits directly above the input card.
+- **One row per multitask.** The finish event merges into the row the dispatch opened, keyed by child session id. Rows stay in launch order, and the lane scrolls once repeated multitasks reach its height cap.
 - **The session outranks the timeline.** The row takes its state from the child's session row whenever that session is still in the snapshot, and falls back to the events otherwise. The timeline only knows what was written, so a multitask whose turn ended while the app was shut would otherwise claim to be running for good.
 - **A finished row says what it found.** The first line of the answer rides the status line (`Completed · Corrected the 0.4 heading to 2026.`), stripped of its markdown and cut at 120 characters by `multitaskAnswerPreview`. It is a pointer, not the delivery: the whole answer is in the dock tab, and the agent still gets it as a preamble on the next prompt.
 - **The mark says which it is.** Running, it shares the subagents' working nest — at that moment they are doing the same thing. Settled, it carries the Split glyph its dock tab uses, so the transcript and the tab strip name a multitask the same way. Its status words are the launch row's own (`Running` / `Completed` / `Failed`) plus `Stopped`.
@@ -67,7 +67,7 @@ A surface that hands the pane no multitasks has no dock to host them — the pho
 ## Testing
 
 - Rust: [src-tauri/tests/multitask.rs](../src-tauri/tests/multitask.rs) — same-checkout sibling with inherited settings and guardrail prompt, isolated worktree, finishing without starting a turn in the parent, results riding the next prompt but not the persisted message, lineage and launch caps.
-- Renderer: `multitask.test.ts` (notices, sidebar hiding, grouping), `agentTabs.test.ts`, `foldConversation.test.ts` (the row riding inside its turn, and merging across turns), `MultitaskRow.test.tsx`, `subagentSummary.test.ts` (multitasks in the card's count), `SessionComposer.multitask.test.tsx`, and `App.multitask.test.tsx` end to end — no sidebar row, the row inside the turn block, the dock tab carrying the multitask's own transcript, and a stop that leaves the dispatching chat alone.
+- Renderer: `multitask.test.ts` (notices, sidebar hiding, grouping), `agentTabs.test.ts`, `foldConversation.test.ts` (dispatch association and merging across turns), `MultitaskRow.test.tsx`, `subagentSummary.test.ts` (multitasks in the card's count), `SessionComposer.multitask.test.tsx`, and `App.multitask.test.tsx` end to end. They cover the composer-attached row, dock tab, and a stop that leaves the dispatching chat alone.
 
 ## Related
 

@@ -715,7 +715,9 @@ export function ReviewPanel({
             onLoadAgentEvents={agents.onLoadAgentEvents}
             onLoadSessionEvents={agents.onLoadSessionEvents}
             onOpenAgent={agents.onOpenAgent}
+            onOpenDiff={review.openFile}
             onOpenFile={review.openInFilesView}
+            onOpenReview={review.openChangesPanel}
             multitasks={agents.multitasks}
             multitaskEvents={agents.multitaskEvents}
             pendingMessages={agents.pendingMessages}

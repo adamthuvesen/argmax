@@ -571,15 +571,16 @@ describe("App sidebar", () => {
 
     const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" }, { timeout: 5000 });
     expect(reviewPanel).toBeInTheDocument();
-    // Every changed file starts collapsed: opening the panel loads no diff.
-    expect(loadDiff).not.toHaveBeenCalled();
-
-    fireEvent.click(await screen.findByRole("button", { name: "Expand src/renderer/App.tsx diff" }));
+    // Opening the Changes view selects the first changed file for the reader,
+    // so its diff loads without anyone picking one.
     await waitFor(() =>
       expect(loadDiff).toHaveBeenCalledWith(
         { kind: "workspace", id: "workspace-1" }, "src/renderer/App.tsx", "branch", undefined
       )
     );
+    expect(
+      await screen.findByRole("button", { name: "Collapse src/renderer/App.tsx diff" })
+    ).toBeInTheDocument();
     // shiki tokenizes lines into per-token <span> children, so getByText on
     // the full source line misses. toHaveTextContent matches concatenated
     // textContent regardless of token carving (same workaround P6.01 used).

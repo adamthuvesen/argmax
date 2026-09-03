@@ -354,7 +354,15 @@ export function SessionPane({
       // before opening avoids surfacing an ENOENT panel-error when the file
       // lives in a subdirectory — or doesn't exist at all.
       void resolveOpenablePath(window.argmax, workspaceId, path).then((resolved) => {
-        if (resolved) reviewOpenInFilesView(resolved);
+        if (resolved) {
+          reviewOpenInFilesView(resolved);
+          return;
+        }
+        // Files outside this workspace cannot use its guarded preview. An
+        // absolute path can still open in its system-associated application.
+        if (path.startsWith("/")) {
+          void window.argmax?.system.openPath({ path }).catch(() => undefined);
+        }
       });
     },
     [onOpenFile, reviewOpenInFilesView, workspaceId]

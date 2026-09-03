@@ -610,6 +610,7 @@ export function setupAppTestMocks(): void {
       forward: () => Promise.resolve({ ok: true }),
       reload: () => Promise.resolve({ ok: true }),
       setBounds: () => Promise.resolve({ ok: true }),
+      extract: () => Promise.reject(new Error("browser.extract is not stubbed")),
       close: () => Promise.resolve({ ok: true }),
       stop: () => Promise.resolve({ ok: true }),
       fillCredentials: () => Promise.resolve({ ok: true, itemTitle: "Test Login" }),

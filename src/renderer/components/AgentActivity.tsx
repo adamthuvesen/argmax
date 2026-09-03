@@ -12,6 +12,7 @@ import {
   type AssistantGroup
 } from "../lib/sessionTurnView.js";
 import type { ToolCall, TurnToolItem } from "../lib/toolCalls.js";
+import { collectTurnFileChanges } from "../lib/turnFileChanges.js";
 import { foldToolRunsToSummaries, type TurnBodyChild } from "../lib/turnChildren.js";
 import { foldTurnToolItems, latestToolCreatedAt } from "../lib/turnToolItems.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
@@ -25,6 +26,7 @@ import { ThinkingLabel } from "./ThinkingLabel.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
+import { TurnChangesCard } from "./TurnChangesCard.js";
 import { TurnBlock } from "./TurnBlock.js";
 
 const PROMPT_COLLAPSE_THRESHOLD = 560;
@@ -130,7 +132,9 @@ export function AgentActivity({
   onLoadAgentEvents,
   onLoadSessionEvents,
   onOpenAgent,
+  onOpenDiff,
   onOpenFile,
+  onOpenReview,
   parentSession,
   parentToolUseId,
   workspace
@@ -146,7 +150,11 @@ export function AgentActivity({
   onLoadAgentEvents?: (sessionId: string, parentToolUseId: string) => Promise<void>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onOpenAgent?: (tool: ToolCall) => void;
+  /** Open one file's diff in the review panel's Changes view. */
+  onOpenDiff?: (path: string) => void;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+  /** Open the review panel on the workspace's changes. */
+  onOpenReview?: () => void;
   parentSession: SessionSummary | null;
   parentToolUseId: string;
   workspace: WorkspaceSummary | null;
@@ -409,6 +417,7 @@ export function AgentActivity({
   );
   const showLimitedNotice = activity.limited && !showAgentActivityThinking;
   const showLoadFailureNotice = failedAgentKey === agentKey && !showAgentActivityThinking;
+  const runChanges = useMemo(() => collectTurnFileChanges(toolItems), [toolItems]);
 
   return (
     <section
@@ -526,6 +535,15 @@ export function AgentActivity({
             finalOutput={finalOutput}
             workspace={workspace}
             onOpenFile={onOpenFile}
+          />
+        ) : null}
+        {!streaming && runChanges.length > 0 ? (
+          <TurnChangesCard
+            changes={runChanges}
+            workspaceCwd={workspace?.path ?? null}
+            {...(onOpenDiff ? { onOpenDiff } : {})}
+            {...(onOpenFile ? { onOpenFile } : {})}
+            {...(onOpenReview ? { onOpenReview } : {})}
           />
         ) : null}
         {showScrollToBottom ? (

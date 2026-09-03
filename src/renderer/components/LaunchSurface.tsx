@@ -173,9 +173,12 @@ export function LaunchSurface({
   });
   const {
     pendingAttachments,
+    isDraggingFiles,
     attachmentInputRef,
     removePendingAttachment,
+    onComposerDragEnter,
     onComposerDragOver,
+    onComposerDragLeave,
     onComposerDrop,
     onComposerPaste,
     onAttachmentInputChange,
@@ -679,13 +682,21 @@ export function LaunchSurface({
       </header>
       <form
         className="composer"
+        data-drag-active={isDraggingFiles ? "true" : undefined}
         // One step above app chrome, same as the session composer. See tokens.css.
         data-type-scale="composer"
         ref={formRef}
         onSubmit={(event) => void submitPrompt(event)}
+        onDragEnter={onComposerDragEnter}
         onDragOver={onComposerDragOver}
+        onDragLeave={onComposerDragLeave}
         onDrop={onComposerDrop}
       >
+        <div className="composer-drop-overlay" aria-hidden="true">
+          <Paperclip size={20} />
+          <span>Drop to attach</span>
+          <small>Images and files</small>
+        </div>
         {pixelFieldEnabled ? <ComposerPixelField text={prompt} /> : null}
         <input
           ref={attachmentInputRef}

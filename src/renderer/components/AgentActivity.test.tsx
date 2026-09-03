@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { AgentActivity } from "./AgentActivity.js";
 
@@ -253,5 +253,45 @@ describe("AgentActivity", () => {
     expect(within(instructions).getByText("implementer · Opus 5").textContent).toBe(
       "implementer · Opus 5 · Extra High"
     );
+  });
+
+  it("opens a finished run's changed file in the Changes view", () => {
+    const onOpenDiff = vi.fn();
+    render(
+      <AgentActivity
+        events={[
+          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+            id: "task-1",
+            name: "Task",
+            input: { description: "Edit app", prompt: "Update the app." }
+          }),
+          event("child-edit", "command.started", "2026-05-12T15:00:02.000Z", "Edit", {
+            id: "child-edit",
+            name: "Edit",
+            parent_tool_use_id: "task-1",
+            input: {
+              file_path: "/tmp/repo/src/app.ts",
+              old_string: "old",
+              new_string: "new"
+            }
+          }),
+          event("child-edit-done", "command.completed", "2026-05-12T15:00:03.000Z", "Edit", {
+            tool_use_id: "child-edit"
+          }),
+          event("task-done", "command.completed", "2026-05-12T15:00:04.000Z", "Task", {
+            tool_use_id: "task-1",
+            output: "Updated the app."
+          })
+        ]}
+        onOpenDiff={onOpenDiff}
+        parentSession={{ ...session, state: "complete" }}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edited src/app.ts" }));
+
+    expect(onOpenDiff).toHaveBeenCalledWith("src/app.ts");
   });
 });

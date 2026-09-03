@@ -504,8 +504,15 @@
     padding-top: 20px;
   }
 
+  .session-grid,
+  .session-grid.review-open,
+  .session-grid.log-open,
+  .session-grid.review-open.log-open {
+    --session-inline-padding-min: 16px;
+  }
+
   .session-main-column {
-    --session-inline-padding: 16px;
+    --session-inline-padding: var(--session-inline-padding-min);
   }
 
 }

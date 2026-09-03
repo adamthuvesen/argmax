@@ -46,6 +46,7 @@ export function WorkspaceCard({
   onBrowseFiles,
   onHide,
   onOpenChanges,
+  onOpenAgents,
   onOpenCommitDialog,
   onToggleTerminal,
   session,
@@ -61,6 +62,7 @@ export function WorkspaceCard({
   onBrowseFiles: () => void;
   onHide: () => void;
   onOpenChanges: () => void;
+  onOpenAgents?: () => void;
   onOpenCommitDialog?: () => void;
   onToggleTerminal: () => void;
   session: SessionSummary | null;
@@ -190,22 +192,22 @@ export function WorkspaceCard({
         />
       </div>
 
-      {subagents ? <SubagentsSection cluster={subagents} /> : null}
+      {subagents ? <SubagentsSection cluster={subagents} onOpenAgents={onOpenAgents} /> : null}
     </aside>
   );
 }
 
 /**
  * The work-alongside section, Codex-card style: a labeled group with one
- * colored avatar per launch and a quiet count beside it. Not clickable on
- * purpose — the dock tabs and the activity pane own the deep view; this row
- * answers "is anything working, and did the team finish" at a glance.
+ * colored avatar per launch and a quiet count beside it. When the pane owns
+ * the Agents view, the summary opens that dock; it still answers "is anything
+ * working, and did the team finish" at a glance.
  *
  * It counts what the dock's tab strip counts: this session's subagents, plus
  * the multitasks dispatched from it. The label follows — "Alongside" once a
  * multitask is in there, since they are not subagents.
  */
-function SubagentsSection({ cluster }: { cluster: SubagentCluster }): JSX.Element {
+function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster; onOpenAgents?: () => void }): JSX.Element {
   const visible = cluster.entries.slice(0, SUBAGENT_AVATAR_LIMIT);
   const overflow = cluster.entries.length - visible.length;
   const segments: string[] = [];
@@ -220,28 +222,40 @@ function SubagentsSection({ cluster }: { cluster: SubagentCluster }): JSX.Elemen
   const firstRunningId = cluster.entries.find((entry) => entry.status === "running")?.toolUseId;
   const label = cluster.hasMultitask ? "Alongside" : "Subagents";
 
+  const content = (
+    <>
+      <span className="workspace-card-agent-stack" aria-hidden="true">
+        {visible.map((entry) => (
+          <span
+            key={entry.toolUseId}
+            className="workspace-card-agent"
+            data-icon-color={entry.iconColor}
+            data-status={entry.status}
+          >
+            {entry.codename.charAt(0)}
+          </span>
+        ))}
+        {overflow > 0 ? <span className="workspace-card-agent workspace-card-agent-more">+{overflow}</span> : null}
+      </span>
+      {cluster.running > 0 ? <WorkingNest active size={12} phaseKey={firstRunningId} /> : null}
+      <span className="workspace-card-agent-count">{segments.join(" · ")}</span>
+    </>
+  );
+
   return (
     <section className="workspace-card-section" aria-label={label}>
       <div className="workspace-card-section-label">{label}</div>
-      <div className="workspace-card-subagents" title={title}>
-        <span className="workspace-card-agent-stack" aria-hidden="true">
-          {visible.map((entry) => (
-            <span
-              key={entry.toolUseId}
-              className="workspace-card-agent"
-              data-icon-color={entry.iconColor}
-              data-status={entry.status}
-            >
-              {entry.codename.charAt(0)}
-            </span>
-          ))}
-          {overflow > 0 ? <span className="workspace-card-agent workspace-card-agent-more">+{overflow}</span> : null}
-        </span>
-        {cluster.running > 0 ? (
-          <WorkingNest active size={12} phaseKey={firstRunningId} />
-        ) : null}
-        <span className="workspace-card-agent-count">{segments.join(" · ")}</span>
-      </div>
+      {onOpenAgents ? (
+        <button
+          type="button"
+          className="workspace-card-subagents"
+          aria-label={`Open ${label}`}
+          title={`Open ${label} in the Agents view`}
+          onClick={onOpenAgents}
+        >
+          {content}
+        </button>
+      ) : <div className="workspace-card-subagents" title={title}>{content}</div>}
     </section>
   );
 }

@@ -31,7 +31,7 @@ Without `window.argmax` the renderer boots against the demo snapshot
 the full UI renders in any browser with no Rust backend.
 
 ```bash
-node scripts/ui-screenshot.mjs --out shot.png --theme dark
+node scripts/ui-screenshot.mjs --out scratch/shot.png --theme dark
 node scripts/ui-screenshot.mjs --mobile --width 390 --height 844
 node scripts/ui-screenshot.mjs --eval 'document.querySelector("[aria-label=\"Settings\"]").click()'
 ```

@@ -187,6 +187,7 @@ describe("mirroring the app's tab registry", () => {
   ): BrowserTabInfo => ({
     tabId,
     ownerSessionId: null,
+    group: null,
     url: `https://${tabId}.example`,
     title: null,
     loading: false,

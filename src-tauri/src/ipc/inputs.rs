@@ -222,6 +222,18 @@ pub struct BrowserGetTextInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserExtractInput {
+    #[serde(default)]
+    pub tab_id: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    /// Character budget for section text. Defaults to 30 000.
+    #[serde(default)]
+    pub max_chars: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserActInput {
     #[serde(default)]
     pub tab_id: Option<String>,

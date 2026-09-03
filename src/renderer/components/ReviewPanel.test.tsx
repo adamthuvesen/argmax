@@ -45,6 +45,7 @@ function reviewStub(): ReviewState {
       closeTab: vi.fn()
     },
     openAgent: vi.fn(),
+    openAgents: vi.fn(),
     openMultitask: vi.fn(),
     openBrowser: vi.fn(),
     browserOwner: false,

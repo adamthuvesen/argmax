@@ -549,6 +549,35 @@
   color: var(--diff-del-gutter-fg);
 }
 
+/* Multitasks stay attached to the composer after the parent turn ends. The
+   rows keep the transcript's launch-row shape, with their text aligned to the
+   composer's own content inset. A capped lane keeps a long-running chat from
+   surrendering its viewport to completed side work. */
+.multitask-composer-lane {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-height: min(180px, 30vh);
+  margin: 16px var(--session-inline-padding) 0;
+  padding: 0 14px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.session-meta-cards + .multitask-composer-lane {
+  margin-top: 10px;
+}
+
+.session-meta-cards + .composer-approvals-banner + .multitask-composer-lane {
+  margin-top: 0;
+}
+
+.multitask-composer-lane + .session-composer-stack {
+  margin-top: 0;
+}
+
 .session-composer-stack {
   position: relative;
   /* The stack is the query container for the queued tab, which sits outside

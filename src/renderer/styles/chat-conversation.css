@@ -163,6 +163,7 @@
 
 .session-grid {
   --session-main-column-min-width: 320px;
+  --session-inline-padding-min: 28px;
   --session-review-panel-width: clamp(320px, 34vw, 520px);
   /* Wider than the review panel's floor: the debug panel carries a sortable
      IPC table and monospaced trace rows that a 300px column truncates. */
@@ -181,18 +182,21 @@
    than the pane can never push columns past the edge — the conversation's
    minimum always wins. */
 .session-grid.review-open {
+  --session-inline-padding-min: 22px;
   grid-template-columns:
     minmax(var(--session-main-column-min-width), 1fr)
     min(var(--session-review-panel-width), max(0px, calc(100% - var(--session-main-column-min-width))));
 }
 
 .session-grid.log-open {
+  --session-inline-padding-min: 22px;
   grid-template-columns:
     minmax(var(--session-main-column-min-width), 1fr)
     min(var(--session-log-panel-width), max(0px, calc(100% - var(--session-main-column-min-width))));
 }
 
 .session-grid.review-open.log-open {
+  --session-inline-padding-min: 20px;
   grid-template-columns:
     minmax(var(--session-main-column-min-width), 1fr)
     min(
@@ -266,7 +270,7 @@
 }
 
 .session-main-column {
-  --session-inline-padding: clamp(28px, calc((100% - var(--chat-content-width)) / 2), 2000px);
+  --session-inline-padding: clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width)) / 2), 2000px);
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -281,11 +285,11 @@
 
 .session-grid.review-open .session-main-column,
 .session-grid.log-open .session-main-column {
-  --session-inline-padding: clamp(22px, calc((100% - var(--chat-content-width-docked)) / 2), 2000px);
+  --session-inline-padding: clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width-docked)) / 2), 2000px);
 }
 
 .session-grid.review-open.log-open .session-main-column {
-  --session-inline-padding: clamp(20px, calc((100% - var(--chat-content-width-tight)) / 2), 2000px);
+  --session-inline-padding: clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width-tight)) / 2), 2000px);
 }
 
 .conversation-surface {
@@ -419,7 +423,7 @@
    It owns no chrome of its own: the tab strip above it names the agent and the
    status bar below it carries state and model, exactly as Files mode does. */
 .agent-activity {
-  --session-inline-padding: clamp(14px, calc((100% - var(--chat-content-width)) / 2), 2000px);
+  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width)) / 2), 2000px);
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -935,6 +939,21 @@
 
 .markdown a:hover {
   text-decoration-color: var(--accent-deep);
+}
+
+.markdown-image {
+  display: block;
+  max-width: min(100%, 780px);
+  max-height: min(560px, 65vh);
+  margin: 18px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-sunken);
+  object-fit: contain;
+}
+
+.markdown-image-fallback {
+  color: var(--muted);
 }
 
 .markdown code {

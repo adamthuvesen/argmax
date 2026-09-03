@@ -755,6 +755,14 @@ async browserGetText(input: BrowserGetTextInput) : Promise<Result<PageText, Argm
     else return { status: "error", error: e  as any };
 }
 },
+async browserExtract(input: BrowserExtractInput) : Promise<Result<PageExtraction, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_extract", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async browserAct(input: BrowserActInput) : Promise<Result<ActionOutcome, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("browser_act", { input }) };
@@ -857,7 +865,7 @@ export type BrowserActInput = { tabId?: string | null; sessionId?: string | null
  * One interaction. Serialized tagged so a tool layer can pass it straight
  * through without a verb-per-command explosion on the IPC surface.
  */
-export type BrowserAction = { kind: "click"; ref: string } | { kind: "type"; ref: string; text: string; submit?: boolean } | { kind: "select"; ref: string; value: string } | { kind: "hover"; ref: string } | { kind: "pressKey"; key: string; modifiers?: string[] } | { kind: "scroll"; ref?: string | null; direction: string; amount?: number | null } | { kind: "waitFor"; text?: string | null; ref?: string | null; urlIncludes?: string | null; timeoutMs?: number | null }
+export type BrowserAction = { kind: "click"; ref: string } | { kind: "type"; ref: string; text: string; submit?: boolean } | { kind: "select"; ref: string; value: string } | { kind: "hover"; ref: string } | { kind: "drag"; ref: string; toRef?: string | null; startX?: number | null; startY?: number | null; endX?: number | null; endY?: number | null; deltaX?: number | null; deltaY?: number | null; steps?: number | null } | { kind: "pressKey"; key: string; modifiers?: string[] } | { kind: "scroll"; ref?: string | null; direction: string; amount?: number | null } | { kind: "waitFor"; text?: string | null; ref?: string | null; urlIncludes?: string | null; timeoutMs?: number | null }
 export type BrowserBackInput = { tabId: string }
 /**
  * Logical (CSS-pixel) rect of the renderer placeholder the browser webview
@@ -878,6 +886,11 @@ timeoutMs: number | null }
  * distinguish. Catch inside the page when the difference matters.
  */
 export type BrowserEvaluateResult = { resultJson: string }
+export type BrowserExtractInput = { tabId?: string | null; sessionId?: string | null; 
+/**
+ * Character budget for section text. Defaults to 30 000.
+ */
+maxChars?: number | null }
 export type BrowserFillCredentialsInput = { tabId: string }
 export type BrowserFillResult = { ok: boolean; 
 /**
@@ -958,7 +971,11 @@ export type BrowserTabInfo = { tabId: string;
 /**
  * Session that opened the tab. `None` for tabs the user opened.
  */
-ownerSessionId: string | null; url: string; title: string | null; loading: boolean }
+ownerSessionId: string | null; url: string; title: string | null; loading: boolean; 
+/**
+ * Optional label used to organize related tabs in the visible strip.
+ */
+group: string | null }
 /**
  * Full list, pushed on every change — a delta would have to be reconciled
  * against a renderer list that is no longer the source of truth.
@@ -1047,7 +1064,12 @@ export type NonEmptyString = string
 export type NullableExpectedMtimeMs = number | null
 export type OpenIdeChoice = "default" | "vscode" | "cursor" | "windsurf" | "zed" | "terminal" | "iterm"
 export type OpenPath = string
+export type PageExtraction = { tabId?: string; url: string; title: string; metadata: PageMetadata; headings: PageHeading[]; sections: PageSection[]; tables: PageTable[]; links: PageLink[]; truncated: boolean }
 export type PageFindResult = { tabId: string; matches: FoundElement[] }
+export type PageHeading = { level: number; text: string }
+export type PageLink = { text: string | null; url: string }
+export type PageMetadata = { title: string; description: string | null; canonicalUrl: string | null; language: string | null; author: string | null; publishedTime: string | null; modifiedTime: string | null; siteName: string | null }
+export type PageSection = { heading: string | null; level: number | null; text: string }
 export type PageSnapshot = { tabId: string; url: string; title: string; 
 /**
  * Indented aria tree; interactive lines carry `[ref=eN]` handles.
@@ -1057,6 +1079,7 @@ tree: string;
  * True when the node or byte cap cut the tree short.
  */
 truncated: boolean }
+export type PageTable = { caption: string | null; headers: string[]; rows: string[][] }
 export type PageText = { tabId: string; url: string; title: string; text: string; truncated: boolean }
 export type PermissionMode = "auto-approve" | "ask-each-time"
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }

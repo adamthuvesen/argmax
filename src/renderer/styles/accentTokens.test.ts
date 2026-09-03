@@ -30,6 +30,20 @@ function cssRuleBody(source: string, selector: string): string {
 }
 
 describe("accent CSS contract", () => {
+  it("keeps multitasks attached to the composer's content gutter", () => {
+    const chatTools = readSource("src/renderer/styles/chat-tools.css");
+    const laneRule = cssRuleBody(chatTools, ".multitask-composer-lane");
+    const attachedComposerRule = cssRuleBody(
+      chatTools,
+      ".multitask-composer-lane + .session-composer-stack"
+    );
+
+    expect(laneRule).toContain("max-height: min(180px, 30vh);");
+    expect(laneRule).toContain("margin: 16px var(--session-inline-padding) 0;");
+    expect(laneRule).toContain("padding: 0 14px;");
+    expect(attachedComposerRule).toContain("margin-top: 0;");
+  });
+
   it("keeps text sizes and font families behind typography tokens", () => {
     const rawFontSizes: string[] = [];
     const hardcodedFamilies: string[] = [];
@@ -639,13 +653,13 @@ describe("accent CSS contract", () => {
     expect(wideRule).toContain("--chat-content-width: 940px;");
     expect(wideRule).toContain("--chat-content-width-docked: 900px;");
     expect(wideRule).toContain("--chat-content-width-tight: 840px;");
-    expect(mainColumnRule).toContain("clamp(28px, calc((100% - var(--chat-content-width)) / 2), 2000px)");
+    expect(mainColumnRule).toContain("clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width)) / 2), 2000px)");
     // The launcher shell is deliberately decoupled from the chat width
     // setting: the composer keeps one fixed comfortable measure.
     expect(launcherShellRule).toContain("width: min(100%, 760px);");
     expect(launcherSurfaceRule).toContain("width: min(100%, var(--chat-content-width));");
-    expect(dockedRule).toContain("clamp(22px, calc((100% - var(--chat-content-width-docked)) / 2), 2000px)");
-    expect(tightRule).toContain("clamp(20px, calc((100% - var(--chat-content-width-tight)) / 2), 2000px)");
+    expect(dockedRule).toContain("clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width-docked)) / 2), 2000px)");
+    expect(tightRule).toContain("clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width-tight)) / 2), 2000px)");
   });
 
   it("keeps launch composer copy and context chips calm", () => {
@@ -817,11 +831,14 @@ describe("accent CSS contract", () => {
   it("keeps narrow chat panes away from the borders", () => {
     const chatConversation = readSource("src/renderer/styles/chat-conversation.css");
     const launcherPanels = readSource("src/renderer/styles/overlays-launcher-panels.css");
+    const reviewOverlay = readSource("src/renderer/styles/overlays-review.css");
     const sessionGridRule = cssRuleBody(chatConversation, ".session-grid");
     const reviewOpenGridRule = cssRuleBody(chatConversation, ".session-grid.review-open");
     const logOpenGridRule = cssRuleBody(chatConversation, ".session-grid.log-open");
     const bothOpenGridRule = cssRuleBody(chatConversation, ".session-grid.review-open.log-open");
     const mainColumnRule = cssRuleBody(chatConversation, ".session-main-column");
+    const agentActivityRule = cssRuleBody(chatConversation, ".agent-activity");
+    const multitaskPanelRule = cssRuleBody(reviewOverlay, ".multitask-panel");
     const dockedColumnRule = cssRuleBody(
       chatConversation,
       ".session-grid.review-open .session-main-column,\n.session-grid.log-open .session-main-column"
@@ -832,16 +849,22 @@ describe("accent CSS contract", () => {
     );
 
     expect(sessionGridRule).toContain("--session-main-column-min-width: 320px;");
+    expect(sessionGridRule).toContain("--session-inline-padding-min: 28px;");
     expect(sessionGridRule).toContain("position: relative;");
+    expect(reviewOpenGridRule).toContain("--session-inline-padding-min: 22px;");
+    expect(logOpenGridRule).toContain("--session-inline-padding-min: 22px;");
+    expect(bothOpenGridRule).toContain("--session-inline-padding-min: 20px;");
     expect(reviewOpenGridRule).toContain("minmax(var(--session-main-column-min-width), 1fr)");
     expect(logOpenGridRule).toContain("minmax(var(--session-main-column-min-width), 1fr)");
     expect(bothOpenGridRule).toContain("minmax(var(--session-main-column-min-width), 1fr)");
     expect(launcherPanels).not.toContain("@media (max-width: 1080px)");
     expect(launcherPanels).not.toContain("width: min(420px, max(300px, calc(100% - 320px)));");
     expect(launcherPanels).not.toContain(".review-panel,\n  .log-panel {\n    position: fixed;");
-    expect(mainColumnRule).toContain("--session-inline-padding: clamp(28px, calc((100% - var(--chat-content-width)) / 2), 2000px);");
-    expect(dockedColumnRule).toContain("--session-inline-padding: clamp(22px, calc((100% - var(--chat-content-width-docked)) / 2), 2000px);");
-    expect(fullyDockedColumnRule).toContain("--session-inline-padding: clamp(20px, calc((100% - var(--chat-content-width-tight)) / 2), 2000px);");
+    expect(mainColumnRule).toContain("--session-inline-padding: clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width)) / 2), 2000px);");
+    expect(dockedColumnRule).toContain("--session-inline-padding: clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width-docked)) / 2), 2000px);");
+    expect(fullyDockedColumnRule).toContain("--session-inline-padding: clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width-tight)) / 2), 2000px);");
+    expect(agentActivityRule).toContain("--session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width)) / 2), 2000px);");
+    expect(multitaskPanelRule).toContain("--session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width)) / 2), 2000px);");
   });
 
   it("keeps the markdown ink and weight ladder monotonic in chat", () => {

@@ -25,7 +25,7 @@ use super::{eval, snapshot_image, CaptureRect};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
 
-const AGENT_API_VERSION: u32 = 1;
+const AGENT_API_VERSION: u32 = 2;
 const SNAPSHOT_JS: &str = include_str!("snapshot.js");
 const ACTIONS_JS: &str = include_str!("actions.js");
 
@@ -38,6 +38,8 @@ const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(150);
 const WAIT_TIMEOUT_DEFAULT_MS: u32 = 10_000;
 const WAIT_TIMEOUT_MAX_MS: u32 = 120_000;
+/// Steps to take when `dragBegin` does not report its own count.
+const DRAG_STEPS_DEFAULT: u64 = 10;
 
 /// Which tab an action means. A session that names no tab gets the one it
 /// touched most recently, the way a person's foreground tab works.
@@ -101,6 +103,64 @@ pub struct PageText {
     pub truncated: bool,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PageMetadata {
+    pub title: String,
+    pub description: Option<String>,
+    pub canonical_url: Option<String>,
+    pub language: Option<String>,
+    pub author: Option<String>,
+    pub published_time: Option<String>,
+    pub modified_time: Option<String>,
+    pub site_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PageHeading {
+    pub level: u8,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PageSection {
+    pub heading: Option<String>,
+    pub level: Option<u8>,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PageTable {
+    pub caption: Option<String>,
+    pub headers: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PageLink {
+    pub text: Option<String>,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PageExtraction {
+    #[serde(default)]
+    pub tab_id: String,
+    pub url: String,
+    pub title: String,
+    pub metadata: PageMetadata,
+    pub headings: Vec<PageHeading>,
+    pub sections: Vec<PageSection>,
+    pub tables: Vec<PageTable>,
+    pub links: Vec<PageLink>,
+    pub truncated: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionOutcome {
@@ -140,6 +200,27 @@ pub enum BrowserAction {
     Hover {
         #[serde(rename = "ref")]
         element_ref: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    Drag {
+        #[serde(rename = "ref")]
+        element_ref: String,
+        #[serde(default)]
+        to_ref: Option<String>,
+        #[serde(default)]
+        start_x: Option<f64>,
+        #[serde(default)]
+        start_y: Option<f64>,
+        #[serde(default)]
+        end_x: Option<f64>,
+        #[serde(default)]
+        end_y: Option<f64>,
+        #[serde(default)]
+        delta_x: Option<f64>,
+        #[serde(default)]
+        delta_y: Option<f64>,
+        #[serde(default)]
+        steps: Option<u8>,
     },
     #[serde(rename_all = "camelCase")]
     PressKey {
@@ -266,6 +347,16 @@ fn string_field(value: &Value, key: &str) -> String {
 /// something else, and a child webview always paints over the DOM. The pane
 /// showing that session glues and reveals it when it enters Browser mode.
 pub fn open(app: &AppHandle, session_id: Option<&str>, url: &str) -> ArgmaxResult<String> {
+    open_with_options(app, session_id, url, None, true)
+}
+
+pub fn open_with_options(
+    app: &AppHandle,
+    session_id: Option<&str>,
+    url: &str,
+    group: Option<String>,
+    activate: bool,
+) -> ArgmaxResult<String> {
     let tabs = registry(app);
     let tab_id = tabs.allocate_tab_id();
     crate::ipc::browser::open_tab(
@@ -276,8 +367,13 @@ pub fn open(app: &AppHandle, session_id: Option<&str>, url: &str) -> ArgmaxResul
         false,
         session_id.map(str::to_string),
     )?;
-    if let Some(session_id) = session_id {
-        crate::ipc::browser::emit_agent_open(app, session_id, &tab_id, url);
+    if group.is_some() && tabs.set_group(std::slice::from_ref(&tab_id), group) {
+        super::registry::publish(app, &tabs);
+    }
+    if activate {
+        if let Some(session_id) = session_id {
+            crate::ipc::browser::emit_agent_open(app, session_id, &tab_id, url);
+        }
     }
     Ok(tab_id)
 }
@@ -316,6 +412,60 @@ pub fn close(app: &AppHandle, target: &TabTarget) -> ArgmaxResult<String> {
     let tab_id = resolve_tab(app, target)?;
     crate::ipc::browser::close_tab(app, &tab_id)?;
     Ok(tab_id)
+}
+
+pub fn activate(app: &AppHandle, session_id: &str, target: &TabTarget) -> ArgmaxResult<String> {
+    let tab_id = resolve_tab(app, target)?;
+    let tab = registry(app).get(&tab_id).ok_or_else(|| {
+        ArgmaxError::service("BROWSER_NOT_OPEN", format!("browser tab {tab_id} is not open"))
+    })?;
+    crate::ipc::browser::emit_agent_open(app, session_id, &tab_id, &tab.url);
+    Ok(tab_id)
+}
+
+pub fn duplicate(
+    app: &AppHandle,
+    session_id: &str,
+    target: &TabTarget,
+    activate: bool,
+) -> ArgmaxResult<String> {
+    let source_id = resolve_tab(app, target)?;
+    let source = registry(app).get(&source_id).ok_or_else(|| {
+        ArgmaxError::service(
+            "BROWSER_NOT_OPEN",
+            format!("browser tab {source_id} is not open"),
+        )
+    })?;
+    let tab_id = open_with_options(app, Some(session_id), &source.url, source.group, activate)?;
+    if !activate {
+        keep_focus(app, &source_id);
+    }
+    Ok(tab_id)
+}
+
+/// Opening a tab makes it the newest, and a session with no tab named gets its
+/// newest. A background tab must therefore hand the default back to the page
+/// the agent is still reading, or queueing up links would move it off the
+/// article it queued them from.
+pub fn keep_focus(app: &AppHandle, tab_id: &str) {
+    registry(app).touch(tab_id);
+}
+
+/// The group a tab carries, for a new tab that should join it.
+pub fn tab_group(app: &AppHandle, tab_id: &str) -> Option<String> {
+    registry(app).get(tab_id).and_then(|tab| tab.group)
+}
+
+pub fn group_tabs(
+    app: &AppHandle,
+    tab_ids: &[String],
+    group: Option<String>,
+) -> ArgmaxResult<()> {
+    let tabs = registry(app);
+    if tabs.set_group(tab_ids, group) {
+        super::registry::publish(app, &tabs);
+    }
+    Ok(())
 }
 
 // --- reads ------------------------------------------------------------------
@@ -379,6 +529,31 @@ pub async fn find(
     Ok(PageFindResult { tab_id, matches })
 }
 
+/// Resolves a link ref to its absolute URL, and names the tab it was read
+/// from — the caller opens the link beside that tab and hands focus back to it.
+pub async fn link_url(
+    app: &AppHandle,
+    target: &TabTarget,
+    element_ref: &str,
+) -> ArgmaxResult<(String, String)> {
+    let tab_id = resolve_tab(app, target)?;
+    let value = call(
+        app,
+        &tab_id,
+        &format!("window.__argmax.linkUrl({})", json!(element_ref)),
+        READ_TIMEOUT,
+    )
+    .await?;
+    let url = string_field(&value, "url");
+    if url.is_empty() {
+        return Err(ArgmaxError::service(
+            "BROWSER_ACTION_FAILED",
+            "the link returned no URL",
+        ));
+    }
+    Ok((tab_id, url))
+}
+
 pub async fn get_text(
     app: &AppHandle,
     target: &TabTarget,
@@ -407,6 +582,32 @@ pub async fn get_text(
     })
 }
 
+pub async fn extract(
+    app: &AppHandle,
+    target: &TabTarget,
+    max_chars: Option<u32>,
+) -> ArgmaxResult<PageExtraction> {
+    let tab_id = resolve_tab(app, target)?;
+    let value = call(
+        app,
+        &tab_id,
+        &format!(
+            "window.__argmax.extract({})",
+            json!(max_chars.unwrap_or(30_000))
+        ),
+        READ_TIMEOUT,
+    )
+    .await?;
+    let mut extracted: PageExtraction = serde_json::from_value(value).map_err(|error| {
+        ArgmaxError::service(
+            "BROWSER_EXTRACT_FAILED",
+            format!("unreadable structured page content: {error}"),
+        )
+    })?;
+    extracted.tab_id = tab_id;
+    Ok(extracted)
+}
+
 // --- writes -----------------------------------------------------------------
 
 pub async fn act(
@@ -429,6 +630,35 @@ pub async fn act(
             element_ref.as_deref(),
             url_includes.as_deref(),
             *timeout_ms,
+        )
+        .await;
+    }
+    if let BrowserAction::Drag {
+        element_ref,
+        to_ref,
+        start_x,
+        start_y,
+        end_x,
+        end_y,
+        delta_x,
+        delta_y,
+        steps,
+    } = action
+    {
+        return drag(
+            app,
+            &tab_id,
+            &json!({
+                "ref": element_ref,
+                "toRef": to_ref,
+                "startX": start_x,
+                "startY": start_y,
+                "endX": end_x,
+                "endY": end_y,
+                "deltaX": delta_x,
+                "deltaY": delta_y,
+                "steps": steps,
+            }),
         )
         .await;
     }
@@ -467,7 +697,9 @@ pub async fn act(
             "window.__argmax.scroll({})",
             json!({ "ref": element_ref, "direction": direction, "amount": amount })
         ),
-        BrowserAction::WaitFor { .. } => unreachable!("handled above"),
+        BrowserAction::Drag { .. } | BrowserAction::WaitFor { .. } => {
+            unreachable!("handled above")
+        }
     };
     let value = call(app, &tab_id, &script, ACTION_TIMEOUT).await?;
     Ok(outcome(tab_id, &value))
@@ -483,6 +715,68 @@ fn outcome(tab_id: String, value: &Value) -> ActionOutcome {
         url: string_field(value, "url"),
         detail,
     }
+}
+
+/// One drag, driven a step at a time from here.
+///
+/// Every step is its own `evaluateJavaScript:` call, and therefore its own
+/// macrotask in the page: React commits the drag-start render and flushes the
+/// effects that measure drop targets before the next move arrives. Dispatching
+/// the whole gesture in one task is what makes a synthetic drag land back
+/// where it started on dnd-kit and react-beautiful-dnd.
+///
+/// The button goes down in `dragBegin` and must come back up on every exit
+/// path, so a failed step cancels the gesture rather than leaving the page
+/// with a pointer stuck down.
+async fn drag(app: &AppHandle, tab_id: &str, spec: &Value) -> ArgmaxResult<ActionOutcome> {
+    let drag_id = format!("d{}", wait_id_seed());
+    let begun = call(
+        app,
+        tab_id,
+        &format!(
+            "window.__argmax.dragBegin({}, {})",
+            json!(drag_id),
+            spec
+        ),
+        ACTION_TIMEOUT,
+    )
+    .await?;
+    let steps = begun
+        .get("steps")
+        .and_then(Value::as_u64)
+        .unwrap_or(DRAG_STEPS_DEFAULT);
+
+    for step in 1..=steps {
+        let stepped = call(
+            app,
+            tab_id,
+            &format!(
+                "window.__argmax.dragStep({}, {step})",
+                json!(drag_id)
+            ),
+            ACTION_TIMEOUT,
+        )
+        .await;
+        if let Err(error) = stepped {
+            let _ = call(
+                app,
+                tab_id,
+                &format!("window.__argmax.dragEnd({}, true)", json!(drag_id)),
+                ACTION_TIMEOUT,
+            )
+            .await;
+            return Err(error);
+        }
+    }
+
+    let value = call(
+        app,
+        tab_id,
+        &format!("window.__argmax.dragEnd({})", json!(drag_id)),
+        ACTION_TIMEOUT,
+    )
+    .await?;
+    Ok(outcome(tab_id.to_string(), &value))
 }
 
 /// Polls the page's own watcher until it reports a match or the deadline
@@ -644,12 +938,24 @@ pub async fn handle_dialog(
 
 #[cfg(test)]
 mod tests {
-    use super::{call_script, BrowserAction, TabTarget};
+    use super::{call_script, BrowserAction, TabTarget, AGENT_API_VERSION, SNAPSHOT_JS};
+
+    /// The wrapper installs the scripts whenever the page reports a different
+    /// version, so a `v` that trails the constant reinstalls on *every* call
+    /// and wipes whatever the page was holding between them — which is how a
+    /// three-call drag lost its gesture halfway through.
+    #[test]
+    fn the_page_reports_the_version_the_install_guard_expects() {
+        assert!(
+            SNAPSHOT_JS.contains(&format!("v: {AGENT_API_VERSION},")),
+            "snapshot.js must declare v: {AGENT_API_VERSION} to match AGENT_API_VERSION"
+        );
+    }
 
     #[test]
     fn a_call_installs_the_api_and_returns_an_envelope() {
         let script = call_script("window.__argmax.snapshot({})");
-        assert!(script.contains("window.__argmax.v !== 1"));
+        assert!(script.contains("window.__argmax.v !== 2"));
         assert!(script.contains("data-argmax-ref"), "snapshot.js is inlined");
         assert!(
             script.contains("api.click = click"),

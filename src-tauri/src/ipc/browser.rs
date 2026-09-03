@@ -24,7 +24,7 @@ use tokio::process::Command;
 use super::inputs::*;
 use super::system::SystemOk;
 use crate::browser::automation::{
-    self, ActionOutcome, PageFindResult, PageSnapshot, PageText, TabTarget,
+    self, ActionOutcome, PageExtraction, PageFindResult, PageSnapshot, PageText, TabTarget,
 };
 use crate::browser::registry::{self, BrowserAgentOpenEvent, BrowserTabRegistry, BrowserTabsEvent};
 use crate::browser::{encode_base64, eval, snapshot_image, CaptureRect};
@@ -658,6 +658,16 @@ pub async fn browser_get_text(
     automation::get_text(&app, &target, input.max_chars).await
 }
 
+#[tauri::command(rename = "browser:extract")]
+#[specta::specta]
+pub async fn browser_extract(
+    app: AppHandle,
+    input: BrowserExtractInput,
+) -> ArgmaxResult<PageExtraction> {
+    let target = TabTarget::from_inputs(input.tab_id, input.session_id)?;
+    automation::extract(&app, &target, input.max_chars).await
+}
+
 #[tauri::command(rename = "browser:act")]
 #[specta::specta]
 pub async fn browser_act(app: AppHandle, input: BrowserActInput) -> ArgmaxResult<ActionOutcome> {
@@ -791,17 +801,21 @@ fn fill_script(username: &str, password: &str) -> String {
     )
 }
 
+fn op_command(args: &[&str]) -> Command {
+    let mut command = Command::new("op");
+    command.args(args);
+    #[cfg(unix)]
+    command.env("PATH", crate::util::login_shell::path());
+    command
+}
+
 async fn run_op(args: &[&str]) -> ArgmaxResult<Vec<u8>> {
-    let output = Command::new("op")
-        .args(args)
-        .output()
-        .await
-        .map_err(|error| {
-            ArgmaxError::service(
-                "OP_CLI_UNAVAILABLE",
-                format!("could not run the 1Password CLI (`op`): {error}"),
-            )
-        })?;
+    let output = op_command(args).output().await.map_err(|error| {
+        ArgmaxError::service(
+            "OP_CLI_UNAVAILABLE",
+            format!("could not run the 1Password CLI (`op`): {error}"),
+        )
+    })?;
     if !output.status.success() {
         // op writes auth/permission problems to stderr; values never appear there.
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1008,6 +1022,21 @@ mod tests {
         personal_accounts_first(&mut accounts);
         assert_eq!(accounts[0].url, "my.1password.com");
         assert_eq!(accounts[1].url, "mentimeter.1password.com");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn op_command_hydrates_path_for_packaged_app() {
+        let command = op_command(&["--version"]);
+        let path = command
+            .as_std()
+            .get_envs()
+            .find_map(|(key, value)| (key == "PATH").then_some(value).flatten())
+            .expect("op command PATH");
+        let entries = std::env::split_paths(path).collect::<Vec<_>>();
+
+        assert!(entries.contains(&std::path::PathBuf::from("/opt/homebrew/bin")));
+        assert!(entries.contains(&std::path::PathBuf::from("/usr/local/bin")));
     }
 
     #[test]

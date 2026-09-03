@@ -22,8 +22,8 @@ export interface MultitaskNotice {
   worktree: boolean;
   state: string | null;
   answer: string | null;
-  /** When it was dispatched. The row sorts by this among the turn's tool rows,
-   *  so it sits where the work actually forked. */
+  /** When it was dispatched. Composer rows keep this launch order even when a
+   *  finish event arrives during a later turn. */
   createdAt: string;
 }
 

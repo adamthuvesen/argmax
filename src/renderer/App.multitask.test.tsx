@@ -111,17 +111,17 @@ describe("multitask in the chat that dispatched it", () => {
     expect(screen.queryByRole("button", { name: "Fix the changelog date" })).toBeNull();
   });
 
-  it("draws the row inside the turn it was dispatched from", async () => {
-    // Not a stray item under the finished turn: it belongs among that turn's
-    // tool rows, where a subagent launch sits, because that is what it is to
-    // the reader.
+  it("attaches the row above the composer instead of leaving it in the turn", async () => {
     mountWithMultitask();
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     const row = await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" });
+    const lane = row.closest(".multitask-composer-lane");
 
-    expect(row.closest(".turn-block-body")).not.toBeNull();
+    expect(row.closest(".turn-block-body")).toBeNull();
+    expect(lane).not.toBeNull();
+    expect(lane?.nextElementSibling).toHaveClass("session-composer-stack");
   });
 
   it("opens the multitask's chat as a tab in the dock, not as another chat", async () => {

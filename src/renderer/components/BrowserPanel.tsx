@@ -749,13 +749,16 @@ export function BrowserPanel({
               <span className="browser-tab-text">{tabLabel(tab)}</span>
             </button>
             {tab.ownerSessionId ? (
+              // Only an agent's tab can carry a group, so the label stands in
+              // for the badge rather than crowding beside it — the chip
+              // already says the tab is not the user's.
               <span
                 className="browser-tab-agent"
                 role="img"
-                aria-label="Opened by the agent"
-                title="Opened by the agent"
+                aria-label={tab.group ? `Opened by the agent, in ${tab.group}` : "Opened by the agent"}
+                title={tab.group ? `Agent tab in ${tab.group}` : "Opened by the agent"}
               >
-                agent
+                {tab.group ?? "agent"}
               </span>
             ) : null}
             <button

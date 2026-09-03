@@ -173,6 +173,23 @@ describe("useReviewState — IPC fan-out resistance", () => {
     expect(listChangedFiles).toHaveBeenNthCalledWith(2, { kind: "workspace", id: "workspace-2" }, "branch");
   });
 
+  it("expands the first changed file when the Changes panel opens", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 },
+      { path: "src/b.ts", status: "M", additions: 2, deletions: 0 }
+    ]);
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+
+    await waitFor(() => expect(result.current.files).toHaveLength(2));
+    expect(result.current.selectedFilePath).toBeNull();
+
+    act(() => {
+      result.current.openChangesPanel();
+    });
+
+    await waitFor(() => expect(result.current.selectedFilePath).toBe("src/a.ts"));
+  });
+
   it("defaults to the whole branch and refetches when the scope changes", async () => {
     const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
 

@@ -27,7 +27,25 @@ interface AgentApi {
     truncated: boolean;
   };
   find: (query: string) => { matches: FoundElement[] };
+  linkUrl: (ref: string) => { url?: string; error?: string };
   getText: (maxChars?: number) => { text: string; truncated: boolean };
+  extract: (maxChars?: number) => {
+    metadata: {
+      title: string;
+      description: string | null;
+      canonicalUrl: string | null;
+      language: string | null;
+      author: string | null;
+      publishedTime: string | null;
+      modifiedTime: string | null;
+      siteName: string | null;
+    };
+    headings: Array<{ level: number; text: string }>;
+    sections: Array<{ heading: string | null; level: number | null; text: string }>;
+    tables: Array<{ caption: string | null; headers: string[]; rows: string[][] }>;
+    links: Array<{ text: string | null; url: string }>;
+    truncated: boolean;
+  };
   rect: (ref: string) => { ok?: { width: number; height: number }; error?: string };
   click: (ref: string) => { ok?: true; error?: string; target?: string };
   type: (
@@ -37,6 +55,25 @@ interface AgentApi {
   ) => { ok?: true; error?: string; submitted?: boolean };
   select: (ref: string, value: string) => { ok?: true; error?: string; selected?: string };
   hover: (ref: string) => { ok?: true; error?: string };
+  dragBegin: (
+    id: string,
+    spec: {
+      ref: string;
+      toRef?: string;
+      startX?: number;
+      startY?: number;
+      endX?: number;
+      endY?: number;
+      deltaX?: number;
+      deltaY?: number;
+      steps?: number;
+    }
+  ) => { ok?: true; steps?: number; error?: string };
+  dragStep: (id: string, index: number) => { ok?: true; error?: string };
+  dragEnd: (
+    id: string,
+    cancel?: boolean
+  ) => { ok?: true; cancelled?: true; error?: string; target?: string; droppedOn?: string };
   pressKey: (key: string, modifiers?: string[]) => { ok?: true; error?: string };
   scroll: (spec: { ref?: string; direction: string; amount?: number }) => {
     ok?: true;
@@ -110,6 +147,10 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  // Metadata lives in the head, so a test that adds meta tags has to start
+  // from an empty one — and `document.title` writes the element back.
+  document.head.innerHTML = "";
+  document.documentElement.lang = "";
   document.title = "Fixture";
   document.body.innerHTML = "";
   delete (window as unknown as { __argmax?: AgentApi }).__argmax;
@@ -208,6 +249,16 @@ describe("snapshot.js", () => {
     for (const match of api().find("help").matches) expect(match.ref).toMatch(/^e\d+$/);
   });
 
+  it("resolves a link ref to an absolute http URL", () => {
+    document.body.innerHTML = `<a href="/details"><span>Details</span></a><button>Save</button>`;
+    install();
+    const linkRef = api().find("Details").matches[0]?.ref;
+    const buttonRef = api().find("Save").matches[0]?.ref;
+
+    expect(api().linkUrl(linkRef).url).toBe("http://localhost:3000/details");
+    expect(api().linkUrl(buttonRef).error).toContain("not an http(s) link");
+  });
+
   it("getText prefers main over the rest of the page and reports truncation", () => {
     document.body.innerHTML = `<nav>Skip me</nav><main>The readable part</main>`;
     install();
@@ -217,7 +268,91 @@ describe("snapshot.js", () => {
     expect(clipped.text).toBe("The r");
     expect(clipped.truncated).toBe(true);
   });
+
+  it("extract returns bounded article structure and metadata", () => {
+    document.documentElement.lang = "en";
+    document.head.insertAdjacentHTML(
+      "beforeend",
+      `
+      <meta name="description" content="A useful description" />
+      <meta name="author" content="Ada Lovelace" />
+      <meta property="article:published_time" content="2026-09-03" />
+      <link rel="canonical" href="https://example.com/article" />
+    `
+    );
+    document.body.innerHTML = `
+      <nav><a href="https://example.com/skip">Skip this</a></nav>
+      <article>
+        <h1>How the machine works</h1>
+        <p>Opening summary.</p>
+        <h2>Results</h2>
+        <p>The useful result.</p>
+        <table>
+          <caption>Measurements</caption>
+          <thead><tr><th>Name</th><th>Value</th></tr></thead>
+          <tbody><tr><td>Speed</td><td>42</td></tr></tbody>
+        </table>
+        <a href="/source">Primary source</a>
+      </article>
+    `;
+    install();
+
+    const extracted = api().extract();
+    expect(extracted.metadata).toMatchObject({
+      title: "Fixture",
+      description: "A useful description",
+      canonicalUrl: "https://example.com/article",
+      language: "en",
+      author: "Ada Lovelace",
+      publishedTime: "2026-09-03"
+    });
+    expect(extracted.headings).toEqual([
+      { level: 1, text: "How the machine works" },
+      { level: 2, text: "Results" }
+    ]);
+    expect(extracted.sections).toEqual([
+      { heading: "How the machine works", level: 1, text: "Opening summary." },
+      { heading: "Results", level: 2, text: "The useful result." }
+    ]);
+    expect(extracted.tables).toEqual([
+      { caption: "Measurements", headers: ["Name", "Value"], rows: [["Speed", "42"]] }
+    ]);
+    expect(extracted.links).toEqual([
+      { text: "Primary source", url: "http://localhost:3000/source" }
+    ]);
+    expect(extracted.truncated).toBe(false);
+    expect(api().extract(5).truncated).toBe(true);
+  });
+
+  it("extract drops page chrome when there is no article or main to trust", () => {
+    document.body.innerHTML = `
+      <nav><a href="/pricing">Pricing</a><p>Menu blurb</p></nav>
+      <h1>The reading</h1>
+      <p>The body of it.</p>
+      <a href="/cited">Cited work</a>
+      <footer><a href="/legal">Legal</a><p>Copyright notice</p></footer>
+    `;
+    install();
+
+    const extracted = api().extract();
+    expect(extracted.headings).toEqual([{ level: 1, text: "The reading" }]);
+    expect(extracted.sections).toEqual([
+      { heading: "The reading", level: 1, text: "The body of it." }
+    ]);
+    expect(extracted.links).toEqual([{ text: "Cited work", url: "http://localhost:3000/cited" }]);
+  });
 });
+
+/** The gesture Rust drives: begin, then one step per call, then end. */
+function runDrag(
+  spec: Parameters<AgentApi["dragBegin"]>[1],
+  id = "d1"
+): ReturnType<AgentApi["dragEnd"]> {
+  const begun = api().dragBegin(id, spec);
+  if (begun.error) return begun;
+  for (let step = 1; step <= (begun.steps ?? 0); step += 1) api().dragStep(id, step);
+  return api().dragEnd(id);
+}
 
 describe("actions.js", () => {
   it("clicks by ref and runs the element's default action", () => {
@@ -334,6 +469,138 @@ describe("actions.js", () => {
     expect(api().pressKey("Escape").ok).toBe(true);
     expect(keys).toEqual(["Escape"]);
     expect(api().pressKey("").error).toContain("needs a key name");
+  });
+
+  it("drags between refs with stepped pointer and HTML drag events", () => {
+    document.body.innerHTML = `<button id="source">Card</button><button id="target">Column</button>`;
+    install();
+    const sourceRef = api().find("Card").matches[0]?.ref;
+    const targetRef = api().find("Column").matches[0]?.ref;
+    const source = document.getElementById("source") as HTMLButtonElement;
+    const target = document.getElementById("target") as HTMLButtonElement;
+    source.getBoundingClientRect = () =>
+      ({ left: 10, top: 20, width: 100, height: 40, right: 110, bottom: 60 } as DOMRect);
+    target.getBoundingClientRect = () =>
+      ({ left: 200, top: 100, width: 80, height: 60, right: 280, bottom: 160 } as DOMRect);
+    const sourceEvents: string[] = [];
+    const targetEvents: string[] = [];
+    let startPoint: [number, number] | null = null;
+    let endPoint: [number, number] | null = null;
+    for (const type of ["mousedown", "mousemove", "mouseup", "dragstart", "dragend"]) {
+      source.addEventListener(type, () => sourceEvents.push(type));
+    }
+    for (const type of ["mousemove", "mouseup", "dragover", "drop"]) {
+      target.addEventListener(type, () => targetEvents.push(type));
+    }
+    source.addEventListener("mousedown", (event) => {
+      startPoint = [event.clientX, event.clientY];
+    });
+    target.addEventListener("mouseup", (event) => {
+      endPoint = [event.clientX, event.clientY];
+    });
+
+    const result = runDrag({
+      ref: sourceRef,
+      toRef: targetRef,
+      startX: 5,
+      startY: 6,
+      endX: 70,
+      endY: 50,
+      steps: 3
+    });
+    expect(result.ok).toBe(true);
+    expect(sourceEvents).toContain("mousedown");
+    expect(sourceEvents).toContain("dragstart");
+    expect(sourceEvents).toContain("dragend");
+    expect(targetEvents.filter((event) => event === "mousemove")).toHaveLength(3);
+    expect(targetEvents).toContain("mouseup");
+    expect(targetEvents).toContain("drop");
+    expect(startPoint).toEqual([15, 26]);
+    expect(endPoint).toEqual([270, 150]);
+  });
+
+  it("leaves a drop zone it crosses, and releases the pointer when cancelled", () => {
+    document.body.innerHTML = `<button id="source">Card</button><button id="target">Column</button>`;
+    install();
+    const source = document.getElementById("source") as HTMLButtonElement;
+    const target = document.getElementById("target") as HTMLButtonElement;
+    source.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 10, height: 10, right: 10, bottom: 10 }) as DOMRect;
+    target.getBoundingClientRect = () =>
+      ({ left: 100, top: 0, width: 10, height: 10, right: 110, bottom: 10 }) as DOMRect;
+    // The gesture starts over the source and ends over the target, so the
+    // retarget mid-drag is what fires dragleave.
+    document.elementFromPoint = (x: number) => (x >= 100 ? target : source);
+    const seen: string[] = [];
+    for (const type of ["dragleave", "dragenter"]) {
+      source.addEventListener(type, () => seen.push(`source:${type}`));
+      target.addEventListener(type, () => seen.push(`target:${type}`));
+    }
+    const released: string[] = [];
+    for (const type of ["pointercancel", "pointerup", "drop", "dragend"]) {
+      source.addEventListener(type, () => released.push(type));
+      target.addEventListener(type, () => released.push(type));
+    }
+
+    const begun = api().dragBegin("d9", { ref: api().find("Card").matches[0]?.ref, toRef: api().find("Column").matches[0]?.ref, steps: 4 });
+    expect(begun.steps).toBe(4);
+    for (let step = 1; step <= 4; step += 1) api().dragStep("d9", step);
+    expect(seen).toEqual(["source:dragleave", "target:dragenter"]);
+
+    // Cancelling still lifts the button: a half-finished gesture would leave
+    // the page thinking the mouse is held down.
+    expect(api().dragEnd("d9", true).cancelled).toBe(true);
+    expect(released).toEqual(["pointercancel", "dragend"]);
+    // The gesture is gone, so a second end is an error rather than a re-drop.
+    expect(api().dragEnd("d9").error).toContain("not in progress");
+  });
+
+  it("flushes animation frames during a drag, and restores rAF afterwards", () => {
+    document.body.innerHTML = `<button id="source">Card</button><button id="target">Column</button>`;
+    install();
+    // A hidden agent tab never fires a real frame, so the gesture has to run
+    // the callback itself; jsdom stands in for that by never calling back.
+    const nativeRaf = vi.fn(() => 7);
+    const nativeCancel = vi.fn();
+    window.requestAnimationFrame = nativeRaf;
+    window.cancelAnimationFrame = nativeCancel;
+
+    const measured: string[] = [];
+    const source = document.getElementById("source") as HTMLButtonElement;
+    source.addEventListener("pointerdown", () => {
+      requestAnimationFrame(() => measured.push("measured on frame"));
+    });
+
+    const begun = api().dragBegin("d5", {
+      ref: api().find("Card").matches[0]?.ref,
+      toRef: api().find("Column").matches[0]?.ref,
+      steps: 2
+    });
+    // The frame is only requested at press time; nothing has run it yet.
+    expect(measured).toEqual([]);
+    expect(nativeRaf).toHaveBeenCalledTimes(1);
+
+    for (let step = 1; step <= (begun.steps ?? 0); step += 1) api().dragStep("d5", step);
+    expect(measured).toEqual(["measured on frame"]);
+
+    api().dragEnd("d5");
+    expect(window.requestAnimationFrame).toBe(nativeRaf);
+    expect(window.cancelAnimationFrame).toBe(nativeCancel);
+  });
+
+  it("drags a range input by delta and emits input plus change", () => {
+    document.body.innerHTML = `<input type="range" min="0" max="100" step="10" value="0" aria-label="Volume" />`;
+    install();
+    const ref = api().find("Volume").matches[0]?.ref;
+    const range = document.querySelector("input") as HTMLInputElement;
+    const events: string[] = [];
+    range.addEventListener("input", () => events.push("input"));
+    range.addEventListener("change", () => events.push("change"));
+
+    expect(runDrag({ ref, deltaX: 60, steps: 2 }).ok).toBe(true);
+    expect(range.value).toBe("100");
+    expect(events).toEqual(["input", "input", "change"]);
+    expect(api().dragBegin("d2", { ref }).error).toContain("toRef or deltaX/deltaY");
   });
 
   it("scroll rejects a direction it cannot act on", () => {

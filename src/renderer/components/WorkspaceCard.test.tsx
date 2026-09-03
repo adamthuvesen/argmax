@@ -28,6 +28,7 @@ function renderCard(
     onBrowseFiles?: () => void;
     onHide?: () => void;
     onOpenChanges?: () => void;
+    onOpenAgents?: () => void;
     onOpenCommitDialog?: () => void;
     onToggleTerminal?: () => void;
     setStatus?: (status: { kind: "error" | "info"; message: string } | null) => void;
@@ -47,6 +48,7 @@ function renderCard(
       onBrowseFiles={overrides.onBrowseFiles ?? vi.fn()}
       onHide={overrides.onHide ?? vi.fn()}
       onOpenChanges={overrides.onOpenChanges ?? vi.fn()}
+      onOpenAgents={overrides.onOpenAgents}
       onOpenCommitDialog={overrides.onOpenCommitDialog ?? vi.fn()}
       onToggleTerminal={overrides.onToggleTerminal ?? vi.fn()}
       session={baseSession()}
@@ -220,6 +222,15 @@ describe("WorkspaceCard", () => {
     expect(roster?.getAttribute("title")).toContain("Io — Completed");
     expect(roster?.getAttribute("title")).toContain("Titan — Running");
     expect(section.querySelectorAll(".workspace-card-agent")).toHaveLength(2);
+  });
+
+  it("opens the Agents view from the subagent roster", () => {
+    const onOpenAgents = vi.fn();
+    renderCard({ subagents: subagentCluster(), onOpenAgents });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Subagents" }));
+
+    expect(onOpenAgents).toHaveBeenCalledTimes(1);
   });
 
   it("folds the avatar stack into a +N chip beyond five launches and reports failures", () => {

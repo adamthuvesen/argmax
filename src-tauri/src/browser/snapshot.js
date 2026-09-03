@@ -16,6 +16,10 @@
   var MAX_BYTES = 40 * 1024;
   var MAX_TEXT = 120;
   var MAX_FIND = 20;
+  var MAX_EXTRACT_LINKS = 200;
+  var MAX_EXTRACT_TABLES = 20;
+  var MAX_EXTRACT_ROWS = 100;
+  var MAX_EXTRACT_COLUMNS = 30;
 
   var INTERACTIVE_SELECTOR =
     "a[href], button, input, select, textarea, summary, [role], [contenteditable], [tabindex]";
@@ -315,6 +319,16 @@
     return { matches: matches };
   }
 
+  function linkUrl(ref) {
+    var element = byRef(ref);
+    if (!element) return { error: unknownRef(ref) };
+    var link = element.closest ? element.closest("a[href]") : null;
+    if (!link || !/^https?:$/i.test(link.protocol)) {
+      return { error: "element " + ref + " is not an http(s) link" };
+    }
+    return { url: link.href };
+  }
+
   function getText(maxChars) {
     var limit = typeof maxChars === "number" && maxChars > 0 ? maxChars : 20000;
     var host = document.querySelector("main") || document.querySelector("article") || document.body;
@@ -324,6 +338,148 @@
       url: location.href,
       title: document.title,
       text: truncated ? text.slice(0, limit) : text,
+      truncated: truncated
+    };
+  }
+
+  function metaContent(selectors) {
+    for (var i = 0; i < selectors.length; i += 1) {
+      var element = document.querySelector(selectors[i]);
+      var content = element && normalize(element.getAttribute("content"));
+      if (content) return content;
+    }
+    return null;
+  }
+
+  function extract(maxChars) {
+    var limit = typeof maxChars === "number" && maxChars > 0 ? maxChars : 30000;
+    var host = document.querySelector("article") || document.querySelector("main") || document.body;
+    var truncated = false;
+    var remaining = limit;
+
+    // An <article> or <main> already excludes the page's chrome. Falling back
+    // to <body> does not, so drop the regions that are navigation rather than
+    // reading. <header> stays: a page's h1 often lives in one.
+    var wholeBody = host === document.body;
+    function isChrome(element) {
+      return (
+        wholeBody &&
+        typeof element.closest === "function" &&
+        element.closest("nav,aside,footer,[role=navigation],[role=complementary],[role=contentinfo]") !== null
+      );
+    }
+
+    function take(text) {
+      var value = normalize(text);
+      if (!value) return "";
+      if (value.length <= remaining) {
+        remaining -= value.length;
+        return value;
+      }
+      truncated = true;
+      var clipped = value.slice(0, Math.max(remaining, 0));
+      remaining = 0;
+      return clipped;
+    }
+
+    var headings = [];
+    var sections = [];
+    var current = { heading: null, level: null, text: "" };
+    var blocks = host
+      ? host.querySelectorAll("h1,h2,h3,h4,h5,h6,p,li,pre,blockquote,figcaption")
+      : [];
+    for (var i = 0; i < blocks.length; i += 1) {
+      // A budget that ran out exactly on a block boundary leaves `take` with
+      // nothing to clip, so the loop has to report the shortfall itself.
+      if (remaining <= 0) {
+        truncated = true;
+        break;
+      }
+      var block = blocks[i];
+      if (!isVisible(block) || isChrome(block)) continue;
+      if (/^H[1-6]$/.test(block.tagName)) {
+        if (current.heading || current.text) sections.push(current);
+        var headingText = take(block.textContent);
+        var level = Number(block.tagName.slice(1));
+        if (headingText) headings.push({ level: level, text: headingText });
+        current = { heading: headingText || null, level: level, text: "" };
+        continue;
+      }
+      // A list item or quote that contains smaller readable blocks would
+      // duplicate their text. Keep the leaf block in that case.
+      if (block.querySelector("p,li,pre,blockquote,figcaption")) continue;
+      var text = take(block.textContent);
+      if (text) current.text += (current.text ? "\n\n" : "") + text;
+    }
+    if (current.heading || current.text) sections.push(current);
+
+    var tables = [];
+    var tableNodes = host ? host.querySelectorAll("table") : [];
+    for (var tableIndex = 0; tableIndex < tableNodes.length; tableIndex += 1) {
+      if (tables.length >= MAX_EXTRACT_TABLES) {
+        truncated = true;
+        break;
+      }
+      var table = tableNodes[tableIndex];
+      if (!isVisible(table) || isChrome(table)) continue;
+      var caption = table.querySelector("caption");
+      var headers = [];
+      var headerCells = table.querySelectorAll("thead th");
+      if (!headerCells.length) headerCells = table.querySelectorAll("tr:first-child th");
+      for (var headerIndex = 0; headerIndex < headerCells.length && headerIndex < MAX_EXTRACT_COLUMNS; headerIndex += 1) {
+        headers.push(normalize(headerCells[headerIndex].textContent));
+      }
+      var rows = [];
+      var rowNodes = table.querySelectorAll("tbody tr");
+      if (!rowNodes.length) rowNodes = table.querySelectorAll("tr");
+      for (var rowIndex = 0; rowIndex < rowNodes.length; rowIndex += 1) {
+        if (rows.length >= MAX_EXTRACT_ROWS) {
+          truncated = true;
+          break;
+        }
+        var cells = rowNodes[rowIndex].querySelectorAll("th,td");
+        var row = [];
+        for (var cellIndex = 0; cellIndex < cells.length && cellIndex < MAX_EXTRACT_COLUMNS; cellIndex += 1) {
+          row.push(normalize(cells[cellIndex].textContent));
+        }
+        if (row.length && !(headers.length && row.join("\u0000") === headers.join("\u0000"))) rows.push(row);
+      }
+      tables.push({ caption: caption ? normalize(caption.textContent) || null : null, headers: headers, rows: rows });
+    }
+
+    var links = [];
+    var seenLinks = {};
+    var linkNodes = host ? host.querySelectorAll("a[href]") : [];
+    for (var linkIndex = 0; linkIndex < linkNodes.length; linkIndex += 1) {
+      if (links.length >= MAX_EXTRACT_LINKS) {
+        truncated = true;
+        break;
+      }
+      var link = linkNodes[linkIndex];
+      if (!isVisible(link) || isChrome(link)) continue;
+      if (!/^https?:$/i.test(link.protocol) || seenLinks[link.href]) continue;
+      seenLinks[link.href] = true;
+      links.push({ text: normalize(link.textContent) || null, url: link.href });
+    }
+
+    var canonical = document.querySelector('link[rel="canonical"]');
+    return {
+      url: location.href,
+      title: document.title,
+      metadata: {
+        title: metaContent(['meta[property="og:title"]', 'meta[name="twitter:title"]']) || document.title,
+        description: metaContent(['meta[name="description"]', 'meta[property="og:description"]']),
+        canonicalUrl: canonical && canonical.href ? canonical.href : null,
+        language: normalize(document.documentElement.lang) || null,
+        author: metaContent(['meta[name="author"]', 'meta[property="article:author"]']),
+        publishedTime: metaContent(['meta[property="article:published_time"]', 'meta[name="date"]']),
+        modifiedTime: metaContent(['meta[property="article:modified_time"]']),
+        siteName: metaContent(['meta[property="og:site_name"]'])
+      },
+      headings: headings,
+      sections: sections,
+      tables: tables,
+      links: links,
       truncated: truncated
     };
   }
@@ -349,7 +505,11 @@
   }
 
   window.__argmax = {
-    v: 1,
+    // Must equal `AGENT_API_VERSION` in automation.rs, which guards the
+    // install. Letting it drift low reinstalls both scripts on every call and
+    // silently wipes anything they hold between calls — a drag's gesture
+    // state, for one. A Rust test pins the two together.
+    v: 2,
     refAttr: REF_ATTR,
     byRef: byRef,
     refFor: refFor,
@@ -358,7 +518,9 @@
     isVisible: isVisible,
     snapshot: snapshot,
     find: find,
+    linkUrl: linkUrl,
     getText: getText,
+    extract: extract,
     rect: rect
   };
 })();

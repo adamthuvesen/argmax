@@ -40,7 +40,7 @@ The row has the shape of a subagent launch row above it, because that is what a 
 - **A dispatch is not a turn boundary.** Multitask rows are deferred and emitted when the turn they landed in closes, so dispatching one mid-turn never splits that turn's block into two — which would read as an interruption the agent never had.
 - **One row per multitask.** The dispatch row opens it and the finish row, which can arrive a whole turn later, merges into it wherever it already sits (keyed by child session id). A finish whose dispatch has fallen out of the transcript window renders on its own, without a link, since there is nothing left to open.
 - **The session outranks the timeline.** The row takes its state from the child's session row whenever that session is still in the snapshot, and falls back to the events otherwise. The timeline only knows what was written, so a multitask whose turn ended while the app was shut would otherwise claim to be running for good.
-- **Stop rides the row.** A running multitask can be stopped without opening it; the button appears on hover, and whenever it is tabbed to.
+- **Stop rides the row.** A running multitask can be stopped without opening it; the button appears on hover, and whenever it is tabbed to. Stopping one stops only that session: the early-stop rule that hands a pane back to the launcher ([earlyStop.ts](../src/renderer/lib/earlyStop.ts)) is a pane behaviour, and a multitask has no pane, so the chat that dispatched it stays exactly where it was — launcher draft included.
 
 ## Not in the sidebar
 

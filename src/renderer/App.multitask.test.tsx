@@ -1,8 +1,14 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
-import { mockDashboardSnapshot, setupAppTestMocks, snapshot } from "../test/appTestHarness.js";
+import { launcherDraftKey, readDraft } from "./lib/composerDrafts.js";
+import {
+  mockDashboardSnapshot,
+  setupAppTestMocks,
+  snapshot,
+  terminateProvider
+} from "../test/appTestHarness.js";
 
 const childWorkspace: DashboardSnapshot["workspaces"][number] = {
   id: "workspace-multitask",
@@ -82,11 +88,11 @@ const events: DashboardSnapshot["events"] = [
   }
 ];
 
-function mountWithMultitask(): void {
+function mountWithMultitask(childOverrides: Partial<typeof childSession> = {}): void {
   mockDashboardSnapshot({
     ...snapshot,
     workspaces: [...snapshot.workspaces, childWorkspace],
-    sessions: [...snapshot.sessions, childSession],
+    sessions: [...snapshot.sessions, { ...childSession, ...childOverrides }],
     events
   });
 }
@@ -121,5 +127,25 @@ describe("multitask in the chat that dispatched it", () => {
     // Its own transcript, in the dock — the parent chat is still the one on the
     // left, and nothing navigated away from it.
     expect(await screen.findByText("Corrected the 0.4 heading to 2026.")).toBeInTheDocument();
+  });
+
+  it("stops only the multitask, leaving the chat that dispatched it where it was", async () => {
+    // Stopping a chat seconds after launching it reads as "wrong prompt" and
+    // hands the pane back to the launcher. A multitask has no pane of its own,
+    // so that must not fire for one: the chat it was dispatched from stays on
+    // screen, and its launcher draft never picks up the multitask's prompt.
+    mountWithMultitask({ state: "running", completedAt: null, startedAt: new Date().toISOString() });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Stop multitask: Fix the changelog date" })
+    );
+
+    await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-multitask"));
+    expect(
+      await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" })
+    ).toBeInTheDocument();
+    expect(readDraft(launcherDraftKey("project-1")).text).toBe("");
   });
 });

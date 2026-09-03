@@ -100,6 +100,12 @@ pub struct SessionSummary {
     /// Null for a session the user or a routine started.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub launched_by_session_id: Option<String>,
+    /// How this session came to exist: `agent` for one an agent launched (and
+    /// for every ordinary session the user started), `multitask` for one
+    /// dispatched from inside another chat. The sidebar hides a multitask —
+    /// it belongs to the chat that dispatched it, which shows it in the
+    /// subagent dock — so this has to reach the renderer.
+    pub launch_kind: String,
 }
 
 /// How far a session sits from a human-started one, and how many sessions it
@@ -621,6 +627,7 @@ fn session_row_to_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
         context_tokens: row.get("context_tokens")?,
         context_window: row.get("context_window")?,
         launched_by_session_id: row.get("launched_by_session_id")?,
+        launch_kind: row.get("launch_kind")?,
     })
 }
 

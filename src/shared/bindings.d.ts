@@ -1229,7 +1229,15 @@ contextWindow?: number | null;
  * The session whose agent launched this one with the `argmax` MCP tools.
  * Null for a session the user or a routine started.
  */
-launchedBySessionId?: string | null }
+launchedBySessionId?: string | null; 
+/**
+ * How this session came to exist: `agent` for one an agent launched (and
+ * for every ordinary session the user started), `multitask` for one
+ * dispatched from inside another chat. The sidebar hides a multitask —
+ * it belongs to the chat that dispatched it, which shows it in the
+ * subagent dock — so this has to reach the renderer.
+ */
+launchKind: string }
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system"
 export type SkillSummary = { name: string; description: string; source: SkillSource }
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }

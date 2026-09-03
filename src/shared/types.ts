@@ -384,6 +384,11 @@ export interface SessionSummary {
   /** The session whose agent launched this one with the `argmax` MCP tools.
    *  Absent for a session the user or a routine started. */
   launchedBySessionId?: string | null;
+  /** How this session came to exist: `agent` for one an agent launched and for
+   *  every ordinary session, `multitask` for one dispatched from inside
+   *  another chat. A multitask stays out of the sidebar — it belongs to the
+   *  chat that dispatched it, which shows it in the subagent dock. */
+  launchKind?: string;
 }
 
 /**

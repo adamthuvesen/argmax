@@ -373,40 +373,51 @@
   color: var(--text-soft);
 }
 
-/* Sidebar hidden: the top-left repo-title row doubles as the macOS titlebar.
-   Pad it past the traffic lights + hide button, and lift the surface so the
-   title aligns with the window controls instead of dropping below them. */
-.app-shell[data-sidebar-collapsed="true"] .conversation-surface {
-  padding-top: 5px;
+/* Sidebar hidden: the repo-title row in any left-edge pane doubles as the
+   macOS titlebar. Size the strip to the expanded sidebar's .window-controls
+   band and clear the fixed sidebar toggle via --titlebar-leading-inset. */
+.app-shell[data-sidebar-collapsed="true"]
+  .session-multigrid-cell:first-child
+  .conversation-surface {
+  padding-top: 0;
 }
 
 .app-shell[data-sidebar-collapsed="true"]
-  .session-multigrid-row:first-child
   .session-multigrid-cell:first-child
   .conversation-surface
-  .section-heading {
-  padding-left: 131px;
+  > .section-heading {
+  box-sizing: border-box;
+  /* Same band as .window-controls when the sidebar is open: occupy the full
+     strip, but park the label on the toggle's 30px row (centered on
+     --titlebar-center) instead of hugging the window's top edge. */
+  min-height: var(--titlebar-strip-height);
+  padding-top: calc(var(--titlebar-center) - 15px);
+  padding-bottom: calc(var(--titlebar-strip-height) - var(--titlebar-center) - 15px);
+  padding-left: var(--titlebar-leading-inset);
+  padding-right: 20px;
+  align-items: center;
 }
 
-/* Left-docked review panel in the top-left cell: the review toolbar, not the
+/* Left-docked review panel in a left-edge cell: the review toolbar, not the
    conversation heading, sits under the traffic lights, so the clearance moves
    with it and the heading falls back to its 20px base indent. */
 .app-shell[data-sidebar-collapsed="true"][data-review-panel-side="left"]
-  .session-multigrid-row:first-child
   .session-multigrid-cell:first-child
   .session-grid.review-open
   .conversation-surface
-  .section-heading {
+  > .section-heading {
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
   padding-left: 20px;
 }
 
 .app-shell[data-sidebar-collapsed="true"][data-review-panel-side="left"]
-  .session-multigrid-row:first-child
   .session-multigrid-cell:first-child
   .session-grid.review-open
   > .review-panel
   .review-toolbar {
-  padding-left: 131px;
+  padding-left: var(--titlebar-leading-inset);
 }
 
 .section-heading > div {

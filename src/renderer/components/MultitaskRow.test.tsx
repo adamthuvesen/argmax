@@ -73,6 +73,21 @@ describe("MultitaskRow", () => {
     expect(screen.getByText("Multitask · isolated")).toBeInTheDocument();
   });
 
+  it("can be dismissed once it has settled, but not while it runs", () => {
+    const onDismiss = vi.fn();
+    render(<MultitaskRow notice={notice()} onOpen={vi.fn()} onDismiss={onDismiss} />);
+    expect(
+      screen.queryByRole("button", { name: "Dismiss multitask: Fix the README typo" })
+    ).toBeNull();
+
+    cleanup();
+    render(
+      <MultitaskRow notice={notice({ state: "complete" })} onOpen={vi.fn()} onDismiss={onDismiss} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss multitask: Fix the README typo" }));
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
   it("stops the multitask from the row", () => {
     const onStop = vi.fn();
     render(<MultitaskRow notice={notice()} onOpen={vi.fn()} onStop={onStop} />);

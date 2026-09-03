@@ -1,5 +1,19 @@
 
 .app-shell {
+  /* Shared macOS titlebar geometry. The toggle is `position: fixed`, so any
+     surface that borrows the titlebar strip must read these tokens rather than
+     hard-coding a px inset that drifts when trafficLightPosition changes. */
+  --titlebar-toggle-left: 85px;
+  --titlebar-toggle-width: 30px;
+  --titlebar-toggle-gap: 14px;
+  --titlebar-leading-inset: calc(
+    var(--titlebar-toggle-left) + var(--titlebar-toggle-width) + var(--titlebar-toggle-gap)
+  );
+  /* Measured centreline of the native traffic lights — NOT trafficLightPosition.y
+     verbatim. Tuned by eye; the toggle top and collapsed titlebar strip derive
+     from this one value. */
+  --titlebar-center: 22px;
+  --titlebar-strip-height: 44px;
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr);
   height: 100dvh;
@@ -50,15 +64,14 @@
    light, matching Cursor's titlebar, without reaching into the native buttons;
    it tracks trafficLightPosition.x in tauri.conf.json. ---- */
 .sidebar-toggle {
-  --titlebar-center: 22px;
   position: fixed;
   top: calc(var(--titlebar-center) - 15px);
-  left: 85px;
+  left: var(--titlebar-toggle-left);
   z-index: 62;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
+  width: var(--titlebar-toggle-width);
   height: 30px;
   padding: 0;
   border: 0;

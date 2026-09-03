@@ -53,6 +53,13 @@ static GH_PR_MUTATION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bgh\s+pr\s+(create|merge|close)\b").unwrap());
 static SUDO_BOUNDARY: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(^|[\s|;&(`])sudo\b").unwrap());
+static QUIT_ARGMAX_APP: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?i)quit\s+app\s+["']argmax["']"#).unwrap());
+static TELL_ARGMAX_TO_QUIT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)tell\s+application\s+["']argmax["'][^\n;|&]*\bto\s+quit\b"#).unwrap()
+});
+static KILL_ARGMAX_PROCESS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\b(killall|pkill)\b[^\n;|&]*\bargmax\b").unwrap());
 
 static GIT_ADD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bgit\s+add\b").unwrap());
 static GIT_COMMIT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bgit\s+commit\b").unwrap());
@@ -170,6 +177,9 @@ pub fn classify_command_risk(command: &str) -> CommandRiskDecision {
     if git_push_force(normalized) {
         return high("Force push");
     }
+    if would_terminate_argmax_host(normalized) {
+        return high("Would quit or kill Argmax");
+    }
 
     for item in HIGH_RISK_PATTERNS {
         if item.pattern.is_match(normalized) {
@@ -269,6 +279,16 @@ fn until_shell_separator(value: &str) -> &str {
         .split(['\n', ';', '|', '&'])
         .next()
         .unwrap_or_default()
+}
+
+/// Shell shapes that terminate the Argmax app hosting this session. Providers
+/// run these directly in auto-approve mode, so the classifier is the shared
+/// signal for checks, timeline risk labels, and agent instructions.
+pub fn would_terminate_argmax_host(command: &str) -> bool {
+    let normalized = command.trim();
+    QUIT_ARGMAX_APP.is_match(normalized)
+        || TELL_ARGMAX_TO_QUIT.is_match(normalized)
+        || KILL_ARGMAX_PROCESS.is_match(normalized)
 }
 
 #[cfg(test)]
@@ -408,5 +428,25 @@ mod tests {
     fn does_not_match_benign_command_substitutions() {
         assert_risk("export NOW=$(date)", CommandRiskLevel::Low);
         assert_risk("echo `git rev-parse HEAD`", CommandRiskLevel::Low);
+    }
+
+    #[test]
+    fn refuses_commands_that_quit_or_kill_argmax() {
+        assert_risk(
+            r#"osascript -e 'quit app "Argmax"' && rm -rf /Applications/Argmax.app"#,
+            CommandRiskLevel::High,
+        );
+        assert_risk(
+            r#"osascript -e 'tell application "Argmax" to quit'"#,
+            CommandRiskLevel::High,
+        );
+        assert_risk("killall Argmax", CommandRiskLevel::High);
+        assert_risk("pkill -f /Applications/Argmax.app/Contents/MacOS/argmax", CommandRiskLevel::High);
+    }
+
+    #[test]
+    fn does_not_treat_unrelated_argmax_paths_as_self_termination() {
+        assert_risk("ls /Applications/Argmax.app", CommandRiskLevel::Low);
+        assert_risk("ditto build/Argmax.app /Applications/Argmax.app", CommandRiskLevel::Low);
     }
 }

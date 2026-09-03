@@ -1,4 +1,4 @@
-import { Split, Square } from "lucide-react";
+import { Split, Square, X } from "lucide-react";
 import type { JSX } from "react";
 import { multitaskAnswerPreview, multitaskRowStatus, type MultitaskNotice } from "../lib/multitask.js";
 import { WorkingNest } from "./WorkingNest.js";
@@ -28,6 +28,7 @@ function statusLabel(state: string | null, status: RowStatus): string {
 export function MultitaskRow({
   notice,
   liveState,
+  onDismiss,
   onOpen,
   onStop
 }: {
@@ -37,6 +38,8 @@ export function MultitaskRow({
    *  row never landed (the app went down mid-turn) would otherwise claim to be
    *  running forever. */
   liveState?: string | null;
+  /** Closes a settled row. Its chat stays reachable from the dock. */
+  onDismiss?: () => void;
   onOpen?: (sessionId: string) => void;
   onStop?: (sessionId: string) => void;
 }): JSX.Element {
@@ -105,6 +108,19 @@ export function MultitaskRow({
               onClick={() => onStop(childSessionId)}
             >
               <Square size={9} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+            </button>
+          ) : null}
+          {/* Once it has settled, the row has said its piece: closing it clears
+              the lane without losing the chat, which its dock tab still holds. */}
+          {status !== "running" && onDismiss ? (
+            <button
+              type="button"
+              className="multitask-row-stop multitask-row-dismiss"
+              aria-label={`Dismiss multitask: ${notice.taskLabel}`}
+              title="Dismiss this multitask"
+              onClick={onDismiss}
+            >
+              <X size={12} aria-hidden="true" />
             </button>
           ) : null}
         </div>

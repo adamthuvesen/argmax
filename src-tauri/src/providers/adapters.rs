@@ -326,9 +326,9 @@ fn cursor_structured_resume_args(
 
 // OpenCode's `run --format json` streams typed part events (step_start, text,
 // reasoning, tool_use, step_finish, error) and exits when the turn ends.
-// `--thinking` surfaces reasoning parts for models that emit them. Some
-// opencode-go models expose reasoning-effort `--variant` (low/high/max),
-// folded in by opencode_variant_args. Fast mode has no CLI surface.
+// `--thinking` surfaces reasoning parts for models that emit them. Some models
+// expose a reasoning-effort `--variant`, folded in by opencode_variant_args.
+// Fast mode has no CLI surface.
 fn opencode_structured_args(
     input: &ProviderLaunchInput,
     _mcp: Option<&SessionLaunchProcessConfig>,
@@ -395,15 +395,25 @@ fn opencode_structured_resume_args(
     args
 }
 
-// Reasoning-effort `--variant` for opencode-go models. Mirrors the variant map
-// in reasoningEffortsForModel (providerModels.ts). Clamps unsupported efforts
-// DOWN to the highest supported ≤ incoming; falls back to the lowest supported.
+// Reasoning-effort `--variant` for the OpenCode models that take one: every
+// opencode-go model, plus Muse Spark 1.3 on the Zen free tier. Mirrors the
+// variant map in reasoningEffortsForModel (providerModels.ts). Clamps
+// unsupported efforts DOWN to the highest supported ≤ incoming; falls back to
+// the lowest supported.
 fn opencode_variant_args(model_id: &str, effort: Option<ReasoningEffort>) -> Vec<String> {
     let effort = match effort {
         Some(e) => e,
         None => return Vec::new(),
     };
     let supported = match model_id {
+        // Muse Spark also has a `minimal` variant below Low, which has no rung
+        // on this ladder.
+        "opencode/muse-spark-1.3-contributor-free" => &[
+            ReasoningEffort::Low,
+            ReasoningEffort::Medium,
+            ReasoningEffort::High,
+            ReasoningEffort::Xhigh,
+        ][..],
         "opencode-go/glm-5.3-flash" | "opencode-go/glm-5.3" | "opencode-go/deepseek-v4-flash" => &[
             ReasoningEffort::Low,
             ReasoningEffort::High,
@@ -1300,6 +1310,31 @@ mod tests {
         let args = (get_provider_definition(ProviderId::Opencode).structured_args)(&input, None);
         assert!(args.windows(2).any(|window| window == ["--agent", "plan"]));
         assert!(!args.iter().any(|arg| arg == "--auto"));
+    }
+
+    // Muse Spark 1.3 is the one Zen free-tier model that takes `--variant`, so
+    // the matcher can't key on the `opencode-go/` prefix. Its ladder tops out
+    // at xhigh, below the global Max/Ultra.
+    #[test]
+    fn opencode_zen_muse_spark_takes_a_variant_capped_at_xhigh() {
+        let input = ProviderLaunchInput {
+            model_id: "opencode/muse-spark-1.3-contributor-free".to_string(),
+            reasoning_effort: Some(ReasoningEffort::Ultra),
+            ..launch_input(ProviderId::Opencode)
+        };
+        let args = (get_provider_definition(ProviderId::Opencode).structured_args)(&input, None);
+        assert!(args
+            .windows(2)
+            .any(|window| window == ["--variant", "xhigh"]));
+
+        let medium = ProviderLaunchInput {
+            reasoning_effort: Some(ReasoningEffort::Medium),
+            ..input
+        };
+        let args = (get_provider_definition(ProviderId::Opencode).structured_args)(&medium, None);
+        assert!(args
+            .windows(2)
+            .any(|window| window == ["--variant", "medium"]));
     }
 
     #[test]

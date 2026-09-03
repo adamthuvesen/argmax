@@ -550,8 +550,10 @@
 }
 
 /* Multitasks stay attached to the composer after the parent turn ends. The
-   rows keep the transcript's launch-row shape, with their text aligned to the
-   composer's own content inset. A capped lane keeps a long-running chat from
+   rows keep the transcript's launch-row shape, on a card cut from the same
+   cloth as the composer below it: same fill, a slightly tighter corner, and a
+   gap between the two so they read as a shelf above the field rather than a
+   header stuck to it. A capped lane keeps a long-running chat from
    surrendering its viewport to completed side work. */
 .multitask-composer-lane {
   display: flex;
@@ -561,7 +563,9 @@
   min-width: 0;
   max-height: min(180px, 30vh);
   margin: 16px var(--session-inline-padding) 0;
-  padding: 0 14px;
+  padding: 6px 15px;
+  border-radius: var(--radius-xl);
+  background: var(--composer-surface);
   overflow-y: auto;
   overscroll-behavior-y: contain;
 }
@@ -575,7 +579,7 @@
 }
 
 .multitask-composer-lane + .session-composer-stack {
-  margin-top: 0;
+  margin-top: 8px;
 }
 
 .session-composer-stack {

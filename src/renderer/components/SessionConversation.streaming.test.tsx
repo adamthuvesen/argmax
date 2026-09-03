@@ -689,6 +689,31 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getAllByText("Hello world")).toHaveLength(1);
   });
 
+  it("does not repeat cumulative Cursor narration after a tool split while running", () => {
+    const cursorPayload = (text: string, timestampMs: number): Record<string, unknown> => ({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text }] },
+      timestamp_ms: timestampMs
+    });
+    const { container } = renderConversation(
+      baseSession({ provider: "cursor", state: "running" }),
+      [
+        event("a2", "message.delta", " Block B.", "2026-05-12T15:00:05.000Z", cursorPayload("Block A. Block B.", 2)),
+        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "architecture.md" }
+        }),
+        event("a1", "message.delta", "Block A.", "2026-05-12T15:00:01.000Z", cursorPayload("Block A.", 1)),
+        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    const text = container.querySelector(".conversation-list")?.textContent ?? "";
+    expect(text.match(/Block A\./g)?.length ?? 0).toBe(1);
+    expect(text).toContain("Block B.");
+  });
+
   it("keeps Cursor narration, tools, and later streamed answer in chronological order", () => {
     const { container } = renderConversation(
       baseSession({ provider: "cursor", state: "running" }),
@@ -1640,7 +1665,7 @@ describe("SessionConversation — streaming & composer", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Send queued follow-up now: use the simpler approach"
+        name: "Send queued follow-up: use the simpler approach"
       })
     );
 

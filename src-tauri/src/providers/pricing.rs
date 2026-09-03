@@ -50,6 +50,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "opencode/mimo-v2.5-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "opencode/nemotron-3.5-lightning-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "opencode/nemotron-3-ultra-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "opencode/muse-spark-1.3-contributor-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     // OpenCode Go (opencode-go/*) — billed per-token models.
     "opencode-go/glm-5.3-flash" => ModelPricing { input: 0.075, output: 0.25, cache_read: 0.015, cache_write: 0.0 },
     "opencode-go/glm-5.3" => ModelPricing { input: 1.4, output: 4.4, cache_read: 0.26, cache_write: 0.0 },

@@ -56,7 +56,8 @@ import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CompactionNotice } from "./CompactionNotice.js";
-import type { MultitaskChild } from "../lib/multitask.js";
+import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
+import { dismissMultitask, readDismissedMultitasks } from "../lib/multitaskDismissals.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
@@ -417,9 +418,19 @@ export function SessionConversation({
   // Multitask events keep their launch-turn association in the fold so a
   // later finish still merges into the right notice. The visible row lives
   // above the composer, where it remains in view after the parent turn ends.
+  const [dismissedMultitasks, setDismissedMultitasks] = useState(readDismissedMultitasks);
+  // A dismissed row stays gone unless its chat is running again: answering it
+  // from the dock tab is new work, and new work belongs in the lane.
   const composerMultitaskNotices = useMemo(
-    () => renderItems.flatMap((item) => (item.kind === "turn" ? item.multitasks : [])),
-    [renderItems]
+    () =>
+      renderItems
+        .flatMap((item) => (item.kind === "turn" ? item.multitasks : []))
+        .filter((notice) => {
+          const childId = notice.childSessionId;
+          if (!childId || !dismissedMultitasks.has(childId)) return true;
+          return multitaskRowStatus(multitaskStates.get(childId) ?? notice.state) === "running";
+        }),
+    [renderItems, dismissedMultitasks, multitaskStates]
   );
   const transcriptRenderItems = useMemo(
     () =>
@@ -1117,6 +1128,12 @@ export function SessionConversation({
                   ? { onOpen: onOpenMultitask ?? onOpenSession }
                   : {})}
                 onStop={(sessionId) => void onTerminateSession(sessionId)}
+                {...(childId
+                  ? {
+                      onDismiss: () =>
+                        setDismissedMultitasks((current) => dismissMultitask(current, childId))
+                    }
+                  : {})}
               />
             );
           })}

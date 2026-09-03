@@ -1527,7 +1527,8 @@ button.tool-call-row-button {
 }
 
 /* Stop is the one action worth having without opening the multitask, but it is
-   not what the row is for: it appears on hover, and whenever it is tabbed to. */
+   not what the row is for: it appears on hover, and whenever it is tabbed to.
+   Dismiss takes the same seat once the row has settled and stop is gone. */
 .multitask-row-stop {
   display: grid;
   flex: 0 0 auto;

@@ -84,6 +84,14 @@ function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
   if (snapshot === null) {
     return event.message;
   }
+  // A tool split flushes the open buffer and opens a fresh one. Cursor's
+  // payload still carries the turn-cumulative assistant text, but the
+  // normalizer already emitted only the suffix in `event.message`. Diffing
+  // against an empty buffer would re-import the whole cumulative snapshot and
+  // repeat narration the prior group already rendered.
+  if (currentText.length === 0) {
+    return event.message;
+  }
   if (snapshot.startsWith(currentText)) {
     return snapshot.slice(currentText.length);
   }

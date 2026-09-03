@@ -6,7 +6,7 @@ use rmcp::{
 };
 
 use super::session_tools::ArgmaxTools;
-use crate::providers::mcp_injection::BROWSER_COOKIE_PERMISSION;
+use crate::providers::mcp_injection::{BROWSER_COOKIE_PERMISSION, SELF_PRESERVATION_INSTRUCTION};
 
 /// Serve the tool surface on stdin/stdout until the client disconnects.
 ///
@@ -59,7 +59,7 @@ impl ServerHandler for ArgmaxTools {
              browser_open a page, browser_snapshot to read it as an accessibility tree with \
              [ref=eN] handles, then click and type by ref. The user watches those pages in this \
              session's pane. Snapshot first and after every action; screenshot only when the \
-             question is visual. {BROWSER_COOKIE_PERMISSION}"
+             question is visual. {BROWSER_COOKIE_PERMISSION} {SELF_PRESERVATION_INSTRUCTION}"
             ),
         )
     }
@@ -77,5 +77,6 @@ mod tests {
             .expect("server instructions");
 
         assert!(instructions.contains(BROWSER_COOKIE_PERMISSION));
+        assert!(instructions.contains(SELF_PRESERVATION_INSTRUCTION));
     }
 }

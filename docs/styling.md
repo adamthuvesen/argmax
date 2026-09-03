@@ -54,7 +54,7 @@ Defined in [tokens.css](../src/renderer/styles/tokens.css):
 | Status | `--sage` (success/approve), `--amber` (warning/waiting), `--rose` (error/risk) | Semantic state colors (with `*-soft` variants) |
 | Usage series | `--usage-claude`, `--usage-codex`, `--usage-cursor`, `--usage-opencode`, `--usage-grok` | One per provider on the Usage page — dots, curves, row tints, share meters |
 | Radii | `--radius-xs` (3px), `--radius-sm` (4px), `--radius-md` (6px), `--radius-lg` (10px), `--radius-xl` (14px), `--radius-2xl` (20px) | Corner radii |
-| Spacing | `--space-1` (4px) to `--space-8` (32px) | Standard layout spacing steps |
+| Spacing | `--space-1` (4px) to `--space-8` (32px), plus `--space-1_5` (6px) and `--space-2_5` (10px) | Standard layout spacing steps |
 
 ## Component Patterns
 

@@ -213,9 +213,9 @@
   min-height: 240px;
   margin: 48px auto;
   place-items: center;
-  padding: 32px;
+  padding: var(--space-8);
   text-align: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .empty-state svg:not(.mascot) {
@@ -236,7 +236,7 @@
 
 .empty-state-retry {
   min-height: 32px;
-  padding: 0 16px;
+  padding: 0 var(--space-4);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -257,7 +257,7 @@
   right: 0;
   left: 0;
   z-index: 100;
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   color: #6b4a12;
   text-align: center;
   background: var(--amber-soft);
@@ -272,7 +272,7 @@
   right: 16px;
   z-index: 110;
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   padding: 10px 14px;
   border-radius: var(--radius-xl);

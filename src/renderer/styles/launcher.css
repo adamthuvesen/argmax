@@ -8,7 +8,7 @@
   display: grid;
   justify-items: center;
   gap: 18px;
-  padding: 0 10px;
+  padding: 0 var(--space-2_5);
   text-align: center;
 }
 
@@ -45,8 +45,8 @@
 
 .welcome-header {
   display: grid;
-  gap: 8px;
-  padding: 0 4px;
+  gap: var(--space-2);
+  padding: 0 var(--space-1);
 }
 
 .welcome-pane h1 {
@@ -66,7 +66,7 @@
 
 .welcome-section {
   display: grid;
-  gap: 10px;
+  gap: var(--space-2_5);
   padding: 16px 18px;
   border: 1px solid var(--line);
   border-radius: var(--radius-2xl);
@@ -78,13 +78,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-2_5);
 }
 
 .welcome-section-heading {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2_5);
 }
 
 .welcome-pane h2 {
@@ -126,7 +126,7 @@
 .welcome-refresh {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1_5);
   padding: 5px 10px;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -153,7 +153,7 @@
 
 .welcome-providers {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -161,8 +161,8 @@
 
 .welcome-provider {
   display: grid;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--space-2);
+  padding: var(--space-2_5) var(--space-3);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
   background: var(--panel-soft);
@@ -175,7 +175,7 @@
 .welcome-provider-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -226,7 +226,7 @@
 
 .welcome-provider-actions {
   display: grid;
-  gap: 6px;
+  gap: var(--space-1_5);
 }
 
 .welcome-provider-guidance {
@@ -253,9 +253,9 @@
 .welcome-command {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
-  padding: 6px 8px 6px 10px;
+  padding: var(--space-1_5) var(--space-2) var(--space-1_5) var(--space-2_5);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
   background: var(--panel-sunken);
@@ -274,7 +274,7 @@
 .welcome-copy {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   flex: 0 0 auto;
   padding: 3px 8px;
   border: 1px solid var(--line);
@@ -296,7 +296,7 @@
 .welcome-mcp > summary {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2_5);
   cursor: pointer;
   list-style: none;
 }
@@ -323,7 +323,7 @@
 .welcome-mcp > summary h2 {
   display: inline-flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .welcome-optional {
@@ -335,13 +335,13 @@
 }
 
 .welcome-mcp > .welcome-hint {
-  margin-top: 10px;
+  margin-top: var(--space-2_5);
 }
 
 .welcome-mcp-list {
   display: grid;
-  gap: 12px;
-  margin: 12px 0 0;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
   padding: 0;
   list-style: none;
 }

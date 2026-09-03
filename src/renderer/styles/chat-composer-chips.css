@@ -7,15 +7,15 @@
 .composer-chips-group {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1_5);
   min-width: 0;
   padding-left: 0;
   position: relative;
 }
 
 .composer-chips-group + .composer-chips-group {
-  padding-left: 12px;
-  margin-left: 4px;
+  padding-left: var(--space-3);
+  margin-left: var(--space-1);
 }
 
 /* The session toolbar sets its rhythm once, here: every item carries the same
@@ -32,7 +32,7 @@
 
 .session-input-toolbar .composer-context-chip,
 .session-input-toolbar .composer-footer-chip {
-  padding-inline: 8px;
+  padding-inline: var(--space-2);
   /* One height for both chip families: they hover into a filled pill, and a
      1px difference between two pills sitting side by side is visible. */
   height: 26px;
@@ -43,7 +43,7 @@
    neighbours — the kind of off-by-a-padding that made the row read as
    arbitrary in the first place. */
 .session-input-toolbar > .context-ring-anchor {
-  padding-inline: 4px;
+  padding-inline: var(--space-1);
   margin: 0;
 }
 
@@ -64,7 +64,7 @@
      container's compact breakpoint the grid folds those details away before the
      model label has to ellipsize. */
   flex-wrap: nowrap;
-  row-gap: 4px;
+  row-gap: var(--space-1);
 }
 
 .session-input-toolbar .composer-chips-model {
@@ -181,7 +181,7 @@
 .launch-workspace-pickers {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -239,7 +239,7 @@
   z-index: 40;
   width: 244px;
   max-width: calc(100cqw - 24px);
-  padding: 6px;
+  padding: var(--space-1_5);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   background: var(--panel);
@@ -249,10 +249,10 @@
 .composer-compact-context-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
   min-height: 30px;
-  padding: 6px 8px;
+  padding: var(--space-1_5) var(--space-2);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -325,7 +325,7 @@ button.composer-compact-context-row:hover,
    accentTokens.test.ts pins this literal. */
 @container (max-width: 720px) {
   .session-input {
-    padding: 8px 10px;
+    padding: var(--space-2) var(--space-2_5);
   }
 
   .session-input textarea {
@@ -337,7 +337,7 @@ button.composer-compact-context-row:hover,
     grid-template-columns: minmax(0, 1fr) 30px auto auto;
     grid-template-areas: "model details mode send";
     align-items: center;
-    column-gap: 6px;
+    column-gap: var(--space-1_5);
     row-gap: 0;
   }
 
@@ -365,7 +365,7 @@ button.composer-compact-context-row:hover,
 
   .session-input-toolbar .composer-chips-mode .agent-mode-toggle {
     min-width: 46px;
-    padding-inline: 8px;
+    padding-inline: var(--space-2);
   }
 
   .session-input-toolbar .composer-chips-context {
@@ -386,7 +386,7 @@ button.composer-compact-context-row:hover,
     grid-template-columns: 30px minmax(0, 1fr) 30px auto;
     grid-template-areas: "attach model details behavior";
     align-items: center;
-    column-gap: 6px;
+    column-gap: var(--space-1_5);
     row-gap: 0;
   }
 
@@ -430,7 +430,7 @@ button.composer-compact-context-row:hover,
     display: flex;
     width: 244px;
     max-width: calc(100cqw - 24px);
-    padding: 6px;
+    padding: var(--space-1_5);
     flex-direction: column;
     align-items: stretch;
     gap: 0;
@@ -447,7 +447,7 @@ button.composer-compact-context-row:hover,
   .launcher-surface .launch-workspace-pickers > .project-picker-anchor > .composer-context-chip {
     width: 100%;
     min-height: 30px;
-    padding: 6px 8px;
+    padding: var(--space-1_5) var(--space-2);
     color: var(--muted-strong);
   }
 
@@ -475,8 +475,8 @@ button.composer-compact-context-row:hover,
 .composer-attachments {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 4px 6px 0;
+  gap: var(--space-1_5);
+  padding: var(--space-1) var(--space-1_5) 0;
 }
 
 .composer-attachment-chip {
@@ -525,14 +525,14 @@ button.composer-compact-context-row:hover,
 .composer-annotations {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 4px 6px 0;
+  gap: var(--space-1_5);
+  padding: var(--space-1) var(--space-1_5) 0;
 }
 
 .composer-annotation-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1_5);
   max-width: 320px;
   padding: 3px 6px 3px 8px;
   border: 1px solid var(--line);
@@ -594,9 +594,9 @@ button.composer-compact-context-row:hover,
   flex-direction: column;
   z-index: 0;
   min-width: 0;
-  margin-inline: 10px;
+  margin-inline: var(--space-2_5);
   margin-bottom: -10px;
-  padding-bottom: 10px;
+  padding-bottom: var(--space-2_5);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   background: color-mix(in oklab, var(--composer-surface) 58%, var(--panel-sunken));
   overflow: hidden;
@@ -605,10 +605,10 @@ button.composer-compact-context-row:hover,
 .composer-queued-chip {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
   min-height: 36px;
-  padding: 6px 8px 6px 12px;
+  padding: var(--space-1_5) var(--space-2) var(--space-1_5) var(--space-3);
   border: 0;
   background: transparent;
   color: var(--text);
@@ -643,7 +643,7 @@ button.composer-compact-context-row:hover,
   align-items: center;
   gap: 5px;
   height: 28px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -704,7 +704,7 @@ button.composer-compact-context-row:hover,
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
   /* Matches .chat-bubble.user: the group may span the full column width. */
   max-width: 100%;
 }
@@ -757,7 +757,7 @@ button.composer-compact-context-row:hover,
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
   max-width: 100%;
 }
 
@@ -785,7 +785,7 @@ button.composer-compact-context-row:hover,
 .user-message-attachment-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 2px 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -814,7 +814,7 @@ button.composer-compact-context-row:hover,
   /* Matches the launcher composer's field floor. */
   min-height: 52px;
   max-height: 168px;
-  padding: 8px 8px;
+  padding: var(--space-2) var(--space-2);
   color: var(--text);
   border: 0;
   border-radius: var(--radius-2xl);
@@ -861,7 +861,7 @@ button.composer-compact-context-row:hover,
   inset: 0;
   z-index: 0;
   overflow: hidden;
-  padding: 8px 8px;
+  padding: var(--space-2) var(--space-2);
   font-family: var(--font-prose);
   font-size: var(--text-base);
   line-height: 1.55;
@@ -894,7 +894,7 @@ button.composer-compact-context-row:hover,
   /* 4px of padding against a 14px panel radius is what makes the 10px row
      radius below concentric with the corner it nests into — 14 - 4 = 10. Any
      other pairing leaves the marked row's corner fighting the panel's. */
-  padding: 4px;
+  padding: var(--space-1);
   list-style: none;
   overflow-y: auto;
   /* Reserve the scrollbar's gutter so the thumb rides beside the rows instead
@@ -925,8 +925,8 @@ button.composer-compact-context-row:hover,
 .slash-menu-option {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
+  gap: var(--space-2_5);
+  padding: var(--space-1_5) var(--space-3);
   border-radius: var(--radius-lg);
   cursor: pointer;
   line-height: 1.5;
@@ -971,14 +971,14 @@ button.composer-compact-context-row:hover,
 
 .slash-menu-badge {
   flex: 0 0 auto;
-  margin-inline-start: 4px;
+  margin-inline-start: var(--space-1);
   color: var(--muted);
   font-size: var(--text-2xs);
 }
 
 /* Section heading between the commands and the skills below them. */
 .slash-menu-section {
-  padding: 10px 12px 4px;
+  padding: var(--space-2_5) var(--space-3) var(--space-1);
   color: var(--muted);
   font-size: var(--text-xs);
 }
@@ -992,7 +992,7 @@ button.composer-compact-context-row:hover,
   margin: 0;
   /* Same 4px/14px/10px nesting as .slash-menu — the two open in the same slot
      and must not disagree about their corners. */
-  padding: 4px;
+  padding: var(--space-1);
   list-style: none;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -1007,7 +1007,7 @@ button.composer-compact-context-row:hover,
 .file-popover-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 5px 12px;
   border-radius: var(--radius-lg);
   cursor: pointer;
@@ -1037,7 +1037,7 @@ button.composer-compact-context-row:hover,
 }
 
 .file-popover-empty {
-  padding: 6px 12px;
+  padding: var(--space-1_5) var(--space-3);
   font-size: var(--text-sm);
   color: var(--text-soft, #6a6a6a);
   font-style: italic;
@@ -1053,7 +1053,7 @@ button.composer-compact-context-row:hover,
   display: grid;
   width: 28px;
   height: 28px;
-  margin-inline-start: 6px;
+  margin-inline-start: var(--space-1_5);
   padding: 0;
   flex: 0 0 auto;
   place-items: center;

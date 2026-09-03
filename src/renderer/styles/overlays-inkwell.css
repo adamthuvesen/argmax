@@ -63,11 +63,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   /* The input clears the divider by 12px above it, so the tabs need a matching
      gap below it. With the pill's own 3px, 8px here reads as the same beat and
      stops the strip from crowding the hairline. */
-  padding: var(--space-2) 12px 6px;
+  padding: var(--space-2) var(--space-3) var(--space-1_5);
   font-family: var(--font-ui);
 }
 
@@ -92,7 +92,7 @@
   border: 1px solid transparent;
   border-radius: 999px;
   cursor: pointer;
-  transition: color 120ms var(--ease), background 120ms var(--ease);
+  transition: color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
 }
 
 .command-palette-tab:hover {
@@ -125,7 +125,7 @@
 .command-palette-input-wrap {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2_5);
   padding: 13px 16px 12px;
   border-bottom: 1px solid var(--line-soft);
 }
@@ -171,7 +171,7 @@
 }
 
 .command-palette-results > .command-palette-group:first-child {
-  padding-top: 6px;
+  padding-top: var(--space-1_5);
 }
 
 .command-palette-result {
@@ -179,9 +179,9 @@
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  margin: 0 6px;
-  padding: 6px 12px;
+  gap: var(--space-2_5);
+  margin: 0 var(--space-1_5);
+  padding: var(--space-1_5) var(--space-3);
   border-radius: var(--radius-md);
   font-size: var(--text-sm-plus);
   cursor: pointer;
@@ -277,7 +277,7 @@
 .command-palette-result-meta {
   flex: 0 0 auto;
   max-width: 40%;
-  padding-left: 10px;
+  padding-left: var(--space-2_5);
 }
 
 .command-palette-result mark {
@@ -325,7 +325,7 @@
   list-style: none;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2_5);
   margin: 2px 8px;
   padding: 10px 14px;
   color: var(--muted);
@@ -352,7 +352,7 @@
 .command-palette-footer {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2_5);
   padding: 7px 16px;
   border-top: 1px solid var(--line-soft);
   background: transparent;
@@ -367,7 +367,7 @@
   display: inline-flex;
   align-items: center;
   height: 16px;
-  margin-right: 4px;
+  margin-right: var(--space-1);
   padding: 0 5px;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
@@ -397,7 +397,7 @@
   background: var(--panel);
   border-radius: var(--radius-2xl);
   border: 1px solid var(--line);
-  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-popover);
   padding: 20px 24px 18px;
 }
 
@@ -405,7 +405,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
 }
 
 .cheat-sheet-header h2 {
@@ -425,7 +425,7 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .cheat-sheet-row {

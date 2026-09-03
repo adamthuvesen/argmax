@@ -70,7 +70,7 @@
 }
 
 .session-multigrid-cell .launcher-hero {
-  gap: 10px;
+  gap: var(--space-2_5);
   padding: 0;
 }
 
@@ -339,12 +339,12 @@
    back to the conversation. */
 .conversation-surface .section-heading {
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
   padding-block: 0;
   /* Pin the title to the pane's left edge (near the sidebar) instead of the
      centered transcript gutter; actions stay pinned to the right pane chrome. */
-  padding-left: 20px;
-  padding-right: 20px;
+  padding-left: var(--space-5);
+  padding-right: var(--space-5);
   min-height: 0;
 }
 
@@ -394,7 +394,7 @@
   padding-top: calc(var(--titlebar-center) - 15px);
   padding-bottom: calc(var(--titlebar-strip-height) - var(--titlebar-center) - 15px);
   padding-left: var(--titlebar-leading-inset);
-  padding-right: 20px;
+  padding-right: var(--space-5);
   align-items: center;
 }
 
@@ -409,7 +409,7 @@
   min-height: 0;
   padding-top: 0;
   padding-bottom: 0;
-  padding-left: 20px;
+  padding-left: var(--space-5);
 }
 
 .app-shell[data-sidebar-collapsed="true"][data-review-panel-side="left"]
@@ -427,7 +427,7 @@
 .conversation-header-actions {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* The subagent transcript, rendered inside the review panel's Agents view.
@@ -440,7 +440,7 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  padding: 10px 0 16px;
+  padding: var(--space-2_5) 0 var(--space-4);
   background: transparent;
   animation: fade-in 200ms var(--ease);
 }
@@ -463,7 +463,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 14px 18px;
   border: 1px solid var(--line);
   border-radius: var(--radius-2xl);
@@ -480,7 +480,7 @@
   align-items: center;
   justify-content: space-between;
   min-width: 0;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* Agent, model, and effort are one label, so the line truncates as a unit and
@@ -534,20 +534,20 @@
 }
 
 .agent-activity-prompt .markdown p {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-2_5);
 }
 
 .agent-activity-prompt .markdown ul,
 .agent-activity-prompt .markdown ol {
-  margin-top: 6px;
-  margin-bottom: 10px;
+  margin-top: var(--space-1_5);
+  margin-bottom: var(--space-2_5);
 }
 
 .agent-activity-prompt .markdown pre,
 .agent-activity-prompt .markdown .markdown-table-scroll,
 .agent-activity-prompt .markdown blockquote {
-  margin-top: 8px;
-  margin-bottom: 10px;
+  margin-top: var(--space-2);
+  margin-bottom: var(--space-2_5);
 }
 
 .agent-activity-meta {
@@ -580,7 +580,7 @@
   display: flex;
   align-items: stretch;
   gap: 2px;
-  padding: 8px 12px 0;
+  padding: var(--space-2) var(--space-3) 0;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -615,7 +615,7 @@
   display: inline-flex;
   align-items: center;
   min-width: 0;
-  gap: 6px;
+  gap: var(--space-1_5);
   padding: 5px 6px 5px 10px;
   border: 0;
   background: transparent;
@@ -844,7 +844,7 @@
   box-sizing: border-box;
   min-width: 0;
   max-width: min(78%, 920px);
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
   animation: msg-in 240ms var(--ease);
 }
@@ -926,7 +926,7 @@
    weight, this doesn't need to imitate one. */
 .markdown p:has(+ ul),
 .markdown p:has(+ ol) {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .markdown strong {
@@ -1065,7 +1065,7 @@
 /* A nested list is one level tighter than its parent, so depth reads as
    depth rather than as a second list of equals. */
 .markdown li li + li {
-  margin-top: 6px;
+  margin-top: var(--space-1_5);
 }
 
 .markdown ul > li::marker {
@@ -1120,7 +1120,7 @@
   letter-spacing: -0.009em;
   line-height: 1.34;
   color: var(--prose-ink-strong);
-  margin: 28px 0 8px;
+  margin: var(--space-7) 0 var(--space-2);
 }
 
 .markdown h3 {
@@ -1138,7 +1138,7 @@
   font-size: var(--text-sm);
   font-weight: 600;
   line-height: 1.4;
-  margin: 20px 0 6px;
+  margin: var(--space-5) 0 var(--space-1_5);
   color: var(--muted-strong);
   text-transform: uppercase;
   letter-spacing: 0.085em;
@@ -1155,10 +1155,10 @@
 }
 
 .markdown .katex-display {
-  margin: 16px 0;
+  margin: var(--space-4) 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   max-width: 100%;
   scrollbar-width: thin;
 }
@@ -1189,7 +1189,7 @@
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease);
 }
@@ -1237,7 +1237,7 @@
 .mermaid-diagram-pending,
 .mermaid-diagram-error {
   margin: 0;
-  padding: 10px 4px;
+  padding: var(--space-2_5) var(--space-1);
   font-family: var(--font-ui);
   font-size: var(--text-sm);
   line-height: 1.45;
@@ -1307,8 +1307,8 @@
 }
 
 .mermaid-diagram-source {
-  margin: 4px 0 0;
-  padding: 10px 12px;
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2_5) var(--space-3);
   border: 0;
   border-radius: var(--radius-sm);
   background: color-mix(in oklab, var(--panel-sunken) 70%, transparent);
@@ -1323,7 +1323,7 @@
 }
 
 .mermaid-diagram[data-state="error"] .mermaid-diagram-source {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 /* Full-size mermaid: window-level, same stack as the commit dialog (below
@@ -1348,7 +1348,7 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-2xl);
-  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-popover);
   overflow: hidden;
 }
 
@@ -1356,7 +1356,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   flex: 0 0 auto;
   padding: 10px 12px 10px 18px;
   border-bottom: 1px solid var(--line-soft);
@@ -1372,7 +1372,7 @@
 .mermaid-diagram-lightbox-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .mermaid-diagram-lightbox-actions .mermaid-diagram-copy {
@@ -1385,7 +1385,7 @@
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 20px 24px 24px;
+  padding: var(--space-5) var(--space-6) var(--space-6);
   background: var(--tool-block-surface);
   scrollbar-width: thin;
 }
@@ -1480,7 +1480,7 @@
   /* Tight margins + a more present line so it reads as a deliberate section
      rule. At 14px+faint-fade the eye saw an empty hole rather than a divider;
      pulling the margins in and widening the solid span fixes that. */
-  margin: 10px 0;
+  margin: var(--space-2_5) 0;
   background: linear-gradient(90deg, transparent, var(--line-strong) 12%, var(--line-strong) 88%, transparent);
   border: 0;
 }
@@ -1491,7 +1491,7 @@
   max-width: 100%;
   /* Reserve a right gutter so the hover copy button (absolutely positioned
      top-right) sits beside the prose instead of overlapping the first line. */
-  padding: 0 28px 0 0;
+  padding: 0 var(--space-7) 0 0;
   background: transparent;
   box-shadow: none;
 }
@@ -1569,7 +1569,7 @@
    tinted slab instead. The mark rides the bubble fg for the same reason the
    chip does: `--accent` is the bubble's own background. */
 .user-skill-token {
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   border-radius: var(--radius-sm);
   background: color-mix(in oklab, var(--user-message-fg) 14%, transparent);
   font-weight: 600;
@@ -1585,7 +1585,7 @@
 .chat-bubble.user .chat-bubble-body {
   /* Give text a tiny paint gutter inside the bubble padding so the final glyph
      is not clipped by the overflow edge when a short prompt fits on one line. */
-  padding-right: 4px;
+  padding-right: var(--space-1);
   margin-right: -4px;
   /* Six lines of bubble prose: enough to recognize the prompt, short enough
      that the reply stays on screen. Line-based rather than viewport-based so
@@ -1612,8 +1612,8 @@
 .chat-bubble-expand {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin: 8px 0 0;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1670,7 +1670,7 @@
   max-height: 28px;
   padding: 0;
   margin-top: -28px;
-  margin-right: 6px;
+  margin-right: var(--space-1_5);
   appearance: none;
   -webkit-appearance: none;
   border: 1px solid color-mix(in oklab, var(--line) 88%, transparent);
@@ -1699,7 +1699,7 @@
    Only appears when something is actually hidden. */
 .conversation-show-earlier {
   align-self: center;
-  margin: 4px 0 12px;
+  margin: var(--space-1) 0 var(--space-3);
   padding: 5px 12px;
   border: 1px solid var(--line);
   border-radius: 999px;

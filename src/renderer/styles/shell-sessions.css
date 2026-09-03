@@ -2,11 +2,11 @@
   position: relative;
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
-  gap: 10px;
+  gap: var(--space-2_5);
   align-items: center;
   width: 100%;
   min-height: 34px;
-  padding: 0 10px;
+  padding: 0 var(--space-2_5);
   /* Resting titles sit one ink step below primary so the selected row (which
      keeps --text) is the only bright label in the list. */
   color: var(--text-soft);
@@ -103,7 +103,7 @@
    here. Deliberately quiet: it is provenance, not status. */
 .session-imported-badge {
   flex: 0 0 auto;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   color: var(--muted);
@@ -252,7 +252,7 @@
 
 .session-row-action:hover:not(:disabled) {
   color: var(--text);
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--overlay-med);
 }
 
 .session-row-action:disabled {
@@ -303,7 +303,7 @@
 .session-archive-btn:hover {
   opacity: 1;
   color: var(--text);
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--overlay-med);
 }
 
 .session-pin-btn {
@@ -363,7 +363,7 @@
   align-items: center;
   min-height: 40px;
   margin-top: auto;
-  padding: 8px 0 0;
+  padding: var(--space-2) 0 0;
   color: var(--muted-strong);
   border-top: 1px solid var(--line-soft);
   font-size: var(--text-sm);
@@ -380,8 +380,8 @@
   width: 100%;
   min-width: 0;
   align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
+  gap: var(--space-2_5);
+  padding: var(--space-1_5) var(--space-2_5);
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
@@ -436,7 +436,7 @@
 .identity-sub {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1_5);
   font-family: var(--font-mono);
   color: var(--muted);
   font-size: var(--text-2xs);

@@ -60,7 +60,7 @@
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid color-mix(in oklab, var(--line-soft) 88%, transparent);
@@ -157,7 +157,7 @@
 .file-change-card-body .diff-line-number {
   display: flex;
   justify-content: flex-end;
-  gap: 6px;
+  gap: var(--space-1_5);
   background: transparent;
   border-right: 0;
 }
@@ -224,14 +224,14 @@
    an expanded diff should not step in from the line that opened it. */
 .tool-call-row > .tool-call-detail {
   margin: 2px 0 8px;
-  padding: 0 0 4px;
+  padding: 0 0 var(--space-1);
   border-top: 0;
   border-radius: 0;
 }
 
 .tool-call-row[data-tool-type="agent"] > .tool-call-detail {
   margin: 2px 0 6px;
-  padding: 4px 0 0;
+  padding: var(--space-1) 0 0;
 }
 
 .tool-call-row[data-tool-type="agent"] > .tool-call-detail > :not(.tool-call-agent-activity) {
@@ -308,9 +308,9 @@
 .session-meta-cards {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   min-height: 0;
-  margin-top: 16px;
+  margin-top: var(--space-4);
   margin-inline: var(--session-inline-padding);
   overflow: hidden;
 }
@@ -334,7 +334,7 @@
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  padding-right: 10px;
+  padding-right: var(--space-2_5);
   margin-right: 2px;
 }
 
@@ -342,7 +342,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
+  padding: var(--space-1);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -415,8 +415,8 @@
 .checks-list {
   display: flex;
   flex-direction: column;
-  padding: 6px 12px 8px;
-  gap: 4px;
+  padding: var(--space-1_5) var(--space-3) var(--space-2);
+  gap: var(--space-1);
   font-size: var(--text-sm);
 }
 
@@ -426,14 +426,14 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-size: var(--text-xs);
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 .checks-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 4px 0;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
   border-top: 1px solid var(--line-soft);
 }
 
@@ -444,7 +444,7 @@
 .checks-row-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto auto;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 
@@ -521,8 +521,8 @@
 }
 
 .checks-row-log {
-  margin: 4px 0 0;
-  padding: 8px 10px;
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2) var(--space-2_5);
   background: var(--panel-soft, rgba(0, 0, 0, 0.04));
   border-radius: var(--radius-md);
   font-family: var(--font-mono);
@@ -535,7 +535,7 @@
 
 .change-count {
   display: inline-flex;
-  gap: 6px;
+  gap: var(--space-1_5);
   align-items: center;
   white-space: nowrap;
   font-weight: 500;
@@ -559,7 +559,7 @@
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
   max-height: min(180px, 30vh);
   margin: 16px var(--session-inline-padding) 0;
@@ -571,7 +571,7 @@
 }
 
 .session-meta-cards + .multitask-composer-lane {
-  margin-top: 10px;
+  margin-top: var(--space-2_5);
 }
 
 .session-meta-cards + .composer-approvals-banner + .multitask-composer-lane {
@@ -579,7 +579,7 @@
 }
 
 .multitask-composer-lane + .session-composer-stack {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .session-composer-stack {
@@ -591,13 +591,13 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  margin-top: 16px;
+  margin-top: var(--space-4);
   margin-inline: var(--session-inline-padding);
 }
 
 .session-meta-cards + .session-composer-stack,
 .session-meta-cards + .composer-approvals-banner + .session-composer-stack {
-  margin-top: 10px;
+  margin-top: var(--space-2_5);
 }
 
 .session-input {
@@ -610,7 +610,7 @@
   container-type: inline-size;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   /* Absorbs the 1px the removed border used to contribute, so the box keeps
      its size. */
   padding: 13px 15px 11px;
@@ -639,7 +639,7 @@
 .session-input-toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-height: 34px;
   color: var(--muted);
   font-size: var(--text-sm-plus);

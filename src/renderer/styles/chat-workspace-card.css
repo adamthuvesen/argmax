@@ -255,7 +255,7 @@
 }
 
 .workspace-card-row-meta .change-count {
-  gap: 4px;
+  gap: var(--space-1);
   font-weight: 400;
 }
 

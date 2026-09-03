@@ -143,6 +143,10 @@
   --shadow-1: 0 1px 0 rgba(31, 28, 24, 0.04), 0 1px 2px rgba(31, 28, 24, 0.04);
   --shadow-2: 0 1px 0 rgba(31, 28, 24, 0.05), 0 8px 20px rgba(31, 28, 24, 0.06);
   --shadow-3: 0 1px 0 rgba(31, 28, 24, 0.06), 0 24px 60px rgba(31, 28, 24, 0.10);
+  /* Floating overlay panels (dialogs, popovers, cheat sheet): lifted above
+     --shadow-3 with a tighter, darker drop. Theme-agnostic black, so no dark
+     override — it reads on paper and on charcoal alike. */
+  --shadow-popover: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
 
   --radius-xs: 3px;
   --radius-sm: 4px;
@@ -176,9 +180,13 @@
   --working-nest-cycle: 0.9s;
 
   /* Spacing tokens. Prefer these over raw pixel values. docs/styling.md
-     documents the full scale. */
+     documents the full scale. The halves are de-facto steps, not rounding
+     conveniences: 6px and 10px recur across the app where the 4px ladder
+     runs too dense or too loose, so they get names rather than staying raw. */
   --space-1: 4px;
+  --space-1_5: 6px;
   --space-2: 8px;
+  --space-2_5: 10px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 20px;

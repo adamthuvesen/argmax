@@ -12,7 +12,7 @@
   display: grid;
   grid-template-columns: 7px minmax(0, 1fr) auto;
   align-items: baseline;
-  gap: 10px;
+  gap: var(--space-2_5);
   padding: 9px 14px;
 }
 
@@ -46,7 +46,7 @@
 .settings-provider-name {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text);
@@ -67,7 +67,7 @@
 .settings-provider-link {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1_5);
   font-size: var(--text-xs-plus);
   font-weight: 500;
   letter-spacing: 0.04em;
@@ -96,8 +96,8 @@
 .settings-provider-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 8px;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
   padding: 1px 7px;
   border-radius: var(--radius-sm);
   font-size: var(--text-2xs-plus);
@@ -120,7 +120,7 @@
 .settings-diagnostics-status {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .settings-diagnostics-status-dot {
@@ -148,8 +148,8 @@
   display: grid;
   grid-template-columns: 12px auto 56px 1fr;
   align-items: baseline;
-  gap: 10px;
-  padding: 8px 12px;
+  gap: var(--space-2_5);
+  padding: var(--space-2) var(--space-3);
   font-family: var(--font-mono);
   font-size: var(--text-xs-plus);
   line-height: 1.55;
@@ -164,7 +164,7 @@
 .settings-logs-dot {
   width: 6px;
   height: 6px;
-  margin-top: 6px;
+  margin-top: var(--space-1_5);
   border-radius: 999px;
   background: var(--muted);
 }
@@ -227,7 +227,7 @@
   width: 100%;
   border-collapse: collapse;
   font-size: var(--text-sm-plus);
-  margin-top: 6px;
+  margin-top: var(--space-1_5);
 }
 
 .settings-startup-table th,
@@ -272,7 +272,7 @@
 .settings-badge {
   display: inline-flex;
   align-items: center;
-  margin-left: 8px;
+  margin-left: var(--space-2);
   padding: 1px 6px;
   font-size: var(--text-2xs);
   font-weight: 500;

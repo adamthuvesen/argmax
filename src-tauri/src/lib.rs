@@ -235,6 +235,11 @@ pub fn run() {
             // reach the renderer until the user refocuses, so finished turns
             // look stuck on the thinking bubble.
             util::app_nap::prevent_app_nap();
+            // Resolving the login shell runs `zsh -lic`, which costs whatever
+            // the user's rc files cost. Every git command needs its PATH, so
+            // pay it here on a plain thread rather than letting the first
+            // status poll block a runtime worker on someone else's `.zshrc`.
+            std::thread::spawn(util::login_shell::warm);
             // Warm provider discovery in the background so the first surface
             // that needs it (WelcomePane, settings, launcher availability)
             // reads cached reports instead of paying the cold probe cost

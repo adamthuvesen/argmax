@@ -825,7 +825,7 @@
   border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs-plus);
   line-height: 1.35;
   text-align: left;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
@@ -893,7 +893,6 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-family: var(--font-code);
   font-size: var(--text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;

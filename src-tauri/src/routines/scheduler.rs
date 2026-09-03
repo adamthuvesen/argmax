@@ -126,6 +126,7 @@ pub(crate) async fn fire_routine(
     };
 
     let spec = LaunchSpec {
+        alongside: None,
         project: Some(fields.project_id.clone()),
         prompt: fields.prompt.clone(),
         worktree: fields.worktree,

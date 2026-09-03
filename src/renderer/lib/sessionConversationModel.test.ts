@@ -158,6 +158,27 @@ describe("buildConversationEvents", () => {
 
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "c1", "c2"]);
   });
+
+  it("keeps multitask rows, which are chat cards rather than provider output", () => {
+    const events = [
+      event("mt-done", "multitask.finished", "2026-05-12T15:00:05.000Z", "Fix the typo finished alongside", {
+        childSessionId: "child-1",
+        state: "complete"
+      }),
+      event("done", "message.completed", "2026-05-12T15:00:04.000Z", "Final answer"),
+      event("mt-start", "multitask.launched", "2026-05-12T15:00:02.000Z", "Running alongside: Fix the typo", {
+        childSessionId: "child-1"
+      }),
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+    ];
+
+    expect(buildConversationEvents(events).map((e) => e.id)).toEqual([
+      "user",
+      "mt-start",
+      "done",
+      "mt-done"
+    ]);
+  });
 });
 
 describe("hasRenderableSessionContent", () => {

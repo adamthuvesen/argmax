@@ -180,6 +180,17 @@ Model reasoning traces (`payload.thinking === true` from Claude thinking deltas,
 - **Provider handoff:** Changing providers on an idle session creates a `session.provider-changed` marker rendered by [ProviderSwitchNotice.tsx](../src/renderer/components/ProviderSwitchNotice.tsx) (`Cursor → Codex · GPT-5.6 Sol`). Follow-ups restart fresh with the capped transcript.
 - **Project handoff:** Moving a session creates a `session.moved` marker rendered by [ProjectMoveNotice.tsx](../src/renderer/components/ProjectMoveNotice.tsx) (`HQ → Argmax · shared checkout`). The destination starts a fresh provider conversation with the capped transcript and checkout path.
 
+## Multitask Rows
+
+A multitask dispatched from the composer writes `multitask.launched` into this chat and `multitask.finished` when the sibling chat's turn ends; both fold into one notice on the turn they were dispatched from, drawn by [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx) in the same shape as the subagent launch rows beside it (`Fix the changelog date  Multitask` / `Completed`).
+
+- **It rides inside the turn it came from.** The notice is carried on that turn's render item and drawn among its tool rows, sorted by the dispatch's own timestamp, so the row sits where the work actually forked. A dispatch is not a seam: it joins the turn's body rather than ending it, so asking for a multitask mid-turn never splits that turn's block in two.
+- **One row per multitask.** The finish row merges into the row the dispatch opened, keyed by child session id, wherever it already sits — including a turn that closed minutes ago. A finish whose dispatch has left the transcript window renders on its own, without a link.
+- **A finished row carries one line of the answer** on the status line (`Completed · Corrected the 0.4 heading to 2026.`), markdown stripped and cut at 120 characters. The full answer stays in the dock tab.
+- **The mark names it.** A running multitask shares the subagents' working nest, because at that moment they are doing the same thing; a settled one carries the Split glyph its dock tab uses. The status words are the launch row's own (`Running` / `Completed` / `Failed`), plus `Stopped` — the one thing a person can do to a multitask that a subagent has no equivalent for.
+- **Stop rides the row**, revealed on hover or focus. It stops that chat only: the early-stop launcher restore is a pane behaviour and a multitask has no pane.
+- **Clicking opens the dock, not another chat.** A multitask has no sidebar row; it opens as a tab in this pane's Agents view beside the subagents, carrying its own chat. See [multitask.md](multitask.md).
+
 ## Subagent Activity Panes
 
 Subagent tool calls (Claude `Task`/`Agent`, Codex `spawn_agent`, OpenCode `task`, Cursor `taskToolCall`/ACP `task`) display a launch row in the parent conversation via [AgentLaunchList.tsx](../src/renderer/components/AgentLaunchList.tsx), rendered as a bulleted task list:
@@ -197,7 +208,7 @@ Subagent tool calls (Claude `Task`/`Agent`, Codex `spawn_agent`, OpenCode `task`
 
 Clicking the text opens the activity pane; the trailing chevron expands the raw tool detail inline. The button hugs its text so that chevron sits beside the task instead of against the far edge.
 
-- **The right dock, not a grid column:** Clicking the row opens the subagent in that session's review panel — a third mode beside Changes and Files ([AgentsView.tsx](../src/renderer/components/AgentsView.tsx)), so delegated work reads next to the work it came from. Each open subagent is a tab in the same strip Files mode uses; the transcript itself is [AgentActivity.tsx](../src/renderer/components/AgentActivity.tsx) and carries no chrome of its own. Every tab stays mounted, so a backgrounded subagent keeps polling. ⌘W closes the active tab, as it does for a file. The panel's status bar names the state (`Working` / `Done`) and the model the subagent ran on (`Opus 5 · Extra High`); a tab whose launch row leaves the timeline (a superseded Codex spawn) is dropped.
+- **The right dock, not a grid column:** Clicking the row opens the subagent in that session's review panel — a third mode beside Changes and Files ([AgentsView.tsx](../src/renderer/components/AgentsView.tsx)), so delegated work reads next to the work it came from. Each open subagent is a tab in the same strip Files mode uses; the transcript itself is [AgentActivity.tsx](../src/renderer/components/AgentActivity.tsx) and carries no chrome of its own. Every tab stays mounted, so a backgrounded subagent keeps polling. ⌘W closes the active tab, as it does for a file. The model the subagent ran on (`Opus 5 · Extra High`) sits on its instructions line, and whether it is still working is the tab's own mark — the panel has no status strip. A tab whose launch row leaves the timeline (a superseded Codex spawn) is dropped.
 - **Trace imports:** `session:agent-events` fetches and parses trace files on demand. Parsed rows are saved with deterministic IDs (`trace:<provider>:<sessionId>:<parentToolUseId>:<childId>:<seq>:<kind>`) and hidden from the main chat view.
 
 ## Chat Verbosity & Single-Line Activity Mode

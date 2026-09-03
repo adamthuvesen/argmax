@@ -81,6 +81,10 @@ One user message and everything the agent produced in response, up to the next u
 The session whose agent started this one with the `argmax` MCP tools, held on the row as `launched_by_session_id` with the chain's depth in `launch_depth`. It names lineage, not hierarchy: a launched session is a top-level sidebar session that outlives its launcher, not a subagent, and it is what the launch caps (two levels deep, ten per session) are counted over.
 _Avoid_: Parent session, child session, spawned session, subagent
 
+**Multitask**:
+A chat dispatched from inside another chat while its agent is mid-turn — the small, often unrelated fix you think of halfway through something else. It is a sibling session with a fresh context, running by default in the same checkout, and never a second turn in the chat that started it. It has no sidebar row: it reads as a launch row in the chat that dispatched it and opens in that chat's subagent dock. The result reaches that chat's agent only on the next thing the person types.
+_Avoid_: Side task, background task, parallel turn, subagent
+
 **Session state**:
 Where a session is in its lifecycle: `created`, `running`, `waiting`, `blocked`, `complete`, `failed`, `cancelled`.
 

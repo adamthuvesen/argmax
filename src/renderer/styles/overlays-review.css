@@ -636,36 +636,65 @@
   display: flex;
 }
 
+/* A multitask tab holds a whole chat, composer included, so it fills the panel
+   the way the transcript above it does. The "open as full chat" line sits under
+   it rather than in the status strip: it is a way out of the dock, not a fact
+   about what is running. */
+.multitask-panel {
+  /* The transcript's edge fades dissolve into the surface behind them, which
+     here is the panel, not the pane. */
+  --conversation-fade: var(--panel);
+  /* The gutter is declared on `.session-main-column`, and the dock is that
+     div's sibling, not its child. Without it here `.conversation-list`'s
+     `padding: <fade> <gutter> <tail>` shorthand is invalid at computed-value
+     time and collapses to zero on all four sides — which took the vertical
+     padding the edge fades need to land on, and the tail that keeps the newest
+     line clear of the composer. Narrower than the pane's, the way the subagent
+     transcript beside it is (`.agent-activity`). */
+  --session-inline-padding: clamp(14px, calc((100% - var(--chat-content-width)) / 2), 2000px);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The chat surface lays itself out on a four-row grid (heading, scroll, meta
+   cards, composer). In the dock two of those rows have nothing to show — the
+   tab already names the multitask, and the checks card belongs to the chat that
+   owns the checkout — and a `display: none` grid item does not vacate its row:
+   it hands its track to the next child, which is how an empty meta strip came
+   to absorb 269px above the composer. A flex column has no fixed tracks, so
+   hidden children cost nothing and the transcript takes the slack. */
+.multitask-panel .conversation-surface {
+  display: flex;
+  flex-direction: column;
+  /* The heading is hidden here so the top padding has nothing to clear, but the
+     bottom keeps the pane's value: the two composers sit side by side and a
+     shorter gap under this one reads as a misalignment, not as tightening. */
+  padding: 6px 0 24px;
+}
+
+.multitask-panel .conversation-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* The pane's composer is a card inset from the transcript gutter; docked, it
+   was stretched edge to edge and its top read as a rule across the panel. */
+.multitask-panel .session-composer-stack {
+  margin-inline: var(--session-inline-padding);
+}
+
+.multitask-panel .section-heading,
+.multitask-panel .session-meta-cards {
+  display: none;
+}
+
 /* A running subagent's nest sits in the tab; a settled one shows the bot mark,
    rose when the run failed. */
 .file-tab-icon[data-status="error"] {
   color: var(--rose);
-}
-
-.review-agents-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.review-agents-state[data-status="running"] {
-  color: var(--accent);
-}
-
-.review-agents-state[data-status="error"] {
-  color: var(--rose);
-}
-
-.review-agents-model {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The model is the fact, the effort qualifies it. */
-.review-agents-effort {
-  color: color-mix(in oklab, var(--muted) 78%, transparent);
 }
 
 /* A count only earns its space once a session has fanned out — and only where

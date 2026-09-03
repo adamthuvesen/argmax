@@ -24,6 +24,18 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
 }
 
 describe("ToolCallRow", () => {
+  it("marks a built-in web row with the globe though it has no MCP server", () => {
+    render(<ToolCallRow tool={tool({ name: "WebSearch", inputPreview: "tauri 2 webview" })} />);
+
+    expect(screen.getByRole("img", { name: "Web" })).toBeInTheDocument();
+  });
+
+  it("leaves a local row unmarked", () => {
+    render(<ToolCallRow tool={tool()} />);
+
+    expect(screen.queryByRole("img", { name: "Web" })).toBeNull();
+  });
+
   it("does not offer a disclosure when expanding would show nothing", () => {
     render(<ToolCallRow tool={tool()} />);
 

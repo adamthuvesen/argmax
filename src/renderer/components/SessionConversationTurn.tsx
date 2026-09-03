@@ -20,6 +20,7 @@ import { sessionAgentModeKey, writeStoredAgentMode } from "../lib/agentMode.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
 import type { AgentMode } from "../../shared/types.js";
 import { AgentLaunchList } from "./AgentLaunchList.js";
+import { MultitaskRow } from "./MultitaskRow.js";
 import { ActivitySummaryLine } from "./ActivitySummaryLine.js";
 import { ChatBubble } from "./ChatBubble.js";
 import { LogBlock } from "./LogBlock.js";
@@ -54,6 +55,7 @@ function SessionConversationTurnInner({
   onOpenFile,
   onOpenAgent,
   onOpenDiff,
+  onOpenMultitask,
   onOpenReview,
   onTerminateSession,
   onForkSession,
@@ -65,7 +67,8 @@ function SessionConversationTurnInner({
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
-  defaultTurnChangesExpanded
+  defaultTurnChangesExpanded,
+  multitaskStates
 }: {
   item: TurnRenderItem;
   priorItem: RenderItem | null;
@@ -78,6 +81,8 @@ function SessionConversationTurnInner({
   onOpenAgent?: (tool: ToolCall) => void;
   /** Open one file's diff in the review panel's Changes view. */
   onOpenDiff?: (path: string) => void;
+  /** Open a multitask's chat as a dock tab, beside this session's subagents. */
+  onOpenMultitask?: (sessionId: string) => void;
   /** Open the review panel on the workspace's changes, from the top. */
   onOpenReview?: () => void;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
@@ -91,6 +96,8 @@ function SessionConversationTurnInner({
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
   defaultTurnChangesExpanded?: boolean;
+  /** Each multitask's own chat state, which outranks its timeline rows. */
+  multitaskStates?: Map<string, string>;
 }): JSX.Element {
   const sessionIsLive = session?.state === "running";
   const isStreamingTurn = isLatestTurn && sessionIsLive;
@@ -411,7 +418,29 @@ function SessionConversationTurnInner({
         )
       };
     });
-  const sortedChildren = [...assistantChildren, ...toolChildren]
+  // A multitask sits among the turn's tool rows, at the moment it was
+  // dispatched — the same place, and the same shape, as a subagent launch.
+  const multitaskChildren: AnnotatedChild[] = item.multitasks.map((notice) => {
+    const childId = notice.childSessionId;
+    // Only a child still in the snapshot can be opened. One that has aged out
+    // of it renders as plain text rather than a button that goes nowhere.
+    const opens = childId !== null && multitaskStates?.has(childId) === true;
+    return {
+      kind: "tool" as const,
+      id: `multitask-${childId ?? notice.createdAt}`,
+      createdAt: notice.createdAt,
+      sortAt: notice.createdAt,
+      node: (
+        <MultitaskRow
+          notice={notice}
+          liveState={childId ? (multitaskStates?.get(childId) ?? null) : null}
+          {...(opens && onOpenMultitask ? { onOpen: onOpenMultitask } : {})}
+          onStop={(sessionId) => void onTerminateSession(sessionId)}
+        />
+      )
+    };
+  });
+  const sortedChildren = [...assistantChildren, ...toolChildren, ...multitaskChildren]
     .sort((a, b) => {
       const cmp = a.sortAt.localeCompare(b.sortAt);
       if (cmp !== 0) return cmp;
@@ -507,7 +536,7 @@ function SessionConversationTurnInner({
     }
     return { kind: child.kind, id: child.id, node: child.node };
   });
-  const earliestCreatedAt = [...assistantChildren, ...toolChildren]
+  const earliestCreatedAt = [...assistantChildren, ...toolChildren, ...multitaskChildren]
     .map((c) => c.createdAt)
     .filter((t): t is string => typeof t === "string" && t.length > 0)
     .sort()[0];

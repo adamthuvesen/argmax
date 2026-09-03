@@ -100,6 +100,12 @@ pub struct SessionSummary {
     /// Null for a session the user or a routine started.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub launched_by_session_id: Option<String>,
+    /// How this session came to exist: `agent` for one an agent launched (and
+    /// for every ordinary session the user started), `multitask` for one
+    /// dispatched from inside another chat. The sidebar hides a multitask —
+    /// it belongs to the chat that dispatched it, which shows it in the
+    /// subagent dock — so this has to reach the renderer.
+    pub launch_kind: String,
 }
 
 /// How far a session sits from a human-started one, and how many sessions it
@@ -119,7 +125,8 @@ pub fn session_launch_lineage(
             r#"
         SELECT
           (SELECT launch_depth FROM sessions WHERE id = ?1),
-          (SELECT COUNT(*) FROM sessions WHERE launched_by_session_id = ?1)
+          (SELECT COUNT(*) FROM sessions
+             WHERE launched_by_session_id = ?1 AND launch_kind = 'agent')
         "#,
         )
         .map_err(sqlite_error)?
@@ -132,33 +139,59 @@ pub fn session_launch_lineage(
         .map_err(sqlite_error)
 }
 
-/// Record which session launched this one. Written after the launch settles,
-/// so the launch path itself stays the one the sidebar and routines use.
+/// A session an agent launched for itself through `session_launch`. The launch
+/// caps count these.
+pub const LAUNCH_KIND_AGENT: &str = "agent";
+/// A session a person dispatched from a chat to run alongside the turn they
+/// were watching. Outside the caps, and its finish must not wake the parent as
+/// a turn — see `docs/multitask.md`.
+pub const LAUNCH_KIND_MULTITASK: &str = "multitask";
+
+/// Record which session launched this one, and why. Written after the launch
+/// settles, so the launch path itself stays the one the sidebar and routines
+/// use.
 pub fn record_session_launch(
     connection: &Connection,
     session_id: &str,
     launched_by_session_id: &str,
     depth: i64,
+    launch_kind: &str,
 ) -> ArgmaxResult<()> {
     connection
         .prepare_cached(
-            "UPDATE sessions SET launched_by_session_id = ?, launch_depth = ? WHERE id = ?",
+            "UPDATE sessions
+               SET launched_by_session_id = ?, launch_depth = ?, launch_kind = ?
+             WHERE id = ?",
         )
         .map_err(sqlite_error)?
-        .execute((launched_by_session_id, depth, session_id))
+        .execute((launched_by_session_id, depth, launch_kind, session_id))
         .map_err(sqlite_error)?;
     Ok(())
 }
 
+/// Why this session was launched, for the paths that treat a multitask
+/// differently from an agent's own launch. `agent` for anything that predates
+/// the column or was started by a person directly.
+pub fn session_launch_kind(connection: &Connection, session_id: &str) -> ArgmaxResult<String> {
+    connection
+        .prepare_cached("SELECT launch_kind FROM sessions WHERE id = ?")
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| row.get::<_, String>(0))
+        .map_err(sqlite_error)
+}
+
 /// The sessions this one's agent launched, newest first. The default watch
-/// list for `session_wait`.
+/// list for `session_wait`, which is why it counts agent launches only: a
+/// multitask is a chat the *person* dispatched from this one, and an agent
+/// waiting on "the sessions I launched" never launched it.
 pub fn sessions_launched_by(
     connection: &Connection,
     launched_by_session_id: &str,
 ) -> ArgmaxResult<Vec<String>> {
     let mut statement = connection
         .prepare_cached(
-            "SELECT id FROM sessions WHERE launched_by_session_id = ? ORDER BY started_at DESC",
+            "SELECT id FROM sessions WHERE launched_by_session_id = ? AND launch_kind = 'agent' \
+             ORDER BY started_at DESC",
         )
         .map_err(sqlite_error)?;
     let rows = statement
@@ -597,6 +630,7 @@ fn session_row_to_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
         context_tokens: row.get("context_tokens")?,
         context_window: row.get("context_window")?,
         launched_by_session_id: row.get("launched_by_session_id")?,
+        launch_kind: row.get("launch_kind")?,
     })
 }
 

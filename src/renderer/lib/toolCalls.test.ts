@@ -12,6 +12,7 @@ import {
   getToolTypeBucket,
   isAgentToolName,
   isHiddenToolName,
+  isWebToolName,
   mcpToolLabel,
   parseMcpToolName,
   summarizeToolGroup,
@@ -33,6 +34,21 @@ function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "name">): ToolCall {
     parentToolUseId: overrides.parentToolUseId ?? null
   };
 }
+
+describe("isWebToolName", () => {
+  it("marks the built-in web tools, whichever bucket their name lands in", () => {
+    expect(isWebToolName("WebFetch")).toBe(true);
+    // WebSearch sits in the `search` bucket, so the mark cannot key off it.
+    expect(isWebToolName("WebSearch")).toBe(true);
+    expect(isWebToolName("mcp__Claude_Browser__navigate")).toBe(true);
+  });
+
+  it("leaves local tools unmarked", () => {
+    expect(isWebToolName("Bash")).toBe(false);
+    expect(isWebToolName("Grep")).toBe(false);
+    expect(isWebToolName("search_replace")).toBe(false);
+  });
+});
 
 describe("MCP tool names", () => {
   it("parses the Claude/Cursor prefix and drops the client from the server", () => {

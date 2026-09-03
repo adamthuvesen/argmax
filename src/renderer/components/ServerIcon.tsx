@@ -1,16 +1,34 @@
-import { Plug } from "lucide-react";
+import { Globe, Plug } from "lucide-react";
 import type { JSX } from "react";
 import { serverIconFor } from "../lib/serverIcons.js";
 
 /**
- * Leading mark on an MCP tool row: the server's brand mark in its own
- * colours, or a plug for a server no mark is wired up for. The server's name
- * stays in the row text, so the mark is a recognition aid rather than the
+ * Leading mark on a tool row: the server's brand mark in its own colours, a
+ * globe for anything that reaches the web, or a plug for an MCP server no mark
+ * is wired up for. Rows that are none of those get nothing. The row text names
+ * the server and the action, so the mark is a recognition aid rather than the
  * only label.
  */
-export function ServerIcon({ server }: { server: string }): JSX.Element {
-  const icon = serverIconFor(server);
+export function ServerIcon({
+  server,
+  web = false
+}: {
+  server: string | null;
+  web?: boolean;
+}): JSX.Element | null {
+  const icon = server ? serverIconFor(server) : null;
   if (!icon) {
+    // A brand mark still wins for a browser server that has one. Otherwise the
+    // web gets a globe rather than the plug: the built-in search and fetch
+    // carry no server at all, and a plug would say "some MCP server" about a
+    // row that is plainly a web request.
+    // Labelled, not hidden, like the brand marks: it is the only thing on a
+    // browser-MCP row that says "the web" when the server name does not.
+    if (web)
+      return (
+        <Globe size={12} className="tool-call-row-server-icon" role="img" aria-label="Web" />
+      );
+    if (!server) return null;
     return <Plug size={12} className="tool-call-row-server-icon" aria-hidden="true" />;
   }
   return (

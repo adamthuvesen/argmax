@@ -89,6 +89,8 @@ export type EventType =
   | "session.compacted"
   | "session.provider-changed"
   | "session.cleared"
+  | "multitask.launched"
+  | "multitask.finished"
   | "session.move-requested"
   | "session.moved"
   | "session.recovered-from-crash";
@@ -135,6 +137,7 @@ export type SessionClearInput = Bindings.SessionClearInput;
 export type SessionSuggestFollowUpInput = Bindings.SessionSuggestFollowUpInput;
 export type FollowUpSuggestion = Bindings.FollowUpSuggestion;
 export type SessionForkResult = Bindings.SessionForkResult;
+export type MultitaskLaunched = Bindings.MultitaskLaunched;
 export type SessionCostSummaryInput = Bindings.SessionCostSummaryInput;
 export type WorkspaceStatusInput = OptionalNullable<Bindings.WorkspaceStatusInput, "workspaceIds">;
 export type TerminalSpawnInput = Bindings.TerminalSpawnInput;
@@ -381,6 +384,11 @@ export interface SessionSummary {
   /** The session whose agent launched this one with the `argmax` MCP tools.
    *  Absent for a session the user or a routine started. */
   launchedBySessionId?: string | null;
+  /** How this session came to exist: `agent` for one an agent launched and for
+   *  every ordinary session, `multitask` for one dispatched from inside
+   *  another chat. A multitask stays out of the sidebar — it belongs to the
+   *  chat that dispatched it, which shows it in the subagent dock. */
+  launchKind?: string;
 }
 
 /**
@@ -608,6 +616,14 @@ export interface ArgmaxApi {
     eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;
     agentEvents: (input: SessionAgentEventsInput) => Promise<SessionEventsSinceResult>;
     fork: (input: SessionForkInput) => Promise<SessionForkResult>;
+    /** Dispatch a multitask: a sibling chat that runs alongside this one's
+     *  turn, in the same checkout unless `worktree` asks for its own. */
+    multitask: (input: {
+      sessionId: string;
+      prompt: string;
+      worktree?: boolean;
+      taskLabel?: string | null;
+    }) => Promise<MultitaskLaunched>;
     clear: (input: SessionClearInput) => Promise<SessionSummary>;
     /** A composer placeholder proposed by the cheap helper model from the
      *  agent's last message. `suggestion` is null when there is nothing to

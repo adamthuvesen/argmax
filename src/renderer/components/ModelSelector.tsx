@@ -316,6 +316,7 @@ function EffortSlider({
       {open && (
         <div
           className="effort-slider-popover"
+          data-type-scale="chrome"
           role="dialog"
           aria-label={ariaLabel}
           ref={flyout.setPopover}
@@ -559,6 +560,9 @@ function ChipModelPicker<T extends ProviderModelSelection>({
       {open && (
         <div
           className="model-picker-flyout"
+          // The menu reads at app-chrome size even when the chip that opened it
+          // sits in a composer (one step up). See tokens.css.
+          data-type-scale="chrome"
           ref={flyout.setPopover}
           style={flyout.floatingStyles}
           onClick={(event) => {

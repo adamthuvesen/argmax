@@ -20,6 +20,7 @@ use argmax_lib::{
         },
         sessions::{
             find_session_by_id, persist_session, record_session_launch, PersistSessionInput,
+            LAUNCH_KIND_AGENT,
         },
         workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
     },
@@ -537,6 +538,7 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
                 &format!("session-child-{index}"),
                 "session-parent",
                 1,
+                LAUNCH_KIND_AGENT,
             )
             .expect("record lineage");
         }
@@ -631,8 +633,14 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
             )
             .expect("session");
         }
-        record_session_launch(&connection, "session-child", "session-parent", 1)
-            .expect("record lineage");
+        record_session_launch(
+            &connection,
+            "session-child",
+            "session-parent",
+            1,
+            LAUNCH_KIND_AGENT,
+        )
+        .expect("record lineage");
         for (id, r#type, message, payload) in [
             (
                 "event-1",
@@ -1171,8 +1179,14 @@ async fn a_completion_notice_queued_behind_a_running_turn_stays_collectable() {
     );
     {
         let connection = database.connection();
-        record_session_launch(&connection, "session-child", "session-parent", 1)
-            .expect("record lineage");
+        record_session_launch(
+            &connection,
+            "session-child",
+            "session-parent",
+            1,
+            LAUNCH_KIND_AGENT,
+        )
+        .expect("record lineage");
         persist_timeline_event(
             &connection,
             &PersistTimelineEventInput {

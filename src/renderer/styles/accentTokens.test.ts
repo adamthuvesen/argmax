@@ -763,7 +763,7 @@ describe("accent CSS contract", () => {
 
     expect(popoverRule).toContain("padding: 5px;");
     expect(projectItemRule).toContain("padding: 5px 9px;");
-    expect(projectItemRule).toContain("font-size: var(--text-sm);");
+    expect(projectItemRule).toContain("font-size: var(--text-xs-plus);");
     expect(projectItemRule).toContain("line-height: 1.35;");
     expect(modelPopoverRule).toContain("min-width: 220px;");
     expect(modelItemRule).toContain("gap: 8px;");

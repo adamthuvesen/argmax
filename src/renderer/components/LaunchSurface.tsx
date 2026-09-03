@@ -827,6 +827,9 @@ export function LaunchSurface({
             {projectPickerOpen && (
               <ul
                 className="project-picker-popover"
+                // Menus read at app-chrome size even though the composer around
+                // them sits one step up. See tokens.css.
+                data-type-scale="chrome"
                 role="listbox"
                 aria-label="Select project"
                 ref={projectListRef}
@@ -902,6 +905,7 @@ export function LaunchSurface({
             {branchPickerOpen && (
               <ul
                 className="project-picker-popover"
+                data-type-scale="chrome"
                 role="listbox"
                 aria-label="Select branch"
                 ref={branchListRef}

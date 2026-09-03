@@ -150,6 +150,19 @@ pub struct WorkspaceService {
     scratch_root: Option<PathBuf>,
 }
 
+/// A workspace pointing at a checkout that already exists — the one the chat
+/// that dispatched this work is using. Not an IPC input: it is built inside the
+/// launch path, which is why the path is a plain string rather than a validated
+/// newtype. Unlike `create_current` that path is not the project root, because a
+/// chat in a worktree shares that worktree, not the repo.
+pub struct WorkspacesCreateAlongsideInput {
+    pub project_id: crate::ipc::validation::ProjectId,
+    pub task_label: crate::ipc::validation::TaskLabel,
+    pub path: String,
+    pub branch: String,
+    pub base_ref: String,
+}
+
 impl WorkspaceService {
     pub fn new(database: Arc<Database>) -> Arc<Self> {
         Self::with_publisher(database, |_| {})
@@ -544,6 +557,45 @@ impl WorkspaceService {
                     .clone()
                     .unwrap_or_else(|| project.current_branch.clone()),
                 path: project.repo_path.clone(),
+                state: "created".to_string(),
+                shared_workspace: true,
+                kind: "git".to_string(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )?;
+        self.publish(DashboardDelta {
+            projects: list_projects(&connection)?,
+            workspaces: vec![workspace.clone()],
+            ..DashboardDelta::default()
+        });
+        drop(connection);
+        if let Err(error) = self.watch(&workspace.id) {
+            tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
+        }
+        Ok(workspace)
+    }
+
+    /// A workspace in a checkout that already exists: the one the chat that
+    /// dispatched this work runs in. `create_current` always resolves the
+    /// project's own root, which is the wrong tree whenever the dispatching
+    /// chat is itself in a worktree — the work then landed on another branch
+    /// while both agents were told they were sharing a checkout.
+    pub fn create_alongside(
+        self: &Arc<Self>,
+        input: WorkspacesCreateAlongsideInput,
+    ) -> ArgmaxResult<WorkspaceSummary> {
+        let connection = self.database.connection();
+        let project = require_project(&connection, input.project_id.as_str())?;
+        let workspace = persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: Uuid::new_v4().to_string(),
+                project_id: project.id.clone(),
+                task_label: input.task_label.as_str().to_string(),
+                branch: input.branch,
+                base_ref: input.base_ref,
+                path: input.path,
                 state: "created".to_string(),
                 shared_workspace: true,
                 kind: "git".to_string(),

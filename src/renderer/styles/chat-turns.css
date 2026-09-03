@@ -1495,3 +1495,65 @@ button.tool-call-row-button {
   color: var(--diff-del-gutter-fg);
   text-align: right;
 }
+
+/* A multitask reads as a launch row among the turn's tools, the same shape as
+   the subagents beside it: it is work running alongside this turn, opened in
+   the same dock. The row borrows `.agent-launch-*` wholesale; a settled one is
+   marked with the Split glyph its dock tab already uses, which is the only
+   thing that has to say "multitask, not subagent" — the running state shares
+   the nest, because at that moment they are doing the same thing. */
+.multitask-row-mark {
+  display: inline-grid;
+  place-items: center;
+  color: var(--muted);
+  animation: working-nest-enter var(--motion-fast) var(--ease-out);
+}
+
+.agent-launch-row[data-status="error"] .multitask-row-mark {
+  color: var(--rose);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .multitask-row-mark {
+    animation: none;
+  }
+}
+
+/* The finished multitask's first line of answer, riding the status line so the
+   row stays two lines tall whether or not an answer landed. Always quiet, even
+   on a failed row where the status word beside it is rose: the status is the
+   thing to read, this is the detail. */
+.multitask-row-answer {
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+/* Stop is the one action worth having without opening the multitask, but it is
+   not what the row is for: it appears on hover, and whenever it is tabbed to. */
+.multitask-row-stop {
+  display: grid;
+  flex: 0 0 auto;
+  /* At the row's right edge, clear of the label: the row is for reading, and
+     this is the one thing you can do to it from here. */
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.multitask-row:hover .multitask-row-stop,
+.multitask-row-stop:focus-visible {
+  opacity: 1;
+}
+
+.multitask-row-stop:hover {
+  color: var(--text);
+}

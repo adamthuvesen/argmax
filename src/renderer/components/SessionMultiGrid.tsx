@@ -28,6 +28,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import type { GridCell, GridCoord, GridState, SplitPosition } from "../lib/gridState.js";
+import type { MultitaskChild } from "../lib/multitask.js";
 import { isSessionCell, MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
@@ -67,6 +68,9 @@ interface SessionMultiGridProps {
   projectsById: Map<string, ProjectSummary>;
   workspacesById: Map<string, WorkspaceSummary>;
   sessionsById: Map<string, SessionSummary>;
+  /** Multitasks grouped by the session that dispatched them; each pane's dock
+   *  hosts its own. */
+  multitasksByParent?: Map<string, MultitaskChild[]>;
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
@@ -112,6 +116,7 @@ interface SessionMultiGridProps {
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
@@ -135,6 +140,7 @@ export function SessionMultiGrid({
   projectsById,
   workspacesById,
   sessionsById,
+  multitasksByParent,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
@@ -165,6 +171,7 @@ export function SessionMultiGrid({
   onSendSessionInput,
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
+  onMultitask,
   pendingMessages,
   onTerminateSession,
   onClearSession,
@@ -409,6 +416,8 @@ export function SessionMultiGrid({
                         onSendSessionInput={onSendSessionInput}
                         onCancelQueuedMessage={onCancelQueuedMessage}
                         onSendQueuedMessageNow={onSendQueuedMessageNow}
+                        onMultitask={onMultitask}
+                        multitasks={session ? multitasksByParent?.get(session.id) : undefined}
                         pendingMessages={pendingMessages}
                         onTerminateSession={onTerminateSession}
                         onClearSession={onClearSession}

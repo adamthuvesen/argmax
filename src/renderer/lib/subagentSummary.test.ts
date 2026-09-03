@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { MOON_NAMES, assignAgentCodenames } from "./agentNames.js";
 import { SESSION_ICON_COLORS } from "./sessionIcons.js";
+import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import type { MultitaskChild } from "./multitask.js";
 import type { ToolCall } from "./toolCalls.js";
 import { buildSubagentCluster } from "./subagentSummary.js";
 
@@ -20,11 +22,36 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
   };
 }
 
+function multitask(state: string, taskLabel = "Fix the changelog date"): MultitaskChild {
+  return {
+    session: { id: `child-${state}`, state } as SessionSummary,
+    workspace: { taskLabel } as WorkspaceSummary
+  };
+}
+
 describe("buildSubagentCluster", () => {
-  it("returns null when the session launched no subagents", () => {
+  it("returns null when the session has nothing running alongside it", () => {
     const tools = [tool({ name: "Bash", inputFull: {} }), tool({ name: "Read", inputFull: {} })];
     expect(buildSubagentCluster(tools, assignAgentCodenames(tools))).toBeNull();
     expect(buildSubagentCluster([], new Map())).toBeNull();
+  });
+
+  it("counts multitasks too, because the dock's tabs do", () => {
+    // The card sits beside the tab strip; leaving multitasks out made the two
+    // disagree about how much work is running.
+    const cluster = buildSubagentCluster([], new Map(), [multitask("running"), multitask("cancelled")]);
+    expect(cluster?.hasMultitask).toBe(true);
+    expect(cluster?.running).toBe(1);
+    expect(cluster?.failed).toBe(1);
+    expect(cluster?.entries.map((entry) => entry.codename)).toEqual([
+      "Fix the changelog date",
+      "Fix the changelog date"
+    ]);
+  });
+
+  it("is a plain subagent cluster when no multitask is in it", () => {
+    const tools = [tool({ toolUseId: "spawn-1" })];
+    expect(buildSubagentCluster(tools, assignAgentCodenames(tools))?.hasMultitask).toBe(false);
   });
 
   it("counts statuses and names each spawn with its codename and title", () => {

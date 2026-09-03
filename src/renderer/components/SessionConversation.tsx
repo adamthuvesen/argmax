@@ -56,6 +56,7 @@ import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CompactionNotice } from "./CompactionNotice.js";
+import type { MultitaskChild } from "../lib/multitask.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
@@ -135,6 +136,7 @@ export function SessionConversation({
   onSendSessionInput,
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
+  onMultitask,
   pendingMessages = [],
   onTerminateSession,
   onClearSession,
@@ -145,6 +147,9 @@ export function SessionConversation({
   onToggleWorkspaceCard,
   onOpenFile,
   onOpenAgent,
+  onOpenMultitask,
+  multitasks,
+  onExpandToFullChat,
   pendingApprovalCount = 0,
   project,
   rawOutputs,
@@ -215,6 +220,7 @@ export function SessionConversation({
   pendingMessages?: PendingMessage[];
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
@@ -225,6 +231,14 @@ export function SessionConversation({
       ⌘/Ctrl-click flagged via `preferIde` for the external IDE shortcut. */
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onOpenAgent?: (tool: ToolCall) => void;
+  /** Opens a multitask's chat in this pane's dock, beside the subagents. */
+  onOpenMultitask?: (sessionId: string) => void;
+  /** Multitasks dispatched from this session. Their rows read state from the
+   *  session row rather than from the timeline, which only knows what was
+   *  written. */
+  multitasks?: MultitaskChild[];
+  /** Docked chats only: promote this chat to the pane beside the panel. */
+  onExpandToFullChat?: () => void;
   pendingApprovalCount?: number;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
@@ -310,6 +324,29 @@ export function SessionConversation({
     [events, rawOutputs]
   );
   const conversationEvents = useMemo(() => buildConversationEvents(liveEvents), [liveEvents]);
+  // Child session state by id: a multitask row believes this over its own
+  // timeline, which cannot know about a turn that ended while the app was shut.
+  //
+  // Keyed on the states themselves, not on the array: `multitasksByParentSession`
+  // rebuilds its arrays on every snapshot delta, and this map is a prop of every
+  // memoized turn — keying on the array identity re-rendered the whole
+  // transcript each time any session row changed.
+  const multitaskStateKey = (multitasks ?? [])
+    .map((child) => `${child.session.id}:${child.session.state}`)
+    .join("|");
+  const multitaskStates = useMemo(
+    () =>
+      new Map(
+        multitaskStateKey
+          .split("|")
+          .filter((entry) => entry.length > 0)
+          .map((entry) => {
+            const at = entry.lastIndexOf(":");
+            return [entry.slice(0, at), entry.slice(at + 1)] as const;
+          })
+      ),
+    [multitaskStateKey]
+  );
   const askSideChat = useMemo(() => {
     if (!onOpenSideChat) return undefined;
     return (selection: ChatSelection): void => {
@@ -362,7 +399,10 @@ export function SessionConversation({
   const agentCodenames = useMemo(() => assignAgentCodenames(toolCalls), [toolCalls]);
   // The workspace card's Subagents section reads the same tool list the agent
   // tabs do, so its avatars and counts can never disagree with the tabs.
-  const subagentCluster = useMemo(() => buildSubagentCluster(toolCalls, agentCodenames), [toolCalls, agentCodenames]);
+  const subagentCluster = useMemo(
+    () => buildSubagentCluster(toolCalls, agentCodenames, multitasks ?? []),
+    [toolCalls, agentCodenames, multitasks]
+  );
 
   const conversationItems = useMemo(
     () => foldConversationItems(conversationEvents, toolCalls),
@@ -954,6 +994,10 @@ export function SessionConversation({
                   agentCodenames={agentCodenames}
                   onOpenFile={onOpenFile}
                   onOpenAgent={onOpenAgent}
+                  // The dock is where a multitask is read; a surface without
+                  // one (mobile) opens it as a full chat instead.
+                  onOpenMultitask={onOpenMultitask ?? onOpenSession}
+                  multitaskStates={multitaskStates}
                   onTerminateSession={onTerminateSession}
                   onForkSession={onForkSession}
                   onSendSessionInput={sendSessionInput}
@@ -1055,6 +1099,8 @@ export function SessionConversation({
           onFastModeEnabledChange={onFastModeEnabledChange}
           onCancelQueuedMessage={onCancelQueuedMessage}
           onSendQueuedMessageNow={onSendQueuedMessageNow}
+          onMultitask={onMultitask}
+          onExpandToFullChat={onExpandToFullChat}
           onSendSessionInput={sendSessionInput}
           onStartNewSession={onNewSession}
           onTerminateSession={onTerminateSession}

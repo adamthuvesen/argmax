@@ -43,7 +43,7 @@ import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { ScheduleRail } from "./components/scheduled/ScheduleRail.js";
 import { SettingsRail } from "./components/settings/SettingsRail.js";
-import { EMPTY_GRID, MAX_COLS, openWorkspaceInGrid, revertSessionToLauncher, terminalWorkspaceId } from "./lib/gridState.js";
+import { EMPTY_GRID, MAX_COLS, findSessionCell, openWorkspaceInGrid, revertSessionToLauncher, terminalWorkspaceId } from "./lib/gridState.js";
 import { isEarlySessionStop } from "./lib/earlyStop.js";
 import { getWorkspaceTerminalState, requestTerminalVisible } from "./lib/terminalTabs.js";
 import { requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
@@ -109,6 +109,7 @@ import {
   useChatVerbosityPreference
 } from "./lib/uiPreferences.js";
 import { randomSessionIcon } from "./lib/sessionIcons.js";
+import { isMultitaskSession, multitasksByParentSession } from "./lib/multitask.js";
 import { loadDashboardSnapshot } from "./lib/loadDashboardSnapshot.js";
 import { buildPaletteCommands, buildSessionLabelById } from "./lib/buildPaletteCommands.js";
 import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
@@ -1087,6 +1088,13 @@ export function App(): JSX.Element {
       const session =
         sessionsById.get(sessionId) ?? snapshot.sessions.find((s) => s.id === sessionId);
       if (!session || !isEarlySessionStop(session)) return;
+      // Restoring the launcher is a pane behaviour, and a multitask normally
+      // has no pane: it was dispatched from inside another chat and runs in
+      // that chat's dock. Stopping it there leaves that chat exactly where it
+      // was — still on screen, and with its own prompt in the launcher draft,
+      // not the multitask's. Once it has been promoted to a pane of its own it
+      // is an ordinary chat again, and stopping it early behaves like one.
+      if (isMultitaskSession(session) && !findSessionCell(grid, sessionId)) return;
 
       const workspace =
         workspacesById.get(session.workspaceId) ??
@@ -1117,7 +1125,7 @@ export function App(): JSX.Element {
       }
     },
     [
-      grid.rows.length,
+      grid,
       handleLaunchModelChange,
       newSessionMode,
       sessionsById,
@@ -1131,8 +1139,15 @@ export function App(): JSX.Element {
     ]
   );
 
-  const { sendSessionInput, cancelQueuedMessage, sendQueuedMessageNow, runCheck, terminateSession, clearSession } =
-    useSessionCommands({
+  const {
+    sendSessionInput,
+    cancelQueuedMessage,
+    sendQueuedMessageNow,
+    multitask,
+    runCheck,
+    terminateSession,
+    clearSession
+  } = useSessionCommands({
       refreshDashboardStatus,
       loadSessionEvents,
       setToast,
@@ -1562,6 +1577,14 @@ export function App(): JSX.Element {
   // on each streamed event delta. The other slices are handed over empty rather
   // than threaded through, which would leak the palette's appetite into the
   // shape everything else passes around.
+  // A multitask has no sidebar row: it belongs to the chat that dispatched it,
+  // which hosts it in its dock. Grouped once per snapshot so each pane can read
+  // its own without rebuilding the list.
+  const multitasksByParent = useMemo(
+    () => multitasksByParentSession(snapshot.sessions, snapshot.workspaces),
+    [snapshot.sessions, snapshot.workspaces]
+  );
+
   const paletteSnapshot = useMemo(
     () => ({
       projects: snapshot.projects,
@@ -1848,6 +1871,8 @@ export function App(): JSX.Element {
           onClose={closeDetailsPopup}
           onLoadSessionEvents={loadSessionEvents}
           onSendQueuedMessageNow={sendQueuedMessageNow}
+          onMultitask={multitask}
+          onOpenSession={openSessionById}
           onSendSessionInput={sendSessionInput}
           onTerminateSession={terminateSession}
           onClearSession={clearSession}
@@ -1999,6 +2024,7 @@ export function App(): JSX.Element {
               projectsById={projectsById}
               workspacesById={workspacesById}
               sessionsById={sessionsById}
+              multitasksByParent={multitasksByParent}
               defaultToolCallsDisplay={toolCallsDisplay}
               defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
               defaultThinkingExpanded={thinkingExpanded}
@@ -2029,6 +2055,7 @@ export function App(): JSX.Element {
               onSendSessionInput={sendSessionInput}
               onCancelQueuedMessage={cancelQueuedMessage}
               onSendQueuedMessageNow={sendQueuedMessageNow}
+              onMultitask={multitask}
               pendingMessages={snapshot.pendingMessages}
               onTerminateSession={terminateSession}
               onClearSession={clearSession}

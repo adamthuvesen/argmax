@@ -5,6 +5,7 @@ import { shortenPathsInText } from "../lib/pathDisplay.js";
 import {
   describeToolAction,
   getToolTypeBucket,
+  isWebToolName,
   parseMcpToolName,
   splitLeadingVerb,
   type ToolCall
@@ -120,7 +121,7 @@ function ToolCallRowInner({
     ) : null;
   const rowContent = (
     <>
-      {mcpServer ? <ServerIcon server={mcpServer} /> : null}
+      <ServerIcon server={mcpServer} web={isWebToolName(tool.name)} />
       <span className="tool-call-row-verb">{verb}</span>
       {target ? (
         <span className="tool-call-row-target">{shortenPathsInText(target)}</span>

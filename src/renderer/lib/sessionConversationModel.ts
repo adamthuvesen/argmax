@@ -2,6 +2,7 @@ import type { EventType, TimelineEvent } from "../../shared/types.js";
 import { stringValue } from "../../shared/typeGuards.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { COMPACTION_FINISHED, COMPACTION_STARTED } from "./compaction.js";
+import { MULTITASK_FINISHED, MULTITASK_LAUNCHED } from "./multitask.js";
 import { SESSION_MOVED } from "./projectMove.js";
 import { PROVIDER_CHANGED } from "./providerSwitch.js";
 import {
@@ -35,7 +36,9 @@ function isConversationEventType(type: string): boolean {
     type === COMPACTION_STARTED ||
     type === COMPACTION_FINISHED ||
     type === SESSION_MOVED ||
-    type === PROVIDER_CHANGED
+    type === PROVIDER_CHANGED ||
+    type === MULTITASK_LAUNCHED ||
+    type === MULTITASK_FINISHED
   );
 }
 

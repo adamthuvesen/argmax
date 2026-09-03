@@ -35,8 +35,9 @@ use argmax_lib::persistence::{
     },
     projects::{persist_project, PersistProjectInput, ProjectSettings},
     sessions::{
-        find_session_by_id, persist_session, update_session_provider_conversation_id,
-        update_session_state, PersistSessionInput, SessionStateInput,
+        find_session_by_id, persist_session, record_session_launch,
+        update_session_provider_conversation_id, update_session_state, PersistSessionInput,
+        SessionStateInput, LAUNCH_KIND_MULTITASK,
     },
     workspaces::{persist_workspace, PersistWorkspaceInput},
 };
@@ -1832,6 +1833,67 @@ fn recover_orphaned_sessions_marks_running_rows_failed() {
         types.contains(&"process_did_not_survive_restart"),
         "missing recovery event: {types:?}",
     );
+}
+
+#[test]
+fn recover_orphaned_sessions_tells_the_chat_that_dispatched_a_multitask() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let connection = database.connection();
+    let mut seed = |id: &str, state: &str| {
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: id.to_owned(),
+                workspace_id: WORKSPACE_ID.to_owned(),
+                provider: "claude".to_owned(),
+                model_label: "Sonnet 5".to_owned(),
+                model_id: "claude-sonnet-5".to_owned(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_owned()),
+                agent_mode: Some("auto".to_owned()),
+                prompt: "before crash".to_owned(),
+                state: state.to_owned(),
+                attention: "normal".to_owned(),
+            },
+        )
+        .expect("seed session");
+    };
+    seed("parent-1", "complete");
+    seed("multitask-1", "running");
+    record_session_launch(
+        &connection,
+        "multitask-1",
+        "parent-1",
+        0,
+        LAUNCH_KIND_MULTITASK,
+    )
+    .expect("record multitask lineage");
+    drop(connection);
+
+    let service = ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
+        database.clone(),
+        Arc::new(FakeCliLauncher::default()),
+        |_| {},
+        WorkspaceLifecycle::new(),
+        Some(ApprovalService::new(database.clone())),
+    );
+    service
+        .recover_orphaned_sessions()
+        .expect("recovery sweeps");
+
+    // Without this the launching chat keeps saying "running alongside" for a
+    // process that died with the app: no finish row was ever written for it.
+    let connection = database.connection();
+    let parent_tail =
+        list_session_events_since(&connection, "parent-1", None, None).expect("list events");
+    let finish = parent_tail
+        .events
+        .iter()
+        .find(|event| event.r#type == "multitask.finished")
+        .expect("the parent hears that its multitask ended");
+    assert_eq!(finish.payload["childSessionId"], "multitask-1");
+    assert_eq!(finish.payload["state"], "failed");
 }
 
 #[test]

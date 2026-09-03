@@ -14,6 +14,7 @@ import {
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
 import type { ReviewCommentInput } from "../lib/composerAnnotations.js";
+import type { MultitaskChild } from "../lib/multitask.js";
 import type {
   AgentMode,
   ApprovalRequest,
@@ -86,6 +87,8 @@ export function SessionPane({
   onSendSessionInput,
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
+  onMultitask,
+  multitasks,
   pendingMessages,
   onTerminateSession,
   onClearSession,
@@ -141,6 +144,10 @@ export function SessionPane({
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
+  /** Multitasks dispatched from this pane's session. They have no sidebar row
+   *  of their own — this pane's dock is where they are read and answered. */
+  multitasks?: MultitaskChild[];
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
@@ -269,6 +276,17 @@ export function SessionPane({
       openAgentInPanel(tool.toolUseId);
     },
     [openAgentInPanel]
+  );
+
+  // A multitask row opens its chat in the same dock, one tab over from the
+  // subagents: both are work running alongside this one.
+  // A surface that hands this pane no multitasks has no dock to host them
+  // (the phone), and its rows open the chat itself instead.
+  const openMultitaskInPanel = reviewState.openMultitask;
+  const hostsMultitasks = (multitasks?.length ?? 0) > 0;
+  const handleOpenMultitask = useMemo(
+    () => (hostsMultitasks ? openMultitaskInPanel : undefined),
+    [hostsMultitasks, openMultitaskInPanel]
   );
 
   const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
@@ -519,6 +537,7 @@ export function SessionPane({
           onSendSessionInput={onSendSessionInput}
           onCancelQueuedMessage={onCancelQueuedMessage}
           onSendQueuedMessageNow={onSendQueuedMessageNow}
+          onMultitask={onMultitask}
           pendingMessages={sessionId ? (pendingMessages?.[sessionId] ?? []) : []}
           onTerminateSession={onTerminateSession}
           onClearSession={onClearSession}
@@ -526,6 +545,8 @@ export function SessionPane({
           onRunCheck={onRunCheck}
           onOpenFile={handleOpenFile}
           onOpenAgent={handleOpenAgent}
+          onOpenMultitask={handleOpenMultitask}
+          multitasks={multitasks}
           onToggleLog={toggleLog}
           isTerminalOpen={terminalOpen}
           onToggleTerminal={reviewState.toggleTerminal}
@@ -595,7 +616,17 @@ export function SessionPane({
               workspace,
               onLoadAgentEvents,
               onLoadSessionEvents,
-              onOpenAgent: handleOpenAgent
+              onOpenAgent: handleOpenAgent,
+              multitasks,
+              multitaskEvents: events,
+              pendingMessages,
+              rawOutputs,
+              onCancelQueuedMessage,
+              onClearSession,
+              onOpenFullChat: onOpenSession,
+              onSendQueuedMessageNow,
+              onSendSessionInput,
+              onTerminateSession
             }}
             review={reviewState}
             isFocused={isFocused}

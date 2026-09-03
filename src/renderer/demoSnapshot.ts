@@ -42,6 +42,25 @@ export const demoSnapshot: DashboardSnapshot = {
       priorityAddedAt: null
     },
     {
+      // The multitask dispatched from the review-studio chat: same checkout,
+      // no sidebar row of its own — it lives in that chat's dock.
+      id: "workspace-multitask-changelog",
+      projectId: "project-argmax",
+      taskLabel: "Fix the changelog date",
+      branch: "argmax/review-studio",
+      baseRef: "main",
+      path: "~/code/argmax",
+      state: "complete",
+      sharedWorkspace: true,
+      kind: "git",
+      dirty: true,
+      changedFiles: 1,
+      lastActivityAt: "2026-05-08T15:54:02.000Z",
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
+    },
+    {
       id: "workspace-review-studio",
       projectId: "project-argmax",
       taskLabel: "Build review studio shell",
@@ -92,6 +111,23 @@ export const demoSnapshot: DashboardSnapshot = {
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: null,
       lastActivityAt: "2026-05-08T15:54:00.000Z",
+    },
+    {
+      id: "session-multitask-changelog",
+      workspaceId: "workspace-multitask-changelog",
+      provider: "claude",
+      modelLabel: PROVIDER_MODEL_DEFAULTS.claude.label,
+      modelId: PROVIDER_MODEL_DEFAULTS.claude.modelId,
+      permissionMode: "auto-approve",
+      providerConversationId: "session-multitask-changelog",
+      prompt: "The changelog says 2025 for the 0.4 entry — fix it.",
+      state: "complete",
+      attention: "normal",
+      startedAt: "2026-05-08T15:53:58.000Z",
+      completedAt: "2026-05-08T15:54:02.000Z",
+      lastActivityAt: "2026-05-08T15:54:02.000Z",
+      launchedBySessionId: "session-review-studio",
+      launchKind: "multitask",
     },
     {
       id: "session-review-studio",
@@ -269,6 +305,49 @@ export const demoSnapshot: DashboardSnapshot = {
       message: "Agent board skeleton is rendering; tuning density and attention markers.\n\n- **layout.ts** owns the column grid (12-col, snap to 8px).\n- **density.ts** maps attention level → row height.\n- **markers.ts** paints the gutter indicators.",
       payload: { surface: "agent-board" },
       createdAt: "2026-05-08T15:54:00.000Z"
+    },
+    {
+      id: "event-board-multitask-launched",
+      sessionId: "session-review-studio",
+      type: "multitask.launched",
+      message: "Running alongside: Fix the changelog date",
+      payload: {
+        childSessionId: "session-multitask-changelog",
+        childWorkspaceId: "workspace-multitask-changelog",
+        taskLabel: "Fix the changelog date",
+        prompt: "The changelog says 2025 for the 0.4 entry — fix it.",
+        worktree: false
+      },
+      createdAt: "2026-05-08T15:53:58.000Z"
+    },
+    {
+      id: "event-multitask-child-user",
+      sessionId: "session-multitask-changelog",
+      type: "user.message",
+      message: "The changelog says 2025 for the 0.4 entry — fix it.",
+      payload: { source: "multitask" },
+      createdAt: "2026-05-08T15:53:58.000Z"
+    },
+    {
+      id: "event-multitask-child-answer",
+      sessionId: "session-multitask-changelog",
+      type: "message.completed",
+      message: "Corrected the 0.4 heading to 2026 in CHANGELOG.md.",
+      payload: {},
+      createdAt: "2026-05-08T15:54:02.000Z"
+    },
+    {
+      id: "event-board-multitask-finished",
+      sessionId: "session-review-studio",
+      type: "multitask.finished",
+      message: "Fix the changelog date finished alongside",
+      payload: {
+        childSessionId: "session-multitask-changelog",
+        taskLabel: "Fix the changelog date",
+        state: "complete",
+        answer: "Corrected the 0.4 heading to 2026 in CHANGELOG.md."
+      },
+      createdAt: "2026-05-08T15:54:02.000Z"
     },
     {
       id: "event-review-complete",

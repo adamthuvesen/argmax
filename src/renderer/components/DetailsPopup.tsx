@@ -39,6 +39,8 @@ export function DetailsPopup({
   onClose,
   onLoadSessionEvents,
   onSendQueuedMessageNow,
+  onMultitask,
+  onOpenSession,
   onSendSessionInput,
   onTerminateSession,
   onClearSession,
@@ -55,6 +57,11 @@ export function DetailsPopup({
   onClose: () => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
+  /** The popup has no dock, so a multitask dispatched from it opens as a full
+   *  chat — the same fallback the phone uses. Without it the row is a button
+   *  that goes nowhere, and the chat has no sidebar row either. */
+  onOpenSession?: (sessionId: string) => void;
   onSendSessionInput: (
     sessionId: string,
     input: string,
@@ -189,6 +196,8 @@ export function DetailsPopup({
         onClearSession={onClearSession}
         onCancelQueuedMessage={onCancelQueuedMessage}
         onSendQueuedMessageNow={onSendQueuedMessageNow}
+        onMultitask={onMultitask}
+        onOpenSession={onOpenSession}
         pendingMessages={sessionPendingMessages}
         onToggleLog={() => {}}
         project={project}

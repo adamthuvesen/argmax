@@ -679,6 +679,22 @@ pub struct SessionForkInput {
     pub session_id: SessionId,
 }
 
+/// Dispatch a multitask from a chat: a sibling session that runs alongside the
+/// turn already in flight, sharing this chat's checkout unless `worktree` asks
+/// for its own.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionMultitaskInput {
+    pub session_id: SessionId,
+    pub prompt: Prompt,
+    /// Defaults to false: the point of a multitask is a fix on the side of the
+    /// work you are already doing, in the tree you are already in.
+    #[serde(default)]
+    pub worktree: bool,
+    /// Sidebar label for the new chat. Falls back to the prompt's first line.
+    pub task_label: Option<NonEmptyString>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionClearInput {

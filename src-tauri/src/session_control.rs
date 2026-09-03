@@ -44,7 +44,7 @@ use crate::{
         },
         sessions::{
             find_session_by_id, list_sessions_for_dashboard, record_session_launch,
-            session_launch_lineage, sessions_launched_by,
+            session_launch_lineage, sessions_launched_by, LAUNCH_KIND_AGENT,
         },
         workspaces::{find_workspace_by_id, list_workspaces, WorkspaceSummary},
     },
@@ -52,7 +52,7 @@ use crate::{
         session_service::{MessageOrigin, ProviderSessionService},
         ProviderLaunchInput,
     },
-    workspaces::WorkspaceService,
+    workspaces::{orchestration::WorkspacesCreateAlongsideInput, WorkspaceService},
 };
 
 const PROTOCOL_VERSION: u32 = 1;
@@ -877,6 +877,11 @@ fn write_json_line(writer: &mut impl Write, response: &SessionControlResponse) -
 /// scheduler derives it from a stored routine row.
 pub(crate) struct LaunchSpec {
     pub project: Option<String>,
+    /// Run in an existing checkout rather than the project's own. A multitask
+    /// shares the checkout of the chat that dispatched it, which is not the
+    /// project root whenever that chat is itself in a worktree. Ignored when
+    /// `worktree` is set, which asks for an isolated tree by definition.
+    pub alongside: Option<AlongsideCheckout>,
     pub prompt: String,
     pub worktree: bool,
     pub provider: crate::providers::ProviderId,
@@ -889,6 +894,14 @@ pub(crate) struct LaunchSpec {
     /// Sidebar label for the new workspace. Falls back to the prompt's first
     /// line, which is what every launch used before agents could name one.
     pub task_label: Option<String>,
+}
+
+/// The checkout a session is asked to run beside, taken from the workspace of
+/// the chat it was dispatched from.
+pub(crate) struct AlongsideCheckout {
+    pub path: String,
+    pub branch: String,
+    pub base_ref: String,
 }
 
 pub(crate) struct LaunchOutcome {
@@ -935,6 +948,18 @@ pub(crate) async fn launch_with_spec(
                 base_ref: Some(base_ref),
             })
             .await
+    } else if let Some(checkout) = spec.alongside {
+        // The dispatching chat's own checkout, which is the project root only
+        // when that chat is not in a worktree. Taking the project's instead put
+        // the work in a different tree on a different branch than the one the
+        // person was looking at, while both agents were told they shared it.
+        workspaces.create_alongside(WorkspacesCreateAlongsideInput {
+            project_id,
+            task_label,
+            path: checkout.path,
+            branch: checkout.branch,
+            base_ref: checkout.base_ref,
+        })
     } else {
         workspaces.create_current(WorkspacesCreateCurrentInput {
             project_id,
@@ -1040,6 +1065,10 @@ async fn launch_session(
         };
     let outcome = launch_with_spec(
         LaunchSpec {
+            // An agent-launched session is its own piece of work, not a chat
+            // running beside this one: it takes the project's checkout, or its
+            // own worktree.
+            alongside: None,
             project: action.project,
             prompt: action.prompt,
             worktree: action.worktree,
@@ -1060,8 +1089,14 @@ async fn launch_session(
     .await?;
     {
         let connection = database.connection();
-        record_session_launch(&connection, &outcome.session_id, &parent.session_id, depth)
-            .map_err(argmax_protocol_error)?;
+        record_session_launch(
+            &connection,
+            &outcome.session_id,
+            &parent.session_id,
+            depth,
+            LAUNCH_KIND_AGENT,
+        )
+        .map_err(argmax_protocol_error)?;
     }
     Ok(SessionControlResponse::new(SessionControlResult::Launched(
         LaunchedSession {
@@ -1909,7 +1944,7 @@ fn resolve_project(
     ))
 }
 
-fn task_label(prompt: &str) -> String {
+pub(crate) fn task_label(prompt: &str) -> String {
     let first_line = prompt.lines().next().unwrap_or_default().trim();
     if first_line.is_empty() {
         return DEFAULT_TASK_LABEL.to_string();

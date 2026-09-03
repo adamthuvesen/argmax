@@ -112,6 +112,12 @@ groups open via the `Show <project> sessions` button), then returns whatever it
 measured. Start the provider session with `bridge.mjs chat` in the background
 first and time the capture into the stream.
 
+The demo snapshot carries one subagent run with its own thinking, narration,
+and tool calls, so the Agents pane renders on rung 2 as well: click the last
+`.agent-launch-row-button` in the demo transcript and read the pane back. That
+covers folding, the `Worked for Xs` chip, and every verbosity level. Rung 3
+below is for what a fixture cannot show — a live run streaming in.
+
 For the Agents pane the same recipe applies with two extra conditions. The
 parent repo must live at a plain path (the CLI's transcript slug is lossy, so a
 temp directory full of dots and dashes strands the child transcript), and the
@@ -119,7 +125,7 @@ subagent must do something the CLI forwards: tool calls always are, text and
 thinking only with `--forward-subagent-text`, which the Claude adapter passes.
 Open the pane by clicking the last `.agent-launch-row-button` in the parent
 transcript, then sample `.agent-activity-scroll` (`scrollTop`, `scrollHeight`,
-`.agent-activity-items` height) and count `animationstart` events on it: an
+`.turn-block-body` height) and count `animationstart` events on it: an
 entrance animation firing on a bubble that already existed is a remount, and a
 `scrollHeight` decrease while pinned to the bottom is the drop a reader sees.
 

@@ -264,6 +264,94 @@ export const demoSnapshot: DashboardSnapshot = {
       createdAt: "2026-05-08T15:53:54.000Z"
     },
     {
+      id: "ev-sub-think",
+      sessionId: "session-ui-board",
+      type: "message.delta",
+      message: "The mapping lives in density.ts. I should read it first, then check the three edge cases the prompt names.",
+      payload: { parent_tool_use_id: "tu_board_5", thinking: true },
+      createdAt: "2026-05-08T15:53:54.200Z"
+    },
+    {
+      id: "ev-sub-narr-1",
+      sessionId: "session-ui-board",
+      type: "message.completed",
+      message: "Reading the density heuristics now.",
+      payload: { parent_tool_use_id: "tu_board_5" },
+      createdAt: "2026-05-08T15:53:54.400Z"
+    },
+    {
+      id: "ev-sub-t1-s",
+      sessionId: "session-ui-board",
+      type: "command.started",
+      message: "Read",
+      payload: { id: "tu_sub_1", name: "Read", parent_tool_use_id: "tu_board_5", input: { file_path: "src/renderer/board/density.ts" } },
+      createdAt: "2026-05-08T15:53:54.500Z"
+    },
+    {
+      id: "ev-sub-t1-c",
+      sessionId: "session-ui-board",
+      type: "command.completed",
+      message: "tool_result",
+      payload: { tool_use_id: "tu_sub_1", content: "export function rowHeight(count: number): number { ... }" },
+      createdAt: "2026-05-08T15:53:54.900Z"
+    },
+    {
+      id: "ev-sub-t2-s",
+      sessionId: "session-ui-board",
+      type: "command.started",
+      message: "Grep",
+      payload: { id: "tu_sub_2", name: "Grep", parent_tool_use_id: "tu_board_5", input: { pattern: "rowHeight", path: "src/renderer" } },
+      createdAt: "2026-05-08T15:53:55.000Z"
+    },
+    {
+      id: "ev-sub-t2-c",
+      sessionId: "session-ui-board",
+      type: "command.completed",
+      message: "tool_result",
+      payload: { tool_use_id: "tu_sub_2", content: "density.ts:18\ndensity.ts:32\nlayout.ts:71" },
+      createdAt: "2026-05-08T15:53:55.400Z"
+    },
+    {
+      id: "ev-sub-narr-2",
+      sessionId: "session-ui-board",
+      type: "message.completed",
+      message: "Now checking how the cap behaves above twelve sessions.",
+      payload: { parent_tool_use_id: "tu_board_5" },
+      createdAt: "2026-05-08T15:53:55.500Z"
+    },
+    {
+      id: "ev-sub-t3-s",
+      sessionId: "session-ui-board",
+      type: "command.started",
+      message: "Bash",
+      payload: { id: "tu_sub_3", name: "Bash", parent_tool_use_id: "tu_board_5", input: { command: "rg -n 'MAX_ROWS' src/renderer/board" } },
+      createdAt: "2026-05-08T15:53:55.600Z"
+    },
+    {
+      id: "ev-sub-t3-c",
+      sessionId: "session-ui-board",
+      type: "command.completed",
+      message: "tool_result",
+      payload: { tool_use_id: "tu_sub_3", content: "density.ts:32:const MAX_ROWS = 12;" },
+      createdAt: "2026-05-08T15:53:56.000Z"
+    },
+    {
+      id: "ev-sub-t4-s",
+      sessionId: "session-ui-board",
+      type: "command.started",
+      message: "Bash",
+      payload: { id: "tu_sub_4", name: "Bash", parent_tool_use_id: "tu_board_5", input: { command: "npx vitest run src/renderer/board" } },
+      createdAt: "2026-05-08T15:53:56.100Z"
+    },
+    {
+      id: "ev-sub-t4-c",
+      sessionId: "session-ui-board",
+      type: "command.completed",
+      message: "tool_result",
+      payload: { tool_use_id: "tu_sub_4", content: "3 passed" },
+      createdAt: "2026-05-08T15:53:56.600Z"
+    },
+    {
       id: "event-board-tool-5-c",
       sessionId: "session-ui-board",
       type: "command.completed",

@@ -1306,6 +1306,12 @@ export function Sidebar({
               const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
               const isDragging = draggingId === project.id;
               const isDragOver = dragOverId === project.id && !isDragging;
+              // The repo the open chat is working in. A chat that moves to
+              // another project carries this with it, so the sidebar always
+              // names where the agent actually is. `isOpenProject` is the
+              // narrower case — the project opened on its own, no chat.
+              const hostsOpenChat = selectedProjectId === project.id;
+              const isOpenProject = hostsOpenChat && !selectedWorkspaceId;
               return (
             <div
               className={`project-group${isDragging ? " dragging" : ""}${isDragOver ? " drag-over" : ""}`}
@@ -1323,17 +1329,15 @@ export function Sidebar({
                 onClick={() => toggleProjectVisibility(project.id)}
               >
                 <button
-                  aria-current={selectedProjectId === project.id && !selectedWorkspaceId ? "true" : undefined}
-                  className={
-                    selectedProjectId === project.id && !selectedWorkspaceId ? "project-name active" : "project-name"
-                  }
+                  aria-current={hostsOpenChat ? "true" : undefined}
+                  className={hostsOpenChat ? "project-name active" : "project-name"}
                   type="button"
                   onClick={(event) => {
                     // The project name opens the project; the row-level click
                     // (and the chevron) handle collapse, so stop this from
                     // bubbling up and immediately toggling visibility back.
                     event.stopPropagation();
-                    if (selectedProjectId === project.id && !selectedWorkspaceId) {
+                    if (isOpenProject) {
                       toggleProjectVisibility(project.id);
                       return;
                     }

@@ -53,8 +53,9 @@ use crate::persistence::projects::{
     ProjectSettings,
 };
 use crate::persistence::sessions::{
-    find_session_by_id, persist_session, set_session_resume_fork,
-    update_session_provider_conversation_id, PersistSessionInput, SessionSummary,
+    find_session_by_id, persist_session, record_session_launch, session_launch_lineage,
+    set_session_resume_fork, update_session_provider_conversation_id, PersistSessionInput,
+    SessionSummary,
 };
 use crate::persistence::workspaces::{
     find_workspace_by_id, persist_workspace, set_workspace_icon, set_workspace_label,
@@ -905,6 +906,23 @@ impl WorkspaceService {
                     attention: "normal".to_string(),
                 },
             )?;
+            // A move relocates the same work, so its lineage travels with it:
+            // whoever dispatched this chat is still owed the finish notice, and
+            // the launch caps still have to count it where it now sits. The row
+            // is re-read because the update lands after the insert.
+            let destination_session = match source_session.launched_by_session_id.as_deref() {
+                Some(launched_by) => {
+                    record_session_launch(
+                        &transaction,
+                        &destination_session.id,
+                        launched_by,
+                        session_launch_lineage(&transaction, source_session_id)?.depth,
+                        &source_session.launch_kind,
+                    )?;
+                    find_session_by_id(&transaction, &destination_session.id)?
+                }
+                None => destination_session,
+            };
             for event in list_all_session_events(&transaction, source_session_id)? {
                 persist_timeline_event(
                     &transaction,

@@ -23,7 +23,7 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `session_stop` | `session` | `{sessionId, state}` |
 | `inbox_read` | — | `{messages: [{fromSessionId?, fromLabel?, kind, body, createdAt}]}` |
 | `session_wait` | `sessions?`, `timeoutS?` | `{timedOut, sessions: [{sessionId, taskLabel, state}], messages: […]}` |
-| `session_move` | `project`, `worktree?`, `keepSource?` | `{scheduled, sourceSessionId, projectId, projectName}` |
+| `session_move` | `project`, `prompt`, `worktree?`, `keepSource?` | `{scheduled, sourceSessionId, projectId, projectName}` |
 
 ### Browser
 
@@ -100,6 +100,30 @@ has no model-label catalog, that lives in
 
 A move is scheduled rather than immediate: it runs once the calling turn
 settles, since the agent asking for it is mid-turn.
+
+A move relocates work, so it does not stop at relocating the transcript: once
+the destination workspace exists, its `prompt` starts the chat's first turn
+there, in the destination checkout. That turn is composed like any follow-up
+([follow_up.rs](../src-tauri/src/providers/follow_up.rs)) — the copied
+transcript is Argmax's record, not context the destination CLI holds, so it
+opens with the last few turns and the seam's own handoff note ("This chat moved
+from *source* to *destination*. Work in the destination checkout at …"). Write
+the prompt to stand on its own anyway, and call `session_move` as the last
+action of a turn: anything done after it is not in the prompt already written.
+
+The destination keeps the source's launch lineage — who launched this chat, at
+what depth, and why — so a session that moves is still on its launcher's watch
+list, still sends its completion notice, and still counts against the launch
+caps. Without that, a moved chat would come back as a depth-0 orphan whose
+unattended turn nobody is told about.
+
+The continuation stops after three moves in one chat's history — the seams ride
+along in the copied transcript, so the count is the whole chain. Two agents
+that each conclude the work belongs in the other repo would otherwise bounce a
+live turn between them unattended; past the cap the chat lands in the
+destination and waits for a person, and says so in the timeline. A move whose
+continuation cannot start records that on the destination too, where the
+transcript now lives — the source is usually archived by then.
 
 ## Observing another session
 
@@ -338,7 +362,7 @@ answered by a `SessionControlResponse` whose result is flattened
 (`{"version":1,"launched":{…}}`, `{"version":1,"listed":{…}}`, or
 `{"version":1,"error":{"code","message"}}`).
 Each action carries exactly the fields it uses, so a nonsense combination — a
-project selector on a message, a prompt on a move — cannot be encoded.
+project selector on a message, a model on a move — cannot be encoded.
 
 The browser tools ride the same socket with one action of their own,
 `Browser(BrowserRequest)`, answered by `Browsed(BrowserOutcome)`. The MCP

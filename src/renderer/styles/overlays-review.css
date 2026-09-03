@@ -641,6 +641,9 @@
    it rather than in the status strip: it is a way out of the dock, not a fact
    about what is running. */
 .multitask-panel {
+  /* The transcript's edge fades dissolve into the surface behind them, which
+     here is the panel, not the pane. */
+  --conversation-fade: var(--panel);
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -686,50 +689,6 @@
    rose when the run failed. */
 .file-tab-icon[data-status="error"] {
   color: var(--rose);
-}
-
-.review-agents-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.review-agents-state[data-status="running"] {
-  color: var(--accent);
-}
-
-.review-agents-state[data-status="error"] {
-  color: var(--rose);
-}
-
-.review-agents-model {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The way out of the dock, sitting where a subagent's model would: it is the
-   one thing about a multitask this strip can say that its own chat cannot. */
-.review-agents-open {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: 0;
-  background: none;
-  padding: 0;
-  font: inherit;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.review-agents-open:hover {
-  color: var(--text);
-}
-
-/* The model is the fact, the effort qualifies it. */
-.review-agents-effort {
-  color: color-mix(in oklab, var(--muted) 78%, transparent);
 }
 
 /* A count only earns its space once a session has fanned out — and only where

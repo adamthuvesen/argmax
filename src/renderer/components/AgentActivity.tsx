@@ -312,7 +312,7 @@ export function AgentActivity({
           }
         }}
       >
-        {activity.prompt || activity.subagentType ? (
+        {activity.prompt || activity.subagentType || activity.model ? (
           <section className="agent-activity-summary" aria-label="Agent instructions">
             <div className="agent-activity-summary-header">
               {activity.subagentType ? (
@@ -320,6 +320,16 @@ export function AgentActivity({
               ) : (
                 <p className="agent-activity-meta">Instructions</p>
               )}
+              {/* Which model this one is running, said once and where the run is
+                  described. Whether it is still working is the tab's mark. */}
+              {activity.model ? (
+                <p className="agent-activity-meta agent-activity-model">
+                  {activity.model.label}
+                  {activity.model.effort ? (
+                    <span className="agent-activity-effort"> · {activity.model.effort}</span>
+                  ) : null}
+                </p>
+              ) : null}
               {promptIsLong ? (
                 <button
                   type="button"

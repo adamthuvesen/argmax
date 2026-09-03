@@ -48,7 +48,7 @@ This is the only thing `sessions.launch_kind` reaches the renderer for: an agent
 
 Clicking the row opens the multitask as a tab in the review panel's Agents view, beside this session's subagents ([AgentsView.tsx](../src/renderer/components/AgentsView.tsx)). A tab id is a provider tool-use id for a subagent and `multitask:<sessionId>` for a multitask ([agentTabs.ts](../src/renderer/lib/agentTabs.ts)); the view resolves each to either `AgentActivity` or [MultitaskPanel.tsx](../src/renderer/components/MultitaskPanel.tsx).
 
-A multitask is a real session, so its tab is the ordinary chat surface rather than a read-only transcript: it can be answered and steered without leaving the chat you were watching. The panel takes every session's events (the pane-scoped `events` a subagent transcript reads belong to the parent), keeps the review state inert — the dock *is* the review panel — and drops the checks card, which the parent chat already carries for the same checkout. "Open as full chat" is there for when a side errand turns into the work.
+A multitask is a real session, so its tab is the ordinary chat surface rather than a read-only transcript: it can be answered and steered without leaving the chat you were watching. The panel takes every session's events (the pane-scoped `events` a subagent transcript reads belong to the parent), keeps the review state inert — the dock *is* the review panel — and drops the checks card, which the parent chat already carries for the same checkout. The composer carries an expand button — the way back to a full pane, for when a side errand turns into the work.
 
 The chat a multitask was dispatched from is reachable the other way too: the session actions menu offers "Open launching chat".
 

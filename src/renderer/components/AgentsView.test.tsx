@@ -103,7 +103,7 @@ describe("AgentsView", () => {
     expect(document.getElementById("review-agent-task-2")).not.toHaveAttribute("aria-hidden");
   });
 
-  it("reads the active subagent's state and model in the status bar", () => {
+  it("names the model on the run it belongs to, and nowhere else", () => {
     renderView(
       agentTabs({ tabIds: ["task-1"], activeTabId: "task-1" }),
       [
@@ -116,10 +116,10 @@ describe("AgentsView", () => {
       ]
     );
 
-    expect(screen.getByText("Working")).toBeInTheDocument();
-    expect(screen.getByTitle("Opus 5 · Extra High reasoning effort")).toHaveTextContent(
-      "Opus 5 · Extra High"
-    );
+    expect(screen.getByText(/Opus 5/)).toHaveTextContent("Opus 5 · Extra High");
+    // Whether it is still working is the tab's mark; a status strip repeating
+    // it was chrome about chrome.
+    expect(screen.queryByLabelText("Agent status")).toBeNull();
   });
 
   it("closes a subagent from its tab", () => {

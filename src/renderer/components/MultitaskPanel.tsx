@@ -34,6 +34,7 @@ export function MultitaskPanel({
   onClearSession,
   onLoadSessionEvents,
   onOpenFile,
+  onOpenFullChat,
   onSendQueuedMessageNow,
   onSendSessionInput,
   onTerminateSession
@@ -48,6 +49,7 @@ export function MultitaskPanel({
   onClearSession: (sessionId: string) => Promise<void>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+  onOpenFullChat?: (sessionId: string) => void;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
   onSendSessionInput: (
     sessionId: string,
@@ -87,6 +89,7 @@ export function MultitaskPanel({
         onCancelQueuedMessage={onCancelQueuedMessage}
         onClearSession={onClearSession}
         onOpenFile={onOpenFile}
+        onExpandToFullChat={onOpenFullChat ? () => onOpenFullChat(session.id) : undefined}
         onSendQueuedMessageNow={onSendQueuedMessageNow}
         onSendSessionInput={onSendSessionInput}
         onTerminateSession={onTerminateSession}

@@ -204,6 +204,26 @@
   color: var(--muted-strong);
 }
 
+/* A docked chat's way back to the pane: the same 28px quiet square as the
+   context trigger, sitting beside Send where the other per-chat actions are. */
+.composer-expand-button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.composer-expand-button:hover {
+  color: var(--muted-strong);
+}
+
 .composer-compact-context-dot {
   position: absolute;
   top: 6px;

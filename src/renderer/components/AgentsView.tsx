@@ -1,4 +1,4 @@
-import { ArrowUpRight, Bot, Split, X } from "lucide-react";
+import { Bot, Split, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   AgentMode,
@@ -25,31 +25,13 @@ import { WorkingNest } from "./WorkingNest.js";
 
 type AgentStatus = "running" | "done" | "error" | "missing";
 
-/** The state in words. The panel says it once, in the status bar, so the tabs
- *  and the transcript stay free of status chrome. */
-function statusLabel(status: AgentStatus): string {
-  switch (status) {
-    case "running":
-      return "Working";
-    case "done":
-      return "Done";
-    case "error":
-      return "Error";
-    case "missing":
-      return "Missing";
-  }
-}
-
 /** The dock only opens a multitask tab on a surface that wired the session
  *  commands; these keep the optional props honest without a crash if one is
  *  ever missing. */
 const noop = async (): Promise<void> => {};
 
-function modelTitle(model: AgentModel): string {
-  return model.effort ? `${model.label} · ${model.effort} reasoning effort` : model.label;
-}
-
-/** A multitask's chat state in the words the dock uses for a subagent. */
+/** A multitask's chat state in the words the dock uses for a subagent: the tab
+ *  mark is where either one says whether it is still working. */
 function multitaskStatus(state: string): AgentStatus {
   if (state === "failed" || state === "cancelled") return "error";
   if (state === "complete") return "done";
@@ -173,8 +155,6 @@ export function AgentsView({
       };
     });
   }, [events, multitasks, parentSession?.provider, parentSession?.state, tabIds]);
-
-  const active = tabs.find((tab) => tab.id === activeId) ?? null;
 
   // Drop a tab whose launch row left the timeline: Codex supersedes a synthetic
   // spawn with the real one, and the tab that pointed at the old id would sit
@@ -315,6 +295,7 @@ export function AgentsView({
                   onClearSession={onClearSession ?? noop}
                   onOpenFile={onOpenFile}
                   onLoadSessionEvents={onLoadSessionEvents}
+                  onOpenFullChat={onOpenFullChat}
                   onSendQueuedMessageNow={onSendQueuedMessageNow ?? noop}
                   onSendSessionInput={onSendSessionInput ?? noop}
                   onTerminateSession={onTerminateSession ?? noop}
@@ -338,39 +319,6 @@ export function AgentsView({
         })}
       </div>
 
-      {active ? (
-        <div className="review-status-bar" aria-label="Agent status">
-          <span className="review-agents-state" data-status={active.status}>
-            {active.status === "running" ? (
-              <WorkingNest active size={11} phaseKey={active.id} />
-            ) : null}
-            {statusLabel(active.status)}
-          </span>
-          {/* A multitask's own composer already names its model, and the way out
-              of the dock belongs on this strip rather than in a band of its
-              own above it. */}
-          {active.multitask ? (
-            onOpenFullChat ? (
-              <button
-                type="button"
-                className="review-agents-open"
-                title="Open this multitask as a full chat"
-                onClick={() => onOpenFullChat(active.multitask?.session.id ?? "")}
-              >
-                Open as full chat
-                <ArrowUpRight size={12} aria-hidden="true" />
-              </button>
-            ) : null
-          ) : active.model ? (
-            <span className="review-agents-model" title={modelTitle(active.model)}>
-              {active.model.label}
-              {active.model.effort ? (
-                <span className="review-agents-effort"> · {active.model.effort}</span>
-              ) : null}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }

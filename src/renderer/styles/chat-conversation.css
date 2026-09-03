@@ -468,6 +468,20 @@
   gap: 8px;
 }
 
+/* The model sits at the far end of that line, and gives up its width first:
+   the agent's own name is what the reader came for. */
+.agent-activity-model {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-activity-effort {
+  color: color-mix(in oklab, var(--muted) 78%, transparent);
+}
+
 .agent-activity-summary-toggle {
   width: 22px;
   height: 22px;
@@ -719,7 +733,9 @@
 
 /* Content dissolves into the pane instead of being sliced mid-line at the
    header and the composer. `--bg` is what the pane cell paints, so the fade
-   ends in the surface it sits on. */
+   ends in the surface it sits on — and a chat docked in a panel overrides
+   `--conversation-fade` with that panel's colour, or the fade paints a band of
+   pane colour across it. */
 .conversation-scroll::before,
 .conversation-scroll::after {
   content: "";
@@ -734,12 +750,12 @@
 
 .conversation-scroll::before {
   top: 0;
-  background: linear-gradient(to bottom, var(--bg), transparent);
+  background: linear-gradient(to bottom, var(--conversation-fade, var(--bg)), transparent);
 }
 
 .conversation-scroll::after {
   bottom: 0;
-  background: linear-gradient(to top, var(--bg), transparent);
+  background: linear-gradient(to top, var(--conversation-fade, var(--bg)), transparent);
 }
 
 /* Reopening a session remounts the pane, so every restored bubble and tool row

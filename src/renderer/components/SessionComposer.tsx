@@ -8,6 +8,7 @@ import {
   FolderOpen,
   GitBranch,
   ListChecks,
+  Maximize2,
   MoreHorizontal,
   Paperclip,
   Play,
@@ -116,6 +117,7 @@ export function SessionComposer({
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
   onMultitask,
+  onExpandToFullChat,
   onSendSessionInput,
   onStartNewSession,
   onTerminateSession,
@@ -150,6 +152,10 @@ export function SessionComposer({
   /** Dispatch a prompt as a multitask: a sibling chat in this checkout that
    *  runs alongside the current turn instead of waiting behind it. */
   onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
+  /** For a chat that lives inside a panel (a multitask in the Agents dock):
+   *  promote it to the pane it is docked beside. Absent in a pane, which is
+   *  already the full chat. */
+  onExpandToFullChat?: () => void;
   onSendSessionInput: (
     sessionId: string,
     input: string,
@@ -923,6 +929,17 @@ export function SessionComposer({
           </div>
         ) : null}
         <span className="session-toolbar-spacer" />
+        {onExpandToFullChat ? (
+          <button
+            type="button"
+            className="composer-expand-button"
+            title="Open as full chat"
+            aria-label="Open as full chat"
+            onClick={onExpandToFullChat}
+          >
+            <Maximize2 size={13} aria-hidden="true" />
+          </button>
+        ) : null}
         {session && agentMode !== "auto" ? (
           // Auto is the default, so naming it on every turn tells the user
           // nothing. Plan changes what the next send does, so it shows — and

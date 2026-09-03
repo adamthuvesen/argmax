@@ -148,6 +148,7 @@ export function SessionConversation({
   onOpenFile,
   onOpenAgent,
   onOpenMultitask,
+  onExpandToFullChat,
   pendingApprovalCount = 0,
   project,
   rawOutputs,
@@ -231,6 +232,8 @@ export function SessionConversation({
   onOpenAgent?: (tool: ToolCall) => void;
   /** Opens a multitask's chat in this pane's dock, beside the subagents. */
   onOpenMultitask?: (sessionId: string) => void;
+  /** Docked chats only: promote this chat to the pane beside the panel. */
+  onExpandToFullChat?: () => void;
   pendingApprovalCount?: number;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
@@ -1073,6 +1076,7 @@ export function SessionConversation({
           onCancelQueuedMessage={onCancelQueuedMessage}
           onSendQueuedMessageNow={onSendQueuedMessageNow}
           onMultitask={onMultitask}
+          onExpandToFullChat={onExpandToFullChat}
           onSendSessionInput={sendSessionInput}
           onStartNewSession={onNewSession}
           onTerminateSession={onTerminateSession}

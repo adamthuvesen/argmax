@@ -94,9 +94,12 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
   ) {
     return REASONING_EFFORTS.slice(0, 3); // low → high
   }
-  // OpenCode Go models have discrete variant sets; fall back to low → xhigh
-  // for non-variant opencode models (which won't set supportsReasoningEffort).
-  const opencodeGoVariants: Record<string, readonly ReasoningEffort[]> = {
+  // OpenCode models that expose `--variant`, each with its own set; fall back
+  // to low → xhigh for the rest (which won't set supportsReasoningEffort).
+  // Muse Spark also offers a `minimal` variant below Low, which has no rung on
+  // this ladder and is left out.
+  const opencodeVariants: Record<string, readonly ReasoningEffort[]> = {
+    "opencode/muse-spark-1.3-contributor-free": ["low", "medium", "high", "xhigh"],
     "opencode-go/glm-5.3-flash": ["low", "high", "max"],
     "opencode-go/glm-5.3": ["low", "high", "max"],
     "opencode-go/kimi-k3": ["max"],
@@ -104,7 +107,7 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
     "opencode-go/deepseek-v4-pro": ["high", "max"],
     "opencode-go/deepseek-v4-flash": ["low", "high", "max"]
   };
-  if (provider === "opencode" && modelId in opencodeGoVariants) return opencodeGoVariants[modelId];
+  if (provider === "opencode" && modelId in opencodeVariants) return opencodeVariants[modelId];
   // Grok Build's --reasoning-effort accepts only low/medium/high/xhigh; the CLI
   // rejects anything above with "unknown effort level". Mirrors grok_reasoning_args.
   if (provider === "grok") return ["low", "medium", "high", "xhigh"];
@@ -211,8 +214,11 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     }
   ],
   // OpenCode Zen free tier. Ids keep the `provider/model` format the OpenCode
-  // CLI's `-m` flag expects. None expose a reasoning-effort or fast-mode
-  // control (the CLI's `--variant` doesn't apply to the Zen free models).
+  // CLI's `-m` flag expects. No fast-mode control, and only Muse Spark 1.3
+  // takes `--variant` — the other free models have no reasoning effort.
+  //
+  // Muse Spark 1.3 is free in exchange for Meta training on the prompts and
+  // completions it sees, which is what "contributor" in its id means.
   //
   // OpenCode Go (opencode-go/*) are billed per-token models with reasoning
   // effort variants wired via the CLI's `--variant` flag. Keep the variant map
@@ -223,6 +229,12 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "MiMo V2.5 Free", modelId: "opencode/mimo-v2.5-free", contextWindow: 200_000 },
     { label: "Nemotron 3.5 Lightning Free", modelId: "opencode/nemotron-3.5-lightning-free", contextWindow: 262_144 },
     { label: "Nemotron 3 Ultra Free", modelId: "opencode/nemotron-3-ultra-free", contextWindow: 1_000_000 },
+    {
+      label: "Muse Spark 1.3 Free",
+      modelId: "opencode/muse-spark-1.3-contributor-free",
+      supportsReasoningEffort: true,
+      contextWindow: 1_048_576
+    },
     { label: "GLM-5.3-Flash", modelId: "opencode-go/glm-5.3-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "GLM-5.3", modelId: "opencode-go/glm-5.3", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "Kimi K3", modelId: "opencode-go/kimi-k3", supportsReasoningEffort: true, contextWindow: 1_048_576 },
@@ -339,18 +351,19 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 
   // OpenCode Zen free tier — $0 across the board. OpenCode Go (opencode-go/*)
   // is billed per-token. Keep in sync with the Rust pricing mirror.
-  "opencode/big-pickle":                   { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "opencode/hy3-free":                     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "opencode/mimo-v2.5-free":               { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "opencode/nemotron-3.5-lightning-free":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "opencode/nemotron-3-ultra-free":        { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "opencode-go/glm-5.3-flash":             { input: 0.075, output: 0.25,   cacheRead: 0.015, cacheWrite: 0 },
-  "opencode-go/glm-5.3":                   { input: 1.4,   output: 4.4,    cacheRead: 0.26,  cacheWrite: 0 },
-  "opencode-go/kimi-k3":                   { input: 3,     output: 15,     cacheRead: 0.3,   cacheWrite: 0 },
-  "opencode-go/qwen3.8-max":               { input: 2,     output: 6,      cacheRead: 0.25,  cacheWrite: 2.5 },
-  "opencode-go/qwen3.8-flash":             { input: 0.15,  output: 0.47,   cacheRead: 0.016, cacheWrite: 0.2 },
-  "opencode-go/deepseek-v4-pro":           { input: 0.66,  output: 1.98,   cacheRead: 0.022, cacheWrite: 0 },
-  "opencode-go/deepseek-v4-flash":         { input: 0.22,  output: 0.66,   cacheRead: 0.007, cacheWrite: 0 },
+  "opencode/big-pickle":                       { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "opencode/hy3-free":                         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "opencode/mimo-v2.5-free":                   { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "opencode/nemotron-3.5-lightning-free":      { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "opencode/nemotron-3-ultra-free":            { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "opencode/muse-spark-1.3-contributor-free":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "opencode-go/glm-5.3-flash":                 { input: 0.075, output: 0.25,   cacheRead: 0.015, cacheWrite: 0 },
+  "opencode-go/glm-5.3":                       { input: 1.4,   output: 4.4,    cacheRead: 0.26,  cacheWrite: 0 },
+  "opencode-go/kimi-k3":                       { input: 3,     output: 15,     cacheRead: 0.3,   cacheWrite: 0 },
+  "opencode-go/qwen3.8-max":                   { input: 2,     output: 6,      cacheRead: 0.25,  cacheWrite: 2.5 },
+  "opencode-go/qwen3.8-flash":                 { input: 0.15,  output: 0.47,   cacheRead: 0.016, cacheWrite: 0.2 },
+  "opencode-go/deepseek-v4-pro":               { input: 0.66,  output: 1.98,   cacheRead: 0.022, cacheWrite: 0 },
+  "opencode-go/deepseek-v4-flash":             { input: 0.22,  output: 0.66,   cacheRead: 0.007, cacheWrite: 0 },
 
   // Grok Build bills its own SKUs (`grok-4.6-build` / `grok-4.5-build` in the
   // CLI's modelUsage map), not xAI's public API list price. Rates were solved

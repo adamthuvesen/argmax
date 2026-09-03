@@ -66,6 +66,7 @@ To avoid startup overhead, `composer-2.5` launches run over Agent Client Protoco
 OpenCode runs via `opencode run --dir <workspace> --format json --thinking -m <provider/model>`.
 - The `--dir` flag ensures tools execute in the workspace directory rather than the root directory.
 - OpenCode uses a SQLite store at `~/.local/share/opencode/opencode.db`. Discovery probes and title generation use temporary `XDG_DATA_HOME` directories to prevent database lock contention with active sessions.
+- **Muse Spark 1.3 is free because it is a contributor SKU.** Meta trains on the prompts and completions it sees, which is what `-contributor-free` in its id means. Zen offers no non-contributor Muse 1.3. It is also the only free-tier model that takes `--variant`, so `opencode_variant_args` matches on the full id rather than the `opencode-go/` prefix; its ladder is low → xhigh (the CLI's `minimal` variant has no rung on Argmax's ladder, and Meta's `max` reasoning mode had not shipped as of the 2026-09-02 release).
 
 ## Grok Build
 

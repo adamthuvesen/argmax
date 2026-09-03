@@ -175,6 +175,29 @@ describe("coalesceAssistantGroups", () => {
     expect(groups.map((group) => group.text)).toEqual(["Exploring the repo.", "Here is the map."]);
   });
 
+  it("does not repeat cumulative Cursor narration after a tool split", () => {
+    const cursorPayload = (text: string): Record<string, unknown> => ({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text }] },
+      timestamp_ms: 1
+    });
+    const groups = coalesceAssistantGroups(
+      [
+        assistantEvent("a1", "message.delta", "Block A.", "2026-05-12T15:00:01.000Z", cursorPayload("Block A.")),
+        assistantEvent(
+          "a2",
+          "message.delta",
+          " Block B.",
+          "2026-05-12T15:00:05.000Z",
+          cursorPayload("Block A. Block B.")
+        )
+      ],
+      { splitAt: ["2026-05-12T15:00:03.000Z"] }
+    );
+
+    expect(groups.map((group) => group.text)).toEqual(["Block A.", " Block B."]);
+  });
+
   it("flushes the open buffer whenever the kind flips", () => {
     // thinking → answer → thinking yields three groups in order, never merged.
     const groups = coalesceAssistantGroups([

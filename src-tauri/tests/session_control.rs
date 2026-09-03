@@ -887,7 +887,17 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
     assert_eq!(second["messaged"]["queued"], true);
     let child_status = as_parent(json!({ "status": { "sessionId": "session-child" } })).await;
     assert_eq!(child_status["status"]["unreadInbox"], 1);
+    // The sender can see the mail piling up, but the recipient is the one that
+    // has to act on it, and it is mid-turn. Its own tool results are the only
+    // channel that reaches it there, so every answer it gets carries the flag —
+    // here on a status call that has nothing to do with the inbox.
+    let child_sees_mail = as_child(json!({ "status": { "sessionId": "session-parent" } })).await;
+    assert_eq!(child_sees_mail["unreadInbox"], 1);
     let inbox = as_child(json!({ "inbox": {} })).await;
+    assert!(
+        inbox.get("unreadInbox").is_none(),
+        "a read that emptied the inbox has nothing left to flag: {inbox}"
+    );
     let messages = inbox["inbox"]["messages"].as_array().expect("messages");
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0]["body"], "second");
@@ -900,6 +910,10 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
         .as_array()
         .expect("messages")
         .is_empty());
+    assert!(
+        drained.get("unreadInbox").is_none(),
+        "a collected message must stop flagging: {drained}"
+    );
 }
 
 /// Poll a database read until it answers, since the completion notice is

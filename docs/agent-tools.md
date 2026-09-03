@@ -31,21 +31,30 @@ The same server carries Argmax's browser. A page an agent opens is a real tab
 in the user's window, shown in that session's own pane — browsing is visible
 work, not a hidden side channel.
 
+Cookie acceptance is pre-authorized in the launch prompt and the MCP server
+instructions. An agent may accept any cookie prompt without asking the user.
+
 | Tool | Arguments | Returns |
 |---|---|---|
 | `browser_open` | `url` | `{tabId, opened}` |
 | `browser_navigate` | `url`, `tab?` | `{tabId}` |
 | `browser_back` / `browser_reload` | `tab?` | `{tabId}` |
-| `browser_tabs` | — | `{tabs: [{tabId, ownerSessionId, url, title, loading}]}`, this session's only |
+| `browser_tabs` | — | `{tabs: [{tabId, ownerSessionId, url, title, loading, group}]}`, this session's only |
+| `browser_activate` | `tab?` | `{tabId, active}` |
+| `browser_duplicate` | `tab?`, `activate?` | `{tabId, opened}` |
+| `browser_open_link` | `ref`, `tab?`, `activate?` | `{tabId, url, opened}` |
+| `browser_group_tabs` | `tabs`, `group?` | `{tabs, group}` |
 | `browser_close` | `tab` | `{tabId, closed}` |
 | `browser_snapshot` | `tab?`, `interactive_only?` | `{tabId, url, title, tree, truncated}` |
 | `browser_find` | `query`, `tab?` | `{tabId, matches: [{ref, role, name, value}]}` |
 | `browser_get_text` | `tab?`, `max_chars?` | `{tabId, url, title, text, truncated}` |
+| `browser_extract` | `tab?`, `max_chars?` | `{tabId, url, title, metadata, headings, sections, tables, links, truncated}` |
 | `browser_click` / `browser_hover` | `ref`, `tab?` | `{tabId, url, detail}` |
 | `browser_type` | `ref`, `text`, `submit?`, `tab?` | `{tabId, url, detail}` |
 | `browser_select` | `ref`, `value`, `tab?` | `{tabId, url, detail}` |
 | `browser_press_key` | `key`, `modifiers?`, `tab?` | `{tabId, url, detail}` |
 | `browser_scroll` | `direction`, `amount?`, `ref?`, `tab?` | `{tabId, url, detail}` |
+| `browser_drag` | `ref`, `to_ref?` \| `delta_x`/`delta_y`, `start_x?`, `start_y?`, `end_x?`, `end_y?`, `steps?`, `tab?` | `{tabId, url, detail}` |
 | `browser_wait_for` | `text?`, `ref?`, `url_includes?`, `timeout_s?`, `tab?` | `{tabId, url, detail}` |
 | `browser_screenshot` | `tab?`, `ref?` | an image content block, plus `{width, height, bytes}` |
 | `browser_evaluate` | `expression`, `tab?` | `{tabId, result}` |
@@ -63,6 +72,37 @@ the page as a `data-argmax-ref` attribute, so it stays valid while its element
 does and dies with the document: after a navigation, a reload, or a
 single-page-app route change, take a fresh snapshot. A ref that no longer
 resolves fails with a message that says exactly that.
+
+**Reading a page: three tools, cheapest first.** `browser_extract` is the one
+to reach for when the question is *what does this page say*: it returns the
+article's metadata, headings, sections, tables and unique links as structured
+JSON, so comparing sources does not mean parsing an accessibility tree.
+`browser_get_text` is the flat-prose fallback when structure does not matter,
+and `browser_snapshot` is for *acting* — it is the only one that hands out
+refs. Extraction reads `<article>`, then `<main>`, then the whole body; on that
+last fallback it drops navigation, asides and footers, because with no article
+element to trust the page's chrome would otherwise read as content.
+
+**Tabs are for the human too.** `browser_activate` shows one of this session's
+tabs in its pane and makes it the default for later calls. `browser_open_link`
+opens a link ref beside the page it came from, and `browser_duplicate` forks a
+tab at its current URL; both stay in the background unless `activate` is set,
+and a background tab deliberately does *not* become the session's default —
+queueing up links must not move the agent off the page it queued them from. A
+new tab inherits the source tab's group. `browser_group_tabs` labels a set of
+related tabs, and that label replaces the "agent" badge in the user's tab
+strip, so grouping is something they can see rather than private bookkeeping.
+
+**Dragging is stepped, not instant.** `browser_drag` presses at `ref` and
+releases at `to_ref` (or `delta_x`/`delta_y` from where it started), moving in
+`steps` increments — each one a separate round trip into the page. That is
+deliberate: a drag dispatched in a single task never lets the page render
+between moves, and the libraries that matter need exactly that, so a
+one-task drag lands the item back where it started. The gesture also drives
+`<input type="range">` sliders, and the pointer is released on every exit path,
+including a failure mid-gesture. For the length of the gesture the steps also
+flush animation frames by hand, because agent tabs are created hidden and a
+hidden webview never fires one.
 
 **Screenshots cost more than snapshots.** A snapshot is text — a few kilobytes
 of roles, names and refs, and the only thing that hands out refs. A screenshot
@@ -174,9 +214,64 @@ take the messages with it: a stored body is capped at 16 KB with a
 `(truncated)` marker, and one read hands over at most 50 messages and 48 KB of
 body. What does not fit stays undelivered and comes back on the next read.
 
-A message that reached its recipient as a turn is marked delivered, so it is
-not handed over twice. One that queued behind a running turn stays collectable
-until either the queue drains or the recipient reads its inbox.
+### The flag every tool result carries
+
+The row closes the gap only if the recipient thinks to look in it, and an agent
+deep in a turn has no reason to. None of the five CLIs will take a server push
+mid-turn either. But there is one text channel that reaches a running model
+without touching its turn: its own tool results. So every `argmax` reply — a
+`session_list`, a `browser_click`, anything — carries a second content block
+when mail is waiting:
+
+```
+2 messages from other sessions are waiting unread in your Argmax inbox. Call
+inbox_read to collect them mid-turn, without ending your current turn.
+```
+
+The count is taken *after* the action runs, which is what makes it right on the
+inbox tools too: a read the reply ceiling cut short reports what it left behind
+instead of looking complete, and one that emptied the inbox says nothing at all.
+
+This is the difference between a peer that answers and a queue the user watches
+pile up, and it is bounded by exactly one thing: an agent that touches no
+`argmax` tool for the rest of its turn is not reached, and gets the message the
+old way when the turn ends. Steering a provider process mid-turn — Claude's
+`--input-format stream-json`, Codex's `turn/steer` — is the next build, not this
+one.
+
+### Delivered once, whichever path wins
+
+A message can now arrive two ways, so exactly one of them has to win. Every turn
+that carries a message carries its row id with it (`MessageOrigin.message_id`),
+and the row is closed the moment that turn actually starts: immediately for an
+idle recipient, at the drain for one that was mid-turn.
+
+That id is what makes both directions safe. The queue checks the row before it
+sends, so a message the recipient already collected through `inbox_read` is
+dropped instead of delivered a second time — and the drain goes on to the
+message behind it, since no turn will start to trigger the next drain. Closing
+the row at the drain is the mirror image: without it, a message the agent has
+just been handed as a turn comes back out of the next `inbox_read`, and the
+unread flag fires on every tool result for the rest of the session.
+
+A row stays open whenever no turn actually took it — a send that queues again
+because a turn started under it, or one that fails and puts the message back on
+the queue. Undelivered is the safe direction to be wrong in: the agent collects
+it late rather than never.
+
+**A failed turn throws its queue away.** A non-zero exit clears the recipient's
+whole pending queue ([`session_service.rs`](../src-tauri/src/providers/session_service.rs),
+`handle_exit`), on the reasoning that a broken provider should not be fed the
+follow-ups that piled up behind it. That predates the inbox, and it used to mean
+an agent's message could be accepted as `queued` and then vanish with no trace
+and no way to notice. The row is what makes it survivable now: the queue entry
+goes, the row stays open, and the message is still there for `inbox_read`,
+`session_wait`, and the unread flag.
+
+Survivable is not the same as delivered. After a failed turn the message will
+never arrive as a turn on its own — it waits until that session is working again
+and touches an `argmax` tool. A sender that needs certainty should check
+`session_status`, whose `unreadInbox` counts exactly these.
 
 ## Completion notices
 

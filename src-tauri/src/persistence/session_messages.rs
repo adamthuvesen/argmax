@@ -7,7 +7,7 @@
 //! and `session_wait` read the rows, so an agent that never sees the turn (it
 //! was mid-turn, or it is polling on purpose) can still collect what arrived.
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use super::time::now_iso;
@@ -76,15 +76,37 @@ pub fn insert_session_message(
     Ok(inserted > 0)
 }
 
+/// Close a row because a turn carried the message. Every caller is a turn —
+/// the immediate send, the queue drain, the completion notice, a multitask's
+/// results — so this is the whole `turn` side of the hand-over log.
 pub fn mark_message_delivered(connection: &Connection, id: &str) -> ArgmaxResult<()> {
-    connection
+    let created_at: Option<String> = connection
         .prepare_cached(
-            "UPDATE session_messages SET delivered_at = ? WHERE id = ? AND delivered_at IS NULL",
+            "UPDATE session_messages SET delivered_at = ? WHERE id = ? AND delivered_at IS NULL
+             RETURNING created_at",
         )
         .map_err(sqlite_error)?
-        .execute((now_iso(), id))
+        .query_row((now_iso(), id), |row| row.get(0))
+        .optional()
         .map_err(sqlite_error)?;
+    // No row means it was already handed over, which the inbox side logged.
+    if let Some(created_at) = created_at {
+        log_handover("turn", id, &created_at);
+    }
     Ok(())
+}
+
+/// One line per hand-over: which path won, and how long the message waited.
+/// This is the measurement the mid-turn inbox has to justify itself with — an
+/// `inbox` line with a low `age_ms` is a message that reached a working agent
+/// at its next tool call, and a `turn` line with a high one is a message that
+/// sat until the recipient's turn ended.
+fn log_handover(path: &str, id: &str, created_at: &str) {
+    let Ok(created) = chrono::DateTime::parse_from_rfc3339(created_at) else {
+        return;
+    };
+    let age_ms = (chrono::Utc::now() - created.with_timezone(&chrono::Utc)).num_milliseconds();
+    tracing::info!(path, message_id = id, age_ms, "session message handed over");
 }
 
 pub fn count_undelivered_messages(
@@ -97,6 +119,22 @@ pub fn count_undelivered_messages(
         )
         .map_err(sqlite_error)?
         .query_row([to_session_id], |row| row.get(0))
+        .map_err(sqlite_error)
+}
+
+/// Whether one row has been handed over — by the turn that delivered it, or
+/// by `inbox_read` collecting it mid-turn. The follow-up queue consults this
+/// at drain time so a message the recipient already collected is not also
+/// sent as a turn.
+pub fn is_message_delivered(connection: &Connection, id: &str) -> ArgmaxResult<bool> {
+    connection
+        .prepare_cached(
+            "SELECT EXISTS(
+                SELECT 1 FROM session_messages WHERE id = ? AND delivered_at IS NOT NULL
+            )",
+        )
+        .map_err(sqlite_error)?
+        .query_row([id], |row| row.get(0))
         .map_err(sqlite_error)
 }
 
@@ -204,6 +242,9 @@ pub fn take_undelivered_messages(
             .map_err(sqlite_error)?;
     }
     transaction.commit().map_err(sqlite_error)?;
+    for message in &messages {
+        log_handover("inbox", &message.id, &message.created_at);
+    }
     Ok(messages
         .into_iter()
         .map(|message| SessionMessage {

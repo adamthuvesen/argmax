@@ -61,7 +61,8 @@ use crate::{
         },
         projects::list_projects,
         session_messages::{
-            insert_session_message, mark_message_delivered, NewSessionMessage, COMPLETION_KIND,
+            insert_session_message, is_message_delivered, mark_message_delivered,
+            NewSessionMessage, COMPLETION_KIND,
         },
         sessions::{
             clear_session_conversation, find_session_by_id, persist_session, session_launch_kind,
@@ -141,6 +142,12 @@ pub struct MessageOrigin {
     /// `message` when another agent wrote here, `completion` when a session
     /// this one launched has finished.
     pub kind: String,
+    /// The `session_messages` row this turn delivers, when there is one. The
+    /// follow-up queue consults it at drain time so a message the recipient
+    /// already collected mid-turn — through `inbox_read`, while the queue held
+    /// it — is not also sent as a turn.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
 }
 
 /// A recorded completion notice, on its way to the launching session as a
@@ -1882,13 +1889,14 @@ impl ProviderSessionService {
             return Ok(None);
         }
         Ok(Some(CompletionNotice {
-            message_id: message.id,
+            message_id: message.id.clone(),
             to_session_id: parent_id,
             body,
             origin: MessageOrigin {
                 session_id: session_id.to_string(),
                 label,
                 kind: COMPLETION_KIND.to_string(),
+                message_id: Some(message.id),
             },
         }))
     }
@@ -2228,25 +2236,7 @@ impl ProviderSessionService {
     }
 
     fn drain_queue_after_complete(self: &Arc<Self>, session_id: String) {
-        let next = {
-            let mut queues = self.queues.lock_or_recover("queues");
-            if self
-                .queue_promotions
-                .lock_or_recover("queue promotions")
-                .contains(&session_id)
-            {
-                return;
-            }
-            let Some(queue) = queues.get_mut(&session_id) else {
-                return;
-            };
-            let next = queue.pop_front();
-            if queue.is_empty() {
-                queues.remove(&session_id);
-            }
-            next
-        };
-        let Some(next) = next else {
+        let Some(next) = self.pop_next_undelivered(&session_id) else {
             return;
         };
         self.publish_pending_messages(&session_id);
@@ -2256,7 +2246,16 @@ impl ProviderSessionService {
         let restore = next.clone();
         let restore_session = session_id.clone();
         tauri::async_runtime::spawn(async move {
+            // The recipient may have collected this very message between the
+            // pop and this task running. Re-check: sending a turn for a row
+            // that was already handed over through the inbox would deliver it
+            // twice.
+            if origin_row_is_delivered(&service, &next) {
+                service.drain_queue_after_complete(restore_session);
+                return;
+            }
             let origin = next.origin.clone();
+            let inbox_row = origin.as_ref().and_then(|origin| origin.message_id.clone());
             let send_input = match pending_message_to_send_input(session_id, next) {
                 Ok(input) => input,
                 Err(error) => {
@@ -2268,23 +2267,88 @@ impl ProviderSessionService {
                     return;
                 }
             };
-            let result = service.send_input_with_origin(send_input, origin).await;
-            if let Err(error) = result {
-                tracing::warn!(
-                    session_id = %restore_session,
-                    ?error,
-                    "failed to launch queued follow-up; restoring it to the queue"
-                );
-                {
-                    let mut queues = service.queues.lock_or_recover("queues");
-                    queues
-                        .entry(restore_session.clone())
-                        .or_default()
-                        .push_front(restore);
+            match service.send_input_with_origin(send_input, origin).await {
+                // The queue's whole reason to exist is that the recipient was
+                // busy; this is the moment the wait ends. Closing the inbox row
+                // here is what the immediate path already does on its own
+                // `!queued` branch — without it the row stays open forever, so
+                // every later tool result flags unread mail and `inbox_read`
+                // hands the agent a message it has just taken as a turn.
+                Ok(result) if !result.queued => {
+                    if let Some(id) = inbox_row {
+                        let connection = service.database.connection();
+                        if let Err(error) = mark_message_delivered(&connection, &id) {
+                            tracing::warn!(
+                                session_id = %restore_session,
+                                ?error,
+                                "failed to mark a drained follow-up delivered"
+                            );
+                        }
+                    }
                 }
-                service.publish_pending_messages(&restore_session);
+                // A turn started between the pop and the send, so this is
+                // pending again rather than delivered. The row stays open.
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        session_id = %restore_session,
+                        ?error,
+                        "failed to launch queued follow-up; restoring it to the queue"
+                    );
+                    {
+                        let mut queues = service.queues.lock_or_recover("queues");
+                        queues
+                            .entry(restore_session.clone())
+                            .or_default()
+                            .push_front(restore);
+                    }
+                    service.publish_pending_messages(&restore_session);
+                }
             }
         });
+    }
+
+    /// Pop the next follow-up worth sending: one whose inbox row, if it has
+    /// one, has not been collected. A message the recipient read mid-turn
+    /// through `inbox_read` is dropped here rather than also arriving as a
+    /// turn — and popping continues to the message behind it, since no turn
+    /// will start to trigger the next drain.
+    fn pop_next_undelivered(&self, session_id: &str) -> Option<PendingMessage> {
+        loop {
+            let next = {
+                let mut queues = self.queues.lock_or_recover("queues");
+                if self
+                    .queue_promotions
+                    .lock_or_recover("queue promotions")
+                    .contains(session_id)
+                {
+                    return None;
+                }
+                let Some(queue) = queues.get_mut(session_id) else {
+                    return None;
+                };
+                let next = queue.pop_front();
+                if queue.is_empty() {
+                    queues.remove(session_id);
+                }
+                next
+            };
+            let Some(next) = next else {
+                return None;
+            };
+            if !origin_row_is_delivered(self, &next) {
+                return Some(next);
+            }
+            tracing::info!(
+                session_id,
+                message_id = next
+                    .origin
+                    .as_ref()
+                    .and_then(|origin| origin.message_id.as_deref()),
+                "dropping a queued follow-up the recipient already collected from its inbox"
+            );
+            self.publish_pending_messages(session_id);
+        }
     }
 
     /// `synthesize_cursor_exit` is `true` only on a genuine Cursor process exit
@@ -2700,6 +2764,18 @@ fn pending_model_metadata(
             None
         }
     })
+}
+
+/// Whether a queued follow-up's inbox row has already been handed over. Only
+/// agent messages and completion notices carry a row; a user-typed follow-up
+/// never does, and always sends.
+fn origin_row_is_delivered(service: &ProviderSessionService, message: &PendingMessage) -> bool {
+    message
+        .origin
+        .as_ref()
+        .and_then(|origin| origin.message_id.as_deref())
+        .and_then(|id| is_message_delivered(&service.database.read_connection(), id).ok())
+        .unwrap_or(false)
 }
 
 /// Provider lifecycle updates must not overwrite the authoritative workspace

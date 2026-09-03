@@ -226,9 +226,12 @@ export function SessionComposer({
   });
   const {
     pendingAttachments,
+    isDraggingFiles,
     attachmentInputRef,
     removePendingAttachment,
+    onComposerDragEnter,
     onComposerDragOver,
+    onComposerDragLeave,
     onComposerDrop,
     onComposerPaste,
     onAttachmentInputChange,
@@ -543,7 +546,9 @@ export function SessionComposer({
       data-type-scale="composer"
       ref={inputFormRef}
       onSubmit={(event) => void submitInput(event)}
+      onDragEnter={onComposerDragEnter}
       onDragOver={onComposerDragOver}
+      onDragLeave={onComposerDragLeave}
       onDrop={onComposerDrop}
     >
       <input
@@ -678,7 +683,12 @@ export function SessionComposer({
           })}
         </div>
       ) : null}
-      <div className="session-input">
+      <div className="session-input" data-drag-active={isDraggingFiles ? "true" : undefined}>
+        <div className="composer-drop-overlay" aria-hidden="true">
+          <Paperclip size={20} />
+          <span>Drop to attach</span>
+          <small>Images and files</small>
+        </div>
       {pendingAnnotations.length > 0 || openFilesAttached ? (
         <div className="composer-annotations" role="list" aria-label="Annotations">
           {openFilesAttached ? (

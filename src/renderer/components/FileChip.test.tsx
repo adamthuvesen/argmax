@@ -1,6 +1,10 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { formatFileChipLabel, matchFileChip } from "../lib/fileChipPath.js";
+import {
+  formatFileChipLabel,
+  matchFileChip,
+  normalizeFileChipPath
+} from "../lib/fileChipPath.js";
 import { FileChip } from "./FileChip.js";
 
 describe("matchFileChip", () => {
@@ -62,6 +66,20 @@ describe("formatFileChipLabel", () => {
   });
 });
 
+describe("normalizeFileChipPath", () => {
+  it("makes absolute workspace paths relative", () => {
+    expect(normalizeFileChipPath("/repo/src/App.tsx", "/repo")).toBe("src/App.tsx");
+  });
+
+  it("decodes spaces from angle-bracket Markdown links", () => {
+    expect(normalizeFileChipPath("/repo/My%20File.ts", "/repo")).toBe("My File.ts");
+  });
+
+  it("keeps paths outside the workspace absolute", () => {
+    expect(normalizeFileChipPath("/tmp/report.md", "/repo")).toBe("/tmp/report.md");
+  });
+});
+
 describe("FileChip", () => {
   beforeEach(() => {
     const openInIde = vi.fn().mockResolvedValue({ ok: true });
@@ -100,5 +118,30 @@ describe("FileChip", () => {
   it("renders the basename and the optional line suffix", () => {
     render(<FileChip path="src/x.ts" line={7} workspaceId="ws-1" />);
     expect(screen.getByRole("button", { name: "Open src/x.ts at line 7" })).toHaveTextContent("x.ts:7");
+  });
+
+  it("resolves a bare filename before loading its hover preview", async () => {
+    const statFile = vi.fn().mockRejectedValue(new Error("missing at root"));
+    const listFiles = vi.fn().mockResolvedValue([{ path: "docs/package.json" }]);
+    const readFile = vi.fn().mockResolvedValue({
+      kind: "text",
+      content: "{}",
+      size: 2,
+      mtimeMs: 1
+    });
+    (window as unknown as { argmax: unknown }).argmax = {
+      workspace: { statFile, listFiles, readFile },
+      workspaces: { openInIde: vi.fn() },
+      system: { openPath: vi.fn() }
+    };
+    render(<FileChip path="package.json" line={null} workspaceId="ws-1" workspaceCwd="/repo" />);
+
+    fireEvent.focus(screen.getByRole("button", { name: "Open package.json" }));
+
+    await waitFor(() => expect(readFile).toHaveBeenCalledWith(
+      { kind: "workspace", id: "ws-1" },
+      "docs/package.json"
+    ));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("{}");
   });
 });

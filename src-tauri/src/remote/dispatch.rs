@@ -58,6 +58,7 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "browser:snapshot",
     "browser:find",
     "browser:get-text",
+    "browser:extract",
     "browser:act",
     // Scheduled tasks are managed from the desktop panel; the mobile surface
     // stays read-only on sessions for now.

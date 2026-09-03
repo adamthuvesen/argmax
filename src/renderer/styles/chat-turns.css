@@ -1496,12 +1496,10 @@ button.tool-call-row-button {
   text-align: right;
 }
 
-/* A multitask reads as a launch row among the turn's tools, the same shape as
-   the subagents beside it: it is work running alongside this turn, opened in
-   the same dock. The row borrows `.agent-launch-*` wholesale; a settled one is
-   marked with the Split glyph its dock tab already uses, which is the only
-   thing that has to say "multitask, not subagent" — the running state shares
-   the nest, because at that moment they are doing the same thing. */
+/* A multitask above the composer keeps the subagent launch-row shape. The row
+   borrows `.agent-launch-*` wholesale. A settled one is marked with the Split
+   glyph its dock tab already uses. The running state shares the nest because
+   both surfaces mean work is happening now. */
 .multitask-row-mark {
   display: inline-grid;
   place-items: center;

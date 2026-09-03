@@ -67,7 +67,9 @@ export function AgentsView({
   onLoadAgentEvents,
   onLoadSessionEvents,
   onOpenAgent,
+  onOpenDiff,
   onOpenFile,
+  onOpenReview,
   onOpenFullChat,
   onSendQueuedMessageNow,
   onSendSessionInput,
@@ -96,7 +98,9 @@ export function AgentsView({
   onLoadAgentEvents?: (sessionId: string, parentToolUseId: string) => Promise<void>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onOpenAgent?: (tool: ToolCall) => void;
+  onOpenDiff?: (path: string) => void;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+  onOpenReview?: () => void;
   onOpenFullChat?: (sessionId: string) => void;
   onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
   onSendSessionInput?: (
@@ -312,7 +316,9 @@ export function AgentsView({
                   onLoadAgentEvents={onLoadAgentEvents}
                   onLoadSessionEvents={onLoadSessionEvents}
                   onOpenAgent={onOpenAgent}
+                  onOpenDiff={onOpenDiff}
                   onOpenFile={onOpenFile}
+                  onOpenReview={onOpenReview}
                   parentSession={parentSession}
                   parentToolUseId={tab.id}
                   workspace={workspace}

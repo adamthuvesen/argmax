@@ -17,6 +17,20 @@ export interface FileChipMatch {
   line: number | null;
 }
 
+/** Convert a linked absolute workspace path into the relative path expected by
+ * the Files view. Encoded spaces come from Markdown links wrapped in `<...>`. */
+export function normalizeFileChipPath(path: string, workspaceCwd: string | null | undefined): string {
+  let decoded = path;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    // Keep the original text. The file resolver will report that it is not openable.
+  }
+  if (!workspaceCwd) return decoded;
+  const root = workspaceCwd.replace(/\/+$/, "");
+  return decoded.startsWith(`${root}/`) ? decoded.slice(root.length + 1) : decoded;
+}
+
 export function matchFileChip(value: string): FileChipMatch | null {
   const trimmed = value.trim();
   if (trimmed.length < 3 || trimmed.length > 200) return null;

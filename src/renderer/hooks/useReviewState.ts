@@ -175,6 +175,8 @@ export interface ReviewState {
   agentTabs: AgentTabsState;
   /** Open the panel on a subagent, adding its tab if it is not open yet. */
   openAgent: (parentToolUseId: string) => void;
+  /** Open the panel on the Agents view without selecting a specific tab. */
+  openAgents: () => void;
   /** Open the panel on a multitask's chat, adding its tab if it is not open
    *  yet. Same dock as the subagents: both are work running alongside. */
   openMultitask: (sessionId: string) => void;
@@ -356,6 +358,7 @@ export function useReviewState(
     changedFilesKey,
     comparison,
     dispatch,
+    autoSelectFirstFile: isPanelOpen && mode === "changes",
     onOpenChanges: openChangesMode
   });
 
@@ -433,6 +436,11 @@ export function useReviewState(
     [openAgentTab]
   );
 
+  const openAgents = useCallback((): void => {
+    setMode("agents");
+    setIsPanelOpen(true);
+  }, []);
+
   const openMultitask = useCallback(
     (sessionId: string): void => {
       setMode("agents");
@@ -461,8 +469,6 @@ export function useReviewState(
   const panelRef = useRef({ isPanelOpen, filesCount: 0, files: visibleFiles, mode });
   panelRef.current = { isPanelOpen, filesCount: visibleFiles.length, files: visibleFiles, mode };
 
-  // Opening the panel never expands a diff: the changed files start collapsed
-  // and stay that way until the reader picks one.
   const togglePanel = useCallback((): void => {
     if (!panelRef.current.isPanelOpen && panelRef.current.filesCount === 0) {
       setMode("files");
@@ -568,6 +574,7 @@ export function useReviewState(
     workspaceFiles,
     agentTabs,
     openAgent,
+    openAgents,
     openMultitask,
     openBrowser,
     browserOwner,

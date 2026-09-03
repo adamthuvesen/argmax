@@ -16,7 +16,7 @@
 // the UI into the state you want to see. Prints {"out":…} JSON when done.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,7 +38,7 @@ function fail(message) {
 
 function parseArgs(argv) {
   const options = {
-    out: "ui-screenshot.png",
+    out: "scratch/ui-screenshot.png",
     theme: "dark",
     width: 1400,
     height: 900,
@@ -209,6 +209,7 @@ await new Promise((resolve) => setTimeout(resolve, options.settle));
 
 const { data } = await cdp.send("Page.captureScreenshot", { format: "png" }, sessionId);
 const out = path.resolve(options.out);
+mkdirSync(path.dirname(out), { recursive: true });
 writeFileSync(out, Buffer.from(data, "base64"));
 cdp.close();
 console.log(

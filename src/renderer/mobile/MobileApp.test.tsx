@@ -296,15 +296,18 @@ describe("MobileApp", () => {
 
     await screen.findByRole("tablist", { name: "Review mode" });
 
-    // Changes view: files start collapsed, and tapping one expands its diff.
-    // Asserted on the list's text content, since an added line is one text node
-    // while the diff is plain and several once the highlighter has loaded.
+    // Changes view: the first changed file is selected for the reader, so its
+    // diff is already open. Asserted on the list's text content, since an added
+    // line is one text node while the diff is plain and several once the
+    // highlighter has loaded.
     const changedFiles = await screen.findByLabelText("Changed files");
     expect(changedFiles).toHaveTextContent("src/foo.ts");
-    expect(changedFiles).not.toHaveTextContent("const b = 2;");
-
-    fireEvent.click(screen.getByRole("button", { name: "Expand src/foo.ts diff" }));
     await waitFor(() => expect(changedFiles).toHaveTextContent("const b = 2;"));
+
+    // Collapsing it puts the diff away again, which is the control the reader
+    // has on a screen this size.
+    fireEvent.click(await screen.findByRole("button", { name: "Collapse src/foo.ts diff" }));
+    await waitFor(() => expect(changedFiles).not.toHaveTextContent("const b = 2;"));
 
     // Files view: the tree renders; tapping a file opens the preview and back
     // returns to the tree.

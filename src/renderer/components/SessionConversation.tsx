@@ -82,6 +82,7 @@ import { SessionComposer, type ComposerStatus, type NewSessionSeed } from "./Ses
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
+import { MultitaskRow } from "./MultitaskRow.js";
 import { recordChatCue, type ChatCueReason } from "../lib/chatCueLog.js";
 import { parseUserMessageAttachments } from "./sessionConversationHelpers.js";
 import {
@@ -413,21 +414,38 @@ export function SessionConversation({
     (): RenderItem[] => foldRenderItems(conversationItems, session, foldTurnToolItems),
     [conversationItems, session]
   );
+  // Multitask events keep their launch-turn association in the fold so a
+  // later finish still merges into the right notice. The visible row lives
+  // above the composer, where it remains in view after the parent turn ends.
+  const composerMultitaskNotices = useMemo(
+    () => renderItems.flatMap((item) => (item.kind === "turn" ? item.multitasks : [])),
+    [renderItems]
+  );
+  const transcriptRenderItems = useMemo(
+    () =>
+      renderItems.filter(
+        (item) =>
+          item.kind !== "turn" ||
+          item.assistantEvents.length > 0 ||
+          item.toolItems.length > 0
+      ),
+    [renderItems]
+  );
   const [visibleCount, setVisibleCount] = useState(CONVERSATION_WINDOW);
   // A different session starts from the bottom again.
   useEffect(() => setVisibleCount(CONVERSATION_WINDOW), [sessionId]);
-  const windowStart = Math.max(0, renderItems.length - visibleCount);
+  const windowStart = Math.max(0, transcriptRenderItems.length - visibleCount);
   const windowedItems = useMemo(
-    () => renderItems.slice(windowStart),
-    [renderItems, windowStart]
+    () => transcriptRenderItems.slice(windowStart),
+    [transcriptRenderItems, windowStart]
   );
   const lastUserMessageId = useMemo(() => {
-    for (let i = renderItems.length - 1; i >= 0; i -= 1) {
-      const item = renderItems[i];
+    for (let i = transcriptRenderItems.length - 1; i >= 0; i -= 1) {
+      const item = transcriptRenderItems[i];
       if (item && item.kind === "user-message") return item.event.id;
     }
     return null;
-  }, [renderItems]);
+  }, [transcriptRenderItems]);
 
   // The card is the ambient stand-in for a docked right-hand panel, so an open
   // review or debug-log panel takes its place rather than sitting beside it.
@@ -922,6 +940,7 @@ export function SessionConversation({
             onBrowseFiles={review.openPanelInFilesMode}
             onHide={() => onHideWorkspaceCard?.()}
             onOpenChanges={review.toggleChangesPanel}
+            onOpenAgents={review.openAgents}
             onOpenCommitDialog={onOpenCommitDialog}
             onToggleTerminal={() => onToggleTerminal?.()}
             session={session}
@@ -959,7 +978,7 @@ export function SessionConversation({
               Show earlier messages ({windowStart} hidden)
             </button>
           ) : null}
-          {renderItems.length > 0 ? (
+          {transcriptRenderItems.length > 0 ? (
             windowedItems.map((item, windowIndex) => {
               const index = windowStart + windowIndex;
               if (item.kind === "user-message") {
@@ -986,18 +1005,14 @@ export function SessionConversation({
                 <SessionConversationTurn
                   key={item.id}
                   item={item}
-                  priorItem={index > 0 ? renderItems[index - 1] ?? null : null}
-                  isLatestTurn={index === renderItems.length - 1}
+                  priorItem={index > 0 ? transcriptRenderItems[index - 1] ?? null : null}
+                  isLatestTurn={index === transcriptRenderItems.length - 1}
                   session={session}
                   selectedModel={selectedModel}
                   workspace={workspace}
                   agentCodenames={agentCodenames}
                   onOpenFile={onOpenFile}
                   onOpenAgent={onOpenAgent}
-                  // The dock is where a multitask is read; a surface without
-                  // one (mobile) opens it as a full chat instead.
-                  onOpenMultitask={onOpenMultitask ?? onOpenSession}
-                  multitaskStates={multitaskStates}
                   onTerminateSession={onTerminateSession}
                   onForkSession={onForkSession}
                   onSendSessionInput={sendSessionInput}
@@ -1088,28 +1103,47 @@ export function SessionConversation({
           </button>
         </div>
       ) : null}
-        <SessionComposer
-          agentMode={agentMode}
-          canSend={canSend}
-          changeSummary={changeSummary}
-          fastModeEnabled={fastModeEnabled}
-          floating={floating}
-          inputRef={inputRef}
-          isQueueing={isQueueing}
-          onFastModeEnabledChange={onFastModeEnabledChange}
-          onCancelQueuedMessage={onCancelQueuedMessage}
-          onSendQueuedMessageNow={onSendQueuedMessageNow}
-          onMultitask={onMultitask}
-          onExpandToFullChat={onExpandToFullChat}
-          onSendSessionInput={sendSessionInput}
-          onStartNewSession={onNewSession}
-          onTerminateSession={onTerminateSession}
-          onClearSession={onClearSession}
-          pendingAnnotations={pendingAnnotations}
-          onRemoveAnnotation={removeAnnotation}
-          onClearAnnotations={clearAnnotations}
-          openFilePaths={openFilePaths}
-          pendingMessages={pendingMessages}
+      {composerMultitaskNotices.length > 0 ? (
+        <section className="multitask-composer-lane" aria-label="Multitasks">
+          {composerMultitaskNotices.map((notice) => {
+            const childId = notice.childSessionId;
+            const opens = childId !== null && multitaskStates.has(childId);
+            return (
+              <MultitaskRow
+                key={`multitask-${childId ?? notice.createdAt}`}
+                notice={notice}
+                liveState={childId ? (multitaskStates.get(childId) ?? null) : null}
+                {...(opens && (onOpenMultitask ?? onOpenSession)
+                  ? { onOpen: onOpenMultitask ?? onOpenSession }
+                  : {})}
+                onStop={(sessionId) => void onTerminateSession(sessionId)}
+              />
+            );
+          })}
+        </section>
+      ) : null}
+      <SessionComposer
+        agentMode={agentMode}
+        canSend={canSend}
+        changeSummary={changeSummary}
+        fastModeEnabled={fastModeEnabled}
+        floating={floating}
+        inputRef={inputRef}
+        isQueueing={isQueueing}
+        onFastModeEnabledChange={onFastModeEnabledChange}
+        onCancelQueuedMessage={onCancelQueuedMessage}
+        onSendQueuedMessageNow={onSendQueuedMessageNow}
+        onMultitask={onMultitask}
+        onExpandToFullChat={onExpandToFullChat}
+        onSendSessionInput={sendSessionInput}
+        onStartNewSession={onNewSession}
+        onTerminateSession={onTerminateSession}
+        onClearSession={onClearSession}
+        pendingAnnotations={pendingAnnotations}
+        onRemoveAnnotation={removeAnnotation}
+        onClearAnnotations={clearAnnotations}
+        openFilePaths={openFilePaths}
+        pendingMessages={pendingMessages}
         reviewPanelOpen={review.isPanelOpen}
         selectedModel={selectedModel}
         session={session}

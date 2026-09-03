@@ -42,6 +42,32 @@ pub enum BrowserRequest {
     Open {
         url: String,
     },
+    Activate {
+        #[serde(default)]
+        tab: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Duplicate {
+        #[serde(default)]
+        tab: Option<String>,
+        #[serde(default = "default_true")]
+        activate: bool,
+    },
+    #[serde(rename_all = "camelCase")]
+    GroupTabs {
+        tabs: Vec<String>,
+        #[serde(default)]
+        group: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    OpenLink {
+        #[serde(default)]
+        tab: Option<String>,
+        #[serde(rename = "ref")]
+        element_ref: String,
+        #[serde(default)]
+        activate: bool,
+    },
     Navigate {
         #[serde(default)]
         tab: Option<String>,
@@ -79,6 +105,13 @@ pub enum BrowserRequest {
         #[serde(default)]
         max_chars: Option<u32>,
     },
+    #[serde(rename_all = "camelCase")]
+    Extract {
+        #[serde(default)]
+        tab: Option<String>,
+        #[serde(default)]
+        max_chars: Option<u32>,
+    },
     /// Click, type, select, hover, press-key, scroll, wait-for.
     Act {
         #[serde(default)]
@@ -105,6 +138,10 @@ pub enum BrowserRequest {
         #[serde(default)]
         prompt_text: Option<String>,
     },
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// What a browser action answers with. `result` is the JSON the agent reads;
@@ -152,6 +189,75 @@ async fn run(
                 json!({ "tabId": tab_id, "opened": true }),
             ))
         }
+        BrowserRequest::Activate { tab } => {
+            let target = owned_target(app, session_id, tab)?;
+            let tab_id = automation::activate(app, session_id, &target)?;
+            Ok(BrowserOutcome::json(json!({ "tabId": tab_id, "active": true })))
+        }
+        BrowserRequest::Duplicate { tab, activate } => {
+            let target = owned_target(app, session_id, tab)?;
+            let session = session_id.to_string();
+            let tab_id = on_main(app, move |app| {
+                automation::duplicate(app, &session, &target, activate)
+            })
+            .await?;
+            Ok(BrowserOutcome::json(
+                json!({ "tabId": tab_id, "opened": true }),
+            ))
+        }
+        BrowserRequest::GroupTabs { tabs, group } => {
+            if tabs.is_empty() || tabs.len() > 50 {
+                return Err(ArgmaxError::service(
+                    "BROWSER_INVALID_GROUP",
+                    "group between 1 and 50 tabs",
+                ));
+            }
+            let group = group
+                .map(|label| label.trim().to_string())
+                .filter(|label| !label.is_empty());
+            if group.as_ref().is_some_and(|label| label.chars().count() > 80) {
+                return Err(ArgmaxError::service(
+                    "BROWSER_INVALID_GROUP",
+                    "a browser tab group label may not exceed 80 characters",
+                ));
+            }
+            let mut owned_tabs = Vec::with_capacity(tabs.len());
+            for tab in tabs {
+                let target = owned_target(app, session_id, Some(tab))?;
+                if let TabTarget::Tab(tab_id) = target {
+                    if !owned_tabs.contains(&tab_id) {
+                        owned_tabs.push(tab_id);
+                    }
+                }
+            }
+            automation::group_tabs(app, &owned_tabs, group.clone())?;
+            Ok(BrowserOutcome::json(
+                json!({ "tabs": owned_tabs, "group": group }),
+            ))
+        }
+        BrowserRequest::OpenLink {
+            tab,
+            element_ref,
+            activate,
+        } => {
+            let target = owned_target(app, session_id, tab)?;
+            let (source_id, url) = automation::link_url(app, &target, &element_ref).await?;
+            // A link opened from a grouped page belongs to the same reading:
+            // inherit the group so the strip keeps the research together.
+            let group = automation::tab_group(app, &source_id);
+            let session = session_id.to_string();
+            let opened_url = url.clone();
+            let tab_id = on_main(app, move |app| {
+                automation::open_with_options(app, Some(&session), &opened_url, group, activate)
+            })
+            .await?;
+            if !activate {
+                automation::keep_focus(app, &source_id);
+            }
+            Ok(BrowserOutcome::json(
+                json!({ "tabId": tab_id, "url": url, "opened": true }),
+            ))
+        }
         BrowserRequest::Navigate { tab, url } => {
             let target = owned_target(app, session_id, tab)?;
             let tab_id = on_main(app, move |app| automation::navigate(app, &target, &url)).await?;
@@ -194,6 +300,11 @@ async fn run(
             let target = owned_target(app, session_id, tab)?;
             let text = automation::get_text(app, &target, max_chars).await?;
             Ok(BrowserOutcome::json(encode(text)?))
+        }
+        BrowserRequest::Extract { tab, max_chars } => {
+            let target = owned_target(app, session_id, tab)?;
+            let extracted = automation::extract(app, &target, max_chars).await?;
+            Ok(BrowserOutcome::json(encode(extracted)?))
         }
         BrowserRequest::Act { tab, action } => {
             let target = owned_target(app, session_id, tab)?;

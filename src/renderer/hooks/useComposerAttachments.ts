@@ -21,10 +21,15 @@ import type { AttachmentMimeType, ComposerAttachment } from "../../shared/types.
 
 export interface ComposerAttachmentsApi {
   pendingAttachments: ComposerAttachment[];
+  isDraggingFiles: boolean;
   attachmentInputRef: RefObject<HTMLInputElement | null>;
   removePendingAttachment: (filePath: string) => void;
+  /** Bind to the composer `<form>`'s `onDragEnter`. */
+  onComposerDragEnter: (event: ReactDragEvent<HTMLFormElement>) => void;
   /** Bind to the composer `<form>`'s `onDragOver`. */
   onComposerDragOver: (event: ReactDragEvent<HTMLFormElement>) => void;
+  /** Bind to the composer `<form>`'s `onDragLeave`. */
+  onComposerDragLeave: (event: ReactDragEvent<HTMLFormElement>) => void;
   /** Bind to the composer `<form>`'s `onDrop`. */
   onComposerDrop: (event: ReactDragEvent<HTMLFormElement>) => void;
   /** Bind to the textarea's `onPaste`. */
@@ -84,7 +89,9 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
   const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>(
     () => readDraft(draftKey ?? null).attachments
   );
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const dragDepth = useRef(0);
 
   // A pane that swaps drafts without remounting starts from the new draft's
   // own images, never the previous one's — unless the typed text just carried
@@ -177,9 +184,23 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
     setPendingAttachments((prev) => prev.filter((a) => a.filePath !== filePath));
   }, []);
 
+  const onComposerDragEnter = useCallback((event: ReactDragEvent<HTMLFormElement>): void => {
+    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    setIsDraggingFiles(true);
+  }, []);
+
   const onComposerDragOver = useCallback((event: ReactDragEvent<HTMLFormElement>): void => {
     if (!Array.from(event.dataTransfer.types).includes("Files")) return;
     event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDraggingFiles(true);
+  }, []);
+
+  const onComposerDragLeave = useCallback((): void => {
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setIsDraggingFiles(false);
   }, []);
 
   const splitAndAttach = useCallback(
@@ -208,6 +229,8 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
 
   const onComposerDrop = useCallback(
     (event: ReactDragEvent<HTMLFormElement>): void => {
+      dragDepth.current = 0;
+      setIsDraggingFiles(false);
       if (!event.dataTransfer.files || event.dataTransfer.files.length === 0) return;
       event.preventDefault();
       splitAndAttach(Array.from(event.dataTransfer.files));
@@ -289,9 +312,12 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
 
   return {
     pendingAttachments,
+    isDraggingFiles,
     attachmentInputRef,
     removePendingAttachment,
+    onComposerDragEnter,
     onComposerDragOver,
+    onComposerDragLeave,
     onComposerDrop,
     onComposerPaste,
     onAttachmentInputChange,

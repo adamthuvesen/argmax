@@ -35,7 +35,7 @@ export type RenderItem =
       assistantEvents: TimelineEvent[];
       toolItems: TurnToolItem[];
       assistantTimestamps: number[];
-      /** Multitasks dispatched during this turn, drawn among its tool rows. */
+      /** Multitasks dispatched during this turn, collected above the composer. */
       multitasks: MultitaskNotice[];
     };
 
@@ -145,15 +145,13 @@ export function foldRenderItems(
     if (typeof parent !== "string" || parent === tool.toolUseId) return true;
     return !agentLaunchIds.has(parent) || turnLaunchIds.has(parent);
   };
-  // A multitask row belongs to the turn it was dispatched from, among that
-  // turn's tool rows — the same place a subagent launch sits, because that is
-  // what it is to the reader. It is not a seam: it joins the turn's body
-  // instead of ending it, so dispatching one mid-turn never splits that turn's
-  // block in two, which would read as an interruption the agent never had.
+  // A multitask notice stays associated with the turn it was dispatched from.
+  // It is not a seam, so dispatching one mid-turn never splits that turn's
+  // block in two. SessionConversation lifts the visible row above the composer.
   //
   // The dispatch and the finish are two rows about one multitask, and they can
   // be a whole turn apart. The second one updates the row the first one
-  // opened — wherever it already sits — so the chat carries one row per
+  // opened, so the chat carries one row per
   // multitask rather than a start marker and an unrelated end marker.
   const pushMultitask = (event: TimelineEvent): void => {
     const notice = multitaskNoticeFor(event);

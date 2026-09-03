@@ -647,11 +647,9 @@
   /* The gutter is declared on `.session-main-column`, and the dock is that
      div's sibling, not its child. Without it here `.conversation-list`'s
      `padding: <fade> <gutter> <tail>` shorthand is invalid at computed-value
-     time and collapses to zero on all four sides — which took the vertical
-     padding the edge fades need to land on, and the tail that keeps the newest
-     line clear of the composer. Narrower than the pane's, the way the subagent
-     transcript beside it is (`.agent-activity`). */
-  --session-inline-padding: clamp(14px, calc((100% - var(--chat-content-width)) / 2), 2000px);
+     time and collapses to zero on all four sides. Use the grid's shared floor
+     so chats and agent transcripts keep the same inset in this dock. */
+  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width)) / 2), 2000px);
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -1108,20 +1106,27 @@
 }
 
 /* Marks a tab a session's agent opened, so the user can tell it apart from
-   the ones they opened themselves. */
+   the ones they opened themselves. Carries the tab's group label instead of
+   "agent" once a session has grouped it, so it has to ellipsize: a label is
+   the agent's prose, and the strip is 160px wide. inline-block, not
+   inline-flex: text-overflow needs a block box to clip in, and a flex
+   container's anonymous text item never ellipsizes. */
 .browser-tab-agent {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-block;
   flex: none;
+  max-width: 72px;
   height: 13px;
   padding: 0 4px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border-radius: 3px;
   background: var(--panel-sunken);
   color: var(--muted-strong);
   font-size: var(--text-2xs);
   font-weight: var(--weight-ui);
-  line-height: 1;
+  line-height: 13px;
   letter-spacing: 0.02em;
 }
 

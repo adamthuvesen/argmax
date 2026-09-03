@@ -28,6 +28,8 @@ pub struct BrowserTabInfo {
     pub url: String,
     pub title: Option<String>,
     pub loading: bool,
+    /// Optional label used to organize related tabs in the visible strip.
+    pub group: Option<String>,
 }
 
 /// Full list, pushed on every change — a delta would have to be reconciled
@@ -90,6 +92,7 @@ impl BrowserTabRegistry {
                 url: url.to_string(),
                 title: None,
                 loading: true,
+                group: None,
             },
             last_used: stamp,
         });
@@ -145,6 +148,26 @@ impl BrowserTabRegistry {
     pub fn contains(&self, tab_id: &str) -> bool {
         let entries = self.entries.lock().expect("browser registry poisoned");
         entries.iter().any(|entry| entry.info.tab_id == tab_id)
+    }
+
+    pub fn get(&self, tab_id: &str) -> Option<BrowserTabInfo> {
+        let entries = self.entries.lock().expect("browser registry poisoned");
+        entries
+            .iter()
+            .find(|entry| entry.info.tab_id == tab_id)
+            .map(|entry| entry.info.clone())
+    }
+
+    pub fn set_group(&self, tab_ids: &[String], group: Option<String>) -> bool {
+        let mut changed = false;
+        let mut entries = self.entries.lock().expect("browser registry poisoned");
+        for entry in entries.iter_mut() {
+            if tab_ids.contains(&entry.info.tab_id) && entry.info.group != group {
+                entry.info.group = group.clone();
+                changed = true;
+            }
+        }
+        changed
     }
 
     pub fn list(&self) -> Vec<BrowserTabInfo> {
@@ -250,5 +273,26 @@ mod tests {
         let tab = registry.list().pop().expect("one tab");
         assert_eq!(tab.title.as_deref(), Some("Page"));
         assert!(tab.loading);
+    }
+
+    #[test]
+    fn a_group_label_lands_on_the_named_tabs_only() {
+        let registry = BrowserTabRegistry::default();
+        registry.insert("agent-1", Some("s1".into()), "https://a.example");
+        registry.insert("agent-2", Some("s1".into()), "https://b.example");
+        registry.insert("agent-3", Some("s1".into()), "https://c.example");
+
+        assert!(registry.set_group(&["agent-1".into(), "agent-3".into()], Some("Research".into())));
+        // Setting the label a tab already carries is not a change, so it must
+        // not publish another identical list to the strip.
+        assert!(!registry.set_group(&["agent-1".into()], Some("Research".into())));
+
+        let tabs = registry.list();
+        assert_eq!(tabs[0].group.as_deref(), Some("Research"));
+        assert_eq!(tabs[1].group, None);
+        assert_eq!(tabs[2].group.as_deref(), Some("Research"));
+
+        assert!(registry.set_group(&["agent-1".into(), "agent-3".into()], None));
+        assert!(registry.list().iter().all(|tab| tab.group.is_none()));
     }
 }

@@ -9,10 +9,10 @@ import type { ArgmaxApi } from "../../shared/types.js";
  *
  * Resolution order:
  *  1. Literal path — if stat succeeds, use it as-is.
- *  2. Path contains a separator — trust the agent's directory context; if
- *     stat fails, give up (don't guess at sibling files).
- *  3. Bare basename — list workspace files; if exactly one entry has that
- *     basename, use its path. Multiple matches are ambiguous → null.
+ *  2. Absolute path from another checkout: match its repo-relative suffix
+ *     against the workspace file list.
+ *  3. Bare basename: use it when exactly one workspace entry matches.
+ * Relative paths with directories are not guessed after a failed literal read.
  */
 export async function resolveOpenablePath(
   api: ArgmaxApi | undefined,
@@ -26,7 +26,8 @@ export async function resolveOpenablePath(
   } catch {
     // fall through to basename resolution
   }
-  if (path.includes("/")) return null;
+  const isAbsolute = path.startsWith("/");
+  if (!isAbsolute && path.includes("/")) return null;
   let entries;
   try {
     entries = await api.workspace.listFiles({ kind: "workspace", id: workspaceId });
@@ -34,7 +35,7 @@ export async function resolveOpenablePath(
     return null;
   }
   const matches = entries.filter((entry) => {
-    if (entry.path === path) return true;
+    if (entry.path === path || (isAbsolute && path.endsWith(`/${entry.path}`))) return true;
     const slash = entry.path.lastIndexOf("/");
     return slash >= 0 && entry.path.slice(slash + 1) === path;
   });

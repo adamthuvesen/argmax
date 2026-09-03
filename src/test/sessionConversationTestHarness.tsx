@@ -35,6 +35,7 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
       closeTab: () => {}
     },
     openAgent: () => {},
+    openAgents: () => {},
     openMultitask: () => {},
     openBrowser: () => {},
     browserOwner: false,

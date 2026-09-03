@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEve
 import { createPortal } from "react-dom";
 import { formatFileChipLabel } from "../lib/fileChipPath.js";
 import { useFilePreview } from "../lib/filePreview.js";
+import { resolveOpenablePath } from "../lib/openableFile.js";
 import { FilePreviewPopover } from "./FilePreviewPopover.js";
 
 export type FileChipOpenOptions = {
@@ -53,11 +54,14 @@ export function FileChip({
   // hover intent fires, so passive scroll-by doesn't trigger IPC.
   const chipRef = useRef<HTMLButtonElement | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewRequestRef = useRef(0);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  const previewActive = anchorRect !== null && Boolean(workspaceId);
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
+  const [previewResolutionError, setPreviewResolutionError] = useState<string | null>(null);
+  const previewActive = anchorRect !== null && Boolean(workspaceId) && previewPath !== null;
   const preview = useFilePreview({
     workspaceId: workspaceId ?? null,
-    path,
+    path: previewPath ?? path,
     line,
     active: previewActive
   });
@@ -67,30 +71,44 @@ export function FileChip({
       clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
+    previewRequestRef.current += 1;
   };
 
-  useEffect(() => () => cancelHoverTimer(), []);
+  useEffect(() => {
+    return () => cancelHoverTimer();
+  }, [path, workspaceId]);
+
+  const openPreview = async (): Promise<void> => {
+    const node = chipRef.current;
+    if (!node || !workspaceId) return;
+    const request = ++previewRequestRef.current;
+    const resolved = await resolveOpenablePath(window.argmax, workspaceId, path);
+    if (previewRequestRef.current !== request) return;
+    setPreviewPath(resolved);
+    setPreviewResolutionError(resolved ? null : "File not found in this workspace.");
+    setAnchorRect(node.getBoundingClientRect());
+  };
 
   const handleMouseEnter = (): void => {
     if (!workspaceId) return;
     cancelHoverTimer();
     hoverTimerRef.current = setTimeout(() => {
-      const node = chipRef.current;
-      if (!node) return;
-      setAnchorRect(node.getBoundingClientRect());
+      hoverTimerRef.current = null;
+      void openPreview();
     }, HOVER_INTENT_MS);
   };
 
   const handleMouseLeave = (): void => {
     cancelHoverTimer();
     setAnchorRect(null);
+    setPreviewPath(null);
+    setPreviewResolutionError(null);
   };
 
   const handleFocus = (): void => {
     if (!workspaceId) return;
-    const node = chipRef.current;
-    if (!node) return;
-    setAnchorRect(node.getBoundingClientRect());
+    cancelHoverTimer();
+    void openPreview();
   };
 
   return (
@@ -115,7 +133,7 @@ export function FileChip({
               anchorRect={anchorRect}
               data={preview.data}
               loading={preview.loading}
-              error={preview.error}
+              error={previewResolutionError ?? preview.error}
               path={label}
             />,
             document.body

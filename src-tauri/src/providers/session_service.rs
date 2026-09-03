@@ -1455,7 +1455,17 @@ impl ProviderSessionService {
                 events: vec![event],
                 ..DashboardDelta::default()
             });
+            let is_multitask = session_launch_kind(&connection, session_id)
+                .is_ok_and(|kind| kind == LAUNCH_KIND_MULTITASK);
             drop(connection);
+            // A multitask that was mid-turn when the app went down never wrote
+            // its finish row, so the chat that dispatched it would keep saying
+            // "running alongside" for a process that died with the app. Boot is
+            // where that becomes knowable, and the row says `failed` because
+            // that is what happened to it.
+            if is_multitask {
+                self.record_multitask_finish(session_id, "failed", &now_iso());
+            }
             if let Some(approvals) = self.approvals.as_ref() {
                 approvals.cancel_session_pending(session_id)?;
             }

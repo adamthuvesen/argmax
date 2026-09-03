@@ -2338,9 +2338,9 @@ impl ProviderSessionService {
         // no exit synth here.
         self.flush_trailing(session_id, false)?;
 
+        let completed_at = now_iso();
         let (session, workspace, projects) = {
             let connection = self.database.connection();
-            let completed_at = now_iso();
             let session = update_session_state(
                 &connection,
                 session_id,
@@ -2348,7 +2348,7 @@ impl ProviderSessionService {
                     state: "complete".to_string(),
                     attention: attention_for_state("complete").to_string(),
                     completed_at: Some(completed_at.clone()),
-                    last_activity_at: Some(completed_at),
+                    last_activity_at: Some(completed_at.clone()),
                 },
             )?;
             let workspace = update_workspace_state_for_session_state(
@@ -2382,6 +2382,13 @@ impl ProviderSessionService {
             }
         }
         self.settle_session_move(session_id);
+        // Cursor ends a turn on `result/success` rather than on a process exit,
+        // so this is that provider's only turn-end seam — and whoever launched
+        // this session is told here, exactly as the exit path tells them. Left
+        // out, a Cursor child never reported back at all: no completion notice
+        // for an agent's launch, and no `multitask.finished` row, so its chat
+        // row could only say that it had stopped, never what it found.
+        self.notify_launcher_of_turn_end(session_id, "complete", &completed_at);
         self.drain_queue_after_complete(session_id.to_string());
         Ok(())
     }

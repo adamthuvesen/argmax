@@ -29,6 +29,8 @@ Delivery is passive on purpose: the parent is told, but never interrupted.
 2. When the child's turn ends, `notify_launcher_of_turn_end` routes it to `record_multitask_finish` instead of the ordinary completion notice ([session_service.rs](../src-tauri/src/providers/session_service.rs)): a `multitask.finished` row lands in the parent's timeline, and a `multitask`-kind inbox row is recorded. A multitask never wakes the parent with a turn of its own.
 3. The next time the person sends a message in the parent chat, up to `MAX_RESULTS_PER_PROMPT` undelivered results ride in as a preamble on the launch prompt. The persisted `user.message` stays exactly what the person typed. They are marked delivered only once that prompt has actually reached the provider: a launch that fails would otherwise spend results the agent never saw.
 
+Step 2 hangs off the provider's turn-end seam, and Cursor has its own: it ends a turn on `result/success` and leaves its process alive for the next prompt, so it never reaches the exit handler the other providers report back from. `complete_cursor_turn_after_result` notifies the launcher itself for that reason — without it a Cursor multitask could only ever say that it had stopped, never what it found.
+
 A multitask that was mid-turn when the app went down never reaches step 2, so `recover_orphaned_sessions` writes the finish row itself while it marks the orphan `failed` — the same passive delivery, one boot later.
 
 ## In the chat

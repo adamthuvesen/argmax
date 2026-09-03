@@ -588,12 +588,28 @@ export function SessionComposer({
               setStatus(null);
               try {
                 await onMultitask(session.id, content);
-                await onCancelQueuedMessage?.(session.id, id);
               } catch (error) {
                 setStatus({
                   kind: "error",
                   message:
                     error instanceof Error ? error.message : "Could not start the multitask."
+                });
+                setSendingQueuedMessageId(null);
+                return;
+              }
+              try {
+                // The multitask is already running, so a dequeue that fails is
+                // not a failed multitask — it is a message that would run the
+                // same prompt a second time when the queue drains, which is
+                // what this says.
+                await onCancelQueuedMessage?.(session.id, id);
+              } catch (error) {
+                setStatus({
+                  kind: "error",
+                  message:
+                    error instanceof Error
+                      ? error.message
+                      : "The multitask started, but the queued message could not be removed."
                 });
               } finally {
                 setSendingQueuedMessageId(null);

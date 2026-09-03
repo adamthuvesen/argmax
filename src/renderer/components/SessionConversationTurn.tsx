@@ -422,6 +422,9 @@ function SessionConversationTurnInner({
   // dispatched — the same place, and the same shape, as a subagent launch.
   const multitaskChildren: AnnotatedChild[] = item.multitasks.map((notice) => {
     const childId = notice.childSessionId;
+    // Only a child still in the snapshot can be opened. One that has aged out
+    // of it renders as plain text rather than a button that goes nowhere.
+    const opens = childId !== null && multitaskStates?.has(childId) === true;
     return {
       kind: "tool" as const,
       id: `multitask-${childId ?? notice.createdAt}`,
@@ -431,7 +434,7 @@ function SessionConversationTurnInner({
         <MultitaskRow
           notice={notice}
           liveState={childId ? (multitaskStates?.get(childId) ?? null) : null}
-          {...(onOpenMultitask ? { onOpen: onOpenMultitask } : {})}
+          {...(opens && onOpenMultitask ? { onOpen: onOpenMultitask } : {})}
           onStop={(sessionId) => void onTerminateSession(sessionId)}
         />
       )

@@ -326,9 +326,26 @@ export function SessionConversation({
   const conversationEvents = useMemo(() => buildConversationEvents(liveEvents), [liveEvents]);
   // Child session state by id: a multitask row believes this over its own
   // timeline, which cannot know about a turn that ended while the app was shut.
+  //
+  // Keyed on the states themselves, not on the array: `multitasksByParentSession`
+  // rebuilds its arrays on every snapshot delta, and this map is a prop of every
+  // memoized turn — keying on the array identity re-rendered the whole
+  // transcript each time any session row changed.
+  const multitaskStateKey = (multitasks ?? [])
+    .map((child) => `${child.session.id}:${child.session.state}`)
+    .join("|");
   const multitaskStates = useMemo(
-    () => new Map((multitasks ?? []).map((child) => [child.session.id, child.session.state])),
-    [multitasks]
+    () =>
+      new Map(
+        multitaskStateKey
+          .split("|")
+          .filter((entry) => entry.length > 0)
+          .map((entry) => {
+            const at = entry.lastIndexOf(":");
+            return [entry.slice(0, at), entry.slice(at + 1)] as const;
+          })
+      ),
+    [multitaskStateKey]
   );
   const askSideChat = useMemo(() => {
     if (!onOpenSideChat) return undefined;

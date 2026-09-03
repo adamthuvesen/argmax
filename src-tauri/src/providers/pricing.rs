@@ -1,3 +1,4 @@
+use crate::usage::records::UsageRecordTokens;
 use crate::util::sync::LockOrRecover;
 use std::{
     collections::HashSet,
@@ -65,6 +66,10 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     // (cache_creation_input_tokens is always 0). Re-derive if xAI reprices.
     "grok-4.6" => ModelPricing { input: 0.34, output: 1.02, cache_read: 0.085, cache_write: 0.0 },
     "grok-4.5" => ModelPricing { input: 0.68, output: 2.04, cache_read: 0.102, cache_write: 0.0 },
+    // The same SKUs as the CLI's `modelUsage` map spells them in its session
+    // logs, so the usage ledger can price cache savings for Grok turns.
+    "grok-4.6-build" => ModelPricing { input: 0.34, output: 1.02, cache_read: 0.085, cache_write: 0.0 },
+    "grok-4.5-build" => ModelPricing { input: 0.68, output: 2.04, cache_read: 0.102, cache_write: 0.0 },
 };
 
 static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_map! {
@@ -142,6 +147,49 @@ pub fn cost_of(usage: UsageCounts, model_id: &str) -> f64 {
         + (usage.output as f64 * price.output) / million
         + (usage.cache_read as f64 * price.cache_read) / million
         + (usage.cache_write as f64 * price.cache_write) / million
+}
+
+/// The list price for a model, across both the picker table and the aliases
+/// kept for ids only old sessions still carry. `None` is a model the table
+/// does not know: the usage page counts its tokens and shows it as unpriced
+/// rather than claiming a dollar figure it cannot stand behind.
+pub fn list_price(model_id: &str) -> Option<ModelPricing> {
+    let key = normalize_model_id(model_id);
+    MODEL_PRICING
+        .get(key.as_str())
+        .or_else(|| STORED_MODEL_PRICING_ALIASES.get(key.as_str()))
+        .copied()
+}
+
+/// Anthropic bills a 1 h cache write at 2x the input rate and a 5 m write at
+/// 1.25x. `ModelPricing::cache_write` holds the 5 m rate, which is what every
+/// existing caller means by a cache write. Only Claude transcripts report the
+/// split (`cache_creation.ephemeral_1h_input_tokens`), so this rate applies to
+/// Claude records alone.
+pub fn cache_write_1h_rate(price: &ModelPricing) -> f64 {
+    price.input * 2.0
+}
+
+/// List-price cost of one usage record, or `None` for a model the table does
+/// not know.
+pub fn price_record(tokens: &UsageRecordTokens, model_id: &str) -> Option<f64> {
+    let price = list_price(model_id)?;
+    let million = 1_000_000.0;
+    Some(
+        (tokens.input_uncached as f64 * price.input
+            + tokens.cache_read as f64 * price.cache_read
+            + tokens.cache_write_5m as f64 * price.cache_write
+            + tokens.cache_write_1h as f64 * cache_write_1h_rate(&price)
+            + tokens.output as f64 * price.output)
+            / million,
+    )
+}
+
+/// What the cache reads in this record would have cost at the uncached input
+/// rate, minus what they did cost. Clamped at zero: a model priced with cache
+/// reads dearer than fresh input saves nothing.
+pub fn cache_savings(tokens: &UsageRecordTokens, price: &ModelPricing) -> f64 {
+    ((tokens.cache_read as f64 * (price.input - price.cache_read)) / 1_000_000.0).max(0.0)
 }
 
 fn logged_unknown_models() -> &'static Mutex<HashSet<String>> {
@@ -233,6 +281,91 @@ mod tests {
             ),
             1.1,
         );
+    }
+
+    #[test]
+    fn codex_auto_review_is_unpriced() {
+        // Codex's own reviewer model has no published rate. It must stay out
+        // of both tables so the usage page counts its tokens and says
+        // "unpriced" instead of quietly billing them at $0.
+        assert_eq!(normalize_model_id("codex-auto-review"), "codex-auto-review");
+        assert!(list_price("codex-auto-review").is_none());
+        assert_eq!(
+            price_record(
+                &UsageRecordTokens {
+                    input_uncached: 10_000,
+                    cache_read: 500_000,
+                    output: 4_000,
+                    ..UsageRecordTokens::default()
+                },
+                "codex-auto-review",
+            ),
+            None,
+        );
+    }
+
+    #[test]
+    fn one_hour_cache_writes_bill_at_twice_input() {
+        let price = list_price("claude-fable-5-1").expect("known model");
+        assert_eq!(cache_write_1h_rate(&price), 20.0);
+        assert_eq!(price.cache_write, 12.5);
+        assert_eq!(
+            price_record(
+                &UsageRecordTokens {
+                    cache_write_1h: 1_000_000,
+                    ..UsageRecordTokens::default()
+                },
+                "claude-fable-5-1",
+            ),
+            Some(20.0),
+        );
+        assert_eq!(
+            price_record(
+                &UsageRecordTokens {
+                    cache_write_5m: 1_000_000,
+                    ..UsageRecordTokens::default()
+                },
+                "claude-fable-5-1",
+            ),
+            Some(12.5),
+        );
+    }
+
+    #[test]
+    fn cache_savings_is_the_uncached_premium_never_negative() {
+        let price = list_price("claude-opus-5").expect("known model");
+        assert_eq!(
+            cache_savings(
+                &UsageRecordTokens {
+                    cache_read: 1_000_000,
+                    ..UsageRecordTokens::default()
+                },
+                &price,
+            ),
+            4.5,
+        );
+        let free = list_price("opencode/big-pickle").expect("known model");
+        assert_eq!(
+            cache_savings(
+                &UsageRecordTokens {
+                    cache_read: 1_000_000,
+                    ..UsageRecordTokens::default()
+                },
+                &free,
+            ),
+            0.0,
+        );
+    }
+
+    #[test]
+    fn list_price_reaches_both_tables_and_strips_date_suffixes() {
+        assert!(list_price("claude-opus-5").is_some());
+        assert!(list_price("claude-sonnet-4-6").is_some());
+        assert_eq!(
+            list_price("claude-sonnet-4-6-20250101"),
+            list_price("claude-sonnet-4-6"),
+        );
+        assert!(list_price("mystery-model").is_none());
     }
 
     #[test]

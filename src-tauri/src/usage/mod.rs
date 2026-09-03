@@ -9,7 +9,14 @@ use specta::Type;
 
 use crate::ipc::validation::ProviderId;
 
+pub mod claude;
+pub mod cli;
+pub mod codex;
+pub mod grok;
+pub mod opencode;
 pub mod records;
+pub mod scanner;
+pub mod summary;
 
 /// Date of the list prices in `providers::pricing`. Shown next to every dollar
 /// figure so a stale table reads as stale.

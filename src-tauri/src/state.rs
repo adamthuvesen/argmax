@@ -48,6 +48,9 @@ pub struct AppState {
     pub checks: OnceCell<Arc<CheckService>>,
     pub workspaces: OnceCell<Arc<WorkspaceService>>,
     pub gh_poller: OnceCell<Arc<GhPoller>>,
+    /// The Usage page's transcript scanner. Installed with the database;
+    /// the first cold sweep waits for the page to be opened.
+    pub usage_scanner: OnceCell<Arc<crate::usage::scanner::UsageScanner>>,
     pub notifications: OnceCell<Arc<LiveNotificationService>>,
     /// Dock badge showing pending approvals + waiting sessions; updated from
     /// the `dashboard:delta` emit loop and cleared through the same service on
@@ -101,6 +104,7 @@ impl Default for AppState {
             checks: OnceCell::new(),
             workspaces: OnceCell::new(),
             gh_poller: OnceCell::new(),
+            usage_scanner: OnceCell::new(),
             notifications: OnceCell::new(),
             dock_badge: OnceCell::new(),
             ntfy: std::sync::RwLock::new(None),

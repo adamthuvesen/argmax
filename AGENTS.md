@@ -61,6 +61,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Multitask (a chat dispatched from inside a chat)** → [multitask.md](docs/multitask.md)
 - **Approvals and checks** → [approvals-checks.md](docs/approvals-checks.md)
 - **Scheduled tasks / routines** → [scheduled-tasks.md](docs/scheduled-tasks.md)
+- **Usage page (tokens and cost across providers)** → [usage.md](docs/usage.md)
 - **Integrated terminal panel** → [terminal.md](docs/terminal.md)
 - **In-app browser panel** → [browser.md](docs/browser.md)
 - **Mobile remote / WS bridge** → [remote.md](docs/remote.md)

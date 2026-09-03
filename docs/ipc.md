@@ -23,6 +23,8 @@ File and review operations use a `{ kind: "workspace" | "project", id }` target 
 
 `session:multitask` dispatches a sibling chat from a session that may still be mid-turn, and returns the new session and workspace ids so the composer can draw the card without waiting for the dashboard delta. See [multitask.md](multitask.md).
 
+`usage:summary` takes `{ window: "24h" | "7d" | "30d", timeZone }` and returns the Usage page in one shape: totals, per-provider rows, the chart series, and the model and day breakdowns, plus the scan's progress. A ledger that has completed before is swept inline so the answer is current; the first cold sweep runs in the background and the page polls. See [usage.md](usage.md).
+
 Scheduled tasks ("routines") expose `routines:list`, `routines:upsert`, `routines:delete`, `routines:set-enabled`, and `routines:run-now`.
 
 The browser pane's own commands (`browser:open`, `browser:navigate`, …) address one tab by id. The agent-facing ones (`browser:list-tabs`, `browser:open-for-session`, `browser:snapshot`, `browser:find`, `browser:get-text`, `browser:act`, and `browser:screenshot`) take `{ tabId? , sessionId? }` instead: naming a session acts on the tab that session touched most recently. All of them are desktop-only — see [browser.md](browser.md).

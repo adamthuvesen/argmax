@@ -19,6 +19,11 @@ ladder as the definition of "verified".
 above this rung exists for the claims these cannot make: "the app starts",
 "the session streams", "the launcher looks right".
 
+For the Usage page there is a fourth kind of claim, "the numbers are right",
+and a rung for it: `node scripts/check-usage-oracle.mjs --days 7` compares
+Argmax's per-day, per-model token totals with ccusage and CodexBar reading the
+same transcripts. Token counts must match; see [usage.md](usage.md).
+
 ## Rung 2: the renderer in a real browser
 
 Without `window.argmax` the renderer boots against the demo snapshot

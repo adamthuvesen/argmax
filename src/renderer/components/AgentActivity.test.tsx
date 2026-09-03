@@ -127,4 +127,32 @@ describe("AgentActivity", () => {
 
     expect(screen.getByRole("region", { name: "Agent activity: Explore repo" })).toBeInTheDocument();
   });
+
+  it("reads the agent and its model as one eyebrow on the instructions line", () => {
+    render(
+      <AgentActivity
+        events={[
+          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+            id: "task-1",
+            name: "Task",
+            input: {
+              description: "Explore repo",
+              prompt: "Map the repo.",
+              subagent_type: "implementer",
+              model: "claude-opus-5",
+              reasoning_effort: "xhigh"
+            }
+          })
+        ]}
+        parentSession={session}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
+    );
+
+    const instructions = screen.getByRole("region", { name: "Agent instructions" });
+    expect(within(instructions).getByText("implementer · Opus 5").textContent).toBe(
+      "implementer · Opus 5 · Extra High"
+    );
+  });
 });

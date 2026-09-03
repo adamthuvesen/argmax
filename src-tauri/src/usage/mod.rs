@@ -151,6 +151,9 @@ pub struct UsageDayRow {
 #[serde(rename_all = "camelCase")]
 pub struct UsageSummary {
     pub window: UsageWindow,
+    /// The provider the totals, series, models, and days are narrowed to;
+    /// `None` is every provider. `providers` is never narrowed.
+    pub provider: Option<ProviderId>,
     /// IANA zone the renderer asked for; day buckets follow it.
     pub time_zone: String,
     /// RFC 3339 UTC instants bounding the window, start inclusive, end
@@ -176,9 +179,14 @@ pub struct UsageSummary {
 impl UsageSummary {
     /// The shape before the first scan has produced anything: every count
     /// zero, scan marked in flight.
-    pub fn before_first_scan(window: UsageWindow, time_zone: String) -> Self {
+    pub fn before_first_scan(
+        window: UsageWindow,
+        provider: Option<ProviderId>,
+        time_zone: String,
+    ) -> Self {
         Self {
             window,
+            provider,
             time_zone,
             range_start: String::new(),
             range_end: String::new(),

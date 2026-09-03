@@ -166,6 +166,40 @@
   padding-left: 5px;
 }
 
+/* The provider the page is narrowed to, named in its own colour. */
+.usage-hero-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.usage-hero-show-all {
+  margin-left: var(--space-2);
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--muted-strong) 45%, transparent);
+  text-underline-offset: 2px;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.usage-hero-show-all:hover {
+  color: var(--text);
+}
+
+.usage-hero-show-all:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
 .usage-hero-note {
   margin: 0;
   font-size: var(--text-xs);
@@ -208,22 +242,78 @@
   min-width: 0;
 }
 
+.usage-provider-rows[data-narrowed] {
+  margin-top: calc(var(--space-1) - 10px);
+}
+
 .usage-provider-row {
-  display: grid;
-  grid-template-columns: 8px 16px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 10px 0;
   border-top: 0.5px solid var(--line-soft);
   min-width: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
 }
 
 .usage-provider-row:first-child {
   border-top: 0;
-  padding-top: var(--space-1);
+}
+
+/* Each row is a toggle that narrows the page to its provider. The row's
+   ink is the button's own, so the only thing the button adds is a hover
+   wash and, once pressed, a tint in the provider's colour. It bleeds past
+   the column's edge by one gutter so the wash clears the text on both sides. */
+.usage-provider-toggle {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: calc(100% + 2 * var(--space-2));
+  margin: 0 calc(-1 * var(--space-2));
+  padding: 10px var(--space-2);
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-md);
+  appearance: none;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+
+button.usage-provider-toggle {
+  cursor: pointer;
+}
+
+button.usage-provider-toggle:hover {
+  background: var(--row-hover);
+}
+
+button.usage-provider-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.usage-provider-row[data-selected="true"] .usage-provider-toggle {
+  background: color-mix(in oklab, var(--usage-series) 11%, transparent);
+}
+
+.usage-provider-row[data-selected="true"] .usage-series-dot {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--usage-series) 28%, transparent);
+}
+
+/* The rows not in focus step back rather than disappear: they are still
+   the way to switch. */
+.usage-provider-rows[data-narrowed="true"] .usage-provider-row[data-selected="false"] {
+  opacity: 0.55;
+}
+
+.usage-provider-rows[data-narrowed="true"] .usage-provider-row[data-selected="false"]:hover,
+.usage-provider-rows[data-narrowed="true"] .usage-provider-row[data-selected="false"]:focus-within {
+  opacity: 1;
 }
 
 .usage-series-dot {
+  flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -233,19 +323,6 @@
 .usage-provider-row[data-available="false"] .usage-series-dot {
   background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--usage-series);
-}
-
-.usage-provider-mark {
-  display: inline-flex;
-  color: var(--muted-strong);
-}
-
-.usage-provider-row[data-available="false"] .usage-provider-mark {
-  color: var(--muted);
-}
-
-.usage-provider-glyph {
-  display: block;
 }
 
 .usage-provider-text {

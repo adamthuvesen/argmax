@@ -6,8 +6,8 @@
 use chrono::Utc;
 use tauri::State;
 
-use super::{inputs::UsageSummaryInput, live_database, read_off_main};
-use crate::error::ArgmaxResult;
+use super::{inputs::UsageSummaryInput, live_database, read_off_main, validation::ProviderId};
+use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::state::AppState;
 use crate::usage::scanner::{spawn_sweep, ScanProgress};
 use crate::usage::{summary, UsageScanPhase, UsageScanState, UsageSummary, PRICING_AS_OF};
@@ -27,9 +27,17 @@ pub async fn usage_summary_impl(
 ) -> ArgmaxResult<UsageSummary> {
     let database = live_database(state)?;
     let window = input.window;
+    let provider = input.provider;
+    if provider == Some(ProviderId::Cursor) {
+        return Err(ArgmaxError::invalid(InvalidInputIssue::at(
+            vec!["provider".into()],
+            "USAGE_PROVIDER_UNAVAILABLE",
+            "Cursor keeps no local usage log, so there is nothing to narrow to",
+        )));
+    }
     let time_zone = input.time_zone.into_string();
     let Some(scanner) = state.usage_scanner.get().cloned() else {
-        return Ok(UsageSummary::before_first_scan(window, time_zone));
+        return Ok(UsageSummary::before_first_scan(window, provider, time_zone));
     };
     read_off_main(move || {
         if scanner.has_completed_once() {
@@ -40,12 +48,12 @@ pub async fn usage_summary_impl(
         let progress = scanner.progress();
         let scan = scan_state(&progress);
         if progress.last_completed_at.is_none() {
-            let mut summary = UsageSummary::before_first_scan(window, time_zone);
+            let mut summary = UsageSummary::before_first_scan(window, provider, time_zone);
             summary.scan = scan;
             return Ok(summary);
         }
         let connection = database.read_connection();
-        summary::build_summary(&connection, window, time_zone, scan, Utc::now())
+        summary::build_summary(&connection, window, provider, time_zone, scan, Utc::now())
     })
     .await
 }

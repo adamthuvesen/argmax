@@ -103,6 +103,32 @@ describe("App usage", () => {
     expect(within(row).getByText("$12.00")).toBeInTheDocument();
   });
 
+  it("narrows the page to a provider when its row is pressed and widens on the second press", async () => {
+    await openUsage();
+    const rows = await screen.findByRole("list", { name: "Usage by provider" });
+    const claude = within(rows).getByRole("button", { name: /Claude/ });
+    expect(claude).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(claude);
+
+    expect(usageSummary).toHaveBeenCalledWith(expect.objectContaining({ window: "30d", provider: "claude" }));
+    expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$60.00");
+    expect(claude).toHaveAttribute("aria-pressed", "true");
+    // The rows are the filter, so they keep every provider and their whole-window shares.
+    expect(within(rows).getByRole("button", { name: /Codex/ })).toHaveTextContent("40.0% of cost");
+    const table = screen.getByRole("table", { name: "Usage by model" });
+    expect(within(table).queryByRole("row", { name: /gpt-5\.6-terra/ })).not.toBeInTheDocument();
+    expect(within(table).getByRole("row", { name: /claude-opus-5/ })).toBeInTheDocument();
+    // Cursor has nothing to narrow to, so it is not a button.
+    expect(within(rows).queryByRole("button", { name: /Cursor/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show all" }));
+
+    expect(usageSummary).toHaveBeenLastCalledWith(expect.objectContaining({ provider: null }));
+    expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$100.00");
+    expect(within(rows).getByRole("button", { name: /Claude/ })).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("says Cursor has no local usage source instead of showing it $0", async () => {
     await openUsage();
 

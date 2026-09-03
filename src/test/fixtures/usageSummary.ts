@@ -48,6 +48,7 @@ const cursorRow: UsageProviderSummary = {
 export function usageSummaryFixture(overrides: Partial<UsageSummary> = {}): UsageSummary {
   const base: UsageSummary = {
     window: "30d",
+    provider: null,
     timeZone: "UTC",
     rangeStart: "2026-08-31T00:00:00Z",
     rangeEnd: "2026-09-03T00:00:00Z",
@@ -156,5 +157,30 @@ export function usageSummaryFor(input: UsageSummaryInput): UsageSummary {
     "7d": { rangeStart: "2026-08-27T00:00:00Z", rangeEnd: "2026-09-03T00:00:00Z" },
     "30d": { rangeStart: "2026-08-04T00:00:00Z", rangeEnd: "2026-09-03T00:00:00Z" }
   };
-  return usageSummaryFixture({ window: input.window, ...ranges[input.window] });
+  const summary = usageSummaryFixture({ window: input.window, ...ranges[input.window] });
+  const provider = input.provider ?? null;
+  if (!provider) return summary;
+  // Narrowed the way the backend narrows: the headline is the provider's
+  // row, the series and models keep only its values, the rows keep everyone.
+  const row = summary.providers.find((entry) => entry.provider === provider);
+  if (!row) throw new Error(`fixture has no provider row for ${provider}`);
+  return {
+    ...summary,
+    provider,
+    sessions: row.sessions,
+    tokens: row.tokens,
+    costUsd: row.costUsd,
+    cacheSavingsUsd: row.cacheSavingsUsd,
+    costSource: row.costSource,
+    series: summary.series.map((point) => ({
+      ...point,
+      values: point.values.filter((value) => value.provider === provider)
+    })),
+    models: summary.models.filter((model) => model.provider === provider),
+    days: summary.days.map((day) => {
+      const share = summary.series.find((point) => point.bucketStart === day.bucketStart);
+      const own = share?.values.find((value) => value.provider === provider);
+      return { ...day, sessions: Math.ceil(day.sessions / 2), costUsd: own?.costUsd ?? 0 };
+    })
+  };
 }

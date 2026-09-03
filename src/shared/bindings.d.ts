@@ -1350,6 +1350,11 @@ export type UsageSeriesValue = { provider: ProviderId; costUsd: number;
 tokens: number }
 export type UsageSummary = { window: UsageWindow; 
 /**
+ * The provider the totals, series, models, and days are narrowed to;
+ * `None` is every provider. `providers` is never narrowed.
+ */
+provider: ProviderId | null; 
+/**
  * IANA zone the renderer asked for; day buckets follow it.
  */
 timeZone: string; 
@@ -1368,7 +1373,13 @@ export type UsageSummaryInput = { window: UsageWindow;
 /**
  * IANA zone name, e.g. `Europe/Stockholm`. Day buckets follow it.
  */
-timeZone: NonEmptyString }
+timeZone: NonEmptyString; 
+/**
+ * Narrow the totals, chart, and breakdowns to one provider. The
+ * per-provider rows always cover every provider, so the page can still
+ * offer the others. Cursor keeps no local usage log and is rejected.
+ */
+provider?: ProviderId | null }
 /**
  * Token counts for one bucket. `input_uncached` excludes cache reads and
  * writes, so processed tokens are the sum of the first four fields.

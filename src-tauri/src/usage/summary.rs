@@ -106,9 +106,13 @@ pub fn bucket_starts(window: UsageWindow, now: DateTime<Utc>) -> Vec<DateTime<Ut
     }
 }
 
+/// `provider` narrows everything but the per-provider rows: those keep every
+/// provider so the page can offer the others as filters, and their shares
+/// stay shares of the whole window.
 pub fn build_summary(
     connection: &Connection,
     window: UsageWindow,
+    provider: Option<ProviderId>,
     time_zone: String,
     scan: UsageScanState,
     now: DateTime<Utc>,
@@ -134,11 +138,14 @@ pub fn build_summary(
     let mut by_day: Vec<(Rollup, HashSet<&str>)> = vec![Default::default(); starts.len()];
 
     for bucket in &priced {
+        let row = by_provider.entry(bucket.provider).or_default();
+        row.0.add(bucket);
+        row.1.insert(&bucket.session_id);
+        if provider.is_some_and(|wanted| wanted != bucket.provider) {
+            continue;
+        }
         total.add(bucket);
         total_sessions.insert(&bucket.session_id);
-        let provider = by_provider.entry(bucket.provider).or_default();
-        provider.0.add(bucket);
-        provider.1.insert(&bucket.session_id);
         let point = by_series[bucket.bucket_index]
             .entry(bucket.provider)
             .or_default();
@@ -177,11 +184,12 @@ pub fn build_summary(
             bucket_start: rfc3339(*start),
             values: PROVIDER_ORDER
                 .iter()
-                .filter(|provider| **provider != ProviderId::Cursor)
-                .map(|provider| {
-                    let (cost_usd, tokens) = values.get(provider).copied().unwrap_or((0.0, 0));
+                .filter(|charted| **charted != ProviderId::Cursor)
+                .filter(|charted| provider.is_none_or(|wanted| wanted == **charted))
+                .map(|charted| {
+                    let (cost_usd, tokens) = values.get(charted).copied().unwrap_or((0.0, 0));
                     UsageSeriesValue {
-                        provider: *provider,
+                        provider: *charted,
                         cost_usd,
                         tokens,
                     }
@@ -223,6 +231,7 @@ pub fn build_summary(
 
     Ok(UsageSummary {
         window,
+        provider,
         time_zone,
         range_start: rfc3339(range_start),
         range_end: rfc3339(now),
@@ -444,6 +453,7 @@ mod tests {
         let summary = build_summary(
             &connection,
             UsageWindow::Past24h,
+            None,
             "Europe/Stockholm".into(),
             scan_state(),
             now,
@@ -487,5 +497,35 @@ mod tests {
         assert_eq!(claude_now.tokens, 1_000_000);
         assert_eq!(summary.days.len(), 24);
         assert_eq!(summary.days[22].sessions, 1);
+
+        // Narrowed to Claude: every headline figure is Claude's, the chart
+        // carries one series, and the provider rows still list everyone with
+        // their unnarrowed numbers.
+        let claude_only = build_summary(
+            &connection,
+            UsageWindow::Past24h,
+            Some(ProviderId::Claude),
+            "Europe/Stockholm".into(),
+            scan_state(),
+            now,
+        )
+        .unwrap();
+        assert_eq!(claude_only.provider, Some(ProviderId::Claude));
+        assert_eq!(claude_only.sessions, 2);
+        assert_eq!(claude_only.tokens.input_uncached, 2_000_000);
+        assert!((claude_only.cost_usd - 10.0).abs() < 1e-9);
+        assert_eq!(claude_only.cost_source, UsageCostSource::ListPrice);
+        assert_eq!(claude_only.providers.len(), 5);
+        assert!((claude_only.providers[2].cost_usd - 0.34).abs() < 1e-9);
+        assert!(claude_only
+            .models
+            .iter()
+            .all(|row| row.provider == ProviderId::Claude));
+        assert_eq!(claude_only.models.len(), 1);
+        assert_eq!(claude_only.series[23].values.len(), 1);
+        assert_eq!(claude_only.series[23].values[0].provider, ProviderId::Claude);
+        assert_eq!(claude_only.days[23].sessions, 1);
+        assert_eq!(claude_only.days[22].sessions, 1);
+        assert!((claude_only.days[23].cost_usd - 5.0).abs() < 1e-9);
     }
 }

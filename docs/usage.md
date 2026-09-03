@@ -6,6 +6,13 @@ totals strip, and a breakdown by model or day. It reads every provider
 transcript on disk, not only the sessions Argmax launched, so it is the same
 number a terminal-only user would get.
 
+Pressing a provider row narrows the total, chart, totals strip, and
+breakdown to that provider; pressing it again, or "Show all" under the
+total, widens back out. The rows themselves never narrow, so their shares
+stay shares of the whole window while one provider is in focus. Providers
+are told apart by colour alone: one series colour per provider, on the row
+dot, the curve, and the breakdown table.
+
 Dollar figures are an **API estimate at list price**. Subscriptions bill
 differently, so the page says "at list price" and shows the date of the price
 table (`PRICING_AS_OF` in [usage/mod.rs](../src-tauri/src/usage/mod.rs)). A

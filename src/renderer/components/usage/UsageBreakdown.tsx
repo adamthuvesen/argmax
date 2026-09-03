@@ -1,7 +1,6 @@
 import { useId, useState, type JSX } from "react";
 import type { UsageDayRow, UsageModelRow, UsageSummary } from "../../../shared/types.js";
 import { SegmentedControl } from "../settings/settingsPrimitives.js";
-import { ProviderGlyph } from "./ProviderGlyph.js";
 import {
   formatBucketTitle,
   formatCount,
@@ -37,9 +36,7 @@ function modelRows(models: readonly UsageModelRow[]): BreakdownRow[] {
     provider: row.provider,
     name: (
       <span className="usage-table-model usage-series" data-provider={row.provider}>
-        <span className="usage-provider-mark" aria-hidden="true">
-          <ProviderGlyph provider={row.provider} />
-        </span>
+        <span className="usage-series-dot" aria-hidden="true" />
         <span className="usage-table-model-id">{row.modelId}</span>
         <span className="usage-table-model-provider">{providerLabel(row.provider)}</span>
       </span>

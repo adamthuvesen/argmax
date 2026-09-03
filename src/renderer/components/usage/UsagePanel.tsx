@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
-import type { UsageSummary, UsageWindow } from "../../../shared/types.js";
+import type { ProviderId, UsageSummary, UsageWindow } from "../../../shared/types.js";
 import { SegmentedControl } from "../settings/settingsPrimitives.js";
 import { SkeletonPane } from "../SkeletonPane.js";
 import { UsageAreaChart } from "./UsageAreaChart.js";
@@ -35,18 +35,24 @@ function hostTimeZone(): string {
   }
 }
 
-async function fetchSummary(window: UsageWindow, timeZone: string): Promise<UsageSummary> {
+async function fetchSummary(
+  window: UsageWindow,
+  provider: ProviderId | null,
+  timeZone: string
+): Promise<UsageSummary> {
   const api = globalThis.window?.argmax;
-  if (api) return api.usage.summary({ window, timeZone });
+  if (api) return api.usage.summary({ window, provider, timeZone });
   // No bridge: browser preview boots the whole app on demo data, and the
   // fixture is dynamic-imported so it never reaches the packaged bundle.
   const { demoUsageSummary } = await import("../../demoUsage.js");
-  return demoUsageSummary({ window, timeZone });
+  return demoUsageSummary({ window, provider, timeZone });
 }
 
 export function UsagePanel(): JSX.Element {
   const [usageWindow, setUsageWindow] = useState<UsageWindow>("30d");
   const [metric, setMetric] = useState<UsageMetric>("cost");
+  /** The provider the page is narrowed to; null is every provider. */
+  const [provider, setProvider] = useState<ProviderId | null>(null);
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timeZoneRef = useRef(hostTimeZone());
@@ -55,11 +61,11 @@ export function UsagePanel(): JSX.Element {
   const requestRef = useRef(0);
 
   const load = useCallback(
-    async (target: UsageWindow): Promise<void> => {
+    async (target: UsageWindow, scope: ProviderId | null): Promise<void> => {
       const request = requestRef.current + 1;
       requestRef.current = request;
       try {
-        const next = await fetchSummary(target, timeZoneRef.current);
+        const next = await fetchSummary(target, scope, timeZoneRef.current);
         if (requestRef.current !== request) return;
         setSummary(next);
         setError(null);
@@ -71,17 +77,24 @@ export function UsagePanel(): JSX.Element {
     []
   );
 
+  // A new window clears the page to a skeleton: its numbers mean something
+  // else. A new provider keeps the page up and swaps the figures when they
+  // land — a warm sweep is sub-second, and a skeleton flash on every row
+  // press would make the filter feel like navigation.
   useEffect(() => {
     setSummary(null);
-    void load(usageWindow);
-  }, [load, usageWindow]);
+  }, [usageWindow]);
+
+  useEffect(() => {
+    void load(usageWindow, provider);
+  }, [load, provider, usageWindow]);
 
   const scanning = summary?.scan.phase === "scanning";
   useEffect(() => {
     const period = scanning ? SCANNING_REFRESH_MS : REFRESH_MS;
-    const timer = globalThis.setInterval(() => void load(usageWindow), period);
+    const timer = globalThis.setInterval(() => void load(usageWindow, provider), period);
     return () => globalThis.clearInterval(timer);
-  }, [load, scanning, usageWindow]);
+  }, [load, provider, scanning, usageWindow]);
 
   const rangeLabel = summary
     ? formatRangeLabel(summary.rangeStart, summary.rangeEnd, summary.resolution, summary.timeZone)
@@ -119,13 +132,21 @@ export function UsagePanel(): JSX.Element {
         {error ? (
           <div className="usage-notice" data-tone="error" role="alert">
             <span>{error}</span>
-            <button type="button" className="sched-button" onClick={() => void load(usageWindow)}>
+            <button type="button" className="sched-button" onClick={() => void load(usageWindow, provider)}>
               Try again
             </button>
           </div>
         ) : null}
 
-        {summary ? <UsageBody summary={summary} metric={metric} chartHeading={chartHeading} /> : null}
+        {summary ? (
+          <UsageBody
+            summary={summary}
+            metric={metric}
+            chartHeading={chartHeading}
+            provider={provider}
+            onSelectProvider={setProvider}
+          />
+        ) : null}
         {!summary && !error ? <SkeletonPane /> : null}
       </div>
     </div>
@@ -135,11 +156,15 @@ export function UsagePanel(): JSX.Element {
 function UsageBody({
   summary,
   metric,
-  chartHeading
+  chartHeading,
+  provider,
+  onSelectProvider
 }: {
   summary: UsageSummary;
   metric: UsageMetric;
   chartHeading: string;
+  provider: ProviderId | null;
+  onSelectProvider: (provider: ProviderId | null) => void;
 }): JSX.Element {
   const providers = chartedProviders(summary, metric);
   const nothingRecorded = summary.providers.every((row) => !row.available || row.sessions === 0);
@@ -181,8 +206,13 @@ function UsageBody({
 
       <div className="usage-grid">
         <section className="usage-summary-column" aria-label="Totals by provider">
-          <UsageHero summary={summary} metric={metric} />
-          <UsageProviderRows summary={summary} metric={metric} />
+          <UsageHero summary={summary} metric={metric} onShowAll={() => onSelectProvider(null)} />
+          <UsageProviderRows
+            summary={summary}
+            metric={metric}
+            selected={provider}
+            onSelect={onSelectProvider}
+          />
         </section>
         <section className="usage-chart-card" aria-label={chartHeading}>
           <div className="usage-section-head">

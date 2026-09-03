@@ -1150,4 +1150,9 @@ pub struct UsageSummaryInput {
     pub window: crate::usage::UsageWindow,
     /// IANA zone name, e.g. `Europe/Stockholm`. Day buckets follow it.
     pub time_zone: NonEmptyString,
+    /// Narrow the totals, chart, and breakdowns to one provider. The
+    /// per-provider rows always cover every provider, so the page can still
+    /// offer the others. Cursor keeps no local usage log and is rejected.
+    #[serde(default)]
+    pub provider: Option<crate::ipc::validation::ProviderId>,
 }

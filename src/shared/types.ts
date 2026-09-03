@@ -42,6 +42,8 @@ export type UsageDayRow = Bindings.UsageDayRow;
 export type UsageSummary = Bindings.UsageSummary;
 export interface UsageSummaryInput {
   window: UsageWindow;
+  /** Narrow everything but the per-provider rows to one provider. */
+  provider?: ProviderId | null;
   /** IANA zone name; day buckets follow it. */
   timeZone: string;
 }

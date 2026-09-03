@@ -138,6 +138,7 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
 
   const base: UsageSummary = {
     window: input.window,
+    provider: input.provider ?? null,
     timeZone: input.timeZone,
     rangeStart: new Date(rangeStart).toISOString(),
     rangeEnd: new Date(end).toISOString(),
@@ -239,6 +240,38 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
       costSource: model.unpriced ? "unpriced" : "list_price"
     };
   });
+
+  const narrowed = providers.find((row) => row.provider === input.provider);
+  if (narrowed) {
+    // The backend narrows everything but the provider rows. The day rows
+    // take the provider's slice of each bucket; their sessions are a share
+    // of the day's, which is all a demo needs to look right.
+    const own = (bucketStart: string): number =>
+      series
+        .find((point) => point.bucketStart === bucketStart)
+        ?.values.find((value) => value.provider === narrowed.provider)?.costUsd ?? 0;
+    const shape = DEMO_PROVIDERS.find((entry) => entry.provider === narrowed.provider);
+    return {
+      ...base,
+      sessions: narrowed.sessions,
+      tokens: narrowed.tokens,
+      costUsd: narrowed.costUsd,
+      cacheSavingsUsd: narrowed.cacheSavingsUsd,
+      costSource: narrowed.costSource,
+      providers,
+      series: series.map((point) => ({
+        ...point,
+        values: point.values.filter((value) => value.provider === narrowed.provider)
+      })),
+      models: models.filter((model) => model.provider === narrowed.provider),
+      days: days.map((day) => ({
+        ...day,
+        sessions: Math.max(1, Math.round((day.sessions * narrowed.costUsd) / costUsd)),
+        tokens: shape ? tokensFor(own(day.bucketStart), shape) : emptyTokens(),
+        costUsd: own(day.bucketStart)
+      }))
+    };
+  }
 
   return {
     ...base,

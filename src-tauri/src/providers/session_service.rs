@@ -1936,7 +1936,7 @@ impl ProviderSessionService {
     }
 
     fn record_launch_failure(
-        &self,
+        self: &Arc<Self>,
         session_id: &str,
         provider: ProviderId,
         error: ArgmaxError,
@@ -1945,13 +1945,14 @@ impl ProviderSessionService {
             .lock_or_recover("flush queue")
             .delete_session(session_id);
         let connection = self.database.connection();
+        let completed_at = now_iso();
         let session = update_session_state(
             &connection,
             session_id,
             &SessionStateInput {
                 state: "failed".to_string(),
                 attention: attention_for_state("failed").to_string(),
-                completed_at: Some(now_iso()),
+                completed_at: Some(completed_at.clone()),
                 last_activity_at: None,
             },
         )?;
@@ -1982,6 +1983,13 @@ impl ProviderSessionService {
             events: vec![event],
             ..DashboardDelta::default()
         });
+        drop(connection);
+        // A launch that never started is still this session's turn ending, and
+        // whoever launched it is owed that news: without it a multitask whose
+        // CLI could not start leaves a row that says "Running" for as long as
+        // the transcript lives, since the finish row it falls back to was never
+        // written.
+        self.notify_launcher_of_turn_end(session_id, "failed", &completed_at);
         Ok(())
     }
 

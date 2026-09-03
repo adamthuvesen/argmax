@@ -33,6 +33,7 @@ pub mod state;
 pub mod sync;
 pub mod terminal;
 pub mod updater;
+pub mod usage;
 pub mod util;
 pub mod workspace_assets;
 pub mod workspaces;

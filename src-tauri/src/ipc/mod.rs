@@ -28,6 +28,7 @@ pub mod skills;
 pub mod sync;
 pub mod system;
 pub mod terminal;
+pub mod usage;
 pub mod workspace_files;
 pub mod workspaces;
 
@@ -133,6 +134,7 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "routines:delete",
     "routines:set-enabled",
     "routines:run-now",
+    "usage:summary",
 ];
 
 /// Resolve the live `Database` Arc from `AppState`. Shared across IPC
@@ -291,6 +293,7 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         routines::routines_upsert,
         routines::routines_delete,
         routines::routines_set_enabled,
-        routines::routines_run_now
+        routines::routines_run_now,
+        usage::usage_summary
     ])
 }

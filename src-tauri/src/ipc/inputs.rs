@@ -1143,3 +1143,11 @@ pub struct RoutinesSetEnabledInput {
 pub struct RoutinesRunNowInput {
     pub id: NonEmptyString,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UsageSummaryInput {
+    pub window: crate::usage::UsageWindow,
+    /// IANA zone name, e.g. `Europe/Stockholm`. Day buckets follow it.
+    pub time_zone: NonEmptyString,
+}

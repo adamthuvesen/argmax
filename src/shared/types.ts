@@ -28,6 +28,23 @@ export interface LogEntry {
 export type PermissionMode = Bindings.PermissionMode;
 export type ProviderId = Bindings.ProviderId;
 export type ReasoningEffort = Bindings.ReasoningEffort;
+export type UsageWindow = Bindings.UsageWindow;
+export type UsageResolution = Bindings.UsageResolution;
+export type UsageTokenTotals = Bindings.UsageTokenTotals;
+export type UsageCostSource = Bindings.UsageCostSource;
+export type UsageScanPhase = Bindings.UsageScanPhase;
+export type UsageScanState = Bindings.UsageScanState;
+export type UsageProviderSummary = Bindings.UsageProviderSummary;
+export type UsageSeriesValue = Bindings.UsageSeriesValue;
+export type UsageSeriesPoint = Bindings.UsageSeriesPoint;
+export type UsageModelRow = Bindings.UsageModelRow;
+export type UsageDayRow = Bindings.UsageDayRow;
+export type UsageSummary = Bindings.UsageSummary;
+export interface UsageSummaryInput {
+  window: UsageWindow;
+  /** IANA zone name; day buckets follow it. */
+  timeZone: string;
+}
 export type RemoteStatus = Bindings.RemoteStatus;
 export type StartupPhaseRecord = Bindings.StartupPhaseRecord;
 
@@ -705,6 +722,9 @@ export interface ArgmaxApi {
     delete: (id: string) => Promise<null>;
     setEnabled: (id: string, enabled: boolean) => Promise<Routine>;
     runNow: (id: string) => Promise<Routine>;
+  };
+  usage: {
+    summary: (input: UsageSummaryInput) => Promise<UsageSummary>;
   };
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;

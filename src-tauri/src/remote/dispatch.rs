@@ -66,6 +66,7 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "routines:delete",
     "routines:set-enabled",
     "routines:run-now",
+    "usage:summary",
 ];
 
 pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxResult<Value> {

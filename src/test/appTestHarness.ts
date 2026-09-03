@@ -349,6 +349,32 @@ export function setupAppTestMocks(): void {
         return dashboardDeltaUnsubscribe;
       }
     },
+    usage: {
+      summary: (input) =>
+        Promise.resolve({
+          window: input.window,
+          timeZone: input.timeZone,
+          rangeStart: "",
+          rangeEnd: "",
+          resolution: input.window === "24h" ? "hour" : "day",
+          scan: {
+            phase: "idle",
+            filesTotal: 0,
+            filesDone: 0,
+            lastCompletedAt: null,
+            pricingAsOf: "2026-09-03"
+          },
+          sessions: 0,
+          tokens: { inputUncached: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0 },
+          costUsd: 0,
+          cacheSavingsUsd: 0,
+          costSource: "list_price",
+          providers: [],
+          series: [],
+          models: [],
+          days: []
+        })
+    },
     routines: {
       list: () => Promise.resolve([]),
       upsert: (input) =>

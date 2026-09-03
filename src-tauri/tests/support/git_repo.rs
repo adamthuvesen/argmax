@@ -17,7 +17,10 @@ pub fn seed_git_repo(files: &[(&str, &str)]) -> SeededGitRepo {
     let temp_dir = tempfile::tempdir().expect("create temp git repo dir");
     let path = temp_dir.path().to_path_buf();
 
-    run_git(&path, &["init"]);
+    // Explicit branch name: `git init` takes it from the machine's
+    // `init.defaultBranch`, so a fixture that hardcodes "main" passed locally
+    // and failed on a runner that still defaults to "master".
+    run_git(&path, &["init", "-b", "main"]);
     run_git(&path, &["config", "user.email", "test@example.com"]);
     run_git(&path, &["config", "user.name", "Argmax Test"]);
 

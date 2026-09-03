@@ -468,11 +468,11 @@
   gap: 8px;
 }
 
-/* The model sits at the far end of that line, and gives up its width first:
-   the agent's own name is what the reader came for. */
-.agent-activity-model {
+/* Agent, model, and effort are one label, so the line truncates as a unit and
+   the model gives up its width first: the agent's own name is what the reader
+   came for. */
+.agent-activity-summary-label {
   min-width: 0;
-  margin-left: auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

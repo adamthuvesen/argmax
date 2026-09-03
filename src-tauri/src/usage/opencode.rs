@@ -232,7 +232,10 @@ mod tests {
         assert_eq!(records[0].tokens.input_uncached, 25_437);
         assert_eq!(records[0].tokens.output, 17);
         assert_eq!(records[0].reported_cost_usd, Some(0.001_912_025));
-        assert_eq!(records[0].at_ms, 1_788_425_905_904, "billed when it finished");
+        assert_eq!(
+            records[0].at_ms, 1_788_425_905_904,
+            "billed when it finished"
+        );
         assert_eq!(
             records[0].dedupe_key.as_deref(),
             Some("opencode:msg_0667d64ef001HZm610H32yp3ry")

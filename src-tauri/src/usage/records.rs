@@ -29,6 +29,12 @@ impl UsageRecordTokens {
             && self.cache_write_1h == 0
             && self.output == 0
     }
+
+    /// Every token the call was billed for. `reasoning` is left out because it
+    /// is already part of `output`.
+    pub fn processed(&self) -> i64 {
+        self.input_uncached + self.cache_read + self.cache_write() + self.output
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -131,6 +131,8 @@ struct RolloutState {
     /// True while the opening copy burst of a forked or subagent rollout is
     /// still running. Always false for a rollout that is nobody's copy.
     copies_parent_history: bool,
+    /// True once the rollout's own `session_meta` has been read.
+    identified: bool,
     burst_open: bool,
     previous_at_ms: Option<i64>,
     last_signature: Option<UsageSignature>,
@@ -148,6 +150,7 @@ impl RolloutState {
             session_model: None,
             turn_model: None,
             copies_parent_history: false,
+            identified: false,
             burst_open: true,
             previous_at_ms: None,
             last_signature: None,
@@ -168,11 +171,22 @@ impl RolloutState {
         self.copies_parent_history && self.burst_open
     }
 
+    /// Only the rollout's own `session_meta` names it. A forked or subagent
+    /// rollout copies the parent's `session_meta` in as its second line — 1249
+    /// of 3949 rollouts on this machine have two — and that copy carries the
+    /// parent's id and none of the fork markers. Reading it renamed the child
+    /// after its parent, whose ordinals then collided in the cross-file
+    /// dedupe, and silently turned copy-burst suppression back off.
     fn read_session_meta(&mut self, row: &Map<String, Value>) {
+        if self.identified {
+            return;
+        }
         let Some(payload) = object_value(row.get("payload")) else {
             return;
         };
-        if let Some(id) = string_value(payload.get("id")).or(string_value(payload.get("session_id")))
+        self.identified = true;
+        if let Some(id) =
+            string_value(payload.get("id")).or(string_value(payload.get("session_id")))
         {
             self.session_id = id.to_string();
         }
@@ -182,8 +196,8 @@ impl RolloutState {
         if let Some(model) = string_value(payload.get("model")) {
             self.session_model = Some(model.to_string());
         }
-        self.copies_parent_history =
-            payload.get("forked_from_id").is_some() || mentions_parent_thread(payload.get("source"));
+        self.copies_parent_history = payload.get("forked_from_id").is_some()
+            || mentions_parent_thread(payload.get("source"));
     }
 
     fn read_turn_context(&mut self, row: &Map<String, Value>) {
@@ -284,7 +298,10 @@ mod tests {
         assert_eq!(records[0].tokens.output, 856);
         assert_eq!(records[0].tokens.reasoning, 516);
         assert_eq!(records[0].model_id, "gpt-5.5");
-        assert_eq!(records[0].session_id, "019ec9d3-b501-7370-8f2e-46d4d7a504c4");
+        assert_eq!(
+            records[0].session_id,
+            "019ec9d3-b501-7370-8f2e-46d4d7a504c4"
+        );
         assert_eq!(
             records[0].project_path.as_deref(),
             Some("/Users/adamthuvesen/dev/menti/dbt-transform")
@@ -338,6 +355,55 @@ mod tests {
     }
 
     #[test]
+    fn the_parents_copied_session_meta_does_not_rename_the_child() {
+        let text = include_str!("../../tests/fixtures/usage/codex-forked-double-meta.jsonl");
+        let path =
+            Path::new("/s/rollout-2026-09-01T17-42-07-01a05da2-87ed-71b3-8d37-876ef6fd25cf.jsonl");
+        let records = parse_codex_rollout(text, &context(path));
+
+        assert_eq!(records.len(), 2);
+        for record in &records {
+            assert_eq!(
+                record.session_id, "01a05da2-87ed-71b3-8d37-876ef6fd25cf",
+                "the second session_meta is the parent's, copied in with the history"
+            );
+        }
+        // Ordinals are the child's own, so they cannot collide with the
+        // parent rollout's keys in the cross-file dedupe.
+        assert_eq!(
+            records[0].dedupe_key.as_deref(),
+            Some("codex:01a05da2-87ed-71b3-8d37-876ef6fd25cf:35")
+        );
+        assert_eq!(records[0].tokens.input_uncached, 35_329 - 33_536);
+        assert_eq!(records[0].tokens.output, 183);
+        assert_eq!(records[0].model_id, "gpt-5.6-sol");
+    }
+
+    #[test]
+    fn the_parents_copied_session_meta_does_not_cancel_burst_suppression() {
+        // The copy has no fork markers. Reading it turned suppression back
+        // off, so the parent's replayed turns were billed a second time.
+        let text = include_str!("../../tests/fixtures/usage/codex-forked-rollout.jsonl");
+        let lines: Vec<&str> = text.lines().collect();
+        // Both metas share the burst's timestamp in every real rollout, so
+        // the copy is restamped onto this fixture's own burst.
+        let parent_meta = include_str!("../../tests/fixtures/usage/codex-forked-double-meta.jsonl")
+            .lines()
+            .nth(1)
+            .expect("the parent's copied meta")
+            .replace("2026-09-01T15:42:07.893Z", "2026-07-01T16:14:26.073Z");
+        let with_copy = format!("{}\n{}\n{}\n", lines[0], parent_meta, lines[1..].join("\n"));
+        let path =
+            Path::new("/s/rollout-2026-07-01T18-14-25-019f1e75-d155-7ad3-b46d-577e83e6014f.jsonl");
+        let records = parse_codex_rollout(&with_copy, &context(path));
+        assert_eq!(records.len(), 1, "the copied burst is still suppressed");
+        assert_eq!(
+            records[0].session_id,
+            "019f1e75-d155-7ad3-b46d-577e83e6014f"
+        );
+    }
+
+    #[test]
     fn an_unforked_rollout_keeps_its_opening_turn() {
         // The same six lines with the fork markers off: nothing is a copy, so
         // every token_count counts.
@@ -349,7 +415,8 @@ mod tests {
 
     #[test]
     fn malformed_lines_are_skipped_without_panicking() {
-        let path = Path::new("/s/rollout-2026-09-03T10-54-42-01a0667a-3cb1-7d41-ade5-d51ba5f88419.jsonl");
+        let path =
+            Path::new("/s/rollout-2026-09-03T10-54-42-01a0667a-3cb1-7d41-ade5-d51ba5f88419.jsonl");
         let text = "{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\"\n\ngarbage\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{}}}\n";
         assert!(parse_codex_rollout(text, &context(path)).is_empty());
     }

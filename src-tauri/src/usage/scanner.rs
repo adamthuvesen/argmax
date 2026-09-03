@@ -30,7 +30,7 @@ use crate::util::sync::LockOrRecover;
 
 /// Bump when a parser's output for the same bytes changes; the next sweep
 /// empties the ledger and reads everything again.
-pub const PARSER_VERSION: &str = "1";
+pub const PARSER_VERSION: &str = "2";
 /// How far back the ledger reaches. The widest window is 30 days; the rest is
 /// headroom for a longer window later without a rescan.
 pub const RETENTION_DAYS: i64 = 90;

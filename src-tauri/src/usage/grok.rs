@@ -162,7 +162,9 @@ fn allocate_cost(entries: &mut [ModelEntry], usage: &Map<String, Value>) {
 }
 
 fn ticks_to_usd(value: Option<&Value>) -> Option<f64> {
-    value.and_then(Value::as_f64).map(|ticks| ticks / TICKS_PER_USD)
+    value
+        .and_then(Value::as_f64)
+        .map(|ticks| ticks / TICKS_PER_USD)
 }
 
 /// `_meta.agentTimestampMs` is the agent's own clock in milliseconds; the
@@ -171,7 +173,11 @@ fn timestamp_ms(row: &Map<String, Value>, params: &Map<String, Value>) -> Option
     object_value(params.get("_meta"))
         .and_then(|meta| meta.get("agentTimestampMs"))
         .and_then(Value::as_i64)
-        .or_else(|| row.get("timestamp").and_then(Value::as_i64).map(|s| s * 1000))
+        .or_else(|| {
+            row.get("timestamp")
+                .and_then(Value::as_i64)
+                .map(|s| s * 1000)
+        })
 }
 
 fn session_id_from_path(path: &std::path::Path) -> Option<String> {
@@ -315,8 +321,10 @@ mod tests {
 
     #[test]
     fn a_turn_without_a_model_map_still_counts_its_tokens() {
-        let text = include_str!("../../tests/fixtures/usage/grok-single-model.jsonl")
-            .replace("\"modelUsage\":{\"grok-4.6-build\":", "\"unusedModelUsage\":{\"x\":");
+        let text = include_str!("../../tests/fixtures/usage/grok-single-model.jsonl").replace(
+            "\"modelUsage\":{\"grok-4.6-build\":",
+            "\"unusedModelUsage\":{\"x\":",
+        );
         let records = parse_grok_updates(&text, &context(Path::new(SOURCE)));
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].model_id, "grok");

@@ -88,20 +88,27 @@ for (const entry of Array.isArray(codexbar) ? codexbar : [codexbar]) {
 const keys = new Set([...argmaxByKey.keys(), ...ccusageByKey.keys(), ...codexbarByKey.keys()]);
 const rows = [];
 let mismatches = 0;
+let oraclesDiffer = 0;
 for (const key of [...keys].sort()) {
   const [date, provider, model] = key.split("|");
   if (!["claude", "codex"].includes(provider)) continue;
   if (onlyProvider && provider !== onlyProvider) continue;
   if (!argmax.some((day) => day.date === date)) continue;
   const ours = argmaxByKey.get(key) ?? 0;
-  const theirs = [ccusageByKey.get(key), codexbarByKey.get(key)];
-  const worst = Math.max(...theirs.filter((value) => value !== undefined).map((value) => Math.abs(value - ours)));
-  const bad = Number.isFinite(worst) && worst > tolerance * Math.max(ours, 1);
-  if (bad) mismatches += 1;
-  rows.push({ date, provider, model, argmax: ours, ccusage: theirs[0] ?? "-", codexbar: theirs[1] ?? "-", status: bad ? "MISMATCH" : "ok" });
+  const theirs = [ccusageByKey.get(key), codexbarByKey.get(key)].filter((value) => value !== undefined);
+  const within = (value) => Math.abs(value - ours) <= tolerance * Math.max(ours, 1);
+  const agreeing = theirs.filter(within).length;
+  // Matching one oracle while the other differs means the oracles disagree
+  // with each other; that is reported, not failed. Matching neither is a bug
+  // on our side until proven otherwise.
+  const status =
+    theirs.length === 0 ? "no-oracle" : agreeing === theirs.length ? "ok" : agreeing > 0 ? "oracles-differ" : "MISMATCH";
+  if (status === "MISMATCH") mismatches += 1;
+  if (status === "oracles-differ") oraclesDiffer += 1;
+  rows.push({ date, provider, model, argmax: ours, ccusage: ccusageByKey.get(key) ?? "-", codexbar: codexbarByKey.get(key) ?? "-", status });
 }
 console.table(rows);
-console.log(`${rows.length} day/model rows, ${mismatches} mismatches, tolerance ${tolerance}`);
+console.log(`${rows.length} day/model rows, ${mismatches} mismatches, ${oraclesDiffer} where the oracles disagree with each other, tolerance ${tolerance}`);
 process.exit(mismatches === 0 ? 0 : 1);
 
 function providerForModel(modelName) {

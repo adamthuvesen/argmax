@@ -6,7 +6,7 @@
 //! usage on every one of them, so the block count would multiply a turn's
 //! tokens by three or four without the `message.id` dedupe below.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use serde_json::{Map, Value};
 
@@ -22,12 +22,12 @@ use crate::usage::records::{
 const SYNTHETIC_MODEL: &str = "<synthetic>";
 
 /// Turns one Claude transcript (or the tail of one) into usage records.
-/// Repeats of the same billed call inside `text` are dropped; the caller owns
-/// dedupe across files.
+/// Repeats of the same billed call inside `text` collapse to one; the caller
+/// owns dedupe across files.
 pub fn parse_claude_transcript(text: &str, ctx: &TranscriptContext) -> Vec<UsageRecord> {
     let path_session = session_id_from_path(ctx);
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut records = Vec::new();
+    let mut first_seen: HashMap<String, usize> = HashMap::new();
+    let mut records: Vec<UsageRecord> = Vec::new();
 
     for line in text.lines() {
         if !line_may_carry_usage(line) {
@@ -39,12 +39,29 @@ pub fn parse_claude_transcript(text: &str, ctx: &TranscriptContext) -> Vec<Usage
         let Some(record) = record_from_row(&row, path_session.as_deref()) else {
             continue;
         };
-        if let Some(key) = record.dedupe_key.as_ref() {
-            if !seen.insert(key.clone()) {
-                continue;
+        let Some(key) = record.dedupe_key.clone() else {
+            records.push(record);
+            continue;
+        };
+        match first_seen.get(&key) {
+            // Claude writes one line per content block and restates the
+            // message's usage on each, but the early blocks are written while
+            // the message is still streaming and carry a partial
+            // `output_tokens` — 1 or 5 where the settled bill is 300 or 507.
+            // Input, cache reads, and cache writes are identical throughout;
+            // only output grows, and the largest is the finished accounting.
+            // Keeping the first block instead read 0.06–0.7% under both
+            // ccusage and CodexBar on every busy day.
+            Some(&index) => {
+                if record.tokens.processed() > records[index].tokens.processed() {
+                    records[index] = record;
+                }
+            }
+            None => {
+                first_seen.insert(key, records.len());
+                records.push(record);
             }
         }
-        records.push(record);
     }
 
     records
@@ -130,22 +147,27 @@ fn dedupe_key(message_id: Option<&str>, request_id: Option<&str>) -> Option<Stri
     }
 }
 
-/// The session a transcript file belongs to. A subagent transcript lives at
-/// `<sessionId>/subagents/<childId>.jsonl` and its lines carry the child's own
-/// `sessionId`, so the file's own path is what attributes its tokens to the
-/// session the user actually ran.
+/// The session a transcript file belongs to. Child transcripts live under the
+/// session's own directory — `<sessionId>/subagents/<childId>.jsonl`, and for
+/// a workflow one level deeper at
+/// `<sessionId>/subagents/workflows/<workflowId>/<childId>.jsonl` — and their
+/// lines carry the child's `sessionId`, not the parent's. The nearest
+/// `subagents` ancestor is what names the session the user actually ran.
 fn session_id_from_path(ctx: &TranscriptContext) -> Option<String> {
     if let Some(hint) = ctx.session_id_hint {
         return Some(hint.to_string());
     }
     let path = ctx.source_path;
-    let parent = path.parent();
-    if parent.and_then(|dir| dir.file_name()) == Some(std::ffi::OsStr::new("subagents")) {
-        return parent
-            .and_then(|dir| dir.parent())
-            .and_then(|dir| dir.file_name())
-            .and_then(|name| name.to_str())
-            .map(str::to_string);
+    let mut ancestor = path.parent();
+    while let Some(dir) = ancestor {
+        if dir.file_name() == Some(std::ffi::OsStr::new("subagents")) {
+            return dir
+                .parent()
+                .and_then(|owner| owner.file_name())
+                .and_then(|name| name.to_str())
+                .map(str::to_string);
+        }
+        ancestor = dir.parent();
     }
     path.file_stem()
         .and_then(|stem| stem.to_str())
@@ -167,26 +189,72 @@ mod tests {
     }
 
     #[test]
-    fn counts_one_message_once_across_its_content_blocks() {
+    fn counts_one_message_once_and_keeps_its_finished_output_count() {
         let text = include_str!("../../tests/fixtures/usage/claude-three-blocks.jsonl");
-        let path = Path::new("/p/0c272e51-552a-44c4-87de-1deed759c117.jsonl");
+        let path = Path::new("/p/42d2c4f7-a02f-4163-ab7e-7d238cb20e2c.jsonl");
         let records = parse_claude_transcript(text, &context(path));
 
-        assert_eq!(records.len(), 2, "three blocks of one message plus one more");
+        assert_eq!(
+            records.len(),
+            2,
+            "three blocks of one message plus one more"
+        );
         assert_eq!(
             records[0].dedupe_key.as_deref(),
-            Some("claude:msg_011CefzhyXmXNGx7TWbgxn2Z:req_011Cefzhxk996H3QS1yEdWjq")
+            Some("claude:msg_011Ceer6uiREMCx8912bYz4t:req_011Ceer6tqLXxvcnSFgd1D5u")
         );
-        assert_eq!(records[0].tokens.output, 214);
-        assert_eq!(records[0].tokens.reasoning, 52);
-        assert_eq!(records[0].tokens.cache_read, 83_284);
-        assert_eq!(records[0].tokens.cache_write_1h, 4_298);
-        assert_eq!(records[0].session_id, "0c272e51-552a-44c4-87de-1deed759c117");
+        // The first two blocks were written mid-stream and say `output: 1`.
+        // Taking either of them under-bills the message by 221 tokens, which
+        // is the whole 0.06-0.7% gap against ccusage and CodexBar.
+        assert_eq!(records[0].tokens.output, 222);
+        assert_eq!(records[0].tokens.cache_write_5m, 61_864);
+        assert_eq!(records[0].tokens.cache_read, 0);
+        assert_eq!(records[0].tokens.input_uncached, 2);
+        assert_eq!(
+            records[0].at_ms, 1_788_362_814_766,
+            "the settled block's own timestamp decides the bucket"
+        );
+        assert_eq!(
+            records[0].session_id,
+            "42d2c4f7-a02f-4163-ab7e-7d238cb20e2c"
+        );
         assert_eq!(
             records[0].project_path.as_deref(),
             Some("/Users/adamthuvesen/dev/menti/argmax")
         );
-        assert_eq!(records[1].tokens.output, 196);
+        assert_eq!(records[1].tokens.output, 6);
+        assert_eq!(records[1].tokens.cache_read, 61_864);
+    }
+
+    #[test]
+    fn a_later_block_that_reports_less_does_not_win() {
+        // Output is non-decreasing across the blocks Claude writes today, but
+        // a resumed transcript can replay a partial block after the settled
+        // one. The largest accounting wins whatever the order.
+        let text = include_str!("../../tests/fixtures/usage/claude-three-blocks.jsonl");
+        let lines: Vec<&str> = text.lines().collect();
+        let reversed = format!("{}\n{}\n{}\n{}\n", lines[2], lines[1], lines[0], lines[3]);
+        let path = Path::new("/p/42d2c4f7-a02f-4163-ab7e-7d238cb20e2c.jsonl");
+        let records = parse_claude_transcript(&reversed, &context(path));
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].tokens.output, 222);
+    }
+
+    #[test]
+    fn a_workflow_child_transcript_is_attributed_to_the_parent_session() {
+        // `<session>/subagents/workflows/<workflowId>/<child>.jsonl` is a
+        // second nesting level Claude writes for workflow subagents; the
+        // nearest `subagents` ancestor names the session either way.
+        let text = include_str!("../../tests/fixtures/usage/claude-subagent.jsonl");
+        let path = Path::new(
+            "/p/818d4b32-5f7d-4e68-af8e-c6871600c1a3/subagents/workflows/wf_1ef78baa-8e1/agent-a05bbf17025fc03ac.jsonl",
+        );
+        let records = parse_claude_transcript(text, &context(path));
+        assert_eq!(records.len(), 1);
+        assert_eq!(
+            records[0].session_id,
+            "818d4b32-5f7d-4e68-af8e-c6871600c1a3"
+        );
     }
 
     #[test]
@@ -234,8 +302,7 @@ mod tests {
 
         assert_eq!(records.len(), 1);
         assert_eq!(
-            records[0].session_id,
-            "818d4b32-5f7d-4e68-af8e-c6871600c1a3",
+            records[0].session_id, "818d4b32-5f7d-4e68-af8e-c6871600c1a3",
             "the child's own sessionId must not win over the parent directory"
         );
     }

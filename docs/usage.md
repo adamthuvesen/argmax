@@ -32,10 +32,13 @@ and [opencode.rs](../src-tauri/src/usage/opencode.rs), and produce one
 
 These are the rules that make the numbers right. Each has a fixture test.
 
-- **Claude repeats usage per content block.** Every block of one message
-  carries the message's full `usage` under the same `message.id`; the key
-  `message.id:requestId` counts it once, within a file and across files (a
-  resumed session copies its history into a new file).
+- **Claude repeats usage per content block, and the early blocks are
+  partial.** Every block of one message restates `usage` under the same
+  `message.id`, but blocks written mid-stream carry a small `output_tokens`
+  (1 or 5 where the settled bill is 300). The key `message.id:requestId`
+  counts the message once and keeps the block with the largest count, within
+  a file and across files (a resumed session copies its history into a new
+  file).
 - **Claude 1 h cache writes cost 2x input**, 5 m writes 1.25x. The transcript
   splits them under `cache_creation`; the ledger keeps them apart.
 - **Subagent transcripts belong to the parent session** (the directory above
@@ -44,9 +47,10 @@ These are the rules that make the numbers right. Each has a fixture test.
   cumulative. Consecutive identical `token_count` events are dropped. Codex
   `input_tokens` includes the cached part; uncached input is the difference.
 - **Codex forks copy history.** A forked or subagent rollout starts with the
-  parent's lines re-stamped within a second of each other; records inside that
-  burst are skipped and counting starts at the first line more than a second
-  after its predecessor.
+  parent's lines re-stamped within a second of each other, including a copy of
+  the parent's `session_meta`; only the rollout's own first `session_meta`
+  names it, records inside the burst are skipped, and counting starts at the
+  first line more than a second after its predecessor.
 - **Grok reports per model** under `modelUsage`; cost ticks are USD × 1e10,
   and a model without its own ticks gets a token-share slice of the turn's
   aggregate.
@@ -83,9 +87,13 @@ zone the renderer resolves too. Hour buckets are UTC hours.
 `argmax usage --days 7 --json` prints the ledger as per-day, per-model token
 totals. `node scripts/check-usage-oracle.mjs --days 7` compares those with
 `ccusage daily --json` and `codexbar cost --format json` for Claude and Codex.
-Token counts must match; every mismatch is a bug in one of the three and gets
-explained, not tolerated. Costs are not compared: the tools price from
-different tables.
+A row where all three agree is `ok`; a row where Argmax matches one oracle
+and the other differs is `oracles-differ` and is reported, not failed; a row
+where Argmax matches neither is a `MISMATCH` and fails the script. On
+2026-09-03 every Claude row matched ccusage exactly and every Codex row
+matched CodexBar exactly; the residual rows were ccusage counting Codex fork
+copies and CodexBar counting one extra Claude message. Costs are not
+compared: the tools price from different tables.
 
 For a session Argmax launched, the scanner's per-session totals also match the
 `usage_events` rows the live normalizer wrote.

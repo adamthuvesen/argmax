@@ -44,12 +44,12 @@
 .chat-bubble.user .chat-bubble-copy {
   top: 100%;
   right: 0;
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .error-boundary {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 48px;
   max-width: 720px;
   margin: 0 auto;
@@ -63,7 +63,7 @@
 .error-boundary-message {
   padding: 12px 14px;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--overlay-soft);
   font-family: var(--font-mono);
   font-size: var(--text-base);
   overflow-x: auto;
@@ -76,7 +76,7 @@
 }
 
 .error-boundary-details .error-boundary-message {
-  margin-top: 8px;
+  margin-top: var(--space-2);
   max-height: 40dvh;
   overflow: auto;
   font-size: var(--text-sm);
@@ -85,7 +85,7 @@
 
 .error-boundary-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .error-boundary-actions button {
@@ -99,7 +99,7 @@
 .primary-action {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-height: 42px;
   padding: 0 14px;
   color: var(--bubble-on-ink);
@@ -119,7 +119,7 @@
 .composer {
   display: grid;
   position: relative;
-  gap: 4px;
+  gap: var(--space-1);
   /* Borderless, like `.session-input`: the --composer-surface fill and the
      quiet lift seat the field on the surface. The extra 1px absorbs the removed
      border so the box keeps its size. */
@@ -225,7 +225,7 @@
   flex: 1;
   min-height: 52px;
   max-height: 168px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   color: var(--text);
   border: 0;
   outline: 0;
@@ -240,8 +240,8 @@
 
 .composer-input textarea {
   box-sizing: border-box;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
   line-height: 1.55;
 }
 
@@ -339,7 +339,7 @@
 .composer-context {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-height: 34px;
   /* Right padding clears the absolute-positioned send button; the left no
      longer reserves space for the attach (+), which now sits inline. */
@@ -347,11 +347,18 @@
   color: var(--muted);
   font-size: var(--text-sm-plus);
   flex-wrap: nowrap;
-  row-gap: 4px;
+  row-gap: var(--space-1);
 }
 
 .launcher-surface .composer > .composer-input {
   z-index: 2;
+}
+
+/* The launcher input sits above the toolbar so its send button can overlap the
+   toolbar row. Raise the toolbar while one of its pickers is open, otherwise
+   that input stacking context paints over the part of the menu above it. */
+.launcher-surface .composer > .composer-context:has(.composer-context-chip[aria-expanded="true"]) {
+  z-index: 3;
 }
 
 /* Send stays anchored to .composer-input's bottom edge but sits on the chip row
@@ -366,7 +373,7 @@
 .composer-context-group {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* Project and branch names give up width before the fixed launch controls do.
@@ -411,7 +418,7 @@
 .composer-context-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1_5);
   padding: 4px 9px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -554,7 +561,7 @@
 
 .model-picker-popover .project-picker-item {
   white-space: nowrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .model-picker-popover {
@@ -592,7 +599,7 @@
 .model-picker-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   border-radius: var(--radius-sm);
   position: relative;
   transition: background var(--duration-fast) var(--ease);
@@ -639,7 +646,7 @@
 .model-picker-item.model-picker-submenu-trigger {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 8px;
+  column-gap: var(--space-2);
 }
 
 .model-picker-submenu-caret {
@@ -707,8 +714,8 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2_5);
 }
 
 .effort-slider-caption {
@@ -739,7 +746,7 @@
 .effort-slider-fieldclip {
   position: absolute;
   inset: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--panel-sunken);
   box-shadow: inset 0 1px 2px color-mix(in oklab, var(--text) 12%, transparent);
@@ -767,21 +774,21 @@
   bottom: -3px;
   left: calc(var(--effort-pos, 0) * 100%);
   width: 3px;
-  border-radius: 2px;
+  border-radius: 999px;
   background: var(--accent);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--panel) 70%, transparent),
     0 0 10px 1px color-mix(in oklab, var(--accent) 65%, transparent);
   transform: translateX(-50%);
   transition:
-    left 170ms var(--ease),
-    box-shadow 170ms var(--ease);
+    left var(--motion-base) var(--ease),
+    box-shadow var(--motion-base) var(--ease);
   pointer-events: none;
   z-index: 2; /* above the overscanned pixel/spark canvas */
 }
 
 .effort-slider-cursor[data-dragging] {
-  transition: box-shadow 170ms var(--ease);
+  transition: box-shadow var(--motion-base) var(--ease);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--panel) 70%, transparent),
     0 0 16px 3px color-mix(in oklab, var(--accent) 80%, transparent);
@@ -800,7 +807,7 @@
 .effort-slider-stops {
   position: relative;
   height: 24px;
-  margin: 6px 0 0;
+  margin: var(--space-1_5) 0 0;
 }
 
 .effort-slider-stop {
@@ -811,7 +818,7 @@
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -820,14 +827,14 @@
   letter-spacing: 0.01em;
   cursor: pointer;
   transform: translateX(-50%);
-  transition: color 170ms var(--ease);
+  transition: color var(--motion-base) var(--ease);
 }
 
 .effort-slider-stop-tick {
   width: 1px;
   height: 5px;
   background: var(--line-strong);
-  transition: background 170ms var(--ease);
+  transition: background var(--motion-base) var(--ease);
 }
 
 .effort-slider-stop[data-lit] {
@@ -916,7 +923,7 @@
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1_5);
   margin: -5px -5px 3px;
   padding: 7px 9px 5px;
   color: var(--muted);
@@ -990,7 +997,7 @@
 
 .rail-sort-divider {
   height: 1px;
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   background: var(--line);
 }
 
@@ -1008,7 +1015,7 @@
   left: auto;
   right: auto;
   min-width: 240px;
-  padding: 6px;
+  padding: var(--space-1_5);
 }
 
 .session-actions-list {
@@ -1021,7 +1028,7 @@
 .session-actions-submenu-trigger {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .session-actions-submenu-label {
@@ -1045,9 +1052,9 @@
   align-self: flex-start;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0 2px 4px;
-  padding: 4px 8px 4px 6px;
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1_5);
   border: 0;
   background: transparent;
   color: var(--muted-strong);
@@ -1071,17 +1078,17 @@
 .git-actions-composer {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 4px 6px 8px;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-1_5) var(--space-2);
 }
 
 .git-actions-back {
   align-self: flex-start;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0 -2px 2px;
-  padding: 4px 8px 4px 6px;
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1_5);
   border: 0;
   background: transparent;
   color: var(--muted-strong);
@@ -1106,7 +1113,7 @@
 
 .git-actions-input {
   width: 100%;
-  padding: 10px 12px;
+  padding: var(--space-2_5) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--panel);
@@ -1126,7 +1133,7 @@
 
 .git-actions-submit {
   align-self: flex-end;
-  margin-top: 4px;
+  margin-top: var(--space-1);
   padding: 7px 18px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -1145,9 +1152,9 @@
 .git-actions-feedback {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  margin: 10px 0 0;
-  padding: 8px 10px;
+  gap: var(--space-2);
+  margin: var(--space-2_5) 0 0;
+  padding: var(--space-2) var(--space-2_5);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
@@ -1173,7 +1180,7 @@
 }
 
 .git-actions-busy {
-  margin: 8px 6px 0;
+  margin: var(--space-2) var(--space-1_5) 0;
   color: var(--muted-strong);
   font-size: var(--text-xs);
   font-style: italic;
@@ -1200,10 +1207,10 @@
   left: 0;
   z-index: 2;
   margin: 0;
-  padding: 6px 10px;
+  padding: var(--space-1_5) var(--space-2_5);
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   color: var(--text-soft);
   font-size: var(--text-sm-plus);
   border: 1px solid var(--line);
@@ -1254,7 +1261,7 @@
   --session-inline-padding: 22px;
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 40px);
-  padding-top: 6px;
+  padding-top: var(--space-1_5);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-2xl);
@@ -1265,11 +1272,11 @@
 .details-popup .conversation-surface {
   min-height: 0;
   /* Compact frame: the popup header is chrome, not a pane hero. */
-  padding-top: 4px;
+  padding-top: var(--space-1);
 }
 
 .details-popup .section-heading {
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1_5);
 }
 
 /* The popup composer drops the attach/context cluster (floating mode), so the
@@ -1284,7 +1291,7 @@
 .details-attach-chat {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1_5);
   padding: 3px 8px;
   border: 0;
   border-radius: var(--radius-sm);

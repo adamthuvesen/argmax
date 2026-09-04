@@ -1,8 +1,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { TimelineEvent } from "../../shared/types.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import {
   baseSession,
+  event,
   project,
   reviewStub,
   workspace
@@ -11,6 +13,7 @@ import { SessionConversation } from "./SessionConversation.js";
 
 function renderPane(
   options: {
+    events?: TimelineEvent[];
     isLogOpen?: boolean;
     onToggleWorkspaceCard?: () => void;
     review?: ReviewState;
@@ -20,7 +23,7 @@ function renderPane(
 ) {
   return render(
     <SessionConversation
-      events={[]}
+      events={options.events ?? []}
       isLogOpen={options.isLogOpen ?? false}
       onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
       onTerminateSession={vi.fn().mockResolvedValue(undefined)}
@@ -91,5 +94,43 @@ describe("SessionConversation workspace card", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Workspace card is on. It shows up on chats that have a git worktree."
     );
+  });
+
+  it("returns focus to the preferred agent when opening the remaining cluster tabs", () => {
+    const selectTab = vi.fn();
+    const openAgents = vi.fn();
+    const openAgent = vi.fn();
+    const review = reviewStub({
+      agentTabs: {
+        tabIds: ["task-1"],
+        activeTabId: null,
+        selectTab,
+        closeTab: vi.fn()
+      },
+      openAgent,
+      openAgents
+    });
+
+    renderPane({
+      events: [
+        event("task-2-start", "command.started", "Task", "2026-05-12T15:00:02.000Z", {
+          id: "task-2",
+          name: "Task",
+          input: { description: "Sweep tests", prompt: "Sweep." }
+        }),
+        event("task-1-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
+          id: "task-1",
+          name: "Task",
+          input: { description: "Map renderer", prompt: "Map." }
+        })
+      ],
+      review
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Subagents" }));
+
+    expect(openAgent).toHaveBeenCalledWith("task-2");
+    expect(selectTab).toHaveBeenCalledWith("task-1");
+    expect(openAgents).toHaveBeenCalledTimes(1);
   });
 });

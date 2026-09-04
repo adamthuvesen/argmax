@@ -59,7 +59,11 @@ fn speaks_claude_stream_json(provider: ProviderId) -> bool {
     matches!(provider, ProviderId::Claude | ProviderId::Grok)
 }
 
-pub const JSON_PARSE_LINE_CAP: usize = 1_048_576;
+/// Largest single provider stdout/stderr line the normalizer will parse.
+/// Above this the line is dropped with a visible `too large to parse` error.
+/// 4 MiB covers pasted screenshots and large file reads surviving base64
+/// without letting one runaway line dominate memory or the timeline payload.
+pub const JSON_PARSE_LINE_CAP: usize = 4_194_304;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]

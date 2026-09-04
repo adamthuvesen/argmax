@@ -141,9 +141,9 @@
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2_5);
   min-height: 32px;
-  padding: 0 10px;
+  padding: 0 var(--space-2_5);
   color: var(--text-soft);
   text-align: left;
   border: 0;
@@ -283,7 +283,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden auto;
-  padding-right: 12px;
+  padding-right: var(--space-3);
   margin-right: -12px;
 }
 
@@ -319,7 +319,7 @@
   margin: 0;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
   flex: 1 1 auto;
   color: var(--muted);
@@ -385,7 +385,7 @@
 /* Tighter than a project label's icon gap: the chevron belongs to the word, so
    it should hug it. Needs the extra class to outweigh `.project-name` below. */
 .project-name.session-date-label {
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* Shrink the text to its content so the chevron follows the last letter instead
@@ -529,7 +529,7 @@
   right: 0;
   width: 248px;
   min-width: 0;
-  padding: 4px;
+  padding: var(--space-1);
   list-style: none;
 }
 
@@ -549,7 +549,7 @@
 
 .project-actions-confirm-text {
   margin: 0;
-  padding: 10px 10px 8px;
+  padding: var(--space-2_5) var(--space-2_5) var(--space-2);
   font-size: var(--text-sm);
   line-height: 1.45;
   color: var(--text-soft);
@@ -563,16 +563,16 @@
 .project-actions-confirm-buttons {
   display: flex;
   justify-content: flex-end;
-  gap: 6px;
-  padding: 4px 4px 4px;
+  gap: var(--space-1_5);
+  padding: var(--space-1) var(--space-1) var(--space-1);
   border-top: 1px solid var(--line-soft);
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .project-actions-confirm-buttons .project-picker-item {
   flex: 0 0 auto;
   width: auto;
-  padding: 6px 10px;
+  padding: var(--space-1_5) var(--space-2_5);
   justify-content: center;
   font-weight: 500;
 }
@@ -606,11 +606,11 @@
 .project-name {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2_5);
   width: 100%;
   min-width: 0;
   min-height: 30px;
-  padding: 0 6px 0 12px;
+  padding: 0 var(--space-1_5) 0 var(--space-3);
   color: var(--muted);
   text-align: left;
   border: 0;

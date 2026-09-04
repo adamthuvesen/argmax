@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MOON_NAMES, assignAgentCodenames } from "./agentNames.js";
+import { SCIENTIST_NAMES, assignAgentCodenames } from "./agentNames.js";
 import { SESSION_ICON_COLORS } from "./sessionIcons.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import type { MultitaskChild } from "./multitask.js";
@@ -68,7 +68,7 @@ describe("buildSubagentCluster", () => {
     expect(cluster?.done).toBe(1);
     expect(cluster?.failed).toBe(1);
     expect(cluster?.entries.map((entry) => entry.toolUseId)).toEqual(["spawn-1", "spawn-2", "spawn-3"]);
-    expect(cluster?.entries.every((entry) => MOON_NAMES.includes(entry.codename))).toBe(true);
+    expect(cluster?.entries.every((entry) => SCIENTIST_NAMES.includes(entry.codename))).toBe(true);
     // Title prefers the description, then the subagent type, then the preview.
     expect(cluster?.entries[0]?.title).toBe("Map the renderer");
     expect(cluster?.entries[1]?.title).toBe("general");

@@ -102,7 +102,7 @@ fn claude_structured_args(
     let mut args = vec!["-p".to_string(), "--brief".to_string()];
     args.extend(claude_permission_args(input));
     args.extend(claude_reasoning_args(input));
-    args.extend(claude_fast_mode_args(input));
+    args.extend(claude_settings_args(input, mcp));
     args.extend(mcp_injection::mcp_args(ProviderId::Claude, mcp));
     args.extend([
         "--model".to_string(),
@@ -145,7 +145,7 @@ fn claude_structured_resume_args(
     }
     args.extend(claude_permission_args(input));
     args.extend(claude_reasoning_args(input));
-    args.extend(claude_fast_mode_args(input));
+    args.extend(claude_settings_args(input, mcp));
     args.extend(mcp_injection::mcp_args(ProviderId::Claude, mcp));
     args.extend([
         "--model".to_string(),
@@ -637,10 +637,21 @@ fn claude_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
     vec!["--append-system-prompt".to_string(), prompt.to_string()]
 }
 
-fn claude_fast_mode_args(input: &ProviderLaunchInput) -> Vec<String> {
+// One inline `--settings` carries everything Argmax sets per launch: fast mode,
+// and the inbox hook whenever the launch has the argmax server to deliver for.
+// The flag merges over the user's settings files, so only these keys move.
+fn claude_settings_args(
+    input: &ProviderLaunchInput,
+    mcp: Option<&SessionLaunchProcessConfig>,
+) -> Vec<String> {
+    let mut settings = serde_json::Map::new();
+    settings.insert("fastMode".to_string(), input.fast_mode.into());
+    if let Some(hooks) = mcp_injection::claude_hook_settings(mcp) {
+        settings.insert("hooks".to_string(), hooks);
+    }
     vec![
         "--settings".to_string(),
-        format!(r#"{{"fastMode":{}}}"#, input.fast_mode),
+        serde_json::Value::Object(settings).to_string(),
     ]
 }
 
@@ -851,6 +862,30 @@ mod tests {
             .position(|arg| arg == "--settings")
             .expect("settings flag");
         assert_eq!(args[index + 1], r#"{"fastMode":true}"#);
+    }
+
+    #[test]
+    fn claude_settings_carry_the_inbox_hook_when_the_launch_has_the_server() {
+        let input = launch_input(ProviderId::Claude);
+        let config = SessionLaunchProcessConfig::for_tests(
+            "/tmp/argmax/launch.sock",
+            "token-123",
+            "/Applications/Argmax.app/Contents/MacOS/argmax",
+        );
+        let args =
+            (get_provider_definition(ProviderId::Claude).structured_args)(&input, Some(&config));
+        let index = args
+            .iter()
+            .position(|arg| arg == "--settings")
+            .expect("settings flag");
+        let settings: serde_json::Value = serde_json::from_str(&args[index + 1]).expect("JSON");
+        assert_eq!(settings["fastMode"], false);
+        assert_eq!(
+            settings["hooks"]["PostToolUse"][0]["hooks"][0]["command"],
+            "'/Applications/Argmax.app/Contents/MacOS/argmax' hook inbox"
+        );
+        // Exactly one --settings: a second would override the first.
+        assert_eq!(args.iter().filter(|arg| *arg == "--settings").count(), 1);
     }
 
     #[test]

@@ -282,7 +282,10 @@ mod tests {
         registry.insert("agent-2", Some("s1".into()), "https://b.example");
         registry.insert("agent-3", Some("s1".into()), "https://c.example");
 
-        assert!(registry.set_group(&["agent-1".into(), "agent-3".into()], Some("Research".into())));
+        assert!(registry.set_group(
+            &["agent-1".into(), "agent-3".into()],
+            Some("Research".into())
+        ));
         // Setting the label a tab already carries is not a change, so it must
         // not publish another identical list to the strip.
         assert!(!registry.set_group(&["agent-1".into()], Some("Research".into())));

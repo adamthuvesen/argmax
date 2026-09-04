@@ -5,10 +5,16 @@ import type { SessionSummary } from "../../shared/types.js";
 import type { RenderItem } from "../lib/foldConversation.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { ToolCall } from "../lib/toolCalls.js";
+import type * as TurnFileChanges from "../lib/turnFileChanges.js";
 
 const collectTurnFileChanges = vi.hoisted(() => vi.fn(() => []));
 
-vi.mock("../lib/turnFileChanges.js", () => ({ collectTurnFileChanges }));
+// Only the collector is stubbed — it is what this file counts calls to. The
+// rest of the module stays real so the turn keeps summing its own changes.
+vi.mock("../lib/turnFileChanges.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof TurnFileChanges>()),
+  collectTurnFileChanges
+}));
 
 const { SessionConversationTurn } = await import("./SessionConversationTurn.js");
 

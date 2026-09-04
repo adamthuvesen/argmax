@@ -18,11 +18,11 @@ use crate::ipc::validation::ProviderId;
 use crate::persistence::usage_scan::{self, HourlyBucket};
 use crate::providers::pricing;
 use crate::usage::records::UsageRecordTokens;
-use crate::usage::scanner::{hour_start_secs, provider_from_key};
+use crate::usage::scanner::{hour_start_secs, provider_from_key, provider_key};
 use crate::usage::{
-    UsageCostSource, UsageDayRow, UsageModelRow, UsageProviderSummary, UsageResolution,
-    UsageScanState, UsageSeriesPoint, UsageSeriesValue, UsageSummary, UsageTokenTotals,
-    UsageWindow,
+    UsageCostSource, UsageDayRow, UsageModelRow, UsagePreviousPeriod, UsageProviderSummary,
+    UsageResolution, UsageScanState, UsageSeriesPoint, UsageSeriesValue, UsageSummary,
+    UsageTokenTotals, UsageWindow,
 };
 
 /// Providers in the order the page lists them. Cursor keeps no local usage
@@ -245,11 +245,66 @@ pub fn build_summary(
         cost_usd: total.cost_usd,
         cache_savings_usd: total.cache_savings_usd,
         cost_source: total.cost_source(),
+        previous: previous_period(connection, window, provider, range_start)?,
         providers,
         series,
         models,
         days,
     })
+}
+
+/// Start of the equally long window that ends where this one begins, cut on
+/// the same boundaries as `bucket_starts`: whole hours for 24h, local
+/// midnights for the day windows, so a DST day does not slide the edge.
+/// Bucketing the instant just before `range_start` gives exactly that window.
+fn previous_range_start(window: UsageWindow, range_start: DateTime<Utc>) -> DateTime<Utc> {
+    bucket_starts(window, range_start - Duration::milliseconds(1))[0]
+}
+
+/// Totals for the previous window, narrowed and priced exactly like the
+/// current one so the comparison is like for like. `None` unless the ledger
+/// reaches back past that window's start and holds something inside it: a
+/// half-covered period would read as a fall nobody made.
+fn previous_period(
+    connection: &Connection,
+    window: UsageWindow,
+    provider: Option<ProviderId>,
+    range_start: DateTime<Utc>,
+) -> ArgmaxResult<Option<UsagePreviousPeriod>> {
+    let previous_start = previous_range_start(window, range_start);
+    let earliest = usage_scan::earliest_hour(connection, provider.map(provider_key))?;
+    if earliest.is_none_or(|hour| hour > previous_start.timestamp()) {
+        return Ok(None);
+    }
+
+    let start_secs = [previous_start.timestamp()];
+    let from_hour = hour_start_secs(previous_start.timestamp_millis());
+    let to_hour = hour_start_secs(range_start.timestamp_millis()) + 3600;
+    let buckets = usage_scan::list_hourly_between(connection, from_hour, to_hour)?;
+    let priced: Vec<PricedBucket> = buckets
+        .into_iter()
+        .filter(|bucket| {
+            bucket.hour_utc >= previous_start.timestamp()
+                && bucket.hour_utc < range_start.timestamp()
+        })
+        .filter_map(|bucket| price_bucket(bucket, &start_secs))
+        .filter(|bucket| provider.is_none_or(|wanted| wanted == bucket.provider))
+        .collect();
+    if priced.is_empty() {
+        return Ok(None);
+    }
+
+    let mut rollup = Rollup::default();
+    let mut sessions: HashSet<&str> = HashSet::new();
+    for bucket in &priced {
+        rollup.add(bucket);
+        sessions.insert(&bucket.session_id);
+    }
+    Ok(Some(UsagePreviousPeriod {
+        cost_usd: rollup.cost_usd,
+        tokens: totals_of(rollup.tokens),
+        sessions: sessions.len() as i64,
+    }))
 }
 
 /// Price one ledger bucket and place it in its chart bucket. The CLI's own
@@ -523,9 +578,203 @@ mod tests {
             .all(|row| row.provider == ProviderId::Claude));
         assert_eq!(claude_only.models.len(), 1);
         assert_eq!(claude_only.series[23].values.len(), 1);
-        assert_eq!(claude_only.series[23].values[0].provider, ProviderId::Claude);
+        assert_eq!(
+            claude_only.series[23].values[0].provider,
+            ProviderId::Claude
+        );
         assert_eq!(claude_only.days[23].sessions, 1);
         assert_eq!(claude_only.days[22].sessions, 1);
         assert!((claude_only.days[23].cost_usd - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_previous_window_is_cut_on_the_same_boundaries_as_this_one() {
+        let now = Utc.with_ymd_and_hms(2026, 9, 3, 14, 25, 0).unwrap();
+
+        // 24h steps back a fixed 24 hours.
+        let hourly = bucket_starts(UsageWindow::Past24h, now);
+        assert_eq!(
+            previous_range_start(UsageWindow::Past24h, hourly[0]),
+            hourly[0] - Duration::hours(24)
+        );
+
+        // Day windows land on a local midnight a whole number of local days
+        // back, so a DST day does not slide the edge by an hour.
+        for (window, days) in [(UsageWindow::Past7d, 7), (UsageWindow::Past30d, 30)] {
+            let starts = bucket_starts(window, now);
+            let previous_start = previous_range_start(window, starts[0]);
+            let local = previous_start.with_timezone(&Local);
+            assert_eq!((local.hour(), local.minute(), local.second()), (0, 0, 0));
+            assert_eq!(
+                starts[0].with_timezone(&Local).date_naive() - local.date_naive(),
+                Duration::days(days)
+            );
+        }
+    }
+
+    #[test]
+    fn previous_period_totals_the_window_before_this_one_and_follows_the_filter() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        let now = Utc.with_ymd_and_hms(2026, 9, 3, 14, 25, 0).unwrap();
+        let this_hour = Utc
+            .with_ymd_and_hms(2026, 9, 3, 14, 0, 0)
+            .unwrap()
+            .timestamp();
+        let million = UsageRecordTokens {
+            input_uncached: 1_000_000,
+            ..UsageRecordTokens::default()
+        };
+        // The 24h window starts 23 hours back, so the window before it is the
+        // 24 hours from 47 to 23 hours ago.
+        let in_previous = this_hour - 30 * 3600;
+        let before_previous = this_hour - 60 * 3600;
+
+        // Both providers reach back past the previous window, so a comparison
+        // is honest for either.
+        for (provider, model, session) in [
+            ("claude", "claude-opus-5", "old-claude"),
+            ("grok", "grok-4.6", "old-grok"),
+        ] {
+            usage_scan::add_hourly_bucket(
+                &connection,
+                &delta(provider, model, session, before_previous, million, None),
+            )
+            .unwrap();
+        }
+        usage_scan::add_hourly_bucket(
+            &connection,
+            &delta("claude", "claude-opus-5", "p1", in_previous, million, None),
+        )
+        .unwrap();
+        usage_scan::add_hourly_bucket(
+            &connection,
+            &delta("grok", "grok-4.6", "p2", in_previous, million, Some(0.34)),
+        )
+        .unwrap();
+        usage_scan::add_hourly_bucket(
+            &connection,
+            &delta("claude", "claude-opus-5", "s1", this_hour, million, None),
+        )
+        .unwrap();
+
+        let summary = build_summary(
+            &connection,
+            UsageWindow::Past24h,
+            None,
+            "Europe/Stockholm".into(),
+            scan_state(),
+            now,
+        )
+        .unwrap();
+        assert!((summary.cost_usd - 5.0).abs() < 1e-9);
+        let previous = summary.previous.expect("previous period");
+        assert!((previous.cost_usd - 5.34).abs() < 1e-9);
+        assert_eq!(previous.tokens.input_uncached, 2_000_000);
+        assert_eq!(previous.sessions, 2);
+
+        // Narrowed the way the totals are: Grok's own dollars, Grok's session.
+        let grok_only = build_summary(
+            &connection,
+            UsageWindow::Past24h,
+            Some(ProviderId::Grok),
+            "Europe/Stockholm".into(),
+            scan_state(),
+            now,
+        )
+        .unwrap();
+        let grok_previous = grok_only.previous.expect("previous period");
+        assert!((grok_previous.cost_usd - 0.34).abs() < 1e-9);
+        assert_eq!(grok_previous.tokens.input_uncached, 1_000_000);
+        assert_eq!(grok_previous.sessions, 1);
+
+        // A provider with nothing in the ledger has nothing to compare to.
+        let codex_only = build_summary(
+            &connection,
+            UsageWindow::Past24h,
+            Some(ProviderId::Codex),
+            "Europe/Stockholm".into(),
+            scan_state(),
+            now,
+        )
+        .unwrap();
+        assert_eq!(codex_only.previous, None);
+    }
+
+    #[test]
+    fn previous_period_is_none_when_the_ledger_starts_inside_it() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        let now = Utc.with_ymd_and_hms(2026, 9, 3, 14, 25, 0).unwrap();
+        let this_hour = Utc
+            .with_ymd_and_hms(2026, 9, 3, 14, 0, 0)
+            .unwrap()
+            .timestamp();
+        let million = UsageRecordTokens {
+            input_uncached: 1_000_000,
+            ..UsageRecordTokens::default()
+        };
+        // The oldest record sits inside the previous window, so that window is
+        // only half covered and a comparison would read as a fall.
+        usage_scan::add_hourly_bucket(
+            &connection,
+            &delta(
+                "claude",
+                "claude-opus-5",
+                "p1",
+                this_hour - 30 * 3600,
+                million,
+                None,
+            ),
+        )
+        .unwrap();
+        usage_scan::add_hourly_bucket(
+            &connection,
+            &delta("claude", "claude-opus-5", "s1", this_hour, million, None),
+        )
+        .unwrap();
+
+        let summary = build_summary(
+            &connection,
+            UsageWindow::Past24h,
+            None,
+            "Europe/Stockholm".into(),
+            scan_state(),
+            now,
+        )
+        .unwrap();
+        assert_eq!(summary.previous, None);
+
+        // A ledger that reaches back further, but with an empty previous
+        // window, still has nothing to say.
+        let quiet = Database::open_in_memory().expect("db");
+        let quiet = quiet.connection();
+        usage_scan::add_hourly_bucket(
+            &quiet,
+            &delta(
+                "claude",
+                "claude-opus-5",
+                "old",
+                this_hour - 60 * 3600,
+                million,
+                None,
+            ),
+        )
+        .unwrap();
+        usage_scan::add_hourly_bucket(
+            &quiet,
+            &delta("claude", "claude-opus-5", "s1", this_hour, million, None),
+        )
+        .unwrap();
+        let summary = build_summary(
+            &quiet,
+            UsageWindow::Past24h,
+            None,
+            "Europe/Stockholm".into(),
+            scan_state(),
+            now,
+        )
+        .unwrap();
+        assert_eq!(summary.previous, None);
     }
 }

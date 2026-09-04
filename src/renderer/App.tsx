@@ -1725,6 +1725,19 @@ export function App(): JSX.Element {
     [setSnapshot]
   );
 
+  // Which projects have an agent working right now. The launcher's hero fox
+  // reads it and switches to its thinking face, so the mark reflects real work
+  // instead of decorating the page.
+  const projectIdsWithRunningSession = useMemo(() => {
+    const running = new Set<string>();
+    for (const session of snapshot.sessions) {
+      if (session.state !== "running") continue;
+      const projectId = workspacesById.get(session.workspaceId)?.projectId;
+      if (projectId) running.add(projectId);
+    }
+    return running;
+  }, [snapshot.sessions, workspacesById]);
+
   const renderLaunchSurface = useCallback(
     // `project` is allowed to differ from `selectedProject` because the
     // grid renders launcher cells with explicit project arguments. A grid
@@ -1734,6 +1747,7 @@ export function App(): JSX.Element {
       <LaunchSurface
         claimsBrowserRequests={!options.embedded}
         fastModeEnabled={fastModeEnabled}
+        hasRunningSession={projectIdsWithRunningSession.has((project ?? launcherProject)?.id ?? "")}
         pixelFieldEnabled={pixelFieldEnabled}
         onAddProject={() => void addProject()}
         onBranchSwitch={handleProjectUpdated}
@@ -1766,6 +1780,7 @@ export function App(): JSX.Element {
       launcherProject,
       openRepoProjectLauncher,
       pixelFieldEnabled,
+      projectIdsWithRunningSession,
       realProjects,
       registerPaletteFileContext,
       rightPanelToggleSignal,

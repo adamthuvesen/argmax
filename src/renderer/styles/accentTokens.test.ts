@@ -43,7 +43,7 @@ describe("accent CSS contract", () => {
     expect(laneRule).toContain("padding: 6px 15px;");
     expect(laneRule).toContain("border-radius: var(--radius-xl);");
     expect(laneRule).toContain("background: var(--composer-surface);");
-    expect(attachedComposerRule).toContain("margin-top: 8px;");
+    expect(attachedComposerRule).toContain("margin-top: var(--space-2);");
   });
 
   it("keeps text sizes and font families behind typography tokens", () => {
@@ -252,7 +252,7 @@ describe("accent CSS contract", () => {
       ".tool-call-item[data-status=\"error\"]:not(.tool-call-item--nested)"
     );
 
-    expect(detailRule).toContain("gap: 10px;");
+    expect(detailRule).toContain("gap: var(--space-2_5);");
     // Flush with the row's own left edge and with no rail of its own.
     expect(rowDetailRule).toContain("margin: 2px 0 8px;");
     expect(rowDetailRule).not.toContain("border-left");
@@ -520,7 +520,7 @@ describe("accent CSS contract", () => {
     expect(planCardRule).toContain("border-radius: var(--radius-2xl);");
     expect(agentCardRule).toContain("border-radius: var(--radius-2xl);");
     expect(userBubbleRule).not.toContain("border:");
-    expect(userBubbleBodyRule).toContain("padding-right: 4px;");
+    expect(userBubbleBodyRule).toContain("padding-right: var(--space-1);");
     expect(userBubbleBodyRule).toContain("margin-right: -4px;");
     // Both composers are borderless and share the same focus lift.
     expect(composerRule).toContain("border: 0;");
@@ -768,6 +768,16 @@ describe("accent CSS contract", () => {
     expect(speedRule).toContain("min-width: 230px;");
   });
 
+  it("paints an open launcher picker above the composer input", () => {
+    const chatChrome = readSource("src/renderer/styles/chat-chrome.css");
+    const openContextRule = cssRuleBody(
+      chatChrome,
+      '.launcher-surface .composer > .composer-context:has(.composer-context-chip[aria-expanded="true"])'
+    );
+
+    expect(openContextRule).toContain("z-index: 3;");
+  });
+
   it("keeps project and model picker menus dense", () => {
     const chatChrome = readSource("src/renderer/styles/chat-chrome.css");
     const popoverRule = cssRuleBody(chatChrome, ".project-picker-popover");
@@ -782,8 +792,8 @@ describe("accent CSS contract", () => {
     expect(projectItemRule).toContain("font-size: var(--text-xs-plus);");
     expect(projectItemRule).toContain("line-height: 1.35;");
     expect(modelPopoverRule).toContain("min-width: 220px;");
-    expect(modelItemRule).toContain("gap: 8px;");
-    expect(modelSubmenuTriggerRule).toContain("column-gap: 8px;");
+    expect(modelItemRule).toContain("gap: var(--space-2);");
+    expect(modelSubmenuTriggerRule).toContain("column-gap: var(--space-2);");
     expect(groupLabelRule).toContain("font-size: var(--text-2xs);");
     expect(groupLabelRule).toContain("line-height: 1.2;");
   });
@@ -885,8 +895,15 @@ describe("accent CSS contract", () => {
     const weightOf = (rule: string) =>
       Number(/font-weight:\s*(?<weight>\d+);/.exec(rule)?.groups?.weight);
     const marginsOf = (rule: string) => {
-      const margin = /margin:\s*(?<top>-?[\d.]+)px 0 (?<bottom>-?[\d.]+)px;/.exec(rule)?.groups;
-      return { top: Number(margin?.top), bottom: Number(margin?.bottom) };
+      // Spacing tokens resolve to 4px steps, halves included: --space-N is
+      // N * 4px with `_` as the decimal point (--space-1_5 is 6px).
+      const toPx = (value: string) => {
+        const token = /var\(--space-(?<step>[\d_]+)\)/.exec(value)?.groups?.step;
+        if (token !== undefined) return Number(token.replace("_", ".")) * 4;
+        return Number(value.replace("px", ""));
+      };
+      const parts = /margin:\s*(?<values>[^;]+);/.exec(rule)?.groups?.values.split(/\s+/);
+      return { top: toPx(parts?.[0] ?? ""), bottom: toPx(parts?.[2] ?? "") };
     };
 
     // The bug this pins: headings used to be painted from --text-soft/--muted at
@@ -911,7 +928,7 @@ describe("accent CSS contract", () => {
     // lead-in that ran past one line render as a wall of semibold heavier than
     // the real h3 above it, so the treatment is the tightened gap and nothing
     // else.
-    expect(leadInRule).toContain("margin-bottom: 8px;");
+    expect(leadInRule).toContain("margin-bottom: var(--space-2);");
     expect(leadInRule).not.toContain("font-weight");
     expect(leadInRule).not.toContain("color:");
 
@@ -956,8 +973,12 @@ describe("accent CSS contract", () => {
     // exactly that. Nested rows sit one step tighter so depth reads as depth.
     const listItemGapRule = cssRuleBody(chatConversation, ".markdown li + li");
     const nestedListItemGapRule = cssRuleBody(chatConversation, ".markdown li li + li");
-    const gapOf = (rule: string) =>
-      Number(/margin-top:\s*(?<gap>[\d.]+)px;/.exec(rule)?.groups?.gap);
+    const gapOf = (rule: string) => {
+      const raw = /margin-top:\s*(?<gap>[^;]+);/.exec(rule)?.groups?.gap.trim() ?? "";
+      const token = /var\(--space-(?<step>[\d_]+)\)/.exec(raw)?.groups?.step;
+      if (token !== undefined) return Number(token.replace("_", ".")) * 4;
+      return Number(raw.replace("px", ""));
+    };
     expect(listItemRule).toContain("margin: 0;");
     expect(listItemRule).toContain("line-height: 1.6;");
     expect(gapOf(listItemGapRule)).toBeGreaterThanOrEqual(8);

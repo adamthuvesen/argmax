@@ -61,6 +61,62 @@ export function readBlobAsBase64(blob: Blob): Promise<string> {
   });
 }
 
+/**
+ * Long edge cap for path-less pasted/dropped images. A full retina screenshot
+ * is several megabytes of PNG, and its base64 has to survive the provider's
+ * single-line JSON stream (4 MiB cap in `providers::normalizer`) — the same
+ * reason agent browser screenshots rasterise small. 1920 keeps text readable
+ * while bringing a typical screenshot under that budget.
+ */
+export const MAX_ATTACHMENT_DIMENSION_PX = 1920;
+
+/**
+ * Downscales an oversized image so its stored bytes stay comfortably under the
+ * provider line cap. Small images pass through untouched, GIFs pass through so
+ * animation survives (canvas would flatten to one frame), and anything the
+ * runtime cannot decode returns the original — a too-large attach beats a lost
+ * paste, and jsdom has no `createImageBitmap` at all.
+ */
+export async function downscaleImageBlob(blob: Blob): Promise<Blob> {
+  if (blob.type === "image/gif") return blob;
+  if (typeof createImageBitmap !== "function" || typeof document === "undefined") return blob;
+  let bitmap: ImageBitmap | null = null;
+  try {
+    bitmap = await createImageBitmap(blob);
+  } catch {
+    return blob;
+  }
+  try {
+    const longest = Math.max(bitmap.width, bitmap.height);
+    if (!bitmap.width || !bitmap.height || longest <= MAX_ATTACHMENT_DIMENSION_PX) return blob;
+    const scale = MAX_ATTACHMENT_DIMENSION_PX / longest;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return blob;
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const resized = await canvasToBlob(canvas, blob.type);
+    if (!resized || resized.size >= blob.size) return blob;
+    return resized;
+  } catch {
+    return blob;
+  } finally {
+    bitmap?.close();
+  }
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string): Promise<Blob | null> {
+  const quality = mimeType === "image/jpeg" ? 0.92 : mimeType === "image/webp" ? 0.9 : undefined;
+  return new Promise((resolve) => {
+    try {
+      canvas.toBlob((result) => resolve(result), mimeType, quality);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 function toReference(absolutePath: string, workspacePath: string | null): string {
   if (workspacePath && workspacePath.length > 0) {
     const prefix = workspacePath.endsWith("/") ? workspacePath : `${workspacePath}/`;

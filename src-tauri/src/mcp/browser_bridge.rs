@@ -27,7 +27,7 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::session_control::{argmax_protocol_error, SessionControlError};
 
 /// Points, not device pixels: the capture is rasterised at this width so its
-/// base64 survives the provider's own per-line JSON cap (1 MB in
+/// base64 survives the provider's own per-line JSON cap (4 MiB in
 /// `providers::normalizer`). A whole retina window would not.
 const SCREENSHOT_MAX_WIDTH_POINTS: f64 = 720.0;
 
@@ -192,7 +192,9 @@ async fn run(
         BrowserRequest::Activate { tab } => {
             let target = owned_target(app, session_id, tab)?;
             let tab_id = automation::activate(app, session_id, &target)?;
-            Ok(BrowserOutcome::json(json!({ "tabId": tab_id, "active": true })))
+            Ok(BrowserOutcome::json(
+                json!({ "tabId": tab_id, "active": true }),
+            ))
         }
         BrowserRequest::Duplicate { tab, activate } => {
             let target = owned_target(app, session_id, tab)?;
@@ -215,7 +217,10 @@ async fn run(
             let group = group
                 .map(|label| label.trim().to_string())
                 .filter(|label| !label.is_empty());
-            if group.as_ref().is_some_and(|label| label.chars().count() > 80) {
+            if group
+                .as_ref()
+                .is_some_and(|label| label.chars().count() > 80)
+            {
                 return Err(ArgmaxError::service(
                     "BROWSER_INVALID_GROUP",
                     "a browser tab group label may not exceed 80 characters",

@@ -417,7 +417,10 @@ pub fn close(app: &AppHandle, target: &TabTarget) -> ArgmaxResult<String> {
 pub fn activate(app: &AppHandle, session_id: &str, target: &TabTarget) -> ArgmaxResult<String> {
     let tab_id = resolve_tab(app, target)?;
     let tab = registry(app).get(&tab_id).ok_or_else(|| {
-        ArgmaxError::service("BROWSER_NOT_OPEN", format!("browser tab {tab_id} is not open"))
+        ArgmaxError::service(
+            "BROWSER_NOT_OPEN",
+            format!("browser tab {tab_id} is not open"),
+        )
     })?;
     crate::ipc::browser::emit_agent_open(app, session_id, &tab_id, &tab.url);
     Ok(tab_id)
@@ -456,11 +459,7 @@ pub fn tab_group(app: &AppHandle, tab_id: &str) -> Option<String> {
     registry(app).get(tab_id).and_then(|tab| tab.group)
 }
 
-pub fn group_tabs(
-    app: &AppHandle,
-    tab_ids: &[String],
-    group: Option<String>,
-) -> ArgmaxResult<()> {
+pub fn group_tabs(app: &AppHandle, tab_ids: &[String], group: Option<String>) -> ArgmaxResult<()> {
     let tabs = registry(app);
     if tabs.set_group(tab_ids, group) {
         super::registry::publish(app, &tabs);
@@ -733,11 +732,7 @@ async fn drag(app: &AppHandle, tab_id: &str, spec: &Value) -> ArgmaxResult<Actio
     let begun = call(
         app,
         tab_id,
-        &format!(
-            "window.__argmax.dragBegin({}, {})",
-            json!(drag_id),
-            spec
-        ),
+        &format!("window.__argmax.dragBegin({}, {})", json!(drag_id), spec),
         ACTION_TIMEOUT,
     )
     .await?;
@@ -750,10 +745,7 @@ async fn drag(app: &AppHandle, tab_id: &str, spec: &Value) -> ArgmaxResult<Actio
         let stepped = call(
             app,
             tab_id,
-            &format!(
-                "window.__argmax.dragStep({}, {step})",
-                json!(drag_id)
-            ),
+            &format!("window.__argmax.dragStep({}, {step})", json!(drag_id)),
             ACTION_TIMEOUT,
         )
         .await;

@@ -1,0 +1,351 @@
+/* ============================================================
+   Usage fold — the headline figure and the ranked provider
+   rows that double as the page filter.
+
+   The rows are the page's only ranking, so rank is painted as
+   well as written: every row is backed by a bar as long as its
+   provider's share, in that provider's own `--usage-series`
+   colour. The bar's length is an SVG attribute; everything
+   about how it looks is here.
+
+   `.usage-series-dot` and `.usage-dot-sep` are declared in this
+   file and reused by the chart legend and the breakdown table.
+   ============================================================ */
+
+/* ---------- Hero ---------- */
+
+.usage-hero {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* The figure used to float with nothing naming it. */
+.usage-hero-eyebrow {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.usage-hero-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2_5);
+  min-width: 0;
+}
+
+/* A display number, one step past the top of the type scale: pinned to
+   `--text-2xl` so the app's font-size setting still moves it, but allowed to
+   run to 46px on a wide window. */
+.usage-hero-figure {
+  margin: 0;
+  font-size: clamp(calc(var(--text-2xl) + 12px), 3.6vw, 46px);
+  font-weight: 500;
+  line-height: 1.02;
+  letter-spacing: -0.028em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Neutral ink on purpose. Spending more than last month is not an error
+   state, and painting the chip in `--rose` would be the page having an
+   opinion about the user's own bill. */
+.usage-hero-delta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+  font-size: var(--text-xs);
+  color: var(--text-soft);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-hero-delta-glyph {
+  font-size: var(--text-2xs);
+  color: var(--muted-strong);
+}
+
+.usage-hero-delta-vs {
+  color: var(--muted);
+}
+
+.usage-hero-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+}
+
+/* Each clause carries its own leading separator, so a wrap never strands a
+   "·" at the end of a line with nothing after it. */
+.usage-hero-clause {
+  white-space: nowrap;
+}
+
+.usage-hero-clause + .usage-hero-clause {
+  padding-left: var(--space-1);
+}
+
+/* The provider the page is narrowed to, named in its own colour. */
+.usage-hero-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  font-weight: 500;
+  color: var(--text);
+}
+
+.usage-hero-show-all {
+  margin-left: var(--space-2);
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--muted-strong) 45%, transparent);
+  text-underline-offset: 2px;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.usage-hero-show-all:hover {
+  color: var(--text);
+}
+
+.usage-hero-show-all:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* The shape of the window under the size of it: a per-bucket average and the
+   busiest bucket, either of which is dropped when the window is too young to
+   support it honestly. */
+.usage-hero-insight {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-hero-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.usage-dot-sep {
+  color: var(--muted);
+}
+
+/* ---------- Ranked provider rows ---------- */
+
+.usage-provider-rows {
+  /* The selected row's wash carries text on `--panel`, which is white on
+     paper and #1a1a1a in dark. Dark needs a little more of the colour before
+     the same mix reads as the same lift. */
+  --usage-selected-wash: 16%;
+  list-style: none;
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+:root[data-theme="dark"] .usage-provider-rows {
+  --usage-selected-wash: 22%;
+}
+
+.usage-provider-row {
+  min-width: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+/* Each row is a toggle that narrows the page to its provider. It bleeds past
+   the column's edge by one gutter so a pressed row's wash reaches the card's
+   inner edge while the text stays inset. */
+.usage-provider-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: calc(100% + 2 * var(--space-2));
+  min-height: 44px;
+  margin: 0 calc(-1 * var(--space-2));
+  padding: var(--space-1_5) var(--space-2_5);
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-md);
+  appearance: none;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+/* The share rule, along the row's base. Three px of the provider's own colour
+   at full strength carries rank better than a large area of it at 13%, and it
+   leaves the row's background free to mean one thing only: selection. It is
+   inset from the row's bleed so the rules line up under the text, not under
+   the card's padding. */
+/* Width is stated rather than derived from `left`/`right`: an `<svg>` carries
+   an intrinsic size from its viewBox, so `width: auto` resolves to 100px —
+   the bars stayed perfectly proportional to each other and a quarter of the
+   length they should have been. */
+.usage-provider-bar {
+  position: absolute;
+  left: var(--space-2_5);
+  bottom: 0;
+  width: calc(100% - 2 * var(--space-2_5));
+  height: 3px;
+  pointer-events: none;
+}
+
+.usage-provider-bar-track {
+  fill: var(--line);
+}
+
+.usage-provider-bar-fill {
+  fill: var(--usage-series);
+  rx: 1.5;
+}
+
+/* Everything the reader actually reads, clear of the rule beneath it. */
+.usage-provider-body {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--space-2) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+}
+
+button.usage-provider-toggle {
+  cursor: pointer;
+}
+
+button.usage-provider-toggle:hover {
+  background: var(--row-hover);
+}
+
+button.usage-provider-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Pressed: a wash of the provider's own colour behind the row, and a hairline
+   inside it so selection never changes the row's box. The wash is selection's
+   alone — the share is the rule along the base — so it can be strong enough to
+   read at a glance. */
+.usage-provider-row[data-selected="true"] .usage-provider-toggle {
+  background: color-mix(in oklab, var(--usage-series) var(--usage-selected-wash), transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--usage-series) 55%, transparent);
+}
+
+.usage-provider-row[data-selected="true"] button.usage-provider-toggle:focus-visible {
+  box-shadow:
+    var(--ring),
+    inset 0 0 0 1px color-mix(in oklab, var(--usage-series) 55%, transparent);
+}
+
+/* The rows not in focus step back rather than disappear: they are still
+   the way to switch. */
+.usage-provider-rows[data-narrowed="true"] .usage-provider-row[data-selected="false"] {
+  opacity: 0.55;
+}
+
+.usage-provider-rows[data-narrowed="true"] .usage-provider-row[data-selected="false"]:hover,
+.usage-provider-rows[data-narrowed="true"] .usage-provider-row[data-selected="false"]:focus-within {
+  opacity: 1;
+}
+
+.usage-series-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--usage-series);
+}
+
+.usage-provider-row[data-available="false"] .usage-series-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--usage-series);
+}
+
+/* The two-line stacks are held together by their own leading rather than by a
+   gap: at this size any step on the spacing scale reads as a paragraph break
+   between a name and the count under it. */
+.usage-provider-text {
+  display: grid;
+  min-width: 0;
+}
+
+.usage-provider-name {
+  font-size: var(--text-sm-plus);
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-provider-sessions,
+.usage-provider-detail {
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.usage-provider-figures {
+  display: grid;
+  justify-items: end;
+  text-align: right;
+}
+
+.usage-provider-amount {
+  font-size: var(--text-sm-plus);
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-provider-detail {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-provider-row[data-available="false"] .usage-provider-name,
+.usage-provider-row[data-available="false"] .usage-provider-amount {
+  color: var(--muted-strong);
+}
+
+/* `--motion-*` already collapse to 0ms under a reduced-motion preference, but
+   the row's wash is the one transition a reader would see mid-press. */
+@media (prefers-reduced-motion: reduce) {
+  .usage-provider-row,
+  .usage-provider-toggle,
+  .usage-hero-show-all {
+    transition: none;
+  }
+}

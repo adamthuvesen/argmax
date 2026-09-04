@@ -18,6 +18,8 @@ export default tseslint.config(
       "eslint.config.js",
       "scripts/*.cjs",
       "scripts/*.mjs",
+      // Design-concept render scripts, plain Node with no tsconfig behind them.
+      "docs/design/**/*.mjs",
       "vitest.perf.config.ts"
     ]
   },

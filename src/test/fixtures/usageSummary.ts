@@ -15,6 +15,16 @@ function tokens(inputUncached: number, cacheRead: number, cacheWrite: number, ou
   return { inputUncached, cacheRead, cacheWrite, output, reasoning: Math.round(output / 2) };
 }
 
+function scaleTokens(source: UsageTokenTotals, factor: number): UsageTokenTotals {
+  return {
+    inputUncached: Math.round(source.inputUncached * factor),
+    cacheRead: Math.round(source.cacheRead * factor),
+    cacheWrite: Math.round(source.cacheWrite * factor),
+    output: Math.round(source.output * factor),
+    reasoning: Math.round(source.reasoning * factor)
+  };
+}
+
 const claudeRow: UsageProviderSummary = {
   provider: "claude",
   available: true,
@@ -65,6 +75,13 @@ export function usageSummaryFixture(overrides: Partial<UsageSummary> = {}): Usag
     costUsd: 100,
     cacheSavingsUsd: 4.35,
     costSource: "list_price",
+    // A quieter window before this one, so the comparison reads as $100 up
+    // 34% on $74.50.
+    previous: {
+      costUsd: 74.5,
+      tokens: tokens(210_000, 1_180_000, 82_000, 66_000),
+      sessions: 13
+    },
     providers: [claudeRow, codexRow, cursorRow],
     series: [
       {
@@ -164,6 +181,8 @@ export function usageSummaryFor(input: UsageSummaryInput): UsageSummary {
   // row, the series and models keep only its values, the rows keep everyone.
   const row = summary.providers.find((entry) => entry.provider === provider);
   if (!row) throw new Error(`fixture has no provider row for ${provider}`);
+  // The comparison narrows too: the provider's share of the earlier window.
+  const costShare = row.costUsd / summary.costUsd;
   return {
     ...summary,
     provider,
@@ -172,6 +191,11 @@ export function usageSummaryFor(input: UsageSummaryInput): UsageSummary {
     costUsd: row.costUsd,
     cacheSavingsUsd: row.cacheSavingsUsd,
     costSource: row.costSource,
+    previous: summary.previous && {
+      costUsd: Math.round(summary.previous.costUsd * costShare * 100) / 100,
+      tokens: scaleTokens(summary.previous.tokens, costShare),
+      sessions: Math.round(summary.previous.sessions * costShare)
+    },
     series: summary.series.map((point) => ({
       ...point,
       values: point.values.filter((value) => value.provider === provider)

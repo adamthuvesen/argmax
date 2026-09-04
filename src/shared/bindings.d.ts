@@ -1342,6 +1342,13 @@ export type UsageCostSource = "provider_reported" | "list_price" | "unpriced" | 
 export type UsageCounts = { input: number; output: number; cacheRead: number; cacheWrite: number }
 export type UsageDayRow = { bucketStart: string; sessions: number; tokens: UsageTokenTotals; costUsd: number; costSource: UsageCostSource }
 export type UsageModelRow = { provider: ProviderId; modelId: string; sessions: number; tokens: UsageTokenTotals; costUsd: number; costSource: UsageCostSource }
+/**
+ * Totals for the same-length window immediately before `range_start`, so the
+ * page can say whether this window is up or down on the last one. `None` when
+ * the ledger does not cover that earlier window — a first install must not
+ * read as "up 100%".
+ */
+export type UsagePreviousPeriod = { costUsd: number; tokens: UsageTokenTotals; sessions: number }
 export type UsageProviderSummary = { provider: ProviderId; 
 /**
  * `false` when the provider has no local usage source (Cursor). Such a
@@ -1391,7 +1398,12 @@ rangeStart: string; rangeEnd: string; resolution: UsageResolution; scan: UsageSc
  * providers. Per-provider counts do not sum to this when a session
  * switched provider mid-way, which is why it is carried separately.
  */
-sessions: number; tokens: UsageTokenTotals; costUsd: number; cacheSavingsUsd: number; costSource: UsageCostSource; providers: UsageProviderSummary[]; series: UsageSeriesPoint[]; models: UsageModelRow[]; days: UsageDayRow[] }
+sessions: number; tokens: UsageTokenTotals; costUsd: number; cacheSavingsUsd: number; costSource: UsageCostSource; 
+/**
+ * The window before this one, narrowed the same way, for the "vs the
+ * previous 30 days" comparison. `None` when the ledger cannot cover it.
+ */
+previous: UsagePreviousPeriod | null; providers: UsageProviderSummary[]; series: UsageSeriesPoint[]; models: UsageModelRow[]; days: UsageDayRow[] }
 export type UsageSummaryInput = { window: UsageWindow; 
 /**
  * IANA zone name, e.g. `Europe/Stockholm`. Day buckets follow it.

@@ -1,5 +1,5 @@
 // Agent tool-call rows now carry a deterministic moon-name codename between the
-// verb and the task preview ("Started agent Callisto — <preview>"). Tests match
+// verb and the task preview ("Started agent Curie — <preview>"). Tests match
 // the stable preview and leave the codename free so they don't couple to the
 // hash. One matcher, used everywhere an agent row is queried by accessible name.
 

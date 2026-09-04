@@ -97,7 +97,7 @@ export function PerfOverlay(): JSX.Element | null {
         fontSize: "var(--text-xs)",
         lineHeight: 1.3,
         padding: "8px 10px",
-        borderRadius: 8,
+        borderRadius: "var(--radius-lg)",
         boxShadow: "var(--shadow-2)",
         pointerEvents: "none",
         minWidth: 220

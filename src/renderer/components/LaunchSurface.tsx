@@ -68,7 +68,7 @@ import {
 import { ComposerPixelField } from "./ComposerPixelField.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
-import { Mascot } from "./Mascot.js";
+import { Mascot, type MascotMood } from "./Mascot.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
 // launcher's first paint doesn't ship the highlighter.
@@ -87,6 +87,13 @@ const WelcomePane = lazy(async () => ({
 
 const PROMPT_MAX_HEIGHT_PX = 168;
 
+// The fox dozes off after a long untouched stretch and wakes on the first
+// keystroke, click, or focus inside the surface. Ten pets in a row — each
+// within PET_STREAK_GAP_MS of the last — earn the sunglasses.
+const DOZE_AFTER_MS = 90_000;
+const PET_STREAK_GAP_MS = 3_000;
+const PETS_FOR_SHADES = 10;
+
 function isOptionButtonTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("button.project-picker-item") !== null;
 }
@@ -94,6 +101,7 @@ function isOptionButtonTarget(target: EventTarget | null): boolean {
 export function LaunchSurface({
   claimsBrowserRequests = false,
   fastModeEnabled = false,
+  hasRunningSession = false,
   pixelFieldEnabled = false,
   model,
   onAddProject,
@@ -116,6 +124,9 @@ export function LaunchSurface({
    *  launcher cell sharing the grid with session panes. */
   claimsBrowserRequests?: boolean;
   fastModeEnabled?: boolean;
+  /** True while an agent is running in this launcher's project. The hero fox
+   *  watches it and puts on its thinking face. */
+  hasRunningSession?: boolean;
   pixelFieldEnabled?: boolean;
   model: ModelPickerSelection;
   onAddProject: () => void;
@@ -461,6 +472,53 @@ export function LaunchSurface({
     // `activeProject` (a fresh object per switch) keeps the "refocus on
     // project switch" behavior; a collapsed boolean would only fire once.
   }, [activeProject, chatMode, reviewIsPanelOpen, isSubmitting]);
+
+  // The hero fox reacts to the user and to real work, never to a clock alone:
+  // it thinks while this project has an agent running, and dozes off only once
+  // the surface has sat untouched with nothing typed into it.
+  const [isDozing, setIsDozing] = useState(false);
+  const [wearsShades, setWearsShades] = useState(false);
+  const petStreakRef = useRef({ count: 0, lastAt: 0 });
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  // A side chat has no repo, so the fox does not watch the project's agents there.
+  const watchesAgents = hasRunningSession && !chatMode;
+  const canDoze = !watchesAgents && !isSubmitting && prompt.trim() === "";
+
+  useEffect(() => {
+    if (!canDoze) {
+      setIsDozing(false);
+      return;
+    }
+    // Listeners go on the surface, not the document: a grid can host several
+    // launchers, and typing in one must not wake the fox in the next cell.
+    const surface = surfaceRef.current;
+    let timer = setTimeout(() => setIsDozing(true), DOZE_AFTER_MS);
+    const wake = (): void => {
+      setIsDozing(false);
+      clearTimeout(timer);
+      timer = setTimeout(() => setIsDozing(true), DOZE_AFTER_MS);
+    };
+    surface?.addEventListener("keydown", wake);
+    surface?.addEventListener("pointerdown", wake);
+    surface?.addEventListener("focusin", wake);
+    return () => {
+      clearTimeout(timer);
+      surface?.removeEventListener("keydown", wake);
+      surface?.removeEventListener("pointerdown", wake);
+      surface?.removeEventListener("focusin", wake);
+    };
+  }, [canDoze]);
+
+  const mascotMood: MascotMood = watchesAgents ? "thinking" : isDozing ? "sleepy" : "idle";
+
+  const petMascot = useCallback((): void => {
+    const streak = petStreakRef.current;
+    const now = Date.now();
+    if (now - streak.lastAt > PET_STREAK_GAP_MS) streak.count = 0;
+    streak.count += 1;
+    streak.lastAt = now;
+    if (streak.count >= PETS_FOR_SHADES) setWearsShades(true);
+  }, []);
   // Composer actions offered above the skills in the `/` menu. Each one is a
   // control that already sits in this toolbar — the menu is a keyboard route
   // to them, not a second set of features. The mode rows name the mode you
@@ -667,7 +725,7 @@ export function LaunchSurface({
       className="launcher-shell"
       data-review-open={isReviewOpen ? "true" : undefined}
     >
-      <div className="launcher-surface">
+      <div className="launcher-surface" ref={surfaceRef}>
       {anyContextPickerOpen && createPortal(
         <div
           className="picker-dismiss-layer"
@@ -677,7 +735,15 @@ export function LaunchSurface({
         document.body
       )}
       <header className="launcher-hero">
-        <Mascot className="launcher-hero-mascot" size={104} />
+        <Mascot
+          mood={mascotMood}
+          shades={wearsShades}
+          size={104}
+          className="launcher-hero-mascot"
+          buttonClassName="launcher-hero-mascot-button"
+          onClick={petMascot}
+          title="Pet the fox"
+        />
         <h1 className="launcher-hero-title">{chatMode ? SIDE_CHAT_TITLE : LAUNCHER_TITLE}</h1>
       </header>
       <form

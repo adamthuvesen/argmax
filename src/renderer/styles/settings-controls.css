@@ -84,10 +84,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
   min-height: 26px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);
@@ -177,7 +177,7 @@
 /* ---- Hints & captions ---- */
 
 .settings-hint {
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   font-size: var(--text-sm);
   line-height: 1.55;
   color: var(--muted);
@@ -197,7 +197,7 @@
 .accent-picker {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .accent-picker-chip {
@@ -261,9 +261,9 @@
 .settings-button {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1_5);
   min-height: 27px;
-  padding: 0 10px;
+  padding: 0 var(--space-2_5);
   background: var(--panel);
   border: 0.5px solid var(--line-strong);
   border-radius: var(--radius-md);
@@ -312,7 +312,7 @@
 
 .settings-field {
   display: grid;
-  gap: 6px;
+  gap: var(--space-1_5);
 }
 
 /* A field is a row whose control needs the full width — a path, a command
@@ -385,8 +385,8 @@
    light field, and the SVG's modules inherit currentColor. */
 .settings-remote-qr {
   flex: none;
-  padding: 10px;
-  border-radius: 10px;
+  padding: var(--space-2_5);
+  border-radius: var(--radius-lg);
   background: #fff;
   color: #000;
   border: 1px solid var(--line);
@@ -403,7 +403,7 @@
 .settings-remote-pairing-info {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   flex: 1 1 260px;
   min-width: 0;
 }
@@ -415,7 +415,7 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   font-size: var(--text-xs);
 }
 
@@ -438,9 +438,9 @@
 .settings-remote-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2_5);
   flex-wrap: wrap;
-  padding-top: 4px;
+  padding-top: var(--space-1);
 }
 
 .settings-hint[data-tone="warn"] {

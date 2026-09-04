@@ -109,7 +109,7 @@ of roles, names and refs, and the only thing that hands out refs. A screenshot
 is a PNG that has to survive base64 through the provider's JSON stream, so it
 is rasterised at 720 CSS pixels wide and dropped entirely (text and dimensions
 only) past 900 KB of base64, which is what keeps it under the normalizer's
-1 MB per-line cap. Reach for it when the question is visual and for nothing
+4 MiB per-line cap. Reach for it when the question is visual and for nothing
 else; the tool description says so.
 
 **Dialogs.** A page's `alert` / `confirm` / `prompt` is synchronous: it must

@@ -115,7 +115,8 @@ describe("App usage", () => {
     expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$60.00");
     expect(claude).toHaveAttribute("aria-pressed", "true");
     // The rows are the filter, so they keep every provider and their whole-window shares.
-    expect(within(rows).getByRole("button", { name: /Codex/ })).toHaveTextContent("40.0% of cost");
+    // The share is stated bare: the bar under the row is what says "of cost".
+    expect(within(rows).getByRole("button", { name: /Codex/ })).toHaveTextContent("40.0%");
     const table = screen.getByRole("table", { name: "Usage by model" });
     expect(within(table).queryByRole("row", { name: /gpt-5\.6-terra/ })).not.toBeInTheDocument();
     expect(within(table).getByRole("row", { name: /claude-opus-5/ })).toBeInTheDocument();
@@ -127,6 +128,60 @@ describe("App usage", () => {
     expect(usageSummary).toHaveBeenLastCalledWith(expect.objectContaining({ provider: null }));
     expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$100.00");
     expect(within(rows).getByRole("button", { name: /Claude/ })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("compares the window with the one before it, and says nothing when there is nothing to compare", async () => {
+    await openUsage();
+
+    // $100 against the previous window's $74.50. The chip is the parent of
+    // the "vs …" clause; the direction is a word for a reader who cannot see
+    // the caret.
+    const chip = (await screen.findByText(/vs the previous 30 days/)).parentElement;
+    expect(chip).toHaveTextContent("34%");
+    expect(chip).toHaveTextContent("up");
+
+  });
+
+  it("claims no comparison when the ledger does not reach back a whole window", async () => {
+    // Otherwise a first install reads as an infinite rise off zero.
+    usageSummary.mockResolvedValue(usageSummaryFixture({ previous: null }));
+    await openUsage();
+
+    expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$100.00");
+    expect(screen.queryByText(/vs the previous/)).not.toBeInTheDocument();
+  });
+
+  it("breaks the tokens into their four parts and names what the cache saved", async () => {
+    await openUsage();
+
+    const flow = await screen.findByRole("region", { name: "Where the tokens went" });
+    // Processed tokens are the sum of the four, so the parts carry percentages
+    // of one whole rather than four unrelated totals.
+    expect(within(flow).getByText("Cache read")).toBeInTheDocument();
+    expect(within(flow).getByText("Cache written")).toBeInTheDocument();
+    expect(within(flow).getByText("Uncached input")).toBeInTheDocument();
+    expect(within(flow).getByText("Output")).toBeInTheDocument();
+    expect(within(flow).getByText("$4.35")).toBeInTheDocument();
+  });
+
+  it("sorts the breakdown by whichever column is asked for", async () => {
+    await openUsage();
+
+    const table = await screen.findByRole("table", { name: "Usage by model" });
+    const costHeader = within(table).getByRole("columnheader", { name: /Cost/ });
+    const sessionsHeader = within(table).getByRole("columnheader", { name: /Sessions/ });
+    // The page opens ranked by the metric it is showing.
+    expect(costHeader).toHaveAttribute("aria-sort", "descending");
+    expect(sessionsHeader).toHaveAttribute("aria-sort", "none");
+
+    fireEvent.click(within(table).getByRole("button", { name: "Sort by Sessions" }));
+
+    expect(sessionsHeader).toHaveAttribute("aria-sort", "descending");
+    expect(costHeader).toHaveAttribute("aria-sort", "none");
+
+    // The active column reverses rather than re-sorting the same way.
+    fireEvent.click(within(table).getByRole("button", { name: "Sort by Sessions" }));
+    expect(sessionsHeader).toHaveAttribute("aria-sort", "ascending");
   });
 
   it("says Cursor has no local usage source instead of showing it $0", async () => {

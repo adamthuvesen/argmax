@@ -200,10 +200,16 @@ export function foldRenderItems(
   // and the work that follows opens a fresh one. The provider emits a start and
   // an end row. They collapse into one item so the marker settles in place
   // instead of stacking two dividers.
+  //
+  // Claude repeats the start row: `system/status status:"compacting"` is a
+  // heartbeat every 30s for as long as the compaction runs, so a five-minute
+  // one arrives as ten identical rows. They are one seam, and the marker keeps
+  // the first row's id so the key and the `turn-after-` anchor stay put while
+  // the heartbeat ticks.
   const pushCompaction = (event: TimelineEvent): string => {
     const notice = compactionNoticeFor(event);
     const last = out[out.length - 1];
-    if (!notice.running && last?.kind === "compaction" && last.notice.running) {
+    if (last?.kind === "compaction" && last.notice.running) {
       out[out.length - 1] = { ...last, notice };
       return last.id;
     }

@@ -13,6 +13,9 @@ fn main() {
     if let Some(exit_code) = argmax_lib::mcp::try_run_mcp_cli(std::env::args_os()) {
         std::process::exit(exit_code);
     }
+    if let Some(exit_code) = argmax_lib::inbox_hook::try_run_inbox_hook_cli(std::env::args_os()) {
+        std::process::exit(exit_code);
+    }
     if let Some(exit_code) = argmax_lib::usage::cli::try_run_usage_cli(std::env::args_os()) {
         std::process::exit(exit_code);
     }

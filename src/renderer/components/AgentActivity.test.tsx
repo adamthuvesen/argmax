@@ -196,7 +196,7 @@ describe("AgentActivity", () => {
             input: { description: "Explore repo", prompt: "Map the repo." }
           })
         ]}
-        codename="Callisto"
+        codename="Curie"
         parentSession={session}
         parentToolUseId="task-1"
         workspace={workspace}
@@ -204,7 +204,7 @@ describe("AgentActivity", () => {
     );
 
     expect(
-      screen.getByRole("region", { name: "Agent activity: Callisto — Explore repo" })
+      screen.getByRole("region", { name: "Agent activity: Curie — Explore repo" })
     ).toBeInTheDocument();
   });
 

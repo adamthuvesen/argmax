@@ -236,7 +236,7 @@ describe("WorkspaceCard", () => {
   it("folds the avatar stack into a +N chip beyond five launches and reports failures", () => {
     const entries = Array.from({ length: 7 }, (_, index) => ({
       toolUseId: `spawn-${index}`,
-      codename: `Moon${index}`,
+      codename: `Scientist${index}`,
       title: `Agent ${index}`,
       status: index === 6 ? ("error" as const) : ("done" as const),
       iconColor: "blue",

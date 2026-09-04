@@ -719,7 +719,9 @@ async fn call(request: BrowserRequest) -> Result<CallToolResult, ErrorData> {
                 SessionControlResult::Browsed(outcome) => {
                     let mut blocks = blocks(outcome);
                     if let Some(count) = unread_inbox.filter(|count| *count > 0) {
-                        blocks.push(ContentBlock::text(super::session_tools::inbox_notice(count)));
+                        blocks.push(ContentBlock::text(super::session_tools::inbox_notice(
+                            count,
+                        )));
                     }
                     Ok(CallToolResult::success(blocks))
                 }

@@ -1,13 +1,14 @@
 import { Check, ChevronDown, ChevronUp, Copy, Download } from "lucide-react";
-import { memo, useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react";
+import { Suspense, lazy, memo, useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
 import type { Plan, PlanItem, PlanSubSection } from "../lib/parsePlan.js";
-import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters.js";
+import { needsMath } from "../lib/needsMath.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
+
+const PlanInlineMath = lazy(async () => ({
+  default: (await import("./MathMarkdown.js")).PlanInlineMath
+}));
 
 export type PlanCardProps = {
   plan: Plan;
@@ -29,10 +30,20 @@ function escapeLeadingListMarker(text: string): string {
 }
 
 function PlanInlineMarkdown({ children }: { children: string }): JSX.Element {
+  if (needsMath(children)) {
+    return (
+      <Suspense fallback={<PlanInlinePlain>{children}</PlanInlinePlain>}>
+        <PlanInlineMath text={children} />
+      </Suspense>
+    );
+  }
+  return <PlanInlinePlain>{children}</PlanInlinePlain>;
+}
+
+function PlanInlinePlain({ children }: { children: string }): JSX.Element {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+      remarkPlugins={[remarkGfm]}
       components={{
         // Render the wrapping paragraph as a span so this stays inline-safe
         // when nested inside list items, headings, etc.
@@ -51,7 +62,7 @@ function PlanInlineMarkdown({ children }: { children: string }): JSX.Element {
         }
       }}
     >
-      {escapeLeadingListMarker(normalizeMathDelimiters(children))}
+      {escapeLeadingListMarker(children)}
     </ReactMarkdown>
   );
 }

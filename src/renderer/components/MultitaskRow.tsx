@@ -1,7 +1,8 @@
 import { Split, Square, X } from "lucide-react";
 import type { JSX } from "react";
+import { useSettleHold } from "../hooks/useSettleHold.js";
 import { multitaskAnswerPreview, multitaskRowStatus, type MultitaskNotice } from "../lib/multitask.js";
-import { WorkingNest } from "./WorkingNest.js";
+import { WORKING_NEST_SETTLE_MS, WorkingNest } from "./WorkingNest.js";
 
 type RowStatus = "running" | "done" | "error";
 
@@ -45,6 +46,9 @@ export function MultitaskRow({
 }): JSX.Element {
   const state = liveState ?? notice.state;
   const status = multitaskRowStatus(state);
+  // Hold the nest through its landing before the split glyph takes the slot.
+  // A stopped or failed multitask skips it: the landing marks work arriving.
+  const markPhase = useSettleHold(status === "running", WORKING_NEST_SETTLE_MS);
   const childSessionId = notice.childSessionId;
   const identity = notice.worktree ? "Multitask · isolated" : "Multitask";
   // What it found, in one line, so a finished multitask says something more
@@ -69,9 +73,9 @@ export function MultitaskRow({
     <div className="agent-launch-list multitask-row">
       <div className="agent-launch-row" data-status={status}>
         <div className="agent-launch-row-main">
-          {status === "running" ? (
+          {status !== "error" && markPhase !== "done" ? (
             <WorkingNest
-              active
+              active={markPhase === "running"}
               className="agent-launch-mark"
               size={14}
               phaseKey={childSessionId ?? notice.taskLabel}

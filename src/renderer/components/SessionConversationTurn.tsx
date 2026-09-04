@@ -21,7 +21,8 @@ import { isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCa
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { codenameForTool } from "../lib/agentNames.js";
 import { latestToolCreatedAt, visibleTurnToolItem } from "../lib/turnToolItems.js";
-import { collectTurnFileChanges } from "../lib/turnFileChanges.js";
+import { collectTurnFileChanges, summarizeTurnFileChanges } from "../lib/turnFileChanges.js";
+import { turnExhaleWeight } from "../lib/turnExhale.js";
 import { sessionAgentModeKey, writeStoredAgentMode } from "../lib/agentMode.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
 import type { AgentMode } from "../../shared/types.js";
@@ -504,6 +505,21 @@ function SessionConversationTurnInner({
         {...(onOpenReview ? { onOpenReview } : {})}
       />
     ) : null;
+  // How big this turn was, for the turn-end breath. Gated on `complete`, not on
+  // "no longer running": a turn paused on a plan or a question also stops
+  // ticking, and breathing out halfway through one would say the opposite of
+  // what happened. `failed` and `cancelled` get nothing on purpose — the one
+  // thing a celebration must never do is fire when the work went wrong.
+  const exhaleWeight = useMemo(() => {
+    if (session?.state !== "complete") return undefined;
+    const { files, adds, dels } = summarizeTurnFileChanges(turnChanges);
+    return turnExhaleWeight({
+      files,
+      lines: adds + dels,
+      tools: visibleToolItems.length,
+      answerChars: turnMarkdown.length
+    });
+  }, [session?.state, turnChanges, visibleToolItems.length, turnMarkdown.length]);
   const forkable =
     session !== null &&
     FORK_CAPABLE_PROVIDERS.has(session.provider) &&
@@ -524,6 +540,7 @@ function SessionConversationTurnInner({
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
       {...(turnMarkdown ? { turnMarkdown } : {})}
       {...(changesCard ? { changes: changesCard } : {})}
+      {...(exhaleWeight === undefined ? {} : { exhaleWeight })}
       {...(forkable && session ? { onFork: () => void onForkSession?.(session.id) } : {})}
     />
   );

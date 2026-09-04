@@ -6,9 +6,15 @@ import { UsageAreaChart } from "./UsageAreaChart.js";
 import { UsageBreakdown } from "./UsageBreakdown.js";
 import { UsageHero } from "./UsageHero.js";
 import { UsageProviderRows } from "./UsageProviderRows.js";
-import { UsageTotals } from "./UsageTotals.js";
+import { UsageTokenFlow } from "./UsageTokenFlow.js";
 import { formatCount, formatRangeLabel, formatScanStamp } from "./usageFormat.js";
-import { chartedProviders, type UsageMetric } from "./usagePresentation.js";
+import type { UsageDelta } from "./usageInsights.js";
+import {
+  chartedProviders,
+  processedTokens,
+  providerLabel,
+  type UsageMetric
+} from "./usagePresentation.js";
 
 /** Warm refresh while the page is open. */
 const REFRESH_MS = 60_000;
@@ -25,6 +31,31 @@ const METRIC_OPTIONS = [
   { value: "cost", label: "Cost" },
   { value: "tokens", label: "Tokens" }
 ];
+
+/** What the delta chip compares this window against, said in words. */
+const PREVIOUS_LABEL: Record<UsageWindow, string> = {
+  "24h": "the previous 24 hours",
+  "7d": "the previous 7 days",
+  "30d": "the previous 30 days"
+};
+
+/**
+ * The window against the one before it. The backend returns `previous` as
+ * `null` when the ledger does not cover that earlier window, and a period that
+ * recorded nothing is not a baseline — a first week would otherwise read as an
+ * infinite rise.
+ */
+function windowDelta(summary: UsageSummary, metric: UsageMetric): UsageDelta | null {
+  const previous = summary.previous;
+  if (!previous) return null;
+  const before = metric === "cost" ? previous.costUsd : processedTokens(previous.tokens);
+  const now = metric === "cost" ? summary.costUsd : processedTokens(summary.tokens);
+  if (!(before > 0) || !Number.isFinite(now)) return null;
+  const ratio = (now - before) / before;
+  // Under a percent either way is noise, not a trend.
+  const direction = Math.abs(ratio) < 0.01 ? "flat" : ratio > 0 ? "up" : "down";
+  return { direction, ratio, previousLabel: PREVIOUS_LABEL[summary.window] };
+}
 
 /** The zone day buckets are cut on. Asked for once; the backend echoes it back. */
 function hostTimeZone(): string {
@@ -101,6 +132,7 @@ export function UsagePanel(): JSX.Element {
     : "";
   const chartTitle = summary?.resolution === "hour" ? "Hourly" : "Daily";
   const chartHeading = `${chartTitle} ${metric === "cost" ? "cost" : "tokens"}`;
+  const scanStamp = summary ? formatScanStamp(summary.scan.lastCompletedAt, summary.timeZone) : null;
 
   return (
     <div className="settings-page usage-page">
@@ -112,20 +144,25 @@ export function UsagePanel(): JSX.Element {
             {rangeLabel ? <p className="usage-range">{rangeLabel}</p> : null}
           </div>
           <div className="usage-controls">
-            <SegmentedControl
-              ariaLabel="Show"
-              name="usage-metric"
-              value={metric}
-              onChange={(next) => setMetric(next as UsageMetric)}
-              options={METRIC_OPTIONS}
-            />
-            <SegmentedControl
-              ariaLabel="Time range"
-              name="usage-window"
-              value={usageWindow}
-              onChange={(next) => setUsageWindow(next as UsageWindow)}
-              options={WINDOW_OPTIONS}
-            />
+            <div className="usage-control-row">
+              <SegmentedControl
+                ariaLabel="Show"
+                name="usage-metric"
+                value={metric}
+                onChange={(next) => setMetric(next as UsageMetric)}
+                options={METRIC_OPTIONS}
+              />
+              <SegmentedControl
+                ariaLabel="Time range"
+                name="usage-window"
+                value={usageWindow}
+                onChange={(next) => setUsageWindow(next as UsageWindow)}
+                options={WINDOW_OPTIONS}
+              />
+            </div>
+            {/* The scan stamp qualifies every figure on the page, not just the
+                chart it used to sit in. */}
+            {scanStamp ? <p className="usage-scan-stamp">Scanned {scanStamp}</p> : null}
           </div>
         </header>
 
@@ -168,7 +205,6 @@ function UsageBody({
 }): JSX.Element {
   const providers = chartedProviders(summary, metric);
   const nothingRecorded = summary.providers.every((row) => !row.available || row.sessions === 0);
-  const lastScan = formatScanStamp(summary.scan.lastCompletedAt, summary.timeZone);
 
   if (summary.scan.phase === "scanning" && nothingRecorded) {
     return (
@@ -206,7 +242,12 @@ function UsageBody({
 
       <div className="usage-grid">
         <section className="usage-summary-column" aria-label="Totals by provider">
-          <UsageHero summary={summary} metric={metric} onShowAll={() => onSelectProvider(null)} />
+          <UsageHero
+            summary={summary}
+            metric={metric}
+            delta={windowDelta(summary, metric)}
+            onShowAll={() => onSelectProvider(null)}
+          />
           <UsageProviderRows
             summary={summary}
             metric={metric}
@@ -217,7 +258,17 @@ function UsageBody({
         <section className="usage-chart-card" aria-label={chartHeading}>
           <div className="usage-section-head">
             <h2 className="usage-section-title">{chartHeading}</h2>
-            {lastScan ? <span className="usage-scan-stamp">Scanned {lastScan}</span> : null}
+            {/* The chart's own key. The rows beside it carry the same colours,
+                but a reader scanning the curves should not have to look away
+                from them to learn which is which. */}
+            <ul className="usage-chart-legend" aria-hidden="true">
+              {providers.map((id) => (
+                <li className="usage-chart-legend-item usage-series" key={id} data-provider={id}>
+                  <span className="usage-series-dot" />
+                  {providerLabel(id)}
+                </li>
+              ))}
+            </ul>
           </div>
           <UsageAreaChart
             points={summary.series}
@@ -230,12 +281,7 @@ function UsageBody({
         </section>
       </div>
 
-      <section className="usage-section" aria-label="Totals">
-        <div className="usage-section-head">
-          <h2 className="usage-section-title">Totals</h2>
-        </div>
-        <UsageTotals summary={summary} />
-      </section>
+      <UsageTokenFlow summary={summary} />
 
       <UsageBreakdown summary={summary} metric={metric} />
     </>

@@ -5,6 +5,15 @@ use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use crate::error::{ArgmaxError, ArgmaxResult};
 
+fn gh_command(cwd: String, args: Vec<String>) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new("gh");
+    command.current_dir(cwd).args(args);
+    // Finder and Dock launches omit Homebrew paths from the inherited PATH.
+    #[cfg(unix)]
+    command.env("PATH", crate::util::login_shell::path());
+    command
+}
+
 /// `gh` is invoked via this closure so tests can stub the binary.
 pub type GhRunner = Arc<
     dyn Fn(String, Vec<String>) -> Pin<Box<dyn Future<Output = ArgmaxResult<String>> + Send>>
@@ -24,15 +33,12 @@ pub fn default_gh_runner() -> GhRunner {
     Arc::new(move |cwd: String, args: Vec<String>| {
         Box::pin(async move {
             use std::process::Stdio;
-            use tokio::process::Command;
             // `kill_on_drop` ensures the child is reaped if the timeout
             // fires (or the future is cancelled) — without it, a stuck
             // `gh` (bad creds, network hang) leaks a process per tick.
             // stdin is closed so a `gh` that prompts for input can't
             // block indefinitely before the timeout even starts ticking.
-            let child = Command::new("gh")
-                .current_dir(cwd)
-                .args(&args)
+            let child = gh_command(cwd, args)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -67,4 +73,24 @@ pub fn default_gh_runner() -> GhRunner {
             })
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn gh_command_hydrates_path_for_packaged_app() {
+        let command = gh_command(".".to_string(), vec!["--version".to_string()]);
+        let path = command
+            .as_std()
+            .get_envs()
+            .find_map(|(key, value)| (key == "PATH").then_some(value).flatten())
+            .expect("gh command PATH");
+        let entries = std::env::split_paths(path).collect::<Vec<_>>();
+
+        assert!(entries.contains(&std::path::PathBuf::from("/opt/homebrew/bin")));
+        assert!(entries.contains(&std::path::PathBuf::from("/usr/local/bin")));
+    }
 }

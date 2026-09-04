@@ -53,12 +53,17 @@ export function GeneralSettings({
   };
 
   const handleTestNotification = async (): Promise<void> => {
-    if (!window.argmax?.system?.testNotification) return;
+    if (!window.argmax?.system?.testNotification) {
+      setTestNotificationStatus("Test notifications need the desktop app.");
+      return;
+    }
     setIsTestingNotification(true);
     setTestNotificationStatus(null);
     try {
       await window.argmax.system.testNotification();
-      setTestNotificationStatus("Test notification sent");
+      setTestNotificationStatus(
+        "Test notification sent. macOS holds the banner while Argmax is frontmost, so look in Notification Center. Nothing there? Check System Settings > Notifications > Argmax."
+      );
     } catch (error) {
       setTestNotificationStatus(
         error instanceof Error ? error.message : "Failed to send notification"

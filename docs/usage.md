@@ -13,6 +13,17 @@ stay shares of the whole window while one provider is in focus. Providers
 are told apart by colour alone: one series colour per provider, on the row
 dot, the curve, and the breakdown table.
 
+`UsageSummary::previous` is the one comparison the renderer cannot work out
+for itself: the cost, tokens, and session count of the equally long window
+immediately before this one, so the page can say "$1,872, up 34% on the
+previous 30 days". It follows the provider filter and the same price table as
+the current window, and is cut on the same boundaries — the 24 hours before
+for 24h, the 7 or 30 local days before for the day windows, so a DST change
+does not slide the edge. It is `null` when the ledger cannot honestly cover
+that earlier window: when it holds nothing inside it, or when the oldest
+record the ledger has starts after the window began. A first install must not
+read as up 100%.
+
 Dollar figures are an **API estimate at list price**. Subscriptions bill
 differently, so the page says "at list price" and shows the date of the price
 table (`PRICING_AS_OF` in [usage/mod.rs](../src-tauri/src/usage/mod.rs)). A

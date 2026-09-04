@@ -43,6 +43,9 @@ export function isSubAgentProseEcho(event: TimelineEvent): boolean {
  *
  *   - `message.completed` → "completed": the turn finished; earlier answer
  *     deltas of that turn are duplicates of the final text.
+ *   - A child `command.started` with `parent_tool_use_id` does not change the
+ *     boundary. Subagent tools can interleave while the parent streams one
+ *     message, so they do not separate parent narration from its completion.
  *   - `command.started` downgrades "completed" → "tool": a tool ran between
  *     the delta and the completion, so the delta may be real pre-tool narration
  *     (Cursor emits this). Keep it unless the later completed text already
@@ -70,6 +73,7 @@ export function advanceTurnBoundary(
     return { kind: "completed", completedText: event.message };
   }
   if (event.type === "command.started") {
+    if (stringValue(event.payload.parent_tool_use_id) !== null) return previous;
     return previous?.kind === "completed"
       ? { kind: "tool", completedText: previous.completedText }
       : previous;

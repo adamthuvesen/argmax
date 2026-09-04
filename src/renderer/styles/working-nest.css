@@ -58,8 +58,46 @@
   animation-delay: calc(var(--working-nest-phase-offset) - var(--working-nest-cycle) * 0.25);
 }
 
+/* The landing. Work ending is the one beat the mark never had: the relay simply
+   stopped and the four dots were suddenly muted. Now they gather to the centre,
+   overlap into a single dot that pulses once in the leader's color, and open
+   back out to the settled 2x2. Four dots becoming one and then four again is
+   the same cluster the relay animates, read as a single breath.
+
+   Short on purpose — it lands under the threshold of being noticed, which is
+   where punctuation belongs. You would only feel its absence. */
+.working-nest[data-settling="true"] {
+  /* The leader's color is defined under [data-active] and goes away with it, so
+     the landing names its own. A surface with its own identity color overrides
+     `--working-nest-lead` at higher specificity and is picked up here too. */
+  --working-nest-lead: var(--accent-deep);
+}
+
 .working-nest[data-settling="true"] .working-nest-dot {
-  animation: working-nest-settle var(--working-nest-settle-duration) var(--ease-out) both;
+  animation: working-nest-land var(--working-nest-settle-duration) var(--ease) both;
+}
+
+/* Each dot's trip to the centre of the 14-unit box. CSS transform lengths on an
+   SVG child are user units, so these are the exact offsets from each dot's
+   cx/cy to (7, 7) — they meet as one circle rather than a cluster. */
+.working-nest[data-settling="true"] .working-nest-dot[data-dot="1"] {
+  --working-nest-land-x: 2.8px;
+  --working-nest-land-y: 2.8px;
+}
+
+.working-nest[data-settling="true"] .working-nest-dot[data-dot="2"] {
+  --working-nest-land-x: -2.8px;
+  --working-nest-land-y: 2.8px;
+}
+
+.working-nest[data-settling="true"] .working-nest-dot[data-dot="3"] {
+  --working-nest-land-x: -2.8px;
+  --working-nest-land-y: -2.8px;
+}
+
+.working-nest[data-settling="true"] .working-nest-dot[data-dot="4"] {
+  --working-nest-land-x: 2.8px;
+  --working-nest-land-y: -2.8px;
 }
 
 @keyframes working-nest-enter {
@@ -102,14 +140,35 @@
   }
 }
 
-@keyframes working-nest-settle {
-  from {
-    opacity: 0.55;
-    transform: scale(0.92);
+@keyframes working-nest-land {
+  0% {
+    opacity: 0.82;
+    fill: currentColor;
+    transform: translate(0, 0) scale(1);
+    animation-timing-function: var(--ease-in-out);
   }
-  to {
+
+  /* Gathered: one dot, four times over, in the leader's color. */
+  46% {
     opacity: 1;
-    transform: scale(1);
+    fill: var(--working-nest-lead);
+    transform: translate(var(--working-nest-land-x, 0), var(--working-nest-land-y, 0)) scale(0.94);
+    animation-timing-function: var(--ease-out);
+  }
+
+  /* The pulse — the only frame in the mark's life where it is bigger than its
+     resting size, and the whole reason the landing reads as an event. */
+  60% {
+    opacity: 1;
+    fill: var(--working-nest-lead);
+    transform: translate(var(--working-nest-land-x, 0), var(--working-nest-land-y, 0)) scale(1.16);
+    animation-timing-function: var(--ease-out);
+  }
+
+  100% {
+    opacity: 1;
+    fill: currentColor;
+    transform: translate(0, 0) scale(1);
   }
 }
 

@@ -11,13 +11,14 @@ import {
 import {
   appendReferencesToPrompt,
   buildAttachmentReferences,
+  downscaleImageBlob,
   isSupportedImageMime,
   readBlobAsBase64
 } from "../lib/composerAttachments.js";
 import { readDraft, writeDraftAttachments } from "../lib/composerDrafts.js";
 import { shouldPreferHtmlFlavor } from "../lib/clipboardMarkdown.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
-import type { AttachmentMimeType, ComposerAttachment } from "../../shared/types.js";
+import type { ComposerAttachment } from "../../shared/types.js";
 
 export interface ComposerAttachmentsApi {
   pendingAttachments: ComposerAttachment[];
@@ -153,10 +154,14 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       try {
         for (const blob of blobs) {
           if (!isSupportedImageMime(blob.type)) continue;
-          const dataBase64 = await readBlobAsBase64(blob);
+          // Shrink retina screenshots before the save so the provider's
+          // single-line JSON stream can carry the read back.
+          const processed = await downscaleImageBlob(blob);
+          const mimeType = isSupportedImageMime(processed.type) ? processed.type : blob.type;
+          const dataBase64 = await readBlobAsBase64(processed);
           const saved = await api.attachments.saveImage({
             sessionId: draftKey,
-            mimeType: blob.type,
+            mimeType,
             dataBase64
           });
           // The pane can retarget to another draft while the save is in flight
@@ -168,7 +173,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
             ...prev,
             {
               filePath: saved.filePath,
-              mimeType: blob.type as AttachmentMimeType,
+              mimeType,
               sizeBytes: saved.sizeBytes
             }
           ]);

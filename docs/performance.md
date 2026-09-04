@@ -9,6 +9,30 @@ Tracked by [src-tauri/src/util/startup_timer.rs](../src-tauri/src/util/startup_t
 - `sessions.recover`: Uses the `idx_events_restart_recovery` partial index (migration v13) to keep startup orphan detection bounded to O(sessions).
 - Process orphan scans run in background tasks to avoid blocking the setup hook.
 
+## Eager Bundle
+
+`npm run check:bundle` (scripts/check-bundle.mjs) caps the cold-start module
+graph — the entry chunk plus every `<link rel="modulepreload">` Vite emits —
+at 1.60 MiB desktop / 1.50 MiB mobile. Measured 2026-09-03: 1.05 MiB desktop
+across 8 chunks, 0.93 MiB mobile across 7.
+
+KaTeX (~0.5 MB JS plus fonts/CSS) is the largest single dependency and stays
+out of that graph: the chat surface renders without math plugins and only
+delegates to the lazy [MathMarkdown](../src/renderer/components/MathMarkdown.tsx)
+chunk when the text may contain math ([needsMath](../src/renderer/lib/needsMath.ts)
+mirrors `normalizeMathDelimiters`' early return, so `$`- and `\`-free text
+never pays for it). Markdown with math first paints the plain render as the
+Suspense fallback, then swaps in the formatted equations once the chunk lands.
+
+Do not add a `vendor-katex` (or any unified-ecosystem) `manualChunks` rule to
+[vite.config.ts](../vite.config.ts) without re-measuring. A named KaTeX chunk
+acts as a magnet: Rolldown hoists the micromark/mdast/unist/hast utils shared
+by remark-gfm (eager) and remark-math/rehype-katex (lazy) into it, the eager
+graph statically imports it, and cold start preloads all of KaTeX again
+(measured 1.56 MiB eager with the rule, 1.05 MiB without). Automatic chunking
+already places KaTeX in a lazy chunk reached only via MathMarkdown,
+FilePreview, and Mermaid.
+
 ## Renderer Benchmarks
 
 Run via:
@@ -112,6 +136,30 @@ at 3.2% with no session running, matching the debug measurement.
 Motion also stops entirely while the document is hidden — `windowChrome` mirrors
 visibility onto the root element and [motion.css](../src/renderer/styles/motion.css)
 pauses on it, so a backgrounded window draws nothing.
+
+## Background Battery
+
+JS loops that CSS pausing cannot reach check `document.hidden` themselves:
+
+- [EffortPixelField](../src/renderer/components/EffortPixelField.tsx) (effort
+  slider canvas) and [ComposerPixelField](../src/renderer/components/ComposerPixelField.tsx)
+  (the launcher backdrop) paint at ~30 fps instead of 60 — decorative flow is
+  indistinguishable there at half the per-cell noise cost, which is the whole
+  cost — and park their rAF loops while hidden, restarting on
+  `visibilitychange`. The composer field additionally stops itself once the
+  prompt empties, so an idle launcher schedules no frames at all. Its eases are
+  per *painted* frame, so changing the paint interval means changing them too.
+- [TurnExhale](../src/renderer/components/TurnExhale.tsx) (the turn-end breath)
+  never runs while hidden: it is mounted only for the ~1s of its own sweep, and
+  a hidden document skips the sweep outright rather than queueing one. A settled
+  transcript of two hundred turns paints nothing and schedules no frames.
+- The chat typewriter ([StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx),
+  32 ms tick) and the running-session polls (250 ms event tail in
+  [useDashboardSession](../src/renderer/hooks/useDashboardSession.ts), 1.5 s
+  agent events in [AgentActivity](../src/renderer/components/AgentActivity.tsx))
+  skip ticks while hidden. The visibility-change refresh backfills the selected
+  session on return, so nothing is stale — a backgrounded long run costs no
+  IPC, SQLite, or re-render work.
 
 ## Transcript Size
 

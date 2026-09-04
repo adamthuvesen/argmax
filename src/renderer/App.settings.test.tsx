@@ -4,7 +4,12 @@ import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
 import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
-import { FAST_MODE_KEY, RANDOM_SESSION_ICON_KEY, DESKTOP_NOTIFICATIONS_KEY } from "./lib/uiPreferences.js";
+import {
+  DESKTOP_NOTIFICATIONS_KEY,
+  FAST_MODE_KEY,
+  PR_MILESTONE_CELEBRATION_KEY,
+  RANDOM_SESSION_ICON_KEY
+} from "./lib/uiPreferences.js";
 import { USER_BUBBLE_TINT_STORAGE_KEY } from "./lib/userBubbleTint.js";
 import { APP_VERSION_LABEL } from "../shared/appVersion.js";
 import {
@@ -26,11 +31,11 @@ async function openArgmaxMenu(): Promise<HTMLElement> {
   return screen.findByRole("menu", { name: "Argmax menu" });
 }
 
-// The IDE chooser lives in the session row's right-click menu; discovery is
+// The default IDE action lives in the session row's right-click menu; discovery is
 // async, so wait for the item to come out of its "no IDEs yet" disabled state.
 async function openIdeMenu(): Promise<HTMLElement> {
   fireEvent.contextMenu(screen.getByRole("button", { name: "Build dashboard" }));
-  const ideItem = await screen.findByRole("menuitem", { name: "Open in IDE" });
+  const ideItem = await screen.findByRole("menuitem", { name: /Open in/ });
   await waitFor(() => expect(ideItem).not.toBeDisabled());
   fireEvent.click(ideItem);
   return ideItem;
@@ -198,6 +203,22 @@ describe("App settings", () => {
     );
   });
 
+  it("disables PR milestone celebrations by default and persists turning them on", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("Appearance");
+    await screen.findByRole("heading", { name: "Layout" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Celebrate PR milestones" });
+    expect(toggle).not.toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(window.localStorage.getItem(PR_MILESTONE_CELEBRATION_KEY)).toBe("true")
+    );
+  });
+
   it("disables random session icons by default and persists turning them on", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -245,7 +266,7 @@ describe("App settings", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Test notification sent");
   });
 
-  it("disables the IDE chooser when the workspace has no path yet", async () => {
+  it("disables Open in IDE when the workspace has no path yet", async () => {
     listDetectedIdes.mockResolvedValue([
       { id: "vscode", label: "VS Code", appPath: "/Applications/Visual Studio Code.app", hasCli: true }
     ]);
@@ -259,12 +280,12 @@ describe("App settings", () => {
     await screen.findByRole("button", { name: "Build dashboard" });
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "Build dashboard" }));
-    const ideItem = await screen.findByRole("menuitem", { name: "Open in IDE" });
+    const ideItem = await screen.findByRole("menuitem", { name: /Open in/ });
     expect(ideItem).toBeDisabled();
     expect(ideItem).toHaveAttribute("title", "Worktree not ready yet");
   });
 
-  it("auto-selects the only detected GUI IDE as the menu default when none is stored", async () => {
+  it("auto-opens the only detected GUI IDE when none is stored", async () => {
     listDetectedIdes.mockResolvedValue([
       { id: "windsurf", label: "Windsurf", appPath: "/Applications/Windsurf.app", hasCli: false },
       { id: "terminal", label: "Terminal", appPath: "/System/Applications/Utilities/Terminal.app", hasCli: false }
@@ -274,37 +295,22 @@ describe("App settings", () => {
     await screen.findByRole("button", { name: "Build dashboard" });
 
     const ideItem = await openIdeMenu();
-    expect(ideItem).not.toBeDisabled();
+    expect(ideItem).toHaveAccessibleName("Open in Windsurf");
 
-    const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
-    expect(within(menu).getByRole("menuitem", { name: "Windsurf" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(menu).getByRole("menuitem", { name: "Terminal" })).toHaveAttribute("aria-pressed", "false");
+    await waitFor(() => expect(openInIde).toHaveBeenCalledTimes(1));
+    expect(openInIde).toHaveBeenCalledWith({ workspaceId: "workspace-1", ide: "windsurf" });
   });
 
-  it("lists every detected IDE in the right-click menu", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-
-    await openIdeMenu();
-
-    const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
-    const items = within(menu).getAllByRole("menuitem");
-    expect(items).toHaveLength(3);
-    expect(items.map((item) => item.textContent)).toEqual(["VS Code", "Cursor", "Terminal"]);
-  });
-
-  it("opens the chosen IDE from the right-click menu without changing the default", async () => {
+  it("opens the default IDE from the right-click menu without changing the stored default", async () => {
     window.localStorage.setItem("argmax.defaultIde", "vscode");
 
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
     await openIdeMenu();
-    const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Cursor" }));
 
     await waitFor(() => expect(openInIde).toHaveBeenCalledTimes(1));
-    expect(openInIde).toHaveBeenCalledWith({ workspaceId: "workspace-1", ide: "cursor" });
+    expect(openInIde).toHaveBeenCalledWith({ workspaceId: "workspace-1", ide: "vscode" });
     expect(window.localStorage.getItem("argmax.defaultIde")).toBe("vscode");
   });
 

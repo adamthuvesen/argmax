@@ -33,6 +33,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "claude-opus-5" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-sonnet-5" => ModelPricing { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 3.75 },
     "claude-haiku-4-5" => ModelPricing { input: 1.0, output: 5.0, cache_read: 0.1, cache_write: 1.25 },
+    "gpt-6-astra" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
     "gpt-5.6-sol" => ModelPricing { input: 5.0, output: 30.0, cache_read: 0.5, cache_write: 6.25 },
     "gpt-5.6-terra" => ModelPricing { input: 2.0, output: 12.0, cache_read: 0.2, cache_write: 2.5 },
     "gpt-5.6-luna" => ModelPricing { input: 0.2, output: 1.2, cache_read: 0.02, cache_write: 0.25 },
@@ -227,6 +228,20 @@ mod tests {
             "gpt-5.5",
         );
         assert_eq!(cost, 20.05);
+    }
+
+    #[test]
+    fn prices_gpt_6_astra_at_current_list_rates() {
+        let cost = cost_of(
+            UsageCounts {
+                input: 1_000_000,
+                output: 1_000_000,
+                cache_read: 1_000_000,
+                cache_write: 1_000_000,
+            },
+            "gpt-6-astra",
+        );
+        assert_eq!(cost, 73.5);
     }
 
     #[test]

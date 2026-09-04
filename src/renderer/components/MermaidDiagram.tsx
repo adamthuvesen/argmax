@@ -11,6 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import {
   MERMAID_STREAM_DEBOUNCE_MS,
@@ -45,6 +46,7 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
   const appearanceKey = useAppearanceKey();
   const reactId = useId();
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const lightboxRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const bindRef = useRef<((element: Element) => void) | undefined>(undefined);
@@ -56,6 +58,13 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
   const [copyFlash, copy] = useCopyToClipboard();
 
   useRestoreFocus(expanded);
+  useDismissOnOutsideOrEscape(
+    dialogRef,
+    expanded,
+    () => setExpanded(false),
+    undefined,
+    { trapFocus: true }
+  );
 
   useEffect(() => {
     const trimmed = source.trim();
@@ -125,14 +134,6 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
   useEffect(() => {
     if (!expanded) return;
     closeRef.current?.focus();
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      setExpanded(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
   }, [expanded]);
 
   const trimmed = source.trim();
@@ -148,16 +149,13 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
   const lightbox =
     expanded && svg && typeof document !== "undefined"
       ? createPortal(
-          <div
-            className="mermaid-diagram-overlay"
-            onClick={() => setExpanded(false)}
-          >
+          <div className="mermaid-diagram-overlay">
             <div
+              ref={dialogRef}
               className="mermaid-diagram-lightbox"
               role="dialog"
               aria-modal="true"
               aria-label="Full diagram"
-              onClick={(event) => event.stopPropagation()}
             >
               <div className="mermaid-diagram-lightbox-bar">
                 <span className="mermaid-diagram-lightbox-title">Diagram</span>

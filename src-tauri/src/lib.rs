@@ -1,7 +1,10 @@
 // Argmax library crate — Rust/Tauri runtime, services, and IPC handlers.
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc,
+};
 
 use tauri::{Emitter, Manager};
 
@@ -48,6 +51,17 @@ use util::startup_timer::StartupTimer;
 /// the backpressure is visible rather than silently growing the channel.
 const DELTA_CONFLATE_WARN: usize = 256;
 
+/// Maximum number and exact serialized bytes waiting behind the main thread.
+/// Producers never block on this queue because some of them publish while
+/// finishing database work. Overflow becomes a recoverable resync marker.
+const DASHBOARD_DELIVERY_ITEMS: usize = 512;
+const DASHBOARD_DELIVERY_BYTES: usize = 4 * 1024 * 1024;
+
+/// PTY reads are at most 8 KiB before UTF-8 decoding and use dedicated OS
+/// threads, so bounded lossless backpressure is safe here. Invalid UTF-8 can
+/// expand to replacement characters, making the byte ceiling about 1.5 MiB.
+const TERMINAL_DELIVERY_ITEMS: usize = 64;
+
 /// How much event text one `dashboard:delta` push may carry.
 ///
 /// The emit path evals a JS source string containing the serialized payload, so
@@ -68,6 +82,216 @@ const MAX_CONFLATED_TERMINAL_BYTES: usize = 256 * 1024;
 enum TerminalPush {
     Data(terminal::service::TerminalChunk),
     Exit(terminal::service::TerminalExitInfo),
+}
+
+struct QueuedDashboardDelta {
+    delta: providers::flush_queue::DashboardDelta,
+    serialized_bytes: usize,
+    generation: u64,
+    _byte_permit: tokio::sync::OwnedSemaphorePermit,
+}
+
+enum DashboardDeliveryItem {
+    Delta(QueuedDashboardDelta),
+    Wake,
+}
+
+#[derive(Clone)]
+struct DashboardDelivery {
+    sender: tokio::sync::mpsc::Sender<DashboardDeliveryItem>,
+    byte_budget: Arc<tokio::sync::Semaphore>,
+    resync_required: Arc<AtomicBool>,
+    generation: Arc<AtomicU64>,
+}
+
+impl DashboardDelivery {
+    fn new() -> (Self, tokio::sync::mpsc::Receiver<DashboardDeliveryItem>) {
+        let (sender, receiver) = tokio::sync::mpsc::channel(DASHBOARD_DELIVERY_ITEMS);
+        (
+            Self {
+                sender,
+                byte_budget: Arc::new(tokio::sync::Semaphore::new(DASHBOARD_DELIVERY_BYTES)),
+                resync_required: Arc::new(AtomicBool::new(false)),
+                generation: Arc::new(AtomicU64::new(0)),
+            },
+            receiver,
+        )
+    }
+
+    /// Queue a delta without blocking its producer. Once either bound is hit,
+    /// the worker discards the incomplete window and delivers one resync marker.
+    fn send(&self, mut delta: providers::flush_queue::DashboardDelta) {
+        if self.resync_required.load(Ordering::Acquire) {
+            return;
+        }
+        let generation = self.generation.load(Ordering::Acquire);
+        delta
+            .changed_session_ids
+            .extend(delta.events.iter().map(|event| event.session_id.clone()));
+        delta.changed_session_ids.extend(
+            delta
+                .raw_outputs
+                .iter()
+                .map(|output| output.session_id.clone()),
+        );
+        delta
+            .changed_session_ids
+            .extend(delta.sessions.iter().map(|session| session.id.clone()));
+        delta.changed_session_ids.sort_unstable();
+        delta.changed_session_ids.dedup();
+        delta.dashboard_changed |= !delta.projects.is_empty()
+            || !delta.workspaces.is_empty()
+            || !delta.sessions.is_empty()
+            || !delta.approvals.is_empty()
+            || delta.pending_messages.is_some()
+            || !delta.removed_session_ids.is_empty()
+            || !delta.removed_workspace_ids.is_empty();
+        // Transcript rows are already durable before publish. Sending their
+        // session ids turns bursts into cheap revision-feed pulls and avoids a
+        // delayed payload overwriting a newer update or resurrecting a delete.
+        // Move seams remain inline because desktop navigation consumes them
+        // before the source session is necessarily subscribed.
+        delta.events.retain(|event| event.r#type == "session.moved");
+        delta.events.shrink_to_fit();
+        // Clearing retains the original allocations, which can dwarf the
+        // serialized hint and defeat the queue's byte accounting.
+        delta.raw_outputs = Vec::new();
+        delta.projects = Vec::new();
+        delta.workspaces = Vec::new();
+        delta.sessions = Vec::new();
+        delta.approvals = Vec::new();
+        delta.pending_messages = None;
+        delta.removed_session_ids = Vec::new();
+        delta.removed_workspace_ids = Vec::new();
+        delta.changed_session_ids.shrink_to_fit();
+        let serialized_bytes = match delta.serialized_payload_bytes() {
+            Ok(bytes) if bytes <= DASHBOARD_DELIVERY_BYTES => bytes,
+            Ok(bytes) => {
+                tracing::warn!(
+                    bytes,
+                    "dashboard delta exceeds the delivery byte budget; requesting resync"
+                );
+                self.require_resync();
+                return;
+            }
+            Err(error) => {
+                tracing::warn!(?error, "failed to size dashboard delta; requesting resync");
+                self.require_resync();
+                return;
+            }
+        };
+        let Ok(byte_permit) =
+            Arc::clone(&self.byte_budget).try_acquire_many_owned(serialized_bytes as u32)
+        else {
+            self.require_resync();
+            return;
+        };
+        let queued = DashboardDeliveryItem::Delta(QueuedDashboardDelta {
+            delta,
+            serialized_bytes,
+            generation,
+            _byte_permit: byte_permit,
+        });
+        // An overflow may have raced the serialization above. Tagging every
+        // item with its queue generation lets the consumer reject this stale
+        // payload even if it lands after the resync marker was drained.
+        if self.resync_required.load(Ordering::Acquire)
+            || self.generation.load(Ordering::Acquire) != generation
+        {
+            return;
+        }
+        if let Err(error) = self.sender.try_send(queued) {
+            match error {
+                tokio::sync::mpsc::error::TrySendError::Full(_) => self.require_resync(),
+                tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+                    tracing::warn!("dashboard delta channel closed")
+                }
+            }
+        }
+    }
+
+    fn require_resync(&self) {
+        let was_required = self.resync_required.swap(true, Ordering::AcqRel);
+        if !was_required {
+            self.generation.fetch_add(1, Ordering::AcqRel);
+            tracing::warn!(
+                max_items = DASHBOARD_DELIVERY_ITEMS,
+                max_bytes = DASHBOARD_DELIVERY_BYTES,
+                "dashboard delivery queue overflowed; queued window will be replaced by resync"
+            );
+        }
+        // An oversized delta can overflow an otherwise empty queue. Wake the
+        // receiver in that case. A full queue already guarantees a wake.
+        let _ = self.sender.try_send(DashboardDeliveryItem::Wake);
+    }
+}
+
+fn prepare_dashboard_batch(
+    first: DashboardDeliveryItem,
+    receiver: &mut tokio::sync::mpsc::Receiver<DashboardDeliveryItem>,
+    resync_required: &AtomicBool,
+    generation: &AtomicU64,
+    deferred: &mut Option<DashboardDeliveryItem>,
+) -> Option<providers::flush_queue::DashboardDelta> {
+    let mut first = first;
+    if resync_required.swap(false, Ordering::AcqRel) {
+        while receiver.try_recv().is_ok() {}
+        first = DashboardDeliveryItem::Wake;
+    }
+    let current_generation = generation.load(Ordering::Acquire);
+    let (mut delta, mut pending_bytes) = match first {
+        DashboardDeliveryItem::Delta(queued) if queued.generation == current_generation => {
+            (queued.delta, queued.serialized_bytes)
+        }
+        DashboardDeliveryItem::Delta(_) => return None,
+        DashboardDeliveryItem::Wake => (
+            providers::flush_queue::DashboardDelta {
+                dashboard_changed: true,
+                resync_required: true,
+                ..Default::default()
+            },
+            0,
+        ),
+    };
+    let mut conflated = 1usize;
+    while pending_bytes < MAX_CONFLATED_DELTA_BYTES {
+        let Ok(next) = receiver.try_recv() else {
+            break;
+        };
+        match next {
+            DashboardDeliveryItem::Delta(next) => {
+                if next.generation != current_generation {
+                    continue;
+                }
+                if pending_bytes > 0
+                    && pending_bytes + next.serialized_bytes > MAX_CONFLATED_DELTA_BYTES
+                {
+                    *deferred = Some(DashboardDeliveryItem::Delta(next));
+                    break;
+                }
+                pending_bytes += next.serialized_bytes;
+                delta.merge_from(next.delta);
+                conflated += 1;
+            }
+            DashboardDeliveryItem::Wake => {}
+        }
+    }
+    if resync_required.swap(false, Ordering::AcqRel) {
+        *deferred = None;
+        while receiver.try_recv().is_ok() {}
+        return Some(providers::flush_queue::DashboardDelta {
+            dashboard_changed: true,
+            resync_required: true,
+            ..Default::default()
+        });
+    }
+    if conflated >= DELTA_CONFLATE_WARN {
+        tracing::warn!(
+            conflated,
+            "coalesced a large dashboard:delta burst; main-thread emit may be lagging"
+        );
+    }
+    Some(delta)
 }
 
 impl TerminalPush {
@@ -373,9 +597,9 @@ pub fn run() {
                             if state.notifications.set(Arc::clone(&notifications)).is_err() {
                                 tracing::warn!("notifications state was already initialized");
                             }
-                            // Single FIFO channel for every `dashboard:delta`
-                            // emit (providers + gh poller + workspaces). One
-                            // worker task pulls from it and emits in order.
+                            // Single bounded FIFO for every dashboard
+                            // invalidation (providers + gh poller + workspaces).
+                            // One worker task pulls from it and emits in order.
                             // Previously each publish spawned its own
                             // tauri::async_runtime task — with tokio's
                             // multi-worker scheduler that meant two deltas
@@ -383,48 +607,35 @@ pub fn run() {
                             // in reverse order, occasionally letting a
                             // `session.completed` arrive before its preceding
                             // `message.completed`.
-                            let (delta_tx, mut delta_rx) =
-                                tokio::sync::mpsc::unbounded_channel::<providers::flush_queue::DashboardDelta>();
+                            let (delta_tx, mut delta_rx) = DashboardDelivery::new();
+                            let delta_resync_required = Arc::clone(&delta_tx.resync_required);
+                            let delta_generation = Arc::clone(&delta_tx.generation);
                             let emit_handle = app.handle().clone();
                             let remote_events = state.remote_events.clone();
                             let dock_badge_for_delta = Arc::clone(&dock_badge);
                             tauri::async_runtime::spawn(async move {
-                                while let Some(mut delta) = delta_rx.recv().await {
-                                    // Conflate any deltas that piled up while the previous emit
-                                    // ran: drain everything currently queued and merge it into one
-                                    // push. A fast token-stream produces a `dashboard:delta` per
-                                    // chunk (the 16ms throttle is intentionally disabled so chunks
-                                    // render live), so without this the channel could grow unbounded
-                                    // behind a busy main thread. Merging into a single atomic delta
-                                    // also removes any inter-emit ordering risk. No added latency in
-                                    // the common case (try_recv returns empty → emit the one delta).
-                                    //
-                                    // Conflate by payload size, not just count.
-                                    // `Emitter::emit` renders the whole payload
-                                    // into a JS source string and evals it —
-                                    // unlike `ipc::Channel`, it has no
-                                    // large-payload fetch path — so an unbounded
-                                    // merge hands JavaScriptCore a multi-megabyte
-                                    // program to parse on the main thread. Stop
-                                    // draining once the budget is spent; the
-                                    // remainder stays queued and goes out on the
-                                    // next iteration, in order.
-                                    let mut conflated = 1usize;
-                                    let mut pending_bytes = delta.approx_payload_bytes();
-                                    while pending_bytes < MAX_CONFLATED_DELTA_BYTES {
-                                        let Ok(next) = delta_rx.try_recv() else {
-                                            break;
-                                        };
-                                        pending_bytes += next.approx_payload_bytes();
-                                        delta.merge_from(next);
-                                        conflated += 1;
-                                    }
-                                    if conflated >= DELTA_CONFLATE_WARN {
-                                        tracing::warn!(
-                                            conflated,
-                                            "coalesced a large dashboard:delta burst; main-thread emit may be lagging"
-                                        );
-                                    }
+                                let mut deferred = None;
+                                loop {
+                                    let first = match deferred.take() {
+                                        Some(item) => item,
+                                        None => match delta_rx.recv().await {
+                                            Some(item) => item,
+                                            None => break,
+                                        },
+                                    };
+                                    // Conflate hints that piled up while the previous emit ran.
+                                    // `Emitter::emit` renders the payload into a JS source string,
+                                    // so exact serialized bytes bound each batch. The deferred item
+                                    // keeps the remainder ordered for the next acknowledged hop.
+                                    let Some(delta) = prepare_dashboard_batch(
+                                        first,
+                                        &mut delta_rx,
+                                        &delta_resync_required,
+                                        &delta_generation,
+                                        &mut deferred,
+                                    ) else {
+                                        continue;
+                                    };
                                     // Emit on the main thread. On macOS, an event emitted
                                     // from a background thread does not reliably wake the
                                     // NSApp event loop, so `dashboard:delta` pushes can sit
@@ -442,13 +653,14 @@ pub fn run() {
                                     // Session state and approval changes are the
                                     // only inputs to the attention count, so an
                                     // events-only streaming delta skips the read.
-                                    if !delta.sessions.is_empty() || !delta.approvals.is_empty() {
+                                    if delta.dashboard_changed {
                                         if let Err(error) = dock_badge_for_delta.update() {
                                             tracing::warn!(?error, "failed to update dock badge");
                                         }
                                     }
                                     remote::publish(&remote_events, "dashboard:delta", &delta);
                                     let handle = emit_handle.clone();
+                                    let (emitted_tx, emitted_rx) = tokio::sync::oneshot::channel();
                                     // Diagnostic for the "stream freezes, then everything
                                     // bursts at once" symptom: if the main-thread hop parks
                                     // (tao#625-style missed wake-up), the closure runs long
@@ -461,16 +673,23 @@ pub fn run() {
                                         if parked > std::time::Duration::from_millis(500) {
                                             tracing::warn!(
                                                 parked_ms = parked.as_millis() as u64,
-                                                events = delta.events.len(),
+                                                changed_sessions = delta.changed_session_ids.len(),
+                                                dashboard_changed = delta.dashboard_changed,
                                                 "dashboard:delta emit sat scheduled on the main thread; event-loop wake lagged"
                                             );
                                         }
                                         if let Err(error) = handle.emit("dashboard:delta", delta) {
                                             tracing::warn!(?error, "failed to emit dashboard delta");
                                         }
+                                        let _ = emitted_tx.send(());
                                     }) {
                                         tracing::warn!(?error, "failed to schedule dashboard delta emit");
+                                        continue;
                                     }
+                                    // Do not dequeue another batch until the scheduled closure
+                                    // actually ran. This leaves at most one main-thread emit
+                                    // outstanding while the bounded queue absorbs producers.
+                                    let _ = emitted_rx.await;
                                 }
                             });
                             let notifications_for_delta = Arc::clone(&notifications);
@@ -501,17 +720,13 @@ pub fn run() {
                                     workspaces = delta.workspaces.len(),
                                     "queuing dashboard:delta"
                                 );
-                                if let Err(error) = provider_delta_tx.send(delta) {
-                                    tracing::warn!(?error, "dashboard delta channel closed");
-                                }
+                                provider_delta_tx.send(delta);
                             };
                             let approval_delta_tx = delta_tx.clone();
                             let approvals = approvals::service::ApprovalService::with_publisher(
                                 Arc::clone(&database),
                                 move |delta| {
-                                    if let Err(error) = approval_delta_tx.send(delta) {
-                                        tracing::warn!(?error, "dashboard delta channel closed");
-                                    }
+                                    approval_delta_tx.send(delta);
                                 },
                             );
                             if state.approvals.set(Arc::clone(&approvals)).is_err() {
@@ -566,7 +781,7 @@ pub fn run() {
                             // `Emitter::emit` per chunk is what makes a `cat`
                             // of a large file freeze the window.
                             let (terminal_tx, mut terminal_rx) =
-                                tokio::sync::mpsc::unbounded_channel::<TerminalPush>();
+                                tokio::sync::mpsc::channel::<TerminalPush>(TERMINAL_DELIVERY_ITEMS);
                             let emit_handle = app.handle().clone();
                             let remote_terminal_events = state.remote_terminal_events.clone();
                             tauri::async_runtime::spawn(async move {
@@ -598,6 +813,7 @@ pub fn run() {
                                         }
                                     }
                                     let handle = emit_handle.clone();
+                                    let (emitted_tx, emitted_rx) = tokio::sync::oneshot::channel();
                                     if let Err(error) = emit_handle.run_on_main_thread(move || {
                                         for push in pushes {
                                             let emitted = match push {
@@ -612,19 +828,22 @@ pub fn run() {
                                                 tracing::warn!(?error, "failed to emit terminal event");
                                             }
                                         }
+                                        let _ = emitted_tx.send(());
                                     }) {
                                         tracing::warn!(?error, "failed to schedule terminal event emit");
+                                        continue;
                                     }
+                                    let _ = emitted_rx.await;
                                 }
                             });
                             let terminal_data_tx = terminal_tx.clone();
                             let on_terminal_data = Arc::new(move |chunk: terminal::service::TerminalChunk| {
-                                if let Err(error) = terminal_data_tx.send(TerminalPush::Data(chunk)) {
+                                if let Err(error) = terminal_data_tx.blocking_send(TerminalPush::Data(chunk)) {
                                     tracing::warn!(?error, "terminal event channel closed");
                                 }
                             });
                             let on_terminal_exit = Arc::new(move |info: terminal::service::TerminalExitInfo| {
-                                if let Err(error) = terminal_tx.send(TerminalPush::Exit(info)) {
+                                if let Err(error) = terminal_tx.blocking_send(TerminalPush::Exit(info)) {
                                     tracing::warn!(?error, "terminal event channel closed");
                                 }
                             });
@@ -671,9 +890,7 @@ pub fn run() {
                             });
                             let gh_delta_tx = delta_tx.clone();
                             let publish_delta = move |delta| {
-                                if let Err(error) = gh_delta_tx.send(delta) {
-                                    tracing::warn!(?error, "dashboard delta channel closed");
-                                }
+                                gh_delta_tx.send(delta);
                             };
                             let gh_poller = gh::poller::GhPoller::new(
                                 gh::poller::GhPollerConfig::new(
@@ -696,9 +913,7 @@ pub fn run() {
                             }
                             let workspace_delta_tx = delta_tx.clone();
                             let publish_delta = move |delta| {
-                                if let Err(error) = workspace_delta_tx.send(delta) {
-                                    tracing::warn!(?error, "dashboard delta channel closed");
-                                }
+                                workspace_delta_tx.send(delta);
                             };
                             let workspaces = workspaces::WorkspaceService::with_services(
                                 Arc::clone(&database),
@@ -933,6 +1148,8 @@ async fn handle_gh_check_failure(
                 updated_at: persistence::time::now_iso(),
                 pr_state: Some("OPEN".to_string()),
                 notified_at: None,
+                pr_created_at: None,
+                pr_merged_at: None,
                 // Display-only fallback for a row that went missing between
                 // poll and notify; never persisted, so leave the branch unset
                 // rather than guessing it from the workspace's current one.
@@ -1022,9 +1239,15 @@ pub fn provider_defaults(provider: &str) -> ProviderDefaults {
 }
 
 pub fn export_bindings(path: impl AsRef<Path>) -> Result<(), String> {
+    let path = path.as_ref();
     ipc::specta_builder()
         .export(specta_typescript(), path)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    // Specta leaves spaces before newlines in documented object fields.
+    // Normalize its output so generated bindings pass the whitespace gate.
+    let generated = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let normalized = generated.lines().map(str::trim_end).collect::<Vec<_>>().join("\n") + "\n";
+    std::fs::write(path, normalized).map_err(|error| error.to_string())
 }
 
 fn specta_typescript() -> Typescript {
@@ -1069,6 +1292,208 @@ mod tests {
             exit_code: 0,
             signal: None,
         })
+    }
+
+    fn timeline_event(
+        id: &str,
+        session_id: &str,
+        event_type: &str,
+    ) -> persistence::events::TimelineEvent {
+        persistence::events::TimelineEvent {
+            id: id.to_string(),
+            session_id: session_id.to_string(),
+            r#type: event_type.to_string(),
+            message: "payload".to_string(),
+            payload: serde_json::json!({ "text": "payload" }),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            row_cursor: Some(1),
+        }
+    }
+
+    fn raw_output(id: &str, session_id: &str) -> persistence::events::RawProviderOutput {
+        persistence::events::RawProviderOutput {
+            id: id.to_string(),
+            session_id: session_id.to_string(),
+            stream: "stdout".to_string(),
+            content: "raw payload".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            row_cursor: Some(1),
+        }
+    }
+
+    #[tokio::test]
+    async fn dashboard_delivery_replaces_an_overflowed_window_with_resync() {
+        let (delivery, mut receiver) = DashboardDelivery::new();
+        for index in 0..=DASHBOARD_DELIVERY_ITEMS {
+            delivery.send(providers::flush_queue::DashboardDelta {
+                removed_session_ids: vec![format!("session-{index}")],
+                ..Default::default()
+            });
+        }
+        assert!(delivery.resync_required.load(Ordering::Acquire));
+
+        let first = receiver.recv().await.expect("queued delivery");
+        let mut deferred = None;
+        let delta = prepare_dashboard_batch(
+            first,
+            &mut receiver,
+            &delivery.resync_required,
+            &delivery.generation,
+            &mut deferred,
+        )
+        .expect("resync delta");
+        assert!(delta.resync_required);
+        assert!(delta.dashboard_changed);
+        assert!(delta.removed_session_ids.is_empty());
+        assert!(
+            receiver.try_recv().is_err(),
+            "overflowed backlog was discarded"
+        );
+        assert_eq!(
+            delivery.byte_budget.available_permits(),
+            DASHBOARD_DELIVERY_BYTES,
+            "discarding the backlog releases its exact byte reservations"
+        );
+    }
+
+    #[tokio::test]
+    async fn dashboard_delivery_sends_transcript_hints_without_heavy_rows() {
+        let (delivery, mut receiver) = DashboardDelivery::new();
+        let mut events = Vec::with_capacity(10_000);
+        events.extend([
+            timeline_event("e1", "s1", "message.delta"),
+            timeline_event("e2", "s2", "session.moved"),
+        ]);
+        let mut outputs = Vec::with_capacity(10_000);
+        outputs.push(raw_output("r1", "s3"));
+        delivery.send(providers::flush_queue::DashboardDelta {
+            events,
+            raw_outputs: outputs,
+            removed_workspace_ids: vec!["w1".to_string()],
+            ..Default::default()
+        });
+
+        let DashboardDeliveryItem::Delta(queued) = receiver.recv().await.expect("queued") else {
+            panic!("expected a delta");
+        };
+        assert_eq!(queued.delta.changed_session_ids, vec!["s1", "s2", "s3"]);
+        assert_eq!(queued.delta.events.len(), 1);
+        assert_eq!(queued.delta.events[0].r#type, "session.moved");
+        assert!(queued.delta.raw_outputs.is_empty());
+        assert!(queued.delta.dashboard_changed);
+        assert!(queued.delta.removed_workspace_ids.is_empty());
+        assert_eq!(queued.delta.events.capacity(), queued.delta.events.len());
+        assert_eq!(queued.delta.raw_outputs.capacity(), 0);
+        assert_eq!(queued.delta.removed_workspace_ids.capacity(), 0);
+        assert_eq!(
+            queued.serialized_bytes,
+            serde_json::to_vec(&queued.delta).unwrap().len()
+        );
+    }
+
+    #[tokio::test]
+    async fn an_oversized_dashboard_delta_wakes_the_worker_with_resync() {
+        let (delivery, mut receiver) = DashboardDelivery::new();
+        let mut oversized_move = timeline_event("move", "s1", "session.moved");
+        oversized_move.message = "x".repeat(DASHBOARD_DELIVERY_BYTES + 1);
+        delivery.send(providers::flush_queue::DashboardDelta {
+            events: vec![oversized_move],
+            ..Default::default()
+        });
+
+        let first = receiver.recv().await.expect("resync wake");
+        let mut deferred = None;
+        let delta = prepare_dashboard_batch(
+            first,
+            &mut receiver,
+            &delivery.resync_required,
+            &delivery.generation,
+            &mut deferred,
+        )
+        .expect("resync delta");
+        assert!(delta.resync_required);
+    }
+
+    #[tokio::test]
+    async fn a_pre_overflow_sender_cannot_land_stale_metadata_after_resync() {
+        let (delivery, mut receiver) = DashboardDelivery::new();
+        delivery.require_resync();
+        let wake = receiver.recv().await.expect("wake");
+        let mut deferred = None;
+        let marker = prepare_dashboard_batch(
+            wake,
+            &mut receiver,
+            &delivery.resync_required,
+            &delivery.generation,
+            &mut deferred,
+        )
+        .expect("marker");
+        assert!(marker.resync_required);
+
+        let stale_delta = providers::flush_queue::DashboardDelta {
+            removed_session_ids: vec!["stale".to_string()],
+            ..Default::default()
+        };
+        let bytes = stale_delta.serialized_payload_bytes().unwrap();
+        let permit = Arc::clone(&delivery.byte_budget)
+            .try_acquire_many_owned(bytes as u32)
+            .unwrap();
+        delivery
+            .sender
+            .try_send(DashboardDeliveryItem::Delta(QueuedDashboardDelta {
+                delta: stale_delta,
+                serialized_bytes: bytes,
+                generation: 0,
+                _byte_permit: permit,
+            }))
+            .expect("inject delayed old-generation send");
+        let stale = receiver.recv().await.expect("stale item");
+        assert!(
+            prepare_dashboard_batch(
+                stale,
+                &mut receiver,
+                &delivery.resync_required,
+                &delivery.generation,
+                &mut deferred,
+            )
+            .is_none(),
+            "old-generation metadata must not follow a completed resync"
+        );
+    }
+
+    #[tokio::test]
+    async fn terminal_delivery_applies_lossless_backpressure_at_its_item_bound() {
+        let (sender, mut receiver) =
+            tokio::sync::mpsc::channel::<TerminalPush>(TERMINAL_DELIVERY_ITEMS);
+        let (filled_tx, filled_rx) = std::sync::mpsc::channel();
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let producer = std::thread::spawn(move || {
+            for _ in 0..TERMINAL_DELIVERY_ITEMS {
+                sender
+                    .blocking_send(chunk("t1", "12345678"))
+                    .expect("queue open");
+            }
+            filled_tx.send(()).unwrap();
+            sender
+                .blocking_send(chunk("t1", "last"))
+                .expect("queue resumes");
+            finished_tx.send(()).unwrap();
+        });
+
+        filled_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("producer filled queue");
+        assert_eq!(receiver.len(), TERMINAL_DELIVERY_ITEMS);
+        assert!(
+            finished_rx.try_recv().is_err(),
+            "producer must block instead of dropping output"
+        );
+        receiver.recv().await.expect("free one slot");
+        finished_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("producer resumed after consumer made room");
+        drop(receiver);
+        producer.join().expect("producer thread");
     }
 
     #[test]

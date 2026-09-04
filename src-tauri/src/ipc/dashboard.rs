@@ -17,7 +17,14 @@ pub async fn dashboard_list(
 
 pub(crate) async fn dashboard_list_impl(state: &AppState) -> ArgmaxResult<DashboardListSnapshot> {
     let database = live_database(state)?;
-    read_off_main(move || list_dashboard(&database.read_connection())).await
+    let providers = state.providers.get().cloned();
+    read_off_main(move || {
+        let mut snapshot = list_dashboard(&database.read_connection())?;
+        if let Some(providers) = providers {
+            snapshot.pending_messages = providers.pending_messages_snapshot();
+        }
+        Ok(snapshot)
+    }).await
 }
 
 #[cfg(test)]

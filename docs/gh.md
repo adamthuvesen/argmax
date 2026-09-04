@@ -14,3 +14,5 @@ IPC channels:
 - `prs:list-for-session`
 - `prs:refresh`
 - `git:view-or-create-pr`
+
+The PR cache also retains GitHub's `createdAt` and `mergedAt` timestamps. Workspace summaries expose them as `prCreatedAt` and `prMergedAt` alongside the branch-matched PR number and state. The optional Appearance celebration uses those source timestamps to distinguish a new milestone from an old PR discovered after a delayed refresh. It defaults off and does not run on ordinary turn completion.

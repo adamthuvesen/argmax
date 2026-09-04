@@ -1,5 +1,5 @@
-import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
-import type { EventType, ProviderId, TimelineEvent } from "../../shared/types.js";
+import type { EventType, TimelineEvent } from "../../shared/types.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
 
 /**
  * Handing an idle session to another provider. The new agent can't resume the
@@ -19,21 +19,18 @@ export interface ProviderSwitchNotice {
 }
 
 export function isProviderSwitchEvent(event: TimelineEvent): boolean {
-  return event.type === PROVIDER_CHANGED;
-}
-
-function providerName(value: unknown): string | null {
-  if (typeof value !== "string" || value === "") return null;
-  return PROVIDER_DISPLAY_NAMES[value as ProviderId] ?? value;
+  const canonical = decodeTimelineEvent(event);
+  return canonical.kind === "lifecycle" && canonical.name === "provider-changed";
 }
 
 export function providerSwitchNoticeFor(event: TimelineEvent): ProviderSwitchNotice {
-  const modelLabel = event.payload.modelLabel;
+  const canonical = decodeTimelineEvent(event);
+  if (canonical.kind !== "lifecycle" || canonical.name !== "provider-changed") {
+    return { from: null, to: event.message, modelLabel: null };
+  }
   return {
-    from: providerName(event.payload.from),
-    // The message ("Switched provider to X.") is the fallback for a row whose
-    // payload predates these fields.
-    to: providerName(event.payload.provider) ?? event.message,
-    modelLabel: typeof modelLabel === "string" && modelLabel !== "" ? modelLabel : null
+    from: canonical.from,
+    to: canonical.to,
+    modelLabel: canonical.modelLabel
   };
 }

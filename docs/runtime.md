@@ -30,11 +30,12 @@ On boot, Argmax acquires an advisory `flock` on `local-state/argmax.lock` ([util
 Live updates reach the renderer through `dashboard:delta` events:
 
 - **Main thread dispatch:** The delta worker uses `app.run_on_main_thread(...)` so macOS event loops process webview updates immediately.
+- **Bounded delivery:** Transcript writes push compact session-change hints, while metadata writes push a `dashboardChanged` invalidation. The queue holds at most 512 items and 4 MiB of exact serialized payloads. If the main thread falls behind that budget, the incomplete window is discarded and one `resyncRequired` delta makes clients reload durable state. The worker waits for each main-thread closure to run before scheduling another, so scheduled closures cannot accumulate outside the queue.
 - **Running session pull fallback:** `useDashboardSession` polls running sessions at 250 ms for new event tails (`session:events-since`). Workspace status (`workspace:status`) runs on a throttled ~2s interval and once at turn end to avoid SQLite lock contention. Idle sessions do not poll.
 - **App Nap prevention:** [util/app_nap.rs](../src-tauri/src/util/app_nap.rs) holds an `NSProcessInfo` assertion so the backgrounded app keeps receiving provider output.
 - **WKWebView throttling:** Background throttling is disabled in [tauri.conf.json](../src-tauri/tauri.conf.json) (`WKInactiveSchedulingPolicy::None`).
 
-Streamed delta events are bounded by `mergeEventsBounded` ([snapshot.ts](../src/renderer/lib/snapshot.ts)), which caps replaceable answer deltas while preserving tool rows, user messages, thinking deltas, and approvals.
+Transcript pushes and history reads enter [SessionTimelines](../src/renderer/lib/sessionTimelines.ts), with independent event and raw-output caps per session. The store uses `mergeEventsBounded` ([snapshot.ts](../src/renderer/lib/snapshot.ts)) to cap replaceable answer deltas while retaining separate budgets for tool rows, user messages, thinking, and trace imports. Approvals remain in dashboard metadata.
 
 ## Type Bindings
 

@@ -677,12 +677,12 @@ fn codex_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
     ]
 }
 
-// Mirrors reasoningEffortsForModel (providerModels.ts). Sol/Terra accept the
-// full low→ultra list. Luna stops at max. Unknown/legacy models stop at xhigh.
+// Mirrors reasoningEffortsForModel (providerModels.ts). Astra/Sol/Terra accept
+// the full low→ultra list. Luna stops at max. Unknown/legacy models stop at xhigh.
 // Clamp is a backstop for provider-switch and resume paths that skip the picker.
 fn codex_effort_value(model_id: &str, effort: ReasoningEffort) -> &'static str {
     match model_id {
-        "gpt-5.6-sol" | "gpt-5.6-terra" => effort.as_str(),
+        "gpt-6-astra" | "gpt-5.6-sol" | "gpt-5.6-terra" => effort.as_str(),
         "gpt-5.6-luna" => match effort {
             ReasoningEffort::Ultra => "max",
             other => other.as_str(),
@@ -925,8 +925,8 @@ mod tests {
     }
 
     #[test]
-    fn codex_passes_max_and_ultra_for_sol_and_terra() {
-        for model_id in ["gpt-5.6-sol", "gpt-5.6-terra"] {
+    fn codex_passes_max_and_ultra_for_astra_sol_and_terra() {
+        for model_id in ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra"] {
             for (effort, expected) in [
                 (ReasoningEffort::Max, "model_reasoning_effort=\"max\""),
                 (ReasoningEffort::Ultra, "model_reasoning_effort=\"ultra\""),

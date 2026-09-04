@@ -48,6 +48,8 @@ export function SettingsPanel({
   onWorkspaceCardVisibleChange,
   pixelFieldEnabled,
   onPixelFieldEnabledChange,
+  prMilestoneCelebrationEnabled,
+  onPrMilestoneCelebrationEnabledChange,
   chatWidth,
   onChatWidthChange,
   reviewPanelSide,
@@ -98,6 +100,8 @@ export function SettingsPanel({
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
   onPixelFieldEnabledChange: (v: boolean) => void;
+  prMilestoneCelebrationEnabled: boolean;
+  onPrMilestoneCelebrationEnabledChange: (v: boolean) => void;
   chatWidth: ChatWidth;
   onChatWidthChange: (width: ChatWidth) => void;
   reviewPanelSide: ReviewPanelSide;
@@ -290,6 +294,8 @@ export function SettingsPanel({
             onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
             pixelFieldEnabled={pixelFieldEnabled}
             onPixelFieldEnabledChange={onPixelFieldEnabledChange}
+            prMilestoneCelebrationEnabled={prMilestoneCelebrationEnabled}
+            onPrMilestoneCelebrationEnabledChange={onPrMilestoneCelebrationEnabledChange}
             chatWidth={chatWidth}
             onChatWidthChange={onChatWidthChange}
             reviewPanelSide={reviewPanelSide}

@@ -46,9 +46,22 @@ Targets defined in [src/test/perf.test.ts](../src/test/perf.test.ts):
 - `mergeDashboardDelta` across 200 sessions: p95 < 5 ms.
 - `mergeDashboardDelta` with 500 deltas + tool rows: p95 < 5 ms.
 - `mergeDashboardDelta` with a 1-event delta onto 5,000 events: p95 < 2 ms.
+- `mergeDashboardDelta` with an empty poll onto 5,000 events: p95 < 0.1 ms.
+- Updating one of eight subscribed, 500-event session histories: p95 < 2 ms, with zero notifications to the seven unrelated sessions.
+- `buildSessionToolCalls` across the capped 2,000 tool rows and 4,000 progress rows: p95 < 20 ms.
 - `buildFileTree` across 10,000 files: < 75 ms.
 - `searchFilePaths` across 10,000 paths: p95 < 25 ms.
 - `parseUnifiedDiff` across a 500-hunk diff: p95 < 20 ms.
+
+Measured 2026-09-05 on those fixtures: removing the per-tool progress scan cut
+`buildSessionToolCalls` p95 from 41.39 ms to 5.18 ms. Skipping empty event merges
+cut the 5,000-event poll from 0.153 ms to 0.0024 ms. These isolate renderer
+transformations, not whole-app CPU usage.
+
+On the same date, eight 500-event sessions receiving one session's stream took
+0.604 ms p95 for the shared merge plus eight pane filters, versus 0.073 ms for
+the session store, about 8.3 times faster. The seven unrelated subscriptions
+received no notifications.
 
 ## Usage Scan
 
@@ -99,17 +112,29 @@ to the writer.
 ## Push Payloads
 
 `Emitter::emit` renders the payload into a JS source string and evals it; unlike
-`ipc::Channel` it has no large-payload `fetch` path. `dashboard:delta`
-conflation is therefore capped at `MAX_CONFLATED_DELTA_BYTES` (256 KB) of event
-text — single events reach 711 KB in a real database, and an unbounded merge
-handed JavaScriptCore a multi-megabyte program to parse on the main thread.
-Whatever does not fit stays queued and goes out on the next iteration, in order.
+`ipc::Channel` it has no large-payload `fetch` path. Transcript writes therefore
+push session ids and let subscribed clients pull the durable revision feed;
+metadata writes push one invalidation for a coherent dashboard snapshot.
+`dashboard:delta` delivery is bounded to 512 queued items and 4 MiB measured by
+actual JSON serialization, while each conflated main-thread payload targets
+256 KiB. Overflow discards the incomplete queued window and emits one
+`resyncRequired` marker. The worker awaits an acknowledgement from each
+main-thread closure, leaving at most one scheduled emit outside those bounds.
 
-Terminal output takes the same shape: PTY chunks queue onto one worker that
-concatenates them per terminal up to `MAX_CONFLATED_TERMINAL_BYTES` (256 KB)
-before a single main-thread emit, so a `cat` of a large file no longer costs one
-`run_on_main_thread` hop per 8 KB read. A `terminal:exit` rides the same queue
-and never overtakes output still queued for its terminal.
+Metadata invalidations coalesce for 100 ms, with one read in flight. Transcript
+reads remain immediate and use change revisions, including in-place updates and
+deletions. On a private copy of a 179,092-event database, a debug build read the
+initial 500-event tail with its revision in 9 ms. The change feed adds work to
+writes: the synthetic 20,000-update debug fixture measured about 7.3 microseconds
+per update above the old path, while atomic 500-event reads added 3.5%.
+
+Terminal output uses a separate 64-item bounded channel. Dedicated PTY reader
+threads apply lossless backpressure when it fills, then the worker concatenates
+chunks per terminal up to `MAX_CONFLATED_TERMINAL_BYTES` (256 KiB) before a
+single acknowledged main-thread emit. The exit watcher joins the reader after
+the child closes, draining every kernel-ready byte until a 100 ms quiet period,
+so `terminal:exit` cannot overtake final output or wait indefinitely for a
+descendant that inherited the PTY slave.
 
 ## Animated Properties
 
@@ -149,19 +174,32 @@ JS loops that CSS pausing cannot reach check `document.hidden` themselves:
   `visibilitychange`. The composer field additionally stops itself once the
   prompt empties, so an idle launcher schedules no frames at all. Its eases are
   per *painted* frame, so changing the paint interval means changing them too.
-- [TurnExhale](../src/renderer/components/TurnExhale.tsx) (the turn-end breath)
+- [TurnExhale](../src/renderer/components/TurnExhale.tsx) (the optional PR milestone sweep)
   never runs while hidden: it is mounted only for the ~1s of its own sweep, and
   a hidden document skips the sweep outright rather than queueing one. A settled
   transcript of two hundred turns paints nothing and schedules no frames.
 - The chat typewriter ([StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx),
-  32 ms tick) and the running-session polls (250 ms event tail in
-  [useDashboardSession](../src/renderer/hooks/useDashboardSession.ts), 1.5 s
-  agent events in [AgentActivity](../src/renderer/components/AgentActivity.tsx))
-  skip ticks while hidden. The visibility-change refresh backfills the selected
-  session on return, so nothing is stale — a backgrounded long run costs no
-  IPC, SQLite, or re-render work.
+  32 ms tick, paced per arrival so a whole backlog drains in ~1.3 s) and the 1.5 s open-agent poll in
+  [AgentActivity](../src/renderer/components/AgentActivity.tsx) skip ticks while
+  hidden. General session tails have no interval. A post-commit push hint asks
+  the subscribed timeline to read its durable revision feed. The
+  visibility-change refresh backfills the selected session on return. Hidden
+  windows stop interval work, while push hints can still trigger bounded
+  durable-feed reads.
 
 ## Transcript Size
+
+[SessionTimelines](../src/renderer/lib/sessionTimelines.ts) retains transcripts and
+cursors per session. Each subscribed session has independent event caps and 100
+raw-output rows. At most 12 inactive histories remain cached. Late reads cannot
+restore an evicted or removed history, and live pushes received during a read
+take precedence over stale copies in its response. Dashboard metadata contains
+no second copy of these arrays.
+
+[canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts) caches each
+persisted row's typed classification in a `WeakMap`. Conversation projections
+reuse that classification without retaining rows after timeline eviction or
+serializing large message and tool bodies into the cache.
 
 [SessionConversation](../src/renderer/components/SessionConversation.tsx) mounts
 the last `CONVERSATION_WINDOW` (120) render items and reveals the rest on
@@ -169,10 +207,19 @@ request. Session sizes are heavily skewed — p50 is ~53 events, p95 is ~743, an
 the largest holds 3,040 events and 3.3 MB of text — so without a window a long
 session re-reconciled thousands of live subtrees on every streaming delta.
 
+Only paced, actively streaming markdown blocks allocate character arrays for
+the reveal. Completed, unpaced, and reduced-motion blocks render the source
+text directly.
+
+File browsing caches are bounded for panes that stay mounted for a long time.
+The Files view retains at most 12 closed previews per pane. Each file read is
+capped at 1 MiB of source content. Composer file autocomplete retains four
+source trees and re-fetches an older project or workspace after eviction.
+
 ## IPC Latency
 
 [src-tauri/src/util/ipc_latency.rs](../src-tauri/src/util/ipc_latency.rs) tracks latency histograms accessible in Settings → Diagnostics. Target p99 is < 100 ms.
 
 To prevent IPC bottlenecks:
-- General timeline polling uses `session:events-since`.
+- General timeline push hints trigger `session:events-since`. There is no renderer polling interval.
 - `session:agent-events` is only invoked when a subagent tab is open in a review panel's Agents view, bounded by `SESSION_AGENT_EVENT_SCAN_LIMIT` (2,000 rows).

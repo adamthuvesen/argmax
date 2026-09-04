@@ -1,24 +1,12 @@
 import { useEffect, useRef, type CSSProperties, type JSX } from "react";
 import { hash, luminance, readColorToken, vnoise, type Rgb } from "../lib/pixelField.js";
 
-// The turn-end breath. When a turn finishes, a single wavefront of accent
-// pixels sweeps left→right along the bottom edge of its card and dissolves.
-//
-// Same field as the composer backdrop and the effort rail (lib/pixelField.ts),
-// so the app has one pixel language rather than three. What is new here is that
-// the field carries a number: `weight` (0..1, from lib/turnExhale.ts) sets how
-// far the front travels and how bright it burns. A one-line reply gets a short
-// dim breath near the left edge; a turn that rewrote the repo crosses the whole
-// card and throws sparks off the leading edge as it goes. So the size of what
-// just happened is readable before any of it is.
-//
-// Cost: the canvas is mounted only for the ~1s it plays and the caller drops it
-// on `onDone`, so a settled transcript of two hundred turns paints nothing and
-// schedules no frames. Reduced motion and a hidden document skip it outright.
+// A confirmed PR milestone sends one sweep of accent pixels across the chat.
+// Mounted only while it plays, with reduced motion and hidden pages skipped.
 
 const CELL = 6; // logical px per pixel-cell, as in the composer field
 // The breath hugs the bottom edge of the turn rather than filling it — the band
-// height is `.turn-exhale`'s in chat-turns.css, and this canvas paints whatever
+// height is `.turn-exhale`'s in chat-conversation.css, and this canvas paints whatever
 // it is handed. A long answer runs two thousand pixels tall, and a field behind
 // all of it reads as a rendering fault rather than a flourish; the reader's eye,
 // at the moment a turn lands, is at the bottom of it anyway.
@@ -31,16 +19,12 @@ const FLOOR = 0.3; // minimum fraction of intensity every cell gets (keeps it de
 const INTEN_CAP = 0.72;
 const DRIFT = 0.004; // slow scroll of the noise field, so the band is alive as it passes
 
-// weight → the three things it controls. Each keeps a floor, because even the
-// smallest turn gets punctuation; the floor is what "barely glows" means.
-const REACH_FLOOR = 0.26; // fraction of the card width the front reaches at weight 0
-const REACH_RANGE = 0.74; // …and the extra it reaches at weight 1 (so: edge to edge)
+// Strength, height, and duration keep a floor so even the smallest turn is visible.
 const STRENGTH_FLOOR = 0.28;
 const STRENGTH_RANGE = 0.6;
 // How tall the band is, in px. A small turn gets a thin ribbon along its bottom
-// edge; a big one gets the full band. Height carries the weight as plainly as
-// reach does, and it is what keeps a one-line reply from filling its whole card
-// with field just because the card is short.
+// edge, while a big one gets the full band. Height carries the weight and
+// keeps a one-line reply from filling its whole card just because it is short.
 const BAND_FLOOR = 44;
 const BAND_RANGE = 88;
 // The accent is a low-chroma green, and on paper a low-alpha wash of it reads
@@ -95,7 +79,6 @@ export function TurnExhale({ weight, onDone }: { weight: number; onDone: () => v
     }
 
     const w = Math.min(1, Math.max(0, weightRef.current));
-    const reach = REACH_FLOOR + REACH_RANGE * w;
     const page = readColorToken("--bg", host);
     const lightPage = luminance(page) > 0.5;
     const strength = (STRENGTH_FLOOR + STRENGTH_RANGE * w) * (lightPage ? LIGHT_PAGE_LIFT : 1);
@@ -125,9 +108,9 @@ export function TurnExhale({ weight, onDone }: { weight: number; onDone: () => v
 
     const draw = (now: number, t: number, dt: number): void => {
       ctx.clearRect(0, 0, width, height);
-      // Out fast, then settling — an exhale, not a wipe.
-      const travel = 1 - Math.pow(1 - t, 3);
-      const front = travel * reach * width;
+      // Reach the last cell before fading, even for the smallest turn.
+      const travel = 1 - Math.pow(1 - Math.min(1, t / FADE_FROM), 3);
+      const front = travel * (width + CELL);
       const fade = t < FADE_FROM ? 1 : Math.max(0, 1 - (t - FADE_FROM) / (1 - FADE_FROM));
       const cols = Math.ceil(width / CELL);
       const rows = Math.ceil(height / CELL);
@@ -247,7 +230,7 @@ export function TurnExhale({ weight, onDone }: { weight: number; onDone: () => v
   }, []);
 
   // The band's height is the one visual the stylesheet cannot know, because it
-  // is the weight. Everything else about the box stays in chat-turns.css.
+  // is the weight. Everything else about the box stays in chat-conversation.css.
   const band = BAND_FLOOR + BAND_RANGE * Math.min(1, Math.max(0, weight));
   return (
     <canvas

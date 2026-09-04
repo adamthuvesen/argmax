@@ -110,6 +110,7 @@ export function SessionIconPicker({
       <input
         className="session-icon-picker-search"
         type="search"
+        autoFocus
         aria-label="Search icons"
         placeholder="Search icons..."
         value={query}

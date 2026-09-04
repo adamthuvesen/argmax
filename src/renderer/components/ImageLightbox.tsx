@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useRef, type JSX } from "react";
+import { useEffect, useRef, type JSX } from "react";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 
@@ -19,15 +19,22 @@ export function ImageLightbox({
   onClose: () => void;
 }): JSX.Element | null {
   const contentRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const open = src !== null;
-  useDismissOnOutsideOrEscape(contentRef, open, onClose);
+  useDismissOnOutsideOrEscape(contentRef, open, onClose, undefined, { trapFocus: true });
   useRestoreFocus(open);
+
+  useEffect(() => {
+    if (open) closeButtonRef.current?.focus();
+  }, [open]);
+
   if (!open) return null;
   return (
     <div className="image-lightbox-overlay" role="dialog" aria-modal="true" aria-label={alt}>
       <div className="image-lightbox-content" ref={contentRef}>
         <img className="image-lightbox-image" src={src} alt={alt} />
         <button
+          ref={closeButtonRef}
           type="button"
           className="image-lightbox-close"
           aria-label="Close image preview"

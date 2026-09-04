@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import { parseUnifiedDiff } from "../renderer/lib/diff.js";
 import { buildFileTree } from "../renderer/lib/fileTree.js";
 import { searchFilePaths } from "../renderer/lib/paletteSearch.js";
+import { buildSessionToolCalls } from "../renderer/lib/sessionConversationModel.js";
 import { mergeDashboardDelta, emptySnapshot } from "../renderer/lib/snapshot.js";
+import { SessionTimelines } from "../renderer/lib/sessionTimelines.js";
 import type { DashboardSnapshot, SessionSummary, TimelineEvent } from "../shared/types.js";
 
 /**
@@ -44,6 +46,31 @@ function percentile(sortedDurations: number[], ratio: number): number {
 }
 
 describe("perf budgets", () => {
+  it("updates one of eight session transcripts in p95 < 2 ms without notifying other panes", () => {
+    const timelines = new SessionTimelines();
+    const notifications = Array<number>(8).fill(0);
+    const subscriptions = notifications.map((_, index) => timelines.subscribe(`session-${index}`, () => {
+      notifications[index] += 1;
+    }));
+    const events: TimelineEvent[] = Array.from({ length: 4000 }, (_, index) => ({
+      id: `retained-${index}`, sessionId: `session-${Math.floor(index / 500)}`, type: "message.delta",
+      message: "token", payload: {}, createdAt: "2026-09-05T00:00:00.000Z", rowCursor: index + 1
+    }));
+    timelines.merge(events, []);
+    notifications.fill(0);
+    const durations: number[] = [];
+    for (let index = 0; index < 100; index += 1) {
+      const event: TimelineEvent = { ...events[0], id: `new-${index}`, rowCursor: 4001 + index };
+      const start = performance.now();
+      timelines.merge([event], []);
+      durations.push(performance.now() - start);
+    }
+    durations.sort((a, b) => a - b);
+    expect(percentile(durations, 0.95)).toBeLessThan(2);
+    expect(notifications).toEqual([100, 0, 0, 0, 0, 0, 0, 0]);
+    subscriptions.forEach((unsubscribe) => unsubscribe());
+  });
+
   it("mergeDashboardDelta over a 200-session payload completes p95 < 5 ms", () => {
     const base: DashboardSnapshot = {
       ...emptySnapshot,
@@ -136,6 +163,68 @@ describe("perf budgets", () => {
     }
     durations.sort((a, b) => a - b);
     expect(percentile(durations, 0.95)).toBeLessThan(2);
+  });
+
+  it("an empty poll against a 5 000-event snapshot stays p95 < 0.1 ms", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: Array.from({ length: 5_000 }, (_, i): TimelineEvent => ({
+        id: `idle-${4_999 - i}`,
+        sessionId: "s",
+        type: "command.started",
+        message: "",
+        payload: {},
+        createdAt: new Date(2026, 0, 1, 0, 0, 4_999 - i).toISOString(),
+        rowCursor: 5_000 - i
+      }))
+    };
+    const durations: number[] = [];
+    for (let i = 0; i < 100; i++) {
+      const start = performance.now();
+      mergeDashboardDelta(base, { events: [], rawOutputs: [] });
+      durations.push(performance.now() - start);
+    }
+    durations.sort((a, b) => a - b);
+    const p95 = percentile(durations, 0.95);
+    expect(p95).toBeLessThan(0.1);
+  });
+
+  it("buildSessionToolCalls across capped tool and progress rows stays p95 < 20 ms", () => {
+    const createdAt = new Date(2026, 0, 1).toISOString();
+    const events: TimelineEvent[] = [];
+    for (let i = 0; i < 4_000; i++) {
+      events.push({
+        id: `progress-${i}`,
+        sessionId: "s",
+        type: "message.delta",
+        message: `Checked ${i}`,
+        payload: {},
+        createdAt,
+        rowCursor: i + 1
+      });
+    }
+    for (let i = 0; i < 2_000; i++) {
+      events.push({
+        id: `tool-${i}`,
+        sessionId: "s",
+        type: "command.started",
+        message: "",
+        payload: { name: "Read", tool_use_id: `tool-${i}`, input: { path: `src/${i}.ts` } },
+        createdAt,
+        rowCursor: 4_001 + i
+      });
+    }
+    events.reverse();
+
+    const durations: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const start = performance.now();
+      expect(buildSessionToolCalls(events)).toHaveLength(2_000);
+      durations.push(performance.now() - start);
+    }
+    durations.sort((a, b) => a - b);
+    const p95 = percentile(durations, 0.95);
+    expect(p95).toBeLessThan(20);
   });
 
   it("buildFileTree over 10 000 entries completes < 75 ms", () => {

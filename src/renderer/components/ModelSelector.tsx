@@ -206,7 +206,7 @@ const SHORT_EFFORT_LABELS: Record<ReasoningEffort, string> = {
 /**
  * Standalone effort control shown beside the model chip: a chip that reads the
  * current effort and opens a slider spanning `efforts`. The list is
- * provider-specific (Claude and Codex Sol/Terra run low→ultra, others stop
+ * provider-specific (Claude and Codex Astra/Sol/Terra run low→ultra, others stop
  * earlier). The fill's leading edge is the cursor: it tracks the pointer 1:1
  * while dragging, then glides to the nearest stop; arrow/Home/End keys step
  * it, and the stop labels under the rail jump straight to a level.
@@ -436,7 +436,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   open?: boolean;
   options: Array<ChipModelOption<T>>;
   /** Effort levels for a given value's provider, low → high. Claude and Codex
-   *  Sol/Terra run the full low→ultra list; other models stop earlier. */
+   *  Astra/Sol/Terra run the full low→ultra list; other models stop earlier. */
   reasoningEffortsForValue: (value: T) => readonly ReasoningEffort[];
   /** Show a standalone effort slider beside the chip. Off in settings, which
    *  has no per-session effort control — the model's default effort applies. */

@@ -1,18 +1,16 @@
 import type { SessionSummary, TimelineEvent } from "../../shared/types.js";
-import { compactionNoticeFor, isCompactionEvent, type CompactionNotice } from "./compaction.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
+import { compactionNoticeFor, type CompactionNotice } from "./compaction.js";
 import {
-  isMultitaskEvent,
   mergeMultitaskNotice,
   multitaskNoticeFor,
   type MultitaskNotice
 } from "./multitask.js";
 import {
-  isProjectMoveEvent,
   projectMoveNoticeFor,
   type ProjectMoveNotice
 } from "./projectMove.js";
 import {
-  isProviderSwitchEvent,
   providerSwitchNoticeFor,
   type ProviderSwitchNotice
 } from "./providerSwitch.js";
@@ -218,11 +216,16 @@ export function foldRenderItems(
     return id;
   };
   for (const item of conversationItems) {
-    if (item.kind === "message" && isMultitaskEvent(item.event)) {
+    const canonical = item.kind === "message" ? decodeTimelineEvent(item.event) : null;
+    if (item.kind === "message" && canonical?.kind === "multitask") {
       pushMultitask(item.event);
       continue;
     }
-    if (item.kind === "message" && isProjectMoveEvent(item.event)) {
+    if (
+      item.kind === "message" &&
+      canonical?.kind === "lifecycle" &&
+      canonical.name === "moved"
+    ) {
       flush();
       const id = `project-move-${item.event.id}`;
       out.push({ kind: "project-move", id, notice: projectMoveNoticeFor(item.event) });
@@ -233,14 +236,22 @@ export function foldRenderItems(
     // turn it lands in, and the follow-up that triggered it opens a fresh one
     // under the new agent. Unlike compaction it is a single row, so there is no
     // start/end pair to collapse.
-    if (item.kind === "message" && isProviderSwitchEvent(item.event)) {
+    if (
+      item.kind === "message" &&
+      canonical?.kind === "lifecycle" &&
+      canonical.name === "provider-changed"
+    ) {
       flush();
       const id = `provider-switch-${item.event.id}`;
       out.push({ kind: "provider-switch", id, notice: providerSwitchNoticeFor(item.event) });
       activeTurnId = `turn-after-${id}`;
       continue;
     }
-    if (item.kind === "message" && isCompactionEvent(item.event)) {
+    if (
+      item.kind === "message" &&
+      canonical?.kind === "lifecycle" &&
+      (canonical.name === "compacting" || canonical.name === "compacted")
+    ) {
       flush();
       // Re-anchor to the seam: the work after a compaction is a new turn, and
       // leaving the previous user message as the anchor would hand both turns
@@ -249,7 +260,11 @@ export function foldRenderItems(
       activeTurnId = `turn-after-${pushCompaction(item.event)}`;
       continue;
     }
-    if (item.kind === "message" && item.event.type === "user.message") {
+    if (
+      item.kind === "message" &&
+      canonical?.kind === "message" &&
+      canonical.role === "user"
+    ) {
       flush();
       out.push({ kind: "user-message", event: item.event });
       activeTurnId = `turn-${item.event.id}`;

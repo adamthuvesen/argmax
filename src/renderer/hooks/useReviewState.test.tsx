@@ -412,6 +412,36 @@ describe("useReviewState — IPC fan-out resistance", () => {
     expect(readWorkspaceFile).toHaveBeenCalledTimes(1);
   });
 
+  it("bounds closed file previews and re-reads an evicted file", async () => {
+    readWorkspaceFile.mockImplementation((_target, path) =>
+      Promise.resolve({
+        kind: "text",
+        content: `${path}\n`,
+        size: path.length + 1,
+        mtimeMs: 10
+      })
+    );
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+
+    for (let i = 0; i < 13; i++) {
+      const path = `src/file-${i}.ts`;
+      act(() => {
+        result.current.openInFilesView(path);
+      });
+      await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+      act(() => {
+        result.current.workspaceFiles.closeTab(path);
+      });
+    }
+    expect(readWorkspaceFile).toHaveBeenCalledTimes(13);
+
+    act(() => {
+      result.current.openInFilesView("src/file-0.ts");
+    });
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledTimes(14));
+  });
+
   it("prompts before closing dirty tabs and supports cancel, discard, and save", async () => {
     readWorkspaceFile.mockResolvedValue({
       kind: "text",

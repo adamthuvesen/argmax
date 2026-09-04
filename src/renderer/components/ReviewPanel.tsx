@@ -34,7 +34,6 @@ import type {
   AgentMode,
   ComposerAttachment,
   PendingMessage,
-  RawProviderOutput,
   SessionSummary,
   TimelineEvent,
   WorkspaceSummary
@@ -85,12 +84,7 @@ export interface AgentsPanelContext {
   /** Multitasks dispatched from this session. Their chats run in this dock, so
    *  the panel needs both the sessions and the commands to drive them. */
   multitasks?: MultitaskChild[];
-  /** Every session's events. `events` above is scoped to this pane's session,
-   *  which is exactly what a subagent transcript needs and exactly what a
-   *  multitask's own chat does not. */
-  multitaskEvents?: TimelineEvent[];
   pendingMessages?: Record<string, PendingMessage[]>;
-  rawOutputs?: RawProviderOutput[];
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onClearSession?: (sessionId: string) => Promise<void>;
   onOpenFullChat?: (sessionId: string) => void;
@@ -719,9 +713,7 @@ export function ReviewPanel({
             onOpenFile={review.openInFilesView}
             onOpenReview={review.openChangesPanel}
             multitasks={agents.multitasks}
-            multitaskEvents={agents.multitaskEvents}
             pendingMessages={agents.pendingMessages}
-            rawOutputs={agents.rawOutputs}
             onCancelQueuedMessage={agents.onCancelQueuedMessage}
             onClearSession={agents.onClearSession}
             onOpenFullChat={agents.onOpenFullChat}

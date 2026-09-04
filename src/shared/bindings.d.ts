@@ -831,11 +831,11 @@ async usageSummary(input: UsageSummaryInput) : Promise<Result<UsageSummary, Argm
 
 /** user-defined types **/
 
-export type ActionOutcome = { tabId: string; 
+export type ActionOutcome = { tabId: string;
 /**
  * URL after the action — a click that navigated says so here.
  */
-url: string; 
+url: string;
 /**
  * What the action touched, for a tool row a person can read.
  */
@@ -874,7 +874,7 @@ export type BrowserBackInput = { tabId: string }
  */
 export type BrowserBounds = { x: number; y: number; width: number; height: number }
 export type BrowserCloseInput = { tabId: string }
-export type BrowserEvaluateInput = { tabId: string; script: string; 
+export type BrowserEvaluateInput = { tabId: string; script: string;
 /**
  * Defaults to 5000 ms. A page that never answers must not park the
  * caller, so the deadline is not optional at the far end.
@@ -886,36 +886,36 @@ timeoutMs: number | null }
  * distinguish. Catch inside the page when the difference matters.
  */
 export type BrowserEvaluateResult = { resultJson: string }
-export type BrowserExtractInput = { tabId?: string | null; sessionId?: string | null; 
+export type BrowserExtractInput = { tabId?: string | null; sessionId?: string | null;
 /**
  * Character budget for section text. Defaults to 30 000.
  */
 maxChars?: number | null }
 export type BrowserFillCredentialsInput = { tabId: string }
-export type BrowserFillResult = { ok: boolean; 
+export type BrowserFillResult = { ok: boolean;
 /**
  * Title of the 1Password item that was filled.
  */
 itemTitle: string }
-export type BrowserFindInput = { tabId?: string | null; sessionId?: string | null; 
+export type BrowserFindInput = { tabId?: string | null; sessionId?: string | null;
 /**
  * Case-insensitive substring over role, name, value and text.
  */
 query: string }
 export type BrowserForwardInput = { tabId: string }
-export type BrowserGetTextInput = { tabId?: string | null; sessionId?: string | null; 
+export type BrowserGetTextInput = { tabId?: string | null; sessionId?: string | null;
 /**
  * Defaults to 20 000 characters.
  */
 maxChars?: number | null }
-export type BrowserListTabsInput = { 
+export type BrowserListTabsInput = {
 /**
  * Only this session's tabs. Omitted lists every live tab.
  */
 sessionId?: string | null }
 export type BrowserNavigateInput = { url: string; tabId: string }
 export type BrowserOpenForSessionInput = { url: string; sessionId: string }
-export type BrowserOpenInput = { url: string; bounds: BrowserBounds; tabId: string; 
+export type BrowserOpenInput = { url: string; bounds: BrowserBounds; tabId: string;
 /**
  * Session that owns the tab. `None` for a tab the user opened, and for
  * the renderer re-materializing a tab it restored from a previous run —
@@ -934,44 +934,44 @@ export type BrowserReloadInput = { tabId: string }
  * size of what was captured.
  */
 export type BrowserScreenshot = { pngBase64: string; width: number; height: number }
-export type BrowserScreenshotInput = { 
+export type BrowserScreenshotInput = {
 /**
  * Names a tab directly, or leaves it to `session_id`.
  */
-tabId?: string | null; 
+tabId?: string | null;
 /**
  * Captures the session's current tab. Ignored when `tab_id` is given.
  */
-sessionId?: string | null; 
+sessionId?: string | null;
 /**
  * Crop, in the page's own CSS pixels from the top-left of the visible
  * view. Omitted captures the whole view.
  */
-rect?: BrowserBounds | null; 
+rect?: BrowserBounds | null;
 /**
  * Crop to one element from a snapshot instead. Scrolls it into view
  * first, and wins over `rect`.
  */
 ref?: string | null }
-export type BrowserSetBoundsInput = { bounds: BrowserBounds; 
+export type BrowserSetBoundsInput = { bounds: BrowserBounds;
 /**
  * False while a renderer overlay (dialog, palette) is open — the native
  * webview always paints above the DOM, so it must yield instead. Also
  * false for tabs behind the active one.
  */
 visible: boolean; tabId: string }
-export type BrowserSnapshotInput = { tabId?: string | null; sessionId?: string | null; 
+export type BrowserSnapshotInput = { tabId?: string | null; sessionId?: string | null;
 /**
  * Drops plain text and non-heading structure, leaving only what can be
  * clicked or typed into.
  */
 interactiveOnly?: boolean | null }
 export type BrowserStopInput = { tabId: string }
-export type BrowserTabInfo = { tabId: string; 
+export type BrowserTabInfo = { tabId: string;
 /**
  * Session that opened the tab. `None` for tabs the user opened.
  */
-ownerSessionId: string | null; url: string; title: string | null; loading: boolean; 
+ownerSessionId: string | null; url: string; title: string | null; loading: boolean;
 /**
  * Optional label used to organize related tabs in the visible strip.
  */
@@ -987,7 +987,7 @@ export type ChecksRunInput = { workspaceId: WorkspaceId; command: CommandText }
 export type CommandText = string
 export type ComposerAttachmentInput = { filePath: AttachmentPath; mimeType: AttachmentMimeType; sizeBytes: AttachmentSizeBytes }
 export type DashboardListInput = Record<string, never>
-export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[] }
+export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; pendingMessages: Partial<{ [key in string]: PendingMessage[] }> }
 export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number }
 /**
  * In-memory-only slice of the diagnostics report, safe to poll on an
@@ -1012,12 +1012,20 @@ export type FileContent = string
  */
 export type FollowUpSuggestion = { suggestion: string | null }
 export type FoundElement = { ref: string; role: string; name: string; value: string }
-export type GhPrRecord = { 
+export type GhPrRecord = {
 /**
  * The session that observed this PR. Provenance only — sidebar markers
  * resolve by `head_ref_name`, not by this id.
  */
-sessionId: string; prNumber: number; headSha: string; lastSeenCheckState: string; updatedAt: string; prState: string | null; notifiedAt: string | null; 
+sessionId: string; prNumber: number; headSha: string; lastSeenCheckState: string; updatedAt: string; prState: string | null; notifiedAt: string | null;
+/**
+ * GitHub's authoritative PR creation timestamp.
+ */
+prCreatedAt: string | null;
+/**
+ * GitHub's authoritative merge timestamp. Null until the PR is merged.
+ */
+prMergedAt: string | null;
 /**
  * Branch the PR was opened from, per `gh pr view --json headRefName`.
  * Null on rows written before the branch was recorded; those still attach
@@ -1048,13 +1056,40 @@ export type LearningsDeleteInput = { id: NonEmptyString }
 export type LearningsListInput = { projectId: ProjectId; limit: Limit200 | null }
 export type LearningsUpdateInput = { id: NonEmptyString; summary: NonEmptyString | null; verified: boolean | null }
 export type Limit200 = number
-export type LogEntry = { 
+export type LogEntry = {
 /**
  * Monotonic, process-lifetime sequence number. The debug panel polls with
  * the highest `seq` it has seen so each tick ships only new lines instead
  * of the whole 1000-entry ring.
  */
 seq: number; timestamp: string; level: string; scope: string; message: string; fields: Partial<{ [key in string]: string }> }
+/**
+ * Where a user turn came from, when it was not the person at the keyboard.
+ * Written onto the `user.message` payload as `origin`, which is what the chat
+ * renders as a "From <label>" bubble instead of an ordinary prompt.
+ */
+export type MessageOrigin = {
+/**
+ * The session that wrote it.
+ */
+sessionId: string;
+/**
+ * That session's sidebar task label, resolved once at send time so the
+ * bubble still names it after the sender is archived.
+ */
+label: string;
+/**
+ * `message` when another agent wrote here, `completion` when a session
+ * this one launched has finished.
+ */
+kind: string;
+/**
+ * The `session_messages` row this turn delivers, when there is one. The
+ * follow-up queue consults it at drain time so a message the recipient
+ * already collected mid-turn — through `inbox_read`, while the queue held
+ * it — is not also sent as a turn.
+ */
+messageId?: string | null }
 /**
  * The chat the multitask runs in, handed straight back to the composer so it
  * can show the card without waiting for the dashboard delta.
@@ -1070,17 +1105,18 @@ export type PageHeading = { level: number; text: string }
 export type PageLink = { text: string | null; url: string }
 export type PageMetadata = { title: string; description: string | null; canonicalUrl: string | null; language: string | null; author: string | null; publishedTime: string | null; modifiedTime: string | null; siteName: string | null }
 export type PageSection = { heading: string | null; level: number | null; text: string }
-export type PageSnapshot = { tabId: string; url: string; title: string; 
+export type PageSnapshot = { tabId: string; url: string; title: string;
 /**
  * Indented aria tree; interactive lines carry `[ref=eN]` handles.
  */
-tree: string; 
+tree: string;
 /**
  * True when the node or byte cap cut the tree short.
  */
 truncated: boolean }
 export type PageTable = { caption: string | null; headers: string[]; rows: string[][] }
 export type PageText = { tabId: string; url: string; title: string; text: string; truncated: boolean }
+export type PendingMessage = { id: string; sessionId: string; content: string; agentMode: string; modelLabel?: string | null; modelId?: string | null; reasoningEffort?: string | null; fastMode: boolean; attachments: ComposerAttachmentInput[]; origin?: MessageOrigin | null; queuedAt: string }
 export type PermissionMode = "auto-approve" | "ask-each-time"
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
@@ -1097,7 +1133,7 @@ export type ProjectsRemoveInput = { projectId: ProjectId }
 export type ProjectsSwitchBranchInput = { projectId: ProjectId; branch: BranchName }
 export type ProjectsUpdateSettingsInput = { projectId: ProjectId; settings: ProjectSettingsInput }
 export type Prompt = string
-export type ProviderCapabilityReport = { provider: ProviderId; displayName: string; binaryName: string; installed: boolean; binaryPath: string | null; version: string | null; 
+export type ProviderCapabilityReport = { provider: ProviderId; displayName: string; binaryName: string; installed: boolean; binaryPath: string | null; version: string | null;
 /**
  * Tri-state auth signal. `None` = not installed or the status probe was
  * inconclusive (timed out / errored); `Some(true)` = logged in;
@@ -1105,7 +1141,7 @@ export type ProviderCapabilityReport = { provider: ProviderId; displayName: stri
  * never hard-blocks on it, since a CLI changing its status command must not
  * lock out a working provider.
  */
-authenticated: boolean | null; setupGuidance: string | null; 
+authenticated: boolean | null; setupGuidance: string | null;
 /**
  * Whether Argmax can answer a native provider permission request. The
  * current structured runtime is observation-only for Claude/Codex and
@@ -1114,7 +1150,7 @@ authenticated: boolean | null; setupGuidance: string | null;
 approvalSupport: ApprovalSupport }
 export type ProviderId = "claude" | "codex" | "cursor" | "opencode" | "grok"
 export type ProvidersCancelQueuedMessageInput = { sessionId: SessionId; messageId: NonEmptyString }
-export type ProvidersDiscoverInput = { 
+export type ProvidersDiscoverInput = {
 /**
  * When true, drop the cached capability reports and re-probe each provider
  * CLI. Defaults to false so an absent `{}` payload reuses the cache.
@@ -1122,7 +1158,7 @@ export type ProvidersDiscoverInput = {
 refresh?: boolean }
 export type ProvidersLaunchInput = { workspaceId: WorkspaceId; provider: ProviderId; prompt: Prompt; modelLabel: NonEmptyString; modelId: NonEmptyString; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; permissionMode: PermissionMode | null; cols: TerminalCols; rows: TerminalRows; attachments: ComposerAttachmentInput[] | null }
 export type ProvidersResizeInput = { sessionId: SessionId; cols: TerminalCols; rows: TerminalRows }
-export type ProvidersSendInput = { sessionId: SessionId; input: Prompt; 
+export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
 /**
  * Provider override for the next turn. When it differs from the session's
  * current provider, an idle follow-up relaunches under the new provider and
@@ -1141,23 +1177,23 @@ export type RawProviderOutput = { id: string; sessionId: string; stream: string;
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
 export type RelativePath = string
 export type RemoteGetStatusInput = Record<string, never>
-export type RemoteSetConfigInput = { enabled: boolean; port: number; 
+export type RemoteSetConfigInput = { enabled: boolean; port: number;
 /**
  * Raw topic field from the Settings form: empty clears push, a full
  * http(s) URL is kept as-is, a bare topic name maps to ntfy.sh.
  */
 ntfyTopic: string }
-export type RemoteStatus = { enabled: boolean; 
+export type RemoteStatus = { enabled: boolean;
 /**
  * True while the bridge's server task is actually alive — stays false
  * when enabling failed (typically a port already in use).
  */
-serving: boolean; port: number; token: string; ntfyTopic: string | null; localUrl: string; 
+serving: boolean; port: number; token: string; ntfyTopic: string | null; localUrl: string;
 /**
  * Reachable from the phone once `tailscale serve` proxies the port.
  * Absent when the Tailscale CLI is not installed.
  */
-tailnetUrl: string | null; tailscaleRunning: boolean; 
+tailnetUrl: string | null; tailscaleRunning: boolean;
 /**
  * The URL the QR code encodes: tailnet when known, loopback otherwise,
  * with the token in the fragment (never sent over the wire).
@@ -1167,7 +1203,7 @@ export type RemoteTestNotificationInput = Record<string, never>
 export type RepoPath = string
 /**
  * Which baseline the review diff is computed against.
- * 
+ *
  * `WorkingTree` is the historical behavior: working tree vs `HEAD` (whatever is
  * uncommitted). `Branch` shows the whole delta from the base branch — committed
  * *and* uncommitted *and* untracked — computed from `merge-base(base_ref, HEAD)`
@@ -1177,7 +1213,7 @@ export type RepoPath = string
  */
 export type ReviewComparison = "workingTree" | "branch" | "committed"
 export type ReviewListChangedFilesInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; comparison?: ReviewComparison }
-export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath | null; comparison?: ReviewComparison; 
+export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath | null; comparison?: ReviewComparison;
 /**
  * Only honored for a single-file request. The whole-workspace diff keeps
  * git's default context so opening the review panel never pays for it.
@@ -1203,8 +1239,8 @@ export type SessionAgentEventsInput = { sessionId: SessionId; parentToolUseId: N
 export type SessionClearInput = { sessionId: SessionId }
 export type SessionCostSummary = { sessionId: string; modelId: string | null; tokens: UsageCounts; costUsd: number }
 export type SessionCostSummaryInput = { sessionId: SessionId }
-export type SessionEventsSinceInput = { sessionId: SessionId; eventCursor: number | null; rawOutputCursor: number | null }
-export type SessionEventsSinceResult = { events: TimelineEvent[]; rawOutputs: RawProviderOutput[]; eventCursor: number; rawOutputCursor: number }
+export type SessionEventsSinceInput = { sessionId: SessionId; eventCursor: number | null; rawOutputCursor: number | null; changeCursor: number | null }
+export type SessionEventsSinceResult = { events: TimelineEvent[]; rawOutputs: RawProviderOutput[]; eventCursor: number; rawOutputCursor: number; changeCursor: number | null; deletedEventIds: string[]; deletedRawOutputIds: string[]; resetRequired: boolean; hasMore: boolean }
 export type SessionForkInput = { sessionId: SessionId }
 export type SessionForkResult = { workspace: WorkspaceSummary; session: SessionSummary }
 /**
@@ -1219,12 +1255,12 @@ export type SessionId = string
  * turn already in flight, sharing this chat's checkout unless `worktree` asks
  * for its own.
  */
-export type SessionMultitaskInput = { sessionId: SessionId; prompt: Prompt; 
+export type SessionMultitaskInput = { sessionId: SessionId; prompt: Prompt;
 /**
  * Defaults to false: the point of a multitask is a fix on the side of the
  * work you are already doing, in the tree you are already in.
  */
-worktree?: boolean; 
+worktree?: boolean;
 /**
  * Sidebar label for the new chat. Falls back to the prompt's first line.
  */
@@ -1232,35 +1268,35 @@ taskLabel: NonEmptyString | null }
 export type SessionSearchInput = { query: SessionSearchQuery; limit: Limit200 | null }
 export type SessionSearchQuery = string
 export type SessionSuggestFollowUpInput = { sessionId: SessionId; provider: ProviderId; modelId: NonEmptyString }
-export type SessionSummary = { id: string; workspaceId: string; provider: string; modelLabel: string; modelId: string; reasoningEffort?: string | null; permissionMode: string; agentMode?: string | null; providerConversationId: string | null; prompt: string; state: string; attention: string; 
+export type SessionSummary = { id: string; workspaceId: string; provider: string; modelLabel: string; modelId: string; reasoningEffort?: string | null; permissionMode: string; agentMode?: string | null; providerConversationId: string | null; prompt: string; state: string; attention: string;
 /**
  * When `attention` last changed value. NULL on rows that predate the
  * column. The sidebar's Priority section compares this against
  * `WorkspaceSummary.priority_dismissed_at` to decide whether a dismissal
  * is still current.
  */
-attentionChangedAt?: string | null; startedAt: string; completedAt: string | null; lastActivityAt: string; costUsd: number; tokens: UsageCounts; 
+attentionChangedAt?: string | null; startedAt: string; completedAt: string | null; lastActivityAt: string; costUsd: number; tokens: UsageCounts;
 /**
  * Input-side tokens of the latest turn — the live context-window occupancy
  * (overwritten each turn, not cumulative like `tokens`).
  */
-contextTokens: number; 
+contextTokens: number;
 /**
  * True when the session was imported from a provider CLI's own
  * transcript store rather than launched by Argmax. Denormalized onto the
  * row so dashboard reads need no join; see `synced_sessions`.
  */
-imported: boolean; 
+imported: boolean;
 /**
  * The model's context-window size, when the provider reports it (Codex).
  * The renderer falls back to a per-model table when this is null.
  */
-contextWindow?: number | null; 
+contextWindow?: number | null;
 /**
  * The session whose agent launched this one with the `argmax` MCP tools.
  * Null for a session the user or a routine started.
  */
-launchedBySessionId?: string | null; 
+launchedBySessionId?: string | null;
 /**
  * How this session came to exist: `agent` for one an agent launched (and
  * for every ordinary session the user started), `multitask` for one
@@ -1276,7 +1312,7 @@ export type SkippedReason = "not-a-file" | "too-large" | "binary"
 export type SqlitePragmas = { journalMode: string; foreignKeys: number; synchronous: number; busyTimeout: number; walAutocheckpoint: number }
 export type StartupPhaseRecord = { phase: string; elapsedMs: number; deltaMs: number }
 export type StreamChunk = string
-export type SyncConfig = { 
+export type SyncConfig = {
 /**
  * Per-provider opt-in. Only providers whose transcript format Argmax can
  * read are honored; see `SyncStatus::supported_providers`.
@@ -1290,13 +1326,13 @@ export type SyncSetConfigInput = { claude: boolean; codex: boolean; cursor: bool
 /**
  * What the Settings pane renders: the config plus what the last sweep did.
  */
-export type SyncStatus = { config: SyncConfig; 
+export type SyncStatus = { config: SyncConfig;
 /**
  * Providers Argmax can actually read transcripts for. The rest render
  * disabled, rather than as toggles that silently do nothing.
  */
 supportedProviders: string[]; lastRunAt: string | null; importedCount: number; lastError: string | null }
-export type SystemDebugSnapshotInput = { 
+export type SystemDebugSnapshotInput = {
 /**
  * Highest log `seq` the caller already holds. `None` asks for the whole
  * ring; the debug panel sends its cursor so each poll ships only new lines.
@@ -1311,7 +1347,7 @@ export type SystemOpenPathInput = { path: OpenPath; cwd: NonEmptyString | null }
  * preference and mirrors it here so the sessions Argmax starts on its own —
  * the PR check-failure fix chat — launch on the same model the user picked.
  */
-export type SystemSetDefaultAgentInput = { provider: ProviderId; modelLabel: NonEmptyString; modelId: NonEmptyString; 
+export type SystemSetDefaultAgentInput = { provider: ProviderId; modelLabel: NonEmptyString; modelId: NonEmptyString;
 /**
  * Absent for a fast model that has no effort control at all.
  */
@@ -1349,12 +1385,12 @@ export type UsageModelRow = { provider: ProviderId; modelId: string; sessions: n
  * read as "up 100%".
  */
 export type UsagePreviousPeriod = { costUsd: number; tokens: UsageTokenTotals; sessions: number }
-export type UsageProviderSummary = { provider: ProviderId; 
+export type UsageProviderSummary = { provider: ProviderId;
 /**
  * `false` when the provider has no local usage source (Cursor). Such a
  * row carries zeros and the page says so instead of showing $0.
  */
-available: boolean; sessions: number; tokens: UsageTokenTotals; costUsd: number; 
+available: boolean; sessions: number; tokens: UsageTokenTotals; costUsd: number;
 /**
  * What the cached input would have cost at the uncached rate, minus what
  * it did cost.
@@ -1362,7 +1398,7 @@ available: boolean; sessions: number; tokens: UsageTokenTotals; costUsd: number;
 cacheSavingsUsd: number; costSource: UsageCostSource }
 export type UsageResolution = "hour" | "day"
 export type UsageScanPhase = "idle" | "scanning"
-export type UsageScanState = { phase: UsageScanPhase; filesTotal: number; filesDone: number; 
+export type UsageScanState = { phase: UsageScanPhase; filesTotal: number; filesDone: number;
 /**
  * RFC 3339 UTC; `None` before the first scan finishes.
  */
@@ -1373,42 +1409,42 @@ lastCompletedAt: string | null; pricingAsOf: string }
  * the renderer formats it in `UsageSummary::time_zone`.
  */
 export type UsageSeriesPoint = { bucketStart: string; values: UsageSeriesValue[] }
-export type UsageSeriesValue = { provider: ProviderId; costUsd: number; 
+export type UsageSeriesValue = { provider: ProviderId; costUsd: number;
 /**
  * Processed tokens in the bucket.
  */
 tokens: number }
-export type UsageSummary = { window: UsageWindow; 
+export type UsageSummary = { window: UsageWindow;
 /**
  * The provider the totals, series, models, and days are narrowed to;
  * `None` is every provider. `providers` is never narrowed.
  */
-provider: ProviderId | null; 
+provider: ProviderId | null;
 /**
  * IANA zone the renderer asked for; day buckets follow it.
  */
-timeZone: string; 
+timeZone: string;
 /**
  * RFC 3339 UTC instants bounding the window, start inclusive, end
  * exclusive.
  */
-rangeStart: string; rangeEnd: string; resolution: UsageResolution; scan: UsageScanState; 
+rangeStart: string; rangeEnd: string; resolution: UsageResolution; scan: UsageScanState;
 /**
  * Distinct sessions with at least one record in the window, across all
  * providers. Per-provider counts do not sum to this when a session
  * switched provider mid-way, which is why it is carried separately.
  */
-sessions: number; tokens: UsageTokenTotals; costUsd: number; cacheSavingsUsd: number; costSource: UsageCostSource; 
+sessions: number; tokens: UsageTokenTotals; costUsd: number; cacheSavingsUsd: number; costSource: UsageCostSource;
 /**
  * The window before this one, narrowed the same way, for the "vs the
  * previous 30 days" comparison. `None` when the ledger cannot cover it.
  */
 previous: UsagePreviousPeriod | null; providers: UsageProviderSummary[]; series: UsageSeriesPoint[]; models: UsageModelRow[]; days: UsageDayRow[] }
-export type UsageSummaryInput = { window: UsageWindow; 
+export type UsageSummaryInput = { window: UsageWindow;
 /**
  * IANA zone name, e.g. `Europe/Stockholm`. Day buckets follow it.
  */
-timeZone: NonEmptyString; 
+timeZone: NonEmptyString;
 /**
  * Narrow the totals, chart, and breakdowns to one provider. The
  * per-provider rows always cover every provider, so the page can still
@@ -1438,42 +1474,50 @@ export type WorkspaceReadFileInput = { kind: WorkspaceTargetKind; id: WorkspaceT
 export type WorkspaceStatFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath }
 export type WorkspaceStatusInput = { workspaceIds: WorkspaceId[] | null }
 export type WorkspaceStatusSnapshot = { workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[] }
-export type WorkspaceSummary = { id: string; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean; 
+export type WorkspaceSummary = { id: string; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean;
 /**
  * 'git' | 'scratch' | 'popup' — see `PersistWorkspaceInput::kind`. Every
  * repo-coupled surface (review, gh, branch chips, sidebar grouping) gates
  * on this rather than on which UI created the workspace.
  */
-kind: string; dirty: boolean; changedFiles: number; lastActivityAt: string; pinned: boolean; 
+kind: string; dirty: boolean; changedFiles: number; lastActivityAt: string; pinned: boolean;
 /**
  * When the user marked this workspace done in the sidebar's Priority
  * section. The dismissal is spent (ignored by the renderer) once the
  * workspace's session attention changes again — compare against
  * `SessionSummary.attention_changed_at`.
  */
-priorityDismissedAt: string | null; 
+priorityDismissedAt: string | null;
 /**
  * When the user manually added this workspace to the Priority section.
  * Manual entries need no attention and never age out; cleared by an
  * explicit remove or a dismissal.
  */
-priorityAddedAt: string | null; 
+priorityAddedAt: string | null;
 /**
  * State of the most-recent PR on this workspace's current branch (same
  * project), filled in from `gh_pr` on every read path. The renderer merges
  * workspace deltas by whole-object replacement, so a summary published
  * with `None` here would erase the sidebar PR marker.
  */
-prState: string | null; 
+prState: string | null;
 /**
  * PR number paired with `pr_state`.
  */
-prNumber: number | null; 
+prNumber: number | null;
+/**
+ * GitHub's authoritative creation timestamp for the paired PR.
+ */
+prCreatedAt: string | null;
+/**
+ * GitHub's authoritative merge timestamp for the paired PR.
+ */
+prMergedAt: string | null;
 /**
  * Curated Lucide icon name the user picked for this row's sidebar glyph.
  * `None` keeps the row on its live status marker.
  */
-icon: string | null; 
+icon: string | null;
 /**
  * Named palette entry paired with `icon`.
  */

@@ -54,6 +54,7 @@ import { requestCloseActiveReviewFileTab } from "./lib/reviewFilePanel.js";
 // bridge) is the only consumer; packaged builds always have window.argmax.
 import { useAppGridSelection } from "./hooks/useAppGridSelection.js";
 import { useDashboardSession } from "./hooks/useDashboardSession.js";
+import { SessionTimelineProvider } from "./hooks/useSessionTimeline.js";
 import { useSessionCommands } from "./hooks/useSessionCommands.js";
 import {
   CommandPalette,
@@ -101,11 +102,13 @@ import {
   COMPOSER_PIXEL_FIELD_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
+  PR_MILESTONE_CELEBRATION_KEY,
   TURN_CHANGES_EXPANDED_KEY,
   RANDOM_SESSION_ICON_KEY,
   SIDEBAR_COLLAPSED_KEY,
   SIDEBAR_PRIORITY_KEY,
   WORKSPACE_CARD_KEY,
+  PrMilestoneCelebrationContext,
   resolveChatVerbosity,
   useBooleanUiPreference,
   useChatVerbosityPreference
@@ -118,7 +121,6 @@ import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 import { isTauriRuntime } from "./lib/tauriBridge.js";
-import { sessionMoveDestination } from "./lib/projectMove.js";
 
 import { withToast, type ToastMessage } from "./lib/withToast.js";
 
@@ -180,6 +182,10 @@ export function App(): JSX.Element {
     true
   );
   const [pixelFieldEnabled, setPixelFieldEnabled] = useBooleanUiPreference(COMPOSER_PIXEL_FIELD_KEY, false);
+  const [prMilestoneCelebrationEnabled, setPrMilestoneCelebrationEnabled] = useBooleanUiPreference(
+    PR_MILESTONE_CELEBRATION_KEY,
+    false
+  );
   const [randomSessionIconEnabled, setRandomSessionIconEnabled] = useBooleanUiPreference(
     RANDOM_SESSION_ICON_KEY,
     false
@@ -316,6 +322,8 @@ export function App(): JSX.Element {
 
   const {
     snapshot,
+    timelines,
+    sessionMoves,
     setSnapshot,
     loadState,
     loadError,
@@ -364,35 +372,23 @@ export function App(): JSX.Element {
     setSelectedProjectId,
     showErrorToast
   });
-  const seenSessionMoveEvents = useRef(new Set<string>());
+  const followedSessionMoves = useRef(new Set<string>());
   useEffect(() => {
-    // Guard before marking anything seen: consuming ids on a tick with no
-    // selected session would swallow the move and never redirect. Only move
-    // events are remembered, so the set cannot grow with streaming deltas.
     if (!selectedSession) return;
-    for (const event of snapshot.events) {
-      const destination = sessionMoveDestination(event);
-      if (!destination) continue;
-      if (seenSessionMoveEvents.current.has(event.id)) continue;
-      if (destination.sourceSessionId !== selectedSession.id) {
-        seenSessionMoveEvents.current.add(event.id);
-        continue;
-      }
-      // The seam can reach the renderer a tick before the rows it points at.
-      // Leaving the id unseen lets the next snapshot redirect, where marking
-      // it here would drop the move for good and strand the view on the
-      // archived source.
-      if (!sessionsById.has(destination.destinationSessionId)) continue;
-      if (!workspacesById.has(destination.destinationWorkspaceId)) continue;
-      seenSessionMoveEvents.current.add(event.id);
-      openWorkspaceChat(destination.destinationWorkspaceId, {
-        ctrlOrMeta: false,
-        alt: false
-      });
-      break;
-    }
-  }, [openWorkspaceChat, selectedSession, sessionsById, snapshot.events, workspacesById]);
-
+    const destination = sessionMoves.get(selectedSession.id);
+    if (!destination) return;
+    const moveKey = `${destination.sourceSessionId}:${destination.destinationSessionId}`;
+    if (followedSessionMoves.current.has(moveKey)) return;
+    // The event can arrive before its destination rows. Keep it eligible until
+    // the metadata update lands so the source chat still redirects.
+    if (!sessionsById.has(destination.destinationSessionId)) return;
+    if (!workspacesById.has(destination.destinationWorkspaceId)) return;
+    followedSessionMoves.current.add(moveKey);
+    openWorkspaceChat(destination.destinationWorkspaceId, {
+      ctrlOrMeta: false,
+      alt: false
+    });
+  }, [openWorkspaceChat, selectedSession, sessionMoves, sessionsById, workspacesById]);
   const requiredGridColumns = useMemo(() => widestGridRowColumnCount(grid.rows), [grid.rows]);
   const requiredWorkspaceMinWidth = useMemo(() => {
     const gridColumnWidth = requiredGridColumns > 0
@@ -1821,6 +1817,8 @@ export function App(): JSX.Element {
   }, [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget]);
 
   return (
+    <PrMilestoneCelebrationContext.Provider value={prMilestoneCelebrationEnabled}>
+    <SessionTimelineProvider store={timelines}>
     <main
       className="app-shell"
       tabIndex={-1}
@@ -1901,7 +1899,6 @@ export function App(): JSX.Element {
       <PerfOverlay />
       {detailsPopupWorkspace && detailsPopupSession ? (
         <DetailsPopup
-          events={snapshot.events}
           onAttachToChat={detailsPopup?.attachToChat}
           onCancelQueuedMessage={cancelQueuedMessage}
           onClose={closeDetailsPopup}
@@ -1914,7 +1911,6 @@ export function App(): JSX.Element {
           onClearSession={clearSession}
           pendingMessages={snapshot.pendingMessages}
           project={null}
-          rawOutputs={snapshot.rawOutputs}
           session={detailsPopupSession}
           workspace={detailsPopupWorkspace}
         />
@@ -2001,6 +1997,8 @@ export function App(): JSX.Element {
                 onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
                 pixelFieldEnabled={pixelFieldEnabled}
                 onPixelFieldEnabledChange={setPixelFieldEnabled}
+                prMilestoneCelebrationEnabled={prMilestoneCelebrationEnabled}
+                onPrMilestoneCelebrationEnabledChange={setPrMilestoneCelebrationEnabled}
                 chatWidth={chatWidth}
                 onChatWidthChange={setChatWidth}
                 reviewPanelSide={reviewPanelSide}
@@ -2062,8 +2060,6 @@ export function App(): JSX.Element {
               chatFontSize={chatFontSize}
               grid={grid}
               approvals={snapshot.approvals}
-              events={snapshot.events}
-              rawOutputs={snapshot.rawOutputs}
               checks={snapshot.checks}
               projectsById={projectsById}
               workspacesById={workspacesById}
@@ -2126,5 +2122,7 @@ export function App(): JSX.Element {
         ) : null}
       </section>
     </main>
+    </SessionTimelineProvider>
+    </PrMilestoneCelebrationContext.Provider>
   );
 }

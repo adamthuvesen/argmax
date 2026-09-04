@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
 import type { ProviderId } from "../../shared/types.js";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 
 /**
  * Confirmation for handing an idle session to a different provider.
@@ -30,10 +32,10 @@ export function ProviderSwitchDialog({
 }): JSX.Element {
   const fromName = PROVIDER_DISPLAY_NAMES[from];
   const toName = PROVIDER_DISPLAY_NAMES[to];
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const primaryRef = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    primaryRef.current?.focus();
-  }, []);
+  useDismissOnOutsideOrEscape(dialogRef, true, onCancel, undefined, { trapFocus: true });
+  useRestoreFocus(true);
 
   // The composer raises this dialog, but the decision is about the whole
   // session, so the overlay covers the pane. `.provider-switch-overlay` is
@@ -51,22 +53,18 @@ export function ProviderSwitchDialog({
     setSurface(probeRef.current?.closest<HTMLElement>(".conversation-surface") ?? null);
   }, []);
 
+  useEffect(() => {
+    if (surface !== undefined) primaryRef.current?.focus();
+  }, [surface]);
+
   const overlay = (
     <div
       className="provider-switch-overlay"
       role="dialog"
       aria-modal="true"
       aria-label={`Switch this chat to ${toName}`}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onCancel();
-      }}
-      onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
-        if (event.key !== "Escape") return;
-        event.preventDefault();
-        onCancel();
-      }}
     >
-      <div className="provider-switch-dialog">
+      <div ref={dialogRef} className="provider-switch-dialog">
         <h2>Switch to {toName}?</h2>
         <p>
           {`${toName} can't resume ${fromName}'s chat. It starts fresh from a short summary of this chat.`}

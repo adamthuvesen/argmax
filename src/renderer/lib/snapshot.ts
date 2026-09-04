@@ -1,4 +1,5 @@
 import type { DashboardDelta, DashboardSnapshot, PendingMessage, TimelineEvent } from "../../shared/types.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import {
   advanceTurnBoundary,
   isSubAgentProseEcho,
@@ -51,7 +52,8 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
     // candidates nor turn boundaries here — a hidden child completion must
     // not prune the parent's still-streaming answer.
     if (isSubAgentProseEcho(e)) continue;
-    if (e.type === "message.delta") {
+    const canonical = decodeTimelineEvent(e);
+    if (canonical.kind === "message" && canonical.phase === "delta") {
       if (isSupersededAnswerDelta(e, nextBoundary.get(e.sessionId))) {
         supersededIndices.add(i);
       }
@@ -107,11 +109,12 @@ const EVENT_TRACE_IMPORT_LIMIT = 1000;
 const EVENT_PROTECTED_LIMIT = 2000;
 
 function isEvictableDelta(event: TimelineEvent): boolean {
-  return event.type === "message.delta" && event.payload?.["thinking"] !== true;
+  const canonical = decodeTimelineEvent(event);
+  return canonical.kind === "message" && canonical.phase === "delta" && canonical.content === "answer";
 }
 
 function isTraceImportedEvent(event: TimelineEvent): boolean {
-  return event.payload?.["traceImported"] === true;
+  return decodeTimelineEvent(event).traceImported;
 }
 
 /**
@@ -159,7 +162,7 @@ function mergeEventsBounded(
   current: TimelineEvent[],
   updates: TimelineEvent[] | undefined
 ): TimelineEvent[] {
-  if (!updates) {
+  if (!updates || updates.length === 0) {
     return current;
   }
   // Newest-first, same ordering mergeSlice used.

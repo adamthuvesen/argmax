@@ -5,7 +5,7 @@ use specta::Type;
 use super::approvals::{list_pending_approvals, ApprovalRequest};
 use super::checks::{list_checks, CheckRun};
 use super::events::{
-    list_session_agent_events, list_session_events_since, SessionEventsSinceResult,
+    list_session_agent_events, list_session_changes_since, SessionEventsSinceResult,
 };
 use super::projects::{list_projects, ProjectSummary};
 use super::sessions::{list_sessions_for_dashboard, SessionSummary};
@@ -29,6 +29,8 @@ pub struct DashboardListSnapshot {
     pub workspaces: Vec<WorkspaceSummary>,
     pub sessions: Vec<SessionSummary>,
     pub checks: Vec<CheckRun>,
+    pub pending_messages:
+        std::collections::BTreeMap<String, Vec<crate::providers::flush_queue::PendingMessage>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -47,6 +49,7 @@ pub fn list_dashboard(connection: &Connection) -> ArgmaxResult<DashboardListSnap
         workspaces: status.workspaces,
         sessions: status.sessions,
         checks: status.checks,
+        pending_messages: Default::default(),
     })
 }
 
@@ -75,8 +78,15 @@ pub fn list_session_tail(
     session_id: &str,
     event_cursor: Option<i64>,
     raw_output_cursor: Option<i64>,
+    change_cursor: Option<i64>,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
-    list_session_events_since(connection, session_id, event_cursor, raw_output_cursor)
+    list_session_changes_since(
+        connection,
+        session_id,
+        event_cursor,
+        raw_output_cursor,
+        change_cursor,
+    )
 }
 
 pub fn list_session_agent_tail(
@@ -236,7 +246,7 @@ mod tests {
         insert_event(&connection, "e1", "one");
         insert_raw(&connection, "r1", "one");
 
-        let initial = list_session_tail(&connection, "s1", None, None).expect("initial tail");
+        let initial = list_session_tail(&connection, "s1", None, None, None).expect("initial tail");
         insert_event(&connection, "e2", "two");
         insert_raw(&connection, "r2", "two");
 
@@ -245,6 +255,7 @@ mod tests {
             "s1",
             Some(initial.event_cursor),
             Some(initial.raw_output_cursor),
+            None,
         )
         .expect("next tail");
 
@@ -368,6 +379,12 @@ mod tests {
         // s1 has an older OPEN PR; s2 has a newer MERGED PR. The newer one wins.
         seed_gh_pr(&connection, "s1", 11, "OPEN", "2026-05-24T10:01:00.000Z");
         seed_gh_pr(&connection, "s2", 22, "MERGED", "2026-05-24T10:06:00.000Z");
+        connection
+            .execute(
+                "UPDATE gh_pr SET pr_created_at = ?, pr_merged_at = ? WHERE session_id = 's2' AND pr_number = 22",
+                ("2026-05-24T10:02:00.000Z", "2026-05-24T10:06:00.000Z"),
+            )
+            .expect("set PR milestone timestamps");
 
         let snapshot = list_dashboard(&connection).expect("dashboard");
         let workspace = snapshot
@@ -378,6 +395,14 @@ mod tests {
 
         assert_eq!(workspace.pr_state.as_deref(), Some("MERGED"));
         assert_eq!(workspace.pr_number, Some(22));
+        assert_eq!(
+            workspace.pr_created_at.as_deref(),
+            Some("2026-05-24T10:02:00.000Z")
+        );
+        assert_eq!(
+            workspace.pr_merged_at.as_deref(),
+            Some("2026-05-24T10:06:00.000Z")
+        );
     }
 
     #[test]

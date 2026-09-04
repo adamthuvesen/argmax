@@ -27,7 +27,7 @@ use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use tauri::Manager;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, OwnedSemaphorePermit, Semaphore};
 
 use super::dispatch::dispatch;
 use super::server::RemoteBridge;
@@ -41,6 +41,10 @@ pub const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
 /// Queued response frames per client. Requests are dispatched concurrently, so
 /// this only bounds how many finished replies can wait on a slow socket.
 const RESPONSE_QUEUE: usize = 64;
+
+/// Active request dispatches per client. This leaves room for concurrent panel
+/// reads while bounding commands that may spawn processes or scan a checkout.
+const MAX_IN_FLIGHT_REQUESTS: usize = 16;
 
 #[derive(Debug, PartialEq)]
 pub enum ClientMessage {
@@ -123,6 +127,7 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
         )
     };
     let (responses, mut queued) = mpsc::channel::<String>(RESPONSE_QUEUE);
+    let request_slots = Arc::new(Semaphore::new(MAX_IN_FLIGHT_REQUESTS));
     // One task owns the write half so dispatch results and pushed events can
     // interleave without either blocking the read loop.
     let writer = tauri::async_runtime::spawn(async move {
@@ -154,9 +159,17 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
         };
         match parse_client_frame(&text) {
             ClientMessage::Request { id, channel, input } => {
+                let request_slot = match reserve_request_slot(&request_slots) {
+                    Ok(slot) => slot,
+                    Err(error) => {
+                        let _ = responses.send(response_error_frame(id, &error)).await;
+                        continue;
+                    }
+                };
                 let app = bridge.app.clone();
                 let responses = responses.clone();
                 tauri::async_runtime::spawn(async move {
+                    let _request_slot = request_slot;
                     let state = app.state::<AppState>();
                     let frame = match dispatch(&state, &channel, input).await {
                         Ok(value) => response_ok_frame(id, value),
@@ -184,8 +197,26 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
         }
     }
 
+    // Dispatches already admitted may include writes, so let them finish. The
+    // socket writer has no useful work after the read half closes. Aborting it
+    // releases the socket and broadcast receivers without waiting for those
+    // dispatches to drop their response senders.
+    stop_writer(writer).await;
     drop(responses);
+}
+
+async fn stop_writer(writer: tauri::async_runtime::JoinHandle<()>) {
+    writer.abort();
     let _ = writer.await;
+}
+
+fn reserve_request_slot(slots: &Arc<Semaphore>) -> Result<OwnedSemaphorePermit, ArgmaxError> {
+    Arc::clone(slots).try_acquire_owned().map_err(|_| {
+        ArgmaxError::service(
+            "REMOTE_REQUEST_LIMIT",
+            "Too many remote requests are already running. Try again.",
+        )
+    })
 }
 
 pub fn parse_client_frame(text: &str) -> ClientMessage {
@@ -337,6 +368,41 @@ fn malformed_frame_error(detail: String) -> ArgmaxError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn request_admission_is_bounded_and_recovers_capacity() {
+        let slots = Arc::new(Semaphore::new(MAX_IN_FLIGHT_REQUESTS));
+        let mut admitted = Vec::new();
+        for _ in 0..MAX_IN_FLIGHT_REQUESTS {
+            admitted.push(reserve_request_slot(&slots).expect("request admitted"));
+        }
+
+        let error = reserve_request_slot(&slots).expect_err("request over the limit must fail");
+        let frame: Value = serde_json::from_str(&response_error_frame(17, &error))
+            .expect("limit error is a response frame");
+        assert_eq!(frame["id"], 17);
+        assert_eq!(frame["error"]["sub_code"], "REMOTE_REQUEST_LIMIT");
+
+        admitted.pop();
+        assert!(
+            reserve_request_slot(&slots).is_ok(),
+            "finishing a request restores capacity"
+        );
+    }
+
+    #[tokio::test]
+    async fn stopping_writer_releases_its_response_receiver() {
+        let (responses, mut queued) = mpsc::channel::<String>(1);
+        let writer =
+            tauri::async_runtime::spawn(async move { while queued.recv().await.is_some() {} });
+
+        stop_writer(writer).await;
+
+        assert!(
+            responses.send("late response".to_string()).await.is_err(),
+            "a disconnected client retained the response receiver"
+        );
+    }
 
     #[test]
     fn auth_gate_accepts_only_the_configured_token_as_the_first_frame() {

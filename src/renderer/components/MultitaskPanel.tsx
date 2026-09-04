@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type JSX } from "react";
+import { useEffect, type JSX } from "react";
 import type {
   AgentMode,
   ComposerAttachment,
@@ -9,6 +9,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useReviewState } from "../hooks/useReviewState.js";
+import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { SessionConversation } from "./SessionConversation.js";
@@ -24,31 +25,35 @@ import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
  * that owns the checkout already runs the checks.
  */
 export function MultitaskPanel({
-  events,
+  events = [],
   pendingMessages,
-  rawOutputs,
+  rawOutputs = [],
   session,
   taskLabel,
   workspace,
   onCancelQueuedMessage,
   onClearSession,
   onLoadSessionEvents,
+  onOpenDiff,
   onOpenFile,
+  onOpenReview,
   onOpenFullChat,
   onSendQueuedMessageNow,
   onSendSessionInput,
   onTerminateSession
 }: {
-  events: TimelineEvent[];
+  events?: TimelineEvent[];
   pendingMessages: PendingMessage[];
-  rawOutputs: RawProviderOutput[];
+  rawOutputs?: RawProviderOutput[];
   session: SessionSummary;
   taskLabel: string;
   workspace: WorkspaceSummary | null;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
+  onOpenDiff?: (path: string) => void;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+  onOpenReview?: () => void;
   onOpenFullChat?: (sessionId: string) => void;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
   onSendSessionInput: (
@@ -70,13 +75,10 @@ export function MultitaskPanel({
     void onLoadSessionEvents?.(session.id);
   }, [onLoadSessionEvents, session.id]);
 
-  const sessionEvents = useMemo(
-    () => events.filter((event) => event.sessionId === session.id),
-    [events, session.id]
-  );
-  const sessionRawOutputs = useMemo(
-    () => rawOutputs.filter((output) => output.sessionId === session.id),
-    [rawOutputs, session.id]
+  const { events: sessionEvents, rawOutputs: sessionRawOutputs } = useSessionTimeline(
+    session.id,
+    events,
+    rawOutputs
   );
 
   return (
@@ -100,7 +102,11 @@ export function MultitaskPanel({
         // commands against the same tree.
         project={null}
         rawOutputs={sessionRawOutputs}
-        review={review}
+        review={{
+          ...review,
+          openFile: onOpenDiff ?? review.openFile,
+          openChangesPanel: onOpenReview ?? review.openChangesPanel
+        }}
         session={session}
         workspaceCardEnabled={false}
         workspace={workspace}

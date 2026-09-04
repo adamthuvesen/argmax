@@ -60,6 +60,8 @@ Clicking the row opens the multitask as a tab in the review panel's Agents view,
 
 A multitask is a real session, so its tab is the ordinary chat surface rather than a read-only transcript: it can be answered and steered without leaving the chat you were watching. The panel takes every session's events (the pane-scoped `events` a subagent transcript reads belong to the parent), keeps the review state inert — the dock *is* the review panel — and drops the checks card, which the parent chat already carries for the same checkout. The composer carries an expand button — the way back to a full pane, for when a side errand turns into the work.
 
+Changed-file rows and their Review button open the containing dock's Changes view. The panel forwards those actions to the dock because its own inert review state has no rendered panel.
+
 The chat a multitask was dispatched from is reachable the other way too, once the multitask has a pane of its own: the session actions menu offers "Open launching chat". The docked panel has no actions menu — the chat that dispatched it is the one already on screen beside it.
 
 A surface that hands the pane no multitasks has no dock to host them — the phone — and its rows open the chat itself instead.

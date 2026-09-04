@@ -1,5 +1,5 @@
 import { ArrowUp, ChevronsUpDown, Folder, GitBranch, Paperclip, X } from "lucide-react";
-import { useCallback, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { PROVIDER_TITLE_MODEL } from "../../shared/providerModels.js";
 import { SCRATCH_PROJECT_ID, type ComposerAttachment, type ProjectSummary } from "../../shared/types.js";
 import { Mascot } from "../components/Mascot.js";
@@ -145,6 +145,8 @@ export function NewSessionScreen({
   const [launching, setLaunching] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [attachmentPickerHeight, setAttachmentPickerHeight] = useState<number | null>(null);
+  const screenRef = useRef<HTMLDivElement | null>(null);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
 
   const project = useMemo(
@@ -182,6 +184,14 @@ export function NewSessionScreen({
     carriedOnRetarget: promptCarriedOnRetarget,
     persist: !launching
   });
+
+  useEffect(() => {
+    const input = attachmentInputRef.current;
+    if (!input) return;
+    const onCancel = (): void => setAttachmentPickerHeight(null);
+    input.addEventListener("cancel", onCancel);
+    return () => input.removeEventListener("cancel", onCancel);
+  }, [attachmentInputRef]);
 
   // Same default as the desktop launcher: the stored global preference, then
   // the factory pick (Claude Opus 5) — not the project's configured model. The
@@ -283,7 +293,11 @@ export function NewSessionScreen({
       : `Current branch · ${project?.currentBranch ?? "main"}`;
 
   return (
-    <div className="mobile-new-screen">
+    <div
+      ref={screenRef}
+      className="mobile-new-screen"
+      style={attachmentPickerHeight === null ? undefined : { height: attachmentPickerHeight, flex: "none" }}
+    >
       <MobileScreenHeader onBack={onClose} backLabel="Back to chats" title="New chat" />
 
       <div className="mobile-new-body">
@@ -335,7 +349,10 @@ export function NewSessionScreen({
             hidden
             aria-hidden="true"
             tabIndex={-1}
-            onChange={onAttachmentInputChange}
+            onChange={(event) => {
+              setAttachmentPickerHeight(null);
+              onAttachmentInputChange(event);
+            }}
           />
           <PendingAttachments
             attachments={pendingAttachments}
@@ -362,7 +379,12 @@ export function NewSessionScreen({
               className="mobile-new-attach"
               aria-label="Attach file or screenshot"
               title="Attach file or screenshot"
-              onClick={openFilePicker}
+              onClick={() => {
+                // iOS anchors its menu at the tap, then dismisses the keyboard.
+                // Keep the composer there until the native picker closes.
+                setAttachmentPickerHeight(screenRef.current?.getBoundingClientRect().height ?? null);
+                openFilePicker();
+              }}
             >
               <Paperclip size={17} aria-hidden="true" />
               {pendingAttachments.length > 0 ? (

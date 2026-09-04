@@ -1,10 +1,12 @@
-use rusqlite::{Connection, OptionalExtension, Row};
+use std::collections::HashSet;
+
+use rusqlite::{params_from_iter, Connection, OptionalExtension, Row};
 use serde::Serialize;
 use serde_json::{json, Value};
 use specta::Type;
 
 use super::time::now_iso;
-use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 
 const INVALID_PAYLOAD_PREVIEW_CHARS: usize = 512;
 
@@ -57,10 +59,16 @@ pub struct SessionEventsSinceResult {
     pub raw_outputs: Vec<RawProviderOutput>,
     pub event_cursor: i64,
     pub raw_output_cursor: i64,
+    pub change_cursor: Option<i64>,
+    pub deleted_event_ids: Vec<String>,
+    pub deleted_raw_output_ids: Vec<String>,
+    pub reset_required: bool,
+    pub has_more: bool,
 }
 
 pub const SESSION_EVENT_PAGE_LIMIT: usize = 500;
 pub const SESSION_RAW_OUTPUT_PAGE_LIMIT: usize = 100;
+pub const SESSION_CHANGE_PAGE_LIMIT: usize = 500;
 // `session:agent-events` scans the session tail on every pane poll, so the
 // scan must stay bounded. An agent tail lives in the recent slice of its
 // session; sized to the renderer's protected-event budget.
@@ -83,7 +91,34 @@ pub fn list_session_events_since(
         raw_outputs: raw_output_rows,
         event_cursor: next_event_cursor,
         raw_output_cursor: next_raw_output_cursor,
+        change_cursor: None,
+        deleted_event_ids: Vec::new(),
+        deleted_raw_output_ids: Vec::new(),
+        reset_required: false,
+        has_more: false,
     })
+}
+
+/// Reads a session through the durable mutation sequence.
+///
+/// A cursorless request is an authoritative bounded backfill. Its rows and
+/// change cursor come from one read transaction, so a mutation cannot land
+/// between the backfill and its high-water mark. Supplying either legacy rowid
+/// cursor keeps the old paging behavior for older clients.
+pub fn list_session_changes_since(
+    connection: &Connection,
+    session_id: &str,
+    event_cursor: Option<i64>,
+    raw_output_cursor: Option<i64>,
+    change_cursor: Option<i64>,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    match change_cursor {
+        Some(cursor) => list_change_page(connection, session_id, cursor),
+        None if event_cursor.is_some() || raw_output_cursor.is_some() => {
+            list_session_events_since(connection, session_id, event_cursor, raw_output_cursor)
+        }
+        None => list_authoritative_tail(connection, session_id),
+    }
 }
 
 pub fn list_session_agent_events(
@@ -133,6 +168,11 @@ pub fn list_session_agent_events(
         raw_outputs: Vec::new(),
         event_cursor: next_event_cursor,
         raw_output_cursor: 0,
+        change_cursor: None,
+        deleted_event_ids: Vec::new(),
+        deleted_raw_output_ids: Vec::new(),
+        reset_required: false,
+        has_more: false,
     })
 }
 
@@ -618,6 +658,229 @@ pub fn count_move_arrivals(connection: &Connection, session_id: &str) -> ArgmaxR
         .map_err(sqlite_error)
 }
 
+fn list_authoritative_tail(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let events = list_event_rows(&transaction, session_id, None)?;
+    let raw_outputs = list_raw_output_rows(&transaction, session_id, None)?;
+    let change_cursor = change_feed_head(&transaction)?;
+    let event_cursor = max_row_cursor(&events, 0);
+    let raw_output_cursor = max_raw_row_cursor(&raw_outputs, 0);
+    transaction.commit().map_err(sqlite_error)?;
+
+    Ok(SessionEventsSinceResult {
+        events,
+        raw_outputs,
+        event_cursor,
+        raw_output_cursor,
+        change_cursor: Some(change_cursor),
+        deleted_event_ids: Vec::new(),
+        deleted_raw_output_ids: Vec::new(),
+        reset_required: true,
+        has_more: false,
+    })
+}
+
+fn list_change_page(
+    connection: &Connection,
+    session_id: &str,
+    cursor: i64,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    if cursor < 0 {
+        return Err(ArgmaxError::invalid(InvalidInputIssue::at(
+            vec!["changeCursor".to_owned()],
+            "CHANGE_CURSOR_NEGATIVE",
+            "change cursor must be zero or greater",
+        )));
+    }
+
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let head = change_feed_head(&transaction)?;
+    let pruned_through = transaction
+        .prepare_cached("SELECT pruned_through FROM session_change_watermarks WHERE session_id = ?")
+        .map_err(sqlite_error)?
+        .query_row((session_id,), |row| row.get::<_, i64>(0))
+        .optional()
+        .map_err(sqlite_error)?
+        .unwrap_or(0);
+
+    if cursor > head || cursor < pruned_through {
+        let events = list_event_rows(&transaction, session_id, None)?;
+        let raw_outputs = list_raw_output_rows(&transaction, session_id, None)?;
+        let event_cursor = max_row_cursor(&events, 0);
+        let raw_output_cursor = max_raw_row_cursor(&raw_outputs, 0);
+        transaction.commit().map_err(sqlite_error)?;
+        return Ok(SessionEventsSinceResult {
+            events,
+            raw_outputs,
+            event_cursor,
+            raw_output_cursor,
+            change_cursor: Some(head),
+            deleted_event_ids: Vec::new(),
+            deleted_raw_output_ids: Vec::new(),
+            reset_required: true,
+            has_more: false,
+        });
+    }
+
+    let changes = {
+        let mut statement = transaction
+            .prepare_cached(
+                r#"
+                SELECT sequence, entity_kind, entity_id
+                FROM session_changes
+                WHERE session_id = ? AND sequence > ? AND sequence <= ?
+                ORDER BY sequence ASC
+                LIMIT ?
+                "#,
+            )
+            .map_err(sqlite_error)?;
+        let rows = statement
+            .query_map(
+                (
+                    session_id,
+                    cursor,
+                    head,
+                    (SESSION_CHANGE_PAGE_LIMIT + 1) as i64,
+                ),
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .map_err(sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sqlite_error)?;
+        rows
+    };
+    let has_more = changes.len() > SESSION_CHANGE_PAGE_LIMIT;
+    let consumed = &changes[..changes.len().min(SESSION_CHANGE_PAGE_LIMIT)];
+    let next_cursor = if has_more {
+        consumed.last().map(|change| change.0).unwrap_or(cursor)
+    } else {
+        head
+    };
+
+    let mut event_ids = Vec::new();
+    let mut raw_output_ids = Vec::new();
+    let mut seen_event_ids = HashSet::new();
+    let mut seen_raw_output_ids = HashSet::new();
+    for (_, entity_kind, entity_id) in consumed {
+        match entity_kind.as_str() {
+            "event" if seen_event_ids.insert(entity_id.as_str()) => {
+                event_ids.push(entity_id.clone());
+            }
+            "raw_output" if seen_raw_output_ids.insert(entity_id.as_str()) => {
+                raw_output_ids.push(entity_id.clone());
+            }
+            _ => {}
+        }
+    }
+
+    let events = list_events_by_ids(&transaction, session_id, &event_ids)?;
+    let raw_outputs = list_raw_outputs_by_ids(&transaction, session_id, &raw_output_ids)?;
+    let current_event_ids = events
+        .iter()
+        .map(|event| event.id.as_str())
+        .collect::<HashSet<_>>();
+    let current_raw_output_ids = raw_outputs
+        .iter()
+        .map(|output| output.id.as_str())
+        .collect::<HashSet<_>>();
+    let deleted_event_ids = event_ids
+        .into_iter()
+        .filter(|id| !current_event_ids.contains(id.as_str()))
+        .collect();
+    let deleted_raw_output_ids = raw_output_ids
+        .into_iter()
+        .filter(|id| !current_raw_output_ids.contains(id.as_str()))
+        .collect();
+    let event_cursor = max_row_cursor(&events, 0);
+    let raw_output_cursor = max_raw_row_cursor(&raw_outputs, 0);
+    transaction.commit().map_err(sqlite_error)?;
+
+    Ok(SessionEventsSinceResult {
+        events,
+        raw_outputs,
+        event_cursor,
+        raw_output_cursor,
+        change_cursor: Some(next_cursor),
+        deleted_event_ids,
+        deleted_raw_output_ids,
+        reset_required: false,
+        has_more,
+    })
+}
+
+fn change_feed_head(connection: &Connection) -> ArgmaxResult<i64> {
+    connection
+        .query_row(
+            "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'session_changes'), 0)",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(sqlite_error)
+}
+
+fn list_events_by_ids(
+    connection: &Connection,
+    session_id: &str,
+    ids: &[String],
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = std::iter::repeat_n("?", ids.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at \
+         FROM events WHERE session_id = ? AND id IN ({placeholders}) ORDER BY rowid ASC"
+    );
+    let mut statement = connection.prepare(&sql).map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(
+            params_from_iter(std::iter::once(session_id).chain(ids.iter().map(String::as_str))),
+            event_row_to_timeline_event,
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+fn list_raw_outputs_by_ids(
+    connection: &Connection,
+    session_id: &str,
+    ids: &[String],
+) -> ArgmaxResult<Vec<RawProviderOutput>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = std::iter::repeat_n("?", ids.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT rowid AS row_cursor, id, session_id, stream, content, created_at \
+         FROM raw_outputs WHERE session_id = ? AND id IN ({placeholders}) ORDER BY rowid ASC"
+    );
+    let mut statement = connection.prepare(&sql).map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(
+            params_from_iter(std::iter::once(session_id).chain(ids.iter().map(String::as_str))),
+            raw_output_row_to_provider_output,
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
 fn list_event_rows(
     connection: &Connection,
     session_id: &str,
@@ -858,4 +1121,403 @@ fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
 
 fn json_error(error: serde_json::Error) -> ArgmaxError {
     ArgmaxError::service("JSON", error.to_string())
+}
+
+#[cfg(test)]
+mod change_feed_tests {
+    use super::*;
+    use crate::persistence::Database;
+
+    const TIME: &str = "2026-09-05T10:00:00.000Z";
+
+    #[test]
+    fn initial_tail_establishes_an_exact_revision_boundary() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "one");
+
+        let initial =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("initial");
+        assert!(initial.reset_required);
+        assert!(!initial.has_more);
+        assert_eq!(ids(&initial.events), vec!["e1"]);
+        assert_eq!(
+            initial.change_cursor,
+            Some(change_feed_head(&connection).expect("feed head"))
+        );
+
+        insert_event(&connection, "e2", "s1", "two");
+        let next = list_session_changes_since(&connection, "s1", None, None, initial.change_cursor)
+            .expect("incremental");
+        assert!(!next.reset_required);
+        assert_eq!(ids(&next.events), vec!["e2"]);
+        assert!(next.deleted_event_ids.is_empty());
+    }
+
+    #[test]
+    fn upgrading_existing_rows_starts_with_an_authoritative_tail_without_backfill() {
+        use crate::persistence::migrations::{run_migrations_with, MIGRATIONS};
+
+        let mut connection = Connection::open_in_memory().expect("open database");
+        run_migrations_with(&mut connection, &MIGRATIONS[..27]).expect("migrate through v27");
+        seed_connection(&connection);
+        insert_event(&connection, "legacy", "s1", "before upgrade");
+
+        run_migrations_with(&mut connection, MIGRATIONS).expect("apply v28");
+        let backfilled = connection
+            .query_row("SELECT COUNT(*) FROM session_changes", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("count revisions");
+        assert_eq!(backfilled, 0);
+
+        let initial =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("initial");
+        assert!(initial.reset_required);
+        assert_eq!(initial.change_cursor, Some(0));
+        assert_eq!(ids(&initial.events), vec!["legacy"]);
+
+        connection
+            .execute(
+                "UPDATE events SET message = 'after upgrade' WHERE id = 'legacy'",
+                [],
+            )
+            .expect("update legacy row");
+        let next = list_session_changes_since(&connection, "s1", None, None, initial.change_cursor)
+            .expect("incremental");
+        assert_eq!(next.events[0].message, "after upgrade");
+        assert_eq!(next.change_cursor, Some(1));
+    }
+
+    #[test]
+    fn revisions_cover_updates_deletes_raw_output_and_reparenting() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "one");
+        insert_raw(&connection, "r1", "s1", "raw one");
+        let s1_cursor = initial_cursor(&connection, "s1");
+        let s2_cursor = initial_cursor(&connection, "s2");
+
+        connection
+            .execute("UPDATE events SET message = 'updated' WHERE id = 'e1'", [])
+            .expect("update event");
+        connection
+            .execute(
+                "UPDATE raw_outputs SET content = 'raw updated' WHERE id = 'r1'",
+                [],
+            )
+            .expect("update raw");
+        let updated = list_session_changes_since(&connection, "s1", None, None, Some(s1_cursor))
+            .expect("updated page");
+        assert_eq!(updated.events[0].message, "updated");
+        assert_eq!(updated.raw_outputs[0].content, "raw updated");
+
+        let updated_cursor = updated.change_cursor.expect("updated cursor");
+        connection
+            .execute("UPDATE events SET session_id = 's2' WHERE id = 'e1'", [])
+            .expect("reparent event");
+        connection
+            .execute(
+                "UPDATE raw_outputs SET session_id = 's2' WHERE id = 'r1'",
+                [],
+            )
+            .expect("reparent raw output");
+
+        let old_session =
+            list_session_changes_since(&connection, "s1", None, None, Some(updated_cursor))
+                .expect("old session page");
+        assert_eq!(old_session.deleted_event_ids, vec!["e1"]);
+        assert_eq!(old_session.deleted_raw_output_ids, vec!["r1"]);
+        assert!(old_session.events.is_empty());
+        assert!(old_session.raw_outputs.is_empty());
+
+        let new_session =
+            list_session_changes_since(&connection, "s2", None, None, Some(s2_cursor))
+                .expect("new session page");
+        assert_eq!(ids(&new_session.events), vec!["e1"]);
+        assert_eq!(new_session.events[0].session_id, "s2");
+        assert_eq!(new_session.raw_outputs[0].id, "r1");
+        assert_eq!(new_session.raw_outputs[0].session_id, "s2");
+
+        connection
+            .execute("DELETE FROM raw_outputs WHERE id = 'r1'", [])
+            .expect("delete raw output");
+        let after_delete =
+            list_session_changes_since(&connection, "s2", None, None, new_session.change_cursor)
+                .expect("raw deletion page");
+        assert_eq!(after_delete.deleted_raw_output_ids, vec!["r1"]);
+
+        let operations: Vec<(String, String, String, String)> = connection
+            .prepare(
+                "SELECT session_id, entity_kind, entity_id, operation FROM session_changes ORDER BY sequence",
+            )
+            .expect("prepare operations")
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .expect("read operations")
+            .collect::<Result<_, _>>()
+            .expect("collect operations");
+        assert!(operations.contains(&(
+            "s1".to_owned(),
+            "event".to_owned(),
+            "e1".to_owned(),
+            "delete".to_owned(),
+        )));
+        assert!(operations.contains(&(
+            "s2".to_owned(),
+            "raw_output".to_owned(),
+            "r1".to_owned(),
+            "upsert".to_owned(),
+        )));
+        assert_eq!(
+            operations.last(),
+            Some(&(
+                "s2".to_owned(),
+                "raw_output".to_owned(),
+                "r1".to_owned(),
+                "delete".to_owned(),
+            ))
+        );
+    }
+
+    #[test]
+    fn ignored_id_collision_then_delete_is_visible() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "kept", "s1", "kept");
+        insert_event(&connection, "duplicate", "s1", "duplicate");
+        let cursor = initial_cursor(&connection, "s1");
+        let duplicate_rowid = connection
+            .query_row(
+                "SELECT rowid FROM events WHERE id = 'duplicate'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("duplicate rowid");
+
+        let changed = rewrite_trace_event(
+            &connection,
+            duplicate_rowid,
+            "kept",
+            &serde_json::json!({ "traceImported": true }),
+        )
+        .expect("ignored collision");
+        assert!(!changed);
+        delete_event_row(&connection, duplicate_rowid).expect("delete duplicate");
+
+        let page = list_session_changes_since(&connection, "s1", None, None, Some(cursor))
+            .expect("collision page");
+        assert_eq!(page.deleted_event_ids, vec!["duplicate"]);
+        assert!(page.events.is_empty());
+    }
+
+    #[test]
+    fn rolled_back_writes_leave_no_revision() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let cursor = initial_cursor(&connection, "s1");
+
+        let transaction = connection
+            .unchecked_transaction()
+            .expect("begin transaction");
+        insert_event(&transaction, "rolled-back", "s1", "temporary");
+        transaction.rollback().expect("rollback");
+
+        let page = list_session_changes_since(&connection, "s1", None, None, Some(cursor))
+            .expect("read after rollback");
+        assert!(page.events.is_empty());
+        assert!(page.deleted_event_ids.is_empty());
+        assert_eq!(page.change_cursor, Some(cursor));
+    }
+
+    #[test]
+    fn revision_pages_do_not_skip_a_busy_session() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "zero");
+        let cursor = initial_cursor(&connection, "s1");
+        for index in 0..=SESSION_CHANGE_PAGE_LIMIT {
+            connection
+                .execute(
+                    "UPDATE events SET message = ? WHERE id = 'e1'",
+                    (format!("message {index}"),),
+                )
+                .expect("update event");
+        }
+
+        let first = list_session_changes_since(&connection, "s1", None, None, Some(cursor))
+            .expect("first page");
+        assert!(first.has_more);
+        assert_eq!(
+            first.events.first().map(|event| event.message.as_str()),
+            Some("message 500")
+        );
+        let first_cursor = first.change_cursor.expect("first cursor");
+
+        let second = list_session_changes_since(&connection, "s1", None, None, Some(first_cursor))
+            .expect("second page");
+        assert!(!second.has_more);
+        assert_eq!(
+            second.events.first().map(|event| event.message.as_str()),
+            Some("message 500")
+        );
+        assert!(second.change_cursor.expect("second cursor") > first_cursor);
+    }
+
+    #[test]
+    fn a_pruned_session_cursor_and_future_cursor_request_replacement() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "current");
+        let head = change_feed_head(&connection).expect("head");
+        connection
+            .execute(
+                "INSERT INTO session_change_watermarks (session_id, pruned_through) VALUES ('s1', ?)",
+                (head,),
+            )
+            .expect("watermark");
+
+        let stale = list_session_changes_since(&connection, "s1", None, None, Some(head - 1))
+            .expect("stale reset");
+        assert!(stale.reset_required);
+        assert_eq!(ids(&stale.events), vec!["e1"]);
+        assert_eq!(stale.change_cursor, Some(head));
+
+        let future = list_session_changes_since(&connection, "s1", None, None, Some(head + 100))
+            .expect("future reset");
+        assert!(future.reset_required);
+        assert_eq!(future.change_cursor, Some(head));
+    }
+
+    #[test]
+    fn trigger_pruning_records_the_session_watermark_and_keeps_the_head() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "one");
+        connection
+            .execute(
+                "UPDATE sqlite_sequence SET seq = 50175 WHERE name = 'session_changes'",
+                [],
+            )
+            .expect("advance sequence near retention boundary");
+        connection
+            .execute("UPDATE events SET message = 'two' WHERE id = 'e1'", [])
+            .expect("trigger pruning");
+
+        let retained: Vec<i64> = connection
+            .prepare("SELECT sequence FROM session_changes ORDER BY sequence")
+            .expect("prepare retained revisions")
+            .query_map([], |row| row.get(0))
+            .expect("read retained revisions")
+            .collect::<Result<_, _>>()
+            .expect("collect retained revisions");
+        let watermark = connection
+            .query_row(
+                "SELECT pruned_through FROM session_change_watermarks WHERE session_id = 's1'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("read watermark");
+        assert_eq!(retained, vec![50176]);
+        assert_eq!(watermark, 1);
+
+        connection
+            .execute("DELETE FROM sessions WHERE id = 's1'", [])
+            .expect("delete session");
+        let orphan_counts = connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM session_changes WHERE session_id = 's1'),
+                   (SELECT COUNT(*) FROM session_change_watermarks WHERE session_id = 's1')",
+                [],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .expect("count orphan feed rows");
+        assert_eq!(orphan_counts, (0, 0));
+        assert_eq!(
+            change_feed_head(&connection).expect("head survives empty feed"),
+            50177
+        );
+    }
+
+    #[test]
+    fn negative_change_cursor_is_rejected() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let error = list_session_changes_since(&connection, "s1", None, None, Some(-1))
+            .expect_err("negative cursor");
+        assert!(matches!(error, ArgmaxError::InvalidInput { .. }));
+    }
+
+    fn seeded_database() -> Database {
+        let database = Database::open_in_memory().expect("open database");
+        let connection = database.connection();
+        seed_connection(&connection);
+        drop(connection);
+        database
+    }
+
+    fn seed_connection(connection: &Connection) {
+        connection
+            .execute(
+                "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at) VALUES ('p1', 'Project', '/tmp/change-feed-project', 'main', '/tmp/worktrees', ?, ?)",
+                (TIME, TIME),
+            )
+            .expect("insert project");
+        connection
+            .execute(
+                "INSERT INTO workspaces (id, project_id, task_label, branch, base_ref, path, state, last_activity_at, created_at, updated_at) VALUES ('w1', 'p1', 'Task', 'main', 'main', '/tmp/change-feed-workspace', 'running', ?, ?, ?)",
+                (TIME, TIME, TIME),
+            )
+            .expect("insert workspace");
+        for session_id in ["s1", "s2"] {
+            connection
+                .execute(
+                    "INSERT INTO sessions (id, workspace_id, provider, model_label, prompt, state, attention, started_at, last_activity_at) VALUES (?, 'w1', 'codex', 'Default', 'Prompt', 'running', 'normal', ?, ?)",
+                    (session_id, TIME, TIME),
+                )
+                .expect("insert session");
+        }
+    }
+
+    fn insert_event(connection: &Connection, id: &str, session_id: &str, message: &str) {
+        persist_timeline_event(
+            connection,
+            &PersistTimelineEventInput {
+                id: id.to_owned(),
+                session_id: session_id.to_owned(),
+                r#type: "message.completed".to_owned(),
+                message: message.to_owned(),
+                payload: serde_json::json!({}),
+                created_at: Some(TIME.to_owned()),
+            },
+        )
+        .expect("insert event");
+    }
+
+    fn insert_raw(connection: &Connection, id: &str, session_id: &str, content: &str) {
+        persist_raw_output(
+            connection,
+            &PersistRawOutputInput {
+                id: id.to_owned(),
+                session_id: session_id.to_owned(),
+                stream: "stdout".to_owned(),
+                content: content.to_owned(),
+                created_at: Some(TIME.to_owned()),
+            },
+        )
+        .expect("insert raw output");
+    }
+
+    fn initial_cursor(connection: &Connection, session_id: &str) -> i64 {
+        list_session_changes_since(connection, session_id, None, None, None)
+            .expect("initial tail")
+            .change_cursor
+            .expect("initial cursor")
+    }
+
+    fn ids(events: &[TimelineEvent]) -> Vec<&str> {
+        events.iter().map(|event| event.id.as_str()).collect()
+    }
 }

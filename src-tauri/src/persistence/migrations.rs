@@ -219,6 +219,15 @@ pub static USAGE_SCAN_COLUMNS: phf::Map<&'static str, &'static [&'static str]> =
     "usage_scan_meta" => &["key", "value"] as &'static [&'static str],
 };
 
+pub static SESSION_CHANGE_FEED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "session_changes" => &[
+        "entity_id", "entity_kind", "operation", "sequence", "session_id",
+    ] as &'static [&'static str],
+    "session_change_watermarks" => &[
+        "pruned_through", "session_id",
+    ] as &'static [&'static str],
+};
+
 // Post-v19 `routines` shape: the scheduled-task table as created.
 pub static ROUTINES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "routines" => &[
@@ -330,6 +339,17 @@ pub static GH_PR_HEAD_REF_NAME_COLUMNS: phf::Map<&'static str, &'static [&'stati
     "gh_pr" => &[
         "head_ref_name", "head_sha", "last_seen_check_state", "notified_at",
         "pr_number", "pr_state", "session_id", "updated_at",
+    ] as &'static [&'static str],
+};
+
+// Post-v30 `gh_pr` shape: records GitHub's authoritative PR creation and
+// merge timestamps. The renderer uses these to distinguish a new milestone
+// from the first successful observation of an older pull request.
+pub static GH_PR_MILESTONE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "gh_pr" => &[
+        "head_ref_name", "head_sha", "last_seen_check_state", "notified_at",
+        "pr_created_at", "pr_merged_at", "pr_number", "pr_state",
+        "session_id", "updated_at",
     ] as &'static [&'static str],
 };
 
@@ -555,7 +575,142 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &USAGE_SCAN_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 28,
+        name: "session_change_feed",
+        up: SESSION_CHANGE_FEED,
+        affected_tables: &["session_changes", "session_change_watermarks"],
+        expected_columns: &SESSION_CHANGE_FEED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 29,
+        name: "session_change_feed_cleanup",
+        up: SESSION_CHANGE_FEED_CLEANUP,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 30,
+        name: "gh_pr_milestone_timestamps",
+        up: GH_PR_MILESTONE_TIMESTAMPS,
+        affected_tables: &["gh_pr"],
+        expected_columns: &GH_PR_MILESTONE_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+const GH_PR_MILESTONE_TIMESTAMPS: &str = r#"
+ALTER TABLE gh_pr ADD COLUMN pr_created_at TEXT;
+ALTER TABLE gh_pr ADD COLUMN pr_merged_at TEXT;
+"#;
+
+// Session removal is authoritative metadata: the renderer drops the matching
+// transcript bucket instead of replaying each child-row deletion. Cascades run
+// before this parent AFTER DELETE trigger, so it also removes revisions written
+// by the event and raw-output delete triggers. The one-time deletes repair any
+// orphan left by a database that briefly ran v28 on its own.
+const SESSION_CHANGE_FEED_CLEANUP: &str = r#"
+DELETE FROM session_changes
+WHERE NOT EXISTS (
+  SELECT 1 FROM sessions WHERE sessions.id = session_changes.session_id
+);
+DELETE FROM session_change_watermarks
+WHERE NOT EXISTS (
+  SELECT 1 FROM sessions WHERE sessions.id = session_change_watermarks.session_id
+);
+
+CREATE TRIGGER session_changes_sessions_after_delete
+AFTER DELETE ON sessions BEGIN
+  DELETE FROM session_changes WHERE session_id = old.id;
+  DELETE FROM session_change_watermarks WHERE session_id = old.id;
+END;
+"#;
+
+// A durable sequence for mutations whose SQLite rowid does not move. The
+// renderer can therefore recover event rewrites, deletes, and session
+// reparenting after a stalled live-update callback. Existing transcript rows
+// are intentionally not backfilled: the first revision-aware read returns an
+// authoritative bounded tail and the sequence high-water mark atomically.
+//
+// The feed retains the newest 50,000 mutations globally. Before pruning, the
+// per-session watermark records exactly which sessions lost history, avoiding
+// needless resets for sparse sessions. The AUTOINCREMENT sequence survives an
+// empty feed through sqlite_sequence.
+const SESSION_CHANGE_FEED: &str = r#"
+CREATE TABLE session_changes (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  entity_kind TEXT NOT NULL CHECK (entity_kind IN ('event', 'raw_output')),
+  entity_id TEXT NOT NULL,
+  operation TEXT NOT NULL CHECK (operation IN ('upsert', 'delete'))
+);
+
+CREATE INDEX idx_session_changes_session_sequence
+  ON session_changes(session_id, sequence);
+
+CREATE TABLE session_change_watermarks (
+  session_id TEXT PRIMARY KEY,
+  pruned_through INTEGER NOT NULL
+);
+
+CREATE TRIGGER session_changes_prune_after_insert
+AFTER INSERT ON session_changes
+WHEN new.sequence % 256 = 0 BEGIN
+  INSERT INTO session_change_watermarks (session_id, pruned_through)
+    SELECT session_id, MAX(sequence)
+    FROM session_changes
+    WHERE sequence <= new.sequence - 49745
+    GROUP BY session_id
+    ON CONFLICT(session_id) DO UPDATE
+      SET pruned_through = MAX(pruned_through, excluded.pruned_through);
+  DELETE FROM session_changes
+    WHERE sequence <= new.sequence - 49745;
+END;
+
+CREATE TRIGGER session_changes_events_after_insert
+AFTER INSERT ON events BEGIN
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    VALUES (new.session_id, 'event', new.id, 'upsert');
+END;
+
+CREATE TRIGGER session_changes_events_after_update
+AFTER UPDATE ON events BEGIN
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    SELECT old.session_id, 'event', old.id, 'delete'
+    WHERE old.session_id <> new.session_id OR old.id <> new.id;
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    VALUES (new.session_id, 'event', new.id, 'upsert');
+END;
+
+CREATE TRIGGER session_changes_events_after_delete
+AFTER DELETE ON events BEGIN
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    VALUES (old.session_id, 'event', old.id, 'delete');
+END;
+
+CREATE TRIGGER session_changes_raw_outputs_after_insert
+AFTER INSERT ON raw_outputs BEGIN
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    VALUES (new.session_id, 'raw_output', new.id, 'upsert');
+END;
+
+CREATE TRIGGER session_changes_raw_outputs_after_update
+AFTER UPDATE ON raw_outputs BEGIN
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    SELECT old.session_id, 'raw_output', old.id, 'delete'
+    WHERE old.session_id <> new.session_id OR old.id <> new.id;
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    VALUES (new.session_id, 'raw_output', new.id, 'upsert');
+END;
+
+CREATE TRIGGER session_changes_raw_outputs_after_delete
+AFTER DELETE ON raw_outputs BEGIN
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    VALUES (old.session_id, 'raw_output', old.id, 'delete');
+END;
+"#;
 
 // Why a launched session exists, not just who launched it. `agent` is a
 // session an agent started for itself through `session_launch`; `multitask` is
@@ -1516,6 +1671,9 @@ mod tests {
                 (25, compute_migration_checksum(SESSION_MESSAGES)),
                 (26, compute_migration_checksum(SESSION_LAUNCH_KIND)),
                 (27, compute_migration_checksum(USAGE_SCAN)),
+                (28, compute_migration_checksum(SESSION_CHANGE_FEED)),
+                (29, compute_migration_checksum(SESSION_CHANGE_FEED_CLEANUP)),
+                (30, compute_migration_checksum(GH_PR_MILESTONE_TIMESTAMPS)),
             ]
         );
 

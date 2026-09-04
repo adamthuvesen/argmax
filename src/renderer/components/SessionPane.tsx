@@ -30,6 +30,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
+import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
 import { CHAT_PANE_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
 import { lastTurnEditedPaths } from "../lib/lastTurnFiles.js";
@@ -66,7 +67,7 @@ export function SessionPane({
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
   defaultTurnChangesExpanded,
-  events,
+  events = [],
   fastModeEnabled = false,
   isFocused = true,
   onClose,
@@ -94,7 +95,7 @@ export function SessionPane({
   onClearSession,
   onForkSession,
   project,
-  rawOutputs,
+  rawOutputs = [],
   registerPaletteFileContext,
   rightPanelToggleSignal,
   debugLogToggleSignal,
@@ -109,7 +110,7 @@ export function SessionPane({
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
   defaultTurnChangesExpanded?: boolean;
-  events: TimelineEvent[];
+  events?: TimelineEvent[];
   fastModeEnabled?: boolean;
   /** When false, the pane skips its document-level keyboard shortcuts so only the focused pane reacts. */
   isFocused?: boolean;
@@ -153,7 +154,7 @@ export function SessionPane({
   onClearSession: (sessionId: string) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
   project: ProjectSummary | null;
-  rawOutputs: RawProviderOutput[];
+  rawOutputs?: RawProviderOutput[];
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
   session: SessionSummary | null;
@@ -176,13 +177,12 @@ export function SessionPane({
     () => (workspace ? { kind: "workspace", workspace } : null),
     [workspace]
   );
-  // Stable per-session slices: a delta for another session leaves these
-  // identity-equal, so the conversation's derived memos and memoized turns skip
-  // work instead of re-deriving on every unrelated delta (matters most in the
-  // multi-pane grid).
   const visibleApprovals = useStableFilter(approvals, sessionId, (approval) => approval.sessionId === sessionId);
-  const visibleEvents = useStableFilter(events, sessionId, (event) => event.sessionId === sessionId);
-  const visibleRawOutputs = useStableFilter(rawOutputs, sessionId, (output) => output.sessionId === sessionId);
+  const { events: visibleEvents, rawOutputs: visibleRawOutputs } = useSessionTimeline(
+    sessionId,
+    events,
+    rawOutputs
+  );
   // Which files the agent wrote in its newest turn, for the review panel's
   // "Last turn" scope. Null without a session: there is no turn to scope to.
   const lastTurnPaths = useMemo(() => lastTurnEditedPaths(visibleEvents), [visibleEvents]);
@@ -563,7 +563,7 @@ export function SessionPane({
           onToggleWorkspaceCard={handleToggleWorkspaceCard}
           pendingApprovalCount={visibleApprovals.filter((a) => a.status === "pending").length}
           project={project}
-          rawOutputs={rawOutputs}
+          rawOutputs={visibleRawOutputs}
           review={reviewState}
           session={session}
           workspace={workspace}
@@ -629,9 +629,7 @@ export function SessionPane({
               onLoadSessionEvents,
               onOpenAgent: handleOpenAgent,
               multitasks,
-              multitaskEvents: events,
               pendingMessages,
-              rawOutputs,
               onCancelQueuedMessage,
               onClearSession,
               onOpenFullChat: onOpenSession,

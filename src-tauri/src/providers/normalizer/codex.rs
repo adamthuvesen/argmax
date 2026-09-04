@@ -175,6 +175,9 @@ pub fn normalize_error_item(
     let message = string_value(item.get("message"))
         .or_else(|| string_value(item.get("text")))
         .unwrap_or("Codex reported an error.");
+    if message.starts_with(super::CODEX_SKILL_BUDGET_NOTICE_PREFIX) {
+        return None;
+    }
     Some(timeline_event(
         event,
         "error",
@@ -905,6 +908,29 @@ mod tests {
             &mut context,
         );
         assert!(result.events.is_empty());
+    }
+
+    #[test]
+    fn codex_skill_budget_error_item_is_dropped() {
+        for budget in ["the skills", "the 2% skills"] {
+            let mut context = NormalizerSessionContext::default();
+            let result = normalize_provider_event(
+                ProviderId::Codex,
+                &output_event(
+                    &json!({
+                        "type": "item.completed",
+                        "item": {
+                            "id": "item_0",
+                            "type": "error",
+                            "message": format!("Skill descriptions were shortened to fit {budget} context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest.")
+                        }
+                    })
+                    .to_string(),
+                ),
+                &mut context,
+            );
+            assert!(result.events.is_empty());
+        }
     }
 
     #[test]

@@ -1,7 +1,7 @@
 import { modelLabelForReference, REASONING_EFFORTS } from "../../shared/providerModels.js";
 import type { ProviderId, TimelineEvent } from "../../shared/types.js";
-import { stringValue } from "../../shared/typeGuards.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import { effortLabel } from "./models.js";
 import { buildSessionToolCalls } from "./sessionConversationModel.js";
 import { type ToolCall } from "./toolCalls.js";
@@ -47,12 +47,6 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
-function payloadObject(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
 function receiverThreadIdsFromTool(tool: ToolCall | null): string[] {
   if (!tool) return [];
   return [
@@ -61,27 +55,17 @@ function receiverThreadIdsFromTool(tool: ToolCall | null): string[] {
   ];
 }
 
-function codexAgentMessageThreadId(event: TimelineEvent): string | null {
-  if (event.payload.item_type !== "agent_message") {
-    const item = payloadObject(event.payload.item);
-    if (item?.type !== "agent_message") return null;
-  }
-  return stringValue(event.payload.thread_id)
-    ?? stringValue(event.payload.sender_thread_id)
-    ?? stringValue(payloadObject(event.payload.item)?.thread_id)
-    ?? stringValue(payloadObject(event.payload.item)?.sender_thread_id);
-}
-
 function isChildMessage(
   event: TimelineEvent,
   parentToolUseId: string,
   receiverThreadIds: readonly string[]
 ): boolean {
-  if (event.type !== "message.delta" && event.type !== "message.completed" && event.type !== "error") {
+  const decoded = decodeTimelineEvent(event);
+  if ((decoded.kind !== "message" || decoded.role !== "assistant") && decoded.kind !== "error") {
     return false;
   }
-  if (event.payload.parent_tool_use_id === parentToolUseId) return true;
-  const threadId = codexAgentMessageThreadId(event);
+  if (decoded.parentToolUseId === parentToolUseId) return true;
+  const threadId = decoded.providerThreadId;
   return threadId !== null && receiverThreadIds.includes(threadId);
 }
 
@@ -111,11 +95,13 @@ function reportedRunModel(
   parentToolUseId: string
 ): { modelId: string; effort: string | null } | null {
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    const payload = events[index]?.payload;
-    if (!payload || payload.parent_tool_use_id !== parentToolUseId) continue;
-    const modelId = nonBlankText(payload.agentModelId);
+    const event = events[index];
+    if (!event) continue;
+    const decoded = decodeTimelineEvent(event);
+    if (decoded.parentToolUseId !== parentToolUseId) continue;
+    const modelId = decoded.agentModelId;
     if (!modelId) continue;
-    return { modelId, effort: nonBlankText(payload.agentReasoningEffort) };
+    return { modelId, effort: decoded.agentReasoningEffort };
   }
   return null;
 }

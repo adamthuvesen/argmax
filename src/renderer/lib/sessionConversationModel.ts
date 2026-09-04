@@ -1,67 +1,55 @@
 import type { EventType, TimelineEvent } from "../../shared/types.js";
 import { stringValue } from "../../shared/typeGuards.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
-import { COMPACTION_FINISHED, COMPACTION_STARTED } from "./compaction.js";
-import { MULTITASK_FINISHED, MULTITASK_LAUNCHED } from "./multitask.js";
-import { SESSION_MOVED } from "./projectMove.js";
-import { PROVIDER_CHANGED } from "./providerSwitch.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import {
   cleanToolInput,
-  detectToolError,
-  extractCompletionCorrelationId,
-  extractProviderInvocationId,
   extractToolError,
   extractToolInput,
   extractToolInputPreview,
-  extractToolName,
   extractToolOutput,
-  extractToolUseId,
   getToolTypeBucket,
   isHiddenToolName,
   type ToolCall
 } from "./toolCalls.js";
 import {
   advanceTurnBoundary,
-  isSubAgentProseEcho,
   isSupersededAnswerDelta,
   type TurnBoundary
 } from "./turnBoundaries.js";
 
-function isConversationEventType(type: string): boolean {
-  return (
-    type === "user.message" ||
-    type === "message.delta" ||
-    type === "message.completed" ||
-    type === "error" ||
-    type === COMPACTION_STARTED ||
-    type === COMPACTION_FINISHED ||
-    type === SESSION_MOVED ||
-    type === PROVIDER_CHANGED ||
-    type === MULTITASK_LAUNCHED ||
-    type === MULTITASK_FINISHED
-  );
-}
-
 function isPayloadTruncationMarker(event: TimelineEvent): boolean {
-  return event.type === "error" && event.message === "event payload truncated" && "truncatedEventId" in event.payload;
+  const canonical = decodeTimelineEvent(event);
+  return canonical.kind === "error" && canonical.isPayloadTruncation;
 }
 
 function isConversationVisible(event: TimelineEvent): boolean {
+  const canonical = decodeTimelineEvent(event);
+  const isVisibleKind =
+    canonical.kind === "message" ||
+    canonical.kind === "error" ||
+    canonical.kind === "multitask" ||
+    (canonical.kind === "lifecycle" &&
+      (canonical.name === "compacting" ||
+        canonical.name === "compacted" ||
+        canonical.name === "moved" ||
+        canonical.name === "provider-changed"));
   return (
-    event.payload.raw !== true &&
+    !canonical.isRaw &&
     !isPayloadTruncationMarker(event) &&
-    !isSubAgentProseEcho(event) &&
-    isConversationEventType(event.type) &&
+    !(canonical.kind === "message" && canonical.childProse) &&
+    isVisibleKind &&
     event.message !== "turn.completed"
   );
 }
 
 function isToolBoundaryEvent(event: TimelineEvent): boolean {
-  return event.type === "command.started";
+  const canonical = decodeTimelineEvent(event);
+  return canonical.kind === "tool" && canonical.phase === "started";
 }
 
 function isSupersededTraceEvent(event: TimelineEvent): boolean {
-  return event.payload.traceSyntheticSuperseded === true;
+  return decodeTimelineEvent(event).traceSuperseded;
 }
 
 /** Persisted row order when both rows carry a cursor, wall-clock otherwise. */
@@ -92,7 +80,8 @@ export function eventsAfterLatestClear(events: readonly TimelineEvent[]): Timeli
 export function latestClearEvent(events: readonly TimelineEvent[]): TimelineEvent | null {
   let latest: TimelineEvent | null = null;
   for (const event of events) {
-    if (event.type !== SESSION_CLEARED) continue;
+    const canonical = decodeTimelineEvent(event);
+    if (canonical.kind !== "lifecycle" || canonical.name !== "cleared") continue;
     if (latest === null || compareEventOrder(event, latest) > 0) {
       latest = event;
     }
@@ -312,13 +301,14 @@ function isStillRunningAgentLaunch(
   completion: TimelineEvent | null
 ): boolean {
   if (getToolTypeBucket(name) !== "agent") return false;
-  if (!completion || detectToolError(completion.payload)) return false;
+  if (!completion) return false;
+  const canonical = decodeTimelineEvent(completion);
+  if (canonical.kind !== "tool" || canonical.outcome === "failed") return false;
   // A trace-synthesized completion represents the child lifecycle itself,
   // unlike Codex's normal spawn completion, which only says the child started.
-  if (completion.payload.traceSyntheticLaunch === true) return false;
+  if (canonical.traceSyntheticLaunch) return false;
   if (name.toLowerCase() === "spawn_agent") return true;
-  const status = stringValue(completion.payload.status);
-  if (status === "in_progress" || status === "running" || status === "started") return true;
+  if (canonical.running) return true;
   if (output && isInternalAgentLaunchMetadata(output)) return true;
   const runInBackground = input.run_in_background ?? input.runInBackground;
   if (runInBackground === true || runInBackground === "true") return true;
@@ -347,7 +337,8 @@ export function buildConversationEvents(events: readonly TimelineEvent[]): Timel
   for (let index = ascending.length - 1; index >= 0; index -= 1) {
     const event = ascending[index];
     if (!event) continue;
-    if (event.type === "message.delta") {
+    const canonical = decodeTimelineEvent(event);
+    if (canonical.kind === "message" && canonical.phase === "delta") {
       if (!isSupersededAnswerDelta(event, nextBoundary.get(event.sessionId))) {
         visibleIds.add(event.id);
       }
@@ -369,8 +360,17 @@ export function hasRenderableSessionContent(
   events: readonly TimelineEvent[]
 ): boolean {
   return (
-    conversationEvents.some((event) => event.type !== "user.message") ||
-    events.some((event) => event.type === "command.started" || event.type === "session.streaming")
+    conversationEvents.some((event) => {
+      const canonical = decodeTimelineEvent(event);
+      return canonical.kind !== "message" || canonical.role !== "user";
+    }) ||
+    events.some((event) => {
+      const canonical = decodeTimelineEvent(event);
+      return (
+        (canonical.kind === "tool" && canonical.phase === "started") ||
+        (canonical.kind === "lifecycle" && canonical.name === "streaming")
+      );
+    })
   );
 }
 
@@ -407,13 +407,14 @@ function correlateToolEvents(events: readonly TimelineEvent[]): StartedTool[] {
   const started: StartedTool[] = [];
   const pendingByToolUseId = new Map<string, StartedTool[]>();
   for (const event of oldestFirst(events)) {
-    if (isSupersededTraceEvent(event)) continue;
-    if (event.type === "command.started") {
-      const toolUseId = extractToolUseId(event.payload) ?? event.id;
+    const canonical = decodeTimelineEvent(event);
+    if (canonical.traceSuperseded || canonical.kind !== "tool") continue;
+    if (canonical.phase === "started") {
+      const toolUseId = canonical.toolUseId ?? event.id;
       const start: StartedTool = {
         event,
         toolUseId,
-        invocationId: extractProviderInvocationId(event.payload),
+        invocationId: canonical.invocationId,
         completion: null
       };
       started.push(start);
@@ -422,12 +423,12 @@ function correlateToolEvents(events: readonly TimelineEvent[]): StartedTool[] {
       else pendingByToolUseId.set(toolUseId, [start]);
       continue;
     }
-    if (event.type !== "command.completed") continue;
-    const toolUseId = extractCompletionCorrelationId(event.payload);
+    if (canonical.phase !== "completed") continue;
+    const toolUseId = canonical.toolUseId;
     if (!toolUseId) continue;
     const pending = pendingByToolUseId.get(toolUseId);
     if (!pending) continue;
-    const index = findJoinIndex(pending, extractProviderInvocationId(event.payload));
+    const index = findJoinIndex(pending, canonical.invocationId);
     if (index === -1) continue;
     const [match] = pending.splice(index, 1);
     if (match) match.completion = event;
@@ -439,15 +440,44 @@ export function buildSessionToolCalls(
   events: readonly TimelineEvent[],
   sessionRunning = true
 ): ToolCall[] {
-  const visibleProgressEvents = events.filter(isConversationVisible);
+  let latestProgressTimestamp = "";
+  let latestCursorlessProgressTimestamp = "";
+  let latestProgressCursor: number | undefined;
+  let latestProgressCursorTimestamp = "";
+  for (const event of events) {
+    if (!isConversationVisible(event)) continue;
+    if (event.createdAt.localeCompare(latestProgressTimestamp) > 0) {
+      latestProgressTimestamp = event.createdAt;
+    }
+    if (event.rowCursor === undefined) {
+      if (event.createdAt.localeCompare(latestCursorlessProgressTimestamp) > 0) {
+        latestCursorlessProgressTimestamp = event.createdAt;
+      }
+    } else if (
+      latestProgressCursor === undefined ||
+      event.rowCursor > latestProgressCursor ||
+      (event.rowCursor === latestProgressCursor &&
+        event.createdAt.localeCompare(latestProgressCursorTimestamp) > 0)
+    ) {
+      latestProgressCursor = event.rowCursor;
+      latestProgressCursorTimestamp = event.createdAt;
+    }
+  }
   const tools = correlateToolEvents(events)
     .filter(({ event }) => {
-      const rawName = stringValue(event.payload.name);
-      return rawName === null || !isHiddenToolName(rawName);
+      const canonical = decodeTimelineEvent(event);
+      return (
+        canonical.kind === "tool" &&
+        (canonical.providerName === null || !isHiddenToolName(canonical.providerName))
+      );
     })
     .map(({ event, toolUseId, completion }) => {
-      const providerName = stringValue(event.payload.name);
-      const name = extractToolName(event.payload);
+      const canonicalStart = decodeTimelineEvent(event);
+      if (canonicalStart.kind !== "tool") {
+        throw new Error("correlated tool start decoded as a non-tool event");
+      }
+      const providerName = canonicalStart.providerName;
+      const name = canonicalStart.name;
       const startInput = extractToolInput(event.payload);
       const completionInput = completion ? extractToolInput(completion.payload) : {};
       const mergedInput = Object.keys(completionInput).length > 0
@@ -455,8 +485,15 @@ export function buildSessionToolCalls(
         : startInput;
       const input = cleanToolInput(name, mergedInput, providerName);
       const output = completion ? extractToolOutput(completion.payload) : null;
-      const isError = completion ? detectToolError(completion.payload) : false;
-      const hasLaterVisibleProgress = visibleProgressEvents.some((progress) => eventIsAfter(progress, event));
+      const canonicalCompletion = completion ? decodeTimelineEvent(completion) : null;
+      const isError = canonicalCompletion?.kind === "tool" && canonicalCompletion.outcome === "failed";
+      const hasLaterVisibleProgress = event.rowCursor === undefined
+        ? latestProgressTimestamp.localeCompare(event.createdAt) > 0
+        : (latestProgressCursor !== undefined &&
+            (latestProgressCursor > event.rowCursor ||
+              (latestProgressCursor === event.rowCursor &&
+                latestProgressCursorTimestamp.localeCompare(event.createdAt) > 0))) ||
+          latestCursorlessProgressTimestamp.localeCompare(event.createdAt) > 0;
       // A started tool with no matching `command.completed` is normally still
       // running — but a completion can be lost. An image `Read`'s tool_result
       // embeds a base64 blob that overflows the normalizer's per-line parse cap
@@ -481,8 +518,7 @@ export function buildSessionToolCalls(
         status === "done" && sessionRunning && isStillRunningAgentLaunch(name, input, output, completion)
           ? "running"
           : status;
-      const rawParent = event.payload.parent_tool_use_id;
-      const parentToolUseId = typeof rawParent === "string" && rawParent.length > 0 ? rawParent : null;
+      const parentToolUseId = canonicalStart.parentToolUseId;
       return {
         id: event.id,
         toolUseId,
@@ -532,12 +568,10 @@ export function subAgentToolUseIds(tools: readonly ToolCall[]): Set<string> {
  * often does not, so the id set from `subAgentToolUseIds` carries the linkage.
  */
 function isSubAgentToolEvent(event: TimelineEvent, childToolUseIds: ReadonlySet<string>): boolean {
-  if (event.type !== "command.started" && event.type !== "command.completed") return false;
-  const rawParent = event.payload.parent_tool_use_id;
-  if (typeof rawParent === "string" && rawParent.length > 0) return true;
-  const toolUseId = event.type === "command.started"
-    ? extractToolUseId(event.payload)
-    : extractCompletionCorrelationId(event.payload);
+  const canonical = decodeTimelineEvent(event);
+  if (canonical.kind !== "tool" || canonical.phase === "output") return false;
+  if (canonical.parentToolUseId !== null) return true;
+  const toolUseId = canonical.toolUseId;
   return typeof toolUseId === "string" && toolUseId.length > 0 && childToolUseIds.has(toolUseId);
 }
 
@@ -547,10 +581,11 @@ function isParentVisibleEvent(
   event: TimelineEvent,
   childToolUseIds: ReadonlySet<string>
 ): boolean {
+  const canonical = decodeTimelineEvent(event);
   return (
-    event.payload.raw !== true &&
+    !canonical.isRaw &&
     !isPayloadTruncationMarker(event) &&
-    !isSubAgentProseEcho(event) &&
+    !(canonical.kind === "message" && canonical.childProse) &&
     !isSubAgentToolEvent(event, childToolUseIds) &&
     event.message !== "turn.completed"
   );
@@ -561,13 +596,14 @@ export function lastSignificantSessionEvent(
   childToolUseIds: ReadonlySet<string> = new Set<string>()
 ): TimelineEvent | undefined {
   return events.find(
-    (event) =>
-      isParentVisibleEvent(event, childToolUseIds) &&
-      (event.type === "user.message" ||
-        event.type === "message.delta" ||
-        event.type === "message.completed" ||
-        event.type === "command.started" ||
-        event.type === "command.completed")
+    (event) => {
+      const canonical = decodeTimelineEvent(event);
+      return (
+        isParentVisibleEvent(event, childToolUseIds) &&
+        (canonical.kind === "message" ||
+          (canonical.kind === "tool" && canonical.phase !== "output"))
+      );
+    }
   );
 }
 
@@ -582,12 +618,14 @@ export function lastAgentResponseEvent(
   childToolUseIds: ReadonlySet<string> = new Set<string>()
 ): TimelineEvent | undefined {
   return events.find(
-    (event) =>
-      isParentVisibleEvent(event, childToolUseIds) &&
-      (event.type === "message.delta" ||
-        event.type === "message.completed" ||
-        event.type === "command.started" ||
-        event.type === "command.completed" ||
-        event.type === "error")
+    (event) => {
+      const canonical = decodeTimelineEvent(event);
+      return (
+        isParentVisibleEvent(event, childToolUseIds) &&
+        ((canonical.kind === "message" && canonical.role === "assistant") ||
+          (canonical.kind === "tool" && canonical.phase !== "output") ||
+          canonical.kind === "error")
+      );
+    }
   );
 }

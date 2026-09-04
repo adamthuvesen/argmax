@@ -194,6 +194,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
       ]
     };
     expect(mergeDashboardDelta(base, {})).toBe(base);
+    expect(mergeDashboardDelta(base, { events: [], rawOutputs: [] })).toBe(base);
   });
 
   it("mergeDashboardDelta returns the same reference when a delta only re-sends already-known events", () => {

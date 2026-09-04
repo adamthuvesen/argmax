@@ -22,11 +22,39 @@ function nodeContentTop(scroller: HTMLElement, node: Element): number {
 function readViewportAnchor(scroller: HTMLDivElement): ViewportAnchor | null {
   const rect = scroller.getBoundingClientRect();
   if (rect.height < 2 || rect.width < 2) return null;
-  const x = rect.left + Math.min(40, Math.max(8, rect.width / 2));
   const y = rect.top + Math.min(VIEWPORT_ANCHOR_INSET_PX, rect.height / 3);
-  const node = document.elementFromPoint(x, y);
-  if (!(node instanceof Element) || node === scroller || !scroller.contains(node)) return null;
+  // The transcript is a centred reading column, and the list's inline padding
+  // is the gutter around it: a probe there hits the scroller itself, which is
+  // where a fixed 40px inset landed at every ordinary desktop width, so no
+  // anchor was ever taken. Probe the middle of the column — a node inside a
+  // turn anchors more finely than the turn's own box when the turn straddles
+  // the viewport top — and fall back to the child straddling the probe line,
+  // which also covers a short user bubble hugging one edge and a popover
+  // sitting over the list.
+  const style = getComputedStyle(scroller);
+  const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
+  const paddingRight = Number.parseFloat(style.paddingRight) || 0;
+  const columnWidth = Math.max(0, rect.width - paddingLeft - paddingRight);
+  const hit = document.elementFromPoint(rect.left + paddingLeft + columnWidth / 2, y);
+  const node =
+    hit instanceof Element && hit !== scroller && scroller.contains(hit)
+      ? hit
+      : childStraddling(scroller, y);
+  if (!node) return null;
   return { node, contentTop: nodeContentTop(scroller, node) };
+}
+
+/** The first transcript child whose box reaches down to `y`. */
+function childStraddling(scroller: HTMLDivElement, y: number): Element | null {
+  for (const child of Array.from(scroller.children)) {
+    if (!(child instanceof HTMLElement)) continue;
+    // The spacer is a follow layout, and the sticky FAB sits at the viewport
+    // bottom regardless of content: neither says where the reader is.
+    if (child.dataset.conversationSpacer !== undefined) continue;
+    if (child.classList.contains("scroll-to-bottom-fab")) continue;
+    if (child.getBoundingClientRect().bottom >= y) return child;
+  }
+  return null;
 }
 
 /** Keys that scroll the list a reader has focus inside. */
@@ -239,7 +267,11 @@ export function useSmartFollowScroll(
       return;
     }
 
-    const reachedBottom = decision.distanceFromBottom === 0;
+    // Within a pixel: scrollHeight and clientHeight are rounded while iOS
+    // reports a fractional scrollTop, so a momentum scroll that lands on the
+    // bottom after the touch has ended reads as 0.5px short and would never
+    // re-attach.
+    const reachedBottom = decision.distanceFromBottom < 1;
     // Re-attach only when the reader moved toward the bottom. Collapse that
     // brings the bottom to them, or a clamp after a shrink, is not a request
     // to follow: pinning would grow the turn spacer and jump them to the

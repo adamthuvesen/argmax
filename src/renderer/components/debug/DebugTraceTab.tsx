@@ -131,6 +131,12 @@ function TraceRowView({ row }: { row: TraceRow }): JSX.Element {
       {expanded ? (
         <div className="debug-row-detail">
           <pre>{row.detail}</pre>
+          {row.source === "event" ? (
+            <details>
+              <summary>Raw event</summary>
+              <pre>{row.raw}</pre>
+            </details>
+          ) : null}
           <button type="button" className="debug-copy" onClick={() => void copy(row.raw)} aria-label="Copy row">
             <Copy size={12} aria-hidden="true" />
             <span>{flash === "copied" ? "Copied" : flash === "failed" ? "Failed" : "Copy"}</span>

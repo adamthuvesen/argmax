@@ -30,9 +30,9 @@ pub enum ReasoningEffort {
     Medium,
     High,
     Xhigh,
-    // Levels above Extra High. Not every model accepts both. Claude and Codex
-    // Sol/Terra take max and ultra. Codex Luna and Cursor GPT-5.6/Opus take
-    // max only. Adapters clamp anything that slips through (see
+    // Levels above Extra High. Not every model accepts both. Claude and
+    // Codex Astra/Sol/Terra take max and ultra. Codex Luna and Cursor
+    // GPT-5.6/Opus take max only. Adapters clamp anything that slips through (see
     // codex_effort_value / cursor_model_for).
     Max,
     Ultra,

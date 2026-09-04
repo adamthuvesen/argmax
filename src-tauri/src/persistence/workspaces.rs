@@ -67,6 +67,10 @@ pub struct WorkspaceSummary {
     pub pr_state: Option<String>,
     /// PR number paired with `pr_state`.
     pub pr_number: Option<i64>,
+    /// GitHub's authoritative creation timestamp for the paired PR.
+    pub pr_created_at: Option<String>,
+    /// GitHub's authoritative merge timestamp for the paired PR.
+    pub pr_merged_at: Option<String>,
     /// Curated Lucide icon name the user picked for this row's sidebar glyph.
     /// `None` keeps the row on its live status marker.
     pub icon: Option<String>,
@@ -152,6 +156,8 @@ fn attach_latest_pr(connection: &Connection, workspace: &mut WorkspaceSummary) -
     )? {
         workspace.pr_state = pr.pr_state;
         workspace.pr_number = Some(pr.pr_number);
+        workspace.pr_created_at = pr.pr_created_at;
+        workspace.pr_merged_at = pr.pr_merged_at;
     }
     Ok(())
 }
@@ -417,6 +423,8 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         // from gh_pr after the row maps.
         pr_state: None,
         pr_number: None,
+        pr_created_at: None,
+        pr_merged_at: None,
     })
 }
 

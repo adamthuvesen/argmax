@@ -8,14 +8,16 @@ export function useRestoreFocus(open: boolean): void {
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (open) {
-      previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      return;
-    }
-    const previous = previousFocusRef.current;
-    previousFocusRef.current = null;
-    if (previous && document.contains(previous)) {
-      previous.focus();
-    }
+    if (!open) return;
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    return () => {
+      const previous = previousFocusRef.current;
+      previousFocusRef.current = null;
+      if (previous && document.contains(previous)) {
+        previous.focus();
+      }
+    };
   }, [open]);
 }

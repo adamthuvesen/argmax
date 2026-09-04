@@ -876,7 +876,12 @@ fn normalize_raw_line(
     match context.raw_tracing_continuation {
         RawTracingContinuation::Drop => NormalizedProviderResult::default(),
         RawTracingContinuation::Keep => raw_tracing_error(event, cleaned),
-        RawTracingContinuation::None => raw_line_event(event, cleaned, false),
+        RawTracingContinuation::None => {
+            if event.stream == ProviderOutputStream::Stderr && is_noisy_plain_stderr(&cleaned) {
+                return NormalizedProviderResult::default();
+            }
+            raw_line_event(event, cleaned, false)
+        }
     }
 }
 
@@ -1087,20 +1092,53 @@ fn parse_tracing_record(line: &str) -> Option<TracingRecord<'_>> {
     })
 }
 
+fn target_is(target: &str, module: &str) -> bool {
+    target == module
+        || target
+            .strip_prefix(module)
+            .is_some_and(|rest| rest.starts_with("::"))
+}
+
+/// Codex startup and background housekeeping that nothing in the chat can act
+/// on. Every module here was observed spamming real sessions as "Error" cards:
+/// MCP client init/teardown, plugin and skill cache refresh, the models-list
+/// refresh, and the WebSocket transport (which falls back to HTTPS on its own
+/// and reports that fallback as a plain stderr line).
+const NOISY_CODEX_TRACING_MODULES: &[&str] = &[
+    "rmcp",
+    "codex_rmcp_client",
+    "codex_mcp",
+    "codex_core::tools",
+    "codex_core_plugins",
+    "codex_skills",
+    "codex_skills_extension",
+    "codex_models_manager",
+    "codex_api::endpoint::responses_websocket",
+];
+
 fn is_noisy_provider_tracing(target: &str, message: &str) -> bool {
-    if target == "rmcp"
-        || target.starts_with("rmcp::")
-        || target == "codex_rmcp_client"
-        || target.starts_with("codex_rmcp_client::")
-    {
-        return true;
-    }
-    if (target == "codex_core::util" || target.starts_with("codex_core::util::"))
+    if target_is(target, "codex_core::util")
         && message.contains("Custom tool call output is missing for call id:")
     {
         return true;
     }
-    target == "codex_core::tools" || target.starts_with("codex_core::tools::")
+    NOISY_CODEX_TRACING_MODULES
+        .iter()
+        .any(|module| target_is(target, module))
+}
+
+/// Plain (non-tracing) Codex stderr advisories printed on every launch.
+const NOISY_PLAIN_STDERR_PREFIXES: &[&str] = &[
+    CODEX_SKILL_BUDGET_NOTICE_PREFIX,
+    "failed to parse plugin hooks config",
+];
+
+const CODEX_SKILL_BUDGET_NOTICE_PREFIX: &str = "Skill descriptions were shortened to fit";
+
+fn is_noisy_plain_stderr(line: &str) -> bool {
+    NOISY_PLAIN_STDERR_PREFIXES
+        .iter()
+        .any(|prefix| line.starts_with(prefix))
 }
 
 #[cfg(test)]
@@ -1340,6 +1378,47 @@ mod tests {
             &mut context,
         );
         assert!(result.events.is_empty());
+    }
+
+    // Each line captured from a real Codex session's "Error" card.
+    #[test]
+    fn codex_housekeeping_tracing_is_dropped() {
+        for line in [
+            "2026-09-05T08:12:48.810963Z WARN codex_skills::interface: ignoring interface.icon_small: icon path with '..' must resolve under plugin assets/\n",
+            "2026-09-05T08:11:40.369852Z WARN codex_mcp::rmcp_client: failed to initialize MCP client during shutdown: MCP startup failed: failed to refresh OAuth tokens for server hex\n",
+            "2026-09-05T06:02:17.145980Z WARN codex_core_plugins::loader: configured non-curated plugin no longer exists in discovered marketplaces during cache refresh plugin=\"spreadsheets\"\n",
+            "2026-09-04T12:22:50.443247Z ERROR codex_skills_extension::host_service: failed to install system skills: io error while remove existing system skills dir: Directory not empty (os error 66)\n",
+            "2026-09-04T13:00:59.388759Z ERROR codex_models_manager::manager: failed to load models cache: EOF while parsing a value at line 1 column 0\n",
+            "2026-09-03T14:52:30.266732Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://chatgpt.com/backend-api/codex/responses\n",
+        ] {
+            let mut context = NormalizerSessionContext::default();
+            let result =
+                normalize_provider_event(ProviderId::Codex, &output_event(line), &mut context);
+            assert!(result.events.is_empty(), "leaked: {line}");
+        }
+    }
+
+    #[test]
+    fn codex_plain_stderr_advisories_are_dropped_but_real_errors_stay() {
+        let stderr = |message: &str| ProviderOutputEvent {
+            stream: ProviderOutputStream::Stderr,
+            ..output_event(message)
+        };
+        let mut context = NormalizerSessionContext::default();
+        let dropped = normalize_provider_event(
+            ProviderId::Codex,
+            &stderr("Skill descriptions were shortened to fit the 2% skills context budget.\n"),
+            &mut context,
+        );
+        assert!(dropped.events.is_empty());
+
+        let kept = normalize_provider_event(
+            ProviderId::Codex,
+            &stderr("Reconnecting... 2/5 (unexpected status 404 Not Found)\n"),
+            &mut context,
+        );
+        assert_eq!(kept.events.len(), 1);
+        assert_eq!(kept.events[0].r#type, "error");
     }
 
     #[test]

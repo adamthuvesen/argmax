@@ -1,4 +1,5 @@
 import type { EventType, TimelineEvent } from "../../shared/types.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
 
 /**
  * Context compaction is a provider-side rewrite of the conversation: the agent
@@ -20,18 +21,23 @@ export interface CompactionNotice {
 }
 
 export function isCompactionEvent(event: TimelineEvent): boolean {
-  return event.type === COMPACTION_STARTED || event.type === COMPACTION_FINISHED;
-}
-
-function tokenCount(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+  const canonical = decodeTimelineEvent(event);
+  return canonical.kind === "lifecycle" &&
+    (canonical.name === "compacting" || canonical.name === "compacted");
 }
 
 export function compactionNoticeFor(event: TimelineEvent): CompactionNotice {
+  const canonical = decodeTimelineEvent(event);
+  if (
+    canonical.kind !== "lifecycle" ||
+    (canonical.name !== "compacting" && canonical.name !== "compacted")
+  ) {
+    return { running: false, preTokens: null, postTokens: null };
+  }
   return {
-    running: event.type === COMPACTION_STARTED,
-    preTokens: tokenCount(event.payload.preTokens),
-    postTokens: tokenCount(event.payload.postTokens)
+    running: canonical.name === "compacting",
+    preTokens: canonical.preTokens,
+    postTokens: canonical.postTokens
   };
 }
 
@@ -40,5 +46,8 @@ export function compactionNoticeFor(event: TimelineEvent): CompactionNotice {
  * the dashboard merge keeps), so the newest compaction row decides.
  */
 export function isCompacting(events: readonly TimelineEvent[]): boolean {
-  return events.find(isCompactionEvent)?.type === COMPACTION_STARTED;
+  const newest = events.find(isCompactionEvent);
+  if (!newest) return false;
+  const canonical = decodeTimelineEvent(newest);
+  return canonical.kind === "lifecycle" && canonical.name === "compacting";
 }

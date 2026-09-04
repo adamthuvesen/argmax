@@ -354,4 +354,89 @@ describe("useFileAutocomplete", () => {
 
     await waitFor(() => expect(listFiles).toHaveBeenCalledWith({ kind: "project", id: "project-7" }));
   });
+
+  it("bounds cached source trees and re-fetches an evicted project", async () => {
+    listFiles.mockImplementation((source) => Promise.resolve([{ path: `${source.id}/index.ts` }]));
+    const { rerender } = render(
+      <Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />
+    );
+    const probe = screen.getByLabelText<HTMLTextAreaElement>("probe");
+    act(() => {
+      setCaret(probe, 1);
+    });
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+
+    for (let i = 1; i <= 4; i++) {
+      rerender(<Harness initialInput="@" source={{ kind: "project", id: `project-${i}` }} />);
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(i + 1));
+    }
+
+    rerender(<Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />);
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(6));
+  });
+
+  it("does not duplicate an in-flight source read after switching away and back", async () => {
+    let resolveFirst!: (entries: WorkspaceFileEntry[]) => void;
+    listFiles.mockImplementation(({ id }) =>
+      id === "project-0"
+        ? new Promise((resolve) => {
+            resolveFirst = resolve;
+          })
+        : Promise.resolve([{ path: `${id}/index.ts` }])
+    );
+    const { rerender } = render(
+      <Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />
+    );
+    const probe = screen.getByLabelText<HTMLTextAreaElement>("probe");
+    act(() => {
+      setCaret(probe, 1);
+    });
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+
+    rerender(<Harness initialInput="@" source={{ kind: "project", id: "project-1" }} />);
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+    rerender(<Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />);
+    expect(listFiles).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      resolveFirst([{ path: "project-0/index.ts" }]);
+    });
+    await waitFor(() => expect(screen.getByText("project-0/index.ts")).toBeTruthy());
+  });
+
+  it("keeps the active source when older reads finish out of order", async () => {
+    const resolvers = new Map<string, (entries: WorkspaceFileEntry[]) => void>();
+    listFiles.mockImplementation(
+      ({ id }) =>
+        new Promise((resolve) => {
+          resolvers.set(id, resolve);
+        })
+    );
+    const { rerender } = render(
+      <Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />
+    );
+    const probe = screen.getByLabelText<HTMLTextAreaElement>("probe");
+    act(() => {
+      setCaret(probe, 1);
+    });
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+
+    for (let i = 1; i <= 4; i++) {
+      rerender(<Harness initialInput="@" source={{ kind: "project", id: `project-${i}` }} />);
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(i + 1));
+    }
+
+    act(() => {
+      resolvers.get("project-4")?.([{ path: "project-4/current.ts" }]);
+    });
+    await waitFor(() => expect(screen.getByText("project-4/current.ts")).toBeTruthy());
+    act(() => {
+      for (let i = 0; i < 4; i++) {
+        resolvers.get(`project-${i}`)?.([{ path: `project-${i}/stale.ts` }]);
+      }
+    });
+
+    await waitFor(() => expect(screen.getByText("project-4/current.ts")).toBeTruthy());
+    expect(screen.queryByText(/stale\.ts$/)).toBeNull();
+  });
 });

@@ -8,7 +8,7 @@ marks the commit that set it. "Unreleased" covers work not yet on `main`.
 
 ### Changed
 
-- Provider catalog: Claude default is Opus 5; Codex offers GPT-5.6 Sol/Terra/Luna
+- Provider catalog: Claude default is Opus 5; Codex offers GPT-6 Astra and GPT-5.6 Sol/Terra/Luna
   (default Sol · Medium); Cursor offers Grok 4.6, Gemini 3.7 Flash, the GPT-5.6
   family, and Opus 5 Thinking (replacing GPT-5.5 / Opus 4.8 / Gemini 3.5).
 - Launcher and Settings default to GPT-5.6 Sol at Medium effort.

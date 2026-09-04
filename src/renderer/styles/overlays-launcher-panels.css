@@ -267,6 +267,21 @@
   word-break: break-all;
 }
 
+.debug-row-detail details {
+  margin-top: var(--space-1);
+}
+
+.debug-row-detail summary {
+  width: max-content;
+  cursor: pointer;
+  color: var(--muted-strong);
+  font-size: var(--text-3xs);
+}
+
+.debug-row-detail details > pre {
+  margin-top: var(--space-1);
+}
+
 .debug-copy {
   display: inline-flex;
   align-items: center;

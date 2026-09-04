@@ -1,9 +1,9 @@
 import type { TimelineEvent } from "../../shared/types.js";
-import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
+import { stringValue } from "../../shared/typeGuards.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import type { RenderItem } from "./foldConversation.js";
 import { isNoisyProviderTracing, matchTracingRecord, parseLogDump, splitLogSegments } from "./logDump.js";
 import { parsePlan } from "./parsePlan.js";
-import { isThinkingDelta } from "./turnBoundaries.js";
 import {
   collectAskUserQuestionState,
   collectExitPlanState,
@@ -23,10 +23,14 @@ export type AssistantGroup = {
   // matching how a completed message (anchored at its end) already sorts.
   lastActivityAt: string;
   text: string;
+  /** Revealed live: the group belongs to the turn still running. */
   streaming: boolean;
-  // Claude extended-thinking content, surfaced by the normalizer as a
-  // message.delta with payload.thinking === true. Rendered as a separate
-  // collapsible "Thought" block rather than inline answer text.
+  /** More text may still arrive: folded from deltas in a live turn, with no
+      completed message yet. A block that landed whole is live but not growing,
+      so a plan in it can be parsed at once. */
+  growing?: boolean;
+  // Claude extended-thinking content, decoded as thinking instead of answer
+  // text. Rendered as a separate collapsible "Thought" block.
   thinking?: boolean;
   // Stderr and other `error` timeline events. Rendered as a log block, not
   // an assistant bubble. Consecutive errors coalesce into one group.
@@ -64,19 +68,10 @@ export function preToolNarrationGroupIds(
 }
 
 function cursorAssistantSnapshot(event: TimelineEvent): string | null {
-  if (event.type !== "message.delta" || event.payload.type !== "assistant") {
-    return null;
-  }
-  const message = objectValue(event.payload.message);
-  const content = arrayValue(message?.content);
-  if (!content) {
-    return null;
-  }
-  const text = content
-    .map((entry) => stringValue(objectValue(entry)?.text))
-    .filter((value): value is string => Boolean(value))
-    .join("");
-  return text || null;
+  const canonical = decodeTimelineEvent(event);
+  return canonical.kind === "message" && canonical.phase === "delta"
+    ? canonical.cumulativeText
+    : null;
 }
 
 function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
@@ -140,11 +135,6 @@ function joinAnswerFragments(previous: string, incoming: string): string {
   return `${previous} ${incoming}`;
 }
 
-function isRawProviderStreamDelta(event: TimelineEvent): boolean {
-  const stream = event.payload.stream;
-  return event.type === "message.delta" && (stream === "stdout" || stream === "stderr" || stream === "pty");
-}
-
 /**
  * Fold streamed `message.delta` events into assistant groups. Answer fragments
  * and extended-thinking fragments are accumulated into SEPARATE growing groups
@@ -176,6 +166,13 @@ export function coalesceAssistantGroups(
   // is a different group.
   let boundaryEventId = "start";
   const nextGroupId = (kind: "answer" | "thinking"): string => `assistant-${kind}-after-${boundaryEventId}`;
+  // Groups folded from deltas, as opposed to built from one completed message.
+  // A completed message that follows a delta group in a live turn is a fresh
+  // block (Cursor narrates before a tool, then answers), never a duplicate or
+  // a continuation of the text still streaming above it.
+  const deltaGroupIds = new Set<string>();
+  const isLiveDeltaGroup = (group: AssistantGroup | undefined): boolean =>
+    group !== undefined && streaming && deltaGroupIds.has(group.id);
   const flushAnswer = (): void => {
     if (!answerBuffer) return;
     assistantGroups.push({
@@ -183,8 +180,10 @@ export function coalesceAssistantGroups(
       createdAt: answerBuffer.createdAt,
       lastActivityAt: answerBuffer.lastCreatedAt,
       text: answerBuffer.text,
-      streaming
+      streaming,
+      growing: streaming
     });
+    deltaGroupIds.add(answerBuffer.id);
     boundaryEventId = answerBuffer.lastEventId;
     answerBuffer = null;
   };
@@ -224,12 +223,16 @@ export function coalesceAssistantGroups(
     boundaryEventId = event.id;
   };
   for (const event of assistantEvents) {
+    const canonical = decodeTimelineEvent(event);
     if (splitBefore(event)) {
       flushThinking();
       flushAnswer();
     }
     const tracing = matchTracingRecord(event.message);
-    if (event.type === "error" || (event.type === "message.delta" && tracing)) {
+    if (
+      canonical.kind === "error" ||
+      (canonical.kind === "message" && canonical.phase === "delta" && tracing)
+    ) {
       flushThinking();
       flushAnswer();
       if (tracing && isNoisyProviderTracing(tracing.target, tracing.message)) {
@@ -247,11 +250,16 @@ export function coalesceAssistantGroups(
       previousEventCreatedAt = event.createdAt;
       continue;
     }
-    if (event.type === "message.delta" && isRawProviderStreamDelta(event) && dropRawContinuations) {
+    if (
+      canonical.kind === "message" &&
+      canonical.phase === "delta" &&
+      canonical.rawStream &&
+      dropRawContinuations
+    ) {
       previousEventCreatedAt = event.createdAt;
       continue;
     }
-    if (event.type === "message.delta" && isRawProviderStreamDelta(event)) {
+    if (canonical.kind === "message" && canonical.phase === "delta" && canonical.rawStream) {
       const last = assistantGroups[assistantGroups.length - 1];
       if (last?.error) {
         const message = event.message.trim();
@@ -261,7 +269,11 @@ export function coalesceAssistantGroups(
       }
     }
     dropRawContinuations = false;
-    if (isThinkingDelta(event)) {
+    if (
+      canonical.kind === "message" &&
+      canonical.phase === "delta" &&
+      canonical.content === "thinking"
+    ) {
       flushAnswer();
       if (!thinkingBuffer) {
         thinkingBuffer = {
@@ -278,7 +290,7 @@ export function coalesceAssistantGroups(
       previousEventCreatedAt = event.createdAt;
       continue;
     }
-    if (event.type === "message.delta") {
+    if (canonical.kind === "message" && canonical.phase === "delta") {
       flushThinking();
       if (!answerBuffer) {
         answerBuffer = {
@@ -300,9 +312,11 @@ export function coalesceAssistantGroups(
     const last = assistantGroups[assistantGroups.length - 1];
     if (
       last &&
-      !last.streaming &&
+      !isLiveDeltaGroup(last) &&
       last.text === event.message &&
-      event.type === "message.completed"
+      canonical.kind === "message" &&
+      canonical.role === "assistant" &&
+      canonical.phase === "completed"
     ) {
       boundaryEventId = event.id;
       previousEventCreatedAt = event.createdAt;
@@ -310,10 +324,12 @@ export function coalesceAssistantGroups(
     }
     if (
       last &&
-      !last.streaming &&
+      !isLiveDeltaGroup(last) &&
       !last.thinking &&
       !last.error &&
-      event.type === "message.completed" &&
+      canonical.kind === "message" &&
+      canonical.role === "assistant" &&
+      canonical.phase === "completed" &&
       isAnswerContinuation(last.text, event.message)
     ) {
       last.text = joinAnswerFragments(last.text, event.message);
@@ -322,12 +338,17 @@ export function coalesceAssistantGroups(
       previousEventCreatedAt = event.createdAt;
       continue;
     }
+    // A block that lands whole is still live while its turn is: Codex and
+    // OpenCode deliver every answer as one completed message, and Claude's
+    // completed message replaces the deltas it streamed. Marking it settled
+    // here popped the whole block in at once, or cut a reveal short the
+    // instant the completion arrived.
     assistantGroups.push({
       id: nextGroupId("answer"),
       createdAt: event.createdAt,
       lastActivityAt: event.createdAt,
       text: event.message,
-      streaming: false
+      streaming
     });
     boundaryEventId = event.id;
     previousEventCreatedAt = event.createdAt;
@@ -372,7 +393,8 @@ export function liveThoughtOwnsProgress(params: {
     if (event.message.trim().length === 0) continue;
     // Any visible answer text in the turn hands the beat back to the generic
     // indicator, whichever order the events arrived in.
-    if (!isThinkingDelta(event)) return false;
+    const canonical = decodeTimelineEvent(event);
+    if (canonical.kind !== "message" || canonical.content !== "thinking") return false;
     hasThinkingText = true;
   }
   return hasThinkingText;

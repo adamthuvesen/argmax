@@ -22,9 +22,7 @@ import type {
   IdeId,
   PendingMessage,
   ProjectSummary,
-  RawProviderOutput,
   SessionSummary,
-  TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
 import type { GridCell, GridCoord, GridState, SplitPosition } from "../lib/gridState.js";
@@ -62,8 +60,6 @@ interface SessionMultiGridProps {
       chat subtree resolves the type tokens independently of app chrome. */
   chatFontSize?: FontSize;
   approvals: ApprovalRequest[];
-  events: TimelineEvent[];
-  rawOutputs: RawProviderOutput[];
   checks?: CheckRun[];
   projectsById: Map<string, ProjectSummary>;
   workspacesById: Map<string, WorkspaceSummary>;
@@ -134,8 +130,6 @@ export function SessionMultiGrid({
   grid,
   chatFontSize,
   approvals,
-  events,
-  rawOutputs,
   checks,
   projectsById,
   workspacesById,
@@ -394,7 +388,6 @@ export function SessionMultiGrid({
                         defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                         defaultThinkingExpanded={defaultThinkingExpanded}
                         defaultTurnChangesExpanded={defaultTurnChangesExpanded}
-                        events={events}
                         fastModeEnabled={fastModeEnabled}
                         workspaceCardVisible={workspaceCardVisible}
                         onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
@@ -423,7 +416,6 @@ export function SessionMultiGrid({
                         onClearSession={onClearSession}
                         onForkSession={onForkSession}
                         project={project}
-                        rawOutputs={rawOutputs}
                         rightPanelToggleSignal={rightPanelToggleSignal}
                         debugLogToggleSignal={debugLogToggleSignal}
                         session={session}

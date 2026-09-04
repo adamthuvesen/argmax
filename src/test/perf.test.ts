@@ -224,7 +224,9 @@ describe("perf budgets", () => {
     }
     durations.sort((a, b) => a - b);
     const p95 = percentile(durations, 0.95);
-    expect(p95).toBeLessThan(20);
+    // 40 ms: local p95 sits near 5 ms, but shared Ubuntu runners hit 21–26 ms
+    // without a code change. Keep this a regression ceiling, not a machine pin.
+    expect(p95).toBeLessThan(40);
   });
 
   it("buildFileTree over 10 000 entries completes < 75 ms", () => {

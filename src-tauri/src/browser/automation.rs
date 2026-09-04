@@ -791,11 +791,7 @@ async fn wait_for(
             .into(),
     );
     let deadline = Instant::now() + budget;
-    let script = format!(
-        "window.__argmax.waitFor({}, {})",
-        json!(wait_id),
-        spec.to_string()
-    );
+    let script = format!("window.__argmax.waitFor({}, {})", json!(wait_id), spec);
     loop {
         // A navigation mid-wait tears the page down, and the eval racing it
         // fails; that is a state to keep waiting through, not to report.

@@ -1,5 +1,3 @@
-#![cfg(unix)]
-
 use std::{
     io::{Read, Write},
     net::Shutdown,
@@ -269,12 +267,15 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    let launches = launcher.launches.lock().expect("launches poisoned");
-    assert_eq!(launches.len(), 1);
-    assert!(launches[0].fast_mode);
-    assert_eq!(launches[0].permission_mode, PermissionMode::AutoApprove);
-    assert_eq!(launches[0].agent_mode, AgentMode::Auto);
-    drop(launches);
+    {
+        // Scoped rather than `drop`ped: clippy's await_holding_lock does not
+        // see an explicit drop, and the awaits below are all past this point.
+        let launches = launcher.launches.lock().expect("launches poisoned");
+        assert_eq!(launches.len(), 1);
+        assert!(launches[0].fast_mode);
+        assert_eq!(launches[0].permission_mode, PermissionMode::AutoApprove);
+        assert_eq!(launches[0].agent_mode, AgentMode::Auto);
+    }
 
     {
         let connection = database.connection();

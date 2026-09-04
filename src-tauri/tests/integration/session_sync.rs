@@ -6,10 +6,6 @@
 // like `~/.claude/projects/<slug>/<sessionId>.jsonl`, with a real in-memory
 // SQLite and a real WorkspaceService.
 
-mod support {
-    pub mod git_repo;
-}
-
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -24,7 +20,7 @@ use argmax_lib::providers::flush_queue::DashboardDelta;
 use argmax_lib::sync::{run_sync, SyncConfig, WINDOW_24H, WINDOW_7D};
 use argmax_lib::workspaces::WorkspaceService;
 
-use support::git_repo::seed_git_repo;
+use crate::support::git_repo::seed_git_repo;
 
 const PROJECT_ID: &str = "p-sync-test";
 
@@ -101,7 +97,7 @@ fn assistant_line(cwd: &str, session_id: &str, timestamp: &str, text: &str) -> S
 }
 
 struct Harness {
-    _repo: support::git_repo::SeededGitRepo,
+    _repo: crate::support::git_repo::SeededGitRepo,
     home: tempfile::TempDir,
     database: Arc<Database>,
     workspaces: Arc<WorkspaceService>,
@@ -733,7 +729,7 @@ fn an_adopted_session_survives_losing_its_transcript() {
 
 /// Smoke test against the real `~/.claude` store and this checkout. Ignored by
 /// default (it depends on the developer's own machine); run it with
-/// `cargo test --test session_sync -- --ignored --nocapture` to see what a
+/// `cargo test --test integration session_sync -- --ignored --nocapture` to see what a
 /// sweep would import here.
 #[test]
 #[ignore = "reads the developer's real ~/.claude transcripts"]

@@ -10,7 +10,8 @@
 //
 // Gated with `#[ignore]` so CI without `claude` installed (or unwilling
 // to make an API call) stays green. Run manually with:
-//   cargo test --test provider_real_cli --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
+//   cargo test --test integration --manifest-path src-tauri/Cargo.toml \
+//     provider_real_cli -- --ignored --nocapture
 //
 // The chat bug this guards against: if the launcher block-buffers stdout,
 // stdin is left open, or events are silently dropped, this test catches

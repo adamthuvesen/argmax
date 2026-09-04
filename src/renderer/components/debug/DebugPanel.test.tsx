@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DebugPanel } from "./DebugPanel.js";
 import type {
@@ -17,6 +17,7 @@ describe("DebugPanel", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     Reflect.deleteProperty(window, "argmax");
   });
@@ -63,11 +64,18 @@ describe("DebugPanel", () => {
       });
     stubApi({ debugSnapshot });
 
+    // Only the poll's own interval is faked, so the second tick can be driven
+    // straight from the test; `waitFor` still needs a real `setTimeout`.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     renderPanel({});
     fireEvent.click(screen.getByRole("tab", { name: "Logs" }));
 
     await waitFor(() => expect(screen.getByText("session launched")).toBeInTheDocument());
     expect(debugSnapshot).toHaveBeenCalledWith({ afterLogSeq: undefined });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
 
     await waitFor(() => expect(screen.getByText("refresh failed")).toBeInTheDocument());
     expect(debugSnapshot).toHaveBeenLastCalledWith({ afterLogSeq: 1 });

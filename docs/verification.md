@@ -14,7 +14,9 @@ ladder as the definition of "verified".
 
 ## Rung 1: suites and checks
 
-`npm test`, `npm run lint`, `npm run typecheck`, and the `check:*` scripts
+`npm run precheck` runs the CI checks (`npm test`, `npm run lint`,
+`npm run lint:rust`, `npm run typecheck`, the `check:*` scripts) scoped to what
+the branch changed, and `git push` runs it as the pre-push hook
 ([testing.md](testing.md)). Cheap, deterministic, run them always. Everything
 above this rung exists for the claims these cannot make: "the app starts",
 "the session streams", "the launcher looks right".

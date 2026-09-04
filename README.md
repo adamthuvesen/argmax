@@ -64,7 +64,8 @@ npm run test:unit       # Vitest unit tests
 npm run test:perf       # Performance benchmarks
 npm run test:rust       # Cargo test suite
 npm test                # Run all test suites
-npm run check:bindings  # Verify TS bindings freshness
+npm run lint:rust       # cargo clippy, warnings are errors
+npm run precheck        # The pre-push gate: CI's checks scoped to the branch's diff
 npm run check:tauri-bridge # Check IPC channel parity
 npm run check:bundle    # Verify bundle size budget
 ```

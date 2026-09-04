@@ -69,9 +69,7 @@ pub fn grant(workspace_path: &Path) -> Option<PathBuf> {
         return None;
     }
     let decided_at = now_seconds();
-    let Some(updated) = with_entry(&existing, &key, decided_at) else {
-        return None;
-    };
+    let updated = with_entry(&existing, &key, decided_at)?;
     if !write_store(&store, &updated) {
         return None;
     }

@@ -64,10 +64,10 @@ immediate and drain revision pages before settling.
 1. Define input/output types in `src-tauri/src/ipc/inputs.rs` or the subsystem module.
 2. Implement the handler in `src-tauri/src/ipc/*.rs` with `#[tauri::command(rename = "namespace:name")]`.
 3. Register the command in `ipc::specta_builder()` and in `REGISTERED_CHANNELS`.
-4. Add the channel name to `src-tauri/tests/fixtures/channels.txt` and bump the count in `src-tauri/tests/ipc_inventory.rs`.
+4. Add the channel name to `src-tauri/tests/fixtures/channels.txt` and bump the count in `src-tauri/tests/integration/ipc_inventory.rs`.
 5. Either implement the channel in `src-tauri/src/remote/dispatch.rs` or list it in `REMOTE_UNSUPPORTED_CHANNELS`.
 6. Add the channel name to `src/shared/ipcSchemas.ts`, and the method to `ArgmaxApi` in `src/shared/types.ts` and `src/renderer/lib/tauriBridge.ts`.
-7. Run `npm run generate:bindings`, then `npm run check:bindings`, `npm run check:tauri-bridge`, and `npm run check:main-thread`.
+7. Run `npm run generate:bindings`, then `npm run precheck` (the Rust lane's `cargo test` includes the bindings freshness test; the script also runs `check:tauri-bridge` and `check:main-thread`).
 
 A synchronous handler resolves on the macOS main thread. Make the handler
 `async` (or `spawn_blocking` for genuinely blocking work) unless it does no IO,

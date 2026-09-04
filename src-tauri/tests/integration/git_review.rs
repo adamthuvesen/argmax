@@ -1,9 +1,8 @@
-mod support;
-
 use std::os::unix::fs::symlink;
 
 use std::sync::Arc;
 
+use crate::support::git_repo::{run_git, seed_git_repo};
 use argmax_lib::persistence::{
     database::Database,
     projects::{persist_project, PersistProjectInput, ProjectSettings},
@@ -14,7 +13,6 @@ use argmax_lib::review::git_review::{
     ReviewComparison,
 };
 use argmax_lib::workspaces::WorkspaceTargetKind;
-use support::git_repo::{run_git, seed_git_repo};
 
 /// Persist a project + a workspace whose `path` is the repo itself, so the
 /// database-backed review functions can be driven against a real git tree.

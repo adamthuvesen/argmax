@@ -990,6 +990,9 @@ describe("SessionConversation — streaming & composer", () => {
     // between a send and the provider's first event is a floor, so no leftover
     // state can leave it with nothing on screen.
     const onSendSessionInput = vi.fn(() => Promise.resolve());
+    // The cue's own show/hide timeouts are the only clock this needs, so the
+    // post-send window is advanced rather than waited out.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const events = [
       event("c1", "session.compacting", "", "2026-05-12T15:00:01.000Z"),
       event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
@@ -1003,7 +1006,10 @@ describe("SessionConversation — streaming & composer", () => {
     const box = screen.getByRole("textbox");
     fireEvent.change(box, { target: { value: "keep going" } });
     fireEvent.keyDown(box, { key: "Enter" });
-    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(onSendSessionInput).toHaveBeenCalled();
 
     rerenderConversation(
       rerender,
@@ -1012,7 +1018,9 @@ describe("SessionConversation — streaming & composer", () => {
       { onSendSessionInput }
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(900);
+    });
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
@@ -1022,6 +1030,9 @@ describe("SessionConversation — streaming & composer", () => {
     // twenty seconds to say anything. The pre-send state is not a dead turn, so
     // the cue has to stay up rather than blink out after its minimum window.
     const onSendSessionInput = vi.fn(() => Promise.resolve());
+    // The cue's own show/hide timeouts are the only clock this needs, so the
+    // post-send window is advanced rather than waited out.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     renderConversation(
       baseSession({ provider: "claude", state: "failed" }),
       [event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")],
@@ -1031,9 +1042,14 @@ describe("SessionConversation — streaming & composer", () => {
     const box = screen.getByRole("textbox");
     fireEvent.change(box, { target: { value: "keep going" } });
     fireEvent.keyDown(box, { key: "Enter" });
-    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(onSendSessionInput).toHaveBeenCalled();
 
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(900);
+    });
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
@@ -1521,6 +1537,9 @@ describe("SessionConversation — streaming & composer", () => {
 
   it("drops the post-send Thinking state when the send itself fails", async () => {
     const failingSend = vi.fn().mockRejectedValue(new Error("Workspace archive is in progress"));
+    // The minimum-visible window is a `setTimeout`, so it is advanced rather
+    // than waited out; the send's rejection settles on the same flush.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     render(
       <SessionConversation
         events={[event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")]}
@@ -1544,9 +1563,16 @@ describe("SessionConversation — streaming & composer", () => {
 
     // Send failures are errors now: the composer status line carries
     // role="alert" for them, not role="status".
-    expect(await screen.findByRole("alert")).toHaveTextContent("Workspace archive is in progress");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Workspace archive is in progress");
     // The label honours its minimum visible window before it drops.
-    await waitFor(() => expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
 
   it("hides the Thinking indicator while a regular tool is actually running on screen", () => {

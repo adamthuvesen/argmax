@@ -1,0 +1,5 @@
+#!/bin/sh
+# Project-owned pre-push gate. `npm install` points core.hooksPath here (see
+# the `prepare` script in package.json). Runs the CI checks scoped to what
+# the branch changed; a failure refuses the push.
+exec node "$(git rev-parse --show-toplevel)/scripts/precheck.mjs"

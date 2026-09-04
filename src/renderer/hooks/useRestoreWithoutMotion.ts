@@ -13,7 +13,9 @@ const RESTORE_MS = 320;
  * so every restored bubble and tool row would otherwise replay its entrance
  * animation and the whole transcript would visibly slide each time a session is
  * reopened. Panes hang this on their scroller as `data-restoring`; the CSS side
- * of the contract lives in chat-conversation.css.
+ * of the contract lives in chat-conversation.css. StreamingMarkdown takes the
+ * same flag so completed bubbles in a still-running turn paint in full instead
+ * of typing out from nothing together.
  */
 export function useRestoreWithoutMotion(): boolean {
   const [restoring, setRestoring] = useState(true);

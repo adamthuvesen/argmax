@@ -5,6 +5,7 @@ import type { DashboardSnapshot } from "../shared/types.js";
 import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
 import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
 import {
+  CHAT_VERBOSITY_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
   PR_MILESTONE_CELEBRATION_KEY,
@@ -179,11 +180,11 @@ describe("App settings", () => {
     await openSettings("Agents");
 
     const verbosity = await screen.findByRole("slider", { name: "Chat detail & verbosity" });
-    expect(verbosity).toHaveValue("3");
+    expect(verbosity).toHaveValue("2");
     fireEvent.change(verbosity, { target: { value: "1" } });
 
     await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.chat.verbosity")).toBe("1")
+      expect(window.localStorage.getItem(CHAT_VERBOSITY_KEY)).toBe("1")
     );
   });
 

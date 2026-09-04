@@ -1,6 +1,7 @@
+import { CalendarDays } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import type { ProviderId, UsageSummary, UsageWindow } from "../../../shared/types.js";
-import { SegmentedControl } from "../settings/settingsPrimitives.js";
+import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
 import { SkeletonPane } from "../SkeletonPane.js";
 import { UsageAreaChart } from "./UsageAreaChart.js";
 import { UsageBreakdown } from "./UsageBreakdown.js";
@@ -13,6 +14,7 @@ import {
   chartedProviders,
   processedTokens,
   providerLabel,
+  USAGE_PROVIDER_ORDER,
   type UsageMetric
 } from "./usagePresentation.js";
 
@@ -21,11 +23,15 @@ const REFRESH_MS = 60_000;
 /** The first scan is still walking the transcripts, so the numbers move. */
 const SCANNING_REFRESH_MS = 2_000;
 
-const WINDOW_OPTIONS = [
-  { value: "24h", label: "Past 24h" },
-  { value: "7d", label: "7 days" },
-  { value: "30d", label: "30 days" }
+const WINDOW_OPTIONS: ReadonlyArray<{ value: UsageWindow; label: string }> = [
+  { value: "24h", label: "Last 24 hours" },
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" }
 ];
+
+/** The picker's value for "every provider"; the backend takes `null`. */
+const ALL_PROVIDERS = "all";
+type ProviderChoice = ProviderId | typeof ALL_PROVIDERS;
 
 const METRIC_OPTIONS = [
   { value: "cost", label: "Cost" },
@@ -141,28 +147,43 @@ export function UsagePanel(): JSX.Element {
         <header className="usage-topbar">
           <div className="usage-titles">
             <h1 className="settings-page-title">Usage</h1>
-            {rangeLabel ? <p className="usage-range">{rangeLabel}</p> : null}
+            {rangeLabel ? (
+              <p className="usage-range">
+                <span>{rangeLabel}</span>
+                {/* The scan stamp qualifies every figure on the page, so it
+                    sits with the range rather than under whichever card it
+                    used to live in. */}
+                {scanStamp ? (
+                  <>
+                    <span className="usage-dot-sep" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="usage-scan-stamp">Scanned {scanStamp}</span>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
           </div>
           <div className="usage-controls">
-            <div className="usage-control-row">
-              <SegmentedControl
-                ariaLabel="Show"
-                name="usage-metric"
-                value={metric}
-                onChange={(next) => setMetric(next as UsageMetric)}
-                options={METRIC_OPTIONS}
-              />
-              <SegmentedControl
-                ariaLabel="Time range"
-                name="usage-window"
-                value={usageWindow}
-                onChange={(next) => setUsageWindow(next as UsageWindow)}
-                options={WINDOW_OPTIONS}
-              />
-            </div>
-            {/* The scan stamp qualifies every figure on the page, not just the
-                chart it used to sit in. */}
-            {scanStamp ? <p className="usage-scan-stamp">Scanned {scanStamp}</p> : null}
+            <UsageProviderPicker
+              summary={summary}
+              value={provider}
+              onChange={setProvider}
+            />
+            <SettingsListPicker<UsageWindow>
+              ariaLabel="Time range"
+              icon={<CalendarDays size={13} aria-hidden="true" />}
+              value={usageWindow}
+              onChange={setUsageWindow}
+              options={WINDOW_OPTIONS}
+            />
+            <SegmentedControl
+              ariaLabel="Show"
+              name="usage-metric"
+              value={metric}
+              onChange={(next) => setMetric(next as UsageMetric)}
+              options={METRIC_OPTIONS}
+            />
           </div>
         </header>
 
@@ -187,6 +208,50 @@ export function UsagePanel(): JSX.Element {
         {!summary && !error ? <SkeletonPane /> : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * The page's provider filter, as a picker beside the range. The ranked rows
+ * in the fold narrow the page too; both drive the same state, so a row press
+ * shows up here and a pick here presses the row. A provider with no local
+ * usage source is listed but cannot be chosen: there is nothing to narrow to.
+ */
+function UsageProviderPicker({
+  summary,
+  value,
+  onChange
+}: {
+  summary: UsageSummary | null;
+  value: ProviderId | null;
+  onChange: (provider: ProviderId | null) => void;
+}): JSX.Element {
+  const unavailable = new Set(
+    (summary?.providers ?? []).filter((row) => !row.available).map((row) => row.provider)
+  );
+  const options: Array<{
+    value: ProviderChoice;
+    label: string;
+    disabled?: boolean;
+    title?: string;
+    icon?: JSX.Element;
+  }> = [
+    { value: ALL_PROVIDERS, label: "All providers" },
+    ...USAGE_PROVIDER_ORDER.map((id) => ({
+      value: id,
+      label: providerLabel(id),
+      disabled: unavailable.has(id),
+      title: unavailable.has(id) ? "No local usage data" : undefined,
+      icon: <span className="usage-series usage-series-dot" data-provider={id} aria-hidden="true" />
+    }))
+  ];
+  return (
+    <SettingsListPicker<ProviderChoice>
+      ariaLabel="Provider"
+      value={value ?? ALL_PROVIDERS}
+      onChange={(next) => onChange(next === ALL_PROVIDERS ? null : next)}
+      options={options}
+    />
   );
 }
 
@@ -240,46 +305,48 @@ function UsageBody({
         </div>
       ) : null}
 
-      <div className="usage-grid">
-        <section className="usage-summary-column" aria-label="Totals by provider">
-          <UsageHero
-            summary={summary}
-            metric={metric}
-            delta={windowDelta(summary, metric)}
-            onShowAll={() => onSelectProvider(null)}
-          />
-          <UsageProviderRows
-            summary={summary}
-            metric={metric}
-            selected={provider}
-            onSelect={onSelectProvider}
-          />
-        </section>
-        <section className="usage-chart-card" aria-label={chartHeading}>
-          <div className="usage-section-head">
-            <h2 className="usage-section-title">{chartHeading}</h2>
-            {/* The chart's own key. The rows beside it carry the same colours,
-                but a reader scanning the curves should not have to look away
-                from them to learn which is which. */}
-            <ul className="usage-chart-legend" aria-hidden="true">
-              {providers.map((id) => (
-                <li className="usage-chart-legend-item usage-series" key={id} data-provider={id}>
-                  <span className="usage-series-dot" />
-                  {providerLabel(id)}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <UsageAreaChart
-            points={summary.series}
-            providers={providers}
-            metric={metric}
-            resolution={summary.resolution}
-            timeZone={summary.timeZone}
-            title={chartHeading}
-          />
-        </section>
-      </div>
+      {/* The total and who it is made of, side by side on one band; the curve
+          gets the page's whole width under it. A 30-day chart squeezed into
+          half a window is a smear — the totals read fine in a column, the
+          chart does not. */}
+      <section className="usage-summary" aria-label="Totals by provider">
+        <UsageHero
+          summary={summary}
+          metric={metric}
+          delta={windowDelta(summary, metric)}
+          onShowAll={() => onSelectProvider(null)}
+        />
+        <UsageProviderRows
+          summary={summary}
+          metric={metric}
+          selected={provider}
+          onSelect={onSelectProvider}
+        />
+      </section>
+      <section className="usage-chart-card" aria-label={chartHeading}>
+        <div className="usage-section-head">
+          <h2 className="usage-section-title">{chartHeading}</h2>
+          {/* The chart's own key. The tiles above it carry the same colours,
+              but a reader scanning the curves should not have to look away
+              from them to learn which is which. */}
+          <ul className="usage-chart-legend" aria-hidden="true">
+            {providers.map((id) => (
+              <li className="usage-chart-legend-item usage-series" key={id} data-provider={id}>
+                <span className="usage-series-dot" />
+                {providerLabel(id)}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <UsageAreaChart
+          points={summary.series}
+          providers={providers}
+          metric={metric}
+          resolution={summary.resolution}
+          timeZone={summary.timeZone}
+          title={chartHeading}
+        />
+      </section>
 
       <UsageTokenFlow summary={summary} />
 

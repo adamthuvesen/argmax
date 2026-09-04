@@ -2,6 +2,7 @@ import {
   ChartNoAxesColumn,
   Clock,
   Folder,
+  Globe,
   MessageSquare,
   Plus,
   Search,
@@ -21,6 +22,7 @@ export type BuildPaletteCommandsInput = {
   onNewSession: () => void;
   onOpenSettings: () => void;
   onOpenScheduledTasks: () => void;
+  onOpenBrowser?: () => void;
   onOpenUsage: () => void;
   /** Jumps straight to one settings section — feeds the palette's Settings scope. */
   onOpenSettingsSection: (group: SettingsGroupId, sectionId: string) => void;
@@ -40,6 +42,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     onNewSession,
     onOpenSettings,
     onOpenScheduledTasks,
+    onOpenBrowser,
     onOpenUsage,
     onOpenSettingsSection,
     onOpenSearch,
@@ -78,6 +81,18 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       icon: Clock,
       run: onOpenScheduledTasks
     },
+    ...(onOpenBrowser
+      ? [
+          {
+            id: "action:open-browser",
+            label: "Open Browser",
+            subtitle: "Browse in the workspace",
+            group: "Actions" as const,
+            icon: Globe,
+            run: onOpenBrowser
+          }
+        ]
+      : []),
     {
       id: "action:open-usage",
       label: "Open Usage",

@@ -1,9 +1,6 @@
 .mascot {
   /* The fox palette lives in tokens.css (`--fox-*`): the tool-row mark for
-     Argmax's own MCP server paints the same head. Only the thinking rain stays
-     on the accent, so the live-work signal still matches the rest of the chrome. */
-  --mascot-rain: color-mix(in oklab, var(--accent) 58%, var(--panel));
-
+     Argmax's own MCP server paints the same head. */
   display: inline-block;
   overflow: visible;
   vertical-align: middle;
@@ -14,9 +11,8 @@
      frames rather than a drift — an interpolated squash reads as a wobble. */
   animation: mascot-breathe 3.2s steps(1, end) infinite;
   animation-play-state: var(--loop-play-state, running);
-  /* The viewBox squares off under the sprite to leave room for the thinking
-     rain, so the fox's feet sit at 40 of 56 rows, not at the bottom edge.
-     Every mascot transform pivots there. */
+  /* The viewBox squares off under the sprite, so the fox's feet sit at 40 of
+     56 rows, not at the bottom edge. Every mascot transform pivots there. */
   transform-origin: 50% 71.4%;
 }
 
@@ -69,11 +65,6 @@
   animation-play-state: var(--loop-play-state, running);
 }
 
-.mascot .mascot-rain-dot {
-  fill: var(--mascot-rain);
-  opacity: 0;
-}
-
 /* Dozing: the same breath, slowed down. The shut eyes and the z carry the mood,
    so nothing droops and nothing drains — the fox is asleep, not sad. */
 .mascot[data-mood="sleepy"] {
@@ -89,7 +80,6 @@
   animation: mascot-droop 2.6s var(--ease) infinite;
   animation-play-state: var(--loop-play-state, running);
   filter: saturate(0.2) opacity(0.7);
-  --mascot-rain: var(--muted);
 }
 
 .mascot[data-pet="true"] {
@@ -101,10 +91,9 @@
   width: 30px;
   height: 30px;
   place-items: center;
-  /* The mascot SVG reserves its bottom rows for thinking-mood rain dots, so
-     its visible body sits in the upper portion of the viewBox. A small
-     asymmetric top padding nudges the body down to share an optical center
-     with adjacent 16px lucide icons. */
+  /* The mascot SVG squares its viewBox under the sprite, so the visible body
+     sits in the upper portion. A small asymmetric top padding nudges the body
+     down to share an optical center with adjacent 16px lucide icons. */
   padding: 3px 0 0;
   margin: 0;
   background: transparent;
@@ -136,21 +125,6 @@
 .mascot-button:not(.launcher-hero-mascot-button) .mascot {
   width: 24px;
   height: 24px;
-}
-
-.mascot[data-mood="thinking"] .mascot-rain-dot-1 {
-  animation: mascot-rain 1.4s var(--ease) infinite;
-  animation-play-state: var(--loop-play-state, running);
-}
-
-.mascot[data-mood="thinking"] .mascot-rain-dot-2 {
-  animation: mascot-rain 1.4s var(--ease) 0.4s infinite;
-  animation-play-state: var(--loop-play-state, running);
-}
-
-.mascot[data-mood="thinking"] .mascot-rain-dot-3 {
-  animation: mascot-rain 1.4s var(--ease) 0.8s infinite;
-  animation-play-state: var(--loop-play-state, running);
 }
 
 /* Two poses, each held for half the cycle. Paired with `steps(1, end)` and
@@ -204,22 +178,6 @@
 
   50% {
     transform: translateY(4%) rotate(-1deg);
-  }
-}
-
-@keyframes mascot-rain {
-  0% {
-    opacity: 0;
-    transform: translateY(0);
-  }
-
-  25% {
-    opacity: 1;
-  }
-
-  100% {
-    opacity: 0;
-    transform: translateY(220%);
   }
 }
 

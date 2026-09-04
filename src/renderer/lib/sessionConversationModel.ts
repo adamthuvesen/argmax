@@ -527,6 +527,7 @@ export function buildSessionToolCalls(
         inputFull: input,
         output,
         status: renderedStatus,
+        completionObserved: completion !== null,
         createdAt: event.createdAt,
         // No real completion timestamp exists for a dropped completion; anchor
         // the inferred-done case at the start so the chip shows a check instead

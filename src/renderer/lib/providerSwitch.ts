@@ -1,4 +1,4 @@
-import type { EventType, TimelineEvent } from "../../shared/types.js";
+import type { TimelineEvent } from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 
 /**
@@ -9,18 +9,11 @@ import { decodeTimelineEvent } from "./canonicalTimeline.js";
  * shows a compaction: everything after it was written by an agent that only
  * read a summary of everything before it.
  */
-export const PROVIDER_CHANGED: EventType = "session.provider-changed";
-
 export interface ProviderSwitchNotice {
   /** Absent on rows written before the payload carried both ends. */
   from: string | null;
   to: string;
   modelLabel: string | null;
-}
-
-export function isProviderSwitchEvent(event: TimelineEvent): boolean {
-  const canonical = decodeTimelineEvent(event);
-  return canonical.kind === "lifecycle" && canonical.name === "provider-changed";
 }
 
 export function providerSwitchNoticeFor(event: TimelineEvent): ProviderSwitchNotice {

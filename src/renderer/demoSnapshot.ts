@@ -276,7 +276,7 @@ export const demoSnapshot: DashboardSnapshot = {
       sessionId: "session-ui-board",
       type: "message.completed",
       message: "Reading the density heuristics now.",
-      payload: { parent_tool_use_id: "tu_board_5" },
+      payload: { parent_tool_use_id: "tu_board_5", agentModelId: "gpt-5.6-sol", agentReasoningEffort: "high" },
       createdAt: "2026-05-08T15:53:54.400Z"
     },
     {

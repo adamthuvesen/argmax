@@ -25,10 +25,9 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use once_cell::sync::OnceCell;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -144,7 +143,7 @@ pub struct WorkspaceService {
     /// is built alongside the provider launcher). Archive and project removal
     /// evict the entry for a checkout they are about to stop managing —
     /// nothing else drains the pool before `RunEvent::Exit`.
-    cursor_acp: OnceCell<Arc<CursorAcpSessions>>,
+    cursor_acp: OnceLock<Arc<CursorAcpSessions>>,
     /// App-owned directory that holds one subdirectory per scratch workspace
     /// (repo-less side chats). `None` when the app data dir could not be
     /// resolved — `create_scratch` then fails with a clear error.
@@ -208,7 +207,7 @@ impl WorkspaceService {
             checks,
             terminals,
             approvals,
-            cursor_acp: OnceCell::new(),
+            cursor_acp: OnceLock::new(),
             scratch_root,
         })
     }

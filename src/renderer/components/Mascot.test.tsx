@@ -14,7 +14,7 @@ describe("Mascot", () => {
     expect(svg.getAttribute("aria-label")).toBe("Fox mascot");
   });
 
-  it.each(["idle", "thinking", "sleepy", "sad"] as const)(
+  it.each(["idle", "sleepy", "sad"] as const)(
     "renders mood=%s and sets matching data-mood + aria-label",
     (mood) => {
       render(<Mascot mood={mood} />);
@@ -32,9 +32,20 @@ describe("Mascot", () => {
   });
 
   it("uses the label override when provided", () => {
-    render(<Mascot label="Custom mascot voice" mood="thinking" />);
+    render(<Mascot label="Custom mascot voice" mood="sleepy" />);
     const svg = screen.getByRole("img", { name: "Custom mascot voice" });
-    expect(svg.getAttribute("data-mood")).toBe("thinking");
+    expect(svg.getAttribute("data-mood")).toBe("sleepy");
+  });
+
+  it("draws no marks below the sprite", () => {
+    render(<Mascot />);
+    const svg = screen.getByRole("img", { name: "Fox mascot" });
+    const below = [...svg.querySelectorAll("rect")].filter((rect) => {
+      const y = Number(rect.getAttribute("y"));
+      const height = Number(rect.getAttribute("height"));
+      return y + height > 40;
+    });
+    expect(below).toHaveLength(0);
   });
 
   it("draws the sleepy sprite for the dozing mood", () => {

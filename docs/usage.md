@@ -1,17 +1,22 @@
 # Usage
 
 The Usage page (sidebar → Usage) shows tokens and cost per provider over the
-past 24 hours, 7 days, or 30 days: a total, one row per provider, a chart, a
-totals strip, and a breakdown by model or day. It reads every provider
+last 24 hours, 7 days, or 30 days: a summary band (the total, then one tile
+per provider), a full-width chart, a token-flow band, and a breakdown by
+model or day. It reads every provider
 transcript on disk, not only the sessions Argmax launched, so it is the same
 number a terminal-only user would get.
 
-Pressing a provider row narrows the total, chart, totals strip, and
-breakdown to that provider; pressing it again, or "Show all" under the
-total, widens back out. The rows themselves never narrow, so their shares
-stay shares of the whole window while one provider is in focus. Providers
-are told apart by colour alone: one series colour per provider, on the row
-dot, the curve, and the breakdown table.
+The header carries the page's three controls: a provider picker, a range
+picker, and the Cost/Tokens switch. Choosing a provider narrows the total,
+chart, token flow, and breakdown to it; so does pressing that provider's tile
+in the band, and the two stay in step. "All providers" in the picker, a
+second press on the tile, or "Show all" beside the total widens back out. A
+provider with no local usage source (Cursor) is listed but cannot be chosen.
+The tiles themselves never narrow, so their shares stay shares of the whole
+window while one provider is in focus. Providers are told apart by colour
+alone: one series colour per provider, on the tile dot, the picker row, the
+curve, and the breakdown table.
 
 `UsageSummary::previous` is the one comparison the renderer cannot work out
 for itself: the cost, tokens, and session count of the equally long window

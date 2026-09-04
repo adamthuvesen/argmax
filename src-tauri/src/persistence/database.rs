@@ -183,6 +183,7 @@ impl Database {
     }
 
     /// Readers currently parked in the pool. Test-only visibility into reuse.
+    #[cfg(test)]
     pub fn idle_reader_count(&self) -> usize {
         self.readers
             .as_ref()

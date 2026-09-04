@@ -401,17 +401,7 @@ export function liveThoughtOwnsProgress(params: {
 }
 
 function toolStartTimes(toolItems: readonly TurnToolItem[]): string[] {
-  const times: string[] = [];
-  for (const item of toolItems) {
-    if (item.kind === "tool") {
-      times.push(item.tool.createdAt);
-      continue;
-    }
-    for (const tool of item.group.tools) {
-      times.push(tool.createdAt);
-    }
-  }
-  return times.sort();
+  return toolItems.map((item) => item.tool.createdAt).sort();
 }
 
 /** Earliest card cutoff when plan/question cards are the turn's authoritative artifact. */
@@ -445,11 +435,8 @@ export function computeTurnStartedAtMs(params: {
     if (Number.isFinite(ts)) earliest = Math.min(earliest, ts);
   }
   for (const tItem of params.toolItems) {
-    const tools = tItem.kind === "tool" ? [tItem.tool] : tItem.group.tools;
-    for (const t of tools) {
-      const s = Date.parse(t.createdAt);
-      if (Number.isFinite(s)) earliest = Math.min(earliest, s);
-    }
+    const startedAt = Date.parse(tItem.tool.createdAt);
+    if (Number.isFinite(startedAt)) earliest = Math.min(earliest, startedAt);
   }
   return Number.isFinite(earliest) ? earliest : Number.NaN;
 }

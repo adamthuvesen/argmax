@@ -101,6 +101,7 @@ pub fn extract_content_blocks(
 
     let mut events = Vec::new();
     let mut pending_text: Option<(String, Map<String, Value>)> = None;
+    let mut pending_thinking: Option<(String, Map<String, Value>)> = None;
 
     let flush_text = |pending: &mut Option<(String, Map<String, Value>)>,
                       events: &mut Vec<PersistTimelineEventInput>| {
@@ -112,6 +113,29 @@ pub fn extract_content_blocks(
                     "message.completed",
                     text,
                     Value::Object(text_payload),
+                ));
+            }
+        }
+    };
+
+    // Grok (and occasionally Claude) interleaves many tiny thinking and text
+    // blocks in one assistant snapshot — think a phrase, speak a phrase, repeat.
+    // Flushing text at each thinking block used to persist every phrase as its
+    // own `message.completed`, which the chat then rendered as a new paragraph.
+    // Accumulate both kinds and only flush at a tool boundary (or the end), so
+    // the snapshot collapses to one Thought and one answer the way Claude's
+    // [thinking, text, tools] envelope already does.
+    let flush_thinking = |pending: &mut Option<(String, Map<String, Value>)>,
+                          events: &mut Vec<PersistTimelineEventInput>| {
+        if let Some((text, mut payload)) = pending.take() {
+            if !text.trim().is_empty() {
+                payload.insert("thinking".to_string(), Value::Bool(true));
+                stamp_child(&mut payload);
+                events.push(timeline_event(
+                    event,
+                    "message.delta",
+                    text,
+                    Value::Object(payload),
                 ));
             }
         }
@@ -132,22 +156,25 @@ pub fn extract_content_blocks(
                     }
                 }
             }
-            Some("tool_use") => {
+            Some("tool_use") | Some("server_tool_use") => {
+                flush_thinking(&mut pending_thinking, &mut events);
                 flush_text(&mut pending_text, &mut events);
-                if let Some(text) = send_user_message_text(block) {
-                    let mut payload = block.clone();
-                    payload.insert(
-                        "synthesizedFromTool".to_string(),
-                        Value::String("SendUserMessage".to_string()),
-                    );
-                    stamp_child(&mut payload);
-                    events.push(timeline_event(
-                        event,
-                        "message.completed",
-                        text,
-                        Value::Object(payload),
-                    ));
-                    continue;
+                if string_value(block.get("type")) == Some("tool_use") {
+                    if let Some(text) = send_user_message_text(block) {
+                        let mut payload = block.clone();
+                        payload.insert(
+                            "synthesizedFromTool".to_string(),
+                            Value::String("SendUserMessage".to_string()),
+                        );
+                        stamp_child(&mut payload);
+                        events.push(timeline_event(
+                            event,
+                            "message.completed",
+                            text,
+                            Value::Object(payload),
+                        ));
+                        continue;
+                    }
                 }
                 let mut tool_block = block.clone();
                 stamp_child(&mut tool_block);
@@ -158,7 +185,8 @@ pub fn extract_content_blocks(
                     Value::Object(tool_block),
                 ));
             }
-            Some("tool_result") => {
+            Some("tool_result") | Some("web_search_tool_result") => {
+                flush_thinking(&mut pending_thinking, &mut events);
                 flush_text(&mut pending_text, &mut events);
                 let mut result_block = block.clone();
                 stamp_child(&mut result_block);
@@ -169,29 +197,22 @@ pub fn extract_content_blocks(
                     Value::Object(result_block),
                 ));
             }
-            // Extended-thinking blocks arrive as visible reasoning content.
-            // Emit them as message.delta rows with a `thinking: true` payload
-            // flag so the renderer can style or hide them.
             Some("thinking") => {
-                flush_text(&mut pending_text, &mut events);
                 let text = string_value(block.get("thinking"))
                     .unwrap_or("")
                     .to_string();
                 if !text.trim().is_empty() {
-                    let mut payload = block.clone();
-                    payload.insert("thinking".to_string(), Value::Bool(true));
-                    stamp_child(&mut payload);
-                    events.push(timeline_event(
-                        event,
-                        "message.delta",
-                        text,
-                        Value::Object(payload),
-                    ));
+                    if let Some((ref mut current, _)) = pending_thinking {
+                        current.push_str(&text);
+                    } else {
+                        pending_thinking = Some((text, block.clone()));
+                    }
                 }
             }
             _ => {}
         }
     }
+    flush_thinking(&mut pending_thinking, &mut events);
     flush_text(&mut pending_text, &mut events);
     Some(events)
 }
@@ -720,6 +741,97 @@ mod tests {
         assert_eq!(result.events[2].r#type, "command.started");
         assert_eq!(result.events[2].message, "read_file");
         assert_eq!(result.events[2].payload["input"]["target_file"], "PR.md");
+    }
+
+    #[test]
+    fn interleaved_thinking_and_text_blocks_coalesce_into_one_answer() {
+        // Captured from grok 4.6 `--output-format streaming-messages-json
+        // --include-partial-messages`: one assistant snapshot with dozens of
+        // tiny thinking/text pairs (think a phrase, speak a phrase). Each text
+        // block used to become its own message.completed, so the chat rendered
+        // every word as a new paragraph.
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Grok,
+            &output_event(
+                &json!({
+                    "type": "assistant",
+                    "message": {
+                        "content": [
+                            { "type": "thinking", "thinking": "Good progress. Let me fetch " },
+                            { "type": "text", "text": "I" },
+                            { "type": "thinking", "thinking": "docs next." },
+                            { "type": "text", "text": " have the bundled" },
+                            { "type": "thinking", "thinking": " Then tools." },
+                            { "type": "text", "text": " user-guide." },
+                            { "type": "tool_use", "id": "call-1", "name": "read_file", "input": { "target_file": "note.txt" } }
+                        ]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 3, "{:?}", result.events);
+        assert_eq!(result.events[0].r#type, "message.delta");
+        assert_eq!(
+            result.events[0].message,
+            "Good progress. Let me fetch docs next. Then tools."
+        );
+        assert_eq!(result.events[0].payload["thinking"], json!(true));
+        assert_eq!(result.events[1].r#type, "message.completed");
+        assert_eq!(result.events[1].message, "I have the bundled user-guide.");
+        assert_eq!(result.events[2].r#type, "command.started");
+        assert_eq!(result.events[2].message, "read_file");
+    }
+
+    #[test]
+    fn server_tool_use_is_a_tool_boundary_not_silent_glue() {
+        // Grok's built-in web_search arrives as server_tool_use /
+        // web_search_tool_result inside the same assistant snapshot. Ignoring
+        // those blocks concatenated the surrounding narration into one mashed
+        // sentence ("sessions.The local code").
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Grok,
+            &output_event(
+                &json!({
+                    "type": "assistant",
+                    "message": {
+                        "content": [
+                            { "type": "text", "text": "comparing that to Argmax sessions." },
+                            {
+                                "type": "server_tool_use",
+                                "id": "ws_1",
+                                "name": "web_search",
+                                "input": { "query": "persistent subagents" }
+                            },
+                            {
+                                "type": "web_search_tool_result",
+                                "tool_use_id": "ws_1",
+                                "content": [{ "type": "web_search_result", "url": "https://example.com" }]
+                            },
+                            { "type": "text", "text": "The local code already hints." }
+                        ]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 4, "{:?}", result.events);
+        assert_eq!(result.events[0].r#type, "message.completed");
+        assert_eq!(
+            result.events[0].message,
+            "comparing that to Argmax sessions."
+        );
+        assert_eq!(result.events[1].r#type, "command.started");
+        assert_eq!(result.events[1].message, "web_search");
+        assert_eq!(result.events[1].payload["id"], "ws_1");
+        assert_eq!(result.events[2].r#type, "command.completed");
+        assert_eq!(result.events[2].payload["tool_use_id"], "ws_1");
+        assert_eq!(result.events[3].r#type, "message.completed");
+        assert_eq!(result.events[3].message, "The local code already hints.");
     }
 
     #[test]

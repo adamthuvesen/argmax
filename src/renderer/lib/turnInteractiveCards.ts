@@ -38,14 +38,7 @@ function toolsMatching(
 ): ToolCall[] {
   const matches: ToolCall[] = [];
   for (const item of toolItems) {
-    if (item.kind === "tool") {
-      if (predicate(item.tool)) matches.push(item.tool);
-      for (const child of item.children ?? []) {
-        if (predicate(child)) matches.push(child);
-      }
-      continue;
-    }
-    for (const tool of item.group.tools) {
+    for (const tool of [item.tool, ...(item.children ?? [])]) {
       if (predicate(tool)) matches.push(tool);
     }
   }

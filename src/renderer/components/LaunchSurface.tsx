@@ -126,7 +126,7 @@ export function LaunchSurface({
   claimsBrowserRequests?: boolean;
   fastModeEnabled?: boolean;
   /** True while an agent is running in this launcher's project. The hero fox
-   *  watches it and puts on its thinking face. */
+   *  stays awake rather than dozing. */
   hasRunningSession?: boolean;
   pixelFieldEnabled?: boolean;
   model: ModelPickerSelection;
@@ -512,7 +512,7 @@ export function LaunchSurface({
     };
   }, [canDoze]);
 
-  const mascotMood: MascotMood = watchesAgents ? "thinking" : isDozing ? "sleepy" : "idle";
+  const mascotMood: MascotMood = isDozing ? "sleepy" : "idle";
 
   const petMascot = useCallback((): void => {
     const streak = petStreakRef.current;

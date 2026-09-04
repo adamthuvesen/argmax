@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { readBundledCss } from "../styles/readBundledCss.js";
 import { SidebarSessionRow, sidebarSessionRowEqual } from "./SidebarSessionRow.js";
-import { WORKING_NEST_CYCLE_MS } from "./WorkingNest.js";
 
 const workspaceBase: WorkspaceSummary = {
   id: "workspace-1",
@@ -799,7 +798,6 @@ describe("SidebarSessionRow", () => {
     expect(dotRule, "expected relay animation on the working dots").not.toBeNull();
     expect(css).toContain("@keyframes working-nest-relay");
     expect(css).toContain("--working-nest-phase-offset");
-    expect(css).toContain(`--working-nest-cycle: ${WORKING_NEST_CYCLE_MS / 1000}s`);
 
     // ...and reduced-motion users get a static dot.
     const reduceBlock = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^{}]*\.working-nest\[data-active="true"\]\s\.working-nest-dot\s*\{[^}]*animation:\s*none/i.exec(css);

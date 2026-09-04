@@ -36,11 +36,9 @@ the format `assets/fox-mascot.txt` expects, so a chosen sprite is a paste.
   `--fox-*` token in `tokens.css`. Blush and gold sit fine on both fields; the
   visor's cyan is the only colour that is off-brand and would want tuning.
 - **New poses (01, 02, 03)** are taller than the 28 x 20 sprite. `Mascot.tsx`
-  squares its viewBox off the width and drops the thinking rain four rows below
-  the sprite, so a 25-row sprite pushes the rain outside the box; the rain
-  offset has to come from the height instead. `build-icons.mjs` centres on the
-  width, so a taller sprite simply fills more of the squircle, which helps the
-  icon.
+  squares its viewBox off the width, so a 25-row sprite fills more of that
+  square. `build-icons.mjs` centres on the width, so a taller sprite simply
+  fills more of the squircle, which helps the icon.
 - **The blink** scales the highlight group around a fixed point on the shipped
   face. The chibi and peek eyes sit elsewhere, so that origin moves with them.
 
@@ -59,5 +57,5 @@ Shipped on 2026-09-04 as expression sprites beside the base:
 `assets/fox-mascot-wink.txt` (08, pet reaction), `assets/fox-mascot-sleepy.txt`
 (the shut eyes and z of 02 drawn on the shipped body), and
 `assets/fox-mascot-shades.txt` (04, earned by ten pets in a row). The launcher
-hero also uses the existing thinking rain while an agent runs in its project.
+hero stays awake while an agent runs in its project, rather than dozing.
 Chibi, peek, crown, headphones, visor and sparkle stay here as a bank.

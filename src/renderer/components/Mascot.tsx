@@ -4,7 +4,7 @@ import winkSprite from "../../../assets/fox-mascot-wink.txt?raw";
 import sleepySprite from "../../../assets/fox-mascot-sleepy.txt?raw";
 import shadesSprite from "../../../assets/fox-mascot-shades.txt?raw";
 
-export type MascotMood = "idle" | "thinking" | "sleepy" | "sad";
+export type MascotMood = "idle" | "sleepy" | "sad";
 
 /** Which drawing is on screen. The base sprite is also the app icon source;
  *  the other three are expressions the launcher fox reaches for. */
@@ -27,7 +27,6 @@ interface MascotProps {
 
 const MOOD_LABEL: Record<MascotMood, string> = {
   idle: "Fox mascot",
-  thinking: "Fox mascot, thinking",
   sleepy: "Fox mascot, dozing",
   sad: "Fox mascot, looking concerned"
 };
@@ -38,18 +37,14 @@ function parseGrid(source: string): ReadonlyArray<string> {
   return source.split("\n").filter((row) => row !== "" && !row.startsWith("#"));
 }
 
-// All four sprites share one 56x40 grid and one palette, so the viewBox and the
-// rain placement come off the base drawing and hold for every expression.
+// All four sprites share one 56x40 grid and one palette, so the viewBox comes
+// off the base drawing and holds for every expression.
 const GRID: ReadonlyArray<string> = parseGrid(baseSprite);
 const GRID_W = GRID[0].length;
-const GRID_H = GRID.length;
 
 // The sprite is wide and short, so the viewBox is squared off below it: the fox
-// keeps the top, and the thinking-mood rain falls into the space underneath.
-// Callers size the mascot with one number, same as they always have.
+// keeps the top of a square mark, and callers still size it with one number.
 const VIEW = GRID_W;
-const RAIN_Y = GRID_H + 4;
-const RAIN_SIZE = 3;
 
 // Each palette character becomes one <g>, and CSS owns the colours from there.
 // `w` is grouped last so the eye highlights paint over the outline blocks.
@@ -186,29 +181,6 @@ export function Mascot({
           ))}
         </g>
       ))}
-      <g className="mascot-rain" aria-hidden="true">
-        <rect
-          className="mascot-rain-dot mascot-rain-dot-1"
-          x={16}
-          y={RAIN_Y}
-          width={RAIN_SIZE}
-          height={RAIN_SIZE}
-        />
-        <rect
-          className="mascot-rain-dot mascot-rain-dot-2"
-          x={26}
-          y={RAIN_Y}
-          width={RAIN_SIZE}
-          height={RAIN_SIZE}
-        />
-        <rect
-          className="mascot-rain-dot mascot-rain-dot-3"
-          x={36}
-          y={RAIN_Y}
-          width={RAIN_SIZE}
-          height={RAIN_SIZE}
-        />
-      </g>
     </svg>
   );
 

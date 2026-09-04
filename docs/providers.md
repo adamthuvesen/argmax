@@ -19,6 +19,24 @@ Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build throug
 
 Raw provider output is saved for debugging, but only normalized timeline events are displayed in chat. The persisted payload stays compatible with existing rows and provider fixtures. The renderer decodes it once through [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts), then routes behavior from the resulting typed event instead of reading semantic payload keys in each feature.
 
+## Verification profiles
+
+`npm run verify` starts a disposable profile with a scripted Claude executable.
+The fixture follows the production discovery, adapter, PTY, normalizer, and
+persistence paths. It validates the resume argument and exposes file barriers
+so the runner can inspect streaming text and a running tool before allowing
+the next events through. See [verification.md](verification.md).
+
+Setting `ARGMAX_VERIFICATION` requests fixture-only discovery. Startup requires
+the exact value `1`, the `verification` Cargo feature, an existing absolute
+`ARGMAX_VERIFICATION_HOME`, and an executable provider override such as
+`ARGMAX_VERIFICATION_CLAUDE_BINARY`. Missing or malformed configuration fails
+before services start. Unconfigured providers remain unavailable, and fixture
+children receive an isolated environment without provider credentials.
+
+The fixture covers Argmax's integration behavior for Claude's stream format.
+It does not establish compatibility with a newly released provider CLI.
+
 ## Permissions and Approvals
 
 Native permission gates are reported in `ProviderCapabilityReport.approvalSupport`.
@@ -72,7 +90,7 @@ OpenCode runs via `opencode run --dir <workspace> --format json --thinking -m <p
 
 Grok Build runs via `grok "--single=<prompt>" --cwd <workspace> --output-format streaming-messages-json --include-partial-messages`.
 
-- **It speaks Claude Code's wire format.** `system/init`, Anthropic `stream_event` content blocks, whole `assistant` messages, and a closing `result` are byte-identical to `claude --output-format stream-json`. Grok therefore has no normalizer of its own: `speaks_claude_stream_json` in [normalizer/mod.rs](../src-tauri/src/providers/normalizer/mod.rs) routes it down Claude's path. If Grok ever forks that format, the fixture test in that file is what fails.
+- **It speaks Claude Code's wire format.** `system/init`, Anthropic `stream_event` content blocks, whole `assistant` messages, and a closing `result` are the same envelopes as `claude --output-format stream-json`. Grok therefore has no normalizer of its own: `speaks_claude_stream_json` in [normalizer/mod.rs](../src-tauri/src/providers/normalizer/mod.rs) routes it down Claude's path. The envelopes match; the content arrays do not always. Claude typically emits `[thinking, text, tool_use]`. Grok often interleaves many tiny thinking/text pairs in one snapshot (and inserts `server_tool_use` / `web_search_tool_result` for built-in search). `extract_content_blocks` concatenates those runs and treats server search as a tool boundary so the chat does not render each phrase as its own paragraph. If Grok ever forks the envelope types, the fixture test in that file is what fails.
 - **The prompt must ride the `=` form.** `-p`/`--single` takes the prompt as a flag *value*, not the trailing positional Claude and Cursor use. Passed as two argv entries, the CLI rejects any prompt starting with `-` with a bare usage error — a pasted diff or a "- do this" bullet trips it. `--single=<prompt>` is the only form clap always reads as a value.
 - **`--cwd` is passed explicitly** even though the child is already spawned in the worktree: with `[cli] use_leader` enabled the turn runs inside a shared leader process whose cwd is not the child's. Same trap OpenCode's `--dir` covers.
 - **Repo-local MCP servers are gated on folder trust.** `grok inspect --json` reports `projectTrusted: false` for a checkout the user has never accepted, and the `.grok/config.toml` Argmax writes is ignored until it is true. A launch therefore records the workspace in Grok's own `trusted_folders.toml` and gives the entry back at the end ([agent-tools.md](agent-tools.md)).

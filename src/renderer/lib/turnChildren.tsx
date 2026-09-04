@@ -6,6 +6,7 @@ export type TurnBodyChild = {
   kind: "assistant" | "tool";
   id: string;
   node: ReactNode;
+  hasErrors?: boolean;
 };
 
 /**
@@ -45,14 +46,14 @@ export function groupToolRuns(children: TurnBodyChild[]): ReactNode {
 }
 
 /**
- * Minimal verbosity: collapse every consecutive run of tool children into a
+ * Collapse every consecutive run of tool children into a
  * single child rendered by `renderRun`. Anything that is not a tool run —
  * assistant prose, an agent launch, a card — passes through untouched and ends
  * the run, so one line summarizes exactly the work between two things the
  * reader reads.
  *
  * The merged child anchors on the run's first tool id so the line mutates in
- * place ("Read 1 file" → "Read 2 files, edited 1 file") as the run grows,
+ * place as the run grows,
  * instead of appending a second line under the first.
  *
  * Shared by the chat transcript and the agent activity pane, which collapse
@@ -73,6 +74,8 @@ export function foldToolRunsToSummaries<T extends TurnBodyChild & { runTools?: T
       ...anchor,
       kind: "tool",
       id: first ? `activity-${first.id}` : anchor.id,
+      runTools: tools,
+      hasErrors: tools.some((tool) => tool.status === "error"),
       node: renderRun(tools)
     });
   };

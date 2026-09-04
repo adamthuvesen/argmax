@@ -2,7 +2,7 @@ use rusqlite::{named_params, Connection, Row};
 use serde::Serialize;
 use specta::Type;
 
-use super::time::now_iso;
+use super::{json_error, sqlite_error, time::now_iso};
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -350,12 +350,4 @@ fn max_nullable_iso(left: Option<String>, right: Option<String>) -> Option<Strin
         (None, Some(right)) => Some(right),
         (None, None) => None,
     }
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
-}
-
-fn json_error(error: serde_json::Error) -> ArgmaxError {
-    ArgmaxError::service("JSON", error.to_string())
 }

@@ -111,7 +111,7 @@ describe("AgentsView", () => {
     expect(document.getElementById("review-agent-task-2")).not.toHaveAttribute("aria-hidden");
   });
 
-  it("shows the subagent model and effort in the dock metadata strip", () => {
+  it("names the active subagent, its role, and its model in the pane header", () => {
     renderView(
       agentTabs({ tabIds: ["task-1"], activeTabId: "task-1" }),
       [
@@ -124,33 +124,10 @@ describe("AgentsView", () => {
       ]
     );
 
-    expect(screen.getByRole("status", { name: "Agent model" })).toHaveTextContent(/Opus 5\s*·\s*Extra High/);
-    expect(screen.getByRole("region", { name: "Agent instructions" })).not.toHaveTextContent("Opus 5");
-  });
-
-  it("shows the active multitask model and effort in the same strip", () => {
-    const child: MultitaskChild = {
-      session: {
-        ...session,
-        id: "child-1",
-        workspaceId: "child-workspace",
-        modelLabel: "Sonnet 5",
-        modelId: "claude-sonnet-5",
-        reasoningEffort: "high",
-        launchKind: "multitask",
-        launchedBySessionId: session.id,
-        prompt: "Review the implementation"
-      },
-      workspace
-    };
-
-    renderView(
-      agentTabs({ tabIds: ["multitask:child-1"], activeTabId: "multitask:child-1" }),
-      [],
-      [child]
-    );
-
-    expect(screen.getByRole("status", { name: "Agent model" })).toHaveTextContent(/Sonnet 5\s*·\s*High/);
+    expect(screen.getByRole("heading", { name: "Explore repo" })).toBeInTheDocument();
+    const details = screen.getByLabelText("Agent details");
+    expect(details).toHaveTextContent(/Gauss\s*·\s*Opus 5\s*·\s*Extra High/);
+    expect(screen.queryByRole("status", { name: "Agent model" })).toBeNull();
   });
 
   it("reads a multitask transcript from the child session timeline", () => {

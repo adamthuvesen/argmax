@@ -16,6 +16,7 @@ import {
   mcpToolLabel,
   parseMcpToolName,
   summarizeToolGroup,
+  summarizeToolChangeCounts,
   type ToolCall
 } from "./toolCalls.js";
 
@@ -30,6 +31,7 @@ function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "name">): ToolCall {
     status: overrides.status ?? "done",
     createdAt: overrides.createdAt ?? "2026-05-12T15:00:00.000Z",
     completedAt: overrides.completedAt ?? "2026-05-12T15:00:01.000Z",
+    completionObserved: overrides.completionObserved,
     error: overrides.error ?? null,
     parentToolUseId: overrides.parentToolUseId ?? null
   };
@@ -339,7 +341,7 @@ describe("Task / sub-agent tools", () => {
       tool({ name: "Task", id: "1" }),
       tool({ name: "Task", id: "2" })
     ]);
-    expect(out.headline).toBe("Started 2 agents");
+    expect(out.headline).toBe("Started agents");
   });
 });
 
@@ -371,18 +373,18 @@ describe("opencode camelCase inputs", () => {
 });
 
 describe("summarizeToolGroup — single-bucket headlines", () => {
-  it("reads-only → Explored N files", () => {
+  it("summarizes several reads without a numeric count", () => {
     const out = summarizeToolGroup([tool({ name: "Read" }), tool({ name: "read", id: "id-2" })]);
-    expect(out.headline).toBe("Explored 2 files");
+    expect(out.headline).toBe("Read files");
   });
 
-  it("bash-only → Ran N commands", () => {
+  it("summarizes several commands without a numeric count", () => {
     const out = summarizeToolGroup([
       tool({ name: "Bash" }),
       tool({ name: "shell", id: "id-2" }),
       tool({ name: "exec", id: "id-3" })
     ]);
-    expect(out.headline).toBe("Ran 3 commands");
+    expect(out.headline).toBe("Ran commands");
   });
 
   it("unwraps shell launchers from command previews", () => {
@@ -403,29 +405,29 @@ describe("summarizeToolGroup — single-bucket headlines", () => {
         inputPreview: "/bin/zsh -lc \"npm run lint\""
       })
     ]);
-    expect(out.headline).toBe("Ran 3 commands");
+    expect(out.headline).toBe("Ran commands");
   });
 
-  it("edit-only → Edited N files", () => {
+  it("summarizes several edits without a numeric count", () => {
     const out = summarizeToolGroup([tool({ name: "Write" }), tool({ name: "Edit", id: "id-2" })]);
-    expect(out.headline).toBe("Edited 2 files");
+    expect(out.headline).toBe("Edited files");
   });
 
-  it("singular pluralization", () => {
-    expect(summarizeToolGroup([tool({ name: "Read" })]).headline).toBe("Explored 1 file");
-    expect(summarizeToolGroup([tool({ name: "Bash" })]).headline).toBe("Ran 1 command");
+  it("uses an article for a single action", () => {
+    expect(summarizeToolGroup([tool({ name: "Read" })]).headline).toBe("Read a file");
+    expect(summarizeToolGroup([tool({ name: "Bash" })]).headline).toBe("Ran a command");
   });
 });
 
 describe("summarizeToolGroup — mixed-bucket headlines", () => {
-  it("Codex pattern: 1 file + 2 lists + 1 command", () => {
+  it("keeps an action verb in each clause", () => {
     const out = summarizeToolGroup([
       tool({ name: "Read", id: "1" }),
       tool({ name: "list_dir", id: "2" }),
       tool({ name: "list_dir", id: "3" }),
       tool({ name: "Bash", id: "4" })
     ]);
-    expect(out.headline).toBe("Explored 1 file, 2 lists, ran 1 command");
+    expect(out.headline).toBe("Read a file, listed directories, ran a command");
   });
 
   it("first clause is capitalized, subsequent clauses lowercase", () => {
@@ -433,8 +435,8 @@ describe("summarizeToolGroup — mixed-bucket headlines", () => {
       tool({ name: "Bash", id: "1" }),
       tool({ name: "Read", id: "2" })
     ]);
-    // read-files comes first in fixed order, so "Explored ..." leads.
-    expect(out.headline).toBe("Explored 1 file, ran 1 command");
+    // read-files comes before bash in fixed order, so "Read ..." leads.
+    expect(out.headline).toBe("Read a file, ran a command");
   });
 
   it("preserves bucket ordering regardless of input order", () => {
@@ -443,7 +445,7 @@ describe("summarizeToolGroup — mixed-bucket headlines", () => {
       tool({ name: "Edit", id: "2" }),
       tool({ name: "Grep", id: "3" })
     ]);
-    expect(out.headline).toBe("Searched once, 1 edit, ran 1 command");
+    expect(out.headline).toBe("Edited a file, searched, ran a command");
   });
 });
 
@@ -478,6 +480,7 @@ describe("summarizeToolGroup — currentAction while running", () => {
     ]);
     expect(out.status).toBe("done");
     expect(out.hasErrors).toBe(true);
+    expect(out.headline).toBe("Read files · 1 failed");
   });
 
   it("marks the group as error when every child failed", () => {
@@ -487,6 +490,7 @@ describe("summarizeToolGroup — currentAction while running", () => {
     ]);
     expect(out.status).toBe("error");
     expect(out.hasErrors).toBe(true);
+    expect(out.headline).toBe("Read a file, ran a command · 2 failed");
   });
 });
 
@@ -598,5 +602,39 @@ describe("Grok Build tool names", () => {
       .toBe("Edited app.ts");
     expect(describeToolAction(tool({ name: "read_file", inputPreview: "src/app.ts" })))
       .toBe("Read app.ts");
+  });
+});
+
+describe("summarizeToolChangeCounts", () => {
+  const edit = (id: string, oldText: string, newText: string): ToolCall => tool({
+    id, name: "Edit", completionObserved: true,
+    inputFull: { file_path: "app.ts", old_string: oldText, new_string: newText }
+  });
+
+  it("accumulates later edits across other calls without counting one file twice", () => {
+    const first = edit("first", "old", "new\nextra");
+    const between = tool({ name: "Read", inputFull: { file_path: "app.ts" } });
+    expect(summarizeToolChangeCounts([first, between])).toEqual({ adds: 2, dels: 1, files: 1 });
+    const second = edit("second", "new\nextra", "final");
+    expect(summarizeToolChangeCounts([first, between, second])).toEqual({ adds: 3, dels: 3, files: 1 });
+  });
+
+  it("counts each completed invocation once and excludes failed, running, and inferred edits", () => {
+    const done = edit("done", "old", "new");
+    expect(summarizeToolChangeCounts([
+      done, done,
+      { ...edit("failed", "old", "new"), status: "error" },
+      { ...edit("running", "old", "new"), status: "running" },
+      { ...edit("inferred", "old", "new"), completionObserved: false }
+    ])).toEqual({ adds: 1, dels: 1, files: 1 });
+  });
+
+  it("uses measured Codex diffs and does not invent line counts for whole-file deletion", () => {
+    const patch = tool({ name: "file_change", inputFull: { changes: [
+      { kind: "update", path: "app.ts", unified_diff: "@@ -1,1 +1,2 @@\n-old\n+new\n+extra\n" }
+    ] } });
+    const deletion = tool({ name: "delete_file", inputFull: { path: "removed.ts" } });
+    expect(summarizeToolChangeCounts([patch, deletion])).toEqual({ adds: 2, dels: 1, files: 2 });
+    expect(summarizeToolChangeCounts([deletion])).toBeNull();
   });
 });

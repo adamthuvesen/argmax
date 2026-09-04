@@ -339,6 +339,11 @@ fn coalesce_terminal_pushes(batch: Vec<TerminalPush>) -> Vec<TerminalPush> {
 
 /// Construct and run the Tauri app.
 pub fn run() {
+    if let Err(error) = providers::verification::validate_configuration() {
+        eprintln!("argmax: verification configuration invalid: {error}");
+        std::process::exit(2);
+    }
+
     let timer = Arc::new(StartupTimer::new());
     timer.mark("boot");
 
@@ -350,14 +355,22 @@ pub fn run() {
     // surface. `build.rs` cannot do this (build scripts run before the
     // rest of the crate is even type-checked, so they can't import
     // command functions), so the export lives here instead.
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, not(feature = "verification")))]
     if let Err(e) = export_bindings("../src/shared/bindings.d.ts") {
         eprintln!("argmax: tauri-specta export failed: {e}");
     }
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, not(feature = "verification")))]
     timer.mark("bindings.export");
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(feature = "verification")]
+    let builder = if std::env::var("ARGMAX_VERIFICATION").as_deref() == Ok("1") {
+        builder.plugin(tauri_plugin_wdio_webdriver::init())
+    } else {
+        builder
+    };
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
@@ -1258,6 +1271,27 @@ pub fn export_bindings(path: impl AsRef<Path>) -> Result<(), String> {
     std::fs::write(path, normalized).map_err(|error| error.to_string())
 }
 
+pub fn export_ipc_inventory(
+    channels_path: impl AsRef<Path>,
+    schemas_path: impl AsRef<Path>,
+) -> Result<(), String> {
+    let channels = ipc::REGISTERED_CHANNELS.join("\n") + "\n";
+    std::fs::write(channels_path, channels).map_err(|error| error.to_string())?;
+
+    let mut schemas = String::from(
+        "// Generated from `ipc::REGISTERED_CHANNELS` by `export-bindings`.\n\
+         // Runtime validation lives in Rust input newtypes and command structs.\n\n\
+         export const IPC_CHANNELS = [\n",
+    );
+    for channel in ipc::REGISTERED_CHANNELS {
+        schemas.push_str("  \"");
+        schemas.push_str(channel);
+        schemas.push_str("\",\n");
+    }
+    schemas.push_str("] as const;\n\nexport type IpcChannel = (typeof IPC_CHANNELS)[number];\n");
+    std::fs::write(schemas_path, schemas).map_err(|error| error.to_string())
+}
+
 fn specta_typescript() -> Typescript {
     Typescript::default().bigint(BigIntExportBehavior::Number)
 }
@@ -1271,8 +1305,8 @@ mod tests {
     /// Exercises the tauri-specta export pipeline end-to-end without
     /// launching the app. This is the CI guard for "the codegen wiring
     /// actually emits TypeScript", paired with the integration test
-    /// `bindings_file_is_current`, which guards "the committed bindings.d.ts
-    /// is what the exporter emits today".
+    /// `generated_ipc_files_are_current`, which guards that the committed
+    /// bindings and channel inventories are what the exporter emits today.
     #[test]
     fn specta_export_emits_command_surface() {
         let dir = tempdir().expect("tempdir");

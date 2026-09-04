@@ -1,4 +1,5 @@
 import type { AttachmentMimeType } from "../../shared/types.js";
+import { WORKSPACE_DRAG_MIME } from "./gridState.js";
 
 export const SUPPORTED_IMAGE_MIME_TYPES: readonly AttachmentMimeType[] = [
   "image/png",
@@ -9,6 +10,108 @@ export const SUPPORTED_IMAGE_MIME_TYPES: readonly AttachmentMimeType[] = [
 
 export function isSupportedImageMime(mime: string): mime is AttachmentMimeType {
   return (SUPPORTED_IMAGE_MIME_TYPES as readonly string[]).includes(mime);
+}
+
+const IMAGE_EXTENSION_MIME: Readonly<Record<string, AttachmentMimeType>> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp"
+};
+
+/** MIME from a filename when the File's own type is empty. Screenshot drops
+ *  from the macOS thumbnail often arrive as `Screenshot …png` with no type. */
+export function imageMimeFromFileName(name: string): AttachmentMimeType | null {
+  const dot = name.lastIndexOf(".");
+  if (dot < 0 || dot === name.length - 1) return null;
+  const ext = name.slice(dot + 1).toLowerCase();
+  return IMAGE_EXTENSION_MIME[ext] ?? null;
+}
+
+/** Minimal drag payload so tests can feed a plain object instead of a live
+ *  DataTransfer. Matches the fields the composer actually reads. */
+export interface ComposerDragPayload {
+  types?: ArrayLike<string> | string | null;
+  files?: ArrayLike<File> | null;
+  items?: ArrayLike<{
+    kind: string;
+    type: string;
+    getAsFile: () => File | null;
+  }> | null;
+}
+
+/**
+ * Formats advertised on a drag. WKWebView sometimes exposes `types` as a
+ * comma-separated string rather than an array; Array.from on a string would
+ * split it into characters and miss `"Files"`.
+ */
+export function listDragTypes(dataTransfer: ComposerDragPayload): string[] {
+  const types = dataTransfer.types;
+  if (types == null) return [];
+  if (typeof types === "string") {
+    return types
+      .split(",")
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+  }
+  return Array.from(types);
+}
+
+/**
+ * Whether the composer should take this drag (highlight + preventDefault so
+ * drop can fire). Finder file drags advertise `"Files"`. In-memory images
+ * (macOS screenshot thumbnail, Slack, browser) often advertise `image/png`
+ * instead, and WKWebView promised-file drags can report no types until drop.
+ * Pane rearranges use `WORKSPACE_DRAG_MIME` and must not look like a file drop.
+ */
+export function isAttachableDrag(dataTransfer: ComposerDragPayload): boolean {
+  const types = listDragTypes(dataTransfer);
+  if (types.includes(WORKSPACE_DRAG_MIME)) return false;
+  if (types.includes("Files")) return true;
+  if (types.some((type) => type.startsWith("image/"))) return true;
+  const items = dataTransfer.items;
+  if (items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file") return true;
+      if (item.type.startsWith("image/")) return true;
+    }
+  }
+  // Promised files: types and items stay empty through dragover. Taking the
+  // drag lets drop fire; collectDroppedFiles then reads the realized files.
+  return types.length === 0 && (!items || items.length === 0);
+}
+
+function stampItemImageType(file: File, itemType: string): File {
+  if (file.type || !isSupportedImageMime(itemType)) return file;
+  const stamped = new File([file], file.name || "image", { type: itemType });
+  const path = (file as { path?: unknown }).path;
+  if (typeof path === "string" && path.length > 0) {
+    Object.defineProperty(stamped, "path", { value: path });
+  }
+  return stamped;
+}
+
+/**
+ * Files from a drop. WKWebView can leave `files` empty while `items` holds
+ * the image (Mail.app images, screenshot thumbnail). When `files` is already
+ * populated, that list is the drop: merging `items` on top would attach the
+ * same screenshot twice, because wrapping to stamp a MIME creates a new File
+ * that no longer matches the original.
+ */
+export function collectDroppedFiles(dataTransfer: ComposerDragPayload): File[] {
+  const fromFiles = dataTransfer.files ? Array.from(dataTransfer.files) : [];
+  if (fromFiles.length > 0) return fromFiles;
+  if (!dataTransfer.items) return [];
+  const out: File[] = [];
+  for (let i = 0; i < dataTransfer.items.length; i++) {
+    const item = dataTransfer.items[i];
+    if (item.kind !== "file") continue;
+    const file = item.getAsFile();
+    if (file) out.push(stampItemImageType(file, item.type));
+  }
+  return out;
 }
 
 /**

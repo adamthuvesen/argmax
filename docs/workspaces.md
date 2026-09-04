@@ -15,6 +15,7 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
 - **Archiving:**
   - Shared checkouts mark `archived` immediately and drain child processes in the background.
   - Isolated worktrees mark `archiving`, cancel child processes, expire pending approvals, evict warm Cursor ACP instances, remove the git worktree, and persist `archived`. Dirty worktrees return to `kept` unless `force: true` is passed.
+  - Stopping a chat within 10 seconds of launch is an undo of a mistaken start: the pane returns to the composer, and the workspace is force-archived so no cancelled row stays in the sidebar. Docked multitasks and details popups are excluded. See [earlyStop.ts](../src/renderer/lib/earlyStop.ts).
 
 ### Session Moves
 

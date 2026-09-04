@@ -2,8 +2,9 @@ import type { SessionSummary } from "../../shared/types.js";
 
 /**
  * Window within which stopping a newly launched session is considered an "early stop"
- * (e.g. launched in the wrong repository, with the wrong prompt, or by mistake),
- * returning the user to the composer with their prompt and target preserved.
+ * (e.g. launched in the wrong repository, with the wrong prompt, or by mistake):
+ * the pane returns to the composer with the prompt and target preserved, and
+ * the workspace is archived so the cancelled chat does not linger in the sidebar.
  */
 export const EARLY_STOP_WINDOW_MS = 10_000;
 

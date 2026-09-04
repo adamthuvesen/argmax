@@ -14,20 +14,12 @@ interface Bounds {
 }
 
 function readToolBounds(item: TurnToolItem): Bounds {
-  const tools = item.kind === "tool" ? [item.tool] : item.group.tools;
-  let started = Number.POSITIVE_INFINITY;
-  let ended: number | null = 0;
-  for (const t of tools) {
-    const s = Date.parse(t.createdAt);
-    if (Number.isFinite(s)) started = Math.min(started, s);
-    if (!t.completedAt) {
-      ended = null;
-    } else if (ended !== null) {
-      const e = Date.parse(t.completedAt);
-      if (Number.isFinite(e)) ended = Math.max(ended, e);
-    }
-  }
-  return { startedAt: Number.isFinite(started) ? started : 0, endedAt: ended };
+  const startedAt = Date.parse(item.tool.createdAt);
+  const endedAt = item.tool.completedAt ? Date.parse(item.tool.completedAt) : null;
+  return {
+    startedAt: Number.isFinite(startedAt) ? startedAt : 0,
+    endedAt: endedAt !== null && Number.isFinite(endedAt) ? endedAt : null
+  };
 }
 
 function turnBounds(toolItems: TurnToolItem[], assistantTimestamps: number[]): Bounds {
@@ -58,8 +50,7 @@ function turnBounds(toolItems: TurnToolItem[], assistantTimestamps: number[]): B
 }
 
 function isToolRunning(item: TurnToolItem): boolean {
-  if (item.kind === "tool") return item.tool.status === "running";
-  return item.group.tools.some((t) => t.status === "running");
+  return item.tool.status === "running";
 }
 
 
@@ -118,6 +109,24 @@ export function TurnBlock({
   // about thinking phases and user-input pauses (PlanCard / QuestionCard).
   // Fall back to tool status for isolated component tests and narrow callers.
   const running = isTurnActive ?? toolRunning;
+  const wasRunning = useRef(running);
+  const [settling, setSettling] = useState(false);
+  const [inspectingActivity, setInspectingActivity] = useState(false);
+  // Minimal keeps freshly finished activity readable for one brief beat.
+  // Restored history starts collapsed, and the status settles immediately.
+  useLayoutEffect(() => {
+    const justFinished = wasRunning.current && !running;
+    wasRunning.current = running;
+    if (!hideWorkingWhenCollapsed || running) {
+      setSettling(false);
+      setInspectingActivity(false);
+      return;
+    }
+    if (!justFinished) return;
+    setSettling(true);
+    const timeout = setTimeout(() => setSettling(false), 600);
+    return () => clearTimeout(timeout);
+  }, [hideWorkingWhenCollapsed, running]);
   const bounds = useMemo(() => turnBounds(toolItems, assistantTimestamps), [toolItems, assistantTimestamps]);
   const startedAtMs =
     typeof turnStartedAtMs === "number" && turnStartedAtMs > 0 && Number.isFinite(turnStartedAtMs)
@@ -132,8 +141,8 @@ export function TurnBlock({
   // verbosity where a finished turn drops the working rows from the body.
   const toolsAreExpanded = toolsExpanded ?? true;
   const visibleBody =
-    hideWorkingWhenCollapsed && !running && !toolsAreExpanded
-      ? body.filter((child) => child.kind !== "tool")
+    hideWorkingWhenCollapsed && !running && !toolsAreExpanded && !settling && !inspectingActivity
+      ? body.filter((child) => child.kind !== "tool" || child.hasErrors)
       : body;
 
   const elapsedLabel = formatElapsedSeconds(elapsedMs);
@@ -216,7 +225,10 @@ export function TurnBlock({
             aria-label={staticChipLabel}
             title={staticChipLabel}
             {...(hasTools ? { "aria-expanded": toolsAreExpanded } : {})}
-            {...(hasTools && onToggleTools ? { onClick: onToggleTools } : {})}
+            {...(hasTools && onToggleTools ? { onClick: () => {
+              setInspectingActivity(false);
+              onToggleTools();
+            } } : {})}
           >
             {liveStartMs !== null ? (
               <span>
@@ -241,6 +253,16 @@ export function TurnBlock({
         <div
           className="turn-block-body"
           data-just-revealed={justRevealed ? "true" : undefined}
+          onClickCapture={(event) => {
+            if (settling && event.target instanceof Element && event.target.closest(".turn-block-tools")) {
+              setInspectingActivity(true);
+            }
+          }}
+          onFocusCapture={(event) => {
+            if (settling && event.target.closest(".turn-block-tools")) {
+              setInspectingActivity(true);
+            }
+          }}
         >
           {groupToolRuns(visibleBody)}
         </div>

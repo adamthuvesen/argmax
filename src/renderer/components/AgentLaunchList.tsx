@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { useState, type JSX } from "react";
-import { codenameForTool } from "../lib/agentNames.js";
+import { codenameForTool, fallbackCodename } from "../lib/agentNames.js";
+import { emblemForCodename, type Emblem } from "../lib/agentEmblems.js";
 import {
   agentLaunchAriaLabel,
   agentLaunchLabel,
@@ -8,26 +9,29 @@ import {
 } from "../lib/agentLaunch.js";
 import { useSettleHold } from "../hooks/useSettleHold.js";
 import type { ToolCall } from "../lib/toolCalls.js";
+import { AgentEmblem } from "./AgentEmblem.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallDetail, toolCallHasExpandableDetail } from "./ToolCallDetail.js";
 import { WORKING_NEST_SETTLE_MS, WorkingNest } from "./WorkingNest.js";
 
 /**
- * A running agent gets the animated nest; a settled one gets a plain bullet.
- * The finished state is carried by the word "Completed" on the row's own status
- * line, so a check glyph would only say it twice — and swapping the nest for a
- * same-sized bullet keeps the text edge from shifting when an agent lands.
+ * A running agent gets the animated nest; a settled one gets its emblem. The
+ * finished state is carried by the word "Completed" on the row's own status
+ * line, so a check glyph would only say it twice — and the emblem occupies the
+ * nest's box, so the text edge does not shift when an agent lands.
  *
  * The swap waits for the nest's landing (useSettleHold): the mark's four dots
- * gather, pulse once and open back out, and only then does the bullet take
+ * gather, pulse once and open back out, and only then does the emblem take
  * over. An agent that *errored* skips it — a landing is the app saying the work
  * arrived, and it must never say that about work that didn't.
  */
 function AgentLaunchMark({
   status,
+  emblem,
   phaseKey
 }: {
   status: ToolCall["status"];
+  emblem: Emblem;
   phaseKey: string;
 }): JSX.Element {
   const phase = useSettleHold(status === "running", WORKING_NEST_SETTLE_MS);
@@ -46,10 +50,17 @@ function AgentLaunchMark({
   }
   return (
     <span
-      className="agent-launch-mark agent-launch-bullet"
+      className="agent-launch-mark agent-launch-emblem"
       aria-hidden="true"
       data-launch-mark={status === "error" ? "error" : "done"}
-    />
+    >
+      <AgentEmblem
+        shape={emblem.shape}
+        hue={emblem.hue}
+        size={14}
+        status={status === "error" ? "error" : "done"}
+      />
+    </span>
   );
 }
 
@@ -81,6 +92,7 @@ function AgentLaunchRow({
     hasDetail && (localExpanded ?? (tool.status === "error" || (defaultExpanded ?? false)));
   const { title, identity } = agentLaunchLabel(tool, agentCodename);
   const action = agentLaunchAriaLabel(tool, agentCodename);
+  const emblem = emblemForCodename(agentCodename ?? fallbackCodename(tool.toolUseId));
   const toggleExpanded = (): void => {
     if (!hasDetail) return;
     setUserToggle({ value: !expanded, defaultExpanded });
@@ -88,9 +100,15 @@ function AgentLaunchRow({
   const opensAgentPane = onOpenAgent !== undefined;
 
   return (
-    <div className="agent-launch-row" data-status={tool.status}>
+    // The hue rides the row so the working nest lands in this agent's colour
+    // before its emblem takes the slot.
+    <div
+      className="agent-launch-row agent-emblem-tint"
+      data-status={tool.status}
+      data-hue={emblem.hue}
+    >
       <div className="agent-launch-row-main">
-        <AgentLaunchMark status={tool.status} phaseKey={tool.toolUseId} />
+        <AgentLaunchMark status={tool.status} emblem={emblem} phaseKey={tool.toolUseId} />
         <button
           type="button"
           className="agent-launch-row-button"

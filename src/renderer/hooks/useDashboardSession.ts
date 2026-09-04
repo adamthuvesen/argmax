@@ -615,7 +615,7 @@ export function useDashboardSession(
   // poll, so the steady state remains delta-driven (no dashboard-wide poll).
   //
   // Each tick pulls the cheap event tail (`eventsSince`) so streamed text keeps
-  // flowing, deduped by `mergeByCreatedAt`. The heavier session/workspace STATE
+  // flowing. The heavier session/workspace STATE
   // pull (`workspace:status`) runs on two cadences: (1) a throttled mid-turn
   // refresh (~2s) so `changedFiles` and dirty markers track the agent's edits
   // live instead of freezing until the turn ends, and (2) a guaranteed pull

@@ -18,7 +18,8 @@ import {
   sessionEventsSince,
   setPriorityDismissed,
   setupAppTestMocks,
-  snapshot
+  snapshot,
+  terminateProvider
 } from "../../test/appTestHarness.js";
 import { MobileApp } from "./MobileApp.js";
 
@@ -111,6 +112,9 @@ function installObjectUrl(url: string): () => void {
 describe("MobileApp", () => {
   afterEach(() => {
     cleanup();
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("data-accent");
+    document.documentElement.removeAttribute("data-user-bubble");
   });
 
   beforeEach(() => {
@@ -430,6 +434,31 @@ describe("MobileApp", () => {
       })
     );
     expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
+  });
+
+  it("archives a chat stopped within 10s of launch and returns to the list", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({
+        ...session,
+        state: "running" as const,
+        startedAt: new Date().toISOString(),
+        completedAt: null
+      }))
+    });
+
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Chat list" });
+    fireEvent.click(screen.getByRole("button", { name: /Build dashboard/ }));
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop chat" }));
+
+    await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
+    await waitFor(() =>
+      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: true })
+    );
+    expect(await screen.findByRole("region", { name: "Chat list" })).toBeInTheDocument();
   });
 
   it("shows the shared fixed new-chat title on the + screen", async () => {
@@ -777,12 +806,58 @@ describe("MobileApp", () => {
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
 
     fireEvent.click(screen.getByRole("button", { name: "Remote options" }));
-    fireEvent.click(screen.getByRole("button", { name: "Use light theme" }));
+    const themePicker = screen.getByRole("radiogroup", { name: "Theme" });
+    fireEvent.click(within(themePicker).getByRole("radio", { name: "Light" }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     expect(window.localStorage.getItem("argmax.theme.mode")).toBe("light");
+    expect(within(themePicker).getByRole("radio", { name: "Light" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+
+    fireEvent.click(within(themePicker).getByRole("radio", { name: "Dark" }));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    expect(screen.getByRole("dialog", { name: "Remote menu" })).toBeInTheDocument();
+  });
+
+  it("applies a stored accent and bubble tint on launch", async () => {
+    window.localStorage.setItem("argmax.accent.tint", "coral");
+    window.localStorage.setItem("argmax.chat.bubbleTint", "neutral");
+
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Chat list" });
+
+    expect(document.documentElement.getAttribute("data-accent")).toBe("coral");
+    expect(document.documentElement.getAttribute("data-user-bubble")).toBe("neutral");
+  });
+
+  it("picks an accent and takes user bubbles off it from the Remote menu", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Chat list" });
 
     fireEvent.click(screen.getByRole("button", { name: "Remote options" }));
-    fireEvent.click(screen.getByRole("button", { name: "Use dark theme" }));
-    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    const accentPicker = screen.getByRole("radiogroup", { name: "Accent" });
+    expect(within(accentPicker).getByRole("radio", { name: "Green" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+
+    fireEvent.click(within(accentPicker).getByRole("radio", { name: "Orange" }));
+    expect(document.documentElement.getAttribute("data-accent")).toBe("orange");
+    expect(window.localStorage.getItem("argmax.accent.tint")).toBe("orange");
+    expect(within(accentPicker).getByRole("radio", { name: "Orange" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+
+    const bubblePicker = screen.getByRole("radiogroup", { name: "Your message bubbles" });
+    expect(within(bubblePicker).getByRole("radio", { name: "Accent" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    fireEvent.click(within(bubblePicker).getByRole("radio", { name: "Neutral" }));
+    expect(document.documentElement.getAttribute("data-user-bubble")).toBe("neutral");
+    expect(window.localStorage.getItem("argmax.chat.bubbleTint")).toBe("neutral");
+    expect(screen.getByRole("dialog", { name: "Remote menu" })).toBeInTheDocument();
   });
 });

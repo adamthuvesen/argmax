@@ -2,7 +2,7 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 use specta::Type;
 
-use super::time::now_iso;
+use super::{json_error, sqlite_error, time::now_iso};
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -632,12 +632,4 @@ fn session_row_to_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
         launched_by_session_id: row.get("launched_by_session_id")?,
         launch_kind: row.get("launch_kind")?,
     })
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
-}
-
-fn json_error(error: serde_json::Error) -> ArgmaxError {
-    ArgmaxError::service("JSON", error.to_string())
 }

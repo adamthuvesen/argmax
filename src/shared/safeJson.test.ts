@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readLogBuffer, resetLogBufferForTesting } from "./logger.js";
+import { logger } from "./logger.js";
 import {
   resetSafeJsonWarningsForTesting,
   safeJsonParse,
@@ -38,27 +38,23 @@ describe("safeJsonParse — always returns unknown", () => {
 
   it("logs at most once per context within a minute", () => {
     vi.useFakeTimers();
-    resetLogBufferForTesting();
     const ctx = `safeJsonParseTest-${Math.random()}`;
+    const warn = vi.spyOn(logger, "warn");
 
     safeJsonParse("{bad", ctx);
     safeJsonParse("{bad", ctx);
     safeJsonParse("{bad", ctx);
-    const warnsAfterBurst = readLogBuffer().filter((e) => e.scope === "safeJson");
-    expect(warnsAfterBurst).toHaveLength(1);
+    expect(warn).toHaveBeenCalledTimes(1);
 
     vi.advanceTimersByTime(61_000);
     safeJsonParse("{bad", ctx);
-    const warnsAfterWait = readLogBuffer().filter((e) => e.scope === "safeJson");
-    expect(warnsAfterWait).toHaveLength(2);
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 
   it("logs malformed contextless JSON under the unknown bucket", () => {
-    resetLogBufferForTesting();
+    const warn = vi.spyOn(logger, "warn");
     safeJsonParse("{bad");
-    const warns = readLogBuffer().filter((e) => e.scope === "safeJson");
-    expect(warns).toHaveLength(1);
-    expect(warns[0]?.fields).toMatchObject({ context: "<unknown>" });
+    expect(warn).toHaveBeenCalledWith("safeJson", "parse error", expect.objectContaining({ context: "<unknown>" }));
   });
 });
 

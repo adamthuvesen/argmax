@@ -280,8 +280,102 @@ describe("SessionConversation — tools & chrome", () => {
     fireEvent.click(screen.getByRole("button", { name: toggleAgentDetailsName("Audit renderer tools") }));
     expect(screen.queryByText("Activity")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
-    expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Explored 1 file, started an agent/ })).toBeNull();
+    expect(screen.getByText("git status --short")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Read a file, started an agent/ })).toBeNull();
+  });
+
+  it("folds routine reads, agent launches, and commands into one Compact group", () => {
+    renderConversation(
+      baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }),
+      [
+        event("u1", "user.message", "inspect with an agent", "2026-05-12T15:00:00.000Z"),
+        event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
+          id: "read",
+          name: "Read",
+          input: { file_path: "README.md" }
+        }),
+        event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "read",
+          content: "readme"
+        }),
+        event("task-start", "command.started", "Task", "2026-05-12T15:00:03.000Z", {
+          id: "task",
+          name: "Task",
+          input: { description: "Audit renderer tools", prompt: "Audit the tool UI." }
+        }),
+        event("task-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
+          tool_use_id: "task",
+          content: "done"
+        }),
+        event("bash-start", "command.started", "Bash", "2026-05-12T15:00:05.000Z", {
+          id: "bash",
+          name: "Bash",
+          input: { command: "git status --short" }
+        }),
+        event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:06.000Z", {
+          tool_use_id: "bash",
+          content: ""
+        }),
+        event("answer", "message.completed", "The audit is complete.", "2026-05-12T15:00:07.000Z")
+      ],
+      { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false }
+    );
+
+    const group = screen.getByRole("button", {
+      name: "Read a file, ran a command, started an agent"
+    });
+    expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
+    expect(screen.queryByRole("button", { name: startedAgentName("Audit renderer tools") })).toBeNull();
+    expect(screen.queryByText("git status --short")).toBeNull();
+
+    fireEvent.click(group);
+
+    const read = screen.getByRole("button", { name: "Read README.md" });
+    const agent = screen.getByRole("button", { name: startedAgentName("Audit renderer tools") });
+    const command = screen.getByText("git status --short");
+    expect(read.compareDocumentPosition(agent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(agent.compareDocumentPosition(command) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
+
+  it("keeps an adjacent failed agent separate from a successful Compact summary", () => {
+    renderConversation(
+      baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }),
+      [
+        event("u1", "user.message", "run both audits", "2026-05-12T15:00:00.000Z"),
+        event("success-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
+          id: "success",
+          name: "Task",
+          input: { description: "Successful audit", prompt: "Audit the renderer." }
+        }),
+        event("success-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "success",
+          content: "done"
+        }),
+        event("failed-start", "command.started", "Task", "2026-05-12T15:00:03.000Z", {
+          id: "failed",
+          name: "Task",
+          input: { description: "Failed audit", prompt: "Audit the tests." }
+        }),
+        event("failed-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
+          tool_use_id: "failed",
+          content: "The agent could not start.",
+          is_error: true
+        }),
+        event("answer", "message.completed", "One audit failed.", "2026-05-12T15:00:05.000Z")
+      ],
+      { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false }
+    );
+
+    const successfulGroup = screen.getByRole("button", { name: "Started an agent" });
+    expect(successfulGroup).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: startedAgentName("Successful audit") })).toBeNull();
+
+    const failedAgent = screen.getByRole("button", { name: startedAgentName("Failed audit") });
+    expect(failedAgent).toHaveTextContent("Failed");
+    expect(successfulGroup.compareDocumentPosition(failedAgent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+
+    fireEvent.click(successfulGroup);
+    expect(screen.getByRole("button", { name: startedAgentName("Successful audit") })).toBeInTheDocument();
   });
 
   it("keeps a completed launch to its title alone and marks only the failed one", () => {
@@ -321,7 +415,7 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByText(/\/Users\//)).not.toBeInTheDocument();
   });
 
-  it("keeps live agent activity collapsed while showing the running agent row", () => {
+  it("keeps live agent activity in a collapsed Compact group", () => {
     const onOpenAgent = vi.fn<(tool: ToolCall) => void>();
     renderConversation(
       baseSession({ provider: "claude", modelLabel: "Sonnet 5", state: "running" }),
@@ -347,12 +441,15 @@ describe("SessionConversation — tools & chrome", () => {
       { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false, onOpenAgent }
     );
 
+    const group = screen.getByRole("button", { name: "Started an agent" });
+    expect(group).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: startedAgentName("Explore repo structure") })).toBeNull();
+
+    fireEvent.click(group);
+
     const agentRow = screen.getByRole("button", { name: startedAgentName("Explore repo structure") });
     fireEvent.click(agentRow);
     expect(onOpenAgent).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: toggleAgentDetailsName("Explore repo structure") })).toBeNull();
-    expect(screen.queryByText("Activity")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Read README.md" })).not.toBeInTheDocument();
   });
 
   it("expands Codex spawned-agent rows to show spawn metadata", () => {
@@ -486,7 +583,7 @@ describe("SessionConversation — tools & chrome", () => {
       { defaultToolCallGroupsExpanded: false }
     );
 
-    const groups = screen.getAllByRole("button", { name: /Explored 1 file, ran 1 command/ });
+    const groups = screen.getAllByRole("button", { name: "Read a file, ran a command" });
     expect(groups).toHaveLength(2);
     for (const group of groups) {
       expect(group).toHaveAttribute("aria-expanded", "false");
@@ -613,12 +710,17 @@ describe("SessionConversation — tools & chrome", () => {
       ]
     );
 
-    const twoCommands = screen.getByRole("button", { name: /Ran 2 commands/ });
-    // The verb and count live in separate spans. The space has to be real text,
-    // not a flex gap, or the headline reads "Ran2 commands".
-    expect(twoCommands.textContent).toMatch(/Ran 2 commands/);
-    expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Ran 3 commands/ })).toBeNull();
+    const commandGroups = screen.getAllByRole("button", { name: "Ran commands" });
+    expect(commandGroups).toHaveLength(1);
+    const groupedBurst = commandGroups[0];
+    const firstUpdate = screen.getByText("Pass 1A.");
+    const secondUpdate = screen.getByText("Pass 1B.");
+    const singletonCommand = screen.getByText("sed -n '1,80p' src/c.ts");
+    const finalUpdate = screen.getByText("Pass 2A.");
+    expect(firstUpdate.compareDocumentPosition(groupedBurst) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(groupedBurst.compareDocumentPosition(secondUpdate) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(secondUpdate.compareDocumentPosition(singletonCommand) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(singletonCommand.compareDocumentPosition(finalUpdate) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 
   it("leaves external markdown links as anchors (does not call onOpenFile)", () => {
@@ -813,7 +915,7 @@ describe("SessionConversation — single-line activity mode", () => {
 
     // A finished Minimal turn hides the working rows and pre-tool narration.
     // Only the answer after the last tool stays until the chip is expanded.
-    expect(screen.queryByRole("button", { name: /Explored 1 file, 1 search/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Read a file, searched" })).toBeNull();
     expect(screen.queryByText("git status --short")).toBeNull();
     expect(screen.queryByRole("button", { name: "Thought" })).toBeNull();
     expect(screen.queryByText("Weighing options.")).toBeNull();
@@ -825,13 +927,12 @@ describe("SessionConversation — single-line activity mode", () => {
     expect(screen.getByText("First part done.")).toBeInTheDocument();
     expect(screen.getByText("Second part done.")).toBeInTheDocument();
 
-    // One aggregated line per gap, not per-tool rows or group bubbles.
-    const exploreLines = screen.getAllByRole("button", { name: /Explored 1 file, 1 search/ });
+    // One group headline per gap, with per-tool rows behind its disclosure.
+    const exploreLines = screen.getAllByRole("button", { name: "Read a file, searched" });
     expect(exploreLines).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
-    // The second gap holds one tool, so its own row is the single line — a
-    // summary of one would only restate it as "Ran 1 command". A silent bash
-    // call is not a disclosure.
+    // The second gap holds one tool, so its own row is the single line. A
+    // silent bash call is not a disclosure.
     expect(screen.getByText("git status --short")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Ran git status --short" })).toBeNull();
 
@@ -865,8 +966,151 @@ describe("SessionConversation — single-line activity mode", () => {
       { defaultToolCallsDisplay: "single-line" }
     );
 
-    expect(screen.getByRole("button", { name: /Explored 1 file, 1 search/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Read a file, searched/ })).toBeInTheDocument();
   });
+
+  it("keeps a failed mixed run visible after a Minimal turn finishes", () => {
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "check the repo", "2026-05-12T15:00:00.000Z"),
+        event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
+          id: "read",
+          name: "Read",
+          input: { file_path: "README.md" }
+        }),
+        event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "read",
+          content: "readme"
+        }),
+        event("bash-start", "command.started", "Bash", "2026-05-12T15:00:03.000Z", {
+          id: "bash",
+          name: "Bash",
+          input: { command: "npm test" }
+        }),
+        event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
+          tool_use_id: "bash",
+          content: "exit 1",
+          is_error: true
+        }),
+        event("answer", "message.completed", "The test failed.", "2026-05-12T15:00:05.000Z")
+      ],
+      { defaultToolCallsDisplay: "single-line" }
+    );
+
+    expect(screen.getByRole("button", { name: "Read a file, ran a command · 1 failed" }))
+      .toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("The test failed.")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["Minimal", "single-line"],
+    ["Compact", "collapsed"]
+  ] as const)("keeps a failed agent launch visible after a %s turn finishes", (_label, defaultToolCallsDisplay) => {
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "delegate the audit", "2026-05-12T15:00:00.000Z"),
+        event("task-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
+          id: "task",
+          name: "Task",
+          input: { description: "Audit renderer tools", prompt: "Audit the tool UI." }
+        }),
+        event("task-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "task",
+          content: "The agent could not start.",
+          is_error: true
+        }),
+        event("answer", "message.completed", "The delegated audit failed.", "2026-05-12T15:00:03.000Z")
+      ],
+      { defaultToolCallsDisplay, defaultToolCallGroupsExpanded: false }
+    );
+
+    const agentRow = screen.getByRole("button", { name: startedAgentName("Audit renderer tools") });
+    expect(agentRow).toHaveTextContent("Failed");
+    expect(screen.getByText("The delegated audit failed.")).toBeInTheDocument();
+  });
+
+  it.each(["collapsed", "single-line"] as const)(
+    "keeps mixed tool groups on either side of commentary in %s mode",
+    (defaultToolCallsDisplay) => {
+      renderConversation(
+        baseSession({ state: "complete" }),
+        [
+          event("u1", "user.message", "work in two passes", "2026-05-12T15:00:00.000Z"),
+          event("read-1-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
+            id: "read-1",
+            name: "Read",
+            input: { file_path: "README.md" }
+          }),
+          event("read-1-end", "command.completed", "tool_result", "2026-05-12T15:00:01.100Z", {
+            tool_use_id: "read-1",
+            content: "readme"
+          }),
+          event("edit-1-start", "command.started", "Edit", "2026-05-12T15:00:01.200Z", {
+            id: "edit-1",
+            name: "Edit",
+            input: { file_path: "src/a.ts" }
+          }),
+          event("edit-1-end", "command.completed", "tool_result", "2026-05-12T15:00:01.300Z", {
+            tool_use_id: "edit-1",
+            content: "updated"
+          }),
+          event("bash-1-start", "command.started", "Bash", "2026-05-12T15:00:01.400Z", {
+            id: "bash-1",
+            name: "Bash",
+            input: { command: "npm test -- a" }
+          }),
+          event("bash-1-end", "command.completed", "tool_result", "2026-05-12T15:00:01.500Z", {
+            tool_use_id: "bash-1",
+            content: "passed"
+          }),
+          event("checkpoint", "message.completed", "First pass checked.", "2026-05-12T15:00:02.000Z"),
+          event("read-2-start", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+            id: "read-2",
+            name: "Read",
+            input: { file_path: "package.json" }
+          }),
+          event("read-2-end", "command.completed", "tool_result", "2026-05-12T15:00:03.100Z", {
+            tool_use_id: "read-2",
+            content: "package"
+          }),
+          event("edit-2-start", "command.started", "Edit", "2026-05-12T15:00:03.200Z", {
+            id: "edit-2",
+            name: "Edit",
+            input: { file_path: "src/b.ts" }
+          }),
+          event("edit-2-end", "command.completed", "tool_result", "2026-05-12T15:00:03.300Z", {
+            tool_use_id: "edit-2",
+            content: "updated"
+          }),
+          event("bash-2-start", "command.started", "Bash", "2026-05-12T15:00:03.400Z", {
+            id: "bash-2",
+            name: "Bash",
+            input: { command: "npm test -- b" }
+          }),
+          event("bash-2-end", "command.completed", "tool_result", "2026-05-12T15:00:03.500Z", {
+            tool_use_id: "bash-2",
+            content: "passed"
+          }),
+          event("answer", "message.completed", "Both passes are done.", "2026-05-12T15:00:04.000Z")
+        ],
+        { defaultToolCallsDisplay }
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+
+      const groups = screen.getAllByRole("button", {
+        name: "Edited a file, read a file, ran a command"
+      });
+      expect(groups).toHaveLength(2);
+      const checkpoint = screen.getByText("First pass checked.");
+      const answer = screen.getByText("Both passes are done.");
+      expect(groups[0].compareDocumentPosition(checkpoint) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+      expect(checkpoint.compareDocumentPosition(groups[1]) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+      expect(groups[1].compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    }
+  );
 
   it("keeps agent launches as their own line between the summary lines", () => {
     renderConversation(
@@ -915,7 +1159,7 @@ describe("SessionConversation — single-line activity mode", () => {
     expect(screen.queryByRole("button", { name: "Ran git status --short" })).toBeNull();
     expect(screen.getByRole("button", { name: startedAgentName("Audit renderer tools") })).toBeInTheDocument();
     // The Task launch is not folded in with the tools on either side of it.
-    expect(screen.queryByRole("button", { name: /Started 1 agent|Explored 1 file, started/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Started an agent|Read a file, started/ })).toBeNull();
   });
 
   it("renders a run of one tool as the row itself, with a readable MCP result", () => {
@@ -995,7 +1239,7 @@ describe("SessionConversation — single-line activity mode", () => {
       { defaultToolCallsDisplay: "collapsed" }
     );
 
-    expect(screen.getByRole("button", { name: /Explored 1 file, 1 search/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read a file, searched" })).toBeInTheDocument();
     // Default (non single-line) rendering: one group bubble, rows folded.
     expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
   });

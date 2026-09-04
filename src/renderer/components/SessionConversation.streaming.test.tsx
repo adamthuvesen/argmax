@@ -34,6 +34,70 @@ describe("SessionConversation — streaming & composer", () => {
     await waitFor(() => expect(scroller?.getAttribute("data-restoring")).toBeNull());
   });
 
+  it.each([
+    {
+      label: "completed Grok narration",
+      provider: "grok" as const,
+      buildEvents: (first: string, second: string) => [
+        event("c2", "command.started", "Read", "2026-09-05T13:12:20.000Z", {
+          id: "c2",
+          name: "Read",
+          input: { file_path: "localize.md" }
+        }),
+        event("m2", "message.completed", second, "2026-09-05T13:12:20.000Z"),
+        event("c1-end", "command.completed", "Read", "2026-09-05T13:12:16.000Z", { id: "c1", content: "" }),
+        event("c1", "command.started", "Read", "2026-09-05T13:12:15.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "debug.md" }
+        }),
+        event("m1", "message.completed", first, "2026-09-05T13:12:15.000Z"),
+        event("u1", "user.message", "debug the drop", "2026-09-05T13:12:05.000Z")
+      ]
+    },
+    {
+      // Cursor CLI uses the same chat typewriter. Its live groups are folded
+      // from cumulative `message.delta` snapshots split at tools, not from
+      // `message.completed`, but they are still `streaming` on remount.
+      label: "Cursor cumulative deltas",
+      provider: "cursor" as const,
+      buildEvents: (first: string, second: string) => [
+        event("c2", "command.started", "Read", "2026-09-05T13:12:20.000Z", {
+          id: "c2",
+          name: "Read",
+          input: { file_path: "localize.md" }
+        }),
+        event(
+          "a2",
+          "message.delta",
+          second,
+          "2026-09-05T13:12:20.000Z",
+          cursorAssistantPayload(`${first} ${second}`)
+        ),
+        event("c1-end", "command.completed", "Read", "2026-09-05T13:12:16.000Z", { id: "c1", content: "" }),
+        event("c1", "command.started", "Read", "2026-09-05T13:12:15.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "debug.md" }
+        }),
+        event("a1", "message.delta", first, "2026-09-05T13:12:15.000Z", cursorAssistantPayload(first)),
+        event("u1", "user.message", "debug the drop", "2026-09-05T13:12:05.000Z")
+      ]
+    }
+  ])("does not retype already-arrived $label when a live turn is reopened", ({ provider, buildEvents }) => {
+    // A running turn keeps every narration group `streaming`. Switching
+    // sessions remounts the pane: without the restore flag those finished
+    // bubbles would all type out from nothing at once.
+    const first =
+      "I'll start by reading the debug workflow and locating the composer drag-and-drop path, especially the new-chat composer.";
+    const second =
+      "The drop path looks split between the composer and a workspace overlay. I'll read the debug localization notes and the composer/launch handlers next.";
+    renderConversation(baseSession({ provider, state: "running" }), buildEvents(first, second));
+
+    expect(screen.getByText(first)).toBeInTheDocument();
+    expect(screen.getByText(second)).toBeInTheDocument();
+  });
+
   it("does not reset the model picker when the session prop reference changes but id stays the same", () => {
     const v1 = baseSession({
       modelLabel: "GPT-5.6 Terra",
@@ -382,6 +446,9 @@ describe("SessionConversation — streaming & composer", () => {
     { label: "single-line", display: "single-line" as const }
   ])("shows the generic indicator while reasoning continues after an answer ($label)", ({ display }) => {
     vi.useFakeTimers();
+    // The cue's waits count from the newest event, so a pane that watches it
+    // land has its clock sitting on that event's timestamp.
+    vi.setSystemTime(new Date("2026-05-12T15:00:05.000Z"));
     renderConversation(
       baseSession({ provider: "codex", state: "running" }),
       [
@@ -821,9 +888,13 @@ describe("SessionConversation — streaming & composer", () => {
 
     // Assistant prose is a real boundary: the first command belongs above the
     // prose, while the later adjacent commands fold together below it.
-    expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Ran 2 commands/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Ran 3 commands/ })).not.toBeInTheDocument();
+    const commandGroups = screen.getAllByRole("button", { name: "Ran commands" });
+    expect(commandGroups).toHaveLength(1);
+    const groupedBurst = commandGroups[0];
+    const firstUpdate = screen.getByText("Checking the surrounding code.");
+    const singletonCommand = screen.getByText("sed -n '1,120p' src/a.ts");
+    expect(singletonCommand.compareDocumentPosition(firstUpdate) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(firstUpdate.compareDocumentPosition(groupedBurst) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(screen.queryByText(/\/bin\/zsh/)).not.toBeInTheDocument();
   });
 
@@ -1120,6 +1191,7 @@ describe("SessionConversation — streaming & composer", () => {
 
   it("delays Thinking after a completed assistant chunk while the session is still running", () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:01.000Z"));
     // A completed assistant chunk is often the final answer, with the backend
     // state flip arriving in the next delta. Give that terminal update a
     // longer grace period so the UI does not flash a bogus tail Thinking
@@ -1146,6 +1218,7 @@ describe("SessionConversation — streaming & composer", () => {
 
   it("does not flash Thinking when the session completes during the post-answer grace period", () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:01.000Z"));
     const events = [
       event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
       event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
@@ -1190,6 +1263,7 @@ describe("SessionConversation — streaming & composer", () => {
 
   it("shows generic Thinking after a long completed assistant chunk pause", () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:01.000Z"));
     // Once a durable assistant chunk exists, the transcript still needs a live
     // marker during a long silent mid-turn pause.
     renderConversation(
@@ -1215,6 +1289,7 @@ describe("SessionConversation — streaming & composer", () => {
 
   it("drops Thinking when an atomic answer lands, without waiting for the state flip", () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:01.000Z"));
     // Codex and OpenCode deliver an answer as a single `message.completed` —
     // there are no answer deltas, so the reasoning gap before it is what puts
     // the label up and nothing later arrives to take it down. The session stays
@@ -1246,6 +1321,8 @@ describe("SessionConversation — streaming & composer", () => {
     });
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
 
+    // The answer lands now: its window counts from its own timestamp.
+    vi.setSystemTime(new Date("2026-05-12T15:00:03.000Z"));
     rerender(
       <SessionConversation
         {...baseProps}
@@ -1274,6 +1351,7 @@ describe("SessionConversation — streaming & composer", () => {
 
   it("shows generic Thinking after a completed tool row", () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:02.000Z"));
     // Tool chaining (grep → read → grep) leaves a `command.completed` as the
     // last significant event while the model picks the next call. Show Thinking
     // during that silent gap.
@@ -1294,7 +1372,7 @@ describe("SessionConversation — streaming & composer", () => {
       ]
     );
 
-    expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ran grep foo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Working/ })).toBeInTheDocument();
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
     act(() => {
@@ -1303,8 +1381,59 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
+  it("shows Thinking at once when a running session is reopened mid-gap", () => {
+    vi.useFakeTimers();
+    // Switching chats remounts the pane. The 700 ms wait keeps the label from
+    // flickering between events a viewer is watching land; a gap already
+    // seconds old when the pane opens has nothing to smooth, and serving the
+    // wait again read as a blank line on every switch back.
+    vi.setSystemTime(new Date("2026-05-12T15:00:07.000Z"));
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "tu_grep",
+          content: "match"
+        }),
+        event("c1", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
+          type: "tool_use",
+          id: "tu_grep",
+          name: "Bash",
+          input: { command: "grep foo" }
+        }),
+        event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("serves only what is left of the answer window when reopened just after a completed chunk", () => {
+    vi.useFakeTimers();
+    // One second of the 1800 ms window is already spent when the pane opens.
+    vi.setSystemTime(new Date("2026-05-12T15:00:02.000Z"));
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("m1", "message.completed", "Now I'll edit the file.", "2026-05-12T15:00:01.000Z"),
+        event("u1", "user.message", "edit it", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
   it("keeps Thinking steady while a launched subagent works and only the child emits events", () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:03.000Z"));
     // Background launch: the Task row completes immediately, the parent then
     // waits. Child tool rows fold under the launch row and never render here,
     // so a child heartbeat must not toggle the parent's Thinking label.
@@ -1465,6 +1594,7 @@ describe("SessionConversation — streaming & composer", () => {
 
   it("shows Thinking immediately for a follow-up queued mid-turn, skipping the post-answer grace period", () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:01.000Z"));
     // Queued follow-ups drain after the current turn, so the running session's
     // newest event is still the previous answer. Without the local turn-start
     // state that answer's 1800 ms grace period gates the indicator.

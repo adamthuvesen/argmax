@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   createWsTransport: vi.fn()
 }));
 
+function nextEventLoopTurn(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: mocks.invoke
 }));
@@ -88,6 +92,7 @@ describe("tauriBridge", () => {
     const off = window.argmax!.dashboard.onDelta(vi.fn());
     await Promise.resolve();
     off();
+    await nextEventLoopTurn();
 
     expect(mocks.listen).toHaveBeenCalledWith("dashboard:delta", expect.any(Function));
     expect(unlisten).toHaveBeenCalledTimes(1);
@@ -124,7 +129,60 @@ describe("tauriBridge", () => {
     expect(second).toHaveBeenCalledTimes(2);
 
     offSecond();
+    await nextEventLoopTurn();
     expect(unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets Tauri install a listener before an immediate cleanup", async () => {
+    window.__TAURI_INTERNALS__ = {};
+    let emit: ((event: { payload: unknown }) => void) | undefined;
+    let resolveListen: ((unlisten: () => void) => void) | undefined;
+    let listenerInstalled = false;
+    const unlisten = vi.fn(() => {
+      if (!listenerInstalled) throw new Error("listener id is not installed");
+    });
+    mocks.listen.mockImplementation(
+      (_channel: string, listener: (event: { payload: unknown }) => void) =>
+        new Promise((resolve) => {
+          emit = listener;
+          resolveListen = resolve;
+        })
+    );
+    const { installTauriBridge } = await import("./tauriBridge.js");
+
+    installTauriBridge();
+    const listener = vi.fn();
+    const off = window.argmax!.dashboard.onDelta(listener);
+    off();
+    resolveListen?.(unlisten);
+    await Promise.resolve();
+
+    expect(unlisten).not.toHaveBeenCalled();
+    emit?.({ payload: { sessions: [] } });
+    expect(listener).not.toHaveBeenCalled();
+    listenerInstalled = true;
+    await nextEventLoopTurn();
+    expect(unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports asynchronous listener cleanup failures", async () => {
+    window.__TAURI_INTERNALS__ = {};
+    const unlisten = vi.fn(() => Promise.reject(new Error("event.unlisten failed")));
+    mocks.listen.mockResolvedValue(unlisten);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { installTauriBridge } = await import("./tauriBridge.js");
+
+    installTauriBridge();
+    const off = window.argmax!.dashboard.onDelta(vi.fn());
+    await Promise.resolve();
+    off();
+    await nextEventLoopTurn();
+    await Promise.resolve();
+
+    expect(consoleError).toHaveBeenCalledWith(
+      "[renderer.bridge] failed to unsubscribe from channel",
+      expect.objectContaining({ channel: "dashboard:delta", error: "event.unlisten failed" })
+    );
   });
 
   it("exposes listener registration failures through the ready promise", async () => {

@@ -100,30 +100,7 @@ fn claude_structured_args(
     mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
     let mut args = vec!["-p".to_string(), "--brief".to_string()];
-    args.extend(claude_permission_args(input));
-    args.extend(claude_reasoning_args(input));
-    args.extend(claude_settings_args(input, mcp));
-    args.extend(mcp_injection::mcp_args(ProviderId::Claude, mcp));
-    args.extend([
-        "--model".to_string(),
-        input.model_id.clone(),
-        "--session-id".to_string(),
-        input.session_id.clone(),
-        "--output-format".to_string(),
-        "stream-json".to_string(),
-        "--verbose".to_string(),
-        // Stream partial content blocks so the answer and extended-thinking
-        // arrive token-by-token (content_block_delta) instead of as whole
-        // assistant messages. See docs/runtime.md "Event delivery".
-        "--include-partial-messages".to_string(),
-        // Without this the CLI forwards a subagent's tool calls but not its
-        // text or thinking, so a subagent that only writes (a report, a
-        // review) leaves the Agents pane empty until its result lands.
-        // Needs Claude Code 2.1.258 or newer.
-        "--forward-subagent-text".to_string(),
-        "--".to_string(),
-        input.prompt.clone(),
-    ]);
+    args.extend(claude_common_args(input, mcp, Some(&input.session_id)));
     args
 }
 
@@ -143,18 +120,27 @@ fn claude_structured_resume_args(
     if input.resume_fork {
         args.push("--fork-session".to_string());
     }
-    args.extend(claude_permission_args(input));
+    args.extend(claude_common_args(input, mcp, None));
+    args
+}
+
+fn claude_common_args(
+    input: &ProviderLaunchInput,
+    mcp: Option<&SessionLaunchProcessConfig>,
+    session_id: Option<&str>,
+) -> Vec<String> {
+    let mut args = claude_permission_args(input);
     args.extend(claude_reasoning_args(input));
     args.extend(claude_settings_args(input, mcp));
     args.extend(mcp_injection::mcp_args(ProviderId::Claude, mcp));
+    args.extend(["--model".to_string(), input.model_id.clone()]);
+    if let Some(session_id) = session_id {
+        args.extend(["--session-id".to_string(), session_id.to_string()]);
+    }
     args.extend([
-        "--model".to_string(),
-        input.model_id.clone(),
         "--output-format".to_string(),
         "stream-json".to_string(),
         "--verbose".to_string(),
-        // Keep partial-message streaming on for resumed turns too — otherwise
-        // follow-ups regress to whole-message (non-streaming) output.
         "--include-partial-messages".to_string(),
         "--forward-subagent-text".to_string(),
         "--".to_string(),
@@ -168,12 +154,7 @@ fn codex_structured_args(
     mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
     let mut args = vec!["exec".to_string(), "--json".to_string()];
-    args.extend(codex_permission_args(input));
-    args.extend(["--model".to_string(), input.model_id.clone()]);
-    args.extend(codex_reasoning_summary_args(input));
-    args.extend(codex_reasoning_args(input));
-    args.extend(codex_fast_mode_args(input));
-    args.extend(mcp_injection::mcp_args(ProviderId::Codex, mcp));
+    args.extend(codex_common_args(input, mcp));
     args.push("-".to_string());
     args
 }
@@ -193,13 +174,21 @@ fn codex_structured_resume_args(
         subcommand.to_string(),
         "--json".to_string(),
     ];
-    args.extend(codex_permission_args(input));
+    args.extend(codex_common_args(input, mcp));
+    args.extend([resume_conversation_id.to_string(), "-".to_string()]);
+    args
+}
+
+fn codex_common_args(
+    input: &ProviderLaunchInput,
+    mcp: Option<&SessionLaunchProcessConfig>,
+) -> Vec<String> {
+    let mut args = codex_permission_args(input);
     args.extend(["--model".to_string(), input.model_id.clone()]);
     args.extend(codex_reasoning_summary_args(input));
     args.extend(codex_reasoning_args(input));
     args.extend(codex_fast_mode_args(input));
     args.extend(mcp_injection::mcp_args(ProviderId::Codex, mcp));
-    args.extend([resume_conversation_id.to_string(), "-".to_string()]);
     args
 }
 
@@ -221,15 +210,7 @@ fn cursor_structured_args(
         "stream-json".to_string(),
         "--stream-partial-output".to_string(),
     ];
-    args.extend(cursor_agent_mode_args(input));
-    args.extend(cursor_permission_args(input));
-    args.extend(mcp_injection::mcp_args(ProviderId::Cursor, mcp));
-    args.extend([
-        "--model".to_string(),
-        cursor_model_for(&input.model_id, input.reasoning_effort, input.fast_mode),
-        "--".to_string(),
-        input.prompt.clone(),
-    ]);
+    args.extend(cursor_common_args(input, mcp));
     args
 }
 
@@ -312,7 +293,15 @@ fn cursor_structured_resume_args(
         "stream-json".to_string(),
         "--stream-partial-output".to_string(),
     ];
-    args.extend(cursor_agent_mode_args(input));
+    args.extend(cursor_common_args(input, mcp));
+    args
+}
+
+fn cursor_common_args(
+    input: &ProviderLaunchInput,
+    mcp: Option<&SessionLaunchProcessConfig>,
+) -> Vec<String> {
+    let mut args = cursor_agent_mode_args(input);
     args.extend(cursor_permission_args(input));
     args.extend(mcp_injection::mcp_args(ProviderId::Cursor, mcp));
     args.extend([
@@ -344,18 +333,7 @@ fn opencode_structured_args(
         "json".to_string(),
         "--thinking".to_string(),
     ];
-    args.extend(opencode_agent_mode_args(input));
-    args.extend(opencode_permission_args(input));
-    args.extend(opencode_variant_args(
-        &input.model_id,
-        input.reasoning_effort,
-    ));
-    args.extend([
-        "-m".to_string(),
-        input.model_id.clone(),
-        "--".to_string(),
-        input.prompt.clone(),
-    ]);
+    args.extend(opencode_common_args(input));
     args
 }
 
@@ -380,7 +358,12 @@ fn opencode_structured_resume_args(
     if input.resume_fork {
         args.push("--fork".to_string());
     }
-    args.extend(opencode_agent_mode_args(input));
+    args.extend(opencode_common_args(input));
+    args
+}
+
+fn opencode_common_args(input: &ProviderLaunchInput) -> Vec<String> {
+    let mut args = opencode_agent_mode_args(input);
     args.extend(opencode_permission_args(input));
     args.extend(opencode_variant_args(
         &input.model_id,

@@ -1,9 +1,11 @@
-import { ArrowDown, ChevronDown } from "lucide-react";
+import { ArrowDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { SCROLL_INTENT_KEYS, useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
-import { buildAgentActivity } from "../lib/agentActivity.js";
+import { buildAgentActivity, type AgentActivity as AgentActivityModel, type AgentModel } from "../lib/agentActivity.js";
+import { emblemForCodename } from "../lib/agentEmblems.js";
+import { fallbackCodename } from "../lib/agentNames.js";
 import { foldConversationItems } from "../lib/foldConversation.js";
 import {
   assistantGroupHasVisibleChat,
@@ -11,13 +13,13 @@ import {
   preToolNarrationGroupIds,
   type AssistantGroup
 } from "../lib/sessionTurnView.js";
-import type { ToolCall, TurnToolItem } from "../lib/toolCalls.js";
+import { buildToolCallGroup, isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
 import { collectTurnFileChanges } from "../lib/turnFileChanges.js";
 import { foldToolRunsToSummaries, type TurnBodyChild } from "../lib/turnChildren.js";
 import { foldTurnToolItems, latestToolCreatedAt } from "../lib/turnToolItems.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
-import { ActivitySummaryLine } from "./ActivitySummaryLine.js";
+import { AgentEmblem } from "./AgentEmblem.js";
 import { ChatBubble } from "./ChatBubble.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { LogBlock } from "./LogBlock.js";
@@ -28,12 +30,71 @@ import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 import { TurnChangesCard } from "./TurnChangesCard.js";
 import { TurnBlock } from "./TurnBlock.js";
+import { WorkingNest } from "./WorkingNest.js";
 
-const PROMPT_COLLAPSE_THRESHOLD = 560;
-
-function isLongPrompt(prompt: string | null): boolean {
-  if (!prompt) return false;
-  return prompt.length > PROMPT_COLLAPSE_THRESHOLD || prompt.split("\n").length > 8;
+/**
+ * The run's masthead: what the agent was asked to do as the title, and one
+ * muted line under it with everything that says which agent this is — its
+ * codename, its role, and the model it ran on. The tab strip above carries
+ * the codename too, but the strip is a list of every open run while this
+ * names the one in view, the way an editor's breadcrumb restates the tab.
+ */
+function AgentHeader({
+  title,
+  status,
+  codename,
+  subagentType,
+  model,
+  phaseKey
+}: {
+  title: string;
+  status: AgentActivityModel["status"];
+  codename: string | undefined;
+  subagentType: string | null;
+  model: AgentModel | null;
+  phaseKey: string;
+}): JSX.Element {
+  // Roles arrive as the identifiers agents are launched with (`implementer`,
+  // `general-purpose`); the line reads as prose, so they get a capital.
+  const role = subagentType ? subagentType.charAt(0).toUpperCase() + subagentType.slice(1) : null;
+  const facts = [codename, role, model?.label, model?.effort].filter(
+    (fact): fact is string => typeof fact === "string" && fact.length > 0
+  );
+  const emblem = emblemForCodename(codename ?? fallbackCodename(phaseKey));
+  return (
+    <header className="agent-activity-header">
+      <span
+        className="agent-activity-mark agent-emblem-tint"
+        data-status={status}
+        data-hue={emblem.hue}
+        aria-hidden="true"
+      >
+        {status === "running" ? (
+          <WorkingNest active size={13} phaseKey={phaseKey} />
+        ) : (
+          <AgentEmblem
+            shape={emblem.shape}
+            hue={emblem.hue}
+            size={18}
+            status={status === "error" ? "error" : "done"}
+          />
+        )}
+      </span>
+      <div className="agent-activity-heading">
+        <h2 className="agent-activity-title" title={title}>{title}</h2>
+        {facts.length > 0 ? (
+          <p className="agent-activity-facts" aria-label="Agent details">
+            {facts.map((fact, index) => (
+              <span key={`${index}-${fact}`} className="agent-activity-fact">
+                {index > 0 ? <span className="agent-activity-fact-separator" aria-hidden="true">·</span> : null}
+                {fact}
+              </span>
+            ))}
+          </p>
+        ) : null}
+      </div>
+    </header>
+  );
 }
 
 
@@ -44,7 +105,8 @@ function renderAssistantGroup({
   holdThoughtOpen,
   agentKey,
   workspace,
-  onOpenFile
+  onOpenFile,
+  restoring
 }: {
   group: AssistantGroup;
   thinkingLive: boolean;
@@ -55,6 +117,7 @@ function renderAssistantGroup({
   agentKey: string | null;
   workspace: WorkspaceSummary | null;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+  restoring?: boolean;
 }): JSX.Element | null {
   if (group.thinking) {
     return (
@@ -90,6 +153,7 @@ function renderAssistantGroup({
       <StreamingMarkdown
         text={group.text}
         streaming={group.streaming}
+        restoring={restoring}
         revealKey={agentKey ? `${agentKey}:${group.createdAt}:${group.id}` : null}
         workspace={workspace}
         onOpenFile={onOpenFile}
@@ -174,7 +238,6 @@ export function AgentActivity({
       }),
     [parentSession?.provider, parentSession?.state, parentToolUseId, visibleEvents]
   );
-  const promptIsLong = isLongPrompt(activity.prompt);
   const finalOutput = activity.finalOutput;
   const [instructionsExpanded, setInstructionsExpanded] = useState(false);
   const agentKey = parentSessionId ? `${parentSessionId}:${parentToolUseId}` : null;
@@ -193,10 +256,13 @@ export function AgentActivity({
   // the run reads as one self-updating line, and a finished one keeps only its
   // result until the chip is opened.
   const minimalActivity = defaultToolCallsDisplay === "single-line";
+  const compactActivity = defaultToolCallsDisplay === "collapsed" && defaultToolCallGroupsExpanded !== true;
   const activityExpandedDefault =
     !minimalActivity && (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded");
   const [activityExpandOverride, setActivityExpandOverride] = useState<boolean | null>(null);
   const activityExpanded = activityExpandOverride ?? activityExpandedDefault;
+  // Restored turns must not replay their entrance animation on every reopen.
+  const restoringTranscript = useRestoreWithoutMotion();
   const { activityChildren, toolItems, assistantTimestamps } = useMemo((): {
     activityChildren: TurnBodyChild[];
     toolItems: TurnToolItem[];
@@ -206,9 +272,7 @@ export function AgentActivity({
       item.kind === "message" ? [item.event] : []
     );
     const tools = activity.items.flatMap((item) => (item.kind === "tool" ? [item.tool] : []));
-    // Same two folds the transcript runs: consecutive calls become one group
-    // row, then bash-like runs merge and a subagent's own children nest under
-    // the launch that spawned them.
+    // Attach child calls before interleaving individual tools with prose.
     const folded = foldTurnToolItems(
       foldConversationItems([], tools).flatMap((item): TurnToolItem[] =>
         item.kind === "message" ? [] : [item]
@@ -229,11 +293,13 @@ export function AgentActivity({
       // no last prose group worth keeping to stand in for one.
       { separateAnswer: finalOutput !== null }
     );
-    const assistantChildren = assistantGroups.flatMap((group) => {
+    const assistantChildren = assistantGroups.flatMap<TurnBodyChild & { createdAt: string; sortAt: string }>((group) => {
       // Minimal folds settled Thought blocks away entirely — only the live
       // "Thinking" indicator survives.
       if (minimalActivity && group.thinking && !thinkingLive) return [];
-      if (hiddenNarrationIds.has(group.id)) return [];
+      if (hiddenNarrationIds.has(group.id)) {
+        return [{ kind: "assistant" as const, id: `assistant-${group.id}`, createdAt: group.createdAt, sortAt: group.lastActivityAt, node: null }];
+      }
       const node = renderAssistantGroup({
         group,
         thinkingLive,
@@ -241,7 +307,8 @@ export function AgentActivity({
         holdThoughtOpen: activityExpandOverride !== false,
         agentKey,
         workspace,
-        onOpenFile
+        onOpenFile,
+        restoring: restoringTranscript
       });
       if (node === null) return [];
       return [
@@ -254,14 +321,16 @@ export function AgentActivity({
         }
       ];
     });
-    const toolChildren = folded.map((item) => {
-      if (item.kind === "tool") {
-        return {
+    const toolChildren: (TurnBodyChild & { createdAt: string; sortAt: string; runTools?: ToolCall[] })[] = folded.map((item) => {
+      return {
           kind: "tool" as const,
           id: `tool-${item.tool.id}`,
           createdAt: item.tool.createdAt,
           sortAt: item.tool.createdAt,
-          runTools: [item.tool, ...(item.children ?? [])],
+          hasErrors: item.tool.status === "error",
+          runTools: isAgentToolName(item.tool.name)
+            ? compactActivity && item.tool.status !== "error" ? [item.tool] : undefined
+            : [item.tool, ...(item.children ?? [])],
           node: (
             <ToolCallRow
               key={item.tool.id}
@@ -274,54 +343,25 @@ export function AgentActivity({
             />
           )
         };
-      }
-      const firstCreatedAt = item.group.tools[0]?.createdAt ?? "";
-      return {
-        kind: "tool" as const,
-        id: `tool-${item.group.id}`,
-        createdAt: firstCreatedAt,
-        sortAt: firstCreatedAt,
-        runTools: item.group.tools,
-        node: (
-          <ToolCallGroupBubble
-            key={item.group.id}
-            group={item.group}
-            defaultExpanded={activityExpanded}
-            workspaceCwd={workspace?.path ?? null}
-            onOpenFile={onOpenFile}
-            onOpenAgent={onOpenAgent}
-          />
-        )
-      };
     });
     const sorted = [...assistantChildren, ...toolChildren].sort((a, b) => {
       const cmp = a.sortAt.localeCompare(b.sortAt);
       if (cmp !== 0) return cmp;
       return (a.kind === "assistant" ? -1 : 0) - (b.kind === "assistant" ? -1 : 0);
     });
-    const bodySource = minimalActivity
-      ? foldToolRunsToSummaries(sorted, (runTools) =>
-          // A run of one is not a summary: the line and the row it would hide
-          // are the same sentence, so show the row.
-          runTools.length === 1 && runTools[0] ? (
-            <ToolCallRow
-              tool={runTools[0]}
-              workspaceCwd={workspace?.path ?? null}
-              onOpenFile={onOpenFile}
-              onOpenAgent={onOpenAgent}
-            />
-          ) : (
-            <ActivitySummaryLine
-              tools={runTools}
-              workspaceCwd={workspace?.path ?? null}
-              onOpenFile={onOpenFile}
-              onOpenAgent={onOpenAgent}
-            />
-          )
-        )
-      : sorted;
+    const bodySource = foldToolRunsToSummaries(sorted, (runTools) => (
+      <ToolCallGroupBubble
+        group={buildToolCallGroup(runTools)}
+        compact={compactActivity}
+        defaultExpanded={!minimalActivity && activityExpanded}
+        defaultToolsExpanded={!minimalActivity && (activityExpandOverride ?? defaultToolCallsDisplay === "expanded")}
+        workspaceCwd={workspace?.path ?? null}
+        onOpenFile={onOpenFile}
+        onOpenAgent={onOpenAgent}
+      />
+    )).filter((child) => child.node !== null);
     return {
-      activityChildren: bodySource.map(({ kind, id, node }) => ({ kind, id, node })),
+      activityChildren: bodySource.map(({ kind, id, node, hasErrors }) => ({ kind, id, node, hasErrors })),
       toolItems: folded,
       assistantTimestamps: assistantEvents
         .map((event) => Date.parse(event.createdAt))
@@ -331,17 +371,18 @@ export function AgentActivity({
     activity.items,
     activityExpandOverride,
     activityExpanded,
+    compactActivity,
+    defaultToolCallsDisplay,
     agentKey,
     defaultThinkingExpanded,
     finalOutput,
     minimalActivity,
     onOpenAgent,
     onOpenFile,
+    restoringTranscript,
     streaming,
     workspace
   ]);
-  // Restored turns must not replay their entrance animation on every reopen.
-  const restoringTranscript = useRestoreWithoutMotion();
   const {
     conversationListRef,
     showScrollToBottom,
@@ -428,6 +469,14 @@ export function AgentActivity({
       aria-label={codename ? `Agent activity: ${codename} — ${activity.title}` : `Agent activity: ${activity.title}`}
       data-focused={isFocused ? "true" : undefined}
     >
+      <AgentHeader
+        title={activity.title}
+        status={activity.status}
+        codename={codename}
+        subagentType={activity.subagentType}
+        model={activity.model}
+        phaseKey={parentToolUseId}
+      />
       <div
         className="agent-activity-scroll"
         data-restoring={restoringTranscript ? "true" : undefined}
@@ -453,33 +502,30 @@ export function AgentActivity({
           }
         }}
       >
-        {activity.prompt || activity.subagentType ? (
+        {activity.prompt ? (
+          // The brief folds behind the same chip the run's activity uses, so
+          // the pane opens on two quiet lines — Instructions, Worked for — and
+          // the header above already says what the agent was asked to do.
           <section className="agent-activity-summary" aria-label="Agent instructions">
-            <div className="agent-activity-summary-header">
-              {/* The dock owns model metadata. This eyebrow names the role next
-                  to the instructions, without repeating the dock chrome. */}
-              <p className="agent-activity-meta agent-activity-summary-label">
-                {activity.subagentType ?? "Instructions"}
-              </p>
-              {promptIsLong ? (
-                <button
-                  type="button"
-                  className="small-icon agent-activity-summary-toggle"
-                  aria-label={instructionsExpanded ? "Collapse instructions" : "Expand instructions"}
-                  title={instructionsExpanded ? "Collapse instructions" : "Expand instructions"}
-                  aria-expanded={instructionsExpanded}
-                  onClick={() => setInstructionsExpanded((expanded) => !expanded)}
-                >
-                  <ChevronDown size={14} aria-hidden="true" />
-                </button>
-              ) : null}
-            </div>
-            {activity.prompt ? (
-              <div
-                className="agent-activity-prompt"
-                data-collapsible={promptIsLong ? "true" : undefined}
-                data-expanded={instructionsExpanded ? "true" : undefined}
+            <div className="turn-block-header">
+              <button
+                type="button"
+                className="turn-block-chip"
+                aria-label={instructionsExpanded ? "Collapse instructions" : "Expand instructions"}
+                title={instructionsExpanded ? "Collapse instructions" : "Expand instructions"}
+                aria-expanded={instructionsExpanded}
+                onClick={() => setInstructionsExpanded((expanded) => !expanded)}
               >
+                <span>Instructions</span>
+                <ChevronRight
+                  size={11}
+                  className={`turn-block-chevron${instructionsExpanded ? " expanded" : ""}`}
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
+            {instructionsExpanded ? (
+              <div className="agent-activity-prompt">
                 <StreamingMarkdown
                   text={activity.prompt}
                   streaming={false}

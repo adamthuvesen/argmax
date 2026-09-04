@@ -1,12 +1,10 @@
-mod support;
-
 use std::time::Duration;
 
+use crate::support::git_repo::{run_git, seed_git_repo};
 use argmax_lib::git::exec::{
     reject_leading_dash, run_git_buffer, run_git_buffer_with_options, run_git_text,
     run_git_text_with_allowed_exit_codes, run_git_text_with_options, GitExecOptions,
 };
-use support::git_repo::{run_git, seed_git_repo};
 
 #[tokio::test]
 async fn run_git_text_returns_stdout() {

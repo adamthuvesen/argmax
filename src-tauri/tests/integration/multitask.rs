@@ -1,14 +1,13 @@
 //! Multitask: a chat dispatches a sibling session that runs alongside its own
 //! turn, in the same checkout, and reports back without interrupting.
 
-mod support;
-
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
 
+use crate::support::git_repo::seed_git_repo;
 use argmax_lib::{
     error::{ArgmaxError, ArgmaxResult},
     multitask::{dispatch, MultitaskRequest, FINISHED_EVENT, LAUNCHED_EVENT, MULTITASK_KIND},
@@ -35,7 +34,6 @@ use argmax_lib::{
     },
     workspaces::WorkspaceService,
 };
-use support::git_repo::seed_git_repo;
 
 /// A launcher that never exits on its own, so a test decides when a turn ends.
 #[derive(Default)]
@@ -167,7 +165,7 @@ struct Fixture {
     providers: Arc<ProviderSessionService>,
     launcher: Arc<ScriptedLauncher>,
     repo_path: String,
-    _repo: support::git_repo::SeededGitRepo,
+    _repo: crate::support::git_repo::SeededGitRepo,
 }
 
 /// A project with one running chat in its main checkout — the state a person is

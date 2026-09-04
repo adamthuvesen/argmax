@@ -2069,7 +2069,7 @@ fn recover_orphaned_sessions_tells_the_chat_that_dispatched_a_multitask() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     seed_project_and_workspace(&database);
     let connection = database.connection();
-    let mut seed = |id: &str, state: &str| {
+    let seed = |id: &str, state: &str| {
         persist_session(
             &connection,
             &PersistSessionInput {

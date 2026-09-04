@@ -24,7 +24,8 @@ pub(crate) async fn dashboard_list_impl(state: &AppState) -> ArgmaxResult<Dashbo
             snapshot.pending_messages = providers.pending_messages_snapshot();
         }
         Ok(snapshot)
-    }).await
+    })
+    .await
 }
 
 #[cfg(test)]

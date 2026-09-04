@@ -5,10 +5,6 @@
 // a `Project` + (optionally) `Workspace` row in an in-memory SQLite, and
 // drives the service against real `git` shellouts.
 
-mod support {
-    pub mod git_repo;
-}
-
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -43,7 +39,7 @@ use argmax_lib::providers::ProviderLaunchInput;
 use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
 use argmax_lib::workspaces::WorkspaceService;
 
-use support::git_repo::{run_git, seed_git_repo};
+use crate::support::git_repo::{run_git, seed_git_repo};
 
 // ---------------------------------------------------------------------------
 // Fixtures

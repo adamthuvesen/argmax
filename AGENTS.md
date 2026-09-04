@@ -27,6 +27,7 @@ npm run tauri:dev       # Tauri dev app
 npm test                # Vitest + perf + Cargo tests
 npm run lint            # eslint
 npm run typecheck       # renderer/shared tsc
+npm run precheck        # pre-push gate: CI's checks, scoped to what the branch changed
 npm run tauri:build     # production Tauri bundle
 ```
 

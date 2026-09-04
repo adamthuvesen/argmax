@@ -992,6 +992,9 @@ describe("App grid", () => {
       ]
     });
 
+    // Only the poll's own interval is faked, so a tick can be driven straight
+    // from the test; `waitFor` still needs a real `setTimeout`.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
@@ -1001,9 +1004,13 @@ describe("App grid", () => {
       expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
     });
 
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
     await waitFor(() => {
       expect(sessionAgentEvents).toHaveBeenCalledTimes(2);
-    }, { timeout: 2500 });
+    });
   });
 
   it("keeps Thinking after an empty backfill while the agent is still running", async () => {
@@ -1156,6 +1163,9 @@ describe("App grid", () => {
         })
     );
 
+    // Only the poll's own interval is faked, so ticks can be driven straight
+    // from the test; `waitFor` still needs a real `setTimeout`.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
@@ -1166,7 +1176,7 @@ describe("App grid", () => {
     });
 
     await act(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 1700));
+      await vi.advanceTimersByTimeAsync(1700);
     });
 
     expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
@@ -1219,6 +1229,9 @@ describe("App grid", () => {
       ]
     });
 
+    // Only the poll's own interval is faked, so ticks can be driven straight
+    // from the test; `waitFor` still needs a real `setTimeout`.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
@@ -1229,7 +1242,7 @@ describe("App grid", () => {
     });
 
     await act(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 1700));
+      await vi.advanceTimersByTimeAsync(1700);
     });
 
     expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
@@ -1875,6 +1888,9 @@ describe("App grid", () => {
       ]
     });
 
+    // Only the poll's own interval is faked, so a tick can be driven straight
+    // from the test; `waitFor` still needs a real `setTimeout`.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
@@ -1895,9 +1911,13 @@ describe("App grid", () => {
     });
 
     const before = task1Calls();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
     await waitFor(() => {
       expect(task1Calls()).toBeGreaterThan(before);
-    }, { timeout: 2500 });
+    });
   });
 
 });

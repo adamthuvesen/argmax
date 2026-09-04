@@ -327,9 +327,9 @@ pub fn results_preamble(
     );
     let mut ids = Vec::with_capacity(pending.len());
     for message in &pending {
-        block.push_str("\n");
+        block.push('\n');
         block.push_str(&message.body);
-        block.push_str("\n");
+        block.push('\n');
         ids.push(message.id.clone());
     }
     block.push_str(

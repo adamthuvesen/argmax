@@ -2332,18 +2332,14 @@ impl ProviderSessionService {
                 {
                     return None;
                 }
-                let Some(queue) = queues.get_mut(session_id) else {
-                    return None;
-                };
+                let queue = queues.get_mut(session_id)?;
                 let next = queue.pop_front();
                 if queue.is_empty() {
                     queues.remove(session_id);
                 }
                 next
             };
-            let Some(next) = next else {
-                return None;
-            };
+            let next = next?;
             if !origin_row_is_delivered(self, &next) {
                 return Some(next);
             }

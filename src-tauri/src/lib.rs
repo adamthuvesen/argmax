@@ -91,6 +91,9 @@ struct QueuedDashboardDelta {
     _byte_permit: tokio::sync::OwnedSemaphorePermit,
 }
 
+// `Wake` is the rare variant, so the size gap costs padding on almost no
+// queue slot, and boxing `Delta` would put an allocation on the streaming path.
+#[allow(clippy::large_enum_variant)]
 enum DashboardDeliveryItem {
     Delta(QueuedDashboardDelta),
     Wake,
@@ -1246,7 +1249,12 @@ pub fn export_bindings(path: impl AsRef<Path>) -> Result<(), String> {
     // Specta leaves spaces before newlines in documented object fields.
     // Normalize its output so generated bindings pass the whitespace gate.
     let generated = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
-    let normalized = generated.lines().map(str::trim_end).collect::<Vec<_>>().join("\n") + "\n";
+    let normalized = generated
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
     std::fs::write(path, normalized).map_err(|error| error.to_string())
 }
 
@@ -1262,9 +1270,9 @@ mod tests {
 
     /// Exercises the tauri-specta export pipeline end-to-end without
     /// launching the app. This is the CI guard for "the codegen wiring
-    /// actually emits TypeScript", paired with `npm run check:bindings`
-    /// which guards "the committed bindings.d.ts is at least as new as
-    /// every backend input".
+    /// actually emits TypeScript", paired with the integration test
+    /// `bindings_file_is_current`, which guards "the committed bindings.d.ts
+    /// is what the exporter emits today".
     #[test]
     fn specta_export_emits_command_surface() {
         let dir = tempdir().expect("tempdir");

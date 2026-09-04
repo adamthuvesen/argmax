@@ -12,9 +12,17 @@ name = "argmax_lib"
 path = "src/lib.rs"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# Neither binary carries unit tests; `test = false` keeps `cargo test` from
+# building (and linking) a test harness for each of them.
 [[bin]]
 name = "argmax"
 path = "src/main.rs"
+test = false
+
+[[bin]]
+name = "export-bindings"
+path = "src/bin/export-bindings.rs"
+test = false
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -157,6 +165,15 @@ tauri = { version = "2.11", features = ["test"] }
 [features]
 # Required by Tauri 2 for production builds; do not remove.
 custom-protocol = ["tauri/custom-protocol"]
+
+# Dependencies carry no debuginfo in dev and test builds: nobody steps into
+# tauri or rusqlite under lldb, and their DWARF was a quarter of the
+# dependency artifacts (3.7 GB to 2.7 GB on a clean build, 61 s to 52 s to
+# build them cold), which is also what the CI cache restores every run.
+# Backtraces still name dependency frames; only their line numbers go.
+# The crate's own debuginfo is untouched.
+[profile.dev.package."*"]
+debug = false
 
 [profile.release]
 codegen-units = 1

@@ -10,39 +10,102 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  rust-tests:
-    name: rust tests
+  # Decide which lanes a PR needs from the files it touches. A push to main
+  # always runs everything. The fan-in job below treats a skipped lane as
+  # passed, so a renderer-only PR never pays for the macOS runner.
+  changes:
+    name: changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      js: ${{ steps.filter.outputs.js }}
+      deps: ${{ steps.filter.outputs.deps }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "js=true" >> "$GITHUB_OUTPUT"
+            echo "deps=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
+          printf '%s\n' "$changed"
+          match() { printf '%s\n' "$changed" | grep -Eq "$1" && echo true || echo false; }
+          echo "rust=$(match '^(src-tauri/|rust-toolchain\.toml|\.github/workflows/)')" >> "$GITHUB_OUTPUT"
+          echo "js=$(match '^(src/|package(-lock)?\.json|tsconfig\.json|vite.*\.config\.ts|eslint\.config\.js|scripts/|\.github/workflows/)')" >> "$GITHUB_OUTPUT"
+          echo "deps=$(match '^(package-lock\.json|src-tauri/Cargo\.lock)$')" >> "$GITHUB_OUTPUT"
+
+  rust:
+    name: rust test · clippy
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
+    # macOS is the only shipping target and its minutes bill at 10x, so this
+    # lane runs only the Rust crate and nothing that Linux could do instead.
     runs-on: macos-latest
-    # macOS minutes bill at 10x, so keep only the Tauri/Rust lane here.
-    timeout-minutes: 15
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
 
       # Cache the Cargo registry + `src-tauri/target` so `cargo test` doesn't
-      # recompile the whole crate and its dependencies from scratch every run —
-      # the single biggest cost in this job (~2m cold). Keyed on Cargo.lock.
+      # recompile every dependency from scratch — the single biggest cost in
+      # this job cold. Keyed on Cargo.lock. `cache-on-failure` keeps a failing
+      # PR's warm build for its next attempt.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          cache-on-failure: true
 
-      - run: npm run test:rust
+      # rust-cache drops the workspace crate's artifacts and sets
+      # CARGO_INCREMENTAL=0, so every run recompiles all of argmax from
+      # scratch (~2 min on this runner) even for a one-line change. Keep
+      # rustc's incremental session for the crate across runs instead: a PR
+      # restores the newest entry main saved for this lockfile, and rustc
+      # reuses every codegen unit the change did not touch. Only main saves,
+      # so PR runs neither upload nor churn the repository's cache quota.
+      - id: incremental
+        uses: actions/cache/restore@v4
+        with:
+          path: src-tauri/target/debug/incremental
+          key: incremental-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}
+          restore-keys: |
+            incremental-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'rust-toolchain.toml') }}-
 
-      # Lives here, not in the js lane: the check regenerates the bindings with
-      # `cargo run --bin export-bindings`, which needs the Rust toolchain and
-      # Tauri's system libraries. On ubuntu the exporter cannot build, and an
-      # exporter that cannot run is indistinguishable from one that disagrees.
-      - run: npm run check:bindings
+      # One build, one link: the unit tests and the single `integration` test
+      # binary. The bindings freshness check is a test in that binary
+      # (`bindings_file_is_current`), so no second `cargo run` is needed.
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
-  js-checks:
-    name: js lint · typecheck · tests
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+        env:
+          CARGO_INCREMENTAL: 1
+
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - if: ${{ github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@v4
+        with:
+          path: src-tauri/target/debug/incremental
+          key: ${{ steps.incremental.outputs.cache-primary-key }}
+
+  js-static:
+    name: js lint · typecheck · parity
+    needs: changes
+    if: ${{ needs.changes.outputs.js == 'true' || needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
 
@@ -57,16 +120,24 @@ jobs:
 
       - run: npm run typecheck
 
+      # Both parity checks read Rust sources, so they run for Rust-only PRs too.
       - run: npm run check:tauri-bridge
 
-      - run: npm run test:unit
+      - run: npm run check:main-thread
 
-      - run: npm run test:perf
-
-  bundle-validation:
-    name: bundle validation
+  js-tests:
+    name: js tests (${{ matrix.shard }}/2)
+    needs: changes
+    if: ${{ needs.changes.outputs.js == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
+    # The suite is CPU-bound on a four-core runner, not bound by one slow
+    # file, so two shards halve the wall time. Measured locally at four
+    # workers: 21 s whole, 11.5 s + 11.0 s sharded.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v6
 
@@ -77,59 +148,48 @@ jobs:
 
       - run: npm ci
 
-      # Build the renderer and assert its main chunk stays within budget so a
-      # stray heavyweight import can't silently bloat cold-start payloads.
+      - run: npm run test:unit -- --shard=${{ matrix.shard }}/2
+
+      # The perf budgets are one short file; they ride on the first shard.
+      - if: ${{ matrix.shard == 1 }}
+        run: npm run test:perf
+
+  bundle:
+    name: bundle budget
+    needs: changes
+    if: ${{ needs.changes.outputs.js == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # Build the renderer and assert its eager module graph stays within
+      # budget so a stray heavyweight import can't silently bloat cold start.
       - run: npm run build:renderer
 
       - run: npm run check:bundle
 
-  ci:
-    name: lint · typecheck · test
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs:
-      - rust-tests
-      - js-checks
-      - bundle-validation
-    if: ${{ always() }}
-    steps:
-      - name: Verify required jobs passed
-        run: |
-          test "${{ needs.rust-tests.result }}" = "success"
-          test "${{ needs.js-checks.result }}" = "success"
-          test "${{ needs.bundle-validation.result }}" = "success"
-
-  coverage-report:
-    name: coverage report
-    if: ${{ github.event_name == 'push' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: npm
-
-      - run: npm ci
-
-      # Report only: vitest.config.ts has no coverage thresholds, so coverage
-      # numbers stay visible on main without extending the required PR lane.
-      - run: npm run coverage
-
   dependency-audit:
     name: dependency audit
-    # Cheap to run and platform-agnostic — keep it on Linux, not the 10x macOS runner.
+    needs: changes
+    # Advisories change on their own clock, not per PR: run on main and on
+    # PRs that touch a lockfile. Cheap and platform-agnostic, so Linux.
+    if: ${{ needs.changes.outputs.deps == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: npm
 
       # Fail on high/critical advisories in dependencies that actually ship in
       # the renderer bundle. `--omit=dev` excludes the build/test toolchain
@@ -147,3 +207,29 @@ jobs:
 
       # Audit the Tauri crate's lockfile against the RustSec advisory DB.
       - run: cargo audit --file src-tauri/Cargo.lock
+
+  # The one required status check. A lane that was skipped by the path
+  # filter counts as passed; anything else must have succeeded.
+  ci:
+    name: lint · typecheck · test
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs:
+      - rust
+      - js-static
+      - js-tests
+      - bundle
+      - dependency-audit
+    if: ${{ always() }}
+    steps:
+      - name: Verify required jobs passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "a required job ended with: $result"; exit 1 ;;
+            esac
+          done

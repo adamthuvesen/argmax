@@ -2613,6 +2613,10 @@ pub fn send_session_control(
             format!("Argmax returned protocol version {}.", response.version),
         ));
     }
+    // Kept as a match: one arm per action is the readable form of this
+    // request/response conformance table, and rustfmt explodes the `matches!`
+    // alternative to four lines per pair.
+    #[allow(clippy::match_like_matches_macro)]
     let matches_action = match (&request.action, &response.result) {
         (_, SessionControlResult::Error(_)) => true,
         (SessionControlAction::Launch(_), SessionControlResult::Launched(_)) => true,

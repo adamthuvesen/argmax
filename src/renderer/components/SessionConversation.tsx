@@ -71,7 +71,6 @@ import {
   isExitPlanModeToolName
 } from "../lib/turnInteractiveCards.js";
 import { liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
-import { foldTurnToolItems } from "../lib/turnToolItems.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import {
@@ -112,6 +111,21 @@ const THINKING_SHOW_DELAY_MS = 700;
 /// not it was already up when the message landed.
 const THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS = 1800;
 const THINKING_MIN_VISIBLE_MS = 600;
+
+/// How much of `fullMs` a beat that began at `startedAt` still has to serve.
+/// The cue's delays smooth transitions in a pane that watches them land. A
+/// pane that opens onto a gap already older than the delay — a session
+/// reopened mid-turn — has nothing left to smooth, and counting from the mount
+/// instead made the reader sit through the wait a second time.
+function remainingDelayMs(fullMs: number, startedAt: string | null): number {
+  if (startedAt === null) return fullMs;
+  const elapsed = Date.now() - Date.parse(startedAt);
+  if (!Number.isFinite(elapsed)) return fullMs;
+  // Never longer than the full delay: a wall clock stepped backwards would
+  // otherwise turn every already-ingested event into a future one and hold the
+  // cue down for the rest of the session.
+  return Math.min(fullMs, Math.max(0, fullMs - elapsed));
+}
 
 export function SessionConversation({
   checks,
@@ -474,7 +488,7 @@ export function SessionConversation({
   );
 
   const renderItems = useMemo(
-    (): RenderItem[] => foldRenderItems(conversationItems, session, foldTurnToolItems),
+    (): RenderItem[] => foldRenderItems(conversationItems, session),
     [conversationItems, session]
   );
   // Multitask events keep their launch-turn association in the fold so a
@@ -754,6 +768,9 @@ export function SessionConversation({
     canonicalLastSignificantEvent.phase === "completed"
       ? canonicalLastSignificantEvent.raw.id
       : null;
+  // Both waits below count from when the beat began, not from when this pane
+  // first saw it, so a reopened session serves only what is left of them.
+  const lastSignificantEventAt = lastSignificantEvent?.createdAt ?? null;
   // Held as the id whose window has *expired*, not as a "settling" flag: a flag
   // starts false, so the first render after the message lands would still claim
   // the beat for one commit and flash the label before the effect could set it.
@@ -761,12 +778,17 @@ export function SessionConversation({
   const isAnswerSettling = answerBeatId !== null && settledAnswerId !== answerBeatId;
   useEffect(() => {
     if (answerBeatId === null) return;
-    const timer = window.setTimeout(
-      () => setSettledAnswerId(answerBeatId),
-      THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS
+    const remaining = remainingDelayMs(
+      THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS,
+      lastSignificantEventAt
     );
+    if (remaining === 0) {
+      setSettledAnswerId(answerBeatId);
+      return;
+    }
+    const timer = window.setTimeout(() => setSettledAnswerId(answerBeatId), remaining);
     return () => window.clearTimeout(timer);
-  }, [answerBeatId]);
+  }, [answerBeatId, lastSignificantEventAt]);
   // Show the generic indicator for any silent gap in a running turn. It stays
   // hidden while text is actively streaming, a visible tool row is running, an
   // answer is still settling, or the agent is waiting on an interactive card.
@@ -830,11 +852,17 @@ export function SessionConversation({
           return;
         }
         if (thinkingShowTimerRef.current !== null) return;
+        const remaining = remainingDelayMs(THINKING_SHOW_DELAY_MS, lastSignificantEventAt);
+        if (remaining === 0) {
+          thinkingVisibleSinceRef.current = performance.now();
+          setIsThinkingVisible(true);
+          return;
+        }
         thinkingShowTimerRef.current = window.setTimeout(() => {
           thinkingShowTimerRef.current = null;
           thinkingVisibleSinceRef.current = performance.now();
           setIsThinkingVisible(true);
-        }, THINKING_SHOW_DELAY_MS);
+        }, remaining);
       }
       return;
     }
@@ -857,7 +885,7 @@ export function SessionConversation({
       thinkingVisibleSinceRef.current = 0;
       setIsThinkingVisible(false);
     }, hideDelay);
-  }, [isInitialThinkingBeat, isThinking, isThinkingVisible]);
+  }, [isInitialThinkingBeat, isThinking, isThinkingVisible, lastSignificantEventAt]);
 
   useEffect(() => {
     return () => {
@@ -1116,6 +1144,7 @@ export function SessionConversation({
                   defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                   defaultThinkingExpanded={defaultThinkingExpanded}
                   defaultTurnChangesExpanded={defaultTurnChangesExpanded}
+                  restoringTranscript={restoringTranscript}
                   onOpenDiff={review.openFile}
                   onOpenReview={review.openChangesPanel}
                 />

@@ -40,6 +40,7 @@ import { PerfOverlay } from "./components/PerfOverlay.js";
 import { DetailsPopup } from "./components/DetailsPopup.js";
 import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/SessionMultiGrid.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
+import { BrowserPage } from "./components/BrowserPage.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { ScheduleRail } from "./components/scheduled/ScheduleRail.js";
 import { UsageRail } from "./components/usage/UsageRail.js";
@@ -99,6 +100,7 @@ import {
   type ReviewPanelSide
 } from "./lib/reviewPanelSide.js";
 import {
+  BROWSER_PAGE_OPEN_KEY,
   COMPOSER_PIXEL_FIELD_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
@@ -168,6 +170,7 @@ export function App(): JSX.Element {
   );
   const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
   const [sidebarCollapsed, setSidebarCollapsed] = useBooleanUiPreference(SIDEBAR_COLLAPSED_KEY, false);
+  const [isBrowserPageOpen, setIsBrowserPageOpen] = useBooleanUiPreference(BROWSER_PAGE_OPEN_KEY, false);
   // Transient "peek" state: while collapsed, hovering the left edge slides the
   // sidebar out as an overlay; leaving it slides back. Not persisted.
   const [sidebarPeek, setSidebarPeek] = useState(false);
@@ -486,13 +489,14 @@ export function App(): JSX.Element {
   const openLauncherSurface = useCallback(
     (sideChat: boolean): void => {
       setLauncherSideChatMode(sideChat);
+      setIsBrowserPageOpen(false);
       if (newSessionMode === "full" && grid.rows.length > 0) {
         setIsFullLauncherOpen(true);
         return;
       }
       openLauncherPaneInGrid();
     },
-    [grid.rows.length, newSessionMode, openLauncherPaneInGrid]
+    [grid.rows.length, newSessionMode, openLauncherPaneInGrid, setIsBrowserPageOpen]
   );
   const openNewSessionPane = useCallback((): void => openLauncherSurface(false), [openLauncherSurface]);
   const handleMenuCommand = useCallback(
@@ -569,6 +573,7 @@ export function App(): JSX.Element {
     setIsCheatSheetOpen(false);
     setIsSettingsOpen(false);
     setIsFullLauncherOpen(false);
+    setIsBrowserPageOpen(false);
     openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
     // Address the request to the workspace, not to a component: the pane that
     // owns the terminal's review panel may only be mounting now (⌘J from
@@ -585,15 +590,17 @@ export function App(): JSX.Element {
     setIsCheatSheetOpen,
     setIsPaletteOpen,
     setIsSettingsOpen,
+    setIsBrowserPageOpen,
     snapshot.sessions
   ]);
   const openWorkspaceFromKeybinding = useCallback(
     (workspaceId: string): void => {
       // Cmd+1..9 always replaces the focused pane (no split modifier).
       setIsFullLauncherOpen(false);
+      setIsBrowserPageOpen(false);
       openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
     },
-    [openWorkspaceChat]
+    [openWorkspaceChat, setIsBrowserPageOpen]
   );
   // Fork the session into a new workspace (same checkout, copied transcript,
   // diverging provider conversation) and jump into the fork.
@@ -602,12 +609,13 @@ export function App(): JSX.Element {
       if (!window.argmax) return;
       try {
         const forked = await window.argmax.session.fork({ sessionId });
+        setIsBrowserPageOpen(false);
         openWorkspaceChat(forked.workspace.id, { ctrlOrMeta: false, alt: false });
       } catch (error) {
         showErrorToast(error instanceof Error ? error.message : "Couldn't fork the chat.");
       }
     },
-    [openWorkspaceChat, showErrorToast]
+    [openWorkspaceChat, setIsBrowserPageOpen, showErrorToast]
   );
   const closeSettingsFromKeybinding = useCallback(
     (): void => setIsSettingsOpen(false),
@@ -1033,10 +1041,11 @@ export function App(): JSX.Element {
     (projectId: string): void => {
       setIsSettingsOpen(false);
       setIsFullLauncherOpen(false);
+      setIsBrowserPageOpen(false);
       setGrid(EMPTY_GRID);
       openRepoProjectLauncher(projectId);
     },
-    [openRepoProjectLauncher, setIsSettingsOpen, setIsFullLauncherOpen, setGrid]
+    [openRepoProjectLauncher, setIsSettingsOpen, setIsFullLauncherOpen, setIsBrowserPageOpen, setGrid]
   );
   const onOpenSettingsRow = useCallback((): void => {
     openSettingsTarget("general");
@@ -1054,6 +1063,12 @@ export function App(): JSX.Element {
     // the workspace slot.
     setIsUsageOpen(true);
   }, [setIsFullLauncherOpen, setIsPaletteOpen, setIsUsageOpen]);
+  const onOpenBrowserRow = useCallback((): void => {
+    setIsPaletteOpen(false);
+    setIsSettingsOpen(false);
+    setIsFullLauncherOpen(false);
+    setIsBrowserPageOpen(true);
+  }, [setIsBrowserPageOpen, setIsFullLauncherOpen, setIsPaletteOpen, setIsSettingsOpen]);
   const onOpenProvidersRow = useCallback((): void => {
     openSettingsTarget("agents", "settings-providers");
   }, [openSettingsTarget]);
@@ -1074,9 +1089,10 @@ export function App(): JSX.Element {
     (workspaceId: string, modifiers: Parameters<typeof openWorkspaceChat>[1]): void => {
       setIsSettingsOpen(false);
       setIsFullLauncherOpen(false);
+      setIsBrowserPageOpen(false);
       openWorkspaceChat(workspaceId, modifiers);
     },
-    [openWorkspaceChat, setIsSettingsOpen, setIsFullLauncherOpen]
+    [openWorkspaceChat, setIsSettingsOpen, setIsFullLauncherOpen, setIsBrowserPageOpen]
   );
   // Focus another chat by session id: the sender named on an agent message's
   // bubble, and the chat whose agent launched this one. A session that has
@@ -1087,9 +1103,10 @@ export function App(): JSX.Element {
       if (!target) return;
       setIsSettingsOpen(false);
       setIsFullLauncherOpen(false);
+      setIsBrowserPageOpen(false);
       openWorkspaceChat(target.workspaceId, { ctrlOrMeta: false, alt: false });
     },
-    [snapshot.sessions, openWorkspaceChat, setIsSettingsOpen, setIsFullLauncherOpen]
+    [snapshot.sessions, openWorkspaceChat, setIsSettingsOpen, setIsFullLauncherOpen, setIsBrowserPageOpen]
   );
   const onOpenLauncherRow = useCallback((): void => {
     setIsSettingsOpen(false);
@@ -1098,21 +1115,25 @@ export function App(): JSX.Element {
   }, [openNewSessionPane, setIsSettingsOpen]);
 
   const handleEarlyStop = useCallback(
-    (sessionId: string): void => {
+    (sessionId: string): string | undefined => {
       const session =
         sessionsById.get(sessionId) ?? snapshot.sessions.find((s) => s.id === sessionId);
-      if (!session || !isEarlySessionStop(session)) return;
+      if (!session || !isEarlySessionStop(session)) return undefined;
       // Restoring the launcher is a pane behaviour, and a multitask normally
       // has no pane: it was dispatched from inside another chat and runs in
       // that chat's dock. Stopping it there leaves that chat exactly where it
       // was — still on screen, and with its own prompt in the launcher draft,
       // not the multitask's. Once it has been promoted to a pane of its own it
       // is an ordinary chat again, and stopping it early behaves like one.
-      if (isMultitaskSession(session) && !findSessionCell(grid, sessionId)) return;
+      if (isMultitaskSession(session) && !findSessionCell(grid, sessionId)) return undefined;
 
       const workspace =
         workspacesById.get(session.workspaceId) ??
         snapshot.workspaces.find((w) => w.id === session.workspaceId);
+      // Popups have their own close-to-discard lifecycle; stopping one must
+      // not hand the main pane back to the launcher or archive out from under
+      // the still-open explainer.
+      if (workspace?.kind === "popup") return undefined;
       const isSideChat =
         !workspace || workspace.kind === "scratch" || workspace.projectId === SCRATCH_PROJECT_ID;
       const projectId = isSideChat ? SCRATCH_PROJECT_ID : workspace.projectId;
@@ -1137,6 +1158,9 @@ export function App(): JSX.Element {
       } else {
         setGrid((current) => revertSessionToLauncher(current, session.id, projectId));
       }
+      // Archive after terminate succeeds so a mistaken launch does not leave
+      // a cancelled row in the sidebar. force: the 10s window is an undo.
+      return session.workspaceId;
     },
     [
       grid,
@@ -1301,6 +1325,7 @@ export function App(): JSX.Element {
       // should not reappear beside the fresh session after launch.
       const launchedFromFullLauncher = isFullLauncherOpen;
       setIsFullLauncherOpen(false);
+      setIsBrowserPageOpen(false);
       setGrid((current) => {
         const cell = { sessionId: launchedSession.id, workspaceId: workspace.id };
         if (launchedFromFullLauncher) {
@@ -1332,6 +1357,7 @@ export function App(): JSX.Element {
       fastModeEnabled,
       randomSessionIconEnabled,
       setGrid,
+      setIsBrowserPageOpen,
       setIsFullLauncherOpen,
       setSnapshot
     ]
@@ -1403,6 +1429,7 @@ export function App(): JSX.Element {
       // replaces the hidden grid instead of splitting into it.
       const launchedFromFullLauncher = isFullLauncherOpen;
       setIsFullLauncherOpen(false);
+      setIsBrowserPageOpen(false);
       setGrid((current) => {
         const cell = { sessionId: launchedSession.id, workspaceId: workspace.id };
         if (launchedFromFullLauncher) {
@@ -1436,6 +1463,7 @@ export function App(): JSX.Element {
       permissionMode,
       randomSessionIconEnabled,
       setGrid,
+      setIsBrowserPageOpen,
       setIsFullLauncherOpen,
       setSnapshot
     ]
@@ -1621,11 +1649,13 @@ export function App(): JSX.Element {
         onNewSession: () => handleMenuCommand("new-session"),
         onOpenSettings: () => openSettingsTarget("general"),
         onOpenScheduledTasks: onOpenScheduledTasksRow,
+        onOpenBrowser: typeof window !== "undefined" && window.argmax?.browser ? onOpenBrowserRow : undefined,
         onOpenUsage: onOpenUsageRow,
         onOpenSettingsSection: (group, sectionId) => openSettingsTarget(group, sectionId),
         onOpenSearch: openMessagePalette,
         onStopSession: (sessionId) => void terminateSession(sessionId),
-        onOpenWorkspace: openWorkspaceChat,
+        onOpenWorkspace: (workspaceId) =>
+          onOpenWorkspaceChatRow(workspaceId, { ctrlOrMeta: false, alt: false }),
         onSelectProject: (projectId) => {
           setLauncherSideChatMode(false);
           setSelectedProjectId(projectId);
@@ -1638,10 +1668,11 @@ export function App(): JSX.Element {
       selectedSession,
       handleMenuCommand,
       onOpenScheduledTasksRow,
+      onOpenBrowserRow,
       onOpenUsageRow,
       openSettingsTarget,
       terminateSession,
-      openWorkspaceChat,
+      onOpenWorkspaceChatRow,
       openMessagePalette,
       setIsSettingsOpen,
       setGrid,
@@ -1813,8 +1844,9 @@ export function App(): JSX.Element {
     event.preventDefault();
     setIsWorkspaceDropPreviewVisible(false);
     setIsFullLauncherOpen(false);
+    setIsBrowserPageOpen(false);
     handleDropWorkspace(draggingWorkspaceId, { row: 0, col: 0, position: "replace" });
-  }, [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget]);
+  }, [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget, setIsBrowserPageOpen]);
 
   return (
     <PrMilestoneCelebrationContext.Provider value={prMilestoneCelebrationEnabled}>
@@ -1839,6 +1871,7 @@ export function App(): JSX.Element {
       data-settings-open={isSettingsOpen ? "true" : undefined}
       data-schedule-open={isScheduledTasksOpen ? "true" : undefined}
       data-usage-open={isUsageOpen ? "true" : undefined}
+      data-browser-page-open={isBrowserPageOpen && !standalonePageOpen ? "true" : undefined}
       data-sidebar-collapsed={sidebarCollapsed && !standalonePageOpen ? "true" : undefined}
       data-sidebar-peek={sidebarCollapsed && sidebarPeek ? "true" : undefined}
     >
@@ -1945,6 +1978,7 @@ export function App(): JSX.Element {
           onOpenInIde={onOpenInIdeRow}
           onOpenProject={onOpenProjectRow}
           onOpenScheduledTasks={onOpenScheduledTasksRow}
+          onOpenBrowser={onOpenBrowserRow}
           onOpenUsage={onOpenUsageRow}
           onOpenSettings={onOpenSettingsRow}
           onOpenProviders={onOpenProvidersRow}
@@ -1957,7 +1991,10 @@ export function App(): JSX.Element {
           onWorkspaceDragEnd={handleWorkspaceDragEnd}
           onResizeMouseDown={onResizeMouseDown}
           selectedProjectId={selectedProject?.id ?? null}
-          selectedWorkspaceId={isFullLauncherOpen ? null : (selectedWorkspace?.id ?? null)}
+          selectedWorkspaceId={
+            isFullLauncherOpen || isBrowserPageOpen ? null : (selectedWorkspace?.id ?? null)
+          }
+          browserSelected={isBrowserPageOpen && !standalonePageOpen}
           openWorkspaceIds={isFullLauncherOpen ? EMPTY_OPEN_WORKSPACE_IDS : openWorkspaceIds}
           canDragWorkspaceToGrid={canDragWorkspaceToGrid}
           snapshot={snapshot}
@@ -1972,13 +2009,15 @@ export function App(): JSX.Element {
         <div className={
           standalonePageOpen
             ? "work-scroll settings-scroll"
-            : isFullLauncherOpen || grid.rows.length === 0
-              ? "work-scroll launcher-scroll"
-              : "work-scroll session-scroll"
+            : isBrowserPageOpen
+              ? "work-scroll browser-scroll"
+              : isFullLauncherOpen || grid.rows.length === 0
+                ? "work-scroll launcher-scroll"
+                : "work-scroll session-scroll"
         }>
           {loadState === "error" ? (
             <EmptyState message={loadError} onRetry={() => void loadDashboard()} />
-          ) : loadState === "loading" && grid.rows.length === 0 && !standalonePageOpen ? (
+          ) : loadState === "loading" && grid.rows.length === 0 && !standalonePageOpen && !isBrowserPageOpen ? (
             <SkeletonPane />
           ) : isSettingsOpen ? (
             <Suspense fallback={<SkeletonPane />}>
@@ -2053,6 +2092,8 @@ export function App(): JSX.Element {
             <Suspense fallback={<SkeletonPane />}>
               <UsagePanel />
             </Suspense>
+          ) : isBrowserPageOpen ? (
+            <BrowserPage onClose={() => setIsBrowserPageOpen(false)} />
           ) : isFullLauncherOpen ? (
             renderLaunchSurface(launcherProject)
           ) : grid.rows.length > 0 ? (

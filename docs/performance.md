@@ -179,10 +179,13 @@ JS loops that CSS pausing cannot reach check `document.hidden` themselves:
   a hidden document skips the sweep outright rather than queueing one. A settled
   transcript of two hundred turns paints nothing and schedules no frames.
 - The chat typewriter ([StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx),
-  32 ms tick, paced per arrival so a whole backlog drains in ~1.3 s) and the 1.5 s open-agent poll in
-  [AgentActivity](../src/renderer/components/AgentActivity.tsx) skip ticks while
-  hidden. General session tails have no interval. A post-commit push hint asks
-  the subscribed timeline to read its durable revision feed. The
+  32 ms tick, paced per arrival so a whole backlog drains in ~1.3 s) catches up
+  silently while hidden instead of pausing the prefix: a backgrounded live turn
+  can land several finished bubbles, and holding them at character zero made
+  them all type out together on return. The 1.5 s open-agent poll in
+  [AgentActivity](../src/renderer/components/AgentActivity.tsx) still skips
+  ticks while hidden. General session tails have no interval. A post-commit push
+  hint asks the subscribed timeline to read its durable revision feed. The
   visibility-change refresh backfills the selected session on return. Hidden
   windows stop interval work, while push hints can still trigger bounded
   durable-feed reads.

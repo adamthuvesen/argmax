@@ -11,20 +11,8 @@ export type DiagnosticsReport = Bindings.DiagnosticsReport;
 export type IdeId = Bindings.IdeId;
 export type IpcChannelStats = Bindings.IpcChannelStats;
 export type DebugSnapshot = Bindings.DebugSnapshot;
-/**
- * A line from the Rust tracing ring buffer. Distinct from `LogEntry` below,
- * which is the renderer's own logger — the two share a shape by coincidence,
- * not by contract, and `level` here is whatever tracing emitted.
- */
+/** A line from the Rust tracing ring buffer. */
 export type BackendLogEntry = Bindings.LogEntry;
-export type LogLevel = "debug" | "info" | "warn" | "error";
-export interface LogEntry {
-  timestamp: string;
-  level: LogLevel;
-  scope: string;
-  message: string;
-  fields: Record<string, unknown>;
-}
 export type PermissionMode = Bindings.PermissionMode;
 export type ProviderId = Bindings.ProviderId;
 export type ReasoningEffort = Bindings.ReasoningEffort;
@@ -40,13 +28,8 @@ export type UsageSeriesPoint = Bindings.UsageSeriesPoint;
 export type UsageModelRow = Bindings.UsageModelRow;
 export type UsageDayRow = Bindings.UsageDayRow;
 export type UsageSummary = Bindings.UsageSummary;
-export interface UsageSummaryInput {
-  window: UsageWindow;
-  /** Narrow everything but the per-provider rows to one provider. */
-  provider?: ProviderId | null;
-  /** IANA zone name; day buckets follow it. */
-  timeZone: string;
-}
+/** Input for usage summaries, including the IANA timezone used for day buckets. */
+export type UsageSummaryInput = Bindings.UsageSummaryInput;
 export type RemoteStatus = Bindings.RemoteStatus;
 export type StartupPhaseRecord = Bindings.StartupPhaseRecord;
 
@@ -89,11 +72,7 @@ export type CheckStatus = "queued" | "running" | "passed" | "failed" | "cancelle
 /** Event type is an open wire string. The canonical decoder narrows known values. */
 export type EventType = Bindings.TimelineEvent["type"];
 
-export interface ProjectSettings {
-  worktreeLocation: string;
-  setupCommand: string;
-  checkCommands: string[];
-}
+export type ProjectSettings = Bindings.ProjectSettings;
 
 export type RegisterProjectInput = Bindings.ProjectsRegisterInput;
 export type RemoveProjectInput = Bindings.ProjectsRemoveInput;
@@ -153,12 +132,7 @@ export type EventSubscription = (() => void) & {
   ready?: Promise<void>;
 };
 
-export interface SessionCostSummary {
-  sessionId: string;
-  modelId: string | null;
-  tokens: UsageCounts;
-  costUsd: number;
-}
+export type SessionCostSummary = Bindings.SessionCostSummary;
 
 export interface ChangedFileSummary {
   path: string;
@@ -168,11 +142,7 @@ export interface ChangedFileSummary {
   oldPath?: string;
 }
 
-export interface WorkspaceDiff {
-  workspaceId: string;
-  filePath: string | null;
-  content: string;
-}
+export type WorkspaceDiff = Bindings.WorkspaceDiff;
 
 /**
  * Review diff baseline. `workingTree` (default) diffs the working tree against
@@ -182,38 +152,22 @@ export interface WorkspaceDiff {
 export type ReviewComparison = Bindings.ReviewComparison;
 export type WorkspaceTarget = Pick<Bindings.WorkspaceListFilesInput, "kind" | "id">;
 
-export interface WorkspaceFileEntry {
-  path: string;
-}
+export type WorkspaceFileEntry = Bindings.WorkspaceFileEntry;
 
 export type WorkspaceFilePreview =
   | { kind: "text"; content: string; size: number; mtimeMs: number }
   | { kind: "skipped"; reason: "binary" | "too-large" | "not-a-file"; size?: number };
 
-export interface WorkspaceFileStat {
-  mtimeMs: number;
-  size: number;
-}
+export type WorkspaceFileStat = Bindings.WorkspaceFileStat;
 
 /**
  * Result of `workspace:grep-content`. `truncated` is true when the backend
  * stopped enumerating matches because the result cap was reached — informs
  * the renderer to surface "showing first N of many" copy.
  */
-export interface WorkspaceContentSearchMatch {
-  line: number;
-  preview: string;
-}
-
-export interface WorkspaceContentSearchFile {
-  path: string;
-  matches: WorkspaceContentSearchMatch[];
-}
-
-export interface WorkspaceContentSearchResult {
-  files: WorkspaceContentSearchFile[];
-  truncated: boolean;
-}
+export type WorkspaceContentSearchMatch = Bindings.WorkspaceContentSearchMatch;
+export type WorkspaceContentSearchFile = Bindings.WorkspaceContentSearchFile;
+export type WorkspaceContentSearchResult = Bindings.WorkspaceContentSearchResult;
 
 /**
  * Result of `workspace:writeFile`. `ok: "false"` means the file on disk was
@@ -231,19 +185,9 @@ export type GitPushInput = Bindings.GitPushInput;
 export type GitCreateBranchInput = Bindings.GitCreateBranchInput;
 export type GitViewOrCreatePrInput = Bindings.GitViewOrCreatePrInput;
 
-export interface GitCommitResult {
-  commitSha: string;
-  branch: string;
-}
-
-export interface GitPushResult {
-  branch: string;
-  upstreamSet: boolean;
-}
-
-export interface GitCreateBranchResult {
-  branch: string;
-}
+export type GitCommitResult = Bindings.GitCommitResult;
+export type GitPushResult = Bindings.GitPushResult;
+export type GitCreateBranchResult = Bindings.GitCreateBranchResult;
 
 export type GitViewOrCreatePrResult =
   | { action: "opened"; url: string; prNumber: number }
@@ -253,27 +197,9 @@ export type OpenInIdeInput = Bindings.WorkspacesOpenInIdeInput;
 
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system";
 
-export interface SkillSummary {
-  name: string;
-  description: string;
-  source: SkillSource;
-}
+export type SkillSummary = Bindings.SkillSummary;
 
-export interface ProjectSummary {
-  id: string;
-  name: string;
-  repoPath: string;
-  currentBranch: string;
-  defaultBranch: string | null;
-  settings: ProjectSettings;
-  counts: {
-    active: number;
-    blocked: number;
-    failed: number;
-    reviewReady: number;
-  };
-  latestActivityAt: string | null;
-}
+export type ProjectSummary = Bindings.ProjectSummary;
 
 export type ProjectFolderPickResult =
   | {
@@ -792,12 +718,7 @@ export interface ArgmaxApi {
 }
 
 /** Logical (CSS-pixel) rect of the browser pane placeholder. */
-export interface BrowserBounds {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+export type BrowserBounds = Bindings.BrowserBounds;
 
 export interface BrowserStateEvent {
   tabId: string;
@@ -819,34 +740,15 @@ export interface BrowserPageCommandEvent {
   command: "close-tab" | "new-tab" | "focus-address" | (string & {});
 }
 
-export interface BrowserScreenshot {
-  pngBase64: string;
-  /** Device pixels: twice the captured CSS size on a retina display. */
-  width: number;
-  height: number;
-}
+/** PNG dimensions are device pixels, including the retina scale factor. */
+export type BrowserScreenshot = Bindings.BrowserScreenshot;
 
-export interface BrowserEvaluateResult {
-  /** WebKit's JSON encoding of the value. Empty when the script returned `undefined` — or threw. */
-  resultJson: string;
-}
+export type BrowserEvaluateResult = Bindings.BrowserEvaluateResult;
 
-export interface BrowserFillResult {
-  ok: boolean;
-  itemTitle: string;
-}
+export type BrowserFillResult = Bindings.BrowserFillResult;
 
 /** One live browser tab, as the app (not the renderer) knows it. */
-export interface BrowserTabInfo {
-  tabId: string;
-  /** Session that opened it; null for tabs the user opened. */
-  ownerSessionId: string | null;
-  url: string;
-  title: string | null;
-  loading: boolean;
-  /** Optional label used to organize related tabs in the strip. */
-  group: string | null;
-}
+export type BrowserTabInfo = Bindings.BrowserTabInfo;
 
 export interface BrowserAgentOpenEvent {
   sessionId: string;

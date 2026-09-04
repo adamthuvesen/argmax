@@ -81,7 +81,7 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 async fn discover_uncached(provider_id: ProviderId) -> ProviderCapabilityReport {
     let definition = get_provider_definition(provider_id);
-    let binary_path = resolve_binary(definition.binary_name).await;
+    let binary_path = resolve_binary(provider_id, definition.binary_name).await;
 
     // Version and auth are independent reads — run them together so the auth
     // probe doesn't serialize behind `--version`. Both are skipped when the
@@ -105,6 +105,16 @@ async fn discover_uncached(provider_id: ProviderId) -> ProviderCapabilityReport 
     };
 
     let setup_guidance = match (binary_path.is_some(), authenticated) {
+        (false, _) if super::verification::requested() => Some(
+            super::verification::validate_configuration()
+                .err()
+                .unwrap_or_else(|| {
+                    format!(
+                        "Verification mode has no fixture configured in {}.",
+                        super::verification::binary_env(provider_id)
+                    )
+                }),
+        ),
         (false, _) => Some(setup_guidance(provider_id).to_string()),
         (true, Some(false)) => Some(login_guidance(provider_id).to_string()),
         (true, _) => None,
@@ -137,7 +147,10 @@ fn env_from_isolation(isolation: Option<&IsolatedOpenCodeData>) -> Vec<(String, 
         .unwrap_or_default()
 }
 
-async fn resolve_binary(binary_name: &str) -> Option<String> {
+async fn resolve_binary(provider_id: ProviderId, binary_name: &str) -> Option<String> {
+    if super::verification::requested() {
+        return super::verification::binary_path(provider_id);
+    }
     command_output("which", &[binary_name], Vec::new()).await
 }
 

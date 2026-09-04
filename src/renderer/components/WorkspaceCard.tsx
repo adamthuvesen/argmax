@@ -14,6 +14,7 @@ import type { AsyncState } from "../hooks/useReviewState.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { agentStatusLabel } from "../lib/agentLaunch.js";
 import type { SubagentCluster } from "../lib/subagentSummary.js";
+import { AgentEmblem } from "./AgentEmblem.js";
 import { WorkingNest } from "./WorkingNest.js";
 import { ChangeCount } from "./ChangeCount.js";
 import type { ComposerStatus } from "./SessionComposer.js";
@@ -219,7 +220,7 @@ function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster;
     .join(", ");
   const noun = cluster.hasMultitask ? "running alongside" : cluster.entries.length === 1 ? "subagent" : "subagents";
   const title = `${cluster.entries.length} ${noun}: ${roster}`;
-  const firstRunningId = cluster.entries.find((entry) => entry.status === "running")?.toolUseId;
+  const firstRunning = cluster.entries.find((entry) => entry.status === "running");
   const label = cluster.hasMultitask ? "Alongside" : "Subagents";
 
   const content = (
@@ -232,12 +233,21 @@ function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster;
             data-icon-color={entry.iconColor}
             data-status={entry.status}
           >
-            {entry.codename.charAt(0)}
+            {entry.emblem ? (
+              <AgentEmblem
+                shape={entry.emblem.shape}
+                hue={entry.emblem.hue}
+                size={18}
+                status={entry.status === "error" ? "error" : "done"}
+              />
+            ) : (
+              entry.codename.charAt(0)
+            )}
           </span>
         ))}
         {overflow > 0 ? <span className="workspace-card-agent workspace-card-agent-more">+{overflow}</span> : null}
       </span>
-      {cluster.running > 0 ? <WorkingNest active size={12} phaseKey={firstRunningId} /> : null}
+      {cluster.running > 0 ? <WorkingNest active size={12} phaseKey={firstRunning?.toolUseId} /> : null}
       <span className="workspace-card-agent-count">{segments.join(" · ")}</span>
     </>
   );
@@ -248,14 +258,23 @@ function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster;
       {onOpenAgents ? (
         <button
           type="button"
-          className="workspace-card-subagents"
+          className="workspace-card-subagents agent-emblem-tint"
+          data-hue={firstRunning?.emblem?.hue}
           aria-label={`Open ${label}`}
           title={`Open ${label} in the Agents view`}
           onClick={onOpenAgents}
         >
           {content}
         </button>
-      ) : <div className="workspace-card-subagents" title={title}>{content}</div>}
+      ) : (
+        <div
+          className="workspace-card-subagents agent-emblem-tint"
+          data-hue={firstRunning?.emblem?.hue}
+          title={title}
+        >
+          {content}
+        </div>
+      )}
     </section>
   );
 }

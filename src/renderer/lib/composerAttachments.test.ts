@@ -3,11 +3,16 @@ import { describe, expect, it } from "vitest";
 import {
   appendReferencesToPrompt,
   buildAttachmentReferences,
+  collectDroppedFiles,
   downscaleImageBlob,
   imageAttachmentReference,
+  imageMimeFromFileName,
+  isAttachableDrag,
   isSupportedImageMime,
+  listDragTypes,
   readBlobAsBase64
 } from "./composerAttachments.js";
+import { WORKSPACE_DRAG_MIME } from "./gridState.js";
 
 describe("buildAttachmentReferences", () => {
   it("emits workspace-relative @paths for files inside the workspace", () => {
@@ -68,6 +73,116 @@ describe("isSupportedImageMime", () => {
     expect(isSupportedImageMime("image/bmp")).toBe(false);
     expect(isSupportedImageMime("text/plain")).toBe(false);
     expect(isSupportedImageMime("")).toBe(false);
+  });
+});
+
+describe("imageMimeFromFileName", () => {
+  it("reads the extension of a macOS screenshot name", () => {
+    expect(imageMimeFromFileName("Screenshot 2026-09-05 at 10.30.00.png")).toBe("image/png");
+  });
+
+  it("returns null when the name has no image extension", () => {
+    expect(imageMimeFromFileName("notes.md")).toBeNull();
+    expect(imageMimeFromFileName("image")).toBeNull();
+  });
+});
+
+describe("listDragTypes", () => {
+  it("reads an array of types", () => {
+    expect(listDragTypes({ types: ["Files", "text/plain"] })).toEqual(["Files", "text/plain"]);
+  });
+
+  it("splits a comma-separated types string instead of iterating characters", () => {
+    expect(listDragTypes({ types: "Files,image/png" })).toEqual(["Files", "image/png"]);
+  });
+
+  it("treats missing types as empty", () => {
+    expect(listDragTypes({})).toEqual([]);
+  });
+});
+
+describe("isAttachableDrag", () => {
+  it("accepts a Finder-style file drag", () => {
+    expect(isAttachableDrag({ types: ["Files"] })).toBe(true);
+  });
+
+  it("accepts an in-memory image drag that never advertises Files", () => {
+    expect(isAttachableDrag({ types: ["image/png"] })).toBe(true);
+  });
+
+  it("accepts a promised-file drag whose types stay empty until drop", () => {
+    expect(isAttachableDrag({ types: [] })).toBe(true);
+  });
+
+  it("rejects an empty-types drag that already lists only string items", () => {
+    expect(
+      isAttachableDrag({
+        types: [],
+        items: [{ kind: "string", type: "text/plain", getAsFile: () => null }]
+      })
+    ).toBe(false);
+  });
+
+  it("rejects a text drag", () => {
+    expect(isAttachableDrag({ types: ["text/plain"] })).toBe(false);
+  });
+
+  it("rejects an in-app workspace pane drag", () => {
+    expect(isAttachableDrag({ types: [WORKSPACE_DRAG_MIME] })).toBe(false);
+  });
+});
+
+describe("collectDroppedFiles", () => {
+  it("returns files from the FileList", () => {
+    const file = new File([new Uint8Array([1])], "shot.png", { type: "image/png" });
+    expect(collectDroppedFiles({ files: [file] })).toEqual([file]);
+  });
+
+  it("reads items when the FileList is empty", () => {
+    const file = new File([new Uint8Array([1])], "shot.png", { type: "image/png" });
+    const collected = collectDroppedFiles({
+      files: [],
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
+    });
+    expect(collected).toEqual([file]);
+  });
+
+  it("stamps the item MIME onto a typeless file", () => {
+    const file = new File([new Uint8Array([1])], "shot.png", { type: "" });
+    const [collected] = collectDroppedFiles({
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
+    });
+    expect(collected?.type).toBe("image/png");
+    expect(collected?.name).toBe("shot.png");
+  });
+
+  it("does not attach a second copy when files and items both hold the same typeless image", () => {
+    const file = new File([new Uint8Array([1])], "shot.png", { type: "" });
+    const collected = collectDroppedFiles({
+      files: [file],
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
+    });
+    expect(collected).toEqual([file]);
+  });
+
+  it("keeps a Finder path and does not also persist a wrapped copy", () => {
+    const file = new File([new Uint8Array([1])], "shot.png", { type: "" });
+    Object.defineProperty(file, "path", { value: "/tmp/shot.png" });
+    const collected = collectDroppedFiles({
+      files: [file],
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
+    });
+    expect(collected).toHaveLength(1);
+    expect(collected[0]).toBe(file);
+    expect((collected[0] as { path?: string }).path).toBe("/tmp/shot.png");
+  });
+
+  it("ignores string items", () => {
+    expect(
+      collectDroppedFiles({
+        items: [{ kind: "string", type: "text/html", getAsFile: () => null }]
+      })
+    ).toEqual([]);
   });
 });
 

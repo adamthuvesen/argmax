@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EventType, TimelineEvent } from "../../shared/types.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "./foldConversation.js";
-import { foldTurnToolItems } from "./turnToolItems.js";
-import type { ConversationItem, ToolCall, TurnToolItem } from "./toolCalls.js";
+import type { ConversationItem, ToolCall } from "./toolCalls.js";
 import type { MultitaskNotice } from "./multitask.js";
 
 function event(
@@ -21,8 +20,6 @@ function event(
     createdAt
   };
 }
-
-const keepToolItems = (items: TurnToolItem[]): TurnToolItem[] => items;
 
 function tool(
   id: string,
@@ -47,13 +44,11 @@ function tool(
 
 function topLevelToolIds(item: RenderItem | undefined): string[] {
   if (item?.kind !== "turn") return [];
-  return item.toolItems.flatMap((toolItem) =>
-    toolItem.kind === "tool" ? [toolItem.tool.id] : toolItem.group.tools.map((t) => t.id)
-  );
+  return item.toolItems.map((toolItem) => toolItem.tool.id);
 }
 
 describe("foldConversationItems", () => {
-  it("keeps agent tool launches out of adjacent tool groups", () => {
+  it("keeps tools as chronological transport items", () => {
     const read = tool("read", "Read", "2026-05-12T15:00:01.000Z");
     const task = tool("task", "Task", "2026-05-12T15:00:02.000Z");
     const bash = tool("bash", "Bash", "2026-05-12T15:00:03.000Z");
@@ -61,15 +56,7 @@ describe("foldConversationItems", () => {
 
     const folded = foldConversationItems([], [read, task, bash, glob]);
 
-    expect(folded).toHaveLength(3);
-    expect(folded[0]?.kind).toBe("tool");
-    expect(folded[0]?.kind === "tool" ? folded[0].tool.id : null).toBe("read");
-    expect(folded[1]).toEqual({ kind: "tool", tool: task });
-    expect(folded[2]?.kind).toBe("tool-group");
-    expect(folded[2]?.kind === "tool-group" ? folded[2].group.tools.map((t) => t.id) : []).toEqual([
-      "bash",
-      "glob"
-    ]);
+    expect(folded).toEqual([read, task, bash, glob].map((tool) => ({ kind: "tool", tool })));
   });
 
   it("keeps agent-like tool names standalone for every provider", () => {
@@ -92,6 +79,17 @@ describe("foldConversationItems", () => {
 });
 
 describe("foldRenderItems", () => {
+  it("preserves fallback turn ids for singleton and grouped tool-only windows", () => {
+    const first = tool("first", "Read", "2026-05-12T15:00:01.000Z");
+    const second = tool("second", "Bash", "2026-05-12T15:00:02.000Z");
+
+    const singleton = foldRenderItems(foldConversationItems([], [first]), null);
+    const grouped = foldRenderItems(foldConversationItems([], [first, second]), null);
+
+    expect(singleton[0]?.kind === "turn" ? singleton[0].id : null).toBe("turn-first");
+    expect(grouped[0]?.kind === "turn" ? grouped[0].id : null).toBe("turn-tcg-first");
+  });
+
   it("anchors a turn id to the user message when early assistant deltas are capped away", () => {
     const user: ConversationItem = {
       kind: "message",
@@ -108,8 +106,8 @@ describe("foldRenderItems", () => {
       { kind: "message", event: event("delta-3", "message.delta", "2026-05-12T15:00:03.000Z", "!") }
     ];
 
-    const firstTurn = foldRenderItems(firstView, null, keepToolItems).find((item) => item.kind === "turn");
-    const cappedTurn = foldRenderItems(cappedView, null, keepToolItems).find((item) => item.kind === "turn");
+    const firstTurn = foldRenderItems(firstView, null).find((item) => item.kind === "turn");
+    const cappedTurn = foldRenderItems(cappedView, null).find((item) => item.kind === "turn");
 
     expect(firstTurn?.id).toBe("turn-user-1");
     expect(cappedTurn?.id).toBe(firstTurn?.id);
@@ -130,7 +128,7 @@ describe("foldRenderItems", () => {
       { kind: "message", event: event("delta-2", "message.delta", "2026-05-12T15:02:01.000Z", "Resumed") }
     ];
 
-    const out = foldRenderItems(items, null, keepToolItems);
+    const out = foldRenderItems(items, null);
 
     expect(out.map((item) => item.kind)).toEqual(["user-message", "turn", "compaction", "turn"]);
     // Every render item needs its own React key: before the seam re-anchored the
@@ -152,7 +150,7 @@ describe("foldRenderItems", () => {
       { kind: "message", event: event("start", "session.compacting", "2026-05-12T15:00:02.000Z") }
     ];
 
-    const out = foldRenderItems(items, null, keepToolItems);
+    const out = foldRenderItems(items, null);
     const notice = out.find((item) => item.kind === "compaction");
 
     expect(notice?.kind === "compaction" ? notice.notice.running : null).toBe(true);
@@ -174,7 +172,7 @@ describe("foldRenderItems", () => {
       { kind: "message", event: event("user-2", "user.message", "2026-05-12T15:00:03.000Z", "Continue") }
     ];
 
-    const out = foldRenderItems(items, null, keepToolItems);
+    const out = foldRenderItems(items, null);
 
     expect(out.map((item) => item.kind)).toEqual([
       "user-message",
@@ -205,7 +203,7 @@ describe("foldRenderItems", () => {
       [launch, sameTurnChild, lateChild, ownWork]
     );
 
-    const out = foldRenderItems(items, null, foldTurnToolItems);
+    const out = foldRenderItems(items, null);
     const turns = out.filter((item) => item.kind === "turn");
 
     expect(topLevelToolIds(turns[1])).toEqual(["own"]);
@@ -223,7 +221,7 @@ describe("foldRenderItems", () => {
       [orphan]
     );
 
-    const out = foldRenderItems(items, null, foldTurnToolItems);
+    const out = foldRenderItems(items, null);
 
     expect(topLevelToolIds(out.find((item) => item.kind === "turn"))).toEqual(["orphan"]);
   });
@@ -233,8 +231,7 @@ describe("multitask rows", () => {
   const items = (events: TimelineEvent[]): RenderItem[] =>
     foldRenderItems(
       events.map((e) => ({ kind: "message" as const, event: e })),
-      null,
-      keepToolItems
+      null
     );
   const multitasksOf = (rendered: RenderItem[]): MultitaskNotice[] =>
     rendered.flatMap((item) => (item.kind === "turn" ? item.multitasks : []));

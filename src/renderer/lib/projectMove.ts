@@ -1,7 +1,5 @@
-import type { EventType, TimelineEvent } from "../../shared/types.js";
+import type { TimelineEvent } from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
-
-export const SESSION_MOVED: EventType = "session.moved";
 
 export interface ProjectMoveNotice {
   from: string | null;
@@ -14,11 +12,6 @@ export interface SessionMoveDestination {
   sourceSessionId: string;
   destinationSessionId: string;
   destinationWorkspaceId: string;
-}
-
-export function isProjectMoveEvent(event: TimelineEvent): boolean {
-  const canonical = decodeTimelineEvent(event);
-  return canonical.kind === "lifecycle" && canonical.name === "moved";
 }
 
 export function projectMoveNoticeFor(event: TimelineEvent): ProjectMoveNotice {

@@ -97,7 +97,12 @@ function initialVisibleLength(
   if (!streaming || length <= SMOOTH_STREAM_MIN_CHARS) return length;
   // Text already revealed once is history, so resume there instead of retyping it.
   const revealed = revealKey ? revealedLengths.get(revealKey) : undefined;
-  return revealed === undefined ? 0 : Math.min(revealed, length);
+  if (revealed !== undefined) return Math.min(revealed, length);
+  // Text that arrived while the window was in the background never had a
+  // reader. Showing it at once avoids finished bubbles typing out together
+  // when the user comes back.
+  if (typeof document !== "undefined" && document.hidden) return length;
+  return 0;
 }
 
 /** Code points in `text`, without materialising the character array. */
@@ -128,12 +133,17 @@ type RevealPace = {
 function useSmoothStreamingText(
   text: string,
   streaming: boolean,
-  revealKey: string | null | undefined
+  revealKey: string | null | undefined,
+  restoring = false
 ): { text: string; revealing: boolean } {
   const prefersReducedMotion = usePrefersReducedMotion();
-  const paced = streaming && !prefersReducedMotion;
+  const paced = streaming && !prefersReducedMotion && !restoring;
   const [reveal, setReveal] = useState<RevealState>(() => ({
-    visible: initialVisibleLength(streaming ? codePointLength(text) : text.length, streaming, revealKey),
+    visible: initialVisibleLength(
+      paced ? codePointLength(text) : text.length,
+      paced,
+      revealKey
+    ),
     finishing: false
   }));
   const revealing = paced || reveal.finishing;
@@ -157,7 +167,7 @@ function useSmoothStreamingText(
   // the catch-up reveal took over.
   useLayoutEffect(() => {
     targetLengthRef.current = targetLength;
-    if (prefersReducedMotion) {
+    if (prefersReducedMotion || restoring) {
       setReveal((current) =>
         current.visible === targetLength && !current.finishing
           ? current
@@ -192,16 +202,24 @@ function useSmoothStreamingText(
         ? current
         : { visible, finishing };
     });
-  }, [prefersReducedMotion, streaming, targetLength, text]);
+  }, [prefersReducedMotion, restoring, streaming, targetLength, text]);
 
   useEffect(() => {
     if (!revealing) {
       return;
     }
     const interval = window.setInterval(() => {
-      // Backgrounded windows can't show the typewriter advance, and each tick
-      // pays a React re-render plus a tail re-parse — hold still until visible.
-      if (document.hidden) return;
+      // Backgrounded windows can't show the typewriter advance. Catch up
+      // silently: pausing at the last painted prefix made every finished
+      // bubble in a live turn type out together when the user came back.
+      if (document.hidden) {
+        setReveal((current) => {
+          const target = targetLengthRef.current;
+          if (current.visible >= target && !current.finishing) return current;
+          return { visible: target, finishing: false };
+        });
+        return;
+      }
       setReveal((current) => {
         const target = targetLengthRef.current;
         if (current.visible >= target) {
@@ -469,6 +487,7 @@ export function StreamingMarkdown({
   text,
   streaming,
   paced = true,
+  restoring = false,
   revealKey,
   workspace,
   onOpenFile
@@ -479,13 +498,22 @@ export function StreamingMarkdown({
       every character as it arrives but still keeps the committed/tail split,
       so a fast reasoning burst neither lags behind nor re-parses in full. */
   paced?: boolean;
+  /** The pane is painting content that was already there (session switch
+      remount). Already-arrived text shows in full; only growth after restore
+      is typed. */
+  restoring?: boolean;
   /** Stable identity for this block of text, unique across sessions and turns.
       Without one, a streaming block restarts its reveal on every remount. */
   revealKey?: string | null;
   workspace?: WorkspaceSummary | null;
   onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
 }): JSX.Element | null {
-  const { text: visibleText, revealing } = useSmoothStreamingText(text, streaming && paced, revealKey);
+  const { text: visibleText, revealing } = useSmoothStreamingText(
+    text,
+    streaming && paced,
+    revealKey,
+    restoring
+  );
   // A block still typing out its remainder after the stream ended keeps the
   // live rendering path — the committed/tail split and deferred code
   // highlighting — until the last character lands.

@@ -9,6 +9,7 @@ use super::events::{
 };
 use super::projects::{list_projects, ProjectSummary};
 use super::sessions::{list_sessions_for_dashboard, SessionSummary};
+use super::sqlite_error;
 use super::workspaces::{list_workspaces, WorkspaceSummary};
 use crate::error::ArgmaxResult;
 
@@ -167,10 +168,6 @@ fn dedupe_workspace_ids(ids: &[String]) -> Vec<String> {
         }
     }
     out
-}
-
-fn sqlite_error(error: rusqlite::Error) -> crate::error::ArgmaxError {
-    crate::error::ArgmaxError::service("SQLITE", error.to_string())
 }
 
 #[cfg(test)]

@@ -719,6 +719,104 @@ html:has(.mobile-shell) body {
   color: var(--rose);
 }
 
+/* Appearance controls in the Remote menu: a two-way segmented for theme
+   and bubble tint, and a row of identity swatches for the accent. Thumb-
+   sized, no hover — iOS sticks :hover after the first tap. */
+.mobile-segmented {
+  display: flex;
+  gap: 3px;
+  margin: var(--space-1) 0 var(--space-2);
+  padding: 3px;
+  border-radius: var(--radius-lg);
+  background: var(--panel-sunken);
+}
+
+.mobile-segmented button {
+  flex: 1;
+  min-height: 40px;
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 2px);
+  background: transparent;
+  color: var(--muted-strong);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.mobile-segmented button[aria-checked="true"] {
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+
+.mobile-segmented button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.mobile-segmented button[aria-checked="true"]:focus-visible {
+  box-shadow: var(--shadow-1), var(--ring);
+}
+
+.mobile-segmented button:active:not([aria-checked="true"]) {
+  background: color-mix(in oklab, var(--panel) 70%, transparent);
+}
+
+.mobile-accent-picker {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-1) var(--space-3);
+}
+
+.mobile-accent-chip {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent-swatch-color, var(--accent));
+}
+
+.mobile-accent-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px var(--accent);
+}
+
+.mobile-accent-chip[data-selected] {
+  box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px var(--text-soft);
+}
+
+.mobile-accent-chip:active {
+  filter: brightness(0.92);
+}
+
+.mobile-accent-chip[data-accent-id="green"] {
+  --accent-swatch-color: #446c56;
+}
+
+.mobile-accent-chip[data-accent-id="purple"] {
+  --accent-swatch-color: #613e9a;
+}
+
+.mobile-accent-chip[data-accent-id="neutral"] {
+  --accent-swatch-color: #4f4d47;
+}
+
+.mobile-accent-chip[data-accent-id="orange"] {
+  --accent-swatch-color: #a85c43;
+}
+
+.mobile-accent-chip[data-accent-id="blue"] {
+  --accent-swatch-color: #30609a;
+}
+
+.mobile-accent-chip[data-accent-id="coral"] {
+  --accent-swatch-color: #a64354;
+}
+
 .mobile-new-composer {
   display: flex;
   flex-direction: column;

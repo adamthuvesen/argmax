@@ -259,7 +259,8 @@ describe("buildSessionToolCalls", () => {
       name: "Read",
       inputPreview: "src/renderer/App.tsx",
       output: "ok",
-      status: "done"
+      status: "done",
+      completionObserved: true
     });
     expect(tools[1]).toMatchObject({
       name: "Bash",
@@ -1260,6 +1261,7 @@ describe("buildSessionToolCalls", () => {
 
     expect(buildSessionToolCalls(events, false)[0]).toMatchObject({
       status: "done",
+      completionObserved: false,
       completedAt: "2026-05-12T15:00:01.000Z",
       error: null
     });

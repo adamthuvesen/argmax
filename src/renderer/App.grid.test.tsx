@@ -21,6 +21,7 @@ import {
   getWorkspaceTerminalState as getWorkspaceTerminalStateForTest,
   resetTerminalTabsForTests
 } from "./lib/terminalTabs.js";
+import { CHAT_VERBOSITY_KEY } from "./lib/uiPreferences.js";
 
 vi.mock("./components/TerminalTabsPanel.js", async () => {
   const { useEffect } = await import("react");
@@ -53,6 +54,7 @@ describe("App grid", () => {
 
   beforeEach(() => {
     setupAppTestMocks();
+    window.localStorage.setItem(CHAT_VERBOSITY_KEY, "3");
     resetTerminalTabsForTests();
   });
 
@@ -381,12 +383,16 @@ describe("App grid", () => {
     fireEvent.click(freshStopButton);
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-embedded-fresh"));
+    await waitFor(() =>
+      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-2", force: true })
+    );
 
     const restoredLauncher = await screen.findByRole("region", { name: "New chat for Argmax" });
     expect(within(restoredLauncher).getByLabelText("Task prompt")).toHaveValue("Implement embedded early stop feature");
   });
 
   it("opens an agent activity pane from an agent row without showing child prose in the parent chat", async () => {
+    window.localStorage.removeItem(CHAT_VERBOSITY_KEY);
     const promptText = "Find the renderer entry points and note the important files before reporting back. ".repeat(9).trim();
     const data: DashboardSnapshot = {
       ...snapshot,
@@ -461,17 +467,22 @@ describe("App grid", () => {
     await screen.findByText("I will delegate this.");
     expect(screen.queryByText("Subagent found parser.")).toBeNull();
 
+    const agentGroup = screen.getByRole("button", { name: "Started an agent" });
+    expect(screen.queryByRole("button", { name: startedAgentName("Map renderer") })).toBeNull();
+    fireEvent.click(agentGroup);
     fireEvent.click(screen.getByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: /^Agent activity: / });
     // The panel's tab carries the spawn's codename ("task-1" hashes to Gauss).
     expect(screen.getByRole("tab", { name: /Gauss/ })).toBeInTheDocument();
-    expect(within(pane).queryByRole("heading", { name: "Map renderer" })).toBeNull();
-    expect(within(pane).getAllByText(promptText)).toHaveLength(1);
+    expect(within(pane).getByRole("heading", { name: "Map renderer" })).toBeInTheDocument();
+    // The brief folds behind its chip until asked for.
+    expect(within(pane).queryByText(promptText)).toBeNull();
     const expandInstructions = within(pane).getByRole("button", { name: "Expand instructions" });
     expect(expandInstructions).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(expandInstructions);
     expect(within(pane).getByRole("button", { name: "Collapse instructions" })).toHaveAttribute("aria-expanded", "true");
+    expect(within(pane).getAllByText(promptText)).toHaveLength(1);
     const childMessage = within(pane).getByText("Subagent found parser.");
     const result = within(pane).getByRole("region", { name: "Agent result" });
     expect(childMessage.compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
@@ -856,6 +867,7 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: /^Agent activity: / });
+    fireEvent.click(within(pane).getByRole("button", { name: "Expand instructions" }));
     expect(within(pane).getByText("renderer").tagName).toBe("STRONG");
     expect(within(pane).getByRole("button", { name: "Open src/renderer/App.tsx" })).toBeInTheDocument();
     expect(within(pane).getByText("Keep it short.").tagName).toBe("LI");

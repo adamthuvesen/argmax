@@ -2,8 +2,8 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 use specta::Type;
 
-use super::bool_to_i64;
 use super::time::now_iso;
+use super::{bool_to_i64, sqlite_error};
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -268,10 +268,6 @@ fn row_to_launch_fields(row: &Row<'_>) -> rusqlite::Result<RoutineLaunchFields> 
         run_once_at: row.get("run_once_at")?,
         enabled: row.get::<_, i64>("enabled")? == 1,
     })
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
 }
 
 #[cfg(test)]

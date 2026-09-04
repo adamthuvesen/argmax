@@ -8,7 +8,12 @@ interface UseSessionCommandsOptions {
   loadSessionEvents: (sessionId: string) => Promise<void>;
   setToast: (toast: ToastMessage) => void;
   fastMode: boolean;
-  onEarlyStop?: (sessionId: string) => void;
+  /**
+   * Called before terminate when the stop may be an early undo of a mistaken
+   * launch. Return a workspace id to archive after the provider has actually
+   * stopped — a failed stop must not discard a chat that is still running.
+   */
+  onEarlyStop?: (sessionId: string) => string | undefined;
 }
 
 export interface TerminateSessionOptions {
@@ -134,8 +139,9 @@ export function useSessionCommands({
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to stop a live chat.");
       }
+      let workspaceToArchive: string | undefined;
       if (options?.restoreLauncherOnEarlyStop !== false) {
-        onEarlyStop?.(sessionId);
+        workspaceToArchive = onEarlyStop?.(sessionId);
       }
       const ok = await withToast(
         () => window.argmax!.providers.terminate(sessionId),
@@ -143,6 +149,15 @@ export function useSessionCommands({
         "Could not stop chat."
       );
       if (ok) {
+        // Archive only after a successful stop: the 10s window is an undo of
+        // a mistaken launch, and force-archive would otherwise discard a chat
+        // that is still running. Isolated teardown of an already-stopped
+        // session is a no-op for the provider.
+        if (workspaceToArchive) {
+          await window.argmax.workspaces
+            .archive({ workspaceId: workspaceToArchive, force: true })
+            .catch(() => undefined);
+        }
         // Terminate already succeeded; the refresh is best-effort catch-up.
         // allSettled keeps a rejecting refresh from surfacing as a failed stop.
         await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);

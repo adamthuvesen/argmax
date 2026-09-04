@@ -12,12 +12,11 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
 
 use crate::util::sync::LockOrRecover;
-use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
@@ -196,7 +195,7 @@ pub struct ProviderSessionService {
     termination_jobs: Arc<Mutex<HashMap<String, TerminationJob>>>,
     lifecycle: Arc<WorkspaceLifecycle>,
     approvals: Option<Arc<ApprovalService>>,
-    session_control: OnceCell<Arc<SessionLaunchRegistry>>,
+    session_control: OnceLock<Arc<SessionLaunchRegistry>>,
     /// Per-turn git marks, for providers that report a file write without
     /// saying what changed. See `measured_diffs`.
     measured_diffs: Arc<MeasuredDiffs>,
@@ -294,7 +293,7 @@ impl ProviderSessionService {
             termination_jobs: Arc::new(Mutex::new(HashMap::new())),
             lifecycle,
             approvals,
-            session_control: OnceCell::new(),
+            session_control: OnceLock::new(),
             measured_diffs: Arc::new(MeasuredDiffs::default()),
             session_states: broadcast::channel(SESSION_STATE_BROADCAST_CAPACITY).0,
         })
@@ -484,7 +483,7 @@ impl ProviderSessionService {
         let provider_invocation_id = Uuid::new_v4().to_string();
         self.flush_queue
             .lock_or_recover("flush queue")
-            .initialize_session_with_invocation(
+            .initialize_session(
                 session_id.clone(),
                 provider,
                 provider_invocation_id.clone(),
@@ -917,7 +916,7 @@ impl ProviderSessionService {
         let provider_invocation_id = Uuid::new_v4().to_string();
         self.flush_queue
             .lock_or_recover("flush queue")
-            .initialize_session_with_invocation(
+            .initialize_session(
                 session_id.clone(),
                 provider,
                 provider_invocation_id.clone(),
@@ -1577,7 +1576,7 @@ impl ProviderSessionService {
             session_id = %trace_session,
             "handle_output_event: acquired flush queue; queuing event",
         );
-        let mut result = flush_queue.queue_output_event_for_invocation(
+        let mut result = flush_queue.queue_output_event(
             &mut connection,
             &provider_invocation_id,
             ProviderOutputEvent {

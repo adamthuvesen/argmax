@@ -44,9 +44,15 @@ describe("launcher hero mascot", () => {
     vi.useRealTimers();
   });
 
-  it("thinks while an agent is running in this project", async () => {
+  it("stays awake while an agent is running in this project", async () => {
+    vi.useFakeTimers();
     await renderLauncher(true);
-    expect(heroSprite().getAttribute("data-mood")).toBe("thinking");
+    expect(heroSprite().getAttribute("data-mood")).toBe("idle");
+
+    act(() => {
+      vi.advanceTimersByTime(90_000);
+    });
+    expect(heroSprite().getAttribute("data-mood")).toBe("idle");
   });
 
   it("dozes off after a long untouched stretch and wakes on a keystroke", async () => {

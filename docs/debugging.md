@@ -2,6 +2,12 @@
 
 Two developer-facing surfaces, split by whether the numbers move.
 
+For a reproducible local failure, start with `npm run doctor`, then
+`npm run verify -- --scenario chat-resume`. The runner writes its report and
+evidence under `scratch/verification/<run-id>/` by default. The report records
+the source fingerprint, build identity, assertions, and cleanup outcome.
+See [verification.md](verification.md) for scenarios and coverage boundaries.
+
 | Surface | Opened by | Shows |
 |---|---|---|
 | Debug panel | `⌘⇧D`, or View → Toggle Debug Log | Live: this session's trace, the backend log tail, IPC latency |

@@ -53,12 +53,15 @@ describe("ChatBubble", () => {
   });
 
   it("leaves a short message without a Show more toggle", () => {
-    render(
-      <ChatBubble kind="user" rawMarkdown="hi">
-        <p>hi</p>
+    const { container } = render(
+      <ChatBubble kind="user" rawMarkdown="and so on?">
+        <p>and so on?</p>
       </ChatBubble>
     );
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+    // `.clipped` is what turns on overflow:hidden. A short prompt must not
+    // get that class — it was clipping the trailing `?` on one-line bubbles.
+    expect(container.querySelector(".chat-bubble-body.clipped")).toBeNull();
   });
 
   it("reveals the toggle when the prose grows after mount (late image or font)", () => {

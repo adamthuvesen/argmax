@@ -1,12 +1,11 @@
 // AppState: shared, cloneable container for the cross-subsystem services.
 //
-// Most fields are `OnceCell<Arc<…>>` because the services come online over
+// Most fields are `OnceLock<Arc<…>>` because the services come online over
 // the course of boot — see `recover_orphaned_sessions` (must run before
 // `tauri::Builder::run`), the prune sweeper, the GH poller. Each owner
 // installs its handle into the matching cell once initialized.
 //
-use once_cell::sync::OnceCell;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tokio::sync::broadcast;
 
 use crate::approvals::service::ApprovalService;
@@ -32,35 +31,35 @@ pub type LiveDockBadgeService = DockBadgeService<TauriDockBadgeSink<tauri::Wry>>
 
 pub struct AppState {
     pub startup_timer: Arc<StartupTimer>,
-    pub db: OnceCell<Arc<Database>>,
+    pub db: OnceLock<Arc<Database>>,
     /// Why the database never opened, when it never opened. A migration abort
     /// (checksum drift, a failed statement) leaves `db` empty and every handler
     /// failing identically, so the reason is kept here and handed to the
     /// renderer — otherwise the only actionable text is buried in the logs.
-    pub db_open_error: OnceCell<String>,
-    pub approvals: OnceCell<Arc<ApprovalService>>,
-    pub providers: OnceCell<Arc<ProviderSessionService>>,
-    pub session_launch_server: OnceCell<SessionLaunchServer>,
+    pub db_open_error: OnceLock<String>,
+    pub approvals: OnceLock<Arc<ApprovalService>>,
+    pub providers: OnceLock<Arc<ProviderSessionService>>,
+    pub session_launch_server: OnceLock<SessionLaunchServer>,
     pub provider_discovery: Arc<ProviderDiscovery>,
     /// Warm `cursor-agent acp` process pool; the `RunEvent::Exit` callback
     /// kills it because boot orphan recovery cannot match acp argv.
-    pub cursor_acp: OnceCell<Arc<CursorAcpSessions>>,
-    pub terminals: OnceCell<Arc<TerminalService>>,
-    pub checks: OnceCell<Arc<CheckService>>,
-    pub workspaces: OnceCell<Arc<WorkspaceService>>,
+    pub cursor_acp: OnceLock<Arc<CursorAcpSessions>>,
+    pub terminals: OnceLock<Arc<TerminalService>>,
+    pub checks: OnceLock<Arc<CheckService>>,
+    pub workspaces: OnceLock<Arc<WorkspaceService>>,
     /// Attachment bytes are written by both the desktop renderer and the
     /// browser remote bridge. The store is initialized once the app data
     /// directory is known during setup.
-    pub attachments: OnceCell<Arc<AttachmentStore>>,
-    pub gh_poller: OnceCell<Arc<GhPoller>>,
+    pub attachments: OnceLock<Arc<AttachmentStore>>,
+    pub gh_poller: OnceLock<Arc<GhPoller>>,
     /// The Usage page's transcript scanner. Installed with the database;
     /// the first cold sweep waits for the page to be opened.
-    pub usage_scanner: OnceCell<Arc<crate::usage::scanner::UsageScanner>>,
-    pub notifications: OnceCell<Arc<LiveNotificationService>>,
+    pub usage_scanner: OnceLock<Arc<crate::usage::scanner::UsageScanner>>,
+    pub notifications: OnceLock<Arc<LiveNotificationService>>,
     /// Dock badge showing pending approvals + waiting sessions; updated from
     /// the `dashboard:delta` emit loop and cleared through the same service on
     /// focus so its change latch stays in step with what the dock shows.
-    pub dock_badge: OnceCell<Arc<LiveDockBadgeService>>,
+    pub dock_badge: OnceLock<Arc<LiveDockBadgeService>>,
     /// Phone push via ntfy; installed by `remote::apply` when the config names
     /// a topic, and swapped in place when the topic changes in Settings.
     pub ntfy: std::sync::RwLock<Option<Arc<crate::remote::ntfy::NtfyPublisher>>>,
@@ -98,21 +97,21 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             startup_timer: Arc::default(),
-            db: OnceCell::new(),
-            db_open_error: OnceCell::new(),
-            approvals: OnceCell::new(),
-            providers: OnceCell::new(),
-            session_launch_server: OnceCell::new(),
+            db: OnceLock::new(),
+            db_open_error: OnceLock::new(),
+            approvals: OnceLock::new(),
+            providers: OnceLock::new(),
+            session_launch_server: OnceLock::new(),
             provider_discovery: Arc::default(),
-            cursor_acp: OnceCell::new(),
-            terminals: OnceCell::new(),
-            checks: OnceCell::new(),
-            workspaces: OnceCell::new(),
-            attachments: OnceCell::new(),
-            gh_poller: OnceCell::new(),
-            usage_scanner: OnceCell::new(),
-            notifications: OnceCell::new(),
-            dock_badge: OnceCell::new(),
+            cursor_acp: OnceLock::new(),
+            terminals: OnceLock::new(),
+            checks: OnceLock::new(),
+            workspaces: OnceLock::new(),
+            attachments: OnceLock::new(),
+            gh_poller: OnceLock::new(),
+            usage_scanner: OnceLock::new(),
+            notifications: OnceLock::new(),
+            dock_badge: OnceLock::new(),
             ntfy: std::sync::RwLock::new(None),
             remote_server: std::sync::Mutex::new(None),
             remote_events: broadcast::channel(REMOTE_EVENT_CAPACITY).0,

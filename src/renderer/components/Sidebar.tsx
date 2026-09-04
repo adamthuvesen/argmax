@@ -7,6 +7,7 @@ import {
   Clock,
   Command,
   Cpu,
+  Globe,
   Info,
   Keyboard,
   MoreHorizontal,
@@ -164,6 +165,7 @@ export function Sidebar({
   onOpenProviders,
   onOpenProject,
   onOpenScheduledTasks,
+  onOpenBrowser,
   onOpenUsage,
   onOpenSettings,
   onOpenWorkspaceChat,
@@ -181,6 +183,7 @@ export function Sidebar({
   onWorkspaceDragEnd,
   selectedProjectId,
   selectedWorkspaceId,
+  browserSelected,
   openWorkspaceIds,
   canDragWorkspaceToGrid,
   snapshot,
@@ -203,6 +206,7 @@ export function Sidebar({
   onOpenProviders: () => void;
   onOpenProject: (projectId: string) => void;
   onOpenScheduledTasks: () => void;
+  onOpenBrowser?: () => void;
   onOpenUsage: () => void;
   onOpenSettings: () => void;
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
@@ -232,6 +236,8 @@ export function Sidebar({
   onWorkspaceDragEnd?: () => void;
   selectedProjectId: string | null;
   selectedWorkspaceId: string | null;
+  /** True while the workspace is the Browser page, so the rail item is current. */
+  browserSelected?: boolean;
   openWorkspaceIds: Set<string>;
   canDragWorkspaceToGrid: boolean;
   snapshot: DashboardSnapshot;
@@ -1053,6 +1059,21 @@ export function Sidebar({
           <span className="rail-nav-label">Search</span>
           <kbd aria-hidden="true">⌘K</kbd>
         </button>
+        {onOpenBrowser && typeof window !== "undefined" && window.argmax?.browser ? (
+          <button
+            className="rail-nav-item"
+            type="button"
+            title="Browser"
+            aria-label="Browser"
+            aria-current={browserSelected ? "page" : undefined}
+            onClick={onOpenBrowser}
+          >
+            <span className="rail-nav-glyph" aria-hidden="true">
+              <Globe size={14} />
+            </span>
+            <span className="rail-nav-label">Browser</span>
+          </button>
+        ) : null}
         <button
           className="rail-nav-item"
           type="button"

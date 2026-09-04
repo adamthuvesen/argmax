@@ -2,6 +2,7 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 use specta::Type;
 
+use super::sqlite_error;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -243,8 +244,4 @@ fn row_to_gh_pr(row: &Row<'_>) -> rusqlite::Result<GhPrRecord> {
         pr_merged_at: row.get("pr_merged_at")?,
         head_ref_name: row.get("head_ref_name")?,
     })
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
 }

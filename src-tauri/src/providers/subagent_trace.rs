@@ -19,10 +19,10 @@ use crate::{
     persistence::{
         database::Database,
         events::{
-            delete_event_row, list_imported_trace_events, list_session_agent_events,
-            list_session_tool_events, persist_timeline_event_if_absent, rewrite_trace_event,
-            supersede_synthetic_launch_events, upgrade_trace_no_output_completion,
-            PersistTimelineEventInput,
+            completion_id_for_payload, delete_event_row, list_imported_trace_events,
+            list_session_agent_events, list_session_tool_events, persist_timeline_event_if_absent,
+            rewrite_trace_event, supersede_synthetic_launch_events, tool_use_id_for_payload,
+            upgrade_trace_no_output_completion, PersistTimelineEventInput,
         },
         sessions::find_session_by_id,
         workspaces::find_workspace_by_id,
@@ -414,8 +414,8 @@ fn reconciliation_plan(
     let mut used_tool_ids = HashSet::new();
     for row in list_session_tool_events(connection, session_id)? {
         let tool_use_id = match row.r#type.as_str() {
-            "command.started" => payload_tool_id(&row.payload),
-            _ => payload_completion_id(&row.payload),
+            "command.started" => tool_use_id_for_payload(&row.payload),
+            _ => completion_id_for_payload(&row.payload),
         };
         let Some(tool_use_id) = tool_use_id else {
             continue;
@@ -805,9 +805,9 @@ fn agent_trace_context(
     let mut child_ids = Vec::new();
     for row in &tail.events {
         let is_parent_start = row.r#type == "command.started"
-            && payload_tool_id(&row.payload) == Some(parent_tool_use_id);
+            && tool_use_id_for_payload(&row.payload) == Some(parent_tool_use_id);
         let is_parent_completion = row.r#type == "command.completed"
-            && payload_completion_id(&row.payload) == Some(parent_tool_use_id);
+            && completion_id_for_payload(&row.payload) == Some(parent_tool_use_id);
         if !is_parent_start && !is_parent_completion {
             continue;
         }
@@ -1912,27 +1912,12 @@ fn fallback_timestamp(parent_created_at: &str, sequence: usize) -> String {
         .unwrap_or_else(|_| parent_created_at.to_string())
 }
 
-fn payload_tool_id(payload: &Value) -> Option<&str> {
-    payload
-        .get("id")
-        .and_then(Value::as_str)
-        .or_else(|| payload.get("call_id").and_then(Value::as_str))
-}
-
 fn is_spawn_agent_payload(payload: &Value) -> bool {
     payload
         .get("name")
         .and_then(Value::as_str)
         .or_else(|| payload.get("type").and_then(Value::as_str))
         == Some("spawn_agent")
-}
-
-fn payload_completion_id(payload: &Value) -> Option<&str> {
-    payload
-        .get("tool_use_id")
-        .and_then(Value::as_str)
-        .or_else(|| payload.get("id").and_then(Value::as_str))
-        .or_else(|| payload.get("call_id").and_then(Value::as_str))
 }
 
 fn receiver_thread_ids(payload: &Value) -> Vec<String> {

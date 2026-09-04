@@ -209,7 +209,11 @@ fn one_shot_command(provider: ProviderId, model_id: &str, instruction: &str) -> 
 }
 
 async fn run_capture(provider: ProviderId, command: OneShotCommand) -> Option<String> {
-    let binary = get_provider_definition(provider).binary_name;
+    let binary = if super::verification::requested() {
+        super::verification::binary_path(provider)?
+    } else {
+        get_provider_definition(provider).binary_name.to_string()
+    };
     // OpenCode helpers must not share `~/.local/share/opencode/opencode.db` with
     // the session `opencode run` that `providers:launch` has just spawned in the
     // background. `workspaces:autotitle` fires as soon as that IPC returns, so
@@ -227,7 +231,7 @@ async fn run_capture(provider: ProviderId, command: OneShotCommand) -> Option<St
     let env = build_provider_environment(overrides);
 
     let run = async {
-        let mut child = Command::new(binary)
+        let mut child = Command::new(&binary)
             .args(&command.args)
             // Neutral cwd: no project CLAUDE.md / git context, nothing in the
             // workspace can be read or written by the title call.

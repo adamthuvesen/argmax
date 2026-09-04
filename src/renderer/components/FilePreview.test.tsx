@@ -242,7 +242,7 @@ describe("FilePreview", () => {
 
     const container = /\.file-preview-markdown\s*\{(?<body>[^}]+)\}/i.exec(css);
     const measure = /--file-preview-measure:\s*(?<px>\d+)px/i.exec(container?.groups?.body ?? "");
-    expect(Number(measure?.groups?.px ?? 0)).toBeLessThanOrEqual(760);
+    expect(Number(measure?.groups?.px ?? 0)).toBe(840);
 
     // The cap lands on all top-level children, not just prose, so short fenced
     // code and tables stop spanning the review pane.

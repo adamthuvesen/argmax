@@ -2,7 +2,7 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 use specta::Type;
 
-use super::time::now_iso;
+use super::{sqlite_error, time::now_iso};
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -249,8 +249,4 @@ pub fn find_approval_by_id(
         }
         Err(error) => Err(sqlite_error(error)),
     }
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
 }

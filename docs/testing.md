@@ -17,7 +17,12 @@ npm run test:rust       # Cargo test suite for src-tauri (includes the bindings 
 npm run lint:rust       # cargo clippy over every target, warnings are errors
 npm run check:tauri-bridge # Check IPC channel inventory parity
 npm run check:main-thread  # Every synchronous IPC handler is on the allowlist
+npm run doctor          # Check the local verification environment
+npm run verify          # Build and exercise a disposable app with scripted providers
 ```
+
+`verify` is a local end-to-end loop described in [verification.md](verification.md).
+It is intentionally separate from CI and `precheck`.
 
 ## The pre-push gate
 

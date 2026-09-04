@@ -2,7 +2,7 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 use specta::Type;
 
-use super::time::now_iso;
+use super::{json_error, sqlite_error, time::now_iso};
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -143,12 +143,4 @@ fn check_row_to_run(row: &Row<'_>) -> rusqlite::Result<CheckRun> {
         started_at: row.get("started_at")?,
         completed_at: row.get("completed_at")?,
     })
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
-}
-
-fn json_error(error: serde_json::Error) -> ArgmaxError {
-    ArgmaxError::service("JSON", error.to_string())
 }

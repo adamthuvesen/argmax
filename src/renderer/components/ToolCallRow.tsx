@@ -41,6 +41,8 @@ function ToolCallRowInner({
   childTools,
   workspaceCwd,
   defaultExpanded,
+  expandedOverride,
+  onExpandedChange,
   agentCodename,
   onOpenFile,
   onOpenAgent
@@ -49,6 +51,8 @@ function ToolCallRowInner({
   childTools?: ToolCall[];
   workspaceCwd?: string | null;
   defaultExpanded?: boolean;
+  expandedOverride?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   agentCodename?: string;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onOpenAgent?: (tool: ToolCall) => void;
@@ -87,7 +91,9 @@ function ToolCallRowInner({
     () => interpretFileChange(tool.name, tool.inputFull),
     [tool.name, tool.inputFull]
   );
-  const counts = changes && changes.length > 0 ? summarizeFileChanges(changes) : null;
+  const counts = tool.status === "done" && tool.completionObserved !== false && changes && changes.length > 0
+    ? summarizeFileChanges(changes)
+    : null;
   const overrideVerb = changes && changes.length > 0 ? verbForChanges(changes) : null;
   const verb = overrideVerb ?? baseSplit.verb;
   const target = baseSplit.rest;
@@ -96,11 +102,12 @@ function ToolCallRowInner({
   const hasLeadingContent = Boolean(childTools && childTools.length > 0);
   const hasDetail = toolCallHasExpandableDetail(tool, { hasLeadingContent });
   const expanded =
-    hasDetail && (localExpanded ?? (autoExpandedOnError || (defaultExpanded ?? false)));
+    hasDetail && (expandedOverride ?? localExpanded ?? (autoExpandedOnError || (defaultExpanded ?? false)));
   const opensAgentPane = toolTypeBucket === "agent" && onOpenAgent !== undefined;
   const toggleExpanded = (): void => {
     if (!hasDetail) return;
     setUserToggle({ value: !expanded, defaultExpanded });
+    onExpandedChange?.(!expanded);
   };
   const childToolRows =
     childTools && childTools.length > 0 ? (
@@ -218,6 +225,8 @@ function sameChildTools(a: ToolCall[] | undefined, b: ToolCall[] | undefined): b
 export const ToolCallRow = memo(ToolCallRowInner, (prev, next) => {
   if (prev.workspaceCwd !== next.workspaceCwd) return false;
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
+  if (prev.expandedOverride !== next.expandedOverride) return false;
+  if (prev.onExpandedChange !== next.onExpandedChange) return false;
   if (prev.onOpenFile !== next.onOpenFile) return false;
   if (prev.onOpenAgent !== next.onOpenAgent) return false;
   if (prev.agentCodename !== next.agentCodename) return false;
@@ -228,6 +237,7 @@ export const ToolCallRow = memo(ToolCallRowInner, (prev, next) => {
     prev.tool.status === next.tool.status &&
     prev.tool.error === next.tool.error &&
     prev.tool.completedAt === next.tool.completedAt &&
+    prev.tool.completionObserved === next.tool.completionObserved &&
     prev.tool.output === next.tool.output &&
     prev.tool.inputPreview === next.tool.inputPreview
   );

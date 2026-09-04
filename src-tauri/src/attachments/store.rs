@@ -50,10 +50,6 @@ impl AttachmentStore {
         }
     }
 
-    pub fn base_dir(&self) -> &Path {
-        &self.base_dir
-    }
-
     pub fn save_image(
         &self,
         session_id: &SessionId,
@@ -209,8 +205,7 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    const PNG_BASE64: &str =
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    const PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
     fn session_id(value: &str) -> SessionId {
         SessionId::try_from(value.to_owned()).unwrap()
@@ -245,11 +240,23 @@ mod tests {
     }
 
     #[test]
-    fn from_data_dir_nests_under_attachments() {
+    fn from_data_dir_saves_under_attachments() {
         let dir = tempdir().unwrap();
         let store = AttachmentStore::from_data_dir(dir.path());
+        let result = store
+            .save_image(
+                &session_id("session-1"),
+                AttachmentMimeType::ImagePng,
+                &data(PNG_BASE64),
+            )
+            .unwrap();
 
-        assert_eq!(store.base_dir(), &dir.path().join("attachments"));
+        assert!(result.file_path.starts_with(
+            &dir.path()
+                .join("attachments/session-1")
+                .to_string_lossy()
+                .to_string()
+        ));
     }
 
     #[test]

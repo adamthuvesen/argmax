@@ -747,3 +747,138 @@ impl PermissionMode {
         }
     }
 }
+
+#[cfg(all(test, feature = "verification", unix))]
+mod verification_tests {
+    use super::*;
+    use std::{path::PathBuf, process::Command as ProcessCommand, time::Instant};
+
+    const CHILD_ENV: &str = "ARGMAX_VERIFICATION_RUNTIME_TEST_CHILD";
+
+    /// Runs in a subprocess because verification configuration is process-wide.
+    /// The child reaches the real discovery, adapters, PTY and reader path; the
+    /// fixture itself rejects an incorrect resume argument.
+    #[test]
+    fn fixture_runs_through_real_provider_launcher_and_resume() {
+        if std::env::var(CHILD_ENV).as_deref() == Ok("1") {
+            run_fixture_launches();
+            return;
+        }
+
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../scripts/verification/provider-fixture.mjs");
+        let profile = std::env::temp_dir().join(format!(
+            "argmax-provider-verification-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&profile).expect("create isolated verification profile");
+        let output = ProcessCommand::new(std::env::current_exe().expect("current test binary"))
+            .args([
+                "--exact",
+                "providers::runtime::verification_tests::fixture_runs_through_real_provider_launcher_and_resume",
+                "--nocapture",
+            ])
+            .env(CHILD_ENV, "1")
+            .env(super::super::verification::MODE_ENV, "1")
+            .env(super::super::verification::HOME_ENV, &profile)
+            .env("ARGMAX_VERIFICATION_CLAUDE_BINARY", fixture)
+            .output()
+            .expect("run isolated verification child");
+        let _ = std::fs::remove_dir_all(&profile);
+        assert!(
+            output.status.success(),
+            "verification child failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn run_fixture_launches() {
+        super::super::verification::validate_configuration()
+            .expect("verification child configuration");
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        runtime.block_on(async {
+            let launcher = RealProviderProcessLauncher::new();
+            let first =
+                launch_and_collect(&launcher, "[argmax-verification:chat-resume:first]", None)
+                    .await;
+            assert!(first.contains("Verification first turn complete."));
+            assert!(first.contains("verification-tool-read"));
+
+            let resumed = launch_and_collect(
+                &launcher,
+                "[argmax-verification:chat-resume:second]",
+                Some("argmax-verification-conversation"),
+            )
+            .await;
+            assert!(resumed.contains("Verification resumed turn complete."));
+        });
+    }
+
+    async fn launch_and_collect(
+        launcher: &RealProviderProcessLauncher,
+        prompt: &str,
+        resume_conversation_id: Option<&str>,
+    ) -> String {
+        let events = Arc::new(Mutex::new(Vec::<ProviderRuntimeEvent>::new()));
+        let callback_events = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| {
+            callback_events
+                .lock()
+                .expect("verification events poisoned")
+                .push(event);
+        });
+        let input = ProviderLaunchInput {
+            provider: ProviderId::Claude,
+            session_id: uuid::Uuid::new_v4().to_string(),
+            workspace_path: PathBuf::from(
+                std::env::var(super::super::verification::HOME_ENV).expect("verification profile"),
+            ),
+            prompt: prompt.to_string(),
+            model_label: "Sonnet 5".to_string(),
+            model_id: "claude-sonnet-5".to_string(),
+            reasoning_effort: None,
+            fast_mode: false,
+            resume_conversation_id: resume_conversation_id.map(str::to_string),
+            resume_fork: false,
+            permission_mode: PermissionMode::AutoApprove,
+            agent_mode: AgentMode::Auto,
+            cols: 120,
+            rows: 32,
+        };
+        let handle = launcher
+            .launch(input, callback)
+            .await
+            .expect("launch verification fixture through real runtime");
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let finished = events
+                .lock()
+                .expect("verification events poisoned")
+                .iter()
+                .any(|event| {
+                    matches!(
+                        event.r#type,
+                        ProviderRuntimeEventType::Exit | ProviderRuntimeEventType::Error
+                    )
+                });
+            if finished {
+                break;
+            }
+            assert!(Instant::now() < deadline, "fixture did not exit in time");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        drop(handle);
+        let events = events.lock().expect("verification events poisoned");
+        assert!(
+            events
+                .iter()
+                .all(|event| event.r#type != ProviderRuntimeEventType::Error),
+            "fixture emitted an error: {events:?}"
+        );
+        events
+            .iter()
+            .map(|event| event.message.as_str())
+            .collect::<String>()
+    }
+}

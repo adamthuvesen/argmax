@@ -7,10 +7,16 @@
    grid recession, and the hover layer.
    ============================================================ */
 
+/* The plot's height is stated here rather than taken from whatever the card
+   has left over: the curve now spans the page, so it no longer has to stretch
+   to match a column beside it, and an unbounded plot on a tall window pushed
+   the token flow and the table below the fold for nothing. The component
+   measures this box and draws to it. */
 .usage-chart {
   position: relative;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: none;
+  height: clamp(190px, 24vh, 260px);
 }
 
 .usage-chart-svg {

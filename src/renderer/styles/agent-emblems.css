@@ -1,0 +1,106 @@
+/* Subagent emblems — the shape-and-hue mark a codename owns.
+   Geometry lives in AgentEmblem.tsx's SVG attributes; every colour lives here,
+   so a theme switch or a palette tweak repaints all 108 marks at once. The
+   three passes paint the same path: the rim dropped 0.75 under the face, the
+   face in place, and a light sheet inset about the centre. No gradients, ids
+   or clip paths — one emblem appears in four places on a page at once, and
+   duplicated ids would make them fight over the same definition. */
+.agent-emblem,
+.agent-emblem-tint {
+  --emblem-face: var(--session-icon-blue);
+}
+
+.agent-emblem {
+  --emblem-deep: color-mix(in oklab, var(--emblem-face) 68%, black);
+  --emblem-light: color-mix(in oklab, var(--emblem-face) 50%, white);
+  flex: 0 0 auto;
+}
+
+/* Both the mark and any container that tints the working nest with the same
+   agent's colour read one attribute, so a hue is named in exactly one place. */
+:is(.agent-emblem, .agent-emblem-tint)[data-hue="green"] {
+  --emblem-face: var(--session-icon-green);
+}
+
+:is(.agent-emblem, .agent-emblem-tint)[data-hue="teal"] {
+  --emblem-face: var(--session-icon-teal);
+}
+
+:is(.agent-emblem, .agent-emblem-tint)[data-hue="blue"] {
+  --emblem-face: var(--session-icon-blue);
+}
+
+:is(.agent-emblem, .agent-emblem-tint)[data-hue="violet"] {
+  --emblem-face: var(--session-icon-violet);
+}
+
+:is(.agent-emblem, .agent-emblem-tint)[data-hue="plum"] {
+  --emblem-face: var(--session-icon-plum);
+}
+
+:is(.agent-emblem, .agent-emblem-tint)[data-hue="clay"] {
+  --emblem-face: var(--session-icon-clay);
+}
+
+:is(.agent-emblem, .agent-emblem-tint)[data-hue="amber"] {
+  --emblem-face: var(--session-icon-amber);
+}
+
+:is(.agent-emblem, .agent-emblem-tint)[data-hue="pink"] {
+  --emblem-face: var(--session-icon-pink);
+}
+
+:is(.agent-emblem, .agent-emblem-tint)[data-hue="red"] {
+  --emblem-face: var(--session-icon-red);
+}
+
+.agent-emblem-rim {
+  fill: var(--emblem-deep);
+}
+
+.agent-emblem-face {
+  fill: var(--emblem-face);
+}
+
+.agent-emblem-light {
+  fill: var(--emblem-light);
+  opacity: 0.55;
+}
+
+/* On paper the hue is already dark, so a 68% rim disappears under the face and
+   a 50% sheet blows out to near-white. Light pulls both mixes toward the face. */
+:root:not([data-theme="dark"]) .agent-emblem {
+  --emblem-deep: color-mix(in oklab, var(--emblem-face) 78%, black);
+  --emblem-light: color-mix(in oklab, var(--emblem-face) 62%, white);
+}
+
+/* A failed agent is still that agent, just greyed: the shape survives, the hue
+   goes and the state moves to a corner dot. Status never rides the hue. */
+.agent-emblem[data-status="error"] {
+  --emblem-face: var(--muted);
+}
+
+.agent-emblem-fault {
+  fill: var(--rose);
+  /* Painted under the fill so the ring separating the dot from the mark does
+     not eat the dot's own radius. The surface it sits on varies by pane. */
+  paint-order: stroke;
+  stroke: var(--emblem-surface, var(--panel));
+  stroke-width: 1.6;
+}
+
+/* The masthead's mark sits in a filled box. Left on `--accent-soft` it put a
+   green tile behind a pink agent, so the box follows the emblem too — except
+   when the run failed, where the rose tile is the point. */
+.agent-activity-mark[data-hue]:not([data-status="error"]) {
+  background: color-mix(in oklab, var(--emblem-face) 15%, transparent);
+  color: var(--emblem-face);
+}
+
+/* A running agent keeps the working nest, wearing its own emblem's colour the
+   way a sidebar row with a custom icon does. */
+.agent-emblem-tint .working-nest:is([data-active], [data-settling]) {
+  --working-nest-lead: var(--emblem-face);
+  --working-nest-rest: color-mix(in oklab, var(--emblem-face) 45%, var(--muted));
+  color: var(--emblem-face);
+}

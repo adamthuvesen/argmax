@@ -17,7 +17,7 @@ import {
   preToolNarrationGroupIds
 } from "../lib/sessionTurnView.js";
 import { foldToolRunsToSummaries } from "../lib/turnChildren.js";
-import { isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
+import { buildToolCallGroup, isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { codenameForTool } from "../lib/agentNames.js";
 import { latestToolCreatedAt, visibleTurnToolItem } from "../lib/turnToolItems.js";
@@ -26,7 +26,6 @@ import { sessionAgentModeKey, writeStoredAgentMode } from "../lib/agentMode.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
 import type { AgentMode } from "../../shared/types.js";
 import { AgentLaunchList } from "./AgentLaunchList.js";
-import { ActivitySummaryLine } from "./ActivitySummaryLine.js";
 import { ChatBubble } from "./ChatBubble.js";
 import { LogBlock } from "./LogBlock.js";
 import { PlanCard } from "./PlanCard.js";
@@ -71,7 +70,8 @@ function SessionConversationTurnInner({
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
-  defaultTurnChangesExpanded
+  defaultTurnChangesExpanded,
+  restoringTranscript = false
 }: {
   item: TurnRenderItem;
   priorItem: RenderItem | null;
@@ -97,6 +97,7 @@ function SessionConversationTurnInner({
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
   defaultTurnChangesExpanded?: boolean;
+  restoringTranscript?: boolean;
 }): JSX.Element {
   const sessionIsLive = session?.state === "running";
   const isStreamingTurn = isLatestTurn && sessionIsLive;
@@ -153,6 +154,7 @@ function SessionConversationTurnInner({
   // self-updating line while the turn is live, then the finished turn hides
   // those working rows behind the chip so only the answer remains.
   const minimalActivity = defaultToolCallsDisplay === "single-line";
+  const compactActivity = defaultToolCallsDisplay === "collapsed" && defaultToolCallGroupsExpanded !== true;
   const toolsExpandedDefault =
     isLatestTurn && !minimalActivity
       ? (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded")
@@ -246,7 +248,7 @@ function SessionConversationTurnInner({
     createdAt: string;
     sortAt: string;
     agentTools?: ToolCall[];
-    // Flat tool list this child contributes to a single-line-mode run.
+    // Flat tool list this child contributes to an activity group.
     runTools?: ToolCall[];
   };
   const lastToolCreatedAt = latestToolCreatedAt(item.toolItems);
@@ -267,7 +269,9 @@ function SessionConversationTurnInner({
       // Single-line mode folds completed Thought blocks away entirely — only
       // the live "Thinking" indicator (governed by thinkingLive) survives.
       if (minimalActivity && group.thinking && !thinkingLive) return null;
-      if (hiddenNarrationIds.has(group.id)) return null;
+      if (hiddenNarrationIds.has(group.id)) {
+        return { kind: "assistant", id: group.id, node: null, createdAt: group.createdAt, sortAt: group.lastActivityAt };
+      }
       if (group.thinking) {
         const node = (
           <ThoughtBlock
@@ -318,6 +322,7 @@ function SessionConversationTurnInner({
           <StreamingMarkdown
             text={group.text}
             streaming={group.streaming}
+            restoring={restoringTranscript}
             revealKey={session ? `${session.id}:${group.createdAt}:${group.id}` : null}
             workspace={workspace}
             onOpenFile={onOpenFile}
@@ -355,7 +360,6 @@ function SessionConversationTurnInner({
   const isTurnLiveTicking = isLatestTurn && sessionIsLive && !isPausedOnUserInput;
   const toolChildren: AnnotatedChild[] = visibleToolItems
     .map((tItem) => {
-      if (tItem.kind === "tool") {
         if (isAgentToolName(tItem.tool.name)) {
           return {
             kind: "tool" as const,
@@ -363,7 +367,7 @@ function SessionConversationTurnInner({
             createdAt: tItem.tool.createdAt,
             sortAt: tItem.tool.createdAt,
             agentTools: [tItem.tool],
-            node: null as unknown as JSX.Element
+            node: null
           };
         }
         return {
@@ -384,25 +388,6 @@ function SessionConversationTurnInner({
             />
           )
         };
-      }
-      const firstCreatedAt = tItem.group.tools[0]?.createdAt ?? "";
-      return {
-        kind: "tool" as const,
-        id: tItem.group.id,
-        createdAt: firstCreatedAt,
-        sortAt: firstCreatedAt,
-        runTools: tItem.group.tools,
-        node: (
-          <ToolCallGroupBubble
-            group={tItem.group}
-            defaultExpanded={toolsExpanded}
-            workspaceCwd={workspace?.path ?? null}
-            agentCodenames={agentCodenames}
-            onOpenFile={onOpenFile}
-            onOpenAgent={onOpenAgent}
-          />
-        )
-      };
     });
   const sortedChildren = [...assistantChildren, ...toolChildren]
     .sort((a, b) => {
@@ -414,6 +399,12 @@ function SessionConversationTurnInner({
     });
   const coalescedChildren: AnnotatedChild[] = [];
   for (const child of sortedChildren) {
+    // Convert routine launches before coalescing, so an adjacent failed
+    // launch cannot pull successful agent activity out of a Compact summary.
+    if (compactActivity && child.agentTools?.every((tool) => tool.status !== "error")) {
+      coalescedChildren.push({ ...child, runTools: child.agentTools, agentTools: undefined });
+      continue;
+    }
     const last = coalescedChildren[coalescedChildren.length - 1];
     if (child.agentTools && last?.agentTools) {
       last.agentTools.push(...child.agentTools);
@@ -423,34 +414,18 @@ function SessionConversationTurnInner({
       child.agentTools ? { ...child, agentTools: [...child.agentTools] } : child
     );
   }
-  // Single-line mode: every consecutive run of tool children between two
-  // anchors (assistant text, agent launch, or a card) collapses into ONE line.
-  // Agent launches pass through untouched — they are the only extra row
-  // allowed between replies.
-  const bodySource: AnnotatedChild[] = minimalActivity
-    ? foldToolRunsToSummaries(coalescedChildren, (tools) =>
-        // A run of one has nothing to summarize: the line and the row it hides
-        // are the same sentence with different pluralization ("Fetched 1 URL"
-        // over "Fetched URL"). Show the row, which opens straight to detail.
-        tools.length === 1 && tools[0] ? (
-          <ToolCallRow
-            tool={tools[0]}
-            workspaceCwd={workspace?.path ?? null}
-            agentCodename={codenameForTool(tools[0], agentCodenames)}
-            onOpenFile={onOpenFile}
-            onOpenAgent={onOpenAgent}
-          />
-        ) : (
-          <ActivitySummaryLine
-            tools={tools}
-            workspaceCwd={workspace?.path ?? null}
-            agentCodenames={agentCodenames}
-            onOpenFile={onOpenFile}
-            onOpenAgent={onOpenAgent}
-          />
-        )
-      )
-    : coalescedChildren;
+  const bodySource = foldToolRunsToSummaries(coalescedChildren, (tools) => (
+    <ToolCallGroupBubble
+      group={buildToolCallGroup(tools)}
+      compact={compactActivity}
+      defaultExpanded={!minimalActivity && toolsExpanded}
+      defaultToolsExpanded={!minimalActivity && (toolsExpandOverride ?? (isLatestTurn && defaultToolCallsDisplay === "expanded"))}
+      workspaceCwd={workspace?.path ?? null}
+      agentCodenames={agentCodenames}
+      onOpenFile={onOpenFile}
+      onOpenAgent={onOpenAgent}
+    />
+  )).filter((child) => child.agentTools || child.node !== null);
   const bodyChildren: TurnBodyChild[] = bodySource.map((child) => {
     if (child.agentTools) {
       const first = child.agentTools[0];
@@ -458,6 +433,7 @@ function SessionConversationTurnInner({
       return {
         kind: "tool" as const,
         id,
+        hasErrors: child.agentTools.some((tool) => tool.status === "error"),
         node: (
           <AgentLaunchList
             key={id}
@@ -471,7 +447,7 @@ function SessionConversationTurnInner({
         )
       };
     }
-    return { kind: child.kind, id: child.id, node: child.node };
+    return { kind: child.kind, id: child.id, node: child.node, hasErrors: child.hasErrors };
   });
   const earliestCreatedAt = [...assistantChildren, ...toolChildren]
     .map((c) => c.createdAt)

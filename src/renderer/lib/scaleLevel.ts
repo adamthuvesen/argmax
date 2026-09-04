@@ -13,15 +13,6 @@ export type ScaleLevel = 1 | 2 | 3 | 4 | 5;
 
 export const SCALE_LEVELS: readonly ScaleLevel[] = [1, 2, 3, 4, 5];
 export const DEFAULT_SCALE_LEVEL: ScaleLevel = 3;
-export const SCALE_LEVEL_MIN: ScaleLevel = 1;
-export const SCALE_LEVEL_MAX: ScaleLevel = 5;
-
-/** Radio options for a `Segmented` control. The level is its own label. */
-export const SCALE_LEVEL_CHOICES = SCALE_LEVELS.map((level) => ({
-  value: String(level),
-  label: String(level)
-}));
-
 export function isScaleLevel(value: unknown): value is ScaleLevel {
   return value === 1 || value === 2 || value === 3 || value === 4 || value === 5;
 }

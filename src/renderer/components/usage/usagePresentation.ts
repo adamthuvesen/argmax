@@ -15,11 +15,6 @@ export const USAGE_PROVIDER_ORDER: readonly ProviderId[] = [
   "grok"
 ];
 
-/** The series colour token for a provider. Declared per theme in tokens.css. */
-export function providerColorVar(provider: ProviderId): string {
-  return `var(--usage-${provider})`;
-}
-
 export function providerLabel(provider: ProviderId): string {
   return PROVIDER_DISPLAY_NAMES[provider];
 }

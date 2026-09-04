@@ -8,83 +8,12 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../shared/types.js";
-import type { ReviewState } from "../renderer/hooks/useReviewState.js";
 import { SessionConversation } from "../renderer/components/SessionConversation.js";
+import type { ReviewState } from "../renderer/hooks/useReviewState.js";
 import type { ToolCall } from "../renderer/lib/toolCalls.js";
+import { reviewStub } from "./reviewFixture.js";
 
-export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
-  return {
-    files: [],
-    filesState: "ready",
-    filesError: null,
-    selectedFilePath: null,
-    diff: null,
-    diffState: "idle",
-    diffError: null,
-    isPanelOpen: false,
-    mode: "changes",
-    setMode: () => {},
-    changesScope: "branch",
-    setChangesScope: () => {},
-    availableScopes: ["branch", "committed", "uncommitted", "lastTurn"],
-    comparisonBaseLabel: "main",
-    agentTabs: {
-      tabIds: [],
-      activeTabId: null,
-      selectTab: () => {},
-      closeTab: () => {}
-    },
-    openAgent: () => {},
-    openAgents: () => {},
-    openMultitask: () => {},
-    openBrowser: () => {},
-    browserOwner: false,
-    browserRequest: null,
-    terminalWorkspaceId: null,
-    openTerminal: () => {},
-    toggleTerminal: () => {},
-    workspaceFiles: {
-      entries: [],
-      listState: "idle",
-      listError: null,
-      refreshList: () => undefined,
-      tabs: [],
-      activeTabPath: null,
-      selectedPath: null,
-      rootPath: null,
-      preview: null,
-      previewState: "idle",
-      previewError: null,
-      openFile: () => {},
-      selectTab: () => {},
-      closeTab: () => {},
-      dirtyClosePrompt: null,
-      saveDirtyTabAndClose: () => Promise.resolve(),
-      discardDirtyTabAndClose: () => {},
-      cancelDirtyTabClose: () => {},
-      buffer: null,
-      isDirty: false,
-      diskMtimeMs: null,
-      externalChange: false,
-      saveState: "idle",
-      saveError: null,
-      canEdit: true,
-      editFile: () => {},
-      saveFile: () => Promise.resolve(),
-      reloadFile: () => {},
-      dismissExternalChange: () => {}
-    },
-    openFile: () => {},
-    expandDiffContext: () => {},
-    openChangesPanel: () => {},
-    openPanelInFilesMode: () => {},
-    openInFilesView: () => {},
-    closePanel: () => {},
-    togglePanel: () => {},
-    toggleChangesPanel: () => {},
-    ...overrides
-  };
-}
+export { reviewStub };
 
 export function baseSession(overrides: Partial<SessionSummary> = {}): SessionSummary {
   return {

@@ -2,8 +2,8 @@ use rusqlite::Connection;
 use serde::Serialize;
 use specta::Type;
 
-use super::sessions::UsageCounts;
 use super::time::now_iso;
+use super::{sessions::UsageCounts, sqlite_error};
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -228,10 +228,6 @@ pub fn session_usage_since_conversation_start(
             })
         })
         .map_err(sqlite_error)
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
 }
 
 #[cfg(test)]

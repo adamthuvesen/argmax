@@ -4,9 +4,14 @@ import { App } from "./App.js";
 import { AppErrorBoundary } from "./components/AppErrorBoundary.js";
 import "./lib/tauriBridge.js";
 import "./lib/windowChrome.js";
+import { installVerificationDiagnostics } from "./lib/verificationDiagnostics.js";
 // Non-default font CSS bundles download only when the user picks them in
 // Settings → Appearance.
 import "./styles.css";
+
+if (import.meta.env.VITE_ARGMAX_VERIFICATION === "1") {
+  installVerificationDiagnostics();
+}
 
 // Counterpart of the delta-burst warning in tauriBridge.ts: when streaming
 // visibly freezes and then floods in, a long task logged here pins the stall

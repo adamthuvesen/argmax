@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnBlock, type TurnBodyChild, type TurnToolItem } from "./TurnBlock.js";
 import { __liveTimerTickForTest } from "../lib/liveTimer.js";
@@ -37,7 +37,63 @@ const toolChild = (id: string, label = "tools"): TurnBodyChild => ({
 });
 
 describe("TurnBlock", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it("keeps newly finished Minimal activity readable without delaying the answer or finished status", async () => {
+    vi.useFakeTimers();
+    const props = {
+      toolItems: [{ kind: "tool" as const, tool: tool() }],
+      assistantTimestamps: [],
+      body: body(toolChild("activity", "Read files"), assistantChild("answer", "Done.")),
+      hideWorkingWhenCollapsed: true,
+      toolsExpanded: false
+    };
+    const { rerender } = render(<TurnBlock {...props} isTurnActive />);
+    rerender(<TurnBlock {...props} isTurnActive={false} />);
+    expect(screen.getByText("Read files")).toBeInTheDocument();
+    expect(screen.getByText("Done.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Working" })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Worked/ })).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTime(599));
+    expect(screen.getByText("Read files")).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByText("Read files")).toBeNull();
+    expect(screen.getByText("Done.")).toBeInTheDocument();
+  });
+
+  it("does not replay the settling period when opening finished Minimal history", () => {
+    render(
+      <TurnBlock
+        toolItems={[{ kind: "tool", tool: tool() }]}
+        assistantTimestamps={[]}
+        body={body(toolChild("activity", "Read files"), assistantChild("answer", "Done."))}
+        hideWorkingWhenCollapsed
+        toolsExpanded={false}
+        isTurnActive={false}
+      />
+    );
+    expect(screen.queryByText("Read files")).toBeNull();
+    expect(screen.getByText("Done.")).toBeInTheDocument();
+  });
+
+  it("keeps activity visible when the reader inspects it during settling", async () => {
+    vi.useFakeTimers();
+    const props = {
+      toolItems: [{ kind: "tool" as const, tool: tool() }],
+      assistantTimestamps: [],
+      body: [{ kind: "tool" as const, id: "activity", node: <button>Read files</button> }],
+      hideWorkingWhenCollapsed: true,
+      toolsExpanded: false
+    };
+    const { rerender } = render(<TurnBlock {...props} isTurnActive />);
+    rerender(<TurnBlock {...props} isTurnActive={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Read files" }));
+    await act(() => vi.advanceTimersByTime(600));
+    expect(screen.getByRole("button", { name: "Read files" })).toBeInTheDocument();
+  });
 
   it("labels the chip 'Working' while a tool is running and renders assistant + tool nodes", () => {
     const items: TurnToolItem[] = [{ kind: "tool", tool: tool({ status: "running", completedAt: null }) }];

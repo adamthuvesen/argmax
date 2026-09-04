@@ -54,7 +54,9 @@ use crate::persistence::events::PersistTimelineEventInput;
 /// `assistant` messages, and a closing `result`. Grok Build emits the same
 /// envelopes (verified against grok 1.0.13
 /// `--output-format streaming-messages-json`), so it shares Claude's
-/// normalizer instead of carrying a duplicate of it.
+/// normalizer instead of carrying a duplicate of it. Grok's assistant
+/// snapshots still differ inside those envelopes — interleaved thinking/text
+/// runs and `server_tool_use` — which `extract_content_blocks` collapses.
 fn speaks_claude_stream_json(provider: ProviderId) -> bool {
     matches!(provider, ProviderId::Claude | ProviderId::Grok)
 }

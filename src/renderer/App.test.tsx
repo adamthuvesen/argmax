@@ -316,7 +316,10 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
-    expect(await screen.findByRole("button", { name: "Searched for pizza recipe" })).toBeInTheDocument();
+    const toolGroup = await screen.findByRole("button", { name: "Searched" });
+    expect(screen.queryByRole("button", { name: "Searched for pizza recipe" })).toBeNull();
+    fireEvent.click(toolGroup);
+    expect(screen.getByRole("button", { name: "Searched for pizza recipe" })).toBeInTheDocument();
     expect(screen.getByText("Dashboard ready.")).toBeInTheDocument();
   });
 
@@ -369,7 +372,10 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
-    expect(await screen.findByRole("button", { name: "Read README.md" })).toBeInTheDocument();
+    const toolGroup = await screen.findByRole("button", { name: "Read a file" });
+    expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
+    fireEvent.click(toolGroup);
+    expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
     expect(screen.getByText("All set.")).toBeInTheDocument();
   });
 
@@ -436,7 +442,7 @@ describe("App", () => {
     const conversation = await screen.findByRole("region", { name: "Conversation" });
     await waitFor(() => expect(conversation).toHaveTextContent("I'll explore the codebase."));
     expect(conversation).toHaveTextContent("I've explored.");
-    expect(screen.getByRole("button", { name: /Explored 1 file, 2 searches/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read a file, searched" })).toBeInTheDocument();
   });
 
   it("hides provider protocol JSON from the first-turn raw transcript fallback", async () => {
@@ -623,10 +629,16 @@ describe("App", () => {
   });
 
   it("returns to the new chat composer view with prompt and repo persisted when stopped within 10s of launch", async () => {
+    const freshWorkspace = {
+      ...snapshot.workspaces[0],
+      id: "workspace-new",
+      taskLabel: "Fix login auth bug in wrong repo"
+    };
+    createCurrentWorkspace.mockResolvedValue(freshWorkspace);
     const freshSession = {
       ...snapshot.sessions[0],
       id: "session-new",
-      workspaceId: "workspace-1",
+      workspaceId: "workspace-new",
       prompt: "Fix login auth bug in wrong repo",
       startedAt: new Date().toISOString(),
       state: "running" as const
@@ -647,6 +659,9 @@ describe("App", () => {
     fireEvent.click(stopButton);
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-new"));
+    await waitFor(() =>
+      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-new", force: true })
+    );
 
     const restoredPromptBox = await screen.findByLabelText("Task prompt");
     expect(restoredPromptBox).toHaveValue("Fix login auth bug in wrong repo");
@@ -678,6 +693,7 @@ describe("App", () => {
 
     expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
+    expect(archiveWorkspace).not.toHaveBeenCalled();
   });
 
   it("drops the stored launcher draft as soon as start is pressed", async () => {

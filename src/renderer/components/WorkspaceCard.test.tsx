@@ -3,14 +3,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
 import { baseSession, workspace } from "../../test/sessionConversationTestHarness.js";
+import { emblemForCodename } from "../lib/agentEmblems.js";
 import type { SubagentCluster } from "../lib/subagentSummary.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
 
 function subagentCluster(overrides: Partial<SubagentCluster> = {}): SubagentCluster {
   return {
     entries: [
-      { toolUseId: "spawn-1", codename: "Io", title: "Map the renderer", status: "done", iconColor: "blue", multitask: false },
-      { toolUseId: "spawn-2", codename: "Titan", title: "Sweep tests", status: "running", iconColor: "amber", multitask: false }
+      { toolUseId: "spawn-1", codename: "Io", title: "Map the renderer", status: "done", iconColor: "blue", emblem: emblemForCodename("Gauss"), multitask: false },
+      { toolUseId: "spawn-2", codename: "Titan", title: "Sweep tests", status: "running", iconColor: "amber", emblem: emblemForCodename("Hopper"), multitask: false }
     ],
     running: 1,
     done: 1,
@@ -240,6 +241,8 @@ describe("WorkspaceCard", () => {
     expect(roster?.getAttribute("title")).toContain("Io — Completed");
     expect(roster?.getAttribute("title")).toContain("Titan — Running");
     expect(section.querySelectorAll(".workspace-card-agent")).toHaveLength(2);
+    // Each chip wears its agent's emblem rather than an initial.
+    expect(section.querySelectorAll(".workspace-card-agent .agent-emblem[data-shape]")).toHaveLength(2);
   });
 
   it("opens the Agents view from the subagent roster", () => {
@@ -258,6 +261,7 @@ describe("WorkspaceCard", () => {
       title: `Agent ${index}`,
       status: index === 6 ? ("error" as const) : ("done" as const),
       iconColor: "blue",
+      emblem: emblemForCodename(`Scientist${index}`),
       multitask: false
     }));
     renderCard({ subagents: { entries, running: 0, done: 6, failed: 1, hasMultitask: false } });

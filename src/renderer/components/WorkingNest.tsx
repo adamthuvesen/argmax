@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from "react";
 import { stableHash32 } from "../lib/stableHash.js";
 
-export const WORKING_NEST_CYCLE_MS = 900;
 /** How long the landing runs — gather, pulse, open back out. Exported because a
  *  caller that swaps the nest for a finished mark has to hold the nest mounted
  *  this long, or the landing is replaced before it plays. */

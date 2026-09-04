@@ -12,6 +12,8 @@ import { useVisualViewportInsets } from "./useVisualViewportInsets.js";
 import { useDashboardSession } from "../hooks/useDashboardSession.js";
 import { SessionTimelineProvider } from "../hooks/useSessionTimeline.js";
 import { useSessionCommands } from "../hooks/useSessionCommands.js";
+import { isEarlySessionStop } from "../lib/earlyStop.js";
+import { isMultitaskSession } from "../lib/multitask.js";
 import { importChunk } from "../lib/importChunk.js";
 import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
 import {
@@ -20,12 +22,26 @@ import {
   type PriorityAttention
 } from "../lib/priority.js";
 import {
+  ACCENT_OPTIONS,
+  applyAccentToDocument,
+  readStoredAccent,
+  writeStoredAccent,
+  type AccentId
+} from "../lib/accent.js";
+import {
   applyThemeToDocument,
   readStoredTheme,
   resolveTheme,
   writeStoredTheme,
   type ResolvedTheme
 } from "../lib/theme.js";
+import {
+  applyUserBubbleTintToDocument,
+  isUserBubbleTint,
+  readStoredUserBubbleTint,
+  writeStoredUserBubbleTint,
+  type UserBubbleTint
+} from "../lib/userBubbleTint.js";
 import type { ToastMessage } from "../lib/withToast.js";
 import {
   REMOTE_CONNECTION_LOST_MESSAGE,
@@ -174,6 +190,120 @@ function SessionSection({
   );
 }
 
+function MobileSegmentedControl({
+  ariaLabel,
+  value,
+  onChange,
+  options
+}: {
+  ariaLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+}): JSX.Element {
+  return (
+    <div className="mobile-segmented" role="radiogroup" aria-label={ariaLabel}>
+      {options.map((option) => {
+        const checked = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function MobileAccentPicker({
+  value,
+  onChange
+}: {
+  value: AccentId;
+  onChange: (accentId: AccentId) => void;
+}): JSX.Element {
+  return (
+    <div className="mobile-accent-picker" role="radiogroup" aria-label="Accent">
+      {ACCENT_OPTIONS.map((option) => {
+        const selected = option.id === value;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            className="mobile-accent-chip"
+            role="radio"
+            aria-checked={selected}
+            aria-label={option.label}
+            data-accent-id={option.id}
+            data-selected={selected || undefined}
+            title={option.label}
+            onClick={() => onChange(option.id)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function MobileAppearanceControls({
+  theme,
+  onThemeChange,
+  accentId,
+  onAccentChange,
+  userBubbleTint,
+  onUserBubbleTintChange
+}: {
+  theme: ResolvedTheme;
+  onThemeChange: (theme: ResolvedTheme) => void;
+  accentId: AccentId;
+  onAccentChange: (accentId: AccentId) => void;
+  userBubbleTint: UserBubbleTint;
+  onUserBubbleTintChange: (tint: UserBubbleTint) => void;
+}): JSX.Element {
+  return (
+    <>
+      <p className="mobile-sheet-group-label">Theme</p>
+      <div className="mobile-sheet-group">
+        <MobileSegmentedControl
+          ariaLabel="Theme"
+          value={theme}
+          onChange={(next) => {
+            if (next === "light" || next === "dark") onThemeChange(next);
+          }}
+          options={[
+            { value: "light", label: "Light" },
+            { value: "dark", label: "Dark" }
+          ]}
+        />
+      </div>
+      <p className="mobile-sheet-group-label">Accent</p>
+      <div className="mobile-sheet-group">
+        <MobileAccentPicker value={accentId} onChange={onAccentChange} />
+      </div>
+      <p className="mobile-sheet-group-label">Your message bubbles</p>
+      <div className="mobile-sheet-group">
+        <MobileSegmentedControl
+          ariaLabel="Your message bubbles"
+          value={userBubbleTint}
+          onChange={(next) => {
+            if (isUserBubbleTint(next)) onUserBubbleTintChange(next);
+          }}
+          options={[
+            { value: "accent", label: "Accent" },
+            { value: "neutral", label: "Neutral" }
+          ]}
+        />
+      </div>
+    </>
+  );
+}
+
 export function MobileApp(): JSX.Element {
   useVisualViewportInsets();
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -185,15 +315,24 @@ export function MobileApp(): JSX.Element {
     setToast(next);
   }, []);
   const [theme, setTheme] = useState<ResolvedTheme>(() => resolveTheme(readStoredTheme()));
+  const [accentId, setAccentId] = useState<AccentId>(() => readStoredAccent());
+  const [userBubbleTint, setUserBubbleTint] = useState<UserBubbleTint>(() =>
+    readStoredUserBubbleTint()
+  );
   useEffect(() => {
     applyThemeToDocument(theme);
   }, [theme]);
-  const toggleTheme = useCallback(() => {
-    setTheme((current) => {
-      const next = current === "dark" ? "light" : "dark";
-      writeStoredTheme(next);
-      return next;
-    });
+  useEffect(() => {
+    writeStoredAccent(accentId);
+    applyAccentToDocument(accentId);
+  }, [accentId]);
+  useEffect(() => {
+    writeStoredUserBubbleTint(userBubbleTint);
+    applyUserBubbleTintToDocument(userBubbleTint);
+  }, [userBubbleTint]);
+  const pickTheme = useCallback((next: ResolvedTheme) => {
+    writeStoredTheme(next);
+    setTheme(next);
   }, []);
 
   const {
@@ -214,11 +353,28 @@ export function MobileApp(): JSX.Element {
     resolveApproval
   } = useDashboardSession(loadDashboardSnapshot, { onErrorToast: (message) => showToast({ kind: "error", message }) });
 
+  const handleEarlyStop = useCallback(
+    (sessionId: string): string | undefined => {
+      const session = snapshot.sessions.find((candidate) => candidate.id === sessionId);
+      if (!session || !isEarlySessionStop(session)) return undefined;
+      // A multitask has no list row; stopping it must not archive the
+      // workspace out from under the chat that dispatched it.
+      if (isMultitaskSession(session)) return undefined;
+      if (selectedSessionId === sessionId) {
+        setSelectedSessionId(null);
+        setSelectedWorkspaceId(null);
+      }
+      return session.workspaceId;
+    },
+    [selectedSessionId, setSelectedSessionId, setSelectedWorkspaceId, snapshot.sessions]
+  );
+
   const commands = useSessionCommands({
     refreshDashboardStatus: refresh,
     loadSessionEvents,
     setToast: showToast,
-    fastMode: false
+    fastMode: false,
+    onEarlyStop: handleEarlyStop
   });
 
   // A push notification links to one session: `mobile.html?session=<id>`. The
@@ -765,14 +921,15 @@ export function MobileApp(): JSX.Element {
                 setNewSessionOpen(true);
               }}
             />
-            <SheetOption
-              label={theme === "dark" ? "Use light theme" : "Use dark theme"}
-              onSelect={() => {
-                setListMenuOpen(false);
-                toggleTheme();
-              }}
-            />
           </div>
+          <MobileAppearanceControls
+            theme={theme}
+            onThemeChange={pickTheme}
+            accentId={accentId}
+            onAccentChange={setAccentId}
+            userBubbleTint={userBubbleTint}
+            onUserBubbleTintChange={setUserBubbleTint}
+          />
         </BottomSheet>
       ) : null}
       {actionsRow ? (

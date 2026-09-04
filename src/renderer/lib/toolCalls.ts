@@ -1,10 +1,6 @@
 import { safeJsonParse, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { TimelineEvent } from "../../shared/types.js";
-import {
-  interpretFileChange,
-  summarizeFileChanges,
-  type ChangeCounts
-} from "./fileChange.js";
+import { interpretFileChange, summarizeFileChanges, type ChangeCounts } from "./fileChange.js";
 
 export type ToolCall = {
   id: string;
@@ -16,6 +12,8 @@ export type ToolCall = {
   status: "running" | "done" | "error";
   createdAt: string;
   completedAt: string | null;
+  /** False when the renderer settled an unmatched start without a tool result. */
+  completionObserved?: boolean;
   error: string | null;
   // The `toolUseId` of the agent (Task) tool that spawned this call, when this
   // is a sub-agent's tool call. Lets the group bubble nest children under their
@@ -23,73 +21,22 @@ export type ToolCall = {
   parentToolUseId?: string | null;
 };
 
-export type ParallelPosition = "start" | "middle" | "end";
-
 export type ToolCallGroup = {
   id: string;
   tools: ToolCall[];
-  parallelPositions: Map<string, ParallelPosition>;
-  parallelGroupId: Map<string, string>;
 };
 
-export type TurnToolItem =
-  | { kind: "tool"; tool: ToolCall; children?: ToolCall[] }
-  | { kind: "tool-group"; group: ToolCallGroup };
+export type TurnToolItem = { kind: "tool"; tool: ToolCall; children?: ToolCall[] };
 
 export type ConversationItem =
   | { kind: "message"; event: TimelineEvent }
-  | { kind: "tool"; tool: ToolCall }
-  | { kind: "tool-group"; group: ToolCallGroup };
-
-const PARALLEL_WINDOW_MS = 75;
+  | { kind: "tool"; tool: ToolCall };
 
 export function buildToolCallGroup(tools: ToolCall[]): ToolCallGroup {
-  const parallelPositions = new Map<string, ParallelPosition>();
-  const parallelGroupId = new Map<string, string>();
-  let cluster: ToolCall[] = [];
-  const finalize = (): void => {
-    if (cluster.length >= 2) {
-      const first = cluster[0];
-      const last = cluster[cluster.length - 1];
-      if (!first || !last) {
-        cluster = [];
-        return;
-      }
-      const groupId = `pg-${first.id}`;
-      parallelPositions.set(first.id, "start");
-      parallelPositions.set(last.id, "end");
-      parallelGroupId.set(first.id, groupId);
-      parallelGroupId.set(last.id, groupId);
-      for (let i = 1; i < cluster.length - 1; i++) {
-        const mid = cluster[i];
-        if (!mid) continue;
-        parallelPositions.set(mid.id, "middle");
-        parallelGroupId.set(mid.id, groupId);
-      }
-    }
-    cluster = [];
-  };
-  for (const tool of tools) {
-    const last = cluster[cluster.length - 1];
-    if (!last) {
-      cluster.push(tool);
-      continue;
-    }
-    const gap = Date.parse(tool.createdAt) - Date.parse(last.createdAt);
-    if (Number.isFinite(gap) && gap <= PARALLEL_WINDOW_MS) {
-      cluster.push(tool);
-    } else {
-      finalize();
-      cluster = [tool];
-    }
-  }
-  finalize();
   const firstTool = tools[0];
   return {
     id: firstTool ? `tcg-${firstTool.id}` : "tcg-empty",
-    tools,
-    parallelPositions,
-    parallelGroupId
+    tools
   };
 }
 
@@ -263,50 +210,54 @@ function getFineBucket(name: string): FineBucket {
 }
 
 const FINE_BUCKET_ORDER: FineBucket[] = [
-  "agent",
+  "edit",
   "read-files",
   "read-lists",
   "search",
   "web",
-  "edit",
   "bash",
+  "agent",
   "other"
 ];
 
-// (verbForm, compactForm) per bucket. verbForm is used when the bucket is
-// the sole bucket OR the first clause of a multi-bucket headline. compactForm
-// is used for subsequent clauses — Codex-style "Explored 1 file, 2 lists,
-// ran 1 command" emerges by mixing the two.
+// Each bucket keeps its action verb when several kinds of work share a
+// headline. Counts only decide between singular and plural wording.
 function clauseForBucket(bucket: FineBucket, n: number, first: boolean): string {
-  const nNoun = (singular: string, pluralWord: string): string =>
-    `${n} ${n === 1 ? singular : pluralWord}`;
+  let clause: string;
   switch (bucket) {
     case "agent":
-      if (first) return n === 1 ? "Started an agent" : `Started ${n} agents`;
-      return nNoun("agent", "agents");
+      clause = n === 1 ? "Started an agent" : "Started agents";
+      break;
     case "read-files":
-      return first ? `Explored ${nNoun("file", "files")}` : nNoun("file", "files");
+      clause = n === 1 ? "Read a file" : "Read files";
+      break;
     case "read-lists":
-      return first ? `Listed ${nNoun("directory", "directories")}` : nNoun("list", "lists");
+      clause = n === 1 ? "Listed a directory" : "Listed directories";
+      break;
     case "search":
-      if (first) return n === 1 ? "Searched once" : `Searched ${n} times`;
-      return nNoun("search", "searches");
+      clause = "Searched";
+      break;
     case "web":
-      return first ? `Fetched ${nNoun("URL", "URLs")}` : nNoun("URL", "URLs");
+      clause = n === 1 ? "Fetched a URL" : "Fetched URLs";
+      break;
     case "edit":
-      return first ? `Edited ${nNoun("file", "files")}` : nNoun("edit", "edits");
+      clause = n === 1 ? "Edited a file" : "Edited files";
+      break;
     case "bash":
-      return first ? `Ran ${nNoun("command", "commands")}` : `ran ${nNoun("command", "commands")}`;
+      clause = n === 1 ? "Ran a command" : "Ran commands";
+      break;
     case "other":
-      return first ? `Used ${nNoun("tool", "tools")}` : nNoun("tool", "tools");
+      clause = n === 1 ? "Used a tool" : "Used tools";
+      break;
   }
+  return first ? clause : `${clause.charAt(0).toLowerCase()}${clause.slice(1)}`;
 }
 
 /**
  * Split an activity label into its leading verb and the rest ("Edited" +
- * "userBubbleTint.ts", "Explored" + "2 files, ran 1 command"). Rows and group
- * headlines share one visual grammar — bright verb, dim remainder — so they
- * share one splitter.
+ * "userBubbleTint.ts", "Read" + "files, ran commands"). Rows and group
+ * headlines use the same bright verb and dim remainder, so they share one
+ * splitter.
  */
 export function splitLeadingVerb(label: string): { verb: string; rest: string } {
   const space = label.indexOf(" ");
@@ -314,25 +265,23 @@ export function splitLeadingVerb(label: string): { verb: string; rest: string } 
   return { verb: label.slice(0, space), rest: label.slice(space + 1) };
 }
 
-/**
- * Sum the line stat across a run of tool calls, for the `+N −N` a collapsed
- * group headline shows. Reads the same per-tool input the expanded rows read,
- * so the headline can never disagree with the rows underneath it.
- */
+/** Reported edits in this group. Repeated edits accumulate, not a net Git diff. */
 export function summarizeToolChangeCounts(tools: ToolCall[]): ChangeCounts | null {
+  const seen = new Set<string>();
+  const paths = new Set<string>();
   let adds = 0;
   let dels = 0;
-  let files = 0;
   for (const tool of tools) {
+    if (tool.status !== "done" || tool.completionObserved === false || seen.has(tool.id)) continue;
+    seen.add(tool.id);
     const changes = interpretFileChange(tool.name, tool.inputFull);
     if (!changes) continue;
     const counts = summarizeFileChanges(changes);
     adds += counts.adds;
     dels += counts.dels;
-    files += counts.files;
+    for (const change of changes) paths.add(change.path);
   }
-  if (adds === 0 && dels === 0) return null;
-  return { adds, dels, files };
+  return adds || dels ? { adds, dels, files: paths.size } : null;
 }
 
 export function describeToolAction(tool: ToolCall): string {
@@ -425,26 +374,26 @@ export function summarizeToolGroup(tools: ToolCall[]): {
     clauses.push(clauseForBucket(bucket, n, first));
     first = false;
   }
-  const headline = clauses.length > 0 ? clauses.join(", ") : `${tools.length} tool calls`;
-
-  let hasError = false;
+  let errorCount = 0;
   let allErrors = tools.length > 0;
   let latestRunning: ToolCall | null = null;
   for (const tool of tools) {
     if (tool.status === "error") {
-      hasError = true;
+      errorCount += 1;
     } else {
       allErrors = false;
       if (tool.status === "running") latestRunning = tool;
     }
   }
+  const activity = clauses.length > 0 ? clauses.join(", ") : "Used tools";
+  const headline = errorCount > 0 ? `${activity} · ${errorCount} failed` : activity;
   const status: ToolCall["status"] = allErrors ? "error" : latestRunning ? "running" : "done";
 
   // While the group is still running, surface the most recent live tool's
   // action so the collapsed header shows what the agent is doing right now.
   const currentAction = latestRunning ? describeToolAction(latestRunning) : null;
 
-  return { headline, currentAction, status, hasErrors: hasError };
+  return { headline, currentAction, status, hasErrors: errorCount > 0 };
 }
 
 export function extractToolUseId(payload: Record<string, unknown>): string | null {

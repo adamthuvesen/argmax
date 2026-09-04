@@ -3,6 +3,7 @@ use phf::phf_map;
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 
+use super::sqlite_error;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 pub struct Migration {
@@ -1559,10 +1560,6 @@ fn foreign_key_violations(connection: &Connection) -> ArgmaxResult<Vec<String>> 
         .collect::<Result<Vec<_>, _>>()
         .map_err(sqlite_error)?;
     Ok(violations)
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
 }
 
 fn migration_drift(detail: impl Into<String>) -> ArgmaxError {

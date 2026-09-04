@@ -9,13 +9,13 @@ import type { ChangeCounts } from "../lib/fileChange.js";
  * Zero sides are dropped rather than rendered as `+0`, so a pure-addition edit
  * reads as one green number instead of a two-tone pair.
  */
-export function ActivityStat({ counts }: { counts: ChangeCounts }): JSX.Element | null {
+export function ActivityStat({ counts, showFiles = true }: { counts: ChangeCounts; showFiles?: boolean }): JSX.Element | null {
   if (counts.adds === 0 && counts.dels === 0) return null;
   return (
     <span className="activity-stat" aria-hidden="true">
       {counts.adds > 0 ? <span className="adds">+{counts.adds}</span> : null}
       {counts.dels > 0 ? <span className="dels">−{counts.dels}</span> : null}
-      {counts.files > 1 ? <span className="files">· {counts.files} files</span> : null}
+      {showFiles && counts.files > 1 ? <span className="files">· {counts.files} files</span> : null}
     </span>
   );
 }

@@ -252,7 +252,7 @@ export function UsageBreakdown({
   };
 
   return (
-    <section className="usage-section" aria-labelledby={headingId}>
+    <section className="usage-section usage-breakdown" aria-labelledby={headingId}>
       <div className="usage-section-head">
         <h2 className="usage-section-title" id={headingId}>
           Breakdown

@@ -38,6 +38,10 @@ tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-updater = "2"
+# Local end-to-end verification embeds a loopback WebDriver server. The
+# dependency is optional so release builds cannot expose the driver unless the
+# explicit `verification` feature is selected.
+tauri-plugin-wdio-webdriver = { version = "1.3.0", optional = true }
 
 # Multi-thread Tokio runtime. Provider PTYs and git shellouts fan out
 # in parallel; a current-thread runtime would block command handlers.
@@ -108,7 +112,6 @@ tauri-specta = { version = "=2.0.0-rc.21", features = ["typescript", "derive"] }
 specta = { version = "=2.0.0-rc.22", features = ["serde_json"] }
 specta-typescript = "=0.0.9"
 
-once_cell = "1"
 
 # Official Rust MCP SDK. `argmax mcp` serves the agent tool surface over stdio
 # from this same binary, proxying to the running app over the session-control
@@ -165,6 +168,10 @@ tauri = { version = "2.11", features = ["test"] }
 [features]
 # Required by Tauri 2 for production builds; do not remove.
 custom-protocol = ["tauri/custom-protocol"]
+# Local-only app automation. Runtime startup additionally requires
+# `ARGMAX_VERIFICATION=1`, so a feature-enabled binary does not listen by
+# accident.
+verification = ["dep:tauri-plugin-wdio-webdriver"]
 
 # Dependencies carry no debuginfo in dev and test builds: nobody steps into
 # tauri or rusqlite under lldb, and their DWARF was a quarter of the

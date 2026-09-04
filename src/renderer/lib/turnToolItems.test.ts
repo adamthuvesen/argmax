@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseQuestionsFromToolInput } from "./questions.js";
 import { foldTurnToolItems, visibleTurnToolItem } from "./turnToolItems.js";
-import { buildToolCallGroup, type ToolCall } from "./toolCalls.js";
+import type { ToolCall } from "./toolCalls.js";
 
 function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "id" | "name">): ToolCall {
   return {
@@ -20,7 +20,7 @@ function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "id" | "name">): Too
 }
 
 describe("turnToolItems", () => {
-  it("folds bash-like tools into groups without crossing non-bash tools", () => {
+  it("keeps individual tools for chronological grouping with assistant prose", () => {
     const first = tool({ id: "t1", name: "Bash" });
     const second = tool({ id: "t2", name: "Shell", createdAt: "2026-05-21T10:00:00.050Z" });
     const read = tool({ id: "t3", name: "Read" });
@@ -33,27 +33,21 @@ describe("turnToolItems", () => {
       { kind: "tool", tool: third }
     ]);
 
-    expect(folded).toHaveLength(3);
-    expect(folded[0]?.kind).toBe("tool-group");
-    expect(folded[0]?.kind === "tool-group" ? folded[0].group.tools.map((t) => t.id) : []).toEqual(["t1", "t2"]);
-    expect(folded[1]).toEqual({ kind: "tool", tool: read });
-    expect(folded[2]?.kind).toBe("tool-group");
-    expect(folded[2]?.kind === "tool-group" ? folded[2].group.tools.map((t) => t.id) : []).toEqual(["t4"]);
+    expect(folded).toEqual([first, second, read, third].map((tool) => ({ kind: "tool", tool })));
   });
 
-  it("keeps single bash-like tools as groups so they render with the summary header", () => {
+  it("keeps a single command as its own row", () => {
     const command = tool({ id: "t1", name: "Bash", inputPreview: "ls -la" });
 
     const [folded] = foldTurnToolItems([{ kind: "tool", tool: command }]);
-    expect(folded?.kind).toBe("tool-group");
-    expect(folded?.kind === "tool-group" ? folded.group.tools : []).toEqual([command]);
+    expect(folded).toEqual({ kind: "tool", tool: command });
 
     if (!folded) throw new Error("expected folded tool item");
     const visible = visibleTurnToolItem(folded, new Set());
-    expect(visible?.kind).toBe("tool-group");
+    expect(visible).toEqual({ kind: "tool", tool: command });
   });
 
-  it("does not merge existing bash groups across assistant-message boundaries", () => {
+  it("keeps individual tools so commentary can be interleaved at each timestamp", () => {
     const first = tool({ id: "t1", name: "Bash", inputPreview: "sed -n '1,80p' src/a.ts" });
     const second = tool({ id: "t2", name: "Bash", inputPreview: "sed -n '1,80p' src/b.ts" });
     const later = tool({
@@ -62,17 +56,13 @@ describe("turnToolItems", () => {
       inputPreview: "sed -n '1,80p' src/c.ts",
       createdAt: "2026-05-21T10:01:00.000Z"
     });
-    const existingGroup = buildToolCallGroup([first, second]);
-
     const folded = foldTurnToolItems([
-      { kind: "tool-group", group: existingGroup },
+      { kind: "tool", tool: first },
+      { kind: "tool", tool: second },
       { kind: "tool", tool: later }
     ]);
 
-    expect(folded).toHaveLength(2);
-    expect(folded[0]).toEqual({ kind: "tool-group", group: existingGroup });
-    expect(folded[1]?.kind).toBe("tool-group");
-    expect(folded[1]?.kind === "tool-group" ? folded[1].group.tools.map((t) => t.id) : []).toEqual(["t3"]);
+    expect(folded).toEqual([first, second, later].map((tool) => ({ kind: "tool", tool })));
   });
 
   it("attaches sub-agent child tools to the standalone agent row", () => {
@@ -100,10 +90,7 @@ describe("turnToolItems", () => {
 
     expect(folded).toHaveLength(2);
     expect(folded[0]).toEqual({ kind: "tool", tool: agent, children: [childRead, childBash] });
-    expect(folded[1]?.kind).toBe("tool-group");
-    expect(folded[1]?.kind === "tool-group" ? folded[1].group.tools.map((t) => t.id) : []).toEqual([
-      "top-bash"
-    ]);
+    expect(folded[1]).toEqual({ kind: "tool", tool: topLevelBash });
   });
 
   it("parses valid AskUserQuestion input and rejects oversized option sets", () => {
@@ -153,17 +140,14 @@ describe("turnToolItems", () => {
     expect(invalid).toBeNull();
   });
 
-  it("filters hidden tool ids out of individual tools and mixed groups", () => {
+  it("filters hidden tools and children", () => {
     const hidden = tool({ id: "hidden", name: "AskUserQuestion" });
     const visible = tool({ id: "visible", name: "Read" });
     const hiddenIds = new Set(["hidden"]);
 
     expect(visibleTurnToolItem({ kind: "tool", tool: hidden }, hiddenIds)).toBeNull();
 
-    const filtered = visibleTurnToolItem(
-      { kind: "tool-group", group: buildToolCallGroup([hidden, visible]) },
-      hiddenIds
-    );
+    const filtered = visibleTurnToolItem({ kind: "tool", tool: visible, children: [hidden] }, hiddenIds);
     expect(filtered).toEqual({ kind: "tool", tool: visible });
   });
 });

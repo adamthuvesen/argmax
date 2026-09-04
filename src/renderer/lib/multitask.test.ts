@@ -8,8 +8,6 @@ import {
   multitaskCommandPrompt,
   multitaskNoticeFor,
   multitasksByParentSession,
-  MULTITASK_FINISHED,
-  MULTITASK_LAUNCHED
 } from "./multitask.js";
 
 function event(type: string, payload: Record<string, unknown>, message = "row"): TimelineEvent {
@@ -27,7 +25,7 @@ function event(type: string, payload: Record<string, unknown>, message = "row"):
 describe("multitaskNoticeFor", () => {
   it("reads a dispatch row, with no state until it finishes", () => {
     const notice = multitaskNoticeFor(
-      event(MULTITASK_LAUNCHED, {
+      event("multitask.launched", {
         childSessionId: "child-1",
         taskLabel: "Fix the README typo",
         prompt: "Fix the README typo",
@@ -47,7 +45,7 @@ describe("multitaskNoticeFor", () => {
   });
 
   it("falls back to the row's own message when the label is missing", () => {
-    const notice = multitaskNoticeFor(event(MULTITASK_FINISHED, {}, "Side fix finished alongside"));
+    const notice = multitaskNoticeFor(event("multitask.finished", {}, "Side fix finished alongside"));
     expect(notice.taskLabel).toBe("Side fix finished alongside");
   });
 });
@@ -55,7 +53,7 @@ describe("multitaskNoticeFor", () => {
 describe("mergeMultitaskNotice", () => {
   it("completes the card in place instead of erasing what the dispatch said", () => {
     const launched = multitaskNoticeFor(
-      event(MULTITASK_LAUNCHED, {
+      event("multitask.launched", {
         childSessionId: "child-1",
         taskLabel: "Fix the README typo",
         prompt: "Fix the README typo",
@@ -63,7 +61,7 @@ describe("mergeMultitaskNotice", () => {
       })
     );
     const finished = multitaskNoticeFor(
-      event(MULTITASK_FINISHED, {
+      event("multitask.finished", {
         childSessionId: "child-1",
         taskLabel: "Fix the README typo",
         state: "complete",

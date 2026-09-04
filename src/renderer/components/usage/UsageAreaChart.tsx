@@ -32,7 +32,7 @@ const FALLBACK_WIDTH = 760;
 const FALLBACK_HEIGHT = 232;
 /** The plot takes the height its card has left over, inside these bounds. */
 const MIN_HEIGHT = 200;
-const MAX_HEIGHT = 420;
+const MAX_HEIGHT = 560;
 /** Interval counts a "nice" axis is allowed to use, tightest headroom wins. */
 const TICK_COUNTS = [4, 5, 6];
 const TOOLTIP_WIDTH = 184;

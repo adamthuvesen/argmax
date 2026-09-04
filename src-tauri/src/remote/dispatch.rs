@@ -16,17 +16,15 @@ use serde_json::Value;
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::ipc::inputs::*;
 use crate::ipc::{
-    approvals, checks, dashboard, git_ops, health, learnings, projects, providers, prs, review,
-    session, skills, system, terminal, usage, workspace_files, workspaces,
+    approvals, attachments, checks, dashboard, git_ops, health, learnings, projects, providers,
+    prs, review, session, skills, system, terminal, usage, workspace_files, workspaces,
 };
 use crate::state::AppState;
 
 /// Channels whose handlers need an `AppHandle` (native dialogs, the shell
-/// opener, window theming, the on-disk attachment store keyed by app data dir)
-/// and therefore cannot run for a browser client.
+/// opener, window theming) and therefore cannot run for a browser client.
 pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "projects:pick-folder",
-    "attachments:save-image",
     "system:open-path",
     "system:diagnostics",
     "system:set-theme",
@@ -123,6 +121,17 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
         "workspace:status" => {
             let input: WorkspaceStatusInput = parse(channel, input)?;
             encode(workspace_files::workspace_status_impl(state, input).await?)
+        }
+
+        "attachments:save-image" => {
+            let input: AttachmentsSaveImageInput = parse(channel, input)?;
+            let store = state.attachments.get().ok_or_else(|| {
+                ArgmaxError::service(
+                    "ATTACHMENT_STORE_NOT_READY",
+                    "attachment storage is not initialized",
+                )
+            })?;
+            encode(attachments::save_image(store, input)?)
         }
 
         "workspaces:create-isolated" => {
@@ -461,6 +470,35 @@ mod tests {
             .await
             .expect_err("unknown channel rejected");
         assert!(is_service_error(&unknown, "UNKNOWN_CHANNEL"));
+    }
+
+    #[tokio::test]
+    async fn remote_can_save_an_image_into_the_host_attachment_store() {
+        let dir = tempfile::tempdir().expect("attachment directory");
+        let state = AppState::new();
+        state
+            .attachments
+            .set(Arc::new(
+                crate::attachments::store::AttachmentStore::with_base_dir(dir.path()),
+            ))
+            .expect("attachment store once cell");
+
+        let saved = dispatch(
+            &state,
+            "attachments:save-image",
+            serde_json::json!({
+                "sessionId": "launch-mobile",
+                "mimeType": "image/png",
+                "dataBase64": "TQ=="
+            }),
+        )
+        .await
+        .expect("save image over remote bridge");
+
+        assert_eq!(saved["sizeBytes"], 1);
+        let path = saved["filePath"].as_str().expect("saved file path");
+        assert!(path.starts_with(&dir.path().to_string_lossy().to_string()));
+        assert_eq!(std::fs::read(path).expect("saved image"), b"M");
     }
 
     #[tokio::test]

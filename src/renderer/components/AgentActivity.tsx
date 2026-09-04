@@ -453,19 +453,13 @@ export function AgentActivity({
           }
         }}
       >
-        {activity.prompt || activity.subagentType || activity.model ? (
+        {activity.prompt || activity.subagentType ? (
           <section className="agent-activity-summary" aria-label="Agent instructions">
             <div className="agent-activity-summary-header">
-              {/* One eyebrow: who this is, and what it runs on, said once and
-                  where the run is described. Whether it is still working is the
-                  tab's mark. */}
+              {/* The dock owns model metadata. This eyebrow names the role next
+                  to the instructions, without repeating the dock chrome. */}
               <p className="agent-activity-meta agent-activity-summary-label">
-                {[activity.subagentType ?? "Instructions", activity.model?.label]
-                  .filter(Boolean)
-                  .join(" · ")}
-                {activity.model?.effort ? (
-                  <span className="agent-activity-effort"> · {activity.model.effort}</span>
-                ) : null}
+                {activity.subagentType ?? "Instructions"}
               </p>
               {promptIsLong ? (
                 <button

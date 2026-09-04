@@ -264,6 +264,16 @@ pub fn run() {
                         data_dir.display()
                     ));
                 } else {
+                    let state = tauri::Manager::state::<state::AppState>(app);
+                    if state
+                        .attachments
+                        .set(Arc::new(attachments::store::AttachmentStore::from_data_dir(
+                            &data_dir,
+                        )))
+                        .is_err()
+                    {
+                        tracing::warn!("attachment store was already initialized");
+                    }
                     // Refuse to run against local state another live instance
                     // owns: the boot recovery below would mark that instance's
                     // running sessions failed (they look orphaned from here).

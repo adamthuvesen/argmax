@@ -13,7 +13,7 @@ import type { AgentTabsState } from "../hooks/useAgentTabs.js";
 import { buildAgentActivity, type AgentModel } from "../lib/agentActivity.js";
 import { multitaskTabId, readAgentTab } from "../lib/agentTabs.js";
 import { assignAgentCodenames, fallbackCodename } from "../lib/agentNames.js";
-import type { ModelPickerSelection } from "../lib/models.js";
+import { effortLabel, type ModelPickerSelection } from "../lib/models.js";
 import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
@@ -43,9 +43,9 @@ interface DockTab {
 
 /**
  * The review panel's Agents view: one tab per subagent of this pane's session
- * and per multitask dispatched from it, the active one below, and its model and
- * state in the panel's status bar. Both kinds sit in one strip because they are
- * one thing to the reader — what else is running for me right now. Every tab
+ * and per multitask dispatched from it, the active one below, and its model in
+ * the panel's metadata strip. Both kinds sit in one strip because they are one
+ * thing to the reader: what else is running for me right now. Every tab
  * stays mounted (inactive ones hidden by CSS) so each keeps loading and polling
  * in the background.
  */
@@ -138,7 +138,10 @@ export function AgentsView({
           title: label,
           status: child ? multitaskRowStatus(child.session.state) : "missing",
           model: child
-            ? { label: child.session.modelLabel, effort: child.session.reasoningEffort ?? null }
+            ? {
+                label: child.session.modelLabel,
+                effort: child.session.reasoningEffort ? effortLabel(child.session.reasoningEffort) : null
+              }
             : null,
           name: label,
           multitask: child
@@ -215,6 +218,8 @@ export function AgentsView({
     [agentTabs, tabIds]
   );
 
+  const activeTab = tabs.find((tab) => tab.id === activeId) ?? null;
+
   if (tabIds.length === 0) {
     return (
       <div className="review-agents">
@@ -274,6 +279,19 @@ export function AgentsView({
           })}
         </div>
       </div>
+
+      {activeTab?.model ? (
+        <div className="review-agent-model" role="status" aria-label="Agent model" aria-live="polite">
+          <Bot size={13} aria-hidden="true" />
+          <span className="review-agent-model-value">{activeTab.model.label}</span>
+          {activeTab.model.effort ? (
+            <>
+              <span className="review-agent-model-separator" aria-hidden="true">·</span>
+              <span className="review-agent-model-effort">{activeTab.model.effort}</span>
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="review-agents-body">
         {tabs.map((tab) => {

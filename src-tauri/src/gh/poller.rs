@@ -98,6 +98,7 @@ impl GhPollerConfig {
 struct PrState {
     head_sha: String,
     check_state: String,
+    pr_state: Option<String>,
 }
 
 struct PollerInner {
@@ -105,8 +106,8 @@ struct PollerInner {
     service: Arc<GhService>,
     publish_delta: Option<DeltaPublisher>,
     on_check_failure: Option<CheckFailureHook>,
-    /// Last-seen `(head_sha, check_state)` per `(session_id, pr_number)` so a
-    /// repeated tick on the same state is a no-op.
+    /// Last-seen `(head_sha, check_state, pr_state)` per `(session_id,
+    /// pr_number)` so a repeated tick on the same state is a no-op.
     last_state: Mutex<HashMap<(String, i64), PrState>>,
     /// Insertion-ordered ledger of failure events we've already fired, keyed
     /// `session:pr:head_sha`. Bounded so a long-running app doesn't grow it.
@@ -341,6 +342,7 @@ fn detect_transition(
     let next = PrState {
         head_sha: latest.head_sha.clone(),
         check_state: latest.last_seen_check_state.clone(),
+        pr_state: latest.pr_state.clone(),
     };
 
     let changed = {
@@ -658,6 +660,43 @@ mod tests {
         poller.tick_for_test().await.expect("tick 3");
         assert_eq!(publish_count.load(Ordering::SeqCst), 2);
         assert_eq!(failure_hits.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn poller_publishes_merge_transition_when_head_and_checks_are_unchanged() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        let open_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
+        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "MERGED", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
+        let stub = StubRunner::new(vec![
+            Ok(open_payload.to_string()),
+            Ok(merged_payload.to_string()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let published = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
+        let published_deltas = Arc::clone(&published);
+        let publisher: DeltaPublisher = Arc::new(move |delta| {
+            published_deltas
+                .lock()
+                .expect("published deltas poisoned")
+                .push(delta);
+        });
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_delta_publisher(publisher),
+        );
+
+        poller.tick_for_test().await.expect("open tick");
+        poller.tick_for_test().await.expect("merged tick");
+
+        let deltas = published.lock().expect("published deltas poisoned");
+        assert_eq!(deltas.len(), 2);
+        let workspace = deltas
+            .last()
+            .and_then(|delta| delta.workspaces.first())
+            .expect("merged workspace delta");
+        assert_eq!(workspace.pr_state.as_deref(), Some("MERGED"));
+        assert_eq!(workspace.pr_number, Some(42));
     }
 
     #[tokio::test]

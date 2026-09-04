@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 use crate::approvals::service::ApprovalService;
+use crate::attachments::store::AttachmentStore;
 use crate::browser::registry::BrowserTabRegistry;
 use crate::checks::service::CheckService;
 use crate::dock::{DockBadgeService, TauriDockBadgeSink};
@@ -47,6 +48,10 @@ pub struct AppState {
     pub terminals: OnceCell<Arc<TerminalService>>,
     pub checks: OnceCell<Arc<CheckService>>,
     pub workspaces: OnceCell<Arc<WorkspaceService>>,
+    /// Attachment bytes are written by both the desktop renderer and the
+    /// browser remote bridge. The store is initialized once the app data
+    /// directory is known during setup.
+    pub attachments: OnceCell<Arc<AttachmentStore>>,
     pub gh_poller: OnceCell<Arc<GhPoller>>,
     /// The Usage page's transcript scanner. Installed with the database;
     /// the first cold sweep waits for the page to be opened.
@@ -103,6 +108,7 @@ impl Default for AppState {
             terminals: OnceCell::new(),
             checks: OnceCell::new(),
             workspaces: OnceCell::new(),
+            attachments: OnceCell::new(),
             gh_poller: OnceCell::new(),
             usage_scanner: OnceCell::new(),
             notifications: OnceCell::new(),

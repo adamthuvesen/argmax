@@ -17,11 +17,24 @@ import {
 } from "../lib/composerAttachments.js";
 import { readDraft, writeDraftAttachments } from "../lib/composerDrafts.js";
 import { shouldPreferHtmlFlavor } from "../lib/clipboardMarkdown.js";
-import { isRemoteBridge } from "../lib/tauriBridge.js";
 import type { ComposerAttachment } from "../../shared/types.js";
+
+function createAttachmentPreviewUrl(blob: Blob): string | null {
+  return typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
+    ? URL.createObjectURL(blob)
+    : null;
+}
+
+function revokeAttachmentPreviewUrl(url: string): void {
+  if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+    URL.revokeObjectURL(url);
+  }
+}
 
 export interface ComposerAttachmentsApi {
   pendingAttachments: ComposerAttachment[];
+  /** Browser-local previews for images attached during this composer mount. */
+  pendingAttachmentPreviews: Readonly<Record<string, string>>;
   isDraggingFiles: boolean;
   attachmentInputRef: RefObject<HTMLInputElement | null>;
   removePendingAttachment: (filePath: string) => void;
@@ -90,9 +103,51 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
   const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>(
     () => readDraft(draftKey ?? null).attachments
   );
+  const [pendingAttachmentPreviews, setPendingAttachmentPreviews] = useState<Record<string, string>>({});
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepth = useRef(0);
+  const previewUrls = useRef(new Map<string, string>());
+  const mounted = useRef(true);
+
+  const releasePreviewUrls = useCallback((): void => {
+    for (const url of previewUrls.current.values()) {
+      revokeAttachmentPreviewUrl(url);
+    }
+    previewUrls.current.clear();
+  }, []);
+
+  const clearPreviewUrls = useCallback((): void => {
+    releasePreviewUrls();
+    setPendingAttachmentPreviews({});
+  }, [releasePreviewUrls]);
+
+  const removePreviewUrl = useCallback((filePath: string): void => {
+    const url = previewUrls.current.get(filePath);
+    if (url) {
+      revokeAttachmentPreviewUrl(url);
+      previewUrls.current.delete(filePath);
+    }
+    setPendingAttachmentPreviews((prev) => {
+      if (prev[filePath] === undefined) return prev;
+      const next = { ...prev };
+      delete next[filePath];
+      return next;
+    });
+  }, []);
+
+  const rememberPreviewUrl = useCallback((filePath: string, blob: Blob): void => {
+    const url = createAttachmentPreviewUrl(blob);
+    if (!url) return;
+    if (!mounted.current) {
+      revokeAttachmentPreviewUrl(url);
+      return;
+    }
+    const previous = previewUrls.current.get(filePath);
+    if (previous) revokeAttachmentPreviewUrl(previous);
+    previewUrls.current.set(filePath, url);
+    setPendingAttachmentPreviews((prev) => ({ ...prev, [filePath]: url }));
+  }, []);
 
   // A pane that swaps drafts without remounting starts from the new draft's
   // own images, never the previous one's — unless the typed text just carried
@@ -113,6 +168,21 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       setPendingAttachments(readDraft(draftKey ?? null).attachments);
     }
   }
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      releasePreviewUrls();
+    };
+  }, [releasePreviewUrls]);
+
+  const previewKey = useRef(draftKey);
+  useEffect(() => {
+    if (previewKey.current === draftKey) return;
+    previewKey.current = draftKey;
+    if (!carriedOnRetarget) clearPreviewUrls();
+  }, [carriedOnRetarget, clearPreviewUrls, draftKey]);
 
   useEffect(() => {
     // Clear the images off the draft the text left behind, so the source ends
@@ -142,14 +212,6 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
         setStatus("Open the Tauri app window to attach images.");
         return;
       }
-      // Images are written to the host's attachment store, which the bridge
-      // does not expose. Say so plainly — the raw REMOTE_UNSUPPORTED text
-      // ("attachments:save-image is only available in the desktop app") reads
-      // like a crash under the phone's composer.
-      if (isRemoteBridge()) {
-        setStatus("Attaching images needs the desktop app.");
-        return;
-      }
       const generation = listGeneration.current;
       try {
         for (const blob of blobs) {
@@ -168,7 +230,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
           // (pick a different project in the launcher). Appending now would
           // hang this image on a prompt it was never pasted into, and the
           // persist effect below would write it into that draft.
-          if (listGeneration.current !== generation) return;
+          if (!mounted.current || listGeneration.current !== generation) return;
           setPendingAttachments((prev) => [
             ...prev,
             {
@@ -177,17 +239,19 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
               sizeBytes: saved.sizeBytes
             }
           ]);
+          rememberPreviewUrl(saved.filePath, processed);
         }
       } catch (error) {
         setStatus(error instanceof Error ? error.message : "Could not attach image.");
       }
     },
-    [draftKey, setStatus]
+    [draftKey, rememberPreviewUrl, setStatus]
   );
 
   const removePendingAttachment = useCallback((filePath: string): void => {
+    removePreviewUrl(filePath);
     setPendingAttachments((prev) => prev.filter((a) => a.filePath !== filePath));
-  }, []);
+  }, [removePreviewUrl]);
 
   const onComposerDragEnter = useCallback((event: ReactDragEvent<HTMLFormElement>): void => {
     if (!Array.from(event.dataTransfer.types).includes("Files")) return;
@@ -312,11 +376,13 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
   }, []);
 
   const clearAttachments = useCallback((): void => {
+    clearPreviewUrls();
     setPendingAttachments([]);
-  }, []);
+  }, [clearPreviewUrls]);
 
   return {
     pendingAttachments,
+    pendingAttachmentPreviews,
     isDraggingFiles,
     attachmentInputRef,
     removePendingAttachment,

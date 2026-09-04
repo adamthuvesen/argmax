@@ -13,6 +13,16 @@ pub fn attachments_save_image(
     input: AttachmentsSaveImageInput,
 ) -> ArgmaxResult<SaveImageResult> {
     let store = AttachmentStore::from_data_dir(data_dir(&app)?);
+    save_image(&store, input)
+}
+
+/// Shared by the native command and the remote dispatcher. The native command
+/// owns the app-data lookup; the remote path receives the same store from
+/// `AppState` after setup has resolved that directory.
+pub(crate) fn save_image(
+    store: &AttachmentStore,
+    input: AttachmentsSaveImageInput,
+) -> ArgmaxResult<SaveImageResult> {
     store
         .save_image(&input.session_id, input.mime_type, &input.data_base64)
         .map_err(attachment_error)

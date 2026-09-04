@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
-import { Archive, FolderGit2, Moon, MoreHorizontal, Plus, Sun } from "lucide-react";
+import { Archive, FolderGit2, Laptop, Menu, MoreHorizontal, PenLine, Search } from "lucide-react";
 import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
 import { LinesSkeleton } from "../components/LinesSkeleton.js";
 import { SessionPane } from "../components/SessionPane.js";
@@ -281,6 +281,8 @@ export function MobileApp(): JSX.Element {
     () => new Map(snapshot.projects.map((project) => [project.id, project.name])),
     [snapshot.projects]
   );
+  const [listMenuOpen, setListMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Three sections, same shape and precedence as the desktop sidebar: Pinned
   // on top, then Priority (working rows first, then the rest by last message),
@@ -329,6 +331,20 @@ export function MobileApp(): JSX.Element {
       activityRows: rest.filter((row) => !row.workspace.pinned)
     };
   }, [nowMs, snapshot.sessions, snapshot.workspaces]);
+
+  const filteredRows = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    if (!query) return { pinnedRows, priorityRows, activityRows };
+    const matches = (row: SessionListRow): boolean => {
+      const projectName = projectNamesById.get(row.workspace.projectId) ?? "";
+      return `${row.workspace.taskLabel} ${projectName}`.toLocaleLowerCase().includes(query);
+    };
+    return {
+      pinnedRows: pinnedRows.filter(matches),
+      priorityRows: priorityRows.filter(matches),
+      activityRows: activityRows.filter(matches)
+    };
+  }, [activityRows, pinnedRows, priorityRows, projectNamesById, searchQuery]);
 
   // Full-screen Changes/Files view for the open session.
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -486,7 +502,7 @@ export function MobileApp(): JSX.Element {
   // A sheet is a screen as far as a back gesture is concerned: without this,
   // back on the list screen leaves the app with the sheet still up, and back
   // on the New session screen tears the screen down under an open picker.
-  const sheetOpen = actionsRow !== null || newSessionSheet !== null;
+  const sheetOpen = actionsRow !== null || listMenuOpen || newSessionSheet !== null;
 
   const filePreviewShown = reviewShown && reviewFilePreviewOpen;
 
@@ -498,6 +514,10 @@ export function MobileApp(): JSX.Element {
   const goBackOneScreen = useCallback((): void => {
     if (actionsRow !== null) {
       setActionsRow(null);
+      return;
+    }
+    if (listMenuOpen) {
+      setListMenuOpen(false);
       return;
     }
     if (newSessionSheet !== null) {
@@ -522,6 +542,7 @@ export function MobileApp(): JSX.Element {
     closeReview,
     closeSession,
     filePreviewShown,
+    listMenuOpen,
     newSessionOpen,
     newSessionSheet,
     reviewShown,
@@ -529,7 +550,10 @@ export function MobileApp(): JSX.Element {
   ]);
   useMobileBackNavigation(screenDepth, goBackOneScreen);
 
-  const empty = pinnedRows.length === 0 && priorityRows.length === 0 && activityRows.length === 0;
+  const empty =
+    filteredRows.pinnedRows.length === 0 &&
+    filteredRows.priorityRows.length === 0 &&
+    filteredRows.activityRows.length === 0;
   // Slim enough to sit under either header without displacing the screen it
   // belongs to; the list and the conversation stay usable while it shows.
   const connectionBanner =
@@ -647,23 +671,36 @@ export function MobileApp(): JSX.Element {
       ) : (
         <div className="mobile-list-screen">
           <header className="mobile-list-header">
-            <h1>Argmax</h1>
             <button
               type="button"
               className="mobile-icon-button"
-              onClick={toggleTheme}
-              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              aria-label="Open navigation"
+              aria-haspopup="dialog"
+              aria-expanded={listMenuOpen}
+              onClick={() => setListMenuOpen(true)}
             >
-              {theme === "dark" ? <Sun size={18} aria-hidden /> : <Moon size={18} aria-hidden />}
+              <Menu size={21} aria-hidden />
             </button>
-            <button
-              type="button"
-              className="mobile-icon-button"
-              onClick={() => setNewSessionOpen(true)}
-              aria-label="New chat"
-            >
-              <Plus size={19} aria-hidden />
-            </button>
+            <div className="mobile-list-identity">
+              <h1>Remote</h1>
+              <span className="mobile-list-device">
+                <span className="mobile-list-device-dot" aria-hidden="true" />
+                <Laptop size={14} aria-hidden="true" />
+                <span>Mac</span>
+              </span>
+            </div>
+            <div className="mobile-list-header-actions">
+              <button
+                type="button"
+                className="mobile-icon-button"
+                aria-label="Remote options"
+                aria-haspopup="dialog"
+                aria-expanded={listMenuOpen}
+                onClick={() => setListMenuOpen(true)}
+              >
+                <MoreHorizontal size={21} aria-hidden />
+              </button>
+            </div>
           </header>
           {connectionBanner}
           {/* The scroller is the list landmark: sections come and go with
@@ -679,13 +716,19 @@ export function MobileApp(): JSX.Element {
               </div>
             ) : empty ? (
               <div className="mobile-empty">
-                <p>{loadState === "loading" ? "Connecting…" : "No active chats."}</p>
+                <p>
+                  {loadState === "loading"
+                    ? "Connecting…"
+                    : searchQuery.trim()
+                      ? `No chats match “${searchQuery.trim()}”.`
+                      : "No active chats."}
+                </p>
               </div>
             ) : (
               <>
                 <SessionSection
                   label="Pinned"
-                  rows={pinnedRows}
+                  rows={filteredRows.pinnedRows}
                   projectNamesById={projectNamesById}
                   nowMs={nowMs}
                   onOpen={openWorkspaceChat}
@@ -693,15 +736,15 @@ export function MobileApp(): JSX.Element {
                 />
                 <SessionSection
                   label="Priority"
-                  rows={priorityRows}
+                  rows={filteredRows.priorityRows}
                   projectNamesById={projectNamesById}
                   nowMs={nowMs}
                   onOpen={openWorkspaceChat}
                   onOpenActions={setActionsRow}
                 />
                 <SessionSection
-                  label={pinnedRows.length > 0 || priorityRows.length > 0 ? "Chats" : "All chats"}
-                  rows={activityRows}
+                  label={filteredRows.pinnedRows.length > 0 || filteredRows.priorityRows.length > 0 ? "Chats" : "All chats"}
+                  rows={filteredRows.activityRows}
                   projectNamesById={projectNamesById}
                   nowMs={nowMs}
                   onOpen={openWorkspaceChat}
@@ -710,8 +753,49 @@ export function MobileApp(): JSX.Element {
               </>
             )}
           </div>
+          <div className="mobile-list-dock">
+            <label className="mobile-list-search">
+              <Search size={19} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Search chats"
+                placeholder="Search chats"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="mobile-list-compose"
+              aria-label="New chat"
+              onClick={() => setNewSessionOpen(true)}
+            >
+              <PenLine size={23} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       )}
+      {listMenuOpen ? (
+        <BottomSheet label="Remote menu" onClose={() => setListMenuOpen(false)}>
+          <p className="mobile-sheet-group-label">Remote</p>
+          <div className="mobile-sheet-group">
+            <SheetOption
+              label="New chat"
+              onSelect={() => {
+                setListMenuOpen(false);
+                setNewSessionOpen(true);
+              }}
+            />
+            <SheetOption
+              label={theme === "dark" ? "Use light theme" : "Use dark theme"}
+              onSelect={() => {
+                setListMenuOpen(false);
+                toggleTheme();
+              }}
+            />
+          </div>
+        </BottomSheet>
+      ) : null}
       {actionsRow ? (
         <BottomSheet label="Chat actions" onClose={() => setActionsRow(null)}>
           <p className="mobile-sheet-group-label">{actionsRow.workspace.taskLabel}</p>

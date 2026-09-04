@@ -1398,7 +1398,7 @@ rangeStart: string; rangeEnd: string; resolution: UsageResolution; scan: UsageSc
  * providers. Per-provider counts do not sum to this when a session
  * switched provider mid-way, which is why it is carried separately.
  */
-sessions: number; tokens: UsageTokenTotals; costUsd: number; cacheSavingsUsd: number; costSource: UsageCostSource;
+sessions: number; tokens: UsageTokenTotals; costUsd: number; cacheSavingsUsd: number; costSource: UsageCostSource; 
 /**
  * The window before this one, narrowed the same way, for the "vs the
  * previous 30 days" comparison. `None` when the ledger cannot cover it.

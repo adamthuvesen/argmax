@@ -41,7 +41,7 @@ export function realProfileDataDir() {
  *   onEvent(fn)           → fn({channel, payload}) for every pushed event
  *   close()
  */
-export function connectBridge({ port, token, timeoutMs = 5000 }) {
+export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = null }) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(`ws://127.0.0.1:${port}/api/ws`);
     const pending = new Map();
@@ -93,7 +93,22 @@ export function connectBridge({ port, token, timeoutMs = 5000 }) {
             call(channel, input = {}) {
               return new Promise((resolveCall, rejectCall) => {
                 const id = nextId++;
-                pending.set(id, { resolve: resolveCall, reject: rejectCall });
+                const timer = callTimeoutMs === null
+                  ? null
+                  : setTimeout(() => {
+                      pending.delete(id);
+                      rejectCall(new Error(`bridge call ${channel} timed out after ${callTimeoutMs}ms`));
+                    }, callTimeoutMs);
+                pending.set(id, {
+                  resolve: (value) => {
+                    clearTimeout(timer);
+                    resolveCall(value);
+                  },
+                  reject: (error) => {
+                    clearTimeout(timer);
+                    rejectCall(error);
+                  }
+                });
                 socket.send(JSON.stringify({ type: "request", id, channel, input }));
               });
             },

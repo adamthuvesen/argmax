@@ -4,8 +4,8 @@
 
 use rusqlite::{Connection, OptionalExtension};
 
-use super::time::now_iso;
-use crate::error::{ArgmaxError, ArgmaxResult};
+use super::{sqlite_error, time::now_iso};
+use crate::error::ArgmaxResult;
 use crate::usage::records::UsageRecordTokens;
 
 /// Meta key whose value is the parser version the ledger was built with.
@@ -314,10 +314,6 @@ pub fn set_meta(connection: &Connection, key: &str, value: &str) -> ArgmaxResult
         .execute((key, value))
         .map_err(sqlite_error)?;
     Ok(())
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
 }
 
 #[cfg(test)]

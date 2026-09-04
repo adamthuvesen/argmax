@@ -45,7 +45,7 @@
 
 **Files:** `src-tauri/src/ipc/usage.rs`; `src-tauri/src/ipc/mod.rs`; `src-tauri/src/ipc/inputs.rs`; `src-tauri/tests/fixtures/channels.txt` and `src-tauri/tests/ipc_inventory.rs`; `src-tauri/src/remote/dispatch.rs` (`REMOTE_UNSUPPORTED_CHANNELS`); `src/shared/ipcSchemas.ts`, `src/shared/types.ts`, `src/renderer/lib/tauriBridge.ts`; `src/shared/bindings.d.ts` regenerated; `src-tauri/src/main.rs` — `usage` dispatch next to `session`; `scripts/check-usage-oracle.mjs`; `docs/ipc.md`, `docs/verification.md`.
 
-**Success check:** `npm run generate:bindings && npm run check:bindings && npm run check:tauri-bridge && npm run check:main-thread` clean; `node scripts/check-usage-oracle.mjs --days 7` reports zero token mismatches for Claude and Codex, or each mismatch is explained in the PR. Cost differences are out of scope for the oracle.
+**Success check:** `npm run generate:bindings && npm run check:tauri-bridge && npm run check:main-thread` clean; `node scripts/check-usage-oracle.mjs --days 7` reports zero token mismatches for Claude and Codex, or each mismatch is explained in the PR. Cost differences are out of scope for the oracle.
 
 ## Phase 4: The page
 
@@ -59,7 +59,7 @@
 
 ## Final checks
 
-- `npm test`, `npm run check:bindings`, `npm run check:tauri-bridge`, `npm run check:main-thread`, `npm run check:bundle`.
+- `npm test`, `npm run check:tauri-bridge`, `npm run check:main-thread`, `npm run check:bundle`.
 - Oracle gate on a 7-day window, and for Argmax-launched sessions a per-session comparison of scanner totals against `usage_events`.
 - A `test:perf` case for building the 30-day series under 5 ms; cold and warm scan times recorded in `docs/performance.md`.
 - Docs: `docs/data.md`, `docs/ipc.md`, `docs/styling.md`, and a new `docs/usage.md` stating the data sources, dedupe rules, and the list-price caveat, indexed from `AGENTS.md`.

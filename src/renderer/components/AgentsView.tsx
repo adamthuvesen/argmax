@@ -1,4 +1,4 @@
-import { Bot, Split, X } from "lucide-react";
+import { Split, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   AgentMode,
@@ -9,15 +9,17 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import type { AgentTabsState } from "../hooks/useAgentTabs.js";
-import { buildAgentActivity, type AgentModel } from "../lib/agentActivity.js";
+import { buildAgentActivity } from "../lib/agentActivity.js";
+import { emblemForCodename, type Emblem } from "../lib/agentEmblems.js";
 import { multitaskTabId, readAgentTab } from "../lib/agentTabs.js";
 import { assignAgentCodenames, fallbackCodename } from "../lib/agentNames.js";
-import { effortLabel, type ModelPickerSelection } from "../lib/models.js";
+import type { ModelPickerSelection } from "../lib/models.js";
 import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentActivity } from "./AgentActivity.js";
+import { AgentEmblem } from "./AgentEmblem.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { MultitaskPanel } from "./MultitaskPanel.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
@@ -34,19 +36,19 @@ interface DockTab {
   id: string;
   title: string;
   status: AgentStatus;
-  model: AgentModel | null;
   /** Tab label: a subagent's codename, a multitask's task label. */
   name: string;
+  /** A subagent's mark. Null for a multitask, which is named by Split. */
+  emblem: Emblem | null;
   multitask: MultitaskChild | null;
 }
 
 /**
  * The review panel's Agents view: one tab per subagent of this pane's session
- * and per multitask dispatched from it, the active one below, and its model in
- * the panel's metadata strip. Both kinds sit in one strip because they are one
- * thing to the reader: what else is running for me right now. Every tab
- * stays mounted (inactive ones hidden by CSS) so each keeps loading and polling
- * in the background.
+ * and per multitask dispatched from it, and the active one below. Both kinds
+ * sit in one strip because they are one thing to the reader: what else is
+ * running for me right now. Every tab stays mounted (inactive ones hidden by
+ * CSS) so each keeps loading and polling in the background.
  */
 export function AgentsView({
   events,
@@ -130,16 +132,12 @@ export function AgentsView({
           id,
           title: label,
           status: child ? multitaskRowStatus(child.session.state) : "missing",
-          model: child
-            ? {
-                label: child.session.modelLabel,
-                effort: child.session.reasoningEffort ? effortLabel(child.session.reasoningEffort) : null
-              }
-            : null,
           name: label,
+          emblem: null,
           multitask: child
         };
       }
+      const codename = codenames.get(id) ?? fallbackCodename(id);
       const activity = buildAgentActivity({
         parentToolUseId: tab.toolUseId,
         events,
@@ -150,8 +148,8 @@ export function AgentsView({
         id,
         title: activity.title,
         status: activity.status,
-        model: activity.model,
-        name: codenames.get(id) ?? fallbackCodename(id),
+        name: codename,
+        emblem: emblemForCodename(codename),
         multitask: null
       };
     });
@@ -211,8 +209,6 @@ export function AgentsView({
     [agentTabs, tabIds]
   );
 
-  const activeTab = tabs.find((tab) => tab.id === activeId) ?? null;
-
   if (tabIds.length === 0) {
     return (
       <div className="review-agents">
@@ -244,13 +240,23 @@ export function AgentsView({
                   onClick={() => agentTabs.selectTab(tab.id)}
                   onKeyDown={handleTabKeyDown(tab.id)}
                 >
-                  <span className="file-tab-icon" data-status={tab.status} aria-hidden="true">
+                  <span
+                    className={tab.emblem ? "file-tab-icon agent-emblem-tint" : "file-tab-icon"}
+                    data-status={tab.status}
+                    data-hue={tab.emblem?.hue}
+                    aria-hidden="true"
+                  >
                     {tab.status === "running" ? (
                       <WorkingNest active size={11} phaseKey={tab.id} />
-                    ) : tab.multitask ? (
-                      <Split size={13} />
+                    ) : tab.emblem ? (
+                      <AgentEmblem
+                        shape={tab.emblem.shape}
+                        hue={tab.emblem.hue}
+                        size={13}
+                        status={tab.status === "error" ? "error" : "done"}
+                      />
                     ) : (
-                      <Bot size={13} />
+                      <Split size={13} />
                     )}
                   </span>
                   <span className="file-tab-name">{tab.name}</span>
@@ -272,18 +278,6 @@ export function AgentsView({
           })}
         </div>
       </div>
-
-      {activeTab?.model ? (
-        <div className="review-agent-model" role="status" aria-label="Agent model" aria-live="polite">
-          <span className="review-agent-model-value">{activeTab.model.label}</span>
-          {activeTab.model.effort ? (
-            <>
-              <span className="review-agent-model-separator" aria-hidden="true">·</span>
-              <span className="review-agent-model-effort">{activeTab.model.effort}</span>
-            </>
-          ) : null}
-        </div>
-      ) : null}
 
       <div className="review-agents-body">
         {tabs.map((tab) => {

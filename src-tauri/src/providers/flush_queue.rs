@@ -8,8 +8,8 @@ use uuid::Uuid;
 use super::{
     normalizer::{
         normalize_provider_event, synthesize_message_completed_from_exit,
-        NormalizedApprovalRequest, NormalizedUsage, NormalizerSessionContext, ProviderOutputEvent,
-        ProviderOutputStream, JSON_PARSE_LINE_CAP,
+        NormalizedApprovalRequest, NormalizedProviderResult, NormalizedUsage,
+        NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream, JSON_PARSE_LINE_CAP,
     },
     ProviderId,
 };
@@ -163,20 +163,6 @@ impl ProviderEventFlushQueue {
         &mut self,
         session_id: impl Into<String>,
         provider: ProviderId,
-        normalizer_context: NormalizerSessionContext,
-    ) {
-        self.initialize_session_with_invocation(
-            session_id,
-            provider,
-            String::new(),
-            normalizer_context,
-        );
-    }
-
-    pub fn initialize_session_with_invocation(
-        &mut self,
-        session_id: impl Into<String>,
-        provider: ProviderId,
         provider_invocation_id: impl Into<String>,
         normalizer_context: NormalizerSessionContext,
     ) {
@@ -205,24 +191,7 @@ impl ProviderEventFlushQueue {
     pub fn queue_output_event(
         &mut self,
         connection: &mut Connection,
-        event: ProviderOutputEvent,
-    ) -> ArgmaxResult<QueueOutputResult> {
-        self.queue_output_event_with_invocation(connection, None, event)
-    }
-
-    pub fn queue_output_event_for_invocation(
-        &mut self,
-        connection: &mut Connection,
         provider_invocation_id: &str,
-        event: ProviderOutputEvent,
-    ) -> ArgmaxResult<QueueOutputResult> {
-        self.queue_output_event_with_invocation(connection, Some(provider_invocation_id), event)
-    }
-
-    fn queue_output_event_with_invocation(
-        &mut self,
-        connection: &mut Connection,
-        provider_invocation_id: Option<&str>,
         event: ProviderOutputEvent,
     ) -> ArgmaxResult<QueueOutputResult> {
         let Some(session) = self.sessions.get_mut(&event.session_id) else {
@@ -232,14 +201,12 @@ impl ProviderEventFlushQueue {
                 has_trailing_fragment: false,
             });
         };
-        if let Some(provider_invocation_id) = provider_invocation_id {
-            if session.provider_invocation_id != provider_invocation_id {
-                return Ok(QueueOutputResult {
-                    delta: None,
-                    provider_conversation_id: None,
-                    has_trailing_fragment: false,
-                });
-            }
+        if session.provider_invocation_id != provider_invocation_id {
+            return Ok(QueueOutputResult {
+                delta: None,
+                provider_conversation_id: None,
+                has_trailing_fragment: false,
+            });
         }
 
         session.buffer.queue_raw_output(PersistRawOutputInput {
@@ -276,28 +243,8 @@ impl ProviderEventFlushQueue {
             &normalized_event,
             &mut session.normalizer_context,
         );
-        provider_conversation_id = normalized.provider_conversation_id.clone();
-        for mut event in normalized.events {
-            if let Some(provider_invocation_id) = provider_invocation_id {
-                attach_provider_invocation_id(&mut event, provider_invocation_id);
-            }
-            session.buffer.queue_timeline_event(event);
-        }
-        for usage in normalized.usages {
-            session.buffer.queue_usage(usage);
-        }
-        if normalized.permission_blocked {
-            session.buffer.mark_permission_blocked();
-        }
-        for approval in normalized.approvals {
-            if let Some(provider_invocation_id) = provider_invocation_id {
-                session
-                    .buffer
-                    .queue_approval_for_invocation(approval, provider_invocation_id);
-            } else {
-                session.buffer.queue_approval(approval);
-            }
-        }
+        provider_conversation_id =
+            ingest_normalized_result(&mut session.buffer, provider_invocation_id, normalized);
 
         let delta = flush_session_buffer(
             connection,
@@ -366,31 +313,36 @@ impl ProviderEventFlushQueue {
             };
             let normalized =
                 normalize_provider_event(session.provider, &event, &mut session.normalizer_context);
-            for mut event in normalized.events {
-                if !session.provider_invocation_id.is_empty() {
-                    attach_provider_invocation_id(&mut event, &session.provider_invocation_id);
-                }
-                session.buffer.queue_timeline_event(event);
-            }
-            for usage in normalized.usages {
-                session.buffer.queue_usage(usage);
-            }
-            if normalized.permission_blocked {
-                session.buffer.mark_permission_blocked();
-            }
-            for approval in normalized.approvals {
-                if !session.provider_invocation_id.is_empty() {
-                    session
-                        .buffer
-                        .queue_approval_for_invocation(approval, &session.provider_invocation_id);
-                } else {
-                    session.buffer.queue_approval(approval);
-                }
-            }
+            ingest_normalized_result(
+                &mut session.buffer,
+                &session.provider_invocation_id,
+                normalized,
+            );
         }
         let delta = flush_session_buffer(connection, session_id, &mut session.buffer)?;
         Ok((!delta.is_empty()).then_some(delta))
     }
+}
+
+fn ingest_normalized_result(
+    buffer: &mut SessionFlushBuffer,
+    provider_invocation_id: &str,
+    normalized: NormalizedProviderResult,
+) -> Option<String> {
+    for mut event in normalized.events {
+        attach_provider_invocation_id(&mut event, provider_invocation_id);
+        buffer.queue_timeline_event(event);
+    }
+    for usage in normalized.usages {
+        buffer.queue_usage(usage);
+    }
+    if normalized.permission_blocked {
+        buffer.mark_permission_blocked();
+    }
+    for approval in normalized.approvals {
+        buffer.queue_approval_for_invocation(approval, provider_invocation_id);
+    }
+    normalized.provider_conversation_id
 }
 
 /// True when a newline-less fragment opens a JSON object but does not parse.
@@ -454,10 +406,6 @@ impl SessionFlushBuffer {
         self.pending_usages.push(usage);
     }
 
-    pub fn queue_approval(&mut self, approval: NormalizedApprovalRequest) {
-        self.queue_approval_for_invocation(approval, "");
-    }
-
     fn queue_approval_for_invocation(
         &mut self,
         approval: NormalizedApprovalRequest,
@@ -469,8 +417,7 @@ impl SessionFlushBuffer {
             command: approval.command,
             cwd: approval.cwd,
             provider: approval.provider,
-            provider_invocation_id: (!provider_invocation_id.is_empty())
-                .then(|| provider_invocation_id.to_string()),
+            provider_invocation_id: Some(provider_invocation_id.to_string()),
             provider_request_id: approval.provider_request_id,
             risk_level: approval.risk_level,
             status: "pending".to_string(),
@@ -680,75 +627,24 @@ pub fn flush_session_buffer(
             if !inserted || row.status != "pending" {
                 continue;
             }
-            let current_session = find_session_by_id(&transaction, &approval.session_id)?;
-            if matches!(current_session.state.as_str(), "running" | "waiting") {
-                let session = update_session_state(
-                    &transaction,
-                    &approval.session_id,
-                    &SessionStateInput {
-                        state: "waiting".to_string(),
-                        attention: AttentionState::ApprovalNeeded.as_str().to_string(),
-                        completed_at: None,
-                        last_activity_at: None,
-                    },
-                )?;
-                let workspace_id = session.workspace_id.clone();
-                delta.sessions.push(session);
-                let workspace = {
-                    let current_workspace = crate::persistence::workspaces::find_workspace_by_id(
-                        &transaction,
-                        &workspace_id,
-                    )?;
-                    if matches!(
-                        current_workspace.state.as_str(),
-                        "archiving" | "archive-failed" | "archived"
-                    ) {
-                        None
-                    } else {
-                        Some(update_workspace_state(
-                            &transaction,
-                            &workspace_id,
-                            "waiting",
-                        )?)
-                    }
-                };
-                if let Some(workspace) = workspace {
-                    delta.workspaces.push(workspace);
-                }
-            }
+            transition_session_attention(
+                &transaction,
+                &approval.session_id,
+                "waiting",
+                AttentionState::ApprovalNeeded,
+                &mut delta,
+            )?;
             delta.approvals.push(row);
         }
 
         if permission_blocked {
-            let current_session = find_session_by_id(&transaction, session_id)?;
-            if matches!(current_session.state.as_str(), "running" | "waiting") {
-                let session = update_session_state(
-                    &transaction,
-                    session_id,
-                    &SessionStateInput {
-                        state: "blocked".to_string(),
-                        attention: AttentionState::Blocked.as_str().to_string(),
-                        completed_at: None,
-                        last_activity_at: None,
-                    },
-                )?;
-                let workspace_id = session.workspace_id.clone();
-                delta.sessions.push(session);
-                let current_workspace = crate::persistence::workspaces::find_workspace_by_id(
-                    &transaction,
-                    &workspace_id,
-                )?;
-                if !matches!(
-                    current_workspace.state.as_str(),
-                    "archiving" | "archive-failed" | "archived"
-                ) {
-                    delta.workspaces.push(update_workspace_state(
-                        &transaction,
-                        &workspace_id,
-                        "blocked",
-                    )?);
-                }
-            }
+            transition_session_attention(
+                &transaction,
+                session_id,
+                "blocked",
+                AttentionState::Blocked,
+                &mut delta,
+            )?;
         }
 
         transaction.commit().map_err(sqlite_error)?;
@@ -766,6 +662,42 @@ pub fn flush_session_buffer(
             Err(error)
         }
     }
+}
+
+fn transition_session_attention(
+    connection: &Connection,
+    session_id: &str,
+    state: &str,
+    attention: AttentionState,
+    delta: &mut DashboardDelta,
+) -> ArgmaxResult<()> {
+    let current_session = find_session_by_id(connection, session_id)?;
+    if !matches!(current_session.state.as_str(), "running" | "waiting") {
+        return Ok(());
+    }
+    let session = update_session_state(
+        connection,
+        session_id,
+        &SessionStateInput {
+            state: state.to_string(),
+            attention: attention.as_str().to_string(),
+            completed_at: None,
+            last_activity_at: None,
+        },
+    )?;
+    let workspace_id = session.workspace_id.clone();
+    delta.sessions.push(session);
+    let workspace =
+        crate::persistence::workspaces::find_workspace_by_id(connection, &workspace_id)?;
+    if !matches!(
+        workspace.state.as_str(),
+        "archiving" | "archive-failed" | "archived"
+    ) {
+        delta
+            .workspaces
+            .push(update_workspace_state(connection, &workspace_id, state)?);
+    }
+    Ok(())
 }
 
 fn sqlite_error(error: rusqlite::Error) -> crate::error::ArgmaxError {
@@ -885,12 +817,14 @@ mod tests {
         queue.initialize_session(
             "s1",
             ProviderId::Claude,
+            "invocation-1",
             NormalizerSessionContext::default(),
         );
 
         let first = queue
             .queue_output_event(
                 &mut connection,
+                "invocation-1",
                 output_event(
                     ProviderOutputStream::Stdout,
                     "{\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hel",
@@ -903,6 +837,7 @@ mod tests {
         let second = queue
             .queue_output_event(
                 &mut connection,
+                "invocation-1",
                 output_event(ProviderOutputStream::Stdout, "lo\"}}\n"),
             )
             .expect("queue second");
@@ -924,7 +859,7 @@ mod tests {
         seed_session(&connection);
 
         let mut queue = ProviderEventFlushQueue::new();
-        queue.initialize_session_with_invocation(
+        queue.initialize_session(
             "s1",
             ProviderId::Codex,
             "invocation-1",
@@ -932,7 +867,7 @@ mod tests {
         );
         let request = r#"{"id":50,"method":"item/requestApproval","params":{"command":["rm","-rf","/tmp/build"],"cwd":"/tmp/w1","reason":"Clean build artifacts"}}"#;
         let delta = queue
-            .queue_output_event_for_invocation(
+            .queue_output_event(
                 &mut connection,
                 "invocation-1",
                 output_event(ProviderOutputStream::Stdout, &format!("{request}\n")),
@@ -948,7 +883,7 @@ mod tests {
         assert!(pending.is_empty());
 
         let duplicate = queue
-            .queue_output_event_for_invocation(
+            .queue_output_event(
                 &mut connection,
                 "invocation-1",
                 output_event(ProviderOutputStream::Stdout, &format!("{request}\n")),
@@ -1048,11 +983,13 @@ mod tests {
         queue.initialize_session(
             "s1",
             ProviderId::Claude,
+            "invocation-1",
             NormalizerSessionContext::default(),
         );
         let queued = queue
             .queue_output_event(
                 &mut connection,
+                "invocation-1",
                 output_event(ProviderOutputStream::Stdout, "plain trailing output"),
             )
             .expect("queue fragment");
@@ -1092,6 +1029,7 @@ mod tests {
         queue.initialize_session(
             "s1",
             ProviderId::Cursor,
+            "invocation-1",
             NormalizerSessionContext::default(),
         );
 
@@ -1099,6 +1037,7 @@ mod tests {
         queue
             .queue_output_event(
                 &mut connection,
+                "invocation-1",
                 output_event(
                     ProviderOutputStream::Stdout,
                     "{\"type\":\"assistant\",\"message\":\"Hello\",\"timestamp_ms\":1}\n",
@@ -1130,6 +1069,7 @@ mod tests {
         let next = queue
             .queue_output_event(
                 &mut connection,
+                "invocation-1",
                 output_event(
                     ProviderOutputStream::Stdout,
                     "{\"type\":\"assistant\",\"message\":\"Hello world\",\"timestamp_ms\":2}\n",

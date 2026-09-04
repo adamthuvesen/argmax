@@ -625,42 +625,6 @@
   min-height: 0;
 }
 
-.review-agent-model {
-  display: flex;
-  align-items: center;
-  flex: 0 0 auto;
-  min-width: 0;
-  gap: var(--space-1);
-  padding: 7px 12px;
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in oklab, var(--panel) 96%, transparent);
-  color: var(--muted);
-  font-size: var(--text-xs-plus);
-  line-height: 1.25;
-}
-
-.review-agent-model > svg {
-  flex: 0 0 auto;
-  color: var(--muted-strong);
-}
-
-.review-agent-model-value {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.review-agent-model-separator {
-  color: var(--line-strong);
-}
-
-.review-agent-model-effort {
-  flex: 0 0 auto;
-}
-
 .review-agents-transcript {
   display: none;
   flex: 1 1 auto;
@@ -877,6 +841,24 @@
   min-width: 0;
   min-height: 0;
   background: var(--panel);
+}
+
+/* Full-workspace Browser page: same chrome as the review-panel Browser tab,
+   stretched to the workspace column. The session sidebar stays; this is not
+   a Settings/Usage-style rail swap. */
+.browser-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  --panel: var(--review-panel);
+  background: var(--panel);
+}
+
+.app-shell[data-sidebar-collapsed="true"] .browser-page .browser-panel-toolbar {
+  padding-top: 52px;
+  padding-left: var(--titlebar-leading-inset);
 }
 
 /* Terminal view: the panel's fifth mode. Same skeleton as Files and Agents —

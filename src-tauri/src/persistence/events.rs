@@ -5,7 +5,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use specta::Type;
 
-use super::time::now_iso;
+use super::{json_error, sqlite_error, time::now_iso};
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 
 const INVALID_PAYLOAD_PREVIEW_CHARS: usize = 512;
@@ -1020,11 +1020,11 @@ fn object_path_string<'a>(value: &'a Value, first: &str, second: &str) -> Option
         .and_then(Value::as_str)
 }
 
-fn tool_use_id_for_payload(payload: &Value) -> Option<&str> {
+pub(crate) fn tool_use_id_for_payload(payload: &Value) -> Option<&str> {
     string_field(payload, "id").or_else(|| string_field(payload, "call_id"))
 }
 
-fn completion_id_for_payload(payload: &Value) -> Option<&str> {
+pub(crate) fn completion_id_for_payload(payload: &Value) -> Option<&str> {
     string_field(payload, "tool_use_id")
         .or_else(|| string_field(payload, "id"))
         .or_else(|| string_field(payload, "call_id"))
@@ -1113,14 +1113,6 @@ fn max_raw_row_cursor(rows: &[RawProviderOutput], fallback: i64) -> i64 {
         .filter_map(|row| row.row_cursor)
         .max()
         .unwrap_or(fallback)
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
-}
-
-fn json_error(error: serde_json::Error) -> ArgmaxError {
-    ArgmaxError::service("JSON", error.to_string())
 }
 
 #[cfg(test)]

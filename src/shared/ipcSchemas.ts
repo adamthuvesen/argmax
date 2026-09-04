@@ -1,6 +1,5 @@
-// IPC request channel names used by the Tauri bridge. Runtime validation lives
-// in Rust input newtypes and command structs; this module is a tiny TypeScript
-// type source for renderer calls.
+// Generated from `ipc::REGISTERED_CHANNELS` by `export-bindings`.
+// Runtime validation lives in Rust input newtypes and command structs.
 
 export const IPC_CHANNELS = [
   "health:ping",
@@ -105,7 +104,7 @@ export const IPC_CHANNELS = [
   "routines:delete",
   "routines:set-enabled",
   "routines:run-now",
-  "usage:summary"
+  "usage:summary",
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];

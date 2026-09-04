@@ -16,6 +16,7 @@ pub mod pricing;
 pub mod runtime;
 pub mod session_service;
 pub mod subagent_trace;
+pub mod verification;
 
 use std::path::PathBuf;
 

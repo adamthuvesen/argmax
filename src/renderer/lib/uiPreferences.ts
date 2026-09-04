@@ -14,6 +14,7 @@ export const COMPOSER_PIXEL_FIELD_KEY = "argmax.composer.pixelField.enabled";
 export const PR_MILESTONE_CELEBRATION_KEY = "argmax.prMilestones.celebrate";
 export const RANDOM_SESSION_ICON_KEY = "argmax.sessionIcon.random.enabled";
 export const DESKTOP_NOTIFICATIONS_KEY = "argmax.desktopNotifications.enabled";
+export const BROWSER_PAGE_OPEN_KEY = "argmax.browser.pageOpen";
 
 export const PrMilestoneCelebrationContext = createContext(false);
 
@@ -78,14 +79,6 @@ export interface ResolvedVerbosity {
   thinkingExpanded: boolean;
 }
 
-export const CHAT_VERBOSITY_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "1", label: "1 · Minimal" },
-  { value: "2", label: "2 · Compact" },
-  { value: "3", label: "3 · Balanced" },
-  { value: "4", label: "4 · Detailed" },
-  { value: "5", label: "5 · Full trace" }
-];
-
 export const CHAT_VERBOSITY_LABELS: Record<ChatVerbosity, string> = {
   1: "Minimal",
   2: "Compact",
@@ -95,11 +88,11 @@ export const CHAT_VERBOSITY_LABELS: Record<ChatVerbosity, string> = {
 };
 
 export const CHAT_VERBOSITY_HINTS: Record<ChatVerbosity, string> = {
-  1: "One live summary line while the agent works. A finished turn keeps only the answer. Click Worked for to expand the work.",
-  2: "Turn chips with collapsed group headers. No raw tool lists or reasoning blocks.",
-  3: "Live tools and reasoning expand while running, then collapse to tidy group headers on answer.",
-  4: "Tool groups and touched files stay expanded on recent turns for quick inspection.",
-  5: "Full trace: all tool calls, diffs, and thought blocks stay wide open across history."
+  1: "Activity summaries while working. Finished turns keep the answer and failures. Click Worked for to inspect the work.",
+  2: "One short activity summary between messages. Expand to see commands, files, and agent activity.",
+  3: "The latest turn expands grouped tool rows while reasoning stays collapsed.",
+  4: "Tool calls and groups open on the latest turn while reasoning stays collapsed.",
+  5: "Tool calls open on the latest turn, and reasoning blocks stay expanded."
 };
 
 export function resolveChatVerbosity(verbosity: ChatVerbosity): ResolvedVerbosity {
@@ -118,21 +111,21 @@ export function resolveChatVerbosity(verbosity: ChatVerbosity): ResolvedVerbosit
 }
 
 function readChatVerbosity(): ChatVerbosity {
-  if (typeof window === "undefined") return 3;
+  if (typeof window === "undefined") return 2;
   const raw = window.localStorage.getItem(CHAT_VERBOSITY_KEY);
   if (raw !== null) {
     const parsed = Number.parseInt(raw, 10);
     if (parsed >= 1 && parsed <= 5) return parsed as ChatVerbosity;
   }
   // Migrate legacy granular preferences if present
-  const legacyDisplay = window.localStorage.getItem(TOOL_CALLS_DISPLAY_KEY);
+  const legacyDisplay = readToolCallsDisplay();
   if (legacyDisplay === "single-line") return 1;
   const legacyGroups = window.localStorage.getItem(TOOL_CALL_GROUPS_EXPANDED_KEY);
-  if (legacyDisplay === "collapsed" && legacyGroups === "false") return 2;
+  if (legacyDisplay === "collapsed") return legacyGroups === "true" ? 3 : 2;
   const legacyThinking = window.localStorage.getItem(THINKING_EXPANDED_KEY);
   if (legacyDisplay === "expanded" && legacyThinking === "true") return 5;
   if (legacyDisplay === "expanded") return 4;
-  return 3;
+  return 2;
 }
 
 export function useChatVerbosityPreference(): [ChatVerbosity, (value: ChatVerbosity) => void] {
@@ -159,20 +152,4 @@ function readToolCallsDisplay(): ToolCallsDisplay {
   // Migrate the pre-tri-state boolean; absent legacy value reads as the
   // "collapsed" default the boolean hook shipped with.
   return readBooleanPreference(TOOL_CALLS_EXPANDED_KEY, false) ? "expanded" : "collapsed";
-}
-
-/** Tri-state "Tool calls in chat" preference with legacy boolean migration. */
-export function useToolCallsDisplayPreference(): [ToolCallsDisplay, (value: ToolCallsDisplay) => void] {
-  const [value, setValue] = useState<ToolCallsDisplay>(readToolCallsDisplay);
-  const setPreference = useCallback((next: ToolCallsDisplay) => {
-    setValue(next);
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.setItem(TOOL_CALLS_DISPLAY_KEY, next);
-      } catch {
-        // Quota or private-mode failures are non-fatal for appearance prefs.
-      }
-    }
-  }, []);
-  return [value, setPreference];
 }

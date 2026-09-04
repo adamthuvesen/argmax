@@ -7,8 +7,8 @@
 
 use rusqlite::Connection;
 
-use super::time::now_iso;
-use crate::error::{ArgmaxError, ArgmaxResult};
+use super::{sqlite_error, time::now_iso};
+use crate::error::ArgmaxResult;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SyncedSessionRecord {
@@ -152,8 +152,4 @@ pub fn prunable_session_ids(
         .collect::<Result<Vec<_>, _>>()
         .map_err(sqlite_error)?;
     Ok(rows)
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
 }

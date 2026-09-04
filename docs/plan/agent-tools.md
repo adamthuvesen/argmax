@@ -124,7 +124,7 @@ Browser (tabs are owned by the calling session)
 
 ## Final Checks
 
-- `npm run typecheck`, `npm run lint`, `npx vitest run`, `npm run check:tauri-bridge`, `npm run check:bindings`, `cargo test`, `cargo fmt`, `npm run check:main-thread` (the socket handlers must not block the main thread; `Wait` is async).
+- `npm run typecheck`, `npm run lint`, `npx vitest run`, `npm run check:tauri-bridge`, `cargo test`, `cargo fmt`, `npm run check:main-thread` (the socket handlers must not block the main thread; `Wait` is async).
 - Bundle: `npm run tauri:build`, confirm `argmax mcp` works from the installed `/Applications/Argmax.app/Contents/MacOS/argmax` path (that is what `ARGMAX_BIN` points at).
 - Token revocation: a stopped or archived session's token fails every tool with a clear error.
 - Perf budget: `browser_snapshot` on a news front page under 300 ms and under 40 KB.

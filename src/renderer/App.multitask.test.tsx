@@ -4,6 +4,7 @@ import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import { launcherDraftKey, readDraft } from "./lib/composerDrafts.js";
 import {
+  archiveWorkspace,
   mockDashboardSnapshot,
   setupAppTestMocks,
   snapshot,
@@ -160,5 +161,6 @@ describe("multitask in the chat that dispatched it", () => {
       await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" })
     ).toBeInTheDocument();
     expect(readDraft(launcherDraftKey("project-1")).text).toBe("");
+    expect(archiveWorkspace).not.toHaveBeenCalled();
   });
 });

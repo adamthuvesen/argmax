@@ -3,8 +3,8 @@ use serde::Serialize;
 use specta::Type;
 use uuid::Uuid;
 
-use super::bool_to_i64;
 use super::time::now_iso;
+use super::{bool_to_i64, sqlite_error};
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -272,8 +272,4 @@ fn is_fts_operator_token(token: &str) -> bool {
         || token.eq_ignore_ascii_case("OR")
         || token.eq_ignore_ascii_case("NOT")
         || token.eq_ignore_ascii_case("NEAR")
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
 }

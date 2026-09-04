@@ -98,17 +98,13 @@ describe("collectTurnFileChanges", () => {
     expect(changes[0]?.dels).toBe(0);
   });
 
-  it("reads tools nested in a group", () => {
-    const group: TurnToolItem = {
-      kind: "tool-group",
-      group: {
-        id: "g1",
-        tools: [tool("Write", { file_path: "/repo/a.ts", content: "x\ny" }, "t1")],
-        parallelPositions: new Map(),
-        parallelGroupId: new Map()
-      }
+  it("reads tools nested under an agent", () => {
+    const agent: TurnToolItem = {
+      kind: "tool",
+      tool: tool("Task", {}, "agent"),
+      children: [tool("Write", { file_path: "/repo/a.ts", content: "x\ny" }, "t1")]
     };
-    expect(collectTurnFileChanges([group])).toHaveLength(1);
+    expect(collectTurnFileChanges([agent])).toHaveLength(1);
   });
 });
 

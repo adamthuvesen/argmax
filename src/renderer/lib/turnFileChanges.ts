@@ -17,20 +17,15 @@ export interface TurnFileChange {
 function flattenTurnTools(items: readonly TurnToolItem[]): ToolCall[] {
   const tools: ToolCall[] = [];
   for (const item of items) {
-    if (item.kind === "tool") {
-      tools.push(item.tool, ...(item.children ?? []));
-      continue;
-    }
-    tools.push(...item.group.tools);
+    tools.push(item.tool, ...(item.children ?? []));
   }
   return tools;
 }
 
 /**
  * Every file the turn wrote, in the order the turn first touched them, folded
- * one row per path. Reads the same per-tool input the expanded tool rows and
- * `summarizeToolChangeCounts` read, so the card can never disagree with the
- * activity rows above it.
+ * one row per path. Reads the same per-tool input as the expanded tool rows,
+ * so the card agrees with the activity rows above it.
  */
 export function collectTurnFileChanges(items: readonly TurnToolItem[]): TurnFileChange[] {
   const byPath = new Map<string, TurnFileChange>();

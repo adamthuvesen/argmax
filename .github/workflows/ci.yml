@@ -85,7 +85,7 @@ jobs:
 
       # One build, one link: the unit tests and the single `integration` test
       # binary. The bindings freshness check is a test in that binary
-      # (`bindings_file_is_current`), so no second `cargo run` is needed.
+      # (`generated_ipc_files_are_current`), so no second `cargo run` is needed.
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
       - run: cargo test --manifest-path src-tauri/Cargo.toml

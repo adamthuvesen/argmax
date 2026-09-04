@@ -15,11 +15,12 @@
     <link rel="icon" type="image/png" href="./argmax-icon.png" />
     <title>Argmax</title>
     <script>
-      // Resolve theme before React mounts to avoid a light/dark flash on cold
-      // start — over the tailnet the module graph takes long enough that the
-      // flash is the first thing the phone shows. Mirrors index.html and
-      // lib/theme.ts; intentionally inline + dependency-free.
+      // Resolve appearance before React mounts to avoid a flash on cold start —
+      // over the tailnet the module graph takes long enough that the flash is
+      // the first thing the phone shows. Mirrors index.html, lib/theme.ts,
+      // lib/accent.ts, and lib/userBubbleTint.ts; inline and dependency-free.
       (function () {
+        var root = document.documentElement;
         try {
           var raw = localStorage.getItem("argmax.theme.mode");
           var mode = raw === "light" || raw === "dark" || raw === "system" ? raw : "dark";
@@ -29,9 +30,22 @@
                 ? "dark"
                 : "light"
               : mode;
-          document.documentElement.setAttribute("data-theme", resolved);
+          root.setAttribute("data-theme", resolved);
         } catch (e) {
-          document.documentElement.setAttribute("data-theme", "dark");
+          root.setAttribute("data-theme", "dark");
+        }
+        try {
+          var accent = localStorage.getItem("argmax.accent.tint");
+          var accents = { green: 1, purple: 1, neutral: 1, orange: 1, blue: 1, coral: 1 };
+          root.setAttribute("data-accent", accents[accent] ? accent : "green");
+        } catch (e) {
+          root.setAttribute("data-accent", "green");
+        }
+        try {
+          var bubble = localStorage.getItem("argmax.chat.bubbleTint");
+          root.setAttribute("data-user-bubble", bubble === "neutral" ? "neutral" : "accent");
+        } catch (e) {
+          root.setAttribute("data-user-bubble", "accent");
         }
       })();
     </script>

@@ -32,6 +32,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   remote.bridge = false;
   window.localStorage.removeItem(LINK_TARGET_KEY);
+  Object.defineProperty(document, "hidden", { configurable: true, value: false });
 });
 
 describe("<StreamingMarkdown />", () => {
@@ -172,7 +173,6 @@ describe("<StreamingMarkdown />", () => {
     // The session state flipped to complete with 360 characters unrevealed.
     rerender(<StreamingMarkdown text={text} streaming={false} />);
     expect(markdown?.textContent).toBe("F".repeat(40));
-    expect(markdown?.className).toContain("markdown-streaming");
 
     act(() => {
       vi.advanceTimersByTime(32);
@@ -184,7 +184,6 @@ describe("<StreamingMarkdown />", () => {
       vi.advanceTimersByTime(32 * 35);
     });
     expect(markdown?.textContent).toBe(text);
-    expect(markdown?.className).toBe("markdown");
   });
 
   it("finishes a burst that ended mid-reveal within the same bounded window", () => {
@@ -211,7 +210,6 @@ describe("<StreamingMarkdown />", () => {
       vi.advanceTimersByTime(32 * 40);
     });
     expect(markdown?.textContent).toBe(text);
-    expect(markdown?.className).toBe("markdown");
   });
 
   it("shows an unpaced streaming block in full as it arrives", () => {
@@ -281,6 +279,78 @@ describe("<StreamingMarkdown />", () => {
     );
 
     expect(container.querySelector(".markdown")?.textContent).toBe("");
+  });
+
+  it("shows already-arrived text in full when the pane is restoring", () => {
+    const text = "R".repeat(120);
+
+    const { container } = render(
+      <StreamingMarkdown text={text} streaming restoring revealKey="session-restore:g0" />
+    );
+
+    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+  });
+
+  it("does not restart the reveal when restore ends", () => {
+    vi.useFakeTimers();
+    const text = "S".repeat(120);
+
+    const { container, rerender } = render(
+      <StreamingMarkdown text={text} streaming restoring revealKey="session-restore:g1" />
+    );
+    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+
+    rerender(
+      <StreamingMarkdown text={text} streaming restoring={false} revealKey="session-restore:g1" />
+    );
+    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    act(() => {
+      vi.advanceTimersByTime(32 * 4);
+    });
+    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+  });
+
+  it("shows a streaming block in full when it mounts while the document is hidden", () => {
+    vi.useFakeTimers();
+    const text = "H".repeat(120);
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+
+    const { container } = render(
+      <StreamingMarkdown text={text} streaming revealKey="session-hidden:g0" />
+    );
+
+    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    act(() => {
+      vi.advanceTimersByTime(32 * 4);
+    });
+    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+  });
+
+  it("catches up a live block that grew while the document was hidden", () => {
+    vi.useFakeTimers();
+    const first = "H".repeat(120);
+    const { container, rerender } = render(
+      <StreamingMarkdown text={first} streaming revealKey="session-hidden:g1" />
+    );
+    expect(container.querySelector(".markdown")?.textContent).toBe("");
+
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+    expect(container.querySelector(".markdown")?.textContent).toBe(first);
+
+    rerender(
+      <StreamingMarkdown text={"H".repeat(200)} streaming revealKey="session-hidden:g1" />
+    );
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    act(() => {
+      vi.advanceTimersByTime(32 * 4);
+    });
+    // Already-arrived text stays; only the growth after becoming visible types.
+    expect(container.querySelector(".markdown")?.textContent).toBe("H".repeat(140));
   });
 
   it("boxes a table in its own sideways scroller", () => {

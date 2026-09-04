@@ -1,5 +1,4 @@
 import {
-  costOf as rendererCostOf,
   DEFAULT_REASONING_EFFORT,
   effortForModel,
   modelLabelFor,
@@ -9,7 +8,7 @@ import {
   type ProviderModelSelection,
   type ReasoningEffort
 } from "../../shared/providerModels.js";
-import type { DiscoveredProvider, ProviderId, SessionCostSummary, SessionSummary } from "../../shared/types.js";
+import type { DiscoveredProvider, ProviderId, SessionSummary } from "../../shared/types.js";
 
 /** A {@link ProviderModelSelection} plus its provider, for the composer picker
  *  that spans providers (an idle session can switch agent). */
@@ -183,20 +182,4 @@ export function modelPickerSelectionFromSession(session: SessionSummary | null):
     provider: session?.provider ?? "codex",
     ...modelSelectionFromSession(session)
   };
-}
-
-const EMPTY_USAGE_COUNTS: SessionCostSummary["tokens"] = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheWrite: 0
-};
-
-export function costForBucket(
-  bucket: keyof SessionCostSummary["tokens"],
-  tokens: number,
-  modelId: string | null
-): number {
-  if (!modelId || tokens <= 0) return 0;
-  return rendererCostOf({ ...EMPTY_USAGE_COUNTS, [bucket]: tokens }, modelId);
 }

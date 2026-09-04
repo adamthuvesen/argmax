@@ -1,12 +1,18 @@
 # Browser Panel
 
-Argmax browses inside the review panel: Browser is one of its modes, beside Changes, Files, Agents, and [Terminal](terminal.md). Links from chat open in the system browser by default; Settings → General → "Web links from chat" can route them to the in-app browser (⌘-click toggles the alternate target). The session actions menu has an "Open browser" item, and the panel's own tab strip has a Browser tab, shown only where the desktop bridge provides `window.argmax.browser` — the mobile remote has none, so the tab is hidden there.
+Argmax has one native browser and two places that show it.
+
+**Browser page.** The left rail's Browser item (and ⌘K → Open Browser) fills the workspace with the tab strip and address bar. The session sidebar stays. Click a chat, New chat, or Esc to leave. The page remembers it was showing across a restart (`argmax.browser.pageOpen`). There is no dedicated shortcut; `⌘B` still toggles the right sidebar.
+
+**Review panel.** In a chat, Browser is one of the review-panel modes, beside Changes, Files, Agents, and [Terminal](terminal.md). The session actions menu has an "Open browser" item. This is the sidebar next to a transcript, for watching a session browse.
+
+Links from chat open in the system browser by default; Settings → General → "Web links from chat" can route them to the in-app browser (⌘-click toggles the alternate target). Both the page and the review-panel tab are shown only where the desktop bridge provides `window.argmax.browser` — the mobile remote has none, so they are hidden there.
 
 ## One Surface, One Owner
 
-There is a single native browser surface, so exactly one review panel shows it at a time. The owner is whichever panel most recently *entered* Browser mode, not the focused one: clicking into another pane's chat leaves the page where it is, while that pane switching to Browser takes it over deliberately. A panel that has been demoted stays in Browser mode and shows a "The browser moved to another pane" placeholder whose "Show here" button claims the surface back.
+There is a single native browser surface, so exactly one owner shows it at a time. The owner is whichever surface most recently *entered* Browser mode — a review panel or the Browser page — not the focused pane: clicking into another pane's chat leaves the page where it is, while that pane switching to Browser takes it over deliberately. A surface that has been demoted stays in Browser mode and shows a "The browser moved to another pane" placeholder whose "Show here" button claims the surface back.
 
-Focus still routes new open requests: a chat link or the menu item opens Browser mode in the focused pane, or in the launcher when it is the only surface on screen. Ownership lives in [browserPanel.ts](../src/renderer/lib/browserPanel.ts) (`claimBrowserSurface` / `releaseBrowserSurface`), and [useReviewState.ts](../src/renderer/hooks/useReviewState.ts) claims on entering Browser mode and releases on leaving it, closing the panel, or unmounting the pane. Moving the browser between panes is therefore a plain unmount/mount: the unmount hides the webview, the mount re-glues it to the new panel's surface.
+Focus still routes new open requests: a chat link or the menu item opens Browser mode in the focused pane, or in the launcher when it is the only surface on screen. The rail item always opens the Browser page. Ownership lives in [browserPanel.ts](../src/renderer/lib/browserPanel.ts) (`claimBrowserSurface` / `releaseBrowserSurface`). [useReviewState.ts](../src/renderer/hooks/useReviewState.ts) claims on entering Browser mode and releases on leaving it, closing the panel, or unmounting the pane; [BrowserPage.tsx](../src/renderer/components/BrowserPage.tsx) claims for the workspace page. Moving the browser between surfaces is therefore a plain unmount/mount: the unmount hides the webview, the mount re-glues it to the new surface.
 
 ## Architecture
 

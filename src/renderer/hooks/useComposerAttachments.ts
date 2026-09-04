@@ -11,8 +11,12 @@ import {
 import {
   appendReferencesToPrompt,
   buildAttachmentReferences,
+  collectDroppedFiles,
   downscaleImageBlob,
+  imageMimeFromFileName,
+  isAttachableDrag,
   isSupportedImageMime,
+  listDragTypes,
   readBlobAsBase64
 } from "../lib/composerAttachments.js";
 import { readDraft, writeDraftAttachments } from "../lib/composerDrafts.js";
@@ -89,7 +93,7 @@ export interface ComposerAttachmentsDeps {
  * Two persistence paths:
  * - **Path-based files** (file picker on macOS, drags from Finder) become
  *   `@-mentions` appended to the prompt — handled inline by the agent.
- * - **Path-less images** (browser drags, Slack drags, clipboard paste)
+ * - **Path-less images** (screenshot thumbnail, browser drags, Slack, paste)
  *   are persisted to the `AttachmentStore` so the agent can read them back
  *   via the `argmax-attachment://` scheme.
  *
@@ -254,14 +258,14 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
   }, [removePreviewUrl]);
 
   const onComposerDragEnter = useCallback((event: ReactDragEvent<HTMLFormElement>): void => {
-    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+    if (!isAttachableDrag(event.dataTransfer)) return;
     event.preventDefault();
     dragDepth.current += 1;
     setIsDraggingFiles(true);
   }, []);
 
   const onComposerDragOver = useCallback((event: ReactDragEvent<HTMLFormElement>): void => {
-    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+    if (!isAttachableDrag(event.dataTransfer)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
     setIsDraggingFiles(true);
@@ -283,9 +287,11 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
         const path = (file as { path?: string }).path;
         if (typeof path === "string" && path.length > 0) {
           withPath.push(file);
-        } else if (isSupportedImageMime(file.type)) {
-          imageBlobs.push(file);
+          continue;
         }
+        const mime = isSupportedImageMime(file.type) ? file.type : imageMimeFromFileName(file.name);
+        if (!mime) continue;
+        imageBlobs.push(file.type === mime ? file : new File([file], file.name || "image", { type: mime }));
       }
       if (withPath.length > 0) attachFiles(withPath);
       if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
@@ -300,11 +306,20 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
     (event: ReactDragEvent<HTMLFormElement>): void => {
       dragDepth.current = 0;
       setIsDraggingFiles(false);
-      if (!event.dataTransfer.files || event.dataTransfer.files.length === 0) return;
+      const files = collectDroppedFiles(event.dataTransfer);
+      if (files.length === 0) {
+        if (!isAttachableDrag(event.dataTransfer)) return;
+        event.preventDefault();
+        const types = listDragTypes(event.dataTransfer);
+        if (types.includes("Files") || types.some((type) => type.startsWith("image/"))) {
+          setStatus("Could not read the dropped file.");
+        }
+        return;
+      }
       event.preventDefault();
-      splitAndAttach(Array.from(event.dataTransfer.files));
+      splitAndAttach(files);
     },
-    [splitAndAttach]
+    [setStatus, splitAndAttach]
   );
 
   const onComposerPaste = useCallback(

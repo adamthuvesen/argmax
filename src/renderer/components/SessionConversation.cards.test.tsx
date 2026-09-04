@@ -743,10 +743,7 @@ describe("SessionConversation — cards", () => {
     expect(screen.getByRole("button", { name: "Ran echo ok" })).toBeInTheDocument();
   });
 
-  it("still renders the QuestionCard when AskUserQuestion retries fold into a tool-group", () => {
-    // Two AskUserQuestion calls within the 75ms parallel-window fold into
-    // a `tool-group`. Detection that only checks `t.kind === "tool"` would
-    // silently miss this case and the card would vanish after a brief flash.
+  it("still renders the QuestionCard when AskUserQuestion retries are adjacent", () => {
     render(
       <SessionConversation
         events={[
@@ -814,12 +811,13 @@ describe("SessionConversation — cards", () => {
     // remount the card and wipe in-progress selections.
     expect(screen.getByText("First attempt")).toBeInTheDocument();
     expect(screen.queryByText(/Refined ask/)).not.toBeInTheDocument();
-    // The fold-induced tool-group row is suppressed.
-    expect(screen.queryByRole("button", { name: /Ran 2 commands/ })).not.toBeInTheDocument();
+    // Both underlying tool rows are suppressed.
+    expect(screen.queryByRole("button", { name: "Ran commands" })).not.toBeInTheDocument();
   });
 
   it("delays Thinking after a completed assistant chunk while the session is still running", () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:01.000Z"));
     // Provider answer events and runtime completion state arrive in separate
     // dashboard deltas. Do not flash a tail Thinking bubble during that short
     // handoff; only show the marker if the session stays silent longer.

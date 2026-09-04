@@ -126,14 +126,37 @@ function invokeThroughTauri<T>(channel: IpcChannel, input: unknown = {}): Promis
 function subscribeThroughTauri<T>(channel: string, listener: (payload: T) => void): EventSubscription {
   let unlisten: UnlistenFn | null = null;
   let disposed = false;
+  let unlistenQueued = false;
 
-  const ready = tauriListen<T>(channel, (event) => listener(event.payload)).then((nextUnlisten) => {
+  const queueUnlisten = (nextUnlisten: UnlistenFn): void => {
+    if (unlistenQueued) return;
+    unlistenQueued = true;
+
+    // Tauri queues its listener-install script into the webview before the
+    // listen invoke resolves. Let that queued script run before unlistening,
+    // otherwise a same-turn React cleanup can target an event id that is not
+    // present in the webview yet.
+    setTimeout(() => {
+      void Promise.resolve()
+        .then(nextUnlisten)
+        .catch((error: unknown) => {
+          logger.error("renderer.bridge", "failed to unsubscribe from channel", {
+            channel,
+            error: errorMessage(error)
+          });
+        });
+    }, 0);
+  };
+
+  const ready = tauriListen<T>(channel, (event) => {
+    if (!disposed) listener(event.payload);
+  }).then((nextUnlisten) => {
     if (disposed) {
-      nextUnlisten();
+      queueUnlisten(nextUnlisten);
       return;
     }
     unlisten = nextUnlisten;
-    });
+  });
   ready.catch((error: unknown) => {
     logger.error("renderer.bridge", "failed to subscribe to channel", {
       channel,
@@ -142,8 +165,9 @@ function subscribeThroughTauri<T>(channel: string, listener: (payload: T) => voi
   });
 
   const off = (): void => {
+    if (disposed) return;
     disposed = true;
-    unlisten?.();
+    if (unlisten) queueUnlisten(unlisten);
     unlisten = null;
   };
   const readyForConsumers = ready.then(() => undefined);

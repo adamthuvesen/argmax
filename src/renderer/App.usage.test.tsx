@@ -3,6 +3,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import { setupAppTestMocks, usageSummary, usageSummaryFixture } from "../test/appTestHarness.js";
 
+/** Chooses an entry in an open picker menu. The row is the option; its button takes the click. */
+function pickOption(name: string): void {
+  fireEvent.click(within(screen.getByRole("option", { name })).getByRole("button"));
+}
+
 async function openUsage(): Promise<void> {
   render(<App />);
   await screen.findByRole("button", { name: "Build dashboard" });
@@ -39,9 +44,11 @@ describe("App usage", () => {
       expect.objectContaining({ window: "30d", timeZone: expect.any(String) as unknown as string })
     );
 
-    fireEvent.click(screen.getByRole("radio", { name: "7 days" }));
+    fireEvent.click(screen.getByRole("button", { name: "Time range" }));
+    pickOption("Last 7 days");
 
     expect(await screen.findByText("Aug 27 to Sep 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Time range" })).toHaveTextContent("Last 7 days");
     expect(usageSummary).toHaveBeenCalledWith(expect.objectContaining({ window: "7d" }));
     expect(screen.queryByText("Aug 4 to Sep 2")).not.toBeInTheDocument();
   });
@@ -128,6 +135,29 @@ describe("App usage", () => {
     expect(usageSummary).toHaveBeenLastCalledWith(expect.objectContaining({ provider: null }));
     expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$100.00");
     expect(within(rows).getByRole("button", { name: /Claude/ })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("narrows the page from the provider picker, and the picker follows a row press", async () => {
+    await openUsage();
+    const picker = screen.getByRole("button", { name: "Provider" });
+    expect(picker).toHaveTextContent("All providers");
+
+    fireEvent.click(picker);
+    // Cursor keeps no local usage, so it is listed but cannot be chosen.
+    expect(screen.getByRole("option", { name: "Cursor" })).toHaveAttribute("aria-disabled", "true");
+    pickOption("Codex");
+
+    expect(usageSummary).toHaveBeenLastCalledWith(expect.objectContaining({ provider: "codex" }));
+    expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$40.00");
+    expect(picker).toHaveTextContent("Codex");
+    const rows = screen.getByRole("list", { name: "Usage by provider" });
+    expect(within(rows).getByRole("button", { name: /Codex/ })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(within(rows).getByRole("button", { name: /Claude/ }));
+
+    expect(usageSummary).toHaveBeenLastCalledWith(expect.objectContaining({ provider: "claude" }));
+    expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$60.00");
+    expect(picker).toHaveTextContent("Claude");
   });
 
   it("compares the window with the one before it, and says nothing when there is nothing to compare", async () => {

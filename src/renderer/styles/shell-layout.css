@@ -159,6 +159,15 @@
   background: var(--row-hover);
 }
 
+.rail-nav-item[aria-current="page"] {
+  color: var(--text);
+  background: var(--row-selected);
+}
+
+.rail-nav-item[aria-current="page"] .rail-nav-glyph {
+  color: var(--text);
+}
+
 .rail-nav-item svg {
   flex: 0 0 auto;
   color: var(--muted-strong);

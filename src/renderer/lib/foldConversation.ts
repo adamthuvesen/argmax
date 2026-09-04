@@ -14,13 +14,12 @@ import {
   providerSwitchNoticeFor,
   type ProviderSwitchNotice
 } from "./providerSwitch.js";
-import type { TurnToolItem } from "./toolCalls.js";
 import {
-  buildToolCallGroup,
   isAgentToolName,
   type ConversationItem,
   type ToolCall
 } from "./toolCalls.js";
+import { foldTurnToolItems, type TurnToolItem } from "./turnToolItems.js";
 
 export type RenderItem =
   | { kind: "user-message"; event: TimelineEvent }
@@ -38,54 +37,20 @@ export type RenderItem =
     };
 
 /**
- * First-level fold: merge conversation events + tool calls into a single
- * time-ordered list, then collapse adjacent tool runs (≥ 2 tools with no
- * intervening message) into a `tool-group`. The 75 ms parallel window for
- * grouping is handled inside `buildToolCallGroup`.
+ * Merge conversation events and tool calls into one chronological stream.
+ * Presentation groups are built only after prose has been interleaved.
  */
 export function foldConversationItems(
   conversationEvents: readonly TimelineEvent[],
   toolCalls: readonly ToolCall[]
 ): ConversationItem[] {
-  // Pre-fold items hold only message/tool kinds; `tool-group` is built by the
-  // folding pass below, so `itemTime` only handles concrete event/tool rows.
-  type PreFoldItem = Extract<ConversationItem, { kind: "message" } | { kind: "tool" }>;
-  const items: PreFoldItem[] = [
+  const items: ConversationItem[] = [
     ...conversationEvents.map((event) => ({ kind: "message" as const, event })),
     ...toolCalls.map((tool) => ({ kind: "tool" as const, tool }))
   ];
-  const itemTime = (item: PreFoldItem): string =>
+  const itemTime = (item: ConversationItem): string =>
     item.kind === "message" ? item.event.createdAt : item.tool.createdAt;
-  const sorted: ConversationItem[] = items.sort((a, b) => itemTime(a).localeCompare(itemTime(b)));
-  const folded: ConversationItem[] = [];
-  let run: ToolCall[] = [];
-
-  const flushRun = (): void => {
-    if (run.length === 0) return;
-    if (run.length === 1) {
-      const [tool] = run;
-      if (tool) folded.push({ kind: "tool", tool });
-    } else {
-      folded.push({ kind: "tool-group", group: buildToolCallGroup(run) });
-    }
-    run = [];
-  };
-
-  for (const item of sorted) {
-    if (item.kind !== "tool") {
-      flushRun();
-      folded.push(item);
-      continue;
-    }
-    if (isAgentToolName(item.tool.name)) {
-      flushRun();
-      folded.push(item);
-      continue;
-    }
-    run.push(item.tool);
-  }
-  flushRun();
-  return folded;
+  return items.sort((a, b) => itemTime(a).localeCompare(itemTime(b)));
 }
 
 /**
@@ -98,16 +63,33 @@ export function foldConversationItems(
  * placeholder user-message item from `session.prompt` so the user sees
  * what they typed.
  *
- * @param foldTurnToolItems Callback that groups same-turn adjacent tool
- *   items the same way `foldConversationItems` does for cross-turn ones;
- *   passed in to avoid a cycle with TurnBlock.
  */
 export function foldRenderItems(
   conversationItems: readonly ConversationItem[],
-  session: SessionSummary | null | undefined,
-  foldTurnToolItems: (items: TurnToolItem[]) => TurnToolItem[]
+  session: SessionSummary | null | undefined
 ): RenderItem[] {
   const out: RenderItem[] = [];
+  // Preserve the historical fallback keys from the old transport-level tool
+  // grouping. These keys survive bounded-history windows with no user row,
+  // including a run whose first tool is later filtered as a late child.
+  const fallbackToolRuns = new Map<string, readonly ToolCall[]>();
+  let fallbackRun: ToolCall[] = [];
+  const finishFallbackRun = (): void => {
+    const first = fallbackRun[0];
+    if (!first) return;
+    const run = fallbackRun;
+    for (const tool of run) fallbackToolRuns.set(tool.id, run);
+    fallbackRun = [];
+  };
+  for (const item of conversationItems) {
+    if (item.kind === "tool" && !isAgentToolName(item.tool.name)) {
+      fallbackRun.push(item.tool);
+    } else {
+      finishFallbackRun();
+      if (item.kind === "tool") fallbackToolRuns.set(item.tool.id, [item.tool]);
+    }
+  }
+  finishFallbackRun();
   let pending:
     | {
         assistantEvents: TimelineEvent[];
@@ -129,7 +111,7 @@ export function foldRenderItems(
   // vanishing.
   const agentLaunchIds = new Set<string>();
   for (const item of conversationItems) {
-    const tools = item.kind === "tool" ? [item.tool] : item.kind === "tool-group" ? item.group.tools : [];
+    const tools = item.kind === "tool" ? [item.tool] : [];
     for (const tool of tools) {
       if (isAgentToolName(tool.name)) agentLaunchIds.add(tool.toolUseId);
     }
@@ -142,6 +124,12 @@ export function foldRenderItems(
     const parent = tool.parentToolUseId;
     if (typeof parent !== "string" || parent === tool.toolUseId) return true;
     return !agentLaunchIds.has(parent) || turnLaunchIds.has(parent);
+  };
+  const fallbackToolId = (tool: ToolCall): string => {
+    const run = fallbackToolRuns.get(tool.id) ?? [tool];
+    const visibleRun = run.filter(belongsToThisTurn);
+    const first = visibleRun[0] ?? tool;
+    return visibleRun.length > 1 ? `tcg-${first.id}` : first.id;
   };
   // A multitask notice stays associated with the turn it was dispatched from.
   // It is not a seam, so dispatching one mid-turn never splits that turn's
@@ -271,10 +259,7 @@ export function foldRenderItems(
       continue;
     }
     if (item.kind === "tool") registerLaunch(item.tool);
-    else if (item.kind === "tool-group") item.group.tools.forEach(registerLaunch);
     if (item.kind === "tool" && !belongsToThisTurn(item.tool)) continue;
-    const groupTools = item.kind === "tool-group" ? item.group.tools.filter(belongsToThisTurn) : [];
-    if (item.kind === "tool-group" && groupTools.length === 0) continue;
     if (!pending) {
       pending = { assistantEvents: [], toolItems: [], multitasks: [], firstId: activeTurnId };
     }
@@ -283,20 +268,8 @@ export function foldRenderItems(
       if (!pending.firstId) pending.firstId = `turn-${item.event.id}`;
     } else if (item.kind === "tool") {
       pending.toolItems.push({ kind: "tool", tool: item.tool });
-      if (!pending.firstId) pending.firstId = `turn-${item.tool.id}`;
-    } else {
-      const [only] = groupTools;
-      // A run reduced to one tool is that tool's own row, the same shape
-      // `foldConversationItems` produces for a run of one.
-      const kept: TurnToolItem =
-        groupTools.length === item.group.tools.length
-          ? { kind: "tool-group", group: item.group }
-          : only && groupTools.length === 1
-            ? { kind: "tool", tool: only }
-            : { kind: "tool-group", group: buildToolCallGroup(groupTools) };
-      pending.toolItems.push(kept);
       if (!pending.firstId) {
-        pending.firstId = `turn-${kept.kind === "tool" ? kept.tool.id : kept.group.id}`;
+        pending.firstId = `turn-${fallbackToolId(item.tool)}`;
       }
     }
   }

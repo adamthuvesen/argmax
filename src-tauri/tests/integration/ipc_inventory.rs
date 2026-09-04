@@ -35,12 +35,6 @@ fn source_renames(root: &Path) -> Vec<String> {
 #[test]
 fn every_command_is_registered() {
     let fixture = fixture_channels();
-    assert_eq!(
-        fixture.len(),
-        103,
-        "fixture should list every stable channel"
-    );
-
     assert_eq!(fixture, argmax_lib::ipc::REGISTERED_CHANNELS);
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -67,24 +61,40 @@ fn every_command_is_registered() {
     );
 }
 
-/// The committed bindings are generated from the same `specta_builder` the app
-/// registers, so a drifted `bindings.d.ts` is a test failure rather than a
-/// second full `cargo run --bin export-bindings` in CI.
+/// The committed bindings and secondary channel inventories come from the same
+/// exporter, so drift is a test failure rather than a second full
+/// `cargo run --bin export-bindings` in CI.
 #[test]
-fn bindings_file_is_current() {
+fn generated_ipc_files_are_current() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let generated_path = dir.path().join("bindings.d.ts");
-    argmax_lib::export_bindings(&generated_path).expect("export bindings");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let files = [
+        (
+            dir.path().join("bindings.d.ts"),
+            root.join("../src/shared/bindings.d.ts"),
+        ),
+        (
+            dir.path().join("channels.txt"),
+            root.join("tests/fixtures/channels.txt"),
+        ),
+        (
+            dir.path().join("ipcSchemas.ts"),
+            root.join("../src/shared/ipcSchemas.ts"),
+        ),
+    ];
+    argmax_lib::export_bindings(&files[0].0).expect("export bindings");
+    argmax_lib::export_ipc_inventory(&files[1].0, &files[2].0).expect("export IPC inventory");
 
-    let generated = fs::read_to_string(&generated_path).expect("read generated bindings");
-    let committed_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/shared/bindings.d.ts");
-    let committed = fs::read_to_string(&committed_path).expect("read committed bindings");
-
-    if generated != committed {
-        panic!(
-            "src/shared/bindings.d.ts is stale; run `npm run generate:bindings` and commit the result\n{}",
-            first_difference(&committed, &generated)
-        );
+    for (generated_path, committed_path) in files {
+        let generated = fs::read_to_string(&generated_path).expect("read generated file");
+        let committed = fs::read_to_string(&committed_path).expect("read committed file");
+        if generated != committed {
+            panic!(
+                "{} is stale; run `npm run generate:bindings` and commit the result\n{}",
+                committed_path.display(),
+                first_difference(&committed, &generated)
+            );
+        }
     }
 }
 

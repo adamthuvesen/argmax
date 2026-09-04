@@ -13,12 +13,18 @@
   color: var(--muted);
 }
 
+/* The table runs edge to edge inside its card, so a row's hover reaches the
+   card's border and the first column lines up under the title. The card
+   clips the last row's corners. */
 .usage-table-scroll {
   overflow-x: auto;
   min-width: 0;
-  border: 0.5px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
+  margin: 0 calc(-1 * var(--space-6)) calc(-1 * var(--space-6));
+  border-top: 0.5px solid var(--line);
+}
+
+.usage-breakdown {
+  overflow: hidden;
 }
 
 .usage-table {
@@ -30,16 +36,30 @@
 
 .usage-table th,
 .usage-table td {
-  padding: 9px var(--space-4);
+  padding: var(--space-2_5) var(--space-4);
   text-align: left;
   font-weight: inherit;
   white-space: nowrap;
 }
 
+/* The outer columns take the card's inset, so the model names sit under the
+   card title and the last figure under the card's control. */
+.usage-table th:first-child,
+.usage-table td:first-child {
+  padding-left: var(--space-6);
+}
+
+.usage-table th:last-child,
+.usage-table td:last-child {
+  padding-right: var(--space-6);
+}
+
 .usage-table thead th {
   position: sticky;
   top: 0;
+  padding-block: var(--space-2_5);
   font-size: var(--text-xs);
+  letter-spacing: 0.01em;
   color: var(--muted-strong);
   background: var(--panel);
   border-bottom: 0.5px solid var(--line);

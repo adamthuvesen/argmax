@@ -1,15 +1,9 @@
 import type {
-  EventType,
   SessionSummary,
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
-
-/** Dispatch row, written into the parent chat the moment a multitask starts. */
-export const MULTITASK_LAUNCHED: EventType = "multitask.launched";
-/** Finish row, written into the parent chat when the multitask's turn ends. */
-export const MULTITASK_FINISHED: EventType = "multitask.finished";
 
 /**
  * A multitask as the parent chat sees it. `state` is null while it is still
@@ -81,10 +75,6 @@ export function multitaskRowStatus(state: string | null): "running" | "done" | "
   if (state === "failed" || state === "cancelled") return "error";
   if (state === "complete") return "done";
   return "running";
-}
-
-export function isMultitaskEvent(event: TimelineEvent): boolean {
-  return decodeTimelineEvent(event).kind === "multitask";
 }
 
 export function multitaskNoticeFor(event: TimelineEvent): MultitaskNotice {

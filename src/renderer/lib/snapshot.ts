@@ -359,21 +359,6 @@ function sortByTimestamp<T>(
   });
 }
 
-export function mergeByCreatedAt<T extends { id: string; createdAt: string; rowCursor?: number }>(
-  current: T[],
-  updates: T[],
-  limit: number,
-  direction: "asc" | "desc"
-): T[] {
-  // sortByTimestamp is newest-first; take the newest `limit`, then orient.
-  const newestFirst = sortByTimestamp(
-    upsertById(current, updates),
-    (item) => item.createdAt,
-    (item) => item.rowCursor
-  ).slice(0, limit);
-  return direction === "asc" ? newestFirst.reverse() : newestFirst;
-}
-
 function isAfter(left: TimelineEvent, right: TimelineEvent): boolean {
   if (left.rowCursor !== undefined && right.rowCursor !== undefined) {
     return left.rowCursor > right.rowCursor;

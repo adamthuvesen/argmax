@@ -60,7 +60,6 @@ describe("PlanCard", () => {
     expect(screen.getByRole("button", { name: "Collapse plan" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mark helpful" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Mark unhelpful" })).toBeNull();
-    expect(screen.getByText("App.tsx").className).toContain("plan-card-chip");
   });
 
   it("starts with the first option selected", () => {

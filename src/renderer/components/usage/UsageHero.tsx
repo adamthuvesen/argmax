@@ -94,53 +94,60 @@ export function UsageHero({
 
   return (
     <div className="usage-hero">
-      {/* The eyebrow is the figure's label, so it names it rather than being
-          read as a second stray line beside it. */}
-      <p className="usage-hero-eyebrow" id={eyebrowId}>
-        {metric === "cost" ? "Total cost" : "Total tokens"}
-      </p>
-      <div className="usage-hero-headline">
-        <p className="usage-hero-figure" aria-labelledby={eyebrowId}>
-          {formatMetric(total, metric)}
+      <div className="usage-hero-total">
+        {/* The eyebrow is the figure's label, so it names it rather than being
+            read as a second stray line beside it. */}
+        <p className="usage-eyebrow" id={eyebrowId}>
+          {metric === "cost" ? "Total cost" : "Total tokens"}
         </p>
-        {delta ? <UsageDeltaChip delta={delta} /> : null}
+        <div className="usage-hero-headline">
+          <p className="usage-hero-figure" aria-labelledby={eyebrowId}>
+            {formatMetric(total, metric)}
+          </p>
+          {delta ? <UsageDeltaChip delta={delta} /> : null}
+        </div>
       </div>
-      <p className="usage-hero-sub">
-        {narrowed ? (
-          <span className="usage-hero-clause usage-hero-scope usage-series" data-provider={narrowed}>
-            <span className="usage-series-dot" aria-hidden="true" />
-            {providerLabel(narrowed)}
-          </span>
-        ) : null}
-        <span className="usage-hero-clause">
+      {/* The small print sets beside the figure rather than under it: three
+          stacked lines of it were the tallest thing on a page whose point is
+          the chart. */}
+      <div className="usage-hero-meta">
+        <p className="usage-hero-sub">
           {narrowed ? (
+            <span className="usage-hero-clause usage-hero-scope usage-series" data-provider={narrowed}>
+              <span className="usage-series-dot" aria-hidden="true" />
+              {providerLabel(narrowed)}
+            </span>
+          ) : null}
+          <span className="usage-hero-clause">
+            {narrowed ? (
+              <span className="usage-dot-sep" aria-hidden="true">
+                ·{" "}
+              </span>
+            ) : null}
+            {sessions} {summary.sessions === 1 ? "session" : "sessions"}
+          </span>
+          <span className="usage-hero-clause">
             <span className="usage-dot-sep" aria-hidden="true">
               ·{" "}
             </span>
-          ) : null}
-          {sessions} {summary.sessions === 1 ? "session" : "sessions"}
-        </span>
-        <span className="usage-hero-clause">
-          <span className="usage-dot-sep" aria-hidden="true">
-            ·{" "}
+            {provenance(summary.costSource, metric)}
           </span>
-          {provenance(summary.costSource, metric)}
-        </span>
-        {narrowed ? (
-          <button type="button" className="usage-hero-show-all" onClick={onShowAll}>
-            Show all
-          </button>
-        ) : null}
-      </p>
-      {insight.length > 0 ? <p className="usage-hero-insight">{insight.join(" · ")}</p> : null}
-      {/* The last line is always present, and always says the thing that
-          qualifies the figure above it. Dropping it in one metric made the
-          whole page jump when the toggle moved. */}
-      <p className="usage-hero-note">
-        {metric === "cost"
-          ? `Prices as of ${formatPricingDate(summary.scan.pricingAsOf, summary.timeZone)}.`
-          : "Reasoning is counted inside output, not added to it."}
-      </p>
+          {narrowed ? (
+            <button type="button" className="usage-hero-show-all" onClick={onShowAll}>
+              Show all
+            </button>
+          ) : null}
+        </p>
+        {insight.length > 0 ? <p className="usage-hero-insight">{insight.join(" · ")}</p> : null}
+        {/* The last line is always present, and always says the thing that
+            qualifies the figure beside it. Dropping it in one metric made the
+            whole page jump when the toggle moved. */}
+        <p className="usage-hero-note">
+          {metric === "cost"
+            ? `Prices as of ${formatPricingDate(summary.scan.pricingAsOf, summary.timeZone)}.`
+            : "Reasoning is counted inside output, not added to it."}
+        </p>
+      </div>
     </div>
   );
 }

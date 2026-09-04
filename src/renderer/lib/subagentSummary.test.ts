@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SCIENTIST_NAMES, assignAgentCodenames } from "./agentNames.js";
+import { emblemForCodename } from "./agentEmblems.js";
 import { SESSION_ICON_COLORS } from "./sessionIcons.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import type { MultitaskChild } from "./multitask.js";
@@ -75,14 +76,21 @@ describe("buildSubagentCluster", () => {
     expect(cluster?.entries[2]?.title).toBe("Map the renderer");
   });
 
-  it("tints each avatar from a stable palette entry keyed by the spawn id", () => {
+  it("gives a spawn its codename's emblem and tints the chip to match", () => {
+    // Ring and mark share one hue: two colours on one chip read as two agents.
     const tools = [tool({ toolUseId: "spawn-1" }), tool({ toolUseId: "spawn-2" })];
     const cluster = buildSubagentCluster(tools, new Map());
-    const first = cluster?.entries[0];
-    const again = buildSubagentCluster(tools, new Map())?.entries[0];
-    expect(first?.iconColor).toBe(again?.iconColor);
     for (const entry of cluster?.entries ?? []) {
+      expect(entry.emblem).toEqual(emblemForCodename(entry.codename));
+      expect(entry.iconColor).toBe(entry.emblem?.hue);
       expect(SESSION_ICON_COLORS).toContain(entry.iconColor);
     }
+    expect(buildSubagentCluster(tools, new Map())?.entries[0]).toEqual(cluster?.entries[0]);
+  });
+
+  it("leaves a multitask without an emblem, because Split is what names it", () => {
+    const cluster = buildSubagentCluster([], new Map(), [multitask("running")]);
+    expect(cluster?.entries[0]?.emblem).toBeNull();
+    expect(SESSION_ICON_COLORS).toContain(cluster?.entries[0]?.iconColor);
   });
 });

@@ -29,7 +29,10 @@ describe("AgentLaunchList", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Running")).toBeInTheDocument();
     expect(container.querySelector(".working-nest[data-active='true']")).not.toBeNull();
-    expect(container.querySelector(".agent-launch-bullet")).toBeNull();
+    // The row carries the agent's hue while it runs, so the nest lands in the
+    // colour its emblem is about to take.
+    expect(container.querySelector(".agent-launch-row.agent-emblem-tint[data-hue]")).not.toBeNull();
+    expect(container.querySelector(".agent-launch-emblem")).toBeNull();
   });
 
   it("holds the nest through its landing before the finished bullet takes over", () => {
@@ -43,10 +46,10 @@ describe("AgentLaunchList", () => {
       const { container, rerender } = render(<AgentLaunchList tools={[running]} />);
       rerender(<AgentLaunchList tools={[tool({ status: "done" })]} />);
       expect(container.querySelector(".working-nest[data-settling='true']")).not.toBeNull();
-      expect(container.querySelector(".agent-launch-bullet")).toBeNull();
+      expect(container.querySelector(".agent-launch-emblem")).toBeNull();
       act(() => void vi.advanceTimersByTime(WORKING_NEST_SETTLE_MS));
       expect(container.querySelector(".working-nest")).toBeNull();
-      expect(container.querySelector(".agent-launch-bullet")).not.toBeNull();
+      expect(container.querySelector(".agent-launch-emblem .agent-emblem[data-shape]")).not.toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -58,7 +61,7 @@ describe("AgentLaunchList", () => {
     );
     rerender(<AgentLaunchList tools={[tool({ status: "error" })]} />);
     expect(container.querySelector(".working-nest")).toBeNull();
-    expect(container.querySelector(".agent-launch-bullet[data-launch-mark='error']")).not.toBeNull();
+    expect(container.querySelector(".agent-launch-emblem[data-launch-mark='error']")).not.toBeNull();
   });
 
   it("leads with the agent's description and follows it with the codename", () => {
@@ -92,7 +95,8 @@ describe("AgentLaunchList", () => {
     const { container } = render(<AgentLaunchList tools={[tool()]} />);
     expect(screen.getByText("Completed")).toBeInTheDocument();
     expect(container.querySelector(".working-nest")).toBeNull();
-    expect(container.querySelector('.agent-launch-bullet[data-launch-mark="done"]')).not.toBeNull();
+    const emblem = container.querySelector('.agent-launch-emblem[data-launch-mark="done"] .agent-emblem');
+    expect(emblem?.getAttribute("data-status")).toBe("done");
     expect(container.querySelector(".lucide-circle-check-big")).toBeNull();
   });
 
@@ -110,6 +114,9 @@ describe("AgentLaunchList", () => {
     const { container } = render(<AgentLaunchList tools={[tool({ status: "error" })]} />);
     expect(screen.getByText("Failed")).toBeInTheDocument();
     expect(container.querySelector(".working-nest")).toBeNull();
-    expect(container.querySelector('.agent-launch-bullet[data-launch-mark="error"]')).not.toBeNull();
+    // Greyed and dotted, never recoloured: the hue says who, not how it went.
+    const emblem = container.querySelector('.agent-launch-emblem[data-launch-mark="error"] .agent-emblem');
+    expect(emblem?.getAttribute("data-status")).toBe("error");
+    expect(emblem?.querySelector(".agent-emblem-fault")).not.toBeNull();
   });
 });

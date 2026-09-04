@@ -800,10 +800,9 @@
   flex-direction: column;
   background: transparent;
   border-radius: 0;
-  animation: msg-in 200ms var(--ease);
 }
 
-.tool-call-group[data-status="error"] .tool-call-group-eyebrow-label {
+.tool-call-group[data-has-errors="true"] .tool-call-group-eyebrow-label {
   color: var(--rose);
 }
 
@@ -881,6 +880,12 @@
   color: var(--accent);
 }
 
+.tool-call-group-stat {
+  margin-left: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .tool-call-group-body {
   display: flex;
   flex-direction: column;
@@ -898,13 +903,26 @@
   padding-left: 0;
 }
 
-/* Single-line activity mode ("Tool calls in chat: Single line"). One line per
-   gap between replies summarizing ALL the tools in it, mutating in place as
-   work streams in. Reuses the group-bubble header styling; the keyed headline
-   span remounts on every text change so the fade replays — that replay is the
-   "it's updating" affordance. Clicking reveals the per-tool rows. */
+/* Activity headlines stay mounted as calls arrive. Fade once on entry without
+   replaying the animation when the summary or current action changes. */
 .activity-summary-line .activity-summary-headline {
-  animation: msg-in 180ms var(--ease);
+  animation: activity-summary-tick 240ms var(--ease);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes activity-summary-tick {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-summary-line .activity-summary-headline {
+    animation: none;
+  }
 }
 
 /* Compact activity rows: one line per tool, read as a sentence rather than a
@@ -1218,28 +1236,16 @@ button.tool-call-row-button {
   margin-right: var(--space-1);
 }
 
-.agent-launch-bullet {
+/* The settled mark is the agent's emblem, arriving on the same short fade the
+   old bullet used so the landing still ends in something appearing. */
+.agent-launch-emblem {
   display: inline-grid;
   place-items: center;
   animation: working-nest-enter var(--motion-fast) var(--ease-out);
 }
 
-.agent-launch-bullet::before {
-  content: "";
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--muted);
-  opacity: 0.55;
-}
-
-.agent-launch-row[data-status="error"] .agent-launch-bullet::before {
-  background: var(--rose);
-  opacity: 1;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .agent-launch-bullet {
+  .agent-launch-emblem {
     animation: none;
   }
 }

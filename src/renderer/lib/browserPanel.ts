@@ -68,6 +68,9 @@ export function rememberBrowserUrl(url: string): void {
 
 // --- Surface ownership ------------------------------------------------------
 
+/** Stable owner id for the full-workspace Browser page (not a review panel). */
+export const BROWSER_PAGE_OWNER_ID = "browser-page";
+
 let ownerId: string | null = null;
 const ownerListeners = new Set<() => void>();
 

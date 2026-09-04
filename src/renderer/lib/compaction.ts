@@ -1,4 +1,4 @@
-import type { EventType, TimelineEvent } from "../../shared/types.js";
+import type { TimelineEvent } from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 
 /**
@@ -9,9 +9,6 @@ import { decodeTimelineEvent } from "./canonicalTimeline.js";
  * not the summary. The summary is written for the model, and at tens of KB it
  * buries the actual conversation.
  */
-export const COMPACTION_STARTED: EventType = "session.compacting";
-export const COMPACTION_FINISHED: EventType = "session.compacted";
-
 export interface CompactionNotice {
   /** Compaction is still running. It can take minutes of total silence. */
   running: boolean;

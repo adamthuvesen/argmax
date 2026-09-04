@@ -12,6 +12,7 @@ vi.mock("../lib/highlighter.js", () => ({
 
 import type { ArgmaxApi } from "../../shared/types.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
+import { reviewStub as baseReviewStub } from "../../test/reviewFixture.js";
 import { resetBrowserTabsForTests } from "../lib/browserPanel.js";
 import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
 import { addTerminalTab, resetTerminalTabsForTests } from "../lib/terminalTabs.js";
@@ -19,71 +20,17 @@ import { ReviewPanel } from "./ReviewPanel.js";
 import { readBundledCss } from "../styles/readBundledCss.js";
 
 function reviewStub(): ReviewState {
-  return {
+  return baseReviewStub({
     files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1 }],
-    filesState: "ready",
-    filesError: null,
     selectedFilePath: "src/a.ts",
-    diff: {
-      workspaceId: "workspace-1",
-      filePath: "src/a.ts",
-      content: "@@ -1,1 +1,1 @@\n-old\n+new\n"
-    },
+    diff: { workspaceId: "workspace-1", filePath: "src/a.ts", content: "@@ -1,1 +1,1 @@\n-old\n+new\n" },
     diffState: "ready",
-    diffError: null,
     isPanelOpen: true,
-    mode: "changes",
-    setMode: vi.fn(),
-    changesScope: "branch",
-    setChangesScope: vi.fn(),
-    availableScopes: ["branch", "committed", "uncommitted", "lastTurn"],
-    comparisonBaseLabel: "main",
-    agentTabs: {
-      tabIds: [],
-      activeTabId: null,
-      selectTab: vi.fn(),
-      closeTab: vi.fn()
-    },
-    openAgent: vi.fn(),
-    openAgents: vi.fn(),
-    openMultitask: vi.fn(),
-    openBrowser: vi.fn(),
-    browserOwner: false,
-    browserRequest: null,
     terminalWorkspaceId: "workspace-1",
+    openBrowser: vi.fn(),
     openTerminal: vi.fn(),
-    toggleTerminal: vi.fn(),
-    workspaceFiles: {
-      entries: [],
-      listState: "idle",
-      listError: null,
-      refreshList: vi.fn(),
-      tabs: [],
-      activeTabPath: null,
-      selectedPath: null,
-      rootPath: null,
-      preview: null,
-      previewState: "idle",
-      previewError: null,
-      openFile: vi.fn(),
-      selectTab: vi.fn(),
-      closeTab: vi.fn(),
-      dirtyClosePrompt: null,
-      saveDirtyTabAndClose: vi.fn().mockResolvedValue(undefined),
-      discardDirtyTabAndClose: vi.fn(),
-      cancelDirtyTabClose: vi.fn(),
-      buffer: null,
-      isDirty: false,
-      diskMtimeMs: null,
-      externalChange: false,
-      saveState: "idle",
-      saveError: null,
-      canEdit: true,
-      editFile: vi.fn(),
-      saveFile: vi.fn().mockResolvedValue(undefined),
-      reloadFile: vi.fn(),
-      dismissExternalChange: vi.fn()
-    },
+    setMode: vi.fn(),
+    setChangesScope: vi.fn(),
     openFile: vi.fn(),
     expandDiffContext: vi.fn(),
     openChangesPanel: vi.fn(),
@@ -92,7 +39,7 @@ function reviewStub(): ReviewState {
     closePanel: vi.fn(),
     togglePanel: vi.fn(),
     toggleChangesPanel: vi.fn()
-  };
+  });
 }
 
 describe("ReviewPanel changes layout", () => {

@@ -4,6 +4,7 @@ import { multitaskRowStatus, type MultitaskChild } from "./multitask.js";
 import { stableHash32 } from "./stableHash.js";
 import { activityTitle } from "./agentActivity.js";
 import { codenameForTool } from "./agentNames.js";
+import { emblemForCodename, type Emblem } from "./agentEmblems.js";
 import { SESSION_ICON_COLORS } from "./sessionIcons.js";
 
 export type SubagentClusterStatus = "running" | "done" | "error";
@@ -15,6 +16,8 @@ export type SubagentClusterEntry = {
   status: SubagentClusterStatus;
   /** Session icon-palette name driving the avatar chip color. */
   iconColor: string;
+  /** The subagent's mark. Null for a multitask, which the Split glyph names. */
+  emblem: Emblem | null;
   /** A multitask is a chat running alongside, not an agent's own subagent. */
   multitask: boolean;
 };
@@ -47,20 +50,28 @@ export function buildSubagentCluster(
   const spawns = tools.filter((tool) => isAgentToolName(tool.name));
   if (spawns.length === 0 && multitasks.length === 0) return null;
   const entries: SubagentClusterEntry[] = [
-    ...spawns.map((tool) => ({
-      toolUseId: tool.toolUseId,
-      codename: codenameForTool(tool, codenames) ?? "Agent",
-      title: activityTitle(tool, tool.toolUseId),
-      status: tool.status,
-      iconColor: SESSION_ICON_COLORS[stableHash32(tool.toolUseId) % SESSION_ICON_COLORS.length] ?? "blue",
-      multitask: false
-    })),
+    ...spawns.map((tool) => {
+      const codename = codenameForTool(tool, codenames) ?? "Agent";
+      const emblem = emblemForCodename(codename);
+      return {
+        toolUseId: tool.toolUseId,
+        codename,
+        title: activityTitle(tool, tool.toolUseId),
+        status: tool.status,
+        // The ring wears the emblem's hue, not a second hash: a teal mark on a
+        // red chip would read as two identities for one agent.
+        iconColor: emblem.hue,
+        emblem,
+        multitask: false
+      };
+    }),
     ...multitasks.map((child) => ({
       toolUseId: child.session.id,
       codename: child.workspace?.taskLabel ?? "Multitask",
       title: child.workspace?.taskLabel ?? "Multitask",
       status: multitaskRowStatus(child.session.state),
       iconColor: SESSION_ICON_COLORS[stableHash32(child.session.id) % SESSION_ICON_COLORS.length] ?? "blue",
+      emblem: null,
       multitask: true
     }))
   ];

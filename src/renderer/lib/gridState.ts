@@ -312,7 +312,8 @@ export function setLauncherProject(grid: GridState, projectId: string): GridStat
 /**
  * Replaces a session cell with a launcher cell targeting the given project.
  * Used when an early stop cancels an in-flight session and returns the user to
- * the new-session composer.
+ * the new-session composer. The workspace is archived separately after the
+ * provider actually stops.
  */
 export function revertSessionToLauncher(
   grid: GridState,

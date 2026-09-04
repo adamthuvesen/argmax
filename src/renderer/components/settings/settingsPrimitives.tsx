@@ -266,11 +266,14 @@ type SettingsListPickerOption<T extends string> = {
   disabled?: boolean;
   title?: string;
   labelStyle?: CSSProperties;
+  /** Glyph before the label, in the menu row and on the trigger while chosen. */
+  icon?: ReactNode;
 };
 
 export function SettingsListPicker<T extends string>({
   ariaLabel,
   disabled = false,
+  icon,
   inputId,
   onChange,
   options,
@@ -279,6 +282,8 @@ export function SettingsListPicker<T extends string>({
 }: {
   ariaLabel: string;
   disabled?: boolean;
+  /** Glyph the trigger carries when the chosen option brings none of its own. */
+  icon?: ReactNode;
   inputId?: string;
   onChange: (value: T) => void;
   options: ReadonlyArray<SettingsListPickerOption<T>>;
@@ -291,6 +296,7 @@ export function SettingsListPicker<T extends string>({
   useDismissOnOutsideOrEscape(anchorRef, open, () => setOpen(false));
   const selected = options.find((option) => option.value === value) ?? options[0];
   const isOpen = open && !disabled;
+  const triggerIcon = selected?.icon ?? icon;
 
   return (
     <div className="settings-picker settings-list-picker" ref={anchorRef}>
@@ -304,6 +310,7 @@ export function SettingsListPicker<T extends string>({
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
       >
+        {triggerIcon}
         <span className="settings-picker-trigger-label" style={selected?.labelStyle}>
           {selected?.label ?? ""}
         </span>
@@ -343,6 +350,7 @@ export function SettingsListPicker<T extends string>({
                     setOpen(false);
                   }}
                 >
+                  {option.icon}
                   {option.label}
                 </button>
               </li>

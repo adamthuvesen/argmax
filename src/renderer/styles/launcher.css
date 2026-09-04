@@ -12,10 +12,10 @@
   text-align: center;
 }
 
-/* The fox is the headline. Its viewBox squares off below the sprite to leave
-   room for the thinking-mood rain, so a 104px mascot carries ~30px of empty
-   rows under its feet — pulled back up here so the gap above the title is the
-   gap set on .launcher-hero and not that plus the sprite's padding. */
+/* The fox is the headline. Its viewBox squares off below the sprite, so a
+   104px mascot carries ~30px of empty rows under its feet — pulled back up
+   here so the gap above the title is the gap set on .launcher-hero and not
+   that plus the sprite's padding. */
 .launcher-hero-mascot {
   margin-block-end: -30px;
 }

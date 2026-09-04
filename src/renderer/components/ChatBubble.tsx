@@ -35,11 +35,14 @@ export function ChatBubble({ kind, rawMarkdown, children }: ChatBubbleProps): JS
 
 /**
  * A long paste would otherwise grow the bubble to the full height of its
- * content and push the reply off-screen. The body is clipped to a cap in CSS
- * and the overflow opens on demand — an inline toggle rather than an inner
- * scrollport, so the page keeps one scroll axis and the whole prompt is
- * readable in place once asked for. The toggle only appears when the content
- * is actually clipped, so short messages look untouched.
+ * content and push the reply off-screen. The body is capped in CSS and the
+ * overflow opens on demand — an inline toggle rather than an inner scrollport,
+ * so the page keeps one scroll axis and the whole prompt is readable in place
+ * once asked for. Overflow is hidden only when this reports the body is over
+ * the cap: hiding it on every user bubble also clipped the inline axis, and
+ * a one-line prompt's trailing `?` lost its right-hand arc. The toggle only
+ * appears when the content is actually clipped, so short messages look
+ * untouched.
  */
 function UserBubbleBody({
   rawMarkdown,
@@ -59,7 +62,16 @@ function UserBubbleBody({
     // While expanded the cap is off, so there is nothing to measure — keep the
     // last collapsed verdict so the "Show less" way back stays on screen.
     if (!body || !content || expanded) return;
-    const measure = (): void => setClipped(content.scrollHeight - body.clientHeight > 1);
+    const measure = (): void => {
+      // Prefer the CSS cap over clientHeight: with overflow visible (so a
+      // short prompt's trailing `?` can paint), some engines report a
+      // clientHeight that grew with the content and the six-line cap would
+      // never look exceeded. `max-height: none` while expanded is already
+      // bailed out above.
+      const cap = parseFloat(getComputedStyle(body).maxHeight);
+      const limit = Number.isFinite(cap) && cap > 0 ? Math.min(body.clientHeight, cap) : body.clientHeight;
+      setClipped(content.scrollHeight - limit > 1);
+    };
     measure();
     // Watch the content, not the capped body: the body's box is pinned at the
     // cap, so it never resizes and would never report growth. Anything that

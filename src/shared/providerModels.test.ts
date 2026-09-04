@@ -1,6 +1,6 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it } from "vitest";
-import { readLogBuffer, resetLogBufferForTesting } from "./logger.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "./logger.js";
 import {
   __resetUnknownModelLog,
   costOf,
@@ -15,6 +15,10 @@ import {
 } from "./providerModels.js";
 
 const million: UsageCounts = { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("PROVIDER_MODEL_DEFAULTS", () => {
   // Tripwire: launch defaults and the effort they seed. Effort comes from
@@ -233,7 +237,6 @@ describe("costOf — golden fixtures", () => {
 describe("costOf — unknown model", () => {
   beforeEach(() => {
     __resetUnknownModelLog();
-    resetLogBufferForTesting();
   });
 
   it("returns 0 and does not throw", () => {
@@ -241,13 +244,15 @@ describe("costOf — unknown model", () => {
   });
 
   it("logs the unknown model id exactly once", () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
     costOf(million, "gpt-99-ultra");
     costOf(million, "gpt-99-ultra");
     costOf({ input: 5, output: 5, cacheRead: 0, cacheWrite: 0 }, "gpt-99-ultra");
-    const warns = readLogBuffer().filter((entry) => entry.scope === "pricing");
-    expect(warns).toHaveLength(1);
-    expect(warns[0]?.message).toBe("unknown model id");
-    expect(warns[0]?.fields.modelId).toBe("gpt-99-ultra");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith("pricing", "unknown model id", {
+      modelId: "gpt-99-ultra",
+      normalized: "gpt-99-ultra"
+    });
   });
 });
 

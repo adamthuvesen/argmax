@@ -1,6 +1,4 @@
 use super::inputs::*;
-#[cfg(test)]
-use super::live_database;
 use crate::approvals::service::{ApprovalService, ResolveStatus};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::approvals::ApprovalRequest;
@@ -53,38 +51,16 @@ fn live_approvals(state: &AppState) -> ArgmaxResult<Arc<ApprovalService>> {
 }
 
 #[cfg(test)]
-fn approval_resolution_as_str(status: ApprovalResolution) -> &'static str {
-    match status {
-        ApprovalResolution::Approved => "approved",
-        ApprovalResolution::Rejected => "rejected",
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::error::ArgmaxError;
 
     #[test]
-    fn pending_requires_initialized_database() {
-        // `.map(|_| ())` drops the Arc<Database> (which isn't Debug) so expect_err compiles.
-        let error = live_database(&AppState::new())
-            .map(|_| ())
-            .expect_err("expected missing database error");
+    fn pending_requires_initialized_approval_service() {
+        let error = approvals_pending_impl(&AppState::new())
+            .expect_err("expected missing approval service error");
         assert!(
-            matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "DATABASE_NOT_READY")
-        );
-    }
-
-    #[test]
-    fn approval_resolution_uses_persisted_status_strings() {
-        assert_eq!(
-            approval_resolution_as_str(ApprovalResolution::Approved),
-            "approved"
-        );
-        assert_eq!(
-            approval_resolution_as_str(ApprovalResolution::Rejected),
-            "rejected"
+            matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "APPROVAL_SERVICE_NOT_READY")
         );
     }
 }

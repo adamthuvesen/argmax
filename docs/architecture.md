@@ -66,6 +66,8 @@ Renderer code routes timeline meaning through [canonicalTimeline.ts](../src/rend
 - **Launcher panes**: In-grid session creation. Each launcher has its own `projectId` via `setLauncherProject` ([gridState.ts](../src/renderer/lib/gridState.ts)), so launching in another repo does not change the global app selection.
 - **Agents view**: Subagent traces linked to a parent session and tool use ID, shown as one mode of that session's review panel (Changes / Files / Agents / Browser / Terminal). They live and die with the session's pane.
 
+The [Browser page](browser.md) is a workspace-column surface, not a grid cell: the left-rail Browser item fills the workspace with the in-app browser while the session sidebar stays. Settings, Schedule, and Usage still replace the sidebar; this page does not.
+
 "New chat here" in the pane menu opens a launcher adjacent to the active pane without replacing the grid.
 
 ## Shared: `src/shared`

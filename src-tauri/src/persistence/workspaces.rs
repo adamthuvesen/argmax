@@ -2,9 +2,9 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 use specta::Type;
 
-use super::bool_to_i64;
 use super::gh::latest_pr_for_workspace;
 use super::time::now_iso;
+use super::{bool_to_i64, json_error, sqlite_error};
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -426,12 +426,4 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         pr_created_at: None,
         pr_merged_at: None,
     })
-}
-
-fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
-    ArgmaxError::service("SQLITE", error.to_string())
-}
-
-fn json_error(error: serde_json::Error) -> ArgmaxError {
-    ArgmaxError::service("JSON", error.to_string())
 }

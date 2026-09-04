@@ -5,6 +5,53 @@ behaves and looks right. The rungs are ordered by cost; climb only as high as
 the claim you need to make. An agent working in this repo should treat the
 ladder as the definition of "verified".
 
+## Local scenario verification
+
+```bash
+npm run doctor
+npm run verify -- --scenario chat-resume
+npm run verify -- --scenario cancellation
+npm run verify -- --scenario provider-error
+```
+
+The scenario runner builds a verification binary and renderer from the current
+checkout, creates a temporary project and app profile, and drives the real
+backend with a scripted Claude provider. Native UI verification is required by
+default. The fixture exercises the production launcher and normalizer without
+calling a paid provider. Other providers remain unavailable in this profile.
+
+`chat-resume` checks streaming and a follow-up turn. `cancellation` checks that
+a running provider can be stopped. `provider-error` checks that a provider
+failure becomes a failed session. These commands are local checks and are not
+part of CI or the pre-push gate.
+
+Each run prints a JSON result with its evidence location. Failures retain the
+diagnostics needed to reproduce the assertion. `--out <dir>` selects the
+evidence destination, which must be empty or new. `--keep` retains the
+temporary profile and project for inspection, but still stops the app and its
+children. Per-phase PNG and JSON files show the UI and its diagnostic state.
+
+Verification uses `dist/verification` and `src-tauri/target/verification` so a
+normal build cannot replace its assets. The runner copies the built binary
+into the temporary run directory and records its hash. It checks the source
+fingerprint before and after building and after the scenario. Finish edits
+before starting a run. An edit during verification fails the stability check.
+
+`--native off` selects the remote-browser path explicitly. Its report records
+that narrower coverage. Use the default native path for desktop UI claims.
+
+The desktop driver is compiled only with the nondefault `verification` Cargo
+feature and starts only when verification mode is requested. Ordinary builds
+do not include the driver. A verification request sent to an ordinary binary
+fails before app startup instead of falling back to installed providers.
+Before native interaction, the runner brings its isolated app window to the
+foreground and fails if that window remains hidden.
+
+Run `doctor` from the same host that will run verification. It reports the
+capabilities available to that process. OS permission checks it cannot prove
+remain unverified. Whole-window screenshots and native OS interaction may need
+Screen Recording or Accessibility permissions for that host.
+
 | Rung | Proves | Cost |
 |---|---|---|
 | `npm test` + checks | logic, budgets, parity gates | seconds |
@@ -172,6 +219,10 @@ packaged build as `Argmax`, and both match). `--pid` picks between the real
 app and a scratch instance — `scratch-app.mjs` prints its pid. Needs the
 Screen Recording permission for whatever runs the script — an agent's host
 process usually lacks it, and granting it is a Privacy & Security change the
-user makes — and a window on another Space is not capturable. The browser rung
-against the scratch backend covers everything except native chrome, so this
-is the last mile, not the default.
+user makes — and a window on another Space is not capturable.
+
+The browser rung against the scratch backend exercises the channels supported
+by the remote bridge. It cannot verify desktop-only behavior such as native
+browser tabs, folder dialogs, session-sync controls, or routines. See
+`REMOTE_UNSUPPORTED_CHANNELS` in
+[dispatch.rs](../src-tauri/src/remote/dispatch.rs) for the exact boundary.

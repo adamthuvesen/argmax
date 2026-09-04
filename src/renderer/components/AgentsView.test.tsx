@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import type { AgentTabsState } from "../hooks/useAgentTabs.js";
+import type { MultitaskChild } from "../lib/multitask.js";
 import { AgentsView } from "./AgentsView.js";
 
 function event(
@@ -66,12 +67,17 @@ function agentTabs(overrides: Partial<AgentTabsState> = {}): AgentTabsState {
   };
 }
 
-function renderView(state: AgentTabsState, events: TimelineEvent[]): void {
+function renderView(
+  state: AgentTabsState,
+  events: TimelineEvent[],
+  multitasks?: MultitaskChild[]
+): void {
   render(
     <AgentsView
       events={events}
       parentSession={session}
       agentTabs={state}
+      multitasks={multitasks}
       workspace={workspace}
     />
   );
@@ -103,7 +109,7 @@ describe("AgentsView", () => {
     expect(document.getElementById("review-agent-task-2")).not.toHaveAttribute("aria-hidden");
   });
 
-  it("names the model on the run it belongs to, and nowhere else", () => {
+  it("shows the subagent model and effort in the dock metadata strip", () => {
     renderView(
       agentTabs({ tabIds: ["task-1"], activeTabId: "task-1" }),
       [
@@ -116,10 +122,33 @@ describe("AgentsView", () => {
       ]
     );
 
-    expect(screen.getByText(/Opus 5/)).toHaveTextContent("Opus 5 · Extra High");
-    // Whether it is still working is the tab's mark; a status strip repeating
-    // it was chrome about chrome.
-    expect(screen.queryByLabelText("Agent status")).toBeNull();
+    expect(screen.getByRole("status", { name: "Agent model" })).toHaveTextContent(/Opus 5\s*·\s*Extra High/);
+    expect(screen.getByRole("region", { name: "Agent instructions" })).not.toHaveTextContent("Opus 5");
+  });
+
+  it("shows the active multitask model and effort in the same strip", () => {
+    const child: MultitaskChild = {
+      session: {
+        ...session,
+        id: "child-1",
+        workspaceId: "child-workspace",
+        modelLabel: "Sonnet 5",
+        modelId: "claude-sonnet-5",
+        reasoningEffort: "high",
+        launchKind: "multitask",
+        launchedBySessionId: session.id,
+        prompt: "Review the implementation"
+      },
+      workspace
+    };
+
+    renderView(
+      agentTabs({ tabIds: ["multitask:child-1"], activeTabId: "multitask:child-1" }),
+      [],
+      [child]
+    );
+
+    expect(screen.getByRole("status", { name: "Agent model" })).toHaveTextContent(/Sonnet 5\s*·\s*High/);
   });
 
   it("closes a subagent from its tab", () => {

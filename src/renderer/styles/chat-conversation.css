@@ -483,18 +483,13 @@
   gap: var(--space-2);
 }
 
-/* Agent, model, and effort are one label, so the line truncates as a unit and
-   the model gives up its width first: the agent's own name is what the reader
-   came for. */
+/* The role line stays compact because model and effort live in the fixed dock
+   metadata strip. */
 .agent-activity-summary-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.agent-activity-effort {
-  color: color-mix(in oklab, var(--muted) 78%, transparent);
 }
 
 .agent-activity-summary-toggle {

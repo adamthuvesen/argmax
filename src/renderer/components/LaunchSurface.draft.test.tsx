@@ -116,4 +116,22 @@ describe("launcher prompt across context changes", () => {
     ) as Record<string, { attachments?: unknown[] } | undefined>;
     expect(stored["launch-project-2"]?.attachments ?? []).toEqual([]);
   });
+
+  it("opens a stored launcher screenshot in the image preview", async () => {
+    window.localStorage.setItem(
+      "argmax.composer.drafts",
+      JSON.stringify({
+        "launch-project-1": {
+          text: "Review the screenshot",
+          attachments: [{ filePath: "/tmp/shot.png", mimeType: "image/png", sizeBytes: 10 }]
+        }
+      })
+    );
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "View attachment" }));
+    expect(screen.getByRole("dialog", { name: "Attached image" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
+    expect(screen.queryByRole("dialog", { name: "Attached image" })).toBeNull();
+  });
 });

@@ -227,7 +227,7 @@ describe("AgentActivity", () => {
     expect(screen.getByRole("region", { name: "Agent activity: Explore repo" })).toBeInTheDocument();
   });
 
-  it("reads the agent and its model as one eyebrow on the instructions line", () => {
+  it("keeps the agent role on the instructions line", () => {
     render(
       <AgentActivity
         events={[
@@ -250,9 +250,8 @@ describe("AgentActivity", () => {
     );
 
     const instructions = screen.getByRole("region", { name: "Agent instructions" });
-    expect(within(instructions).getByText("implementer · Opus 5").textContent).toBe(
-      "implementer · Opus 5 · Extra High"
-    );
+    expect(within(instructions).getByText("implementer")).toBeInTheDocument();
+    expect(within(instructions).queryByText(/Opus 5/)).toBeNull();
   });
 
   it("opens a finished run's changed file in the Changes view", () => {

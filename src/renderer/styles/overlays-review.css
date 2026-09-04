@@ -601,9 +601,9 @@
   display: inline;
 }
 
-/* Agents view: another of the panel's modes. Same skeleton as Files — a tab strip
-   on top, one scrolling body, a status strip anchored at the bottom — so
-   switching modes moves content, not furniture. */
+/* Agents view: another of the panel's modes. Same skeleton as Files, with a tab
+   strip and fixed metadata above one scrolling body, so switching tabs moves
+   content, not furniture. */
 .review-body-agents {
   flex-direction: column;
 }
@@ -623,6 +623,42 @@
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
+}
+
+.review-agent-model {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 0;
+  gap: var(--space-1);
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in oklab, var(--panel) 96%, transparent);
+  color: var(--muted);
+  font-size: var(--text-xs-plus);
+  line-height: 1.25;
+}
+
+.review-agent-model > svg {
+  flex: 0 0 auto;
+  color: var(--muted-strong);
+}
+
+.review-agent-model-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-agent-model-separator {
+  color: var(--line-strong);
+}
+
+.review-agent-model-effort {
+  flex: 0 0 auto;
 }
 
 .review-agents-transcript {

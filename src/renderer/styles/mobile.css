@@ -51,12 +51,48 @@ html:has(.mobile-shell) body {
   z-index: 2;
 }
 
+.mobile-list-header {
+  justify-content: space-between;
+  min-height: 76px;
+  padding: calc(14px + env(safe-area-inset-top)) var(--space-4) 12px;
+  border-bottom: 0;
+}
+
 .mobile-list-header h1 {
-  flex: 1;
-  font-size: var(--text-md-plus);
+  font-size: var(--text-lg);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  line-height: 1.15;
   margin: 0;
+}
+
+.mobile-list-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mobile-list-device {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: var(--text-xs-plus);
+  line-height: 1;
+}
+
+.mobile-list-device-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.mobile-list-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 /* Every phone tap target opts out of double-tap-to-zoom. iOS ignores the
@@ -117,27 +153,26 @@ html:has(.mobile-shell) body {
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  padding-bottom: calc(112px + env(safe-area-inset-bottom));
 }
 
 .mobile-section {
-  margin-top: 18px;
+  margin-top: 28px;
 }
 
 /* The first label sits under the header's hairline, which already reads as a
    separator — so it needs less air above it than the labels between lists. */
 .mobile-section:first-child {
-  margin-top: var(--space-2_5);
+  margin-top: var(--space-3);
 }
 
 .mobile-section-label {
   margin: 0;
-  padding: 0 var(--space-5) var(--space-1_5);
-  font-size: var(--text-2xs);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
+  padding: 0 var(--space-6) var(--space-2_5);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
 }
 
 .mobile-session-list {
@@ -164,7 +199,7 @@ html:has(.mobile-shell) body {
   right: 0;
   bottom: 0;
   height: 1px;
-  background: var(--line-soft);
+  display: none;
 }
 
 .mobile-session-row {
@@ -173,8 +208,8 @@ html:has(.mobile-shell) body {
   gap: var(--space-3);
   flex: 1;
   min-width: 0;
-  min-height: 56px;
-  padding: var(--space-2_5) var(--space-1) var(--space-2_5) var(--space-5);
+  min-height: 72px;
+  padding: var(--space-2_5) var(--space-1) var(--space-2_5) var(--space-6);
   background: none;
   border: none;
   color: inherit;
@@ -188,7 +223,7 @@ html:has(.mobile-shell) body {
   align-items: center;
   justify-content: center;
   width: 40px;
-  margin-right: var(--space-2);
+  margin-right: var(--space-3);
   border: none;
   background: none;
   color: var(--muted);
@@ -218,8 +253,8 @@ html:has(.mobile-shell) body {
 }
 
 .mobile-session-title {
-  font-size: var(--text-base-plus);
-  font-weight: 500;
+  font-size: var(--text-lg-tight);
+  font-weight: 400;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -230,7 +265,7 @@ html:has(.mobile-shell) body {
   align-items: center;
   gap: 7px;
   min-width: 0;
-  font-size: var(--text-xs);
+  font-size: var(--text-sm-plus);
   color: var(--muted);
 }
 
@@ -245,6 +280,71 @@ html:has(.mobile-shell) body {
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--muted);
+}
+
+.mobile-list-dock {
+  position: fixed;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.mobile-list-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2_5);
+  flex: 1;
+  min-width: 0;
+  min-height: 56px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  color: var(--muted-strong);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 16%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  pointer-events: auto;
+}
+
+.mobile-list-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-md-plus);
+}
+
+.mobile-list-search input::placeholder {
+  color: var(--muted);
+}
+
+.mobile-list-compose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 22%, transparent);
+  pointer-events: auto;
+}
+
+.mobile-list-compose:active {
+  transform: scale(0.96);
 }
 
 /* The row's one live signal, in the desktop marker's colors: amber while the
@@ -675,6 +775,100 @@ html:has(.mobile-shell) body {
   gap: var(--space-1);
   min-height: 32px;
   min-width: 0;
+}
+
+.mobile-new-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1_5);
+  padding-bottom: var(--space-1);
+}
+
+.mobile-new-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  min-height: 28px;
+  padding: 4px 4px 4px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--panel-sunken);
+  color: var(--muted-strong);
+  font-size: var(--text-xs-plus);
+}
+
+.mobile-new-attachment-preview {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.mobile-new-attachment-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mobile-new-attachment-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+}
+
+.mobile-new-attachment-remove:active {
+  background: var(--line-soft);
+  color: var(--text);
+}
+
+.mobile-new-attach {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted-strong);
+}
+
+.mobile-new-attach:active {
+  background: var(--panel-sunken);
+}
+
+.mobile-new-attach-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent-deep);
+  color: var(--panel);
+  font-size: var(--text-4xs);
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
+
+.mobile-new-status {
+  padding-top: var(--space-1);
+  color: var(--rose);
+  font-size: var(--text-xs);
 }
 
 .mobile-new-composer-toolbar .model-picker-anchor {

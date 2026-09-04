@@ -8,6 +8,25 @@ function pngBlob(): Blob {
   return new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" });
 }
 
+function installObjectUrl(urls: string[]): { create: ReturnType<typeof vi.fn>; revoke: ReturnType<typeof vi.fn>; restore: () => void } {
+  const createDescriptor = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+  const revokeDescriptor = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
+  const create = vi.fn(() => urls.shift() ?? "blob:unused");
+  const revoke = vi.fn();
+  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: create });
+  Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revoke });
+  return {
+    create,
+    revoke,
+    restore: () => {
+      if (createDescriptor) Object.defineProperty(URL, "createObjectURL", createDescriptor);
+      else Reflect.deleteProperty(URL, "createObjectURL");
+      if (revokeDescriptor) Object.defineProperty(URL, "revokeObjectURL", revokeDescriptor);
+      else Reflect.deleteProperty(URL, "revokeObjectURL");
+    }
+  };
+}
+
 afterEach(() => {
   window.localStorage.clear();
   delete (window as unknown as { argmax?: unknown }).argmax;
@@ -210,5 +229,59 @@ describe("useComposerAttachments — save races the composer retarget", () => {
     expect(result.current.pendingAttachments).toEqual([
       { filePath: "/attachments/launch-a/shot.png", mimeType: "image/png", sizeBytes: 3 }
     ]);
+  });
+});
+
+describe("useComposerAttachments — transient previews", () => {
+  it("creates browser-local previews and releases them with the attachment", async () => {
+    const objectUrl = installObjectUrl(["blob:removed", "blob:cleared", "blob:unmounted"]);
+    const saveImage = vi.fn().mockResolvedValue({
+      filePath: "/attachments/launch-a/shot.png",
+      sizeBytes: 3
+    });
+    (window as unknown as { argmax: ArgmaxApi }).argmax = {
+      attachments: { saveImage } as unknown as ArgmaxApi["attachments"]
+    } as unknown as ArgmaxApi;
+
+    const { result, unmount } = renderHook(() =>
+      useComposerAttachments({
+        draftKey: "launch-a",
+        workspacePath: null,
+        setInput: () => undefined,
+        setStatus: () => undefined
+      })
+    );
+    const paste = () => ({
+      clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => pngBlob() }] },
+      preventDefault: vi.fn()
+    });
+
+    try {
+      act(() => result.current.onComposerPaste(paste() as never));
+      await waitFor(() => expect(result.current.pendingAttachmentPreviews).toEqual({
+        "/attachments/launch-a/shot.png": "blob:removed"
+      }));
+      expect(result.current.pendingAttachments).toHaveLength(1);
+
+      act(() => result.current.removePendingAttachment("/attachments/launch-a/shot.png"));
+      expect(result.current.pendingAttachmentPreviews).toEqual({});
+      expect(objectUrl.revoke).toHaveBeenCalledWith("blob:removed");
+
+      act(() => result.current.onComposerPaste(paste() as never));
+      await waitFor(() => expect(result.current.pendingAttachmentPreviews).toEqual({
+        "/attachments/launch-a/shot.png": "blob:cleared"
+      }));
+      act(() => result.current.clearAttachments());
+      expect(objectUrl.revoke).toHaveBeenCalledWith("blob:cleared");
+
+      act(() => result.current.onComposerPaste(paste() as never));
+      await waitFor(() => expect(result.current.pendingAttachmentPreviews).toEqual({
+        "/attachments/launch-a/shot.png": "blob:unmounted"
+      }));
+      unmount();
+      expect(objectUrl.revoke).toHaveBeenCalledWith("blob:unmounted");
+    } finally {
+      objectUrl.restore();
+    }
   });
 });

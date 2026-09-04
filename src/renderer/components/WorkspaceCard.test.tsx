@@ -186,6 +186,24 @@ describe("WorkspaceCard", () => {
 
     const prRow = screen.getByRole("button", { name: "PR #1158" });
     expect(prRow.textContent).toContain("open");
+
+    rerender(
+      <WorkspaceCard
+        changeSummary={{ fileCount: 1, additions: 1, deletions: 0 }}
+        changesState="ready"
+        isTerminalOpen={false}
+        onBrowseFiles={vi.fn()}
+        onHide={vi.fn()}
+        onOpenChanges={vi.fn()}
+        onOpenCommitDialog={vi.fn()}
+        onToggleTerminal={vi.fn()}
+        session={baseSession()}
+        setStatus={vi.fn()}
+        workspace={{ ...workspace, prNumber: 1158, prState: "MERGED" }}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "PR #1158" })).toHaveTextContent("merged");
   });
 
   it("reports a failed pull-request call through the session status line", async () => {

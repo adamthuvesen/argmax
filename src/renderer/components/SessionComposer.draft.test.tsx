@@ -100,18 +100,13 @@ describe("SessionComposer unsent drafts", () => {
     expect(prompt().value).toBe("retry me");
   });
 
-  it("explains that pasting an image needs the desktop app on the remote bridge", async () => {
+  it("saves a pasted image through the remote bridge", async () => {
     remote.bridge = true;
     renderConversation(baseSession());
     pasteScreenshot();
 
-    // Plain English instead of the dispatcher's "attachments:save-image is
-    // only available in the desktop app", and no doomed request.
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Attaching images needs the desktop app."
-    );
-    expect(window.argmax?.attachments.saveImage).not.toHaveBeenCalled();
-    expect(attachedScreenshots()).toEqual([]);
+    await waitFor(() => expect(window.argmax?.attachments.saveImage).toHaveBeenCalledTimes(1));
+    expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(SCREENSHOT_PATH)]);
   });
 
   it("brings a pasted screenshot back when the session is opened again", async () => {

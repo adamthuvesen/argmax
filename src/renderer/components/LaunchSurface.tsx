@@ -76,6 +76,7 @@ const ReviewPanel = lazy(async () => ({
   default: (await import("./ReviewPanel.js")).ReviewPanel
 }));
 import { FilePopover } from "./FilePopover.js";
+import { ImageLightbox } from "./ImageLightbox.js";
 import { SkeletonPane } from "./SkeletonPane.js";
 import { SlashCommandMenu } from "./SlashCommandMenu.js";
 // WelcomePane only renders on a fresh install (no projects) — lazy-mounted
@@ -184,6 +185,7 @@ export function LaunchSurface({
   });
   const {
     pendingAttachments,
+    pendingAttachmentPreviews,
     isDraggingFiles,
     attachmentInputRef,
     removePendingAttachment,
@@ -204,6 +206,7 @@ export function LaunchSurface({
     persist: !isSubmitting
   });
   const [agentMode, setAgentMode] = useState<AgentMode>("auto");
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const projectPickerRef = useRef<HTMLDivElement | null>(null);
@@ -775,20 +778,32 @@ export function LaunchSurface({
         />
         {pendingAttachments.length > 0 ? (
           <div className="composer-attachments" aria-label="Attached images">
-            {pendingAttachments.map((attachment) => (
-              <div key={attachment.filePath} className="composer-attachment-chip">
-                <img src={attachmentProtocolUrl(attachment.filePath)} alt="" />
-                <button
-                  type="button"
-                  className="composer-attachment-remove"
-                  aria-label="Remove attachment"
-                  title="Remove attachment"
-                  onClick={() => removePendingAttachment(attachment.filePath)}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
+            {pendingAttachments.map((attachment) => {
+              const src =
+                pendingAttachmentPreviews[attachment.filePath] ?? attachmentProtocolUrl(attachment.filePath);
+              return (
+                <div key={attachment.filePath} className="composer-attachment-chip">
+                  <button
+                    type="button"
+                    className="attachment-open-button"
+                    aria-label="View attachment"
+                    title="View attachment"
+                    onClick={() => setLightboxSrc(src)}
+                  >
+                    <img src={src} alt="" />
+                  </button>
+                  <button
+                    type="button"
+                    className="composer-attachment-remove"
+                    aria-label="Remove attachment"
+                    title="Remove attachment"
+                    onClick={() => removePendingAttachment(attachment.filePath)}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         ) : null}
         <div className="composer-input">
@@ -1078,6 +1093,7 @@ export function LaunchSurface({
         ) : null}
       </form>
       </div>
+      <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />
       {isReviewOpen ? (
         <Suspense fallback={null}>
           <ReviewPanel review={reviewState} />

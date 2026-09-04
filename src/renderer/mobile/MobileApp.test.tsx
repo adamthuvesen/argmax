@@ -89,6 +89,25 @@ function sideChatSnapshot(): DashboardSnapshot {
   };
 }
 
+function installObjectUrl(url: string): () => void {
+  const createDescriptor = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+  const revokeDescriptor = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: vi.fn(() => url)
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: vi.fn()
+  });
+  return () => {
+    if (createDescriptor) Object.defineProperty(URL, "createObjectURL", createDescriptor);
+    else Reflect.deleteProperty(URL, "createObjectURL");
+    if (revokeDescriptor) Object.defineProperty(URL, "revokeObjectURL", revokeDescriptor);
+    else Reflect.deleteProperty(URL, "revokeObjectURL");
+  };
+}
+
 describe("MobileApp", () => {
   afterEach(() => {
     cleanup();
@@ -106,6 +125,18 @@ describe("MobileApp", () => {
     const row = within(section).getByRole("button", { name: /Build dashboard/ });
     expect(row).toHaveTextContent("Argmax");
     expect(within(row).getByLabelText("running")).toBeInTheDocument();
+  });
+
+  it("filters chats by title and project from the bottom search field", async () => {
+    render(<MobileApp />);
+
+    const section = await screen.findByRole("region", { name: "Chat list" });
+    const search = screen.getByRole("searchbox", { name: "Search chats" });
+    fireEvent.change(search, { target: { value: "dashboard" } });
+
+    expect(within(section).getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "argmax" } });
+    expect(within(section).getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
   });
 
   it("floats working and attention rows into Priority, with pinned rows above it", async () => {
@@ -411,6 +442,42 @@ describe("MobileApp", () => {
     expect(screen.getByRole("img", { name: "Fox mascot" })).toBeInTheDocument();
   });
 
+  it("attaches a screenshot from the new-chat composer and sends it with the launch", async () => {
+    const restoreObjectUrl = installObjectUrl("blob:mobile-screenshot");
+    try {
+      render(<MobileApp />);
+      await screen.findByRole("region", { name: "Chat list" });
+
+      fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+      const screenshot = new File([new Uint8Array([137, 80, 78, 71])], "screenshot.png", {
+        type: "image/png"
+      });
+      const input = document.querySelector('input[type="file"]');
+      expect(input).not.toBeNull();
+      fireEvent.change(input as HTMLInputElement, { target: { files: [screenshot] } });
+
+      expect(await screen.findByLabelText("Attached images")).toHaveTextContent("Image 1");
+      fireEvent.click(await screen.findByRole("button", { name: "View image 1" }));
+      expect(screen.getByRole("dialog", { name: "Attached image" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
+      expect(screen.queryByRole("dialog", { name: "Attached image" })).toBeNull();
+      fireEvent.change(screen.getByLabelText("Task"), {
+        target: { value: "Review this screenshot" }
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
+
+      await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
+      expect(launchProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "Review this screenshot @/tmp/fake.png",
+          attachments: [{ filePath: "/tmp/fake.png", mimeType: "image/png", sizeBytes: 0 }]
+        })
+      );
+    } finally {
+      restoreObjectUrl();
+    }
+  });
+
   it("picks a model from the new-session composer", async () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
@@ -709,11 +776,13 @@ describe("MobileApp", () => {
     await screen.findByRole("region", { name: "Chat list" });
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
 
-    fireEvent.click(screen.getByRole("button", { name: "Switch to light theme" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remote options" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use light theme" }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     expect(window.localStorage.getItem("argmax.theme.mode")).toBe("light");
 
-    fireEvent.click(screen.getByRole("button", { name: "Switch to dark theme" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remote options" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use dark theme" }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });
 });

@@ -20,7 +20,10 @@ export default tseslint.config(
       "scripts/*.mjs",
       // Design-concept render scripts, plain Node with no tsconfig behind them.
       "docs/design/**/*.mjs",
-      "vitest.perf.config.ts"
+      "vitest.perf.config.ts",
+      // Local throwaways. The directory is gitignored, but `eslint .` still
+      // walks it and type-aware rules have no tsconfig for those files.
+      "scratch/**"
     ]
   },
   js.configs.recommended,

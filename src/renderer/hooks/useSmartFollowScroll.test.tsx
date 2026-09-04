@@ -633,4 +633,100 @@ describe("useSmartFollowScroll", () => {
     expect(state.scrollTop).toBe(900);
     expect(result.current.showScrollToBottom).toBe(true);
   });
+
+  it("stays pinned to the bottom when a width reflow grows the transcript", () => {
+    const observers = installResizeObservers();
+    const state = { scrollHeight: 1000, clientHeight: 200, scrollTop: 800, clientWidth: 800 };
+    const el = makeScrollBox(state);
+    Object.defineProperty(el, "clientWidth", { configurable: true, get: () => state.clientWidth });
+    el.appendChild(document.createElement("article"));
+    renderHook(() => {
+      const api = useSmartFollowScroll("session-a", ["turn"], false);
+      attachListRef(api.conversationListRef, el);
+      return api;
+    });
+    const listObserver = observers.find((observer) => observer.targets.includes(el));
+    expect(listObserver).toBeDefined();
+
+    act(() => {
+      // Side panel opens: narrower list, taller transcript, same content.
+      state.clientWidth = 500;
+      state.scrollHeight = 1300;
+      listObserver?.callback([], {} as ResizeObserver);
+    });
+
+    expect(state.scrollTop).toBe(1100);
+  });
+
+  it("keeps a bottom-dwelling detached reader at the bottom across a width reflow without re-arming follow", () => {
+    const observers = installResizeObservers();
+    const state = { scrollHeight: 1000, clientHeight: 200, scrollTop: 800, clientWidth: 800 };
+    const el = makeScrollBox(state);
+    Object.defineProperty(el, "clientWidth", { configurable: true, get: () => state.clientWidth });
+    const turn = document.createElement("article");
+    el.appendChild(turn);
+    const { result, rerender } = renderHook(
+      ({ items }: { items: readonly string[] }) => {
+        const api = useSmartFollowScroll("session-a", items, false);
+        attachListRef(api.conversationListRef, el);
+        return api;
+      },
+      { initialProps: { items: ["turn"] } }
+    );
+    const listObserver = observers.find((observer) => observer.targets.includes(el));
+
+    // Detach with a 0.5px nudge, like the small-gesture test.
+    act(() => {
+      result.current.handleUserScrollIntent();
+      state.scrollTop = 799.5;
+      result.current.handleScroll();
+    });
+
+    // Height-only growth must leave a detached reader alone.
+    act(() => {
+      state.scrollHeight = 1010;
+      listObserver?.callback([], {} as ResizeObserver);
+    });
+    expect(state.scrollTop).toBe(799.5);
+
+    // Same growth driven by a width change (panel toggle) keeps the bottom.
+    act(() => {
+      state.clientWidth = 500;
+      state.scrollHeight = 1310;
+      listObserver?.callback([], {} as ResizeObserver);
+    });
+    expect(state.scrollTop).toBe(1110);
+    expect(result.current.showScrollToBottom).toBe(false);
+
+    // Still detached: the next streamed chunk leaves the viewport alone.
+    act(() => {
+      state.scrollHeight = 1500;
+      rerender({ items: ["turn", "more"] });
+    });
+    expect(state.scrollTop).toBe(1110);
+  });
+
+  it("preserves the viewport when the panel layout key changes", () => {
+    const state = { scrollHeight: 1000, clientHeight: 200, scrollTop: 800, clientWidth: 800 };
+    const el = makeScrollBox(state);
+    Object.defineProperty(el, "clientWidth", { configurable: true, get: () => state.clientWidth });
+    el.appendChild(document.createElement("article"));
+    const { rerender } = renderHook(
+      ({ layoutKey }: { layoutKey: string }) => {
+        const api = useSmartFollowScroll("session-a", ["turn"], false, undefined, null, layoutKey);
+        attachListRef(api.conversationListRef, el);
+        return api;
+      },
+      { initialProps: { layoutKey: "chat:nlog" } }
+    );
+
+    // Panel opens: the DOM mutation lands before the layout effect runs.
+    state.clientWidth = 500;
+    state.scrollHeight = 1300;
+    act(() => {
+      rerender({ layoutKey: "panel:nlog" });
+    });
+
+    expect(state.scrollTop).toBe(1100);
+  });
 });

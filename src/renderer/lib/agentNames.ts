@@ -2,26 +2,35 @@ import { getToolTypeBucket, type ToolCall } from "./toolCalls.js";
 import { stableHash32 } from "./stableHash.js";
 
 /**
- * Deterministic codenames for spawned subagents. 100 moon names, assigned by
- * hashing each spawn's toolUseId and linear-probing past names already taken in
- * the same parent session, so a session can name up to 100 distinct agents
+ * Deterministic codenames for spawned subagents: 100 physicists,
+ * mathematicians and computer scientists, one surname each. Names are assigned
+ * by hashing each spawn's toolUseId and linear-probing past names already taken
+ * in the same parent session, so a session can name up to 100 distinct agents
  * before any reuse.
+ *
+ * The list is ordered by recognisability. The first `HEADLINE_COUNT` entries
+ * are the household names, and a session's first spawn always draws from them
+ * so the codename people see most often is one they know.
  */
-export const MOON_NAMES: readonly string[] = [
-  "Phobos", "Deimos", "Io", "Europa", "Ganymede", "Callisto", "Amalthea", "Himalia",
-  "Elara", "Sinope", "Carme", "Ananke", "Leda", "Thebe", "Metis", "Titan",
-  "Rhea", "Iapetus", "Dione", "Tethys", "Enceladus", "Mimas", "Hyperion", "Phoebe",
-  "Janus", "Epimetheus", "Pandora", "Prometheus", "Atlas", "Calypso", "Miranda", "Ariel",
-  "Umbriel", "Titania", "Oberon", "Puck", "Sycorax", "Caliban", "Triton", "Nereid",
-  "Naiad", "Thalassa", "Galatea", "Larissa", "Proteus", "Charon", "Styx", "Nix",
-  "Kerberos", "Hydra", "Ymir", "Fenrir", "Surtur", "Skoll", "Hati", "Loge",
-  "Kari", "Bestla", "Hyrrokkin", "Bergelmir", "Farbauti", "Fornjot", "Jarnsaxa", "Thrymr",
-  "Skathi", "Siarnaq", "Kiviuq", "Ijiraq", "Paaliaq", "Tarqeq", "Albiorix", "Tarvos",
-  "Erriapus", "Pan", "Daphnis", "Telesto", "Methone", "Pallene", "Despina", "Hippocamp",
-  "Halimede", "Psamathe", "Neso", "Prospero", "Setebos", "Mab", "Cordelia", "Pasiphae",
-  "Lysithea", "Callirrhoe", "Themisto", "Kalyke", "Valetudo", "Dysnomia", "Vanth", "Weywot",
-  "Xiangliu", "Namaka", "Ilmarë", "Actaea"
+export const SCIENTIST_NAMES: readonly string[] = [
+  "Turing", "Einstein", "Curie", "Newton", "Noether", "Lovelace", "Feynman", "Euler",
+  "Gauss", "Hopper",
+  "Shannon", "Dirac", "Bohr", "Maxwell", "Faraday", "Planck", "Ramanujan", "Hilbert",
+  "Dijkstra", "Knuth", "Galileo", "Kepler", "Fermi", "Heisenberg", "Schrödinger", "Riemann",
+  "Cantor", "Meitner", "Hamming", "Neumann",
+  "Babbage", "Boole", "Gödel", "Church", "Kleene", "Lamport", "Liskov", "Hamilton",
+  "Erdős", "Galois", "Abel", "Fourier", "Laplace", "Lagrange", "Bayes", "Fermat",
+  "Pascal", "Leibniz", "Poincaré", "Kolmogorov", "Markov", "Pauli", "Rutherford", "Tesla",
+  "Hertz", "Kelvin", "Joule", "Hubble", "Franklin", "Hypatia",
+  "Archimedes", "Euclid", "Pythagoras", "Fibonacci", "Khwarizmi", "Descartes", "Bernoulli", "Cauchy",
+  "Banach", "Conway", "Germain", "Kovalevskaya", "Mirzakhani", "Mandelbrot", "Boltzmann", "Lorentz",
+  "Hawking", "Copernicus", "Ampère", "Ohm", "Ångström", "Bose", "Chandrasekhar", "Wu",
+  "Rubin", "Landau", "Higgs", "McCarthy", "Backus", "Ritchie", "Thompson", "Zuse",
+  "Wirth", "Hoare", "Karp", "Engelbart", "Cerf", "Rivest", "Codd", "Huffman"
 ];
+
+/** How many leading entries of `SCIENTIST_NAMES` a session's first spawn draws from. */
+export const HEADLINE_COUNT = 10;
 
 /**
  * The name a spawn falls back to before the session's events have loaded and a
@@ -29,15 +38,17 @@ export const MOON_NAMES: readonly string[] = [
  * of truth for uniqueness.
  */
 export function fallbackCodename(toolUseId: string): string {
-  return MOON_NAMES[stableHash32(toolUseId) % MOON_NAMES.length];
+  return SCIENTIST_NAMES[stableHash32(toolUseId) % SCIENTIST_NAMES.length];
 }
 
 /**
- * Assign a distinct moon name to every agent spawn in `tools`, keyed by
+ * Assign a distinct scientist name to every agent spawn in `tools`, keyed by
  * toolUseId. `tools` must be in timeline order (which `buildSessionToolCalls`
  * already guarantees), so an earlier agent's name never shifts when a later one
  * spawns — the probe only ever steps over names already claimed by earlier ids.
- * Once all 100 names are taken, later spawns reuse `MOON_NAMES[hash % 100]`.
+ * The first spawn probes from a headline slot, every later one from anywhere in
+ * the list. Once all 100 names are taken, later spawns reuse
+ * `SCIENTIST_NAMES[hash % 100]`.
  *
  * Takes the already-built tool list rather than raw events: every caller has one
  * to hand, and rebuilding it here repeated the whole tool-call reconstruction
@@ -52,13 +63,14 @@ export function assignAgentCodenames(tools: readonly ToolCall[]): Map<string, st
 
   for (const toolUseId of agentToolUseIds) {
     if (assignments.has(toolUseId)) continue;
-    const start = stableHash32(toolUseId) % MOON_NAMES.length;
-    if (taken.size >= MOON_NAMES.length) {
-      assignments.set(toolUseId, MOON_NAMES[start]);
+    const hash = stableHash32(toolUseId);
+    if (taken.size >= SCIENTIST_NAMES.length) {
+      assignments.set(toolUseId, SCIENTIST_NAMES[hash % SCIENTIST_NAMES.length]);
       continue;
     }
-    for (let step = 0; step < MOON_NAMES.length; step++) {
-      const name = MOON_NAMES[(start + step) % MOON_NAMES.length];
+    const start = hash % (taken.size === 0 ? HEADLINE_COUNT : SCIENTIST_NAMES.length);
+    for (let step = 0; step < SCIENTIST_NAMES.length; step++) {
+      const name = SCIENTIST_NAMES[(start + step) % SCIENTIST_NAMES.length];
       if (!taken.has(name)) {
         taken.add(name);
         assignments.set(toolUseId, name);

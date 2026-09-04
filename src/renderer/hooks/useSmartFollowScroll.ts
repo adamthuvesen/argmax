@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { decideSmartFollow, latestTurnSpacerPx } from "../lib/smartFollow.js";
+import { decideSmartFollow, latestTurnSpacerPx, NEAR_BOTTOM_PX } from "../lib/smartFollow.js";
 
 const USER_SCROLL_INTENT_MS = 350;
 /** How far into the list to sample an in-view node for scroll anchoring. */
@@ -79,7 +79,15 @@ export function useSmartFollowScroll(
   conversationItems: readonly unknown[],
   isThinking: boolean,
   composerRef?: RefObject<HTMLElement | null>,
-  lastUserMessageId?: string | null
+  lastUserMessageId?: string | null,
+  /**
+   * Changes when the list's width changes without its content changing — the
+   * side review/log panel opening or closing. The ResizeObserver also fires,
+   * but this runs synchronously before paint so there is no flash of jumped
+   * content, and it covers the case where the observer hasn't delivered yet.
+   * Pass e.g. `${isPanelOpen}-${isLogOpen}` from the conversation surface.
+   */
+  preserveLayoutKey?: string | number
 ): SmartFollowScroll {
   const conversationListRef = useRef<HTMLDivElement | null>(null);
   const isFollowingRef = useRef(true);
@@ -93,6 +101,12 @@ export function useSmartFollowScroll(
   // meet the reader rather than the reader scrolling to it.
   const lastScrollTopRef = useRef(0);
   const lastMaxTopRef = useRef(0);
+  // List width at the last observation. A height change with the same width is
+  // new content (streamed text, a collapsed row); a height change with a new
+  // width is a reflow (side panel opened/closed, window resized). Only the
+  // reflow may keep a bottom-dwelling detached reader at the bottom — new
+  // content below them must leave them alone on the FAB path.
+  const lastWidthRef = useRef<number | null>(null);
   const viewportAnchorRef = useRef<ViewportAnchor | null>(null);
   const childResizeObserverRef = useRef<ResizeObserver | null>(null);
   const observedChildrenRef = useRef<Set<HTMLElement>>(new Set());
@@ -131,6 +145,7 @@ export function useSmartFollowScroll(
     if (!force && !isFollowingRef.current) return;
     const top = Math.max(0, el.scrollHeight - el.clientHeight);
     lastMaxTopRef.current = top;
+    lastWidthRef.current = el.clientWidth;
     // scrollHeight/clientHeight are rounded but iOS reports fractional
     // scrollTop, so exact equality never settles there — each write fires a
     // scroll event whose handler writes again, fighting the keyboard's
@@ -198,6 +213,7 @@ export function useSmartFollowScroll(
     const contentShrunk = maxTop < previousMax - 1;
     lastScrollTopRef.current = el.scrollTop;
     lastMaxTopRef.current = maxTop;
+    lastWidthRef.current = el.clientWidth;
     const intentStartTop = userScrollStartTopRef.current;
     const movedAwayAfterUserIntent = intentStartTop !== null &&
       el.scrollTop < intentStartTop;
@@ -252,6 +268,33 @@ export function useSmartFollowScroll(
       setNewBelowCount(0);
       return;
     }
+    // A width-driven reflow (side panel opening/closing, window resize) grows
+    // the transcript above the viewport without adding content. A reader who
+    // was already at the bottom must stay at the bottom: restoring the
+    // top-anchored node instead would leave the new bottom out of view,
+    // reading as a jump up to an earlier message. Pin without touching the
+    // follow flag (staying detached keeps the next streamed chunk on the FAB
+    // path) and without resizing the turn spacer, which is a follow layout
+    // frozen while away. Height-only growth is new content below a detached
+    // reader and must leave them alone.
+    const prevTop = lastScrollTopRef.current;
+    const prevMax = lastMaxTopRef.current;
+    const prevWidth = lastWidthRef.current;
+    const width = el.clientWidth;
+    const widthChanged = prevWidth !== null && width !== prevWidth;
+    lastWidthRef.current = width;
+    if (widthChanged && prevMax - prevTop < NEAR_BOTTOM_PX) {
+      const top = Math.max(0, el.scrollHeight - el.clientHeight);
+      if (Math.abs(el.scrollTop - top) > 1) {
+        el.scrollTop = top;
+      }
+      lastScrollTopRef.current = el.scrollTop;
+      lastMaxTopRef.current = top;
+      viewportAnchorRef.current = null;
+      setShowScrollToBottom(false);
+      setNewBelowCount(0);
+      return;
+    }
     // Spacer is a follow layout. Mutating it while detached changes
     // scrollHeight and is what used to yank a near-bottom reader to the
     // latest user message once the bottom arrived on its own.
@@ -295,6 +338,15 @@ export function useSmartFollowScroll(
     }
     scrollToFollowTarget(el, true);
   }, [conversationItems, isThinking, restoreViewportAnchor, scrollToFollowTarget]);
+
+  const preserveLayoutKeyRef = useRef(preserveLayoutKey);
+  useLayoutEffect(() => {
+    if (preserveLayoutKeyRef.current === preserveLayoutKey) return;
+    preserveLayoutKeyRef.current = preserveLayoutKey;
+    const el = conversationListRef.current;
+    if (!el) return;
+    reconcileScrollAffordance(el);
+  }, [preserveLayoutKey, reconcileScrollAffordance]);
 
   useEffect(() => {
     const current = conversationItems.length;

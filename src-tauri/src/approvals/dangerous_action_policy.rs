@@ -441,12 +441,18 @@ mod tests {
             CommandRiskLevel::High,
         );
         assert_risk("killall Argmax", CommandRiskLevel::High);
-        assert_risk("pkill -f /Applications/Argmax.app/Contents/MacOS/argmax", CommandRiskLevel::High);
+        assert_risk(
+            "pkill -f /Applications/Argmax.app/Contents/MacOS/argmax",
+            CommandRiskLevel::High,
+        );
     }
 
     #[test]
     fn does_not_treat_unrelated_argmax_paths_as_self_termination() {
         assert_risk("ls /Applications/Argmax.app", CommandRiskLevel::Low);
-        assert_risk("ditto build/Argmax.app /Applications/Argmax.app", CommandRiskLevel::Low);
+        assert_risk(
+            "ditto build/Argmax.app /Applications/Argmax.app",
+            CommandRiskLevel::Low,
+        );
     }
 }

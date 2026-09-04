@@ -6,16 +6,22 @@ import {
   agentLaunchLabel,
   agentStatusLabel
 } from "../lib/agentLaunch.js";
+import { useSettleHold } from "../hooks/useSettleHold.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallDetail, toolCallHasExpandableDetail } from "./ToolCallDetail.js";
-import { WorkingNest } from "./WorkingNest.js";
+import { WORKING_NEST_SETTLE_MS, WorkingNest } from "./WorkingNest.js";
 
 /**
  * A running agent gets the animated nest; a settled one gets a plain bullet.
  * The finished state is carried by the word "Completed" on the row's own status
  * line, so a check glyph would only say it twice — and swapping the nest for a
  * same-sized bullet keeps the text edge from shifting when an agent lands.
+ *
+ * The swap waits for the nest's landing (useSettleHold): the mark's four dots
+ * gather, pulse once and open back out, and only then does the bullet take
+ * over. An agent that *errored* skips it — a landing is the app saying the work
+ * arrived, and it must never say that about work that didn't.
  */
 function AgentLaunchMark({
   status,
@@ -24,10 +30,14 @@ function AgentLaunchMark({
   status: ToolCall["status"];
   phaseKey: string;
 }): JSX.Element {
-  if (status === "running") {
+  const phase = useSettleHold(status === "running", WORKING_NEST_SETTLE_MS);
+  // Same element in the same slot across the flip, so React keeps the instance
+  // and the nest can see `active` go true → false. Returning a different node
+  // for the finished state would unmount it mid-landing.
+  if (status !== "error" && phase !== "done") {
     return (
       <WorkingNest
-        active
+        active={phase === "running"}
         className="agent-launch-mark"
         size={14}
         phaseKey={phaseKey}

@@ -53,5 +53,5 @@ html[data-document-hidden="true"] {
    rule. The resting style is the visible one, the keyframe's `from` is the only
    place the invisible state lives, and a stalled timeline costs a fade rather
    than the content. Motion that starts partly visible (`hl-token-in`,
-   `working-nest-settle`) keeps its fill — it has nothing to hide. */
+   `working-nest-land`) keeps its fill — it has nothing to hide. */
 

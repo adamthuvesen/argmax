@@ -5,6 +5,7 @@ import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
 import type { TurnToolItem } from "../lib/toolCalls.js";
 import { groupToolRuns, type TurnBodyChild } from "../lib/turnChildren.js";
+import { TurnExhale } from "./TurnExhale.js";
 
 export type { TurnToolItem, TurnBodyChild };
 
@@ -75,6 +76,7 @@ export function TurnBlock({
   headerTimestampIso,
   turnMarkdown,
   changes,
+  exhaleWeight,
   onFork
 }: {
   toolItems: TurnToolItem[];
@@ -109,6 +111,11 @@ export function TurnBlock({
   // turn settles. A summary of a turn still in progress would be a moving
   // number, so the parent only supplies it for a finished turn.
   changes?: JSX.Element | null;
+  // How much this turn produced, 0..1 (lib/turnExhale.ts). Supplied only for a
+  // turn that finished cleanly — the parent knows whether the session failed or
+  // was cancelled, and a turn that ended badly gets no breath. Absent means the
+  // caller does not play one at all.
+  exhaleWeight?: number;
   // Fork the session this turn belongs to (provider-gated by the parent).
   onFork?: () => void;
 }): JSX.Element {
@@ -198,8 +205,24 @@ export function TurnBlock({
     return () => clearTimeout(id);
   }, [hasBody]);
 
+  // The turn-end breath. Fires on the running → finished edge *observed by this
+  // mounted block*, which is the whole guard: a reopened session mounts every
+  // one of its turns already finished, and a transcript that exhaled forty
+  // times on open would be a light show, not a signal. Seeding the ref from the
+  // first render makes the restore case a non-event, the same discipline
+  // `wasEmptyRef` uses above.
+  const wasRunningRef = useRef(running);
+  const [exhale, setExhale] = useState<number | null>(null);
+  useEffect(() => {
+    const wasRunning = wasRunningRef.current;
+    wasRunningRef.current = running;
+    if (running || !wasRunning || exhaleWeight === undefined) return;
+    setExhale(exhaleWeight);
+  }, [running, exhaleWeight]);
+
   return (
     <div className="turn-block" data-running={running ? "true" : undefined}>
+      {exhale === null ? null : <TurnExhale weight={exhale} onDone={() => setExhale(null)} />}
       <div className="turn-block-header">
         {headerTimestampLabel ? (
           <span

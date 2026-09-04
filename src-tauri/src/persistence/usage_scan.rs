@@ -250,6 +250,23 @@ pub fn list_hourly_between(
     rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
 }
 
+/// The first hour the ledger holds, for `provider` when one is named. `None`
+/// on an empty ledger. It tells a window the ledger reaches past from one it
+/// only partly covers, which would make a comparison lie.
+pub fn earliest_hour(connection: &Connection, provider: Option<&str>) -> ArgmaxResult<Option<i64>> {
+    match provider {
+        Some(provider) => connection
+            .prepare_cached("SELECT MIN(hour_utc) FROM usage_hourly WHERE provider = ?")
+            .map_err(sqlite_error)?
+            .query_row([provider], |row| row.get::<_, Option<i64>>(0)),
+        None => connection
+            .prepare_cached("SELECT MIN(hour_utc) FROM usage_hourly")
+            .map_err(sqlite_error)?
+            .query_row([], |row| row.get::<_, Option<i64>>(0)),
+    }
+    .map_err(sqlite_error)
+}
+
 /// Drop ledger rows and dedupe claims older than `before_hour`. Cursors stay:
 /// a file that old is outside the walk window and will not be reopened.
 pub fn prune_before(connection: &Connection, before_hour: i64) -> ArgmaxResult<()> {

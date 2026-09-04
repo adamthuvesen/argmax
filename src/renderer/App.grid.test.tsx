@@ -464,8 +464,8 @@ describe("App grid", () => {
     fireEvent.click(screen.getByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: /^Agent activity: / });
-    // The panel's tab carries the spawn's codename ("task-1" hashes to Triton).
-    expect(screen.getByRole("tab", { name: /Triton/ })).toBeInTheDocument();
+    // The panel's tab carries the spawn's codename ("task-1" hashes to Gauss).
+    expect(screen.getByRole("tab", { name: /Gauss/ })).toBeInTheDocument();
     expect(within(pane).queryByRole("heading", { name: "Map renderer" })).toBeNull();
     expect(within(pane).getAllByText(promptText)).toHaveLength(1);
     const expandInstructions = within(pane).getByRole("button", { name: "Expand instructions" });
@@ -600,7 +600,7 @@ describe("App grid", () => {
     const tablist = await screen.findByRole("tablist", { name: "Subagents and multitasks" });
     const tabLabels = within(tablist).getAllByRole("tab").map((tab) => tab.textContent);
     expect(tabLabels).toHaveLength(2);
-    // Each spawn gets its own distinct moon-name codename as the tab label.
+    // Each spawn gets its own distinct scientist codename as the tab label.
     expect(new Set(tabLabels).size).toBe(2);
     // The chat row and the tab derive the codename from the same toolUseId, so
     // the same spawn must carry the same name at both call sites. The tab's
@@ -615,19 +615,19 @@ describe("App grid", () => {
     // Both subagents share the session's review panel — no extra grid column.
     expect(document.querySelectorAll(".session-multigrid-cell")).toHaveLength(1);
 
-    expect(screen.getByRole("tab", { name: "Tethys" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Knuth" })).toHaveAttribute("aria-selected", "true");
     // Both transcripts stay mounted; the inactive one is hidden, not unmounted.
     expect(document.getElementById("review-agent-task-1")).toHaveAttribute("aria-hidden", "true");
     expect(document.getElementById("review-agent-task-2")).not.toHaveAttribute("aria-hidden");
 
-    fireEvent.click(screen.getByRole("tab", { name: "Triton" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Gauss" }));
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: "Triton" })).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByRole("tab", { name: "Gauss" })).toHaveAttribute("aria-selected", "true");
     });
     expect(document.getElementById("review-agent-task-1")).not.toHaveAttribute("aria-hidden");
 
     // Closing one tab leaves the other open in the panel.
-    fireEvent.click(screen.getByRole("button", { name: "Close Tethys" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close Knuth" }));
     await waitFor(() => {
       expect(within(tablist).getAllByRole("tab")).toHaveLength(1);
     });
@@ -1884,7 +1884,7 @@ describe("App grid", () => {
     await screen.findByRole("tablist", { name: "Subagents and multitasks" });
 
     // task-2 is active; task-1 is hidden but still running.
-    expect(screen.getByRole("tab", { name: "Triton" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("tab", { name: "Gauss" })).toHaveAttribute("aria-selected", "false");
 
     const task1Calls = (): number =>
       sessionAgentEvents.mock.calls.filter((call) => call[0].parentToolUseId === "task-1").length;

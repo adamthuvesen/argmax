@@ -768,6 +768,16 @@ describe("accent CSS contract", () => {
     expect(speedRule).toContain("min-width: 230px;");
   });
 
+  it("paints an open launcher picker above the composer input", () => {
+    const chatChrome = readSource("src/renderer/styles/chat-chrome.css");
+    const openContextRule = cssRuleBody(
+      chatChrome,
+      '.launcher-surface .composer > .composer-context:has(.composer-context-chip[aria-expanded="true"])'
+    );
+
+    expect(openContextRule).toContain("z-index: 3;");
+  });
+
   it("keeps project and model picker menus dense", () => {
     const chatChrome = readSource("src/renderer/styles/chat-chrome.css");
     const popoverRule = cssRuleBody(chatChrome, ".project-picker-popover");

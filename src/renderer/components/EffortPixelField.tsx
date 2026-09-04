@@ -1,5 +1,14 @@
 import { useEffect, useRef, type JSX } from "react";
-import { hash, readAccent, vnoise, type Rgb } from "../lib/pixelField.js";
+import {
+  CELL,
+  FLOOR,
+  INTENSITY_CAP,
+  mosaicColor,
+  mosaicJitter,
+  mosaicWeight,
+  readColorToken,
+  type Rgb
+} from "../lib/pixelField.js";
 
 // Accent pixel mosaic for the effort slider. It fills the track from the left up
 // to `level` (0..1) and streams left→right; `flowRate` (0..1) sets the current's
@@ -8,7 +17,6 @@ import { hash, readAccent, vnoise, type Rgb } from "../lib/pixelField.js";
 // throws off sparks — pixels that fan out past the rail as if it's overheating.
 // Purely decorative — the slider on top owns interaction.
 
-const CELL = 5; // logical px per pixel-cell
 // Scroll rate (phase units per ms) = BASE + RANGE * flowRate^CURVE. `flowRate` is the
 // continuous thumb position, so during a drag the rate rises smoothly the whole
 // way from one stop to the next. The mild curve keeps the four stops clearly
@@ -17,10 +25,6 @@ const CELL = 5; // logical px per pixel-cell
 const BASE_SPEED = 0.0026; // barely-crawling drift at the lowest effort
 const SPEED_RANGE = 0.036; // extra rate at the highest effort
 const SPEED_CURVE = 1.6; // >1 keeps the slow end slower; gentle enough to ramp smoothly
-const FX = 0.34; // horizontal feature frequency (smaller = more individual pixels)
-const FY = 0.85; // vertical feature frequency
-const FLOOR = 0.22; // minimum fraction of intensity every cell gets (keeps it dense)
-const INTEN_CAP = 0.85; // hard alpha ceiling
 // Overall accent brightness scales with effort: dimmer at low, vivid toward
 // xhigh. BRIGHT_FLOOR is the alpha multiplier at the slowest speed.
 const BRIGHT_FLOOR = 0.5;
@@ -61,17 +65,20 @@ export function EffortPixelField({ level, flowRate }: { level: number; flowRate:
     if (!ctx) return undefined;
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    let accent: Rgb = readAccent("--accent", host);
-    let crest: Rgb = readAccent("--accent-deep", host);
+    let accent: Rgb = readColorToken("--accent", host);
+    let crest: Rgb = readColorToken("--accent-deep", host);
     let railW = 0; // the rail's own width/height (the track element)
     let railH = 0;
     let width = 0; // the canvas' overscanned size
     let height = 0;
     let raf = 0;
+    let running = false;
     let shownLevel = levelRef.current; // eased fill, so snaps glide instead of jumping
     let shownSpeed = flowRateRef.current; // eased rate, so a step change ramps up/down
     let scroll = 0; // accumulated flow phase (advanced by dt*rate, never now*rate)
     let last = 0;
+    let lastPaint = 0;
+    let pendingDt = 0; // wall-clock accumulated across skipped (throttled) frames
     const sparks: Spark[] = [];
 
     const resize = (): void => {
@@ -96,26 +103,16 @@ export function EffortPixelField({ level, flowRate }: { level: number; flowRate:
       const bright = BRIGHT_FLOOR + (1 - BRIGHT_FLOOR) * shownSpeed;
 
       for (let r = 0; r < rows; r += 1) {
-        const sy = r * FY;
         for (let c = 0; c < cols; c += 1) {
           const x = c * CELL;
           if (x >= fillWidth) break; // only the filled portion is pixelated
-          const sx = c * FX - scroll; // sampling x scrolls with time → features move right
-          let w = 0.55 * vnoise(sx, sy) + 0.45 * vnoise(sx * 2.6 - scroll * 0.9, sy * 1.8 + 11.3);
-          w = (w - 0.5) * 1.7 + 0.5;
-          if (w < 0) w = 0;
-          else if (w > 1) w = 1;
+          const w = mosaicWeight(c, r, scroll);
           // Ramp brighter toward the fill edge (right), fainter at the start.
           const ramp = 0.2 + 0.8 * (x / fillWidth);
-          const jitter = 0.8 + 0.2 * hash(c * 0.7, r * 0.7);
-          let intensity = ramp * (FLOOR + (1 - FLOOR) * w) * jitter * bright;
-          if (intensity > INTEN_CAP) intensity = INTEN_CAP;
+          let intensity = ramp * (FLOOR + (1 - FLOOR) * w) * mosaicJitter(c, r) * bright;
+          if (intensity > INTENSITY_CAP) intensity = INTENSITY_CAP;
           if (intensity < 0.02) continue;
-          // Brighter cells lean toward accent-deep for depth.
-          const mix = w > 0.62 ? (w - 0.62) / 0.38 : 0;
-          const cr = Math.round(accent.r + (crest.r - accent.r) * mix);
-          const cg = Math.round(accent.g + (crest.g - accent.g) * mix);
-          const cb = Math.round(accent.b + (crest.b - accent.b) * mix);
+          const { r: cr, g: cg, b: cb } = mosaicColor(w, accent, crest);
           ctx.fillStyle = `rgba(${cr},${cg},${cb},${intensity.toFixed(3)})`;
           ctx.fillRect(x, OVERSCAN_TOP + r * CELL, CELL - 1, CELL - 1);
         }
@@ -174,20 +171,44 @@ export function EffortPixelField({ level, flowRate }: { level: number; flowRate:
     };
 
     const tick = (): void => {
+      // A backgrounded tab gains nothing from new frames and rAF may be
+      // throttled to 1 Hz there anyway — park the loop until visible again
+      // rather than burning CPU on invisible pixels.
+      if (document.hidden) {
+        running = false;
+        raf = 0;
+        return;
+      }
       const now = performance.now();
       const dt = last === 0 ? 16 : Math.min(64, now - last);
       last = now;
       shownLevel += (levelRef.current - shownLevel) * 0.2;
       shownSpeed += (flowRateRef.current - shownSpeed) * 0.2;
-      const rate = BASE_SPEED + SPEED_RANGE * Math.pow(shownSpeed, SPEED_CURVE);
-      scroll += dt * rate;
-      paint();
-      updateSparks(dt);
+      // Decorative flow at ~30 fps is indistinguishable from 60 fps here and
+      // halves the per-cell noise cost, the dominant term in this loop. The
+      // skipped frames' wall-clock still counts toward motion so the flow
+      // rate and spark physics don't run at half speed.
+      pendingDt += dt;
+      if (now - lastPaint >= 33) {
+        lastPaint = now;
+        const step = pendingDt;
+        pendingDt = 0;
+        const rate = BASE_SPEED + SPEED_RANGE * Math.pow(shownSpeed, SPEED_CURVE);
+        scroll += step * rate;
+        paint();
+        updateSparks(step);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+
+    const start = (): void => {
+      if (running || document.hidden) return;
+      running = true;
       raf = requestAnimationFrame(tick);
     };
 
     if (reduceMotion) paintStatic();
-    else raf = requestAnimationFrame(tick);
+    else start();
 
     const resizeObserver = new ResizeObserver(() => {
       resize();
@@ -197,8 +218,8 @@ export function EffortPixelField({ level, flowRate }: { level: number; flowRate:
 
     // Refresh colors when the theme or accent attribute flips on <html>.
     const themeObserver = new MutationObserver(() => {
-      accent = readAccent("--accent", host);
-      crest = readAccent("--accent-deep", host);
+      accent = readColorToken("--accent", host);
+      crest = readColorToken("--accent-deep", host);
       if (reduceMotion) paintStatic();
     });
     themeObserver.observe(document.documentElement, {
@@ -206,10 +227,20 @@ export function EffortPixelField({ level, flowRate }: { level: number; flowRate:
       attributeFilter: ["data-theme", "data-accent"]
     });
 
+    const onVisibility = (): void => {
+      if (!reduceMotion && !document.hidden) {
+        last = 0;
+        start();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       cancelAnimationFrame(raf);
+      running = false;
       resizeObserver.disconnect();
       themeObserver.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 

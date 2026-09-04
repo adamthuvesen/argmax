@@ -44,16 +44,27 @@
   fill: var(--fox-nose);
 }
 
+.mascot .mascot-blush rect {
+  fill: var(--fox-blush);
+}
+
 .mascot .mascot-eyes rect {
   fill: #ffffff;
 }
 
 /* Blinking scales down the eye highlights alone. The dark eye blocks underneath
    stay put, so a blink reads as the shine going out rather than as a hole
-   opening in the face. */
+   opening in the face.
+
+   Base sprite only. The other three draw closed or covered eyes, and the
+   keyframe scales the whole eye group from one fixed origin — on those it
+   would pulse a shut-eye arc or the glints on the sunglasses. */
 .mascot .mascot-eyes {
   transform-origin: 40px 18px;
   transform-box: view-box;
+}
+
+.mascot[data-sprite="base"] .mascot-eyes {
   animation: mascot-blink 4.6s var(--ease) infinite;
   animation-play-state: var(--loop-play-state, running);
 }
@@ -63,8 +74,10 @@
   opacity: 0;
 }
 
-.mascot[data-mood="happy"] {
-  animation: mascot-hop 0.7s var(--ease) 1, mascot-breathe 3.2s steps(1, end) 0.7s infinite;
+/* Dozing: the same breath, slowed down. The shut eyes and the z carry the mood,
+   so nothing droops and nothing drains — the fox is asleep, not sad. */
+.mascot[data-mood="sleepy"] {
+  animation: mascot-breathe 4.8s steps(1, end) infinite;
   animation-play-state: var(--loop-play-state, running);
 }
 
@@ -117,7 +130,10 @@
   cursor: not-allowed;
 }
 
-.mascot-button .mascot {
+/* The 24px send control. The launcher hero renders the same button variant at
+   its own size (see .launcher-hero-mascot-button in launcher.css), so it opts
+   out rather than fighting this rule from a stylesheet imported earlier. */
+.mascot-button:not(.launcher-hero-mascot-button) .mascot {
   width: 24px;
   height: 24px;
 }

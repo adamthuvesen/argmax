@@ -141,6 +141,22 @@ describe("buildConversationEvents", () => {
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "done"]);
   });
 
+  it("does not split a parent answer at a subagent tool boundary", () => {
+    const events = [
+      event("done", "message.completed", "2026-05-12T15:00:04.000Z", "Hero label restored."),
+      event("suffix", "message.delta", "2026-05-12T15:00:03.000Z", "ero label restored."),
+      event("child-tool", "command.started", "2026-05-12T15:00:02.000Z", "Bash", {
+        id: "child-tool-1",
+        name: "Bash",
+        parent_tool_use_id: "task-1"
+      }),
+      event("prefix", "message.delta", "2026-05-12T15:00:01.000Z", "H"),
+      event("user", "user.message", "2026-05-12T15:00:00.000Z", "Go")
+    ];
+
+    expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "done"]);
+  });
+
   it("drops streamed answer deltas when a completed message and tools land in chronological order", () => {
     const events = [
       event("c2", "message.completed", "2026-05-12T15:00:07.000Z", "Final conclusion."),

@@ -298,7 +298,7 @@ describe("<StreamingMarkdown />", () => {
     expect(screen.getByText(text)).toBeInTheDocument();
   });
 
-  it("renders LaTeX display equations from \\[ ... \\] and $$ ... $$ blocks", () => {
+  it("renders LaTeX display equations from \\[ ... \\] and $$ ... $$ blocks", async () => {
     const text = [
       "Here is the abstention equation:",
       "\\[ \\text{margin} = P(\\text{best family}) - P(\\text{second-best family}) \\]",
@@ -308,19 +308,25 @@ describe("<StreamingMarkdown />", () => {
 
     const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
 
+    // Math renders through the lazy KaTeX chunk (see MathMarkdown.tsx), so the
+    // first paint is the plain fallback and the formatted equations land once
+    // the chunk resolves.
+    await waitFor(() => {
+      expect(container.querySelectorAll(".katex-display").length).toBe(2);
+    });
     const katexDisplays = container.querySelectorAll(".katex-display");
-    expect(katexDisplays.length).toBe(2);
     expect(katexDisplays[0]?.textContent).toContain("margin");
     expect(katexDisplays[1]?.textContent).toContain("E=mc");
   });
 
-  it("renders LaTeX inline equations from \\( ... \\) and $ ... $ spans", () => {
+  it("renders LaTeX inline equations from \\( ... \\) and $ ... $ spans", async () => {
     const text = "\\(\\tau\\) is the threshold and $x + y = z$ is the sum.";
 
     const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
 
-    const katexInlines = container.querySelectorAll(".katex");
-    expect(katexInlines.length).toBeGreaterThanOrEqual(2);
+    await waitFor(() => {
+      expect(container.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(2);
+    });
     expect(container.textContent).toContain("τ");
   });
 
@@ -383,7 +389,7 @@ describe("<StreamingMarkdown />", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("renders the exact markdown formula example from user query", () => {
+  it("renders the exact markdown formula example from user query", async () => {
     const text = [
       "\\tau (\"tau\") is the abstention threshold. It controls how far ahead the model's best family must be from its second-best family before we emit a label.",
       "",
@@ -394,8 +400,10 @@ describe("<StreamingMarkdown />", () => {
 
     const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
 
+    await waitFor(() => {
+      expect(container.querySelector(".katex-display")).toBeInTheDocument();
+    });
     const displayMath = container.querySelector(".katex-display");
-    expect(displayMath).toBeInTheDocument();
     expect(displayMath?.textContent).toContain("margin");
     expect(displayMath?.textContent).toContain("best family");
     expect(displayMath?.textContent).toContain("second-best family");

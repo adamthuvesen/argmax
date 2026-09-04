@@ -270,4 +270,37 @@ describe("TurnBlock", () => {
     // tool-before must appear before assistant-after in document order.
     expect(tool0.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  describe("turn-end breath", () => {
+    const props = {
+      toolItems: [] as TurnToolItem[],
+      assistantTimestamps: [Date.parse("2026-05-12T15:00:03.000Z")],
+      body: body(assistantChild("answer"))
+    };
+
+    it("plays once when a running turn finishes", () => {
+      const { container, rerender } = render(
+        <TurnBlock {...props} isTurnActive exhaleWeight={0.6} />
+      );
+      expect(container.querySelector("canvas")).toBeNull();
+      rerender(<TurnBlock {...props} isTurnActive={false} exhaleWeight={0.6} />);
+      expect(container.querySelector("canvas")).not.toBeNull();
+    });
+
+    it("does not play for a turn that mounts already finished", () => {
+      // The guard the whole feature rests on: reopening a session remounts
+      // every turn in it with the work long over, and a transcript that
+      // exhaled forty times on open would be a light show, not a signal.
+      const { container } = render(<TurnBlock {...props} isTurnActive={false} exhaleWeight={0.6} />);
+      expect(container.querySelector("canvas")).toBeNull();
+    });
+
+    it("does not play when the caller withholds a weight", () => {
+      // How a failed or cancelled turn stays quiet: the parent knows the
+      // session's outcome and simply passes nothing.
+      const { container, rerender } = render(<TurnBlock {...props} isTurnActive />);
+      rerender(<TurnBlock {...props} isTurnActive={false} />);
+      expect(container.querySelector("canvas")).toBeNull();
+    });
+  });
 });

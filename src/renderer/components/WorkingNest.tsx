@@ -2,7 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { stableHash32 } from "../lib/stableHash.js";
 
 export const WORKING_NEST_CYCLE_MS = 900;
-const WORKING_NEST_SETTLE_MS = 180;
+/** How long the landing runs — gather, pulse, open back out. Exported because a
+ *  caller that swaps the nest for a finished mark has to hold the nest mounted
+ *  this long, or the landing is replaced before it plays. */
+export const WORKING_NEST_SETTLE_MS = 220;
 
 /**
  * The working nest: four dots in a 2x2 where emphasis passes clockwise from
@@ -12,7 +15,11 @@ const WORKING_NEST_SETTLE_MS = 180;
  * sidebar, a sub-agent launch in the transcript, an agent tab, an agent pane
  * header. Live work looks the same wherever the user is looking. `active`
  * drives both the accent color and the motion. A settled nest rests still and
- * muted. The sequence lives in CSS (.working-nest-dot) so
+ * muted, and gets there through a landing: on the running → finished edge the
+ * four dots gather into one, pulse in the leader's color, and open back out.
+ * A caller that swaps the nest for a finished mark has to keep it mounted for
+ * `WORKING_NEST_SETTLE_MS` first (hooks/useSettleHold.ts) or the landing is
+ * unmounted before it plays. The sequence lives in CSS (.working-nest-dot) so
  * prefers-reduced-motion can pin it to a still nest. `phaseKey` keeps the same
  * job synchronized across surfaces while separate jobs start on different beats.
  */

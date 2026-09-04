@@ -141,6 +141,7 @@ export function UsageAreaChart({
   const [size, setSize] = useState({ width: FALLBACK_WIDTH, height: FALLBACK_HEIGHT });
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const tableId = useId();
+  const gradientId = useId();
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -303,7 +304,13 @@ export function UsageAreaChart({
       : series
           .map((entry) => ({ provider: entry.provider, value: entry.values[cursorIndex] }))
           .filter((row) => row.value > 0);
-  const tooltipHeight = 26 + Math.max(1, activeRows.length) * TOOLTIP_ROW;
+  // A bucket with more than one provider in it gets a total rule at the
+  // bottom: the question at a spike is "what did that day cost", and adding
+  // four figures in your head is not an answer.
+  const activeTotal = activeRows.reduce((sum, row) => sum + row.value, 0);
+  const showTotal = activeRows.length > 1;
+  const tooltipHeight =
+    26 + (Math.max(1, activeRows.length) + (showTotal ? 1 : 0)) * TOOLTIP_ROW + (showTotal ? 6 : 0);
   const anchorX = cursorIndex === null ? 0 : xAt(cursorIndex);
   const flip = anchorX + 12 + TOOLTIP_WIDTH > PAD_LEFT + plotWidth;
   const tooltipX = flip ? anchorX - 12 - TOOLTIP_WIDTH : anchorX + 12;
@@ -348,6 +355,33 @@ export function UsageAreaChart({
           ))}
         </g>
 
+        {/* The window's last bucket is still filling — today is not over, and
+            the current hour is minutes old. Banding it keeps the reader from
+            reading a half-finished day as a collapse in spend. */}
+        {points.length > 1 ? (
+          <>
+            <defs>
+              {/* Fading in from the left rather than butting up against a hard
+                  edge: a crisp vertical seam in the middle of a plot reads as
+                  a rendering fault, not as a caveat. */}
+              <linearGradient id={`${gradientId}-partial`} x1="0" y1="0" x2="1" y2="0">
+                <stop className="usage-chart-partial-stop" offset="0%" data-stop="lead" />
+                <stop className="usage-chart-partial-stop" offset="100%" data-stop="edge" />
+              </linearGradient>
+            </defs>
+            <rect
+              className="usage-chart-partial"
+              fill={`url(#${gradientId}-partial)`}
+              x={round((xAt(points.length - 2) + xAt(points.length - 1)) / 2)}
+              y={plotTop}
+              width={round(
+                xAt(points.length - 1) - (xAt(points.length - 2) + xAt(points.length - 1)) / 2
+              )}
+              height={round(plotBottom - plotTop)}
+            />
+          </>
+        ) : null}
+
         {series.map((entry) => {
           const ys = entry.values.map((value) => yAt(value));
           const line = monotonePath(xs, ys);
@@ -355,13 +389,25 @@ export function UsageAreaChart({
             points.length === 1
               ? ""
               : `${line} L ${round(xs[xs.length - 1])} ${round(plotBottom)} L ${round(xs[0])} ${round(plotBottom)} Z`;
+          const fillId = `${gradientId}-${entry.provider}`;
           return (
             <g
               className="usage-chart-series usage-series"
               key={entry.provider}
               data-provider={entry.provider}
             >
-              {area ? <path className="usage-chart-area" d={area} /> : null}
+              {/* The gradient sits inside the series group so its stops
+                  inherit that group's `--usage-series`; one shared <defs>
+                  block would resolve every provider to the same colour. */}
+              {area ? (
+                <defs>
+                  <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+                    <stop className="usage-chart-area-stop" offset="0%" data-stop="top" />
+                    <stop className="usage-chart-area-stop" offset="100%" data-stop="bottom" />
+                  </linearGradient>
+                </defs>
+              ) : null}
+              {area ? <path className="usage-chart-area" d={area} fill={`url(#${fillId})`} /> : null}
               <path className="usage-chart-line" d={line} />
               {points.length === 1 ? (
                 <circle className="usage-chart-point" cx={round(xs[0])} cy={round(ys[0])} r="3.5" />
@@ -393,13 +439,15 @@ export function UsageAreaChart({
               y1={plotTop}
               y2={round(plotBottom)}
             />
-            {series.map((entry) => (
+            {/* Only providers that moved in this bucket get a marker; the rest
+                would stack into one blob on the baseline. */}
+            {activeRows.map((row) => (
               <circle
                 className="usage-chart-marker usage-series"
-                key={entry.provider}
-                data-provider={entry.provider}
+                key={row.provider}
+                data-provider={row.provider}
                 cx={round(anchorX)}
-                cy={round(yAt(entry.values[cursorIndex as number]))}
+                cy={round(yAt(row.value))}
                 r="3"
               />
             ))}
@@ -442,6 +490,28 @@ export function UsageAreaChart({
                   </g>
                 ))
               )}
+              {showTotal ? (
+                <g transform={`translate(0 ${20 + activeRows.length * TOOLTIP_ROW + 6})`}>
+                  <line
+                    className="usage-chart-tooltip-rule"
+                    x1="12"
+                    x2={TOOLTIP_WIDTH - 12}
+                    y1="0"
+                    y2="0"
+                  />
+                  <text className="usage-chart-tooltip-name" x="12" y="13">
+                    Total
+                  </text>
+                  <text
+                    className="usage-chart-tooltip-value"
+                    x={TOOLTIP_WIDTH - 12}
+                    y="13"
+                    textAnchor="end"
+                  >
+                    {formatValue(activeTotal)}
+                  </text>
+                </g>
+              ) : null}
             </g>
           </g>
         ) : null}

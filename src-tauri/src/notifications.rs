@@ -52,6 +52,18 @@ impl<S: NotificationSink> NotificationService<S> {
     }
 
     pub fn fire_test(&self) -> ArgmaxResult<()> {
+        // Success here means the send was queued, not that the OS showed a
+        // banner. The desktop `show()` below hands the notify-rust send to a
+        // background task and always returns `Ok`, so a failure inside the
+        // send never reaches the caller. On macOS the send goes through
+        // `NSUserNotificationCenter`, whose delegate does not implement
+        // `shouldPresentNotification:`, so a banner fired while Argmax is
+        // frontmost (the state Settings is always in when the test button is
+        // clicked) lands in Notification Center history with no popup.
+        // Showing a banner while frontmost needs macOS delivery on
+        // `UNUserNotificationCenter` with a foreground presentation delegate,
+        // plus a real permission check: `permission_state()` is hardcoded to
+        // Granted on desktop.
         if !self.sink.is_supported() {
             return Err(ArgmaxError::service(
                 "NOTIFICATIONS_UNSUPPORTED",

@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { startedAgentName, toggleAgentDetailsName } from "../../test/agentRowName.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentLaunchList } from "./AgentLaunchList.js";
+import { WORKING_NEST_SETTLE_MS } from "./WorkingNest.js";
 
 function tool(overrides: Partial<ToolCall> = {}): ToolCall {
   return {
@@ -31,10 +32,39 @@ describe("AgentLaunchList", () => {
     expect(container.querySelector(".agent-launch-bullet")).toBeNull();
   });
 
+  it("holds the nest through its landing before the finished bullet takes over", () => {
+    // The nest's landing is the only thing that marks an agent arriving, and it
+    // lives on the nest — so swapping straight to the bullet the frame work
+    // stops means it never plays at all. That is how it was unreachable in the
+    // shipped app: every caller unmounted the mark instead of settling it.
+    vi.useFakeTimers();
+    try {
+      const running = tool({ status: "running", completedAt: null });
+      const { container, rerender } = render(<AgentLaunchList tools={[running]} />);
+      rerender(<AgentLaunchList tools={[tool({ status: "done" })]} />);
+      expect(container.querySelector(".working-nest[data-settling='true']")).not.toBeNull();
+      expect(container.querySelector(".agent-launch-bullet")).toBeNull();
+      act(() => void vi.advanceTimersByTime(WORKING_NEST_SETTLE_MS));
+      expect(container.querySelector(".working-nest")).toBeNull();
+      expect(container.querySelector(".agent-launch-bullet")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("sends an agent that errored straight to its bullet, with no landing", () => {
+    const { container, rerender } = render(
+      <AgentLaunchList tools={[tool({ status: "running", completedAt: null })]} />
+    );
+    rerender(<AgentLaunchList tools={[tool({ status: "error" })]} />);
+    expect(container.querySelector(".working-nest")).toBeNull();
+    expect(container.querySelector(".agent-launch-bullet[data-launch-mark='error']")).not.toBeNull();
+  });
+
   it("leads with the agent's description and follows it with the codename", () => {
     render(<AgentLaunchList tools={[tool()]} />);
     expect(screen.getByText("Map the renderer")).toBeInTheDocument();
-    // The codename is drawn from the moon list, so assert the slot is filled
+    // The codename is drawn from the scientist list, so assert the slot is filled
     // rather than pinning whichever name this toolUseId hashes to.
     expect(document.querySelector(".agent-launch-identity")?.textContent).toBeTruthy();
   });

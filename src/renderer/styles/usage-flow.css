@@ -1,0 +1,269 @@
+/* ============================================================
+   Usage — "Where the tokens went": the token-flow band.
+
+   Processed tokens are one whole, not five peers. Cache read,
+   cache written, uncached input, and output are the four parts
+   a request spends, in that order, and the bar draws each at
+   its true share of the whole. The skew *is* the finding — on
+   a warm machine cache reads run ~97% and output ~0.3% — so
+   nothing here rescales it; a sliver only gets a floor wide
+   enough to see, paid for out of the widest segment.
+
+   Cache savings sit past a divider because they are money, not
+   tokens: the one number on this page that went the user's way.
+   ============================================================ */
+
+.usage-flow {
+  /* An ordered parts-of-a-whole ramp, so it is one hue stepped four ways
+     rather than four unrelated colours — and it is built from --accent, so
+     the band reads as part of the app under every tint. The ground it mixes
+     toward inverts by theme, the same trick --review-sidebar and
+     --tool-block-surface play: on paper the light end sinks toward the page,
+     on charcoal it has to lift *off* --panel or the first step reads as a
+     hole punched in the card rather than a segment. */
+  /* The floor of the ramp is high on purpose. A sequential scale that fades
+     to the surface at its light end is fine when the light end is a sliver —
+     here it is the *dominant* segment, since cache reads are most of every
+     token bill. A 26% first step drew the 68% part of the bar as almost
+     nothing while the 9% part glowed. */
+  --usage-flow-ground: var(--panel-sunken);
+  --usage-flow-1: color-mix(in oklab, var(--accent) 44%, var(--usage-flow-ground));
+  --usage-flow-2: color-mix(in oklab, var(--accent) 62%, var(--usage-flow-ground));
+  --usage-flow-3: color-mix(in oklab, var(--accent) 80%, var(--usage-flow-ground));
+  --usage-flow-4: var(--accent);
+
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-5);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+:root[data-theme="dark"] .usage-flow {
+  --usage-flow-ground: var(--panel-soft);
+}
+
+/* One rule per part sets the tone the segment and its swatch both read, so
+   the bar and the legend can never drift apart. */
+.usage-flow [data-part="cache-read"] {
+  --usage-flow-tone: var(--usage-flow-1);
+}
+
+.usage-flow [data-part="cache-write"] {
+  --usage-flow-tone: var(--usage-flow-2);
+}
+
+.usage-flow [data-part="uncached"] {
+  --usage-flow-tone: var(--usage-flow-3);
+}
+
+.usage-flow [data-part="output"] {
+  --usage-flow-tone: var(--usage-flow-4);
+}
+
+/* ---------- Heading, with the whole stated on its right ---------- */
+
+.usage-flow-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.usage-flow-title {
+  margin: 0;
+  font-size: var(--text-sm-plus);
+  font-weight: 500;
+  letter-spacing: -0.008em;
+  color: var(--text);
+}
+
+.usage-flow-total {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.usage-flow-total-value {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+/* ---------- The flow beside its savings ---------- */
+
+.usage-flow-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-6);
+  min-width: 0;
+  align-items: start;
+}
+
+.usage-flow-parts {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* ---------- The composition bar ---------- */
+
+/* The segment lengths are data, so they are SVG attributes, never an inline
+   width. The corner radius lives on the element rather than on the rects:
+   preserveAspectRatio="none" scales the box unevenly, which would stretch a
+   per-rect `rx` into an ellipse. */
+.usage-flow-bar {
+  display: block;
+  width: 100%;
+  height: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--panel-sunken);
+  animation: usage-flow-unfurl var(--motion-slow) var(--ease-out);
+}
+
+@keyframes usage-flow-unfurl {
+  from {
+    transform: scaleX(0.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-flow-bar {
+    animation: none;
+  }
+}
+
+.usage-flow-segment {
+  fill: var(--usage-flow-tone);
+}
+
+/* ---------- Legend: one row per segment, columns that line up ---------- */
+
+.usage-flow-legend {
+  list-style: none;
+  display: grid;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.usage-flow-legend-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  padding-block: var(--space-2);
+  border-top: 0.5px solid var(--line-soft);
+  min-width: 0;
+}
+
+.usage-flow-legend-item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.usage-flow-swatch {
+  width: var(--space-2_5);
+  height: var(--space-2_5);
+  border-radius: var(--radius-xs);
+  background: var(--usage-flow-tone);
+  /* A baseline row would hang an empty box off the text baseline. */
+  align-self: center;
+}
+
+.usage-flow-name {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.usage-flow-label {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.usage-flow-note {
+  font-size: var(--text-2xs-plus);
+  color: var(--muted);
+}
+
+.usage-flow-count {
+  min-width: 7ch;
+  text-align: right;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.usage-flow-share {
+  min-width: 6ch;
+  text-align: right;
+  font-size: var(--text-sm);
+  color: var(--muted-strong);
+}
+
+/* ---------- Cache savings, past the divider ---------- */
+
+.usage-flow-savings {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  min-width: 0;
+  max-width: 26ch;
+  padding-left: var(--space-6);
+  border-left: 0.5px solid var(--line);
+}
+
+.usage-flow-savings-label {
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+}
+
+.usage-flow-savings-value {
+  font-size: var(--text-2xl);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.016em;
+  color: var(--sage);
+}
+
+/* Nothing was saved, so the figure is not good news and does not get the
+   colour that says it is. */
+.usage-flow-savings[data-earned="false"] .usage-flow-savings-value {
+  color: var(--muted-strong);
+}
+
+.usage-flow-savings-note {
+  font-size: var(--text-2xs-plus);
+  color: var(--muted);
+}
+
+/* Under the width where a bar and a dollar figure stop fitting side by side,
+   the savings drop below the flow and the divider turns with them. */
+@media (width < 1080px) {
+  .usage-flow-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .usage-flow-savings {
+    max-width: none;
+    padding-left: 0;
+    padding-top: var(--space-4);
+    border-left: 0;
+    border-top: 0.5px solid var(--line);
+  }
+}
+
+/* ---------- Nothing processed in the window ---------- */
+
+.usage-flow-empty {
+  margin: 0;
+  padding: var(--space-5) 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}

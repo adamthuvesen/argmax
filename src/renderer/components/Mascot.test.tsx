@@ -14,7 +14,7 @@ describe("Mascot", () => {
     expect(svg.getAttribute("aria-label")).toBe("Fox mascot");
   });
 
-  it.each(["idle", "thinking", "happy", "sad"] as const)(
+  it.each(["idle", "thinking", "sleepy", "sad"] as const)(
     "renders mood=%s and sets matching data-mood + aria-label",
     (mood) => {
       render(<Mascot mood={mood} />);
@@ -32,9 +32,15 @@ describe("Mascot", () => {
   });
 
   it("uses the label override when provided", () => {
-    render(<Mascot label="Custom mascot voice" mood="happy" />);
+    render(<Mascot label="Custom mascot voice" mood="thinking" />);
     const svg = screen.getByRole("img", { name: "Custom mascot voice" });
-    expect(svg.getAttribute("data-mood")).toBe("happy");
+    expect(svg.getAttribute("data-mood")).toBe("thinking");
+  });
+
+  it("draws the sleepy sprite for the dozing mood", () => {
+    render(<Mascot mood="sleepy" />);
+    const svg = screen.getByRole("img", { name: "Fox mascot, dozing" });
+    expect(svg.getAttribute("data-sprite")).toBe("sleepy");
   });
 
   it("renders a clickable button when onClick is provided and fires the handler", () => {
@@ -62,6 +68,51 @@ describe("Mascot", () => {
         vi.advanceTimersByTime(700);
       });
       expect(svg?.getAttribute("data-pet")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("winks while being petted and goes back to the base sprite after the hop", () => {
+    vi.useFakeTimers();
+    try {
+      render(<Mascot onClick={() => undefined} />);
+      const button = screen.getByRole("button");
+      const svg = button.querySelector("svg");
+      expect(svg?.getAttribute("data-sprite")).toBe("base");
+
+      act(() => {
+        fireEvent.click(button);
+      });
+      expect(svg?.getAttribute("data-sprite")).toBe("wink");
+
+      act(() => {
+        vi.advanceTimersByTime(700);
+      });
+      expect(svg?.getAttribute("data-sprite")).toBe("base");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("wears the sunglasses sprite and says so in the label", () => {
+    render(<Mascot shades />);
+    const svg = screen.getByRole("img", { name: "Fox mascot, in sunglasses" });
+    expect(svg.getAttribute("data-sprite")).toBe("shades");
+  });
+
+  it("keeps the sunglasses on through a pet instead of winking", () => {
+    vi.useFakeTimers();
+    try {
+      render(<Mascot shades onClick={() => undefined} />);
+      const button = screen.getByRole("button");
+      const svg = button.querySelector("svg");
+
+      act(() => {
+        fireEvent.click(button);
+      });
+      expect(svg?.getAttribute("data-pet")).toBe("true");
+      expect(svg?.getAttribute("data-sprite")).toBe("shades");
     } finally {
       vi.useRealTimers();
     }

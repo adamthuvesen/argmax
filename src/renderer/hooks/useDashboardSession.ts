@@ -559,6 +559,12 @@ export function useDashboardSession(
     // running session is briefly focused).
     let lastStatusPullAt = Date.now();
     const tick = async (): Promise<void> => {
+      // Backgrounded windows catch up through the visibility-change refresh
+      // below on return; polling IPC + SQLite + re-render four times a second
+      // for an invisible window is pure battery drain.
+      if (document.hidden) {
+        return;
+      }
       if (inFlight) {
         return;
       }

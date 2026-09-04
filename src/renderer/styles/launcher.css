@@ -20,6 +20,24 @@
   margin-block-end: -30px;
 }
 
+/* The hero fox is pettable, so it renders the button variant — but it is a
+   standing mark, not the 24px send control, and .mascot-button's box would
+   shrink-wrap it. Doubled up with .mascot-button to outrank that rule from
+   overlays-launcher-composer.css, which is imported after this file. The
+   negative margin above stays on the svg so the grid-cell and mobile
+   overrides keep landing on the element they were written for. */
+.launcher-hero-mascot-button.mascot-button {
+  width: auto;
+  height: auto;
+  padding: 0;
+}
+
+/* No hover plate: at 104px the fox is the page's mark, and a panel swatch
+   behind it reads as a broken card. The focus ring stays. */
+.launcher-hero-mascot-button.mascot-button:hover:not(:disabled) {
+  background: transparent;
+}
+
 /* The line under the fox holds still on every visit, so it sits back from
    --text: the mascot carries the greeting and this names the job. Sized off
    --text-display rather than a raw px so it still rides the type-scale

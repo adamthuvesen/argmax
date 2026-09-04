@@ -147,6 +147,18 @@ pub struct UsageDayRow {
     pub cost_source: UsageCostSource,
 }
 
+/// Totals for the same-length window immediately before `range_start`, so the
+/// page can say whether this window is up or down on the last one. `None` when
+/// the ledger does not cover that earlier window — a first install must not
+/// read as "up 100%".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct UsagePreviousPeriod {
+    pub cost_usd: f64,
+    pub tokens: UsageTokenTotals,
+    pub sessions: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageSummary {
@@ -170,6 +182,9 @@ pub struct UsageSummary {
     pub cost_usd: f64,
     pub cache_savings_usd: f64,
     pub cost_source: UsageCostSource,
+    /// The window before this one, narrowed the same way, for the "vs the
+    /// previous 30 days" comparison. `None` when the ledger cannot cover it.
+    pub previous: Option<UsagePreviousPeriod>,
     pub providers: Vec<UsageProviderSummary>,
     pub series: Vec<UsageSeriesPoint>,
     pub models: Vec<UsageModelRow>,
@@ -206,6 +221,7 @@ impl UsageSummary {
             cost_usd: 0.0,
             cache_savings_usd: 0.0,
             cost_source: UsageCostSource::ListPrice,
+            previous: None,
             providers: Vec::new(),
             series: Vec::new(),
             models: Vec::new(),

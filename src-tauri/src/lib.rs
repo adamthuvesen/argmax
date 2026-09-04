@@ -16,6 +16,7 @@ pub mod files;
 pub mod gh;
 pub mod git;
 pub mod ide;
+pub mod inbox_hook;
 pub mod ipc;
 pub mod mcp;
 pub mod menu;

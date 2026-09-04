@@ -354,6 +354,13 @@
   z-index: 2;
 }
 
+/* The launcher input sits above the toolbar so its send button can overlap the
+   toolbar row. Raise the toolbar while one of its pickers is open, otherwise
+   that input stacking context paints over the part of the menu above it. */
+.launcher-surface .composer > .composer-context:has(.composer-context-chip[aria-expanded="true"]) {
+  z-index: 3;
+}
+
 /* Send stays anchored to .composer-input's bottom edge but sits on the chip row
    below it, whose optical center lands at -35px for a 28px control. */
 .launcher-surface .composer > .composer-input > .send-button {

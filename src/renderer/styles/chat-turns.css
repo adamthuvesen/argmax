@@ -2,9 +2,44 @@
    + tool calls) so the entire run reads as a single "Worked for Xs" beat,
    matching Codex's calmer chat rhythm. */
 .turn-block {
+  position: relative;
+  /* Only for the turn-end breath below: it needs a stacking context of its own
+     to sit behind the answer, and `isolation` buys one without the side effects
+     of a z-index on the block itself. Every popover inside a turn is portaled
+     to <body>, so nothing here is trapped by it. */
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   gap: var(--space-2_5);
+}
+
+/* The turn-end breath (components/TurnExhale.tsx): a canvas pinned to the
+   bottom edge of a turn that just finished, painting one sweep of accent pixels
+   and then unmounting itself. It bleeds past the text column on both sides so
+   the sweep reads as crossing the turn rather than filling a box drawn inside
+   it. Its height is `--turn-exhale-band`, set per turn by the component because
+   the band grows with what the turn produced; the cap against `100%` is what
+   keeps a long answer — thousands of pixels tall, and a fault-looking wash if
+   the field were painted behind all of it — down to its bottom edge.
+
+   `z-index: -1` puts it under the turn's content — the field tints the page the
+   answer sits on instead of washing over the glyphs. Inside the isolated block
+   that lands above the transcript's own background and below every child, with
+   no rule needed on the children themselves.
+
+   A canvas is a replaced element, so its width comes from `width`, never from
+   `left` + `right`: pinning both edges leaves it `width: auto`, which resolves
+   to the *intrinsic* size — and because the component sizes the bitmap from the
+   box it measured, the two feed each other into a canvas a quarter of the width
+   it should be. The bleed has to be spelled out as a width. */
+.turn-exhale {
+  position: absolute;
+  bottom: -4px;
+  left: -12px;
+  z-index: -1;
+  width: calc(100% + 24px);
+  height: min(var(--turn-exhale-band, 132px), 100%);
+  pointer-events: none;
 }
 
 /* Hover-revealed actions under a finished turn (copy reply, fork session).

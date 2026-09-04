@@ -51,6 +51,7 @@ import {
   subAgentToolUseIds
 } from "../lib/sessionConversationModel.js";
 import { assignAgentCodenames } from "../lib/agentNames.js";
+import { multitaskTabId } from "../lib/agentTabs.js";
 import { buildSubagentCluster } from "../lib/subagentSummary.js";
 import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
@@ -405,6 +406,65 @@ export function SessionConversation({
     () => buildSubagentCluster(toolCalls, agentCodenames, multitasks ?? []),
     [toolCalls, agentCodenames, multitasks]
   );
+
+  // The card counts what the dock's tab strip counts, so opening it must show
+  // those tabs — not just the empty dock. `review.openAgents` only reveals the
+  // panel, which is why a multitask opened from Alongside landed on "Nothing
+  // open here" until its row above the composer had been clicked once.
+  const handleOpenAgents = useCallback((): void => {
+    if (!subagentCluster || subagentCluster.entries.length === 0) {
+      review.openAgents();
+      return;
+    }
+    const tabIdFor = (entry: { toolUseId: string; multitask: boolean }): string =>
+      entry.multitask ? multitaskTabId(entry.toolUseId) : entry.toolUseId;
+    const clusterTabIds = new Set(subagentCluster.entries.map(tabIdFor));
+    const preferred =
+      subagentCluster.entries.find((entry) => entry.status === "running") ?? subagentCluster.entries[0];
+    if (!preferred) {
+      review.openAgents();
+      return;
+    }
+    const previousActive = review.agentTabs.activeTabId;
+    const openIds = new Set(review.agentTabs.tabIds);
+    // Open what the card counted but the dock never saw, preferred last so it
+    // ends active when it is among the missing.
+    const missing = subagentCluster.entries.filter((entry) => !openIds.has(tabIdFor(entry)));
+    const orderedMissing = [...missing].sort((a, b) => {
+      if (a.toolUseId === preferred.toolUseId) return 1;
+      if (b.toolUseId === preferred.toolUseId) return -1;
+      return 0;
+    });
+    for (const entry of orderedMissing) {
+      if (entry.multitask) review.openMultitask(entry.toolUseId);
+      else review.openAgent(entry.toolUseId);
+    }
+    if (missing.length === 0) {
+      // Everything was already open: stay where the reader was when that is
+      // one of these tabs, otherwise show the running one.
+      if (previousActive && clusterTabIds.has(previousActive)) {
+        review.openAgents();
+      } else if (preferred.multitask) {
+        review.openMultitask(preferred.toolUseId);
+      } else {
+        review.openAgent(preferred.toolUseId);
+      }
+      return;
+    }
+    // Missing tabs are open now. When the reader was already on one of these
+    // tabs, opening the others stole it — hand it back. Otherwise, when the
+    // preferred tab was already open, the opens above left another tab active.
+    if (previousActive && clusterTabIds.has(previousActive)) {
+      review.agentTabs.selectTab(previousActive);
+      review.openAgents();
+    } else if (!openIds.has(tabIdFor(preferred))) {
+      if (preferred.multitask) review.openMultitask(preferred.toolUseId);
+      else review.openAgent(preferred.toolUseId);
+    } else {
+      review.agentTabs.selectTab(tabIdFor(preferred));
+      review.openAgents();
+    }
+  }, [review, subagentCluster]);
 
   const conversationItems = useMemo(
     () => foldConversationItems(conversationEvents, toolCalls),
@@ -837,6 +897,11 @@ export function SessionConversation({
 
   // Restored turns must not replay their entrance animation on every reopen.
   const restoringTranscript = useRestoreWithoutMotion();
+  // Opening or closing the docked side panel reflows the transcript without
+  // changing its content. Preserve the viewport across that reflow instead of
+  // letting the new bottom drift out of view (which reads as a jump up to an
+  // earlier message).
+  const preserveLayoutKey = `${review.isPanelOpen ? "panel" : "chat"}:${isLogOpen ? "log" : "nlog"}`;
   const {
     conversationListRef,
     showScrollToBottom,
@@ -849,7 +914,8 @@ export function SessionConversation({
     conversationItems,
     isThinkingVisible,
     inputRef,
-    lastUserMessageId
+    lastUserMessageId,
+    preserveLayoutKey
   );
   // Revealing earlier turns grows the list upward. The list is bottom-anchored,
   // so holding the distance from the bottom leaves what the user is reading
@@ -951,7 +1017,7 @@ export function SessionConversation({
             onBrowseFiles={review.openPanelInFilesMode}
             onHide={() => onHideWorkspaceCard?.()}
             onOpenChanges={review.toggleChangesPanel}
-            onOpenAgents={review.openAgents}
+            onOpenAgents={handleOpenAgents}
             onOpenCommitDialog={onOpenCommitDialog}
             onToggleTerminal={() => onToggleTerminal?.()}
             session={session}

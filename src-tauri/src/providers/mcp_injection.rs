@@ -18,6 +18,10 @@
 //! own `env` rather than the provider process's environment, so a warm shared
 //! process (Cursor's ACP pool) can still hand each session its own credential.
 //!
+//! Claude gets one more per-launch injection on top of the server: a
+//! `PostToolUse` hook ([`claude_hook_settings`]) that hands inbox mail to the
+//! model at every tool boundary.
+//!
 //! The two file-based paths are the exception, and have to be: one checkout is
 //! one file, and [ADR 0004] makes several sessions over one checkout the normal
 //! case, so neither file may hold anything one session can overwrite for
@@ -64,9 +68,7 @@ pub const BROWSER_COOKIE_PERMISSION: &str = "Cookie acceptance in the Argmax bro
 pub const SELF_PRESERVATION_INSTRUCTION: &str = "Do not quit, kill, or replace the running Argmax application from inside this session — no osascript quit, killall/pkill, or swapping `/Applications/Argmax.app` while Argmax is hosting this chat. That ends your provider mid-turn. Build in the workspace and give the user the manual install steps instead.";
 
 pub fn agent_tools_instruction() -> String {
-    format!(
-        "{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION} {SELF_PRESERVATION_INSTRUCTION}"
-    )
+    format!("{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION} {SELF_PRESERVATION_INSTRUCTION}")
 }
 
 /// What Grok and Cursor's one-shot PTY path were told before they could carry
@@ -98,6 +100,47 @@ pub fn strip_instruction(prompt: &str) -> &str {
 
 /// The single subcommand the server is launched with: `argmax mcp`.
 const SERVER_ARGS: [&str; 1] = ["mcp"];
+
+/// How long Claude gives the inbox hook before giving up on it, in seconds.
+/// One socket round trip on a local machine takes milliseconds; the ceiling is
+/// there so a wedged app cannot stall every tool call of every Claude session.
+const CLAUDE_INBOX_HOOK_TIMEOUT_SECONDS: u64 = 15;
+
+/// The `hooks` settings value for a Claude launch: run `argmax hook inbox`
+/// after every tool call, so mail that lands mid-turn is handed to the model
+/// at the next tool boundary rather than waiting for the turn to end
+/// ([inbox_hook.rs](crate::inbox_hook)). No `matcher`, since any tool call is
+/// a chance to deliver, and the argmax tools' own unread flag is what says
+/// there is something to collect until then.
+///
+/// The command runs with the provider process's environment, which is where
+/// [`SessionLaunchProcessConfig::env_pairs`] put the socket and the token, so
+/// the spec itself carries no credential — only the binary's path, quoted for
+/// the shell Claude runs hooks through. This is `--settings` content, and
+/// `--settings` merges with the user's own settings files, so a `PostToolUse`
+/// hook they keep still fires beside this one (checked against 2.1.260).
+pub fn claude_hook_settings(config: Option<&SessionLaunchProcessConfig>) -> Option<Value> {
+    let config = config?;
+    let command = format!(
+        "{} hook inbox",
+        shell_quote(&config.argmax_bin().to_string_lossy())
+    );
+    Some(json!({
+        "PostToolUse": [{
+            "hooks": [{
+                "type": "command",
+                "command": command,
+                "timeout": CLAUDE_INBOX_HOOK_TIMEOUT_SECONDS,
+            }]
+        }]
+    }))
+}
+
+/// Single-quote a word for a POSIX shell: everything is literal inside single
+/// quotes except the quote itself, which becomes `'\''`.
+fn shell_quote(word: &str) -> String {
+    format!("'{}'", word.replace('\'', r"'\''"))
+}
 
 /// What one launch changed outside Argmax's own data, and how to put it back
 /// once the child exits. Empty for every provider that takes its config on the
@@ -594,7 +637,8 @@ mod tests {
     #[test]
     fn strips_current_and_previous_agent_tool_instructions() {
         let current = format!("{}\n\nDo the work", agent_tools_instruction());
-        let previous = format!("{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION}\n\nDo the work");
+        let previous =
+            format!("{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION}\n\nDo the work");
 
         assert_eq!(strip_instruction(&current), "\n\nDo the work");
         assert_eq!(strip_instruction(&previous), "\n\nDo the work");
@@ -613,6 +657,27 @@ mod tests {
         );
         // --strict-mcp-config would drop the user's own servers.
         assert!(!args.iter().any(|arg| arg == "--strict-mcp-config"));
+    }
+
+    #[test]
+    fn claude_hook_runs_the_inbox_subcommand_after_every_tool() {
+        let hooks = claude_hook_settings(Some(&config())).expect("hook settings");
+        let hook = &hooks["PostToolUse"][0];
+        // No matcher: every tool call is a delivery point.
+        assert!(hook.get("matcher").is_none());
+        assert_eq!(hook["hooks"][0]["type"], "command");
+        assert_eq!(
+            hook["hooks"][0]["command"],
+            "'/Applications/Argmax.app/Contents/MacOS/argmax' hook inbox"
+        );
+        assert_eq!(hook["hooks"][0]["timeout"], 15);
+        assert_eq!(claude_hook_settings(None), None);
+    }
+
+    #[test]
+    fn shell_quote_keeps_a_path_with_quotes_and_spaces_literal() {
+        assert_eq!(shell_quote("/Apps/Arg max/bin"), "'/Apps/Arg max/bin'");
+        assert_eq!(shell_quote("/it's/argmax"), r"'/it'\''s/argmax'");
     }
 
     #[test]

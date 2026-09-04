@@ -1,0 +1,227 @@
+/* ============================================================
+   Usage breakdown table.
+   ============================================================ */
+
+/* ---------- Breakdown table ---------- */
+
+/* How many rows are on screen, next to the section title. `margin-right: auto`
+   parks it beside the heading instead of letting the head's space-between
+   strand it in the middle of the row. */
+.usage-table-count {
+  margin-right: auto;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.usage-table-scroll {
+  overflow-x: auto;
+  min-width: 0;
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-table th,
+.usage-table td {
+  padding: 9px var(--space-4);
+  text-align: left;
+  font-weight: inherit;
+  white-space: nowrap;
+}
+
+.usage-table thead th {
+  position: sticky;
+  top: 0;
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+  background: var(--panel);
+  border-bottom: 0.5px solid var(--line);
+}
+
+.usage-table tbody th,
+.usage-table tbody td {
+  border-top: 0.5px solid var(--line-soft);
+  color: var(--text-soft);
+}
+
+.usage-table tbody tr:first-child th,
+.usage-table tbody tr:first-child td {
+  border-top: 0;
+}
+
+.usage-table tbody tr:hover th,
+.usage-table tbody tr:hover td {
+  background: var(--row-hover);
+}
+
+/* Has to out-specify `.usage-table th, .usage-table td` (0,1,1) above, or the
+   numbers silently stay left-aligned and stop being comparable down a column
+   — the reset trap docs/styling.md calls out. */
+.usage-table th.usage-table-num,
+.usage-table td.usage-table-num {
+  text-align: right;
+}
+
+/* ---------- Sortable headers ---------- */
+
+/* The header is a real button so the sort is reachable by keyboard; the cell
+   around it carries `aria-sort`. Inline-flex keeps it inline-level, so the
+   cell's own text-align still places it. */
+.usage-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.usage-sort:hover {
+  color: var(--text);
+}
+
+.usage-sort:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.usage-table thead th:not([aria-sort="none"]) .usage-sort {
+  color: var(--text);
+}
+
+.usage-sort-caret {
+  line-height: 1;
+}
+
+/* Held rather than removed, so a header does not jump when the sort moves. */
+.usage-sort-caret[data-active="false"] {
+  visibility: hidden;
+}
+
+/* In a right-aligned column the caret hangs to the left of the label, so the
+   label stays flush over the figures underneath it. */
+.usage-table th.usage-table-num .usage-sort-caret {
+  order: -1;
+}
+
+/* ---------- Row content ---------- */
+
+.usage-table-model {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--usage-series);
+}
+
+.usage-table-model-id {
+  color: var(--text);
+  font-family: var(--font-code);
+  font-feature-settings: var(--code-font-features);
+  font-size: var(--text-xs-plus);
+}
+
+.usage-table-model-provider {
+  font-size: var(--text-2xs-plus);
+  color: var(--muted);
+}
+
+.usage-table-day {
+  color: var(--text);
+}
+
+.usage-share {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.usage-share-value {
+  min-width: 46px;
+  text-align: right;
+}
+
+.usage-share-meter {
+  display: block;
+}
+
+/* A hairline rule, not a filled box: a row worth under a tenth of a percent
+   should read as nearly nothing rather than as an empty container. */
+.usage-share-track {
+  fill: var(--line);
+}
+
+/* Model rows carry their provider's colour; day rows aggregate everything, so
+   the token is unset there and the meter falls back to neutral ink. */
+.usage-share-fill {
+  fill: var(--usage-series, var(--muted-strong));
+}
+
+.usage-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs-plus);
+  color: var(--muted-strong);
+  background: var(--panel-sunken);
+  box-shadow: inset 0 0 0 0.5px var(--line);
+}
+
+.usage-badge[data-tone="unpriced"] {
+  color: var(--amber);
+  background: var(--amber-soft);
+  box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--amber) 30%, transparent);
+}
+
+/* ---------- The folded tail ---------- */
+
+.usage-table tfoot th,
+.usage-table tfoot td {
+  border-top: 0.5px solid var(--line);
+  color: var(--muted-strong);
+}
+
+/* The toggle sits directly under the remainder row, so it shares its rule. */
+.usage-table tfoot tr + tr td {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.usage-table-toggle {
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--muted-strong) 45%, transparent);
+  text-underline-offset: 2px;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.usage-table-toggle:hover {
+  color: var(--text);
+}
+
+.usage-table-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}

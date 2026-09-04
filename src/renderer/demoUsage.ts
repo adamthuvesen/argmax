@@ -94,6 +94,34 @@ function processed(tokens: UsageTokenTotals): number {
   return tokens.inputUncached + tokens.cacheRead + tokens.cacheWrite + tokens.output;
 }
 
+type DemoPreviousPeriod = NonNullable<UsageSummary["previous"]>;
+
+/**
+ * The equally long window before this one, per provider. The demo series
+ * ramps toward its recent end, so the earlier window is the same shape a
+ * little quieter: the same generator over a window shifted one length back,
+ * damped to land a fifth to a third below. Seeded off the window like the
+ * series itself, so the same window always yields the same comparison.
+ */
+function previousPeriods(count: number): Map<ProviderId, DemoPreviousPeriod> {
+  const rand = mulberry32(0x2026_0806 ^ count);
+  const damping = 0.68 + rand() * 0.09;
+  const periods = new Map<ProviderId, DemoPreviousPeriod>();
+  DEMO_PROVIDERS.forEach((provider, order) => {
+    const tokens = emptyTokens();
+    let costUsd = 0;
+    for (let index = 0; index < count; index += 1) {
+      const bucket = Math.round(shapeAt(index, count, provider, rand) * damping * 100) / 100;
+      costUsd += bucket;
+      addTokens(tokens, tokensFor(bucket, provider));
+    }
+    costUsd = Math.round(costUsd * 100) / 100;
+    // Sessions per dollar the same way the provider rows count them.
+    periods.set(provider.provider, { costUsd, tokens, sessions: Math.round(costUsd / (4 + order * 2.5)) });
+  });
+  return periods;
+}
+
 const MODELS: ReadonlyArray<{ provider: ProviderId; modelId: string; weight: number; unpriced?: boolean }> = [
   { provider: "claude", modelId: "claude-opus-5", weight: 0.66 },
   { provider: "claude", modelId: "claude-haiku-4-5", weight: 0.34 },
@@ -149,6 +177,8 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
     costUsd: 0,
     cacheSavingsUsd: 0,
     costSource: "list_price",
+    // An empty or still-scanning ledger has no earlier window to compare to.
+    previous: null,
     providers: [],
     series: [],
     models: [],
@@ -219,6 +249,15 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
   for (const row of providers) addTokens(totals, row.tokens);
   const costUsd = Math.round(providers.reduce((sum, row) => sum + row.costUsd, 0) * 100) / 100;
 
+  const previousByProvider = previousPeriods(count);
+  const previous: DemoPreviousPeriod = { costUsd: 0, tokens: emptyTokens(), sessions: 0 };
+  for (const period of previousByProvider.values()) {
+    previous.costUsd += period.costUsd;
+    addTokens(previous.tokens, period.tokens);
+    previous.sessions += period.sessions;
+  }
+  previous.costUsd = Math.round(previous.costUsd * 100) / 100;
+
   const models: UsageModelRow[] = MODELS.map((model) => {
     const row = providers.find((entry) => entry.provider === model.provider);
     const scale = model.weight;
@@ -258,6 +297,7 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
       costUsd: narrowed.costUsd,
       cacheSavingsUsd: narrowed.cacheSavingsUsd,
       costSource: narrowed.costSource,
+      previous: previousByProvider.get(narrowed.provider) ?? null,
       providers,
       series: series.map((point) => ({
         ...point,
@@ -280,6 +320,7 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
     costUsd,
     cacheSavingsUsd: Math.round(providers.reduce((sum, row) => sum + row.cacheSavingsUsd, 0) * 100) / 100,
     costSource: "mixed",
+    previous,
     providers,
     series,
     models,

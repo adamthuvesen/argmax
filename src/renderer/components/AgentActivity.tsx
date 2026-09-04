@@ -384,6 +384,9 @@ export function AgentActivity({
     const shouldPoll = parentSession?.state === "running" || activity.status === "running";
     if (!shouldPoll) return;
     const interval = window.setInterval(() => {
+      // A backgrounded window resumes polling on refocus (dashboard deltas
+      // keep state fresh meanwhile); skip ticks for invisible windows.
+      if (document.hidden) return;
       void loadAgentEventsGuarded();
     }, 1500);
     return () => window.clearInterval(interval);

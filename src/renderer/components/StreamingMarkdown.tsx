@@ -1,14 +1,11 @@
 import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type JSX } from "react";
-import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { matchFileChip, normalizeFileChipPath } from "../lib/fileChipPath.js";
 import { splitLogSegments } from "../lib/logDump.js";
 import { isMermaidFenceClass } from "../lib/mermaidFence.js";
-import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters.js";
+import { needsMath } from "../lib/needsMath.js";
 import { CodeBlock } from "./CodeBlock.js";
 import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
 import { LogBlock } from "./LogBlock.js";
@@ -19,6 +16,10 @@ import { WebLink } from "./WebLink.js";
 
 const MermaidDiagram = lazy(async () => ({
   default: (await import("./MermaidDiagram.js")).MermaidDiagram
+}));
+
+const ChatMathMarkdown = lazy(async () => ({
+  default: (await import("./MathMarkdown.js")).ChatMathMarkdown
 }));
 
 const SMOOTH_STREAM_TICK_MS = 32;
@@ -122,6 +123,9 @@ function useSmoothStreamingText(
       return;
     }
     const interval = window.setInterval(() => {
+      // Backgrounded windows can't show the typewriter advance, and each tick
+      // pays a React re-render plus a tail re-parse — hold still until visible.
+      if (document.hidden) return;
       setVisibleLength((current) => {
         const target = targetLengthRef.current;
         if (current >= target) {
@@ -192,6 +196,11 @@ function MermaidDiagramFallback(): JSX.Element {
 // One markdown render root. Memoized on its props so a stable `text` (the
 // committed prefix, which only changes when a block completes) skips re-parsing
 // entirely — `workspace` and `onOpenFile` are stable from the session pane.
+//
+// The eager path renders without math plugins. Text that may contain math
+// delegates to the lazy `ChatMathMarkdown` (KaTeX chunk) with the plain render
+// as its Suspense fallback, so math pops in once the chunk lands instead of
+// blocking first paint.
 const MarkdownBody = memo(function MarkdownBody({
   text,
   workspace,
@@ -201,14 +210,8 @@ const MarkdownBody = memo(function MarkdownBody({
   workspace?: WorkspaceSummary | null;
   onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
 }): JSX.Element {
-  const normalizedText = useMemo(() => normalizeMathDelimiters(text), [text]);
-
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
-      urlTransform={chatUrlTransform}
-      components={{
+  const components: Components = useMemo(
+    () => ({
         code: ({ className, children, ...rest }) => {
           const hasLanguage = typeof className === "string" && className.includes("language-");
           const codeText = Array.isArray(children)
@@ -296,10 +299,25 @@ const MarkdownBody = memo(function MarkdownBody({
         ),
         table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
         pre: ({ children }) => <>{children}</>
-      }}
+    }),
+    [workspace, onOpenFile]
+  );
+
+  const withMath = needsMath(text);
+  const plain = (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      urlTransform={chatUrlTransform}
+      components={components}
     >
-      {normalizedText}
+      {text}
     </ReactMarkdown>
+  );
+  if (!withMath) return plain;
+  return (
+    <Suspense fallback={plain}>
+      <ChatMathMarkdown text={text} components={components} urlTransform={chatUrlTransform} />
+    </Suspense>
   );
 });
 

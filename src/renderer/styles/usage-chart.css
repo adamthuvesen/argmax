@@ -59,11 +59,40 @@
 }
 
 /* The fill is atmosphere, not a second encoding: four overlaid areas have to
-   stay readable through one another, so each is a wash rather than a slab. */
+   stay readable through one another. A flat wash stacked four deep turns the
+   floor of the plot into mud, so each area fades out on the way down — the
+   colour lives where its own curve is, and the baseline stays clean. The
+   `fill` itself is a gradient reference set on the element, because a
+   gradient id is geometry, not style. */
 .usage-chart-area {
-  fill: var(--usage-series);
-  fill-opacity: 0.1;
   stroke: none;
+}
+
+.usage-chart-area-stop {
+  stop-color: var(--usage-series);
+}
+
+.usage-chart-area-stop[data-stop="top"] {
+  stop-opacity: 0.26;
+}
+
+.usage-chart-area-stop[data-stop="bottom"] {
+  stop-opacity: 0.02;
+}
+
+/* The last bucket is still filling. Half an interval of the faintest possible
+   band says so without putting a label in the plot; the `fill` itself is a
+   gradient reference set on the element, because a gradient id is geometry. */
+.usage-chart-partial-stop {
+  stop-color: var(--text);
+}
+
+.usage-chart-partial-stop[data-stop="lead"] {
+  stop-opacity: 0;
+}
+
+.usage-chart-partial-stop[data-stop="edge"] {
+  stop-opacity: 0.05;
 }
 
 .usage-chart-point {
@@ -125,6 +154,11 @@
 
 .usage-chart-tooltip-dot {
   fill: var(--usage-series);
+}
+
+.usage-chart-tooltip-rule {
+  stroke: var(--line);
+  stroke-width: 0.5;
 }
 
 @media (prefers-reduced-motion: reduce) {

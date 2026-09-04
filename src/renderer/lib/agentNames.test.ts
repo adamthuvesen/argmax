@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
 import { buildSessionToolCalls } from "./sessionConversationModel.js";
 import {
-  MOON_NAMES,
+  HEADLINE_COUNT,
+  SCIENTIST_NAMES,
   assignAgentCodenames,
   fallbackCodename
 } from "./agentNames.js";
@@ -24,17 +25,17 @@ function spawnEvents(ids: string[]): TimelineEvent[] {
   );
 }
 
-describe("MOON_NAMES", () => {
+describe("SCIENTIST_NAMES", () => {
   it("holds exactly 100 unique names", () => {
-    expect(MOON_NAMES).toHaveLength(100);
-    expect(new Set(MOON_NAMES).size).toBe(100);
+    expect(SCIENTIST_NAMES).toHaveLength(100);
+    expect(new Set(SCIENTIST_NAMES).size).toBe(100);
   });
 });
 
 describe("fallbackCodename", () => {
-  it("returns a member of MOON_NAMES", () => {
+  it("returns a member of SCIENTIST_NAMES", () => {
     for (const id of ["task", "item_2", "abc", "", "🌙"]) {
-      expect(MOON_NAMES).toContain(fallbackCodename(id));
+      expect(SCIENTIST_NAMES).toContain(fallbackCodename(id));
     }
   });
 
@@ -57,7 +58,7 @@ describe("assignAgentCodenames", () => {
     const names = [...map.values()];
     expect(map.size).toBe(6);
     expect(new Set(names).size).toBe(6);
-    for (const name of names) expect(MOON_NAMES).toContain(name);
+    for (const name of names) expect(SCIENTIST_NAMES).toContain(name);
   });
 
   it("keeps earlier agents' names stable when a later spawn is appended", () => {
@@ -67,6 +68,14 @@ describe("assignAgentCodenames", () => {
       expect(after.get(id)).toBe(before.get(id));
     }
     expect(after.has("d")).toBe(true);
+  });
+
+  it("draws a session's first spawn from the headline names", () => {
+    const headline = SCIENTIST_NAMES.slice(0, HEADLINE_COUNT);
+    for (const id of ["a", "task", "toolu_01", "🔬"]) {
+      const map = assignAgentCodenames(buildSessionToolCalls(spawnEvents([id]), false));
+      expect(headline).toContain(map.get(id));
+    }
   });
 
   it("ignores non-agent tools", () => {

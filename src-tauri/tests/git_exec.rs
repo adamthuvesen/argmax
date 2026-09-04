@@ -192,7 +192,9 @@ async fn hooks_run_with_the_hydrated_path() {
     // live here. Meaningful even under a stripped launchd environment, which is
     // the case this whole injection exists for.
     assert!(
-        hook_path.split(':').any(|entry| entry == "/opt/homebrew/bin"),
+        hook_path
+            .split(':')
+            .any(|entry| entry == "/opt/homebrew/bin"),
         "hook PATH is missing the Homebrew fallback: {hook_path}"
     );
 }

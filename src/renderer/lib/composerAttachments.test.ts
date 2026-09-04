@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendReferencesToPrompt,
   buildAttachmentReferences,
+  downscaleImageBlob,
   imageAttachmentReference,
   isSupportedImageMime,
   readBlobAsBase64
@@ -75,6 +76,22 @@ describe("imageAttachmentReference", () => {
     expect(imageAttachmentReference("/Users/me/Library/Application Support/argmax/x.png")).toBe(
       "@/Users/me/Library/Application Support/argmax/x.png"
     );
+  });
+});
+
+describe("downscaleImageBlob", () => {
+  it("passes GIFs through untouched so animation survives", async () => {
+    const gif = new Blob([new Uint8Array([1, 2, 3])], { type: "image/gif" });
+    await expect(downscaleImageBlob(gif)).resolves.toBe(gif);
+  });
+
+  it("returns the original when the runtime cannot decode images", async () => {
+    // jsdom has no createImageBitmap: pastes must still attach.
+    const png = new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" });
+    expect(typeof (globalThis as { createImageBitmap?: unknown }).createImageBitmap).toBe(
+      "undefined"
+    );
+    await expect(downscaleImageBlob(png)).resolves.toBe(png);
   });
 });
 

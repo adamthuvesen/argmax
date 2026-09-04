@@ -9,6 +9,8 @@
   --fox-cream: #ebe1cf;
   --fox-cream-shade: #bca595;
   --fox-nose: #110b0f;
+  /* The blush patch on the winking sprite's cheek; no other sprite draws it. */
+  --fox-blush: #e08a78;
 
   color-scheme: light;
   --font-ui: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;

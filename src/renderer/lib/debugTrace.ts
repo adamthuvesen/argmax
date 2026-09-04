@@ -1,6 +1,10 @@
 import { tryParseJsonObject } from "../../shared/safeJson.js";
 import type { RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
+import {
+  decodeTimelineEvent,
+  type CanonicalTimelineEvent
+} from "./canonicalTimeline.js";
 
 /**
  * One line in the debug trace. Normalized timeline events and raw provider
@@ -36,6 +40,95 @@ export interface TraceFilter {
   query: string;
 }
 
+function canonicalDiagnostic(event: CanonicalTimelineEvent): Record<string, unknown> {
+  const diagnostic: Record<string, unknown> = { kind: event.kind };
+  if (event.isRaw) diagnostic.isRaw = true;
+  if (event.parentToolUseId) diagnostic.parentToolUseId = event.parentToolUseId;
+  if (event.providerThreadId) diagnostic.providerThreadId = event.providerThreadId;
+  if (event.agentModelId) diagnostic.agentModelId = event.agentModelId;
+  if (event.agentReasoningEffort) diagnostic.agentReasoningEffort = event.agentReasoningEffort;
+  if (event.traceSuperseded) diagnostic.traceSuperseded = true;
+  if (event.traceImported) diagnostic.traceImported = true;
+
+  switch (event.kind) {
+    case "message":
+      return {
+        ...diagnostic,
+        role: event.role,
+        phase: event.phase,
+        content: event.content,
+        childProse: event.childProse,
+        rawStream: event.rawStream
+      };
+    case "tool":
+      return {
+        ...diagnostic,
+        phase: event.phase,
+        toolUseId: event.toolUseId,
+        name: event.name,
+        providerName: event.providerName,
+        invocationId: event.invocationId,
+        outcome: event.outcome,
+        running: event.running,
+        traceSyntheticLaunch: event.traceSyntheticLaunch
+      };
+    case "lifecycle": {
+      const lifecycle: Record<string, unknown> = { ...diagnostic, name: event.name };
+      if (event.name === "compacting" || event.name === "compacted") {
+        lifecycle.preTokens = event.preTokens;
+        lifecycle.postTokens = event.postTokens;
+      } else if (event.name === "provider-changed") {
+        lifecycle.from = event.from;
+        lifecycle.to = event.to;
+        lifecycle.modelLabel = event.modelLabel;
+      } else if (event.name === "move-requested") {
+        lifecycle.destinationProjectId = event.destinationProjectId;
+        lifecycle.destinationProjectName = event.destinationProjectName;
+        lifecycle.worktree = event.worktree;
+        lifecycle.keepSource = event.keepSource;
+      } else if (event.name === "moved") {
+        lifecycle.direction = event.direction;
+        lifecycle.sourceSessionId = event.sourceSessionId;
+        lifecycle.destinationSessionId = event.destinationSessionId;
+        lifecycle.destinationWorkspaceId = event.destinationWorkspaceId;
+        lifecycle.checkoutMode = event.checkoutMode;
+      }
+      return lifecycle;
+    }
+    case "multitask":
+      return {
+        ...diagnostic,
+        phase: event.phase,
+        childSessionId: event.childSessionId,
+        state: event.state,
+        taskLabel: event.taskLabel,
+        worktree: event.worktree
+      };
+    case "approval":
+      return {
+        ...diagnostic,
+        phase: event.phase,
+        approvalId: event.approvalId,
+        provider: event.provider,
+        providerInvocationId: event.providerInvocationId,
+        providerRequestId: event.providerRequestId,
+        toolUseId: event.toolUseId,
+        resolution: event.resolution,
+        cwd: event.cwd,
+        riskLevel: event.riskLevel
+      };
+    case "error":
+      return {
+        ...diagnostic,
+        code: event.code,
+        operation: event.operation,
+        isPayloadTruncation: event.isPayloadTruncation
+      };
+    case "unknown":
+      return { ...diagnostic, reason: event.reason };
+  }
+}
+
 /**
  * Interleaves events and raw output into one ascending timeline.
  *
@@ -48,18 +141,19 @@ export function buildTraceRows(events: TimelineEvent[], rawOutputs: RawProviderO
   const rows: Omit<TraceRow, "deltaMs">[] = [];
 
   for (const event of events) {
-    const payload = Object.keys(event.payload).length > 0 ? JSON.stringify(event.payload, null, 2) : "";
-    const body = JSON.stringify({ type: event.type, message: event.message, payload: event.payload }, null, 2);
+    const decoded = decodeTimelineEvent(event);
+    const detail = JSON.stringify(canonicalDiagnostic(decoded), null, 2);
+    const raw = JSON.stringify({ type: decoded.raw.type, message: decoded.raw.message, payload: decoded.raw.payload }, null, 2);
     rows.push({
       id: `event:${event.id}`,
       at: Date.parse(event.createdAt),
       source: "event",
-      label: event.type,
+      label: decoded.raw.type,
       stream: null,
-      haystack: `${event.type} ${event.message} ${payload}`.toLowerCase(),
-      summary: event.message || event.type,
-      detail: body,
-      raw: body
+      haystack: `${decoded.raw.type} ${decoded.raw.message} ${detail} ${raw}`.toLowerCase(),
+      summary: decoded.raw.message || decoded.raw.type,
+      detail,
+      raw
     });
   }
 

@@ -21,6 +21,12 @@ File and review operations use a `{ kind: "workspace" | "project", id }` target 
 
 `session:agent-events` fetches subagent activity for `{ sessionId, parentToolUseId }`. It imports trace events for the parent tool call and returns rows scoped to the subagent lifecycle. Main chat views use `session:events-since` to avoid trace disk scans.
 
+`session:events-since` accepts a `changeCursor` for mutation-aware recovery.
+The first response pairs an authoritative bounded tail with a cursor from the
+same SQLite read transaction. `resetRequired` replaces retained history,
+`deletedEventIds` and `deletedRawOutputIds` remove rows, and `hasMore` asks the
+client to continue paging. Legacy event/raw row cursors remain supported.
+
 `session:multitask` dispatches a sibling chat from a session that may still be mid-turn, and returns the new session and workspace ids so the composer can draw the card without waiting for the dashboard delta. See [multitask.md](multitask.md).
 
 `usage:summary` takes `{ window: "24h" | "7d" | "30d", timeZone, provider? }` and returns the Usage page in one shape: totals, per-provider rows, the chart series, and the model and day breakdowns, plus the scan's progress. A `provider` narrows everything but the per-provider rows to that provider; Cursor keeps no local usage log and is rejected. A ledger that has completed before is swept inline so the answer is current; the first cold sweep runs in the background and the page polls. See [usage.md](usage.md).
@@ -44,6 +50,14 @@ Subscribed in `tauriBridge.ts`:
 - `browser:agent-open`
 
 Push channels are not listed in `channels.txt`.
+
+`dashboard:delta` carries `changedSessionIds` for transcript reads and
+`dashboardChanged` for metadata reads. Full transcript and metadata payloads
+stay out of the delivery queue, except for the small session-move navigation
+notice. `resyncRequired` reloads metadata, pending approvals and queued messages,
+then replaces subscribed histories. Desktop and mobile use the same recovery.
+Metadata invalidations are coalesced over 100 ms, while transcript reads remain
+immediate and drain revision pages before settling.
 
 ## Adding a Channel
 

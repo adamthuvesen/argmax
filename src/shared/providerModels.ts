@@ -62,7 +62,7 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
 
 /**
  * Effort levels a given model offers in the picker, low → high. Claude's own
- * models run the full low→ultra list. Codex Sol/Terra match that (their CLI
+ * models run the full low→ultra list. Codex Astra/Sol/Terra match that (their CLI
  * catalog lists max and ultra). Codex Luna stops at Max. Cursor's GPT-5.6
  * Luna/Terra/Sol and Opus 5 Thinking go to Max (no Ultra suffix). Cursor Grok
  * 4.6 and Gemini 3.8 Flash stop at High. OpenCode Go (opencode-go/*) models
@@ -73,7 +73,9 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
 export function reasoningEffortsForModel(provider: ProviderId, modelId: string): readonly ReasoningEffort[] {
   if (provider === "claude") return REASONING_EFFORTS; // low → ultra
   if (provider === "codex") {
-    if (modelId === "gpt-5.6-sol" || modelId === "gpt-5.6-terra") return REASONING_EFFORTS; // low → ultra
+    if (modelId === "gpt-6-astra" || modelId === "gpt-5.6-sol" || modelId === "gpt-5.6-terra") {
+      return REASONING_EFFORTS; // low → ultra
+    }
     if (modelId === "gpt-5.6-luna") return REASONING_EFFORTS.slice(0, 5); // low → max
     return REASONING_EFFORTS.slice(0, 4); // unknown/legacy: low → xhigh
   }
@@ -181,10 +183,13 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Sonnet 5", modelId: "claude-sonnet-5", supportsReasoningEffort: true, contextWindow: 200_000 },
     { label: "Haiku 4.5", modelId: "claude-haiku-4-5", contextWindow: 200_000 }
   ],
+  // Astra's Codex CLI catalog reports a 272_000 default context. Live rollouts
+  // can replace it with the model_context_window value they report.
   // 258_400, not the 272_000 the model card advertises: that is the figure
   // Codex itself reports as `model_context_window` in its rollout, and the one
   // the CLI measures occupancy against. Verified against codex-cli 0.149.0.
   codex: [
+    { label: "GPT-6 Astra", modelId: "gpt-6-astra", supportsReasoningEffort: true, contextWindow: 272_000 },
     { label: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", supportsReasoningEffort: true, contextWindow: 258_400 },
     { label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra", supportsReasoningEffort: true, contextWindow: 258_400 },
     { label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna", supportsReasoningEffort: true, contextWindow: 258_400 }
@@ -333,6 +338,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "claude-haiku-4-5":    { input: 1,    output: 5,   cacheRead: 0.1,   cacheWrite: 1.25 },
 
   // Short-context rates (<272K). Long-context multipliers are not modeled.
+  "gpt-6-astra":         { input: 10,   output: 50,  cacheRead: 1,    cacheWrite: 12.5 },
   "gpt-5.6-sol":         { input: 5,    output: 30,  cacheRead: 0.5,   cacheWrite: 6.25 },
   "gpt-5.6-terra":       { input: 2,    output: 12,  cacheRead: 0.2,   cacheWrite: 2.5 },
   "gpt-5.6-luna":        { input: 0.2,  output: 1.2, cacheRead: 0.02,  cacheWrite: 0.25 },

@@ -56,7 +56,7 @@ pub const SERVER_NAME: &str = "argmax";
 
 /// What a provider that actually loads the `argmax` server is told about its
 /// capabilities. The tool descriptions carry the operational details.
-pub const AGENT_TOOLS_INSTRUCTION: &str = "Argmax tools are available as the `argmax` MCP server; use them to launch, list and message other Argmax sessions, and to browse the web in Argmax's own browser, when the task needs it.";
+pub const AGENT_TOOLS_INSTRUCTION: &str = "Argmax tools are available as the `argmax` MCP server, including Argmax's browser for web interaction. Keep bounded delegated work in the current chat and use your provider's native subagents for research, review, and implementation that you will integrate into this turn. The user-facing multitask flow is for work that should run alongside the chat. Use `session_launch` when the user explicitly asks for a separate session or when the work needs its own independent, durable lifecycle that remains visible and steerable after this turn, such as a separate repository investigation or a long-running build. Do not launch a session merely for parallelism, fresh context, model choice, or context relief.";
 
 /// Standing permission to accept a site's cookie prompt. It travels in the
 /// launch prompt and the MCP server instructions so every provider sees it
@@ -642,6 +642,16 @@ mod tests {
 
         assert_eq!(strip_instruction(&current), "\n\nDo the work");
         assert_eq!(strip_instruction(&previous), "\n\nDo the work");
+    }
+
+    #[test]
+    fn agent_tool_instruction_prefers_in_chat_delegation() {
+        let instruction = agent_tools_instruction();
+
+        assert!(instruction.contains("Keep bounded delegated work in the current chat"));
+        assert!(instruction.contains("Use `session_launch` when the user explicitly asks"));
+        assert!(instruction.contains("when the work needs its own independent, durable lifecycle"));
+        assert!(instruction.contains("Do not launch a session merely for parallelism"));
     }
 
     #[test]

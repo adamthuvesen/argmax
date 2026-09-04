@@ -331,11 +331,22 @@ seconds of slack so a wait that runs the full duration still gets its reply.
 
 ## Policy
 
-Agents may launch, message, and coordinate other sessions **on their own
-initiative** when the task needs it. The tool descriptions say so, and they say
-what a launch actually is: a top-level session in the user's sidebar, visible,
-spending real tokens, outliving the turn that started it — not a subagent. An
-agent that wants a subagent already has its provider's own.
+Keep bounded delegation in the current chat. Use the provider's native
+subagents for research, review, or implementation whose result you will
+integrate into the current turn. The user-facing multitask flow is for work
+that should run alongside a chat.
+
+Use `session_launch` when either of these cases applies:
+
+- The user explicitly asks for a separate session.
+- The work needs its own independent, durable lifecycle that should remain
+  visible and steerable after this turn, such as a separate repository
+  investigation or a long-running build.
+
+Do not launch a session merely for parallelism, fresh context, model choice, or
+context relief. A launched session is a top-level sidebar session, not a
+subagent. The launcher owns synthesis and verification. Keep delegation one
+hop unless the brief explicitly requires further decomposition.
 
 Two caps keep a chain finite, enforced in the socket handler where every caller
 passes through:

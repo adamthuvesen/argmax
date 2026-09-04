@@ -8,6 +8,7 @@ import {
   createCurrentWorkspace,
   createIsolatedWorkspace,
   createScratchWorkspace,
+  dashboardList,
   launchProvider,
   listChangedFiles,
   listWorkspaceFiles,
@@ -17,8 +18,7 @@ import {
   sessionEventsSince,
   setPriorityDismissed,
   setupAppTestMocks,
-  snapshot,
-  workspaceStatus
+  snapshot
 } from "../../test/appTestHarness.js";
 import { MobileApp } from "./MobileApp.js";
 
@@ -367,13 +367,13 @@ describe("MobileApp", () => {
     // The list stays usable underneath — the banner is not a blocker.
     expect(screen.getByRole("region", { name: "Chat list" })).toBeInTheDocument();
 
-    const statusCalls = workspaceStatus.mock.calls.length;
+    const statusCalls = dashboardList.mock.calls.length;
     act(() => remote.publish({ status: "connected", resync: true }));
 
     expect(screen.queryByRole("status", { name: "Reconnecting" })).not.toBeInTheDocument();
     // Deltas pushed while the socket was dead never arrived, so the snapshot is
     // reloaded rather than resumed.
-    await waitFor(() => expect(workspaceStatus.mock.calls.length).toBeGreaterThan(statusCalls));
+    await waitFor(() => expect(dashboardList.mock.calls.length).toBeGreaterThan(statusCalls));
   });
 
   it("pulls the open session's transcript tail after a resync, not just rows", async () => {

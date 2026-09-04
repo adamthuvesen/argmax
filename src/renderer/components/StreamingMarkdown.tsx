@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceSummary } from "../../shared/types.js";
@@ -23,8 +23,22 @@ const ChatMathMarkdown = lazy(async () => ({
 }));
 
 const SMOOTH_STREAM_TICK_MS = 32;
-const SMOOTH_STREAM_CHARS_PER_TICK = 5;
+/** Floor of the typewriter: what a block reveals per tick once it has caught up
+    with delivery (~156 characters a second). */
+const SMOOTH_STREAM_MIN_CHARS_PER_TICK = 5;
 const SMOOTH_STREAM_MIN_CHARS = 80;
+/** Ticks a newly arrived backlog is spread over (~1.3 s). Delivery is not
+    typewriter-shaped: Claude sends ~130-character chunks every 0.7 s, Codex
+    and OpenCode land the whole answer as one `message.completed`, and Cursor
+    fires a burst of word-sized deltas inside a few hundred milliseconds. A
+    fixed cadence fell behind every one of them, and whatever was still
+    unrevealed when the block stopped streaming was dumped in one piece.
+    Pacing each new backlog over a bounded window keeps a live stream a beat
+    behind delivery and gives an atomic answer a visible sweep instead of a
+    fourteen-second crawl. The same window finishes a block whose stream has
+    ended, so the end of a turn completes the reveal rather than cutting it
+    short. */
+const SMOOTH_STREAM_DRAIN_TICKS = 40;
 /** Blocks to remember reveal progress for. Bounded so a long-running app can't
     accumulate an entry per streamed block for the rest of the process. */
 const MAX_REMEMBERED_BLOCKS = 200;
@@ -76,71 +90,152 @@ function usePrefersReducedMotion(): boolean {
 }
 
 function initialVisibleLength(
-  text: string,
+  length: number,
   streaming: boolean,
   revealKey: string | null | undefined
 ): number {
-  const length = Array.from(text).length;
   if (!streaming || length <= SMOOTH_STREAM_MIN_CHARS) return length;
   // Text already revealed once is history, so resume there instead of retyping it.
   const revealed = revealKey ? revealedLengths.get(revealKey) : undefined;
   return revealed === undefined ? 0 : Math.min(revealed, length);
 }
 
+/** Code points in `text`, without materialising the character array. */
+function codePointLength(text: string): number {
+  let length = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    // A high surrogate and its low surrogate are one code point.
+    if (code >= 0xd800 && code <= 0xdbff) index += 1;
+    length += 1;
+  }
+  return length;
+}
+
+type RevealState = {
+  /** Code points shown so far. */
+  visible: number;
+  /** The stream has ended but the block is still typing out its remainder. */
+  finishing: boolean;
+};
+
+type RevealPace = {
+  forTarget: number;
+  finishing: boolean;
+  charsPerTick: number;
+};
+
 function useSmoothStreamingText(
   text: string,
   streaming: boolean,
   revealKey: string | null | undefined
-): string {
+): { text: string; revealing: boolean } {
   const prefersReducedMotion = usePrefersReducedMotion();
-  const textCharacters = useMemo(() => Array.from(text), [text]);
-  const targetLength = textCharacters.length;
+  const paced = streaming && !prefersReducedMotion;
+  const [reveal, setReveal] = useState<RevealState>(() => ({
+    visible: initialVisibleLength(streaming ? codePointLength(text) : text.length, streaming, revealKey),
+    finishing: false
+  }));
+  const revealing = paced || reveal.finishing;
+  // Settled answers and unpaced reasoning never slice by code point. Keeping
+  // their character arrays retained one array slot per character in history.
+  const textCharacters = useMemo(() => (revealing ? Array.from(text) : null), [revealing, text]);
+  const targetLength = textCharacters?.length ?? text.length;
   const targetLengthRef = useRef(targetLength);
-  const [visibleLength, setVisibleLength] = useState(() =>
-    initialVisibleLength(text, streaming, revealKey)
-  );
+  const paceRef = useRef<RevealPace>({
+    forTarget: -1,
+    finishing: false,
+    charsPerTick: SMOOTH_STREAM_MIN_CHARS_PER_TICK
+  });
 
   useEffect(() => {
-    if (revealKey && streaming) rememberRevealed(revealKey, visibleLength);
-  }, [revealKey, streaming, visibleLength]);
+    if (revealKey && streaming) rememberRevealed(revealKey, reveal.visible);
+  }, [revealKey, streaming, reveal.visible]);
 
-  useEffect(() => {
+  // A layout effect so the render that sees the stream end never paints: with
+  // `finishing` still false it would show the whole block for one frame before
+  // the catch-up reveal took over.
+  useLayoutEffect(() => {
     targetLengthRef.current = targetLength;
-    if (!streaming || prefersReducedMotion) {
-      setVisibleLength(targetLength);
+    if (prefersReducedMotion) {
+      setReveal((current) =>
+        current.visible === targetLength && !current.finishing
+          ? current
+          : { visible: targetLength, finishing: false }
+      );
       return;
     }
-    setVisibleLength((current) => {
-      if (targetLength <= SMOOTH_STREAM_MIN_CHARS && current === 0) {
-        return targetLength;
+    if (streaming) {
+      setReveal((current) => {
+        const visible =
+          targetLength <= SMOOTH_STREAM_MIN_CHARS && current.visible === 0
+            ? targetLength
+            : Math.min(current.visible, targetLength);
+        return visible === current.visible && !current.finishing
+          ? current
+          : { visible, finishing: false };
+      });
+      return;
+    }
+    // The stream ended. Whatever is still unrevealed types out at a catch-up
+    // pace rather than landing as one block. `visible` counts code points and
+    // `text.length` UTF-16 units, so reaching the latter proves the block is
+    // fully shown without counting; only a genuine remainder pays for the count.
+    setReveal((current) => {
+      if (current.visible >= text.length) {
+        return current.finishing ? { visible: current.visible, finishing: false } : current;
       }
-      return Math.min(current, targetLength);
+      const target = codePointLength(text);
+      const visible = Math.min(current.visible, target);
+      const finishing = visible < target;
+      return visible === current.visible && finishing === current.finishing
+        ? current
+        : { visible, finishing };
     });
-  }, [prefersReducedMotion, streaming, targetLength]);
+  }, [prefersReducedMotion, streaming, targetLength, text]);
 
   useEffect(() => {
-    if (!streaming || prefersReducedMotion) {
+    if (!revealing) {
       return;
     }
     const interval = window.setInterval(() => {
       // Backgrounded windows can't show the typewriter advance, and each tick
       // pays a React re-render plus a tail re-parse — hold still until visible.
       if (document.hidden) return;
-      setVisibleLength((current) => {
+      setReveal((current) => {
         const target = targetLengthRef.current;
-        if (current >= target) {
-          return current;
+        if (current.visible >= target) {
+          return current.finishing ? { visible: current.visible, finishing: false } : current;
         }
-        return Math.min(current + SMOOTH_STREAM_CHARS_PER_TICK, target);
+        // The pace is set once per arrival and held until the next one, so a
+        // chunk reveals at one speed instead of pulsing as its backlog drains.
+        const pace = paceRef.current;
+        if (pace.forTarget !== target || pace.finishing !== current.finishing) {
+          const spread = Math.ceil((target - current.visible) / SMOOTH_STREAM_DRAIN_TICKS);
+          paceRef.current = {
+            forTarget: target,
+            finishing: current.finishing,
+            charsPerTick: Math.max(
+              SMOOTH_STREAM_MIN_CHARS_PER_TICK,
+              // Finishing never slows a block down below the speed it was
+              // already streaming at.
+              current.finishing ? Math.max(pace.charsPerTick, spread) : spread
+            )
+          };
+        }
+        const visible = Math.min(current.visible + paceRef.current.charsPerTick, target);
+        // The tick that lands the last character also ends the finishing
+        // pass, so the block settles into its history rendering at once.
+        return { visible, finishing: current.finishing && visible < target };
       });
     }, SMOOTH_STREAM_TICK_MS);
     return () => window.clearInterval(interval);
-  }, [prefersReducedMotion, streaming]);
+  }, [revealing]);
 
-  if (!streaming || prefersReducedMotion || visibleLength >= targetLength) {
-    return text;
+  if (!textCharacters || reveal.visible >= targetLength) {
+    return { text, revealing };
   }
-  return textCharacters.slice(0, visibleLength).join("");
+  return { text: textCharacters.slice(0, reveal.visible).join(""), revealing };
 }
 
 // Split the revealed text into a stable "committed" prefix (whole, completed
@@ -154,26 +249,40 @@ function splitStreamingMarkdown(text: string): { committed: string; tail: string
   // over the whole prefix per candidate boundary, and an open fence — the state
   // an agent is in for as long as it is emitting a code block — rejects every
   // boundary inside it, so the cost grew with the square of the block.
-  let insideFence = false;
+  let openFence: string | null = null;
   let insideMath = false;
   let cut = -1;
   let lineStart = 0;
   for (let i = 0; i <= text.length; i += 1) {
     if (i !== text.length && text.charCodeAt(i) !== 10) continue;
-    const line = text.slice(lineStart, i).trim();
+    const rawLine = text.slice(lineStart, i);
+    const line = rawLine.trim();
+    const fence = /^(`{3,}|~{3,})(.*)$/.exec(line);
     if (i === lineStart) {
       // A blank line: the second "\n" of a paragraph break. End of text is not
       // one, only an unterminated last line, so it can never commit the tail.
-      if (i !== text.length && lineStart > 0 && !insideFence && !insideMath) cut = lineStart + 1;
-    } else if (line.startsWith("```") || line.startsWith("~~~")) {
-      insideFence = !insideFence;
-    } else if (line.startsWith("$$") || line.startsWith("\\[")) {
+      if (i !== text.length && lineStart > 0 && !openFence && !insideMath) cut = lineStart + 1;
+    } else if (fence && !insideMath) {
+      if (openFence) {
+        // Shorter fences, other markers, and trailing text are code content.
+        if (
+          /^ {0,3}[`~]/.test(rawLine) &&
+          fence[1][0] === openFence[0] &&
+          fence[1].length >= openFence.length &&
+          !fence[2].trim()
+        ) {
+          openFence = null;
+        }
+      } else if (fence[1][0] !== "`" || !fence[2].includes("`")) {
+        openFence = fence[1];
+      }
+    } else if (!openFence && (line.startsWith("$$") || line.startsWith("\\["))) {
       if (line.length > 2 && (line.endsWith("$$") || line.endsWith("\\]"))) {
         // Opened and closed on the same line
       } else {
         insideMath = !insideMath;
       }
-    } else if (insideMath && (line.endsWith("$$") || line.endsWith("\\]"))) {
+    } else if (!openFence && insideMath && (line.endsWith("$$") || line.endsWith("\\]"))) {
       insideMath = false;
     }
     lineStart = i + 1;
@@ -376,7 +485,11 @@ export function StreamingMarkdown({
   workspace?: WorkspaceSummary | null;
   onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
 }): JSX.Element | null {
-  const visibleText = useSmoothStreamingText(text, streaming && paced, revealKey);
+  const { text: visibleText, revealing } = useSmoothStreamingText(text, streaming && paced, revealKey);
+  // A block still typing out its remainder after the stream ended keeps the
+  // live rendering path — the committed/tail split and deferred code
+  // highlighting — until the last character lands.
+  const live = streaming || revealing;
   const segments = useMemo(() => splitLogSegments(visibleText), [visibleText]);
   if (segments.length === 0 && visibleText.length > 0) return null;
   const hasLogs = segments.some((segment) => segment.kind === "log");
@@ -386,11 +499,11 @@ export function StreamingMarkdown({
     <div
       className={
         hasLogs
-          ? `markdown-with-logs${streaming ? " markdown-streaming" : ""}`
-          : `markdown${streaming ? " markdown-streaming" : ""}`
+          ? `markdown-with-logs${live ? " markdown-streaming" : ""}`
+          : `markdown${live ? " markdown-streaming" : ""}`
       }
     >
-      <StreamingCodeContext.Provider value={streaming}>
+      <StreamingCodeContext.Provider value={live}>
         {hasLogs
           ? segments.map((segment, index) =>
               segment.kind === "log" ? (
@@ -404,7 +517,7 @@ export function StreamingMarkdown({
           : (
             <MarkdownStream
               text={markdownText}
-              streaming={streaming}
+              streaming={live}
               workspace={workspace}
               onOpenFile={onOpenFile}
             />

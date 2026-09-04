@@ -729,9 +729,23 @@
    sticky scroll-to-latest button down with the content sliding under it. */
 .conversation-scroll {
   position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
+}
+
+/* PR milestones belong to the chat, including while it has no assistant turn.
+   Keep the sweep outside the scroller so it has no effect on transcript layout.
+   An explicit width avoids the canvas intrinsic-size feedback loop. */
+.conversation-scroll > .turn-exhale {
+  position: absolute;
+  bottom: var(--space-8);
+  left: calc(var(--session-inline-padding) - 12px);
+  width: calc(100% - 2 * var(--session-inline-padding) + 24px);
+  height: min(var(--turn-exhale-band, 132px), 100%);
+  z-index: -1;
+  pointer-events: none;
 }
 
 /* Content dissolves into the pane instead of being sliced mid-line at the

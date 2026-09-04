@@ -72,13 +72,36 @@ describe("MermaidDiagram", () => {
       expect(screen.getByTestId("mermaid-svg")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "View full diagram" }));
+    const trigger = screen.getByRole("button", { name: "View full diagram" });
+    trigger.focus();
+    fireEvent.click(trigger);
     const dialog = screen.getByRole("dialog", { name: "Full diagram" });
     expect(dialog).toBeInTheDocument();
     expect(dialog.querySelector("[data-testid='mermaid-svg']")).toBeTruthy();
+    const close = screen.getByRole("button", { name: "Close full diagram" });
+    expect(close).toHaveFocus();
+
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    document.dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(true);
+    expect(screen.getAllByRole("button", { name: "Copy diagram source" })[1]).toHaveFocus();
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Full diagram" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("dismisses the full-size diagram from its backdrop", async () => {
+    render(<MermaidDiagram source={"flowchart LR\n  A --> B"} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("mermaid-svg")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "View full diagram" }));
+    const overlay = document.querySelector(".mermaid-diagram-overlay");
+    expect(overlay).toBeTruthy();
+    fireEvent.mouseDown(overlay as HTMLElement);
+    expect(screen.queryByRole("dialog", { name: "Full diagram" })).toBeNull();
   });
 
   it("reads mermaid's native pixel width from the SVG", () => {

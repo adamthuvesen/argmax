@@ -134,6 +134,86 @@ describe("<StreamingMarkdown />", () => {
     expect(screen.getByText(text)).toBeInTheDocument();
   });
 
+  it("spreads a large arriving block over a bounded window instead of crawling", () => {
+    // Codex and OpenCode land the whole answer as one completed message. At
+    // the floor cadence a 2000-character answer took thirteen seconds, and the
+    // session state flipped long before that, dumping the rest in one block.
+    vi.useFakeTimers();
+    const text = "E".repeat(2000);
+
+    const { container } = render(<StreamingMarkdown text={text} streaming />);
+    const markdown = container.querySelector(".markdown");
+    expect(markdown?.textContent).toBe("");
+
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+    // 2000 / 40 ticks = 50 per tick.
+    expect(markdown?.textContent).toBe("E".repeat(50));
+
+    act(() => {
+      vi.advanceTimersByTime(32 * 39);
+    });
+    expect(markdown?.textContent).toBe(text);
+  });
+
+  it("finishes typing out the remainder when the stream ends instead of dumping it", () => {
+    vi.useFakeTimers();
+    const text = "F".repeat(400);
+
+    const { container, rerender } = render(<StreamingMarkdown text={text} streaming />);
+    const markdown = container.querySelector(".markdown");
+    act(() => {
+      vi.advanceTimersByTime(32 * 4);
+    });
+    // 400 / 40 = 10 per tick.
+    expect(markdown?.textContent).toBe("F".repeat(40));
+
+    // The session state flipped to complete with 360 characters unrevealed.
+    rerender(<StreamingMarkdown text={text} streaming={false} />);
+    expect(markdown?.textContent).toBe("F".repeat(40));
+    expect(markdown?.className).toContain("markdown-streaming");
+
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+    // The remainder keeps the pace it was streaming at: never a snap.
+    expect(markdown?.textContent).toBe("F".repeat(50));
+
+    act(() => {
+      vi.advanceTimersByTime(32 * 35);
+    });
+    expect(markdown?.textContent).toBe(text);
+    expect(markdown?.className).toBe("markdown");
+  });
+
+  it("finishes a burst that ended mid-reveal within the same bounded window", () => {
+    // Cursor delivers an answer as a burst of deltas and ends the turn at once.
+    vi.useFakeTimers();
+    const first = "G".repeat(400);
+    const text = "G".repeat(2000);
+
+    const { container, rerender } = render(<StreamingMarkdown text={first} streaming />);
+    const markdown = container.querySelector(".markdown");
+    act(() => {
+      vi.advanceTimersByTime(32 * 2);
+    });
+    // 400 / 40 = 10 per tick.
+    expect(markdown?.textContent).toBe("G".repeat(20));
+
+    rerender(<StreamingMarkdown text={text} streaming={false} />);
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+    // 1980 / 40 = 50 per tick: faster than before, bounded to ~1.3 s.
+    expect(markdown?.textContent).toBe("G".repeat(70));
+    act(() => {
+      vi.advanceTimersByTime(32 * 40);
+    });
+    expect(markdown?.textContent).toBe(text);
+    expect(markdown?.className).toBe("markdown");
+  });
+
   it("shows an unpaced streaming block in full as it arrives", () => {
     // `paced={false}` keeps the committed/tail split of a streaming block but
     // drops the typewriter: the Thought block uses it so a reasoning burst
@@ -163,6 +243,18 @@ describe("<StreamingMarkdown />", () => {
 
     expect(screen.getByRole("heading", { name: "Title" })).toBeInTheDocument();
   });
+
+  it.each(["```", "~~~", "````not-a-close", "    ````", "\t````"])(
+    "keeps %s inside a longer code fence while streaming",
+    (innerFence) => {
+      const text = ["````markdown", innerFence, "", "# This is code", "", "Still code"].join("\n");
+      render(<StreamingMarkdown text={text} streaming paced={false} />);
+
+      expect(screen.queryByRole("heading", { name: "This is code" })).not.toBeInTheDocument();
+      expect(screen.getAllByRole("button", { name: "Copy code" })).toHaveLength(1);
+      expect(screen.getByText("Still code").closest("code")).not.toBeNull();
+    }
+  );
 
   it("resumes where it left off when the pane remounts mid-stream", () => {
     vi.useFakeTimers();

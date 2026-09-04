@@ -12,8 +12,7 @@ import {
   Pencil,
   Pin,
   PinOff,
-  RefreshCw,
-  Terminal
+  RefreshCw
 } from "lucide-react";
 import {
   memo,
@@ -219,27 +218,6 @@ function SidebarSessionRowInner({
   onSyncNow,
   copyableIds
 }: SidebarSessionRowProps): JSX.Element {
-  // Right-click "Open in IDE" → the IDE list replaces the menu at the same
-  // point, the way "Edit Icon" hands off to the icon picker.
-  const [idePickerPoint, setIdePickerPoint] = useState<AnchorPoint | null>(null);
-  const idePicker = useAnchoredPopover({
-    open: idePickerPoint !== null,
-    gutter: 0,
-    capHeight: true
-  });
-  const { anchorToPoint: anchorIdePicker } = idePicker;
-  // Keep direct refs to every menuitem so ↑/↓ keyboard nav can move focus.
-  // The map is rebuilt every render from the `detectedIdes` list; reading
-  // `current` after layout is fine because the popover only mounts while
-  // the picker is open.
-  const menuItemRefs = useRef(new Map<string, HTMLButtonElement | null>());
-  const closePicker = useCallback((): void => setIdePickerPoint(null), []);
-  useDismissOnOutsideOrEscape(idePicker.popoverRef, idePickerPoint !== null, closePicker);
-
-  useEffect(() => {
-    anchorIdePicker(idePickerPoint);
-  }, [anchorIdePicker, idePickerPoint]);
-
   // Right-click "Rename" → inline edit. The context menu is portaled at the
   // cursor; committing writes the new label through onRename.
   const [contextMenuPoint, setContextMenuPoint] = useState<AnchorPoint | null>(null);
@@ -273,41 +251,6 @@ function SidebarSessionRowInner({
     }
   }, [isEditing]);
 
-  // Focus the first menuitem, preferring the current default IDE. The popover
-  // mounts in the same render that opens it, so by the time this effect runs
-  // its menuitems are in the DOM and the refs are populated.
-  useEffect(() => {
-    if (idePickerPoint === null) return;
-    const preferredId =
-      detectedIdes.find((entry) => entry.id === defaultIde)?.id ?? detectedIdes[0]?.id;
-    if (!preferredId) return;
-    menuItemRefs.current.get(preferredId)?.focus();
-  }, [idePickerPoint, detectedIdes, defaultIde]);
-
-  const handleMenuKeyDown = (
-    entryId: IdeId
-  ) => (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") {
-      return;
-    }
-    event.preventDefault();
-    const ids = detectedIdes.map((entry) => entry.id);
-    const currentIndex = ids.indexOf(entryId);
-    let nextIndex = currentIndex;
-    if (event.key === "ArrowDown") {
-      nextIndex = (currentIndex + 1) % ids.length;
-    } else if (event.key === "ArrowUp") {
-      nextIndex = (currentIndex - 1 + ids.length) % ids.length;
-    } else if (event.key === "Home") {
-      nextIndex = 0;
-    } else if (event.key === "End") {
-      nextIndex = ids.length - 1;
-    }
-    const nextId = ids[nextIndex];
-    if (!nextId) return;
-    menuItemRefs.current.get(nextId)?.focus();
-  };
-
   const showArchive =
     workspace.state === "complete" ||
     workspace.state === "failed" ||
@@ -327,12 +270,18 @@ function SidebarSessionRowInner({
         ? guiIdes[0].id
         : null;
 
-  const ideDisabled = !hasPath || !hasIdes;
+  const ideDisabled = !hasPath || !hasIdes || effectiveDefault === null;
   // Surfaced on the (disabled) menu item so the user learns why it's inert.
   const disabledReason = !hasPath
     ? "Worktree not ready yet"
     : !hasIdes
       ? "No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
+      : effectiveDefault === null
+        ? "Set a default IDE in Settings → Handoff"
+        : null;
+  const defaultIdeLabel =
+    effectiveDefault != null
+      ? (detectedIdes.find((entry) => entry.id === effectiveDefault)?.label ?? effectiveDefault)
       : null;
 
   const displayLabel = workspace.taskLabel.trim() || workspace.branch || "Untitled chat";
@@ -357,10 +306,9 @@ function SidebarSessionRowInner({
   };
 
   const startOpenInIde = (): void => {
-    const point = contextMenuPoint;
     closeContextMenu();
-    if (!point) return;
-    setIdePickerPoint(point);
+    if (ideDisabled || effectiveDefault === null) return;
+    onOpenInIde(workspace.id, effectiveDefault);
   };
 
   const startEditIcon = (): void => {
@@ -642,7 +590,7 @@ function SidebarSessionRowInner({
                   }}
                 >
                   <ExternalLink size={13} aria-hidden="true" />
-                  Open in IDE
+                  {defaultIdeLabel ? `Open in ${defaultIdeLabel}` : "Open in IDE"}
                 </button>
               </li>
               {copyableIds ? (
@@ -715,50 +663,6 @@ function SidebarSessionRowInner({
                   </button>
                 </li>
               ) : null}
-            </ul>,
-            document.body
-          )
-        : null}
-      {idePickerPoint
-        ? createPortal(
-            <ul
-              ref={idePicker.setPopover}
-              className="project-picker-popover session-ide-popover"
-              role="menu"
-              aria-label="Open this worktree in"
-              style={idePicker.floatingStyles}
-            >
-              {detectedIdes.map((entry) => {
-                const isShell = entry.id === "terminal" || entry.id === "iterm";
-                return (
-                  <li key={entry.id} role="none">
-                    <button
-                      ref={(node) => {
-                        if (node === null) {
-                          menuItemRefs.current.delete(entry.id);
-                        } else {
-                          menuItemRefs.current.set(entry.id, node);
-                        }
-                      }}
-                      type="button"
-                      className="project-picker-item"
-                      role="menuitem"
-                      aria-pressed={effectiveDefault === entry.id}
-                      onKeyDown={handleMenuKeyDown(entry.id)}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        closePicker();
-                        onOpenInIde(workspace.id, entry.id, {
-                          pinAsDefault: defaultIde === null && effectiveDefault === null
-                        });
-                      }}
-                    >
-                      {isShell ? <Terminal size={13} aria-hidden="true" /> : <ExternalLink size={13} aria-hidden="true" />}
-                      {entry.label}
-                    </button>
-                  </li>
-                );
-              })}
             </ul>,
             document.body
           )

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceFilePreview } from "../../shared/types.js";
+import { BoundedMap } from "../../shared/boundedSet.js";
 import type { ReviewIpcDispatch } from "../lib/reviewIpc.js";
 import type { ReviewSourceKind } from "../lib/reviewIpc.js";
 import { errorMessage } from "../../shared/error.js";
@@ -24,6 +25,11 @@ interface WorkspaceFileTabState {
   saveState: WorkspaceFileSaveState;
   saveError: string | null;
 }
+
+// A text preview may hold up to 1 MiB. Closed tabs are only a convenience
+// cache, so keep a small recent window rather than retaining every file viewed
+// for the lifetime of a pane.
+const CLOSED_FILE_CACHE_LIMIT = 12;
 
 function createWorkspaceFileTab(path: string): WorkspaceFileTabState {
   return {
@@ -74,7 +80,7 @@ export function useFilePreview(args: {
   // on disk after close is flagged rather than shown stale. Cleared on source
   // change.
   const previewCache = useRef(
-    new Map<
+    new BoundedMap<
       string,
       {
         preview: WorkspaceFilePreview;
@@ -82,7 +88,7 @@ export function useFilePreview(args: {
         original: string | null;
         diskMtimeMs: number | null;
       }
-    >()
+    >(CLOSED_FILE_CACHE_LIMIT)
   );
 
   const activeTab = tabs.find((tab) => tab.path === activeTabPath) ?? null;

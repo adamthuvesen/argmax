@@ -49,7 +49,10 @@ describe("coalesceAssistantGroups", () => {
       thinking: true,
       streaming: false
     });
-    expect(groups[1]).toMatchObject({ text: "Here's the answer.", streaming: false });
+    // Completed in a live turn: still revealed live, like a delta group, but
+    // its text is final.
+    expect(groups[1]).toMatchObject({ text: "Here's the answer.", streaming: true });
+    expect(groups[1]?.growing).toBeFalsy();
     expect(groups[1]?.thinking).toBeFalsy();
   });
 
@@ -208,7 +211,7 @@ describe("coalesceAssistantGroups", () => {
 
     expect(groups).toHaveLength(3);
     expect(groups[0]).toMatchObject({ text: "x", thinking: true });
-    expect(groups[1]).toMatchObject({ text: "y", streaming: true });
+    expect(groups[1]).toMatchObject({ text: "y", streaming: true, growing: true });
     expect(groups[1]?.thinking).toBeFalsy();
     expect(groups[2]).toMatchObject({ text: "z", thinking: true });
   });

@@ -4,6 +4,7 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
 
 /** Dispatch row, written into the parent chat the moment a multitask starts. */
 export const MULTITASK_LAUNCHED: EventType = "multitask.launched";
@@ -83,21 +84,29 @@ export function multitaskRowStatus(state: string | null): "running" | "done" | "
 }
 
 export function isMultitaskEvent(event: TimelineEvent): boolean {
-  return event.type === MULTITASK_LAUNCHED || event.type === MULTITASK_FINISHED;
-}
-
-function nonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
+  return decodeTimelineEvent(event).kind === "multitask";
 }
 
 export function multitaskNoticeFor(event: TimelineEvent): MultitaskNotice {
+  const canonical = decodeTimelineEvent(event);
+  if (canonical.kind !== "multitask") {
+    return {
+      childSessionId: null,
+      taskLabel: event.message,
+      prompt: null,
+      worktree: false,
+      state: null,
+      answer: null,
+      createdAt: event.createdAt
+    };
+  }
   return {
-    childSessionId: nonEmptyString(event.payload.childSessionId),
-    taskLabel: nonEmptyString(event.payload.taskLabel) ?? event.message,
-    prompt: nonEmptyString(event.payload.prompt),
-    worktree: event.payload.worktree === true,
-    state: nonEmptyString(event.payload.state),
-    answer: nonEmptyString(event.payload.answer),
+    childSessionId: canonical.childSessionId,
+    taskLabel: canonical.taskLabel,
+    prompt: canonical.prompt,
+    worktree: canonical.worktree,
+    state: canonical.state,
+    answer: canonical.answer,
     createdAt: event.createdAt
   };
 }

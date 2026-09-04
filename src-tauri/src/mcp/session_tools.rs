@@ -128,8 +128,9 @@ impl ArgmaxTools {
         name = "session_list",
         description = "List the other Argmax sessions the user has open. Returns each session's id, \
 project, task label, provider, state, last activity, and which session launched it, newest \
-activity first. Start here when you need a session id to message. Use it on your own initiative \
-whenever the task needs it; these are the user's top-level sidebar sessions, not subagents."
+activity first. Use it when the user names another session or when coordination with an \
+independently running session is part of the task. These are the user's top-level sidebar sessions, \
+not subagents."
     )]
     async fn session_list(
         &self,
@@ -144,13 +145,15 @@ whenever the task needs it; these are the user's top-level sidebar sessions, not
 
     #[tool(
         name = "session_launch",
-        description = "Start a new Argmax session on a task of its own and return its id. Use it to \
-parallelize work that does not need your context — a separate investigation, a second repository, \
-a long build — then message or list it to follow up. The new session starts cold, so put \
-everything it needs in the prompt. Launch on your own initiative when the task calls for it, \
-without asking first — but a launched session is a top-level session in the user's sidebar, not a \
-subagent: it is visible, it spends real tokens, and it outlives your turn. Launches are capped at \
-two levels deep and ten per session."
+        description = "Start a new Argmax session for an independent task and return its id. Use this \
+when the user explicitly asks for a separate session or when the work needs its own independent, \
+durable lifecycle that remains visible and steerable after your turn, such as a separate repository \
+investigation or a long-running build. Keep bounded research, review, and implementation in the \
+current chat using your provider's native subagents. The user-facing multitask flow is for work that \
+should run alongside the chat. Do not use this merely for parallelism, fresh context, model choice, \
+or context relief. A new session starts cold, so put everything it needs in the prompt. It is a \
+top-level sidebar session, not a subagent. It is visible to the user, spends real tokens, and outlives \
+your turn. Launches are capped at two levels deep and ten per session."
     )]
     async fn session_launch(
         &self,

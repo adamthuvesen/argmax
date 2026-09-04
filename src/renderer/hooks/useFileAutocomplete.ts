@@ -87,6 +87,10 @@ export interface FileAutocompleteState {
 }
 
 const POPOVER_LIMIT = 50;
+// Each source can contribute tens of thousands of paths plus derived folder
+// entries. A pane can visit many projects over its lifetime, so bound the
+// convenience cache and re-fetch an old source after it falls out.
+const SOURCE_CACHE_LIMIT = 4;
 
 function sourceKey(source: FileAutocompleteSource | null): string | null {
   if (!source) return null;
@@ -106,10 +110,12 @@ export function useFileAutocomplete({
   const [entriesBySource, setEntriesBySource] = useState<Map<string, FileAutocompleteEntry[]>>(
     new Map()
   );
-  const inflightRef = useRef<string | null>(null);
+  const inflightRef = useRef(new Set<string>());
 
   const trigger = useMemo(() => parseFileQuery(input, caret), [input, caret]);
   const key = sourceKey(source);
+  const activeKeyRef = useRef(key);
+  activeKeyRef.current = key;
 
   // Lazy fetch: only load the file list once the user actually opens an `@`
   // mention. Cached by source key so re-opening the popover is instant; a
@@ -123,24 +129,41 @@ export function useFileAutocomplete({
   // response is always safe to store.
   useEffect(() => {
     if (!trigger || !source || !key) return;
-    if (cacheRef.current.has(key)) return;
-    if (inflightRef.current === key) return;
+    const cache = cacheRef.current;
+    const cached = cache.get(key);
+    if (cached) {
+      // Refresh insertion order so actively revisited sources stay cached.
+      cache.delete(key);
+      cache.set(key, cached);
+      return;
+    }
+    if (inflightRef.current.has(key)) return;
     const api = window.argmax?.workspace;
     if (!api) return;
-    inflightRef.current = key;
+    inflightRef.current.add(key);
     void api
       .listFiles(source)
       .then((fetched) => {
         const paths = fetched.map((entry) => entry.path);
         const built = buildEntries(paths);
-        cacheRef.current.set(key, built);
-        setEntriesBySource(new Map(cacheRef.current));
+        cache.set(key, built);
+        while (cache.size > SOURCE_CACHE_LIMIT) {
+          let evicted = false;
+          for (const candidate of cache.keys()) {
+            if (candidate === activeKeyRef.current) continue;
+            cache.delete(candidate);
+            evicted = true;
+            break;
+          }
+          if (!evicted) break;
+        }
+        setEntriesBySource(new Map(cache));
       })
       .catch(() => {
         // swallow — next activation retries via the cleared inflight marker
       })
       .finally(() => {
-        if (inflightRef.current === key) inflightRef.current = null;
+        inflightRef.current.delete(key);
       });
   }, [trigger, source, key]);
 

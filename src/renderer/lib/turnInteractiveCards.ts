@@ -1,4 +1,5 @@
 import type { TimelineEvent } from "../../shared/types.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import { parseQuestionsFromToolInput, type Question } from "./questions.js";
 import type { ToolCall, TurnToolItem } from "./toolCalls.js";
 
@@ -89,7 +90,8 @@ export function collectAskUserQuestionState(toolItems: readonly TurnToolItem[]):
 export function hasOutstandingCardAsk(events: TimelineEvent[], toolCalls: ToolCall[]): boolean {
   let lastUserMessageTime = "";
   for (const event of events) {
-    if (event.type === "user.message" && event.createdAt > lastUserMessageTime) {
+    const decoded = decodeTimelineEvent(event);
+    if (decoded.kind === "message" && decoded.role === "user" && event.createdAt > lastUserMessageTime) {
       lastUserMessageTime = event.createdAt;
     }
   }

@@ -131,7 +131,7 @@ fn cap_notice_answer(answer: &str) -> String {
 /// Where a user turn came from, when it was not the person at the keyboard.
 /// Written onto the `user.message` payload as `origin`, which is what the chat
 /// renders as a "From <label>" bubble instead of an ordinary prompt.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageOrigin {
     /// The session that wrote it.
@@ -2195,6 +2195,14 @@ impl ProviderSessionService {
         }
     }
 
+    pub fn pending_messages_snapshot(&self) -> BTreeMap<String, Vec<PendingMessage>> {
+        self.queues
+            .lock_or_recover("queues")
+            .iter()
+            .map(|(session_id, queue)| (session_id.clone(), queue.iter().cloned().collect()))
+            .collect()
+    }
+
     fn publish_pending_messages(&self, session_id: &str) {
         let queue = self
             .queues
@@ -3002,6 +3010,10 @@ mod tests {
         assert_eq!(queue.len(), 1);
         assert_eq!(queue[0].id, message_id);
         assert_eq!(queue[0].content, "please keep this");
+        let snapshot = service.pending_messages_snapshot();
+        assert_eq!(snapshot["session-1"][0].id, message_id);
+        service.clear_queue("session-1");
+        assert!(service.pending_messages_snapshot().is_empty());
     }
 
     #[test]

@@ -153,7 +153,7 @@ html:has(.mobile-shell) body {
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  padding-bottom: calc(112px + env(safe-area-inset-bottom));
+  padding-bottom: var(--space-4);
 }
 
 .mobile-section {
@@ -283,15 +283,13 @@ html:has(.mobile-shell) body {
 }
 
 .mobile-list-dock {
-  position: fixed;
-  left: var(--space-4);
-  right: var(--space-4);
-  bottom: calc(10px + env(safe-area-inset-bottom));
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  z-index: 5;
-  pointer-events: none;
+  padding: var(--space-2_5) var(--space-4) calc(var(--space-2_5) + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line-soft);
+  background: var(--bg);
 }
 
 .mobile-list-search {
@@ -304,12 +302,8 @@ html:has(.mobile-shell) body {
   padding: 0 var(--space-4);
   border: 1px solid var(--line-soft);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  background: var(--panel);
   color: var(--muted-strong);
-  box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 16%, transparent);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  pointer-events: auto;
 }
 
 .mobile-list-search input {
@@ -339,8 +333,6 @@ html:has(.mobile-shell) body {
   border-radius: 50%;
   background: var(--text);
   color: var(--bg);
-  box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 22%, transparent);
-  pointer-events: auto;
 }
 
 .mobile-list-compose:active {
@@ -521,16 +513,8 @@ html:has(.mobile-shell) body {
   display: none !important;
 }
 
-/* Keep both mobile composers aligned with the agent output (.markdown, which
-   reads --text-base off the shell's own scale).
-
-   These tokens only resolve to the same pixels because both composer cards
-   carry `data-type-scale="composer"`. The shell hosts `data-font-size` on
-   itself rather than on :root, so --chrome-type-step — which only :root ever
-   writes — stays at the desktop step here, and a composer that skips the
-   scale reads the shell's step instead. That is a 3px gap the shared token
-   hides: the new-session prompt used to render at 20px against the session
-   prompt's 17px. */
+/* Both composers use the same scale so their prompt text matches the
+   conversation's 17px body text. */
 .mobile-shell .session-input textarea,
 .mobile-shell .mobile-new-prompt {
   font-size: var(--text-md-plus);

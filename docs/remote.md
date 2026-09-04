@@ -19,7 +19,7 @@ Pairing is completed by scanning the QR code in settings or opening `http://<mac
 - **Server:** [src-tauri/src/remote](../src-tauri/src/remote) runs an `axum` HTTP server on `127.0.0.1:<port>`. `/api/ws` handles WebSocket connections; other routes serve frontend assets. Tauri's asset resolver answers a miss with the app shell rather than reporting one, so [server.rs](../src-tauri/src/remote/server.rs) treats HTML under a non-HTML path as a 404 — otherwise a hashed chunk the bundle no longer has goes out as `text/html` and gets cached under that URL for a year.
 - **Protocol:** JSON frames over WebSocket.
   - Handshake: `{"type":"auth","token":"..."}` within 5 seconds.
-  - RPC: `{"type":"request","id", "channel", "input"}` → `{"type":"response","id","ok"|"error"}`.
+  - RPC: `{"type":"request","id", "channel", "input"}` → `{"type":"response","id","ok"|"error"}`. Each client may run up to 16 requests at once. Further requests receive `REMOTE_REQUEST_LIMIT` until one finishes.
   - Push events: `{"type":"event","channel","payload"}` for `dashboard:delta`, `terminal:data`, and `terminal:exit`. Terminal events ride their own 64-slot broadcast so a flood of PTY output cannot evict a queued delta; a client that falls behind on that stream silently loses the window, while falling behind on `dashboard:delta` costs it a `resync` frame.
   - Heartbeat: `{"type":"ping"}` / `{"type":"pong"}` every 20s. Resync signals (`{"type":"resync"}`) indicate dropped connection recovery; the client reloads its snapshot and the open session's events.
 - **Dispatcher:** [src-tauri/src/remote/dispatch.rs](../src-tauri/src/remote/dispatch.rs) maps incoming requests to existing IPC handlers. Desktop-only channels return `REMOTE_UNSUPPORTED`.

@@ -1,8 +1,8 @@
 // GhPoller periodically calls
 // `GhService::refresh` against running sessions, recently completed sessions,
 // and sessions with an open PR. It watches for `check_state` / `head_sha`
-// transitions and publishes a `DashboardDelta` so the renderer can re-render
-// PR status without polling itself.
+// and milestone transitions and publishes a `DashboardDelta` so the renderer
+// can re-render PR status without polling itself.
 
 use crate::util::sync::LockOrRecover;
 use std::{
@@ -99,6 +99,8 @@ struct PrState {
     head_sha: String,
     check_state: String,
     pr_state: Option<String>,
+    pr_created_at: Option<String>,
+    pr_merged_at: Option<String>,
 }
 
 struct PollerInner {
@@ -106,8 +108,8 @@ struct PollerInner {
     service: Arc<GhService>,
     publish_delta: Option<DeltaPublisher>,
     on_check_failure: Option<CheckFailureHook>,
-    /// Last-seen `(head_sha, check_state, pr_state)` per `(session_id,
-    /// pr_number)` so a repeated tick on the same state is a no-op.
+    /// Last-seen PR state per `(session_id, pr_number)` so a repeated tick is
+    /// a no-op while recovered milestone timestamps still publish.
     last_state: Mutex<HashMap<(String, i64), PrState>>,
     /// Insertion-ordered ledger of failure events we've already fired, keyed
     /// `session:pr:head_sha`. Bounded so a long-running app doesn't grow it.
@@ -343,6 +345,8 @@ fn detect_transition(
         head_sha: latest.head_sha.clone(),
         check_state: latest.last_seen_check_state.clone(),
         pr_state: latest.pr_state.clone(),
+        pr_created_at: latest.pr_created_at.clone(),
+        pr_merged_at: latest.pr_merged_at.clone(),
     };
 
     let changed = {
@@ -572,6 +576,8 @@ mod tests {
                         updated_at: now_iso(),
                         pr_state: Some("OPEN".to_string()),
                         notified_at: None,
+                        pr_created_at: None,
+                        pr_merged_at: None,
                         head_ref_name: None,
                     },
                 )
@@ -606,6 +612,8 @@ mod tests {
                     updated_at: now_iso(),
                     pr_state: Some("OPEN".to_string()),
                     notified_at: None,
+                    pr_created_at: None,
+                    pr_merged_at: None,
                     head_ref_name: None,
                 },
             )
@@ -666,8 +674,8 @@ mod tests {
     async fn poller_publishes_merge_transition_when_head_and_checks_are_unchanged() {
         let (_dir, database) = open_db();
         fixture(&database);
-        let open_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
-        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "MERGED", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
+        let open_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "createdAt": "2026-05-24T10:00:00Z", "mergedAt": null, "statusCheckRollup": [{"conclusion": "pending"}]}"#;
+        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "MERGED", "createdAt": "2026-05-24T10:00:00Z", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
         let stub = StubRunner::new(vec![
             Ok(open_payload.to_string()),
             Ok(merged_payload.to_string()),
@@ -697,6 +705,41 @@ mod tests {
             .expect("merged workspace delta");
         assert_eq!(workspace.pr_state.as_deref(), Some("MERGED"));
         assert_eq!(workspace.pr_number, Some(42));
+        assert_eq!(
+            workspace.pr_created_at.as_deref(),
+            Some("2026-05-24T10:00:00Z")
+        );
+        assert_eq!(
+            workspace.pr_merged_at.as_deref(),
+            Some("2026-05-24T11:00:00Z")
+        );
+    }
+
+    #[tokio::test]
+    async fn poller_publishes_when_a_milestone_timestamp_is_backfilled() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        let without_timestamp = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
+        let with_timestamp = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "createdAt": "2026-05-24T10:00:00Z", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
+        let stub = StubRunner::new(vec![
+            Ok(without_timestamp.to_string()),
+            Ok(with_timestamp.to_string()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let publish_count = Arc::new(AtomicUsize::new(0));
+        let publisher_count = Arc::clone(&publish_count);
+        let publisher: DeltaPublisher = Arc::new(move |_delta: DashboardDelta| {
+            publisher_count.fetch_add(1, Ordering::SeqCst);
+        });
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_delta_publisher(publisher),
+        );
+
+        poller.tick_for_test().await.expect("initial tick");
+        poller.tick_for_test().await.expect("backfill tick");
+
+        assert_eq!(publish_count.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]

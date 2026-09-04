@@ -65,7 +65,7 @@ impl GhService {
         }
         args.extend([
             "--json".into(),
-            "number,headRefOid,headRefName,state,statusCheckRollup".into(),
+            "number,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt".into(),
         ]);
 
         let stdout = match (self.runner)(workspace_path, args).await {
@@ -109,6 +109,8 @@ impl GhService {
             updated_at: now_iso(),
             pr_state: normalize_pr_state(parsed.state.as_deref()),
             notified_at: None,
+            pr_created_at: parsed.created_at.filter(|timestamp| !timestamp.is_empty()),
+            pr_merged_at: parsed.merged_at.filter(|timestamp| !timestamp.is_empty()),
             head_ref_name: parsed.head_ref_name.filter(|name| !name.is_empty()),
         };
         {
@@ -133,6 +135,10 @@ struct PrViewResponse {
     head_ref_name: Option<String>,
     #[serde(default)]
     state: Option<String>,
+    #[serde(default, rename = "createdAt")]
+    created_at: Option<String>,
+    #[serde(default, rename = "mergedAt")]
+    merged_at: Option<String>,
     #[serde(default, rename = "statusCheckRollup")]
     status_check_rollup: Option<Vec<RollupEntry>>,
 }
@@ -384,7 +390,9 @@ mod tests {
                 "number": {pr_number},
                 "headRefOid": "{head_sha}",
                 "headRefName": "feature/x",
-                "state": "OPEN",
+                "state": "MERGED",
+                "createdAt": "2026-05-24T10:00:00Z",
+                "mergedAt": "2026-05-24T11:00:00Z",
                 "statusCheckRollup": [{{"conclusion": "{rollup_state}"}}]
             }}"#
         )
@@ -407,6 +415,8 @@ mod tests {
                     updated_at: now_iso(),
                     pr_state: Some("OPEN".to_string()),
                     notified_at: None,
+                    pr_created_at: None,
+                    pr_merged_at: None,
                     head_ref_name: None,
                 },
             )
@@ -434,8 +444,16 @@ mod tests {
         assert_eq!(rows[0].pr_number, 7);
         assert_eq!(rows[0].head_sha, "feedface");
         assert_eq!(rows[0].last_seen_check_state, "success");
-        assert_eq!(rows[0].pr_state.as_deref(), Some("OPEN"));
+        assert_eq!(rows[0].pr_state.as_deref(), Some("MERGED"));
         assert_eq!(rows[0].head_ref_name.as_deref(), Some("feature/x"));
+        assert_eq!(
+            rows[0].pr_created_at.as_deref(),
+            Some("2026-05-24T10:00:00Z")
+        );
+        assert_eq!(
+            rows[0].pr_merged_at.as_deref(),
+            Some("2026-05-24T11:00:00Z")
+        );
         assert_eq!(stub.call_count(), 1);
         assert_eq!(
             stub.last_args(),
@@ -444,7 +462,7 @@ mod tests {
                 "view",
                 "feature/x",
                 "--json",
-                "number,headRefOid,headRefName,state,statusCheckRollup",
+                "number,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt",
             ]
         );
 
@@ -476,6 +494,8 @@ mod tests {
                     updated_at: now_iso(),
                     pr_state: Some("OPEN".to_string()),
                     notified_at: None,
+                    pr_created_at: None,
+                    pr_merged_at: None,
                     head_ref_name: None,
                 },
             )

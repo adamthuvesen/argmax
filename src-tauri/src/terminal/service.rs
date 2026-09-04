@@ -16,7 +16,7 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, Weak,
     },
     thread,
 };
@@ -25,6 +25,12 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use specta::Type;
 use uuid::Uuid;
+
+#[cfg(unix)]
+use std::os::fd::{AsFd, BorrowedFd};
+
+#[cfg(unix)]
+use nix::poll::{poll, PollFd, PollFlags};
 
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
@@ -69,6 +75,40 @@ pub struct TerminalSpawnInput {
 #[serde(rename_all = "camelCase")]
 pub struct TerminalSpawnResult {
     pub terminal_id: String,
+}
+
+#[cfg(unix)]
+struct PollingTerminalReader {
+    reader: std::fs::File,
+    reaped: Arc<AtomicBool>,
+}
+
+#[cfg(unix)]
+impl Read for PollingTerminalReader {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            let ready = {
+                let mut descriptors = [PollFd::new(self.reader.as_fd(), PollFlags::POLLIN)];
+                match poll(&mut descriptors, 100u16) {
+                    Ok(ready) => ready,
+                    Err(nix::errno::Errno::EINTR) => continue,
+                    Err(error) => {
+                        return Err(std::io::Error::from_raw_os_error(error as i32));
+                    }
+                }
+            };
+            if ready > 0 {
+                return self.reader.read(buffer);
+            }
+            // A descendant can inherit the PTY slave after the direct shell
+            // exits. Once wait() has reaped that shell and the kernel has no
+            // bytes ready, treat the stream as drained instead of waiting for
+            // an unrelated descendant to close its copy.
+            if self.reaped.load(Ordering::Acquire) {
+                return Ok(0);
+            }
+        }
+    }
 }
 
 /// Test seam: produce a `CommandBuilder` for the PTY. Production picks
@@ -205,6 +245,31 @@ impl TerminalService {
         drop(pair.slave);
 
         let pid = child.process_id();
+        let reaped = Arc::new(AtomicBool::new(false));
+        #[cfg(unix)]
+        let reader: Box<dyn Read + Send> = {
+            let raw_fd = pair.master.as_raw_fd().ok_or_else(|| {
+                ArgmaxError::service(
+                    "TERMINAL_PTY_READER_FAILED",
+                    "terminal PTY did not expose a readable descriptor",
+                )
+            })?;
+            // Own the descriptor used for both poll and read. Retaining only
+            // the master's raw integer would allow close-and-reuse races while
+            // the reader drains during service shutdown.
+            let borrowed = unsafe { BorrowedFd::borrow_raw(raw_fd) };
+            let owned = nix::unistd::dup(borrowed).map_err(|error| {
+                ArgmaxError::service(
+                    "TERMINAL_PTY_READER_FAILED",
+                    format!("could not clone PTY reader: {error}"),
+                )
+            })?;
+            Box::new(PollingTerminalReader {
+                reader: std::fs::File::from(owned),
+                reaped: Arc::clone(&reaped),
+            })
+        };
+        #[cfg(not(unix))]
         let reader = pair.master.try_clone_reader().map_err(|error| {
             ArgmaxError::service(
                 "TERMINAL_PTY_READER_FAILED",
@@ -219,7 +284,6 @@ impl TerminalService {
         })?;
 
         let terminal_id = Uuid::new_v4().to_string();
-        let reaped = Arc::new(AtomicBool::new(false));
         {
             let mut terminals = self.terminals.lock_or_recover("terminals");
             terminals.insert(
@@ -235,18 +299,15 @@ impl TerminalService {
         }
         drop(admission);
 
-        spawn_reader_thread(
-            terminal_id.clone(),
-            reader,
-            Arc::clone(&self.on_data),
-            Arc::clone(&reaped),
-        );
+        let reader_thread =
+            spawn_reader_thread(terminal_id.clone(), reader, Arc::clone(&self.on_data));
         spawn_exit_watcher(
             terminal_id.clone(),
             child,
-            Arc::clone(self),
+            Arc::downgrade(self),
             Arc::clone(&self.on_exit),
             reaped,
+            reader_thread,
         );
 
         Ok(TerminalSpawnResult { terminal_id })
@@ -381,21 +442,12 @@ fn spawn_reader_thread(
     terminal_id: String,
     reader: Box<dyn Read + Send>,
     on_data: OutputSink,
-    reaped: Arc<AtomicBool>,
-) {
+) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let error_terminal_id = terminal_id.clone();
         crate::util::stream_reader::pump_utf8_stream(
             reader,
-            |_n| {
-                // If the exit watcher has already reaped the child, stop
-                // streaming — the renderer has moved on. Read the entry's own
-                // flag rather than looking the id up in `terminals`: this runs
-                // once per PTY chunk, and taking the shared map lock at that
-                // rate contends with `resize` (which holds it across the ioctl
-                // on the main thread) and `terminate_workspace`'s poll.
-                !reaped.load(Ordering::Acquire)
-            },
+            |_n| true,
             |data| {
                 on_data(TerminalChunk {
                     terminal_id: terminal_id.clone(),
@@ -410,15 +462,16 @@ fn spawn_reader_thread(
                 );
             },
         );
-    });
+    })
 }
 
 fn spawn_exit_watcher(
     terminal_id: String,
     mut child: Box<dyn portable_pty::Child + Send + Sync>,
-    service: Arc<TerminalService>,
+    service: Weak<TerminalService>,
     on_exit: ExitSink,
     reaped: Arc<AtomicBool>,
+    reader_thread: thread::JoinHandle<()>,
 ) {
     thread::spawn(move || {
         // Block waiting for the child. The child handle is owned exclusively
@@ -428,11 +481,23 @@ fn spawn_exit_watcher(
             .wait()
             .map(|status| status.exit_code() as i32)
             .unwrap_or(-1);
+        // Mark the process reaped as soon as wait returns. Termination paths
+        // use this flag to guard signals against PID reuse, so it must not wait
+        // behind a slow renderer output callback.
         reaped.store(true, Ordering::Release);
+        // The child can report its exit before the PTY reader consumes the
+        // final bytes already buffered in the kernel. Wait for EOF and for all
+        // data callbacks to return before publishing `terminal:exit`, so exit
+        // cannot overtake the tail of stdout in the shared delivery queue.
+        if reader_thread.join().is_err() {
+            tracing::warn!(terminal_id = %terminal_id, "terminal reader thread panicked");
+        }
         // portable_pty's ExitStatus doesn't expose POSIX signal numbers
         // cross-platform; emit `None` when unavailable to match the TS shape.
         let signal: Option<i32> = None;
-        let _ = service.remove_terminal(&terminal_id);
+        if let Some(service) = service.upgrade() {
+            let _ = service.remove_terminal(&terminal_id);
+        }
         on_exit(TerminalExitInfo {
             terminal_id,
             exit_code,
@@ -605,14 +670,119 @@ mod tests {
         assert_eq!(info.terminal_id, result.terminal_id);
         assert_eq!(info.exit_code, 0);
 
-        // Give the reader thread one last tick to drain.
-        sleep(Duration::from_millis(50)).await;
+        // Receiving exit guarantees the reader drained and every output sink
+        // call returned; no timing allowance belongs in this assertion.
         let combined = chunks.lock().unwrap().join("");
         assert!(
             combined.contains("argmax-terminal-hi"),
             "expected hi in stdout, got: {combined:?}"
         );
         assert_eq!(svc.live_count(), 0, "terminal removed on exit");
+    }
+
+    #[tokio::test]
+    async fn reaped_guard_precedes_a_blocked_final_output_callback() {
+        let (database, workspace_id, _db, _cwd) = setup();
+        let chunks: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
+        let chunks_for_sink = Arc::clone(&chunks);
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let release_rx = StdMutex::new(Some(release_rx));
+        let on_data: OutputSink = Arc::new(move |chunk| {
+            chunks_for_sink.lock().unwrap().push(chunk.data);
+            let _ = started_tx.send(());
+            if let Some(release_rx) = release_rx.lock().unwrap().take() {
+                let _ = release_rx.recv();
+            }
+        });
+        let (exit_tx, mut exit_rx) = oneshot::channel::<TerminalExitInfo>();
+        let exit_tx = StdMutex::new(Some(exit_tx));
+        let on_exit: ExitSink = Arc::new(move |info| {
+            if let Some(tx) = exit_tx.lock().unwrap().take() {
+                let _ = tx.send(info);
+            }
+        });
+        let svc = TerminalService::with_shell_factory(
+            database,
+            on_data,
+            on_exit,
+            script_factory("printf final-output; exit 0"),
+        );
+        let result = svc
+            .spawn(TerminalSpawnInput {
+                workspace_id,
+                cols: 80,
+                rows: 24,
+            })
+            .unwrap();
+        let reaped = {
+            let terminals = svc.terminals.lock().unwrap();
+            Arc::clone(&terminals.get(&result.terminal_id).unwrap().reaped)
+        };
+
+        started_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("final output callback started");
+        timeout(Duration::from_secs(2), async {
+            while !reaped.load(Ordering::Acquire) {
+                sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("child wait did not set the reaped guard");
+        assert!(
+            matches!(exit_rx.try_recv(), Err(oneshot::error::TryRecvError::Empty)),
+            "exit must wait until the final output callback returns"
+        );
+
+        release_tx.send(()).unwrap();
+        let info = timeout(Duration::from_secs(2), exit_rx)
+            .await
+            .expect("exit did not follow final output")
+            .expect("exit channel closed");
+        assert_eq!(info.terminal_id, result.terminal_id);
+        assert!(chunks.lock().unwrap().join("").contains("final-output"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn exit_does_not_wait_for_a_descendant_holding_the_pty_slave() {
+        let (database, workspace_id, _db, _cwd) = setup();
+        let chunks: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
+        let chunks_for_sink = Arc::clone(&chunks);
+        let on_data: OutputSink = Arc::new(move |chunk| {
+            chunks_for_sink.lock().unwrap().push(chunk.data);
+        });
+        let (exit_tx, exit_rx) = oneshot::channel::<TerminalExitInfo>();
+        let exit_tx = StdMutex::new(Some(exit_tx));
+        let on_exit: ExitSink = Arc::new(move |info| {
+            if let Some(tx) = exit_tx.lock().unwrap().take() {
+                let _ = tx.send(info);
+            }
+        });
+        let svc = TerminalService::with_shell_factory(
+            database,
+            on_data,
+            on_exit,
+            // The background process inherits the PTY slave for one second.
+            // The direct shell's buffered tail must drain without making its
+            // exit notification wait for that unrelated lifetime.
+            script_factory("(sleep 1; printf descendant-output) & printf final-output; exit 0"),
+        );
+        let result = svc
+            .spawn(TerminalSpawnInput {
+                workspace_id,
+                cols: 80,
+                rows: 24,
+            })
+            .unwrap();
+
+        let info = timeout(Duration::from_millis(750), exit_rx)
+            .await
+            .expect("exit waited for a descendant's PTY handle")
+            .expect("exit channel closed");
+        assert_eq!(info.terminal_id, result.terminal_id);
+        assert!(chunks.lock().unwrap().join("").contains("final-output"));
     }
 
     #[tokio::test]
@@ -712,6 +882,47 @@ mod tests {
             info.exit_code != 0,
             "expected non-zero exit code after kill"
         );
+    }
+
+    #[tokio::test]
+    async fn dropping_service_terminates_a_live_terminal() {
+        let (database, workspace_id, _db, _cwd) = setup();
+        let on_data: OutputSink = Arc::new(|_| {});
+        let (exit_tx, exit_rx) = oneshot::channel::<TerminalExitInfo>();
+        let exit_tx = StdMutex::new(Some(exit_tx));
+        let on_exit: ExitSink = Arc::new(move |info| {
+            if let Some(tx) = exit_tx.lock().unwrap().take() {
+                let _ = tx.send(info);
+            }
+        });
+        let svc = TerminalService::with_shell_factory(
+            database,
+            on_data,
+            on_exit,
+            script_factory("sleep 60"),
+        );
+        let result = svc
+            .spawn(TerminalSpawnInput {
+                workspace_id,
+                cols: 80,
+                rows: 24,
+            })
+            .unwrap();
+        let service = Arc::downgrade(&svc);
+
+        sleep(Duration::from_millis(100)).await;
+        drop(svc);
+
+        assert!(
+            service.upgrade().is_none(),
+            "the exit watcher retained the terminal service"
+        );
+        let info = timeout(Duration::from_secs(5), exit_rx)
+            .await
+            .expect("service drop did not terminate the terminal")
+            .expect("exit channel closed before sending");
+        assert_eq!(info.terminal_id, result.terminal_id);
+        assert_ne!(info.exit_code, 0);
     }
 
     #[tokio::test]

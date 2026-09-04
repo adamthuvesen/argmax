@@ -91,7 +91,15 @@ describe("reasoningEffortsForModel", () => {
     ]);
   });
 
-  it("offers Max and Ultra for Codex Sol/Terra, Max only for Luna", () => {
+  it("offers Max and Ultra for Codex Astra/Sol/Terra, Max only for Luna", () => {
+    expect(reasoningEffortsForModel("codex", "gpt-6-astra")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultra"
+    ]);
     expect(reasoningEffortsForModel("codex", "gpt-5.6-sol")).toEqual([
       "low",
       "medium",
@@ -117,12 +125,18 @@ describe("reasoningEffortsForModel", () => {
     ]);
   });
 
-  it("lists Codex models Sol → Terra → Luna", () => {
+  it("lists Codex models Astra → Sol → Terra → Luna", () => {
     expect(PROVIDER_MODELS.codex.map((model) => model.modelId)).toEqual([
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna"
     ]);
+    expect(PROVIDER_MODELS.codex[0]).toMatchObject({
+      label: "GPT-6 Astra",
+      contextWindow: 272_000,
+      supportsReasoningEffort: true
+    });
   });
 });
 
@@ -179,6 +193,15 @@ describe("costOf — golden fixtures", () => {
     expect(costOf(million, "gpt-5.6-sol")).toBeCloseTo(5.0, 9);
   });
 
+  it("prices GPT-6 Astra at its current list rates", () => {
+    expect(
+      costOf(
+        { input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000 },
+        "gpt-6-astra"
+      )
+    ).toBeCloseTo(73.5, 9);
+  });
+
   it("prices GPT-5.6 Luna / Terra at published short-context rates", () => {
     expect(costOf(million, "gpt-5.6-luna")).toBeCloseTo(0.2, 9);
     expect(costOf(million, "gpt-5.6-terra")).toBeCloseTo(2.0, 9);
@@ -233,6 +256,7 @@ describe("MODEL_PRICING coverage", () => {
     expect(MODEL_PRICING["claude-sonnet-5"]).toBeDefined();
     expect(MODEL_PRICING["claude-haiku-4-5"]).toBeDefined();
     expect(MODEL_PRICING["gpt-5.6-sol"]).toBeDefined();
+    expect(MODEL_PRICING["gpt-6-astra"]).toBeDefined();
     expect(MODEL_PRICING["claude-opus-5"]).toBeDefined();
     expect(MODEL_PRICING["cursor-grok-4.6-medium"]).toBeDefined();
     expect(MODEL_PRICING["opencode-go/glm-5.3-flash"]).toBeDefined();

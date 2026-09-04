@@ -1,4 +1,5 @@
 import type { EventType, TimelineEvent } from "../../shared/types.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
 
 export const SESSION_MOVED: EventType = "session.moved";
 
@@ -16,29 +17,43 @@ export interface SessionMoveDestination {
 }
 
 export function isProjectMoveEvent(event: TimelineEvent): boolean {
-  return event.type === SESSION_MOVED;
-}
-
-function nonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
+  const canonical = decodeTimelineEvent(event);
+  return canonical.kind === "lifecycle" && canonical.name === "moved";
 }
 
 export function projectMoveNoticeFor(event: TimelineEvent): ProjectMoveNotice {
-  const checkoutMode = nonEmptyString(event.payload.checkoutMode);
+  const canonical = decodeTimelineEvent(event);
+  if (canonical.kind !== "lifecycle" || canonical.name !== "moved") {
+    return {
+      from: null,
+      to: event.message,
+      checkoutMode: null,
+      sourceArchiveState: null
+    };
+  }
   return {
-    from: nonEmptyString(event.payload.sourceProjectName),
-    to: nonEmptyString(event.payload.destinationProjectName) ?? event.message,
-    checkoutMode:
-      checkoutMode === "shared" || checkoutMode === "worktree" ? checkoutMode : null,
-    sourceArchiveState: nonEmptyString(event.payload.sourceArchiveState)
+    from: canonical.sourceProjectName,
+    to: canonical.destinationProjectName ?? event.message,
+    checkoutMode: canonical.checkoutMode,
+    sourceArchiveState: canonical.sourceArchiveState
   };
 }
 
 export function sessionMoveDestination(event: TimelineEvent): SessionMoveDestination | null {
-  if (!isProjectMoveEvent(event) || event.payload.direction !== "destination") return null;
-  const sourceSessionId = nonEmptyString(event.payload.sourceSessionId);
-  const destinationSessionId = nonEmptyString(event.payload.destinationSessionId);
-  const destinationWorkspaceId = nonEmptyString(event.payload.destinationWorkspaceId);
-  if (!sourceSessionId || !destinationSessionId || !destinationWorkspaceId) return null;
-  return { sourceSessionId, destinationSessionId, destinationWorkspaceId };
+  const canonical = decodeTimelineEvent(event);
+  if (
+    canonical.kind !== "lifecycle" ||
+    canonical.name !== "moved" ||
+    canonical.direction === null ||
+    !canonical.sourceSessionId ||
+    !canonical.destinationSessionId ||
+    !canonical.destinationWorkspaceId
+  ) {
+    return null;
+  }
+  return {
+    sourceSessionId: canonical.sourceSessionId,
+    destinationSessionId: canonical.destinationSessionId,
+    destinationWorkspaceId: canonical.destinationWorkspaceId
+  };
 }

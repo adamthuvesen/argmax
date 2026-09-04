@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import { Archive, FolderGit2, Laptop, Menu, MoreHorizontal, PenLine, Search } from "lucide-react";
 import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
 import { LinesSkeleton } from "../components/LinesSkeleton.js";
@@ -10,6 +10,7 @@ import { NewSessionScreen, type PickerKind } from "./NewSessionScreen.js";
 import { useMobileBackNavigation } from "./useMobileBackNavigation.js";
 import { useVisualViewportInsets } from "./useVisualViewportInsets.js";
 import { useDashboardSession } from "../hooks/useDashboardSession.js";
+import { SessionTimelineProvider } from "../hooks/useSessionTimeline.js";
 import { useSessionCommands } from "../hooks/useSessionCommands.js";
 import { importChunk } from "../lib/importChunk.js";
 import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
@@ -197,6 +198,7 @@ export function MobileApp(): JSX.Element {
 
   const {
     snapshot,
+    timelines,
     loadState,
     loadError,
     selectedSessionId,
@@ -243,25 +245,6 @@ export function MobileApp(): JSX.Element {
     resync: false
   });
   useEffect(() => subscribeRemoteConnection(setConnection), []);
-  // `resync` stays true until the next connection publish, so the reconnect
-  // handler below reads the open session through a ref: keeping it in the
-  // dependency list would replay the whole recovery every time the reader
-  // opened a different session afterwards.
-  const selectedSessionIdRef = useRef(selectedSessionId);
-  useEffect(() => {
-    selectedSessionIdRef.current = selectedSessionId;
-  }, [selectedSessionId]);
-  // A socket that died and came back missed every delta in between, so the
-  // snapshot has to be reloaded rather than resumed.
-  useEffect(() => {
-    if (connection.status !== "connected" || !connection.resync) return;
-    void refresh();
-    // `refresh` recovers rows but never events. A turn that finished during
-    // the outage comes back as `complete`, which stops the running-only event
-    // tick — so without this pull the tail of the transcript never arrives.
-    const sessionId = selectedSessionIdRef.current;
-    if (sessionId) void loadSessionEvents(sessionId);
-  }, [connection, refresh, loadSessionEvents]);
 
   useEffect(() => {
     if (!toast) return;
@@ -564,12 +547,10 @@ export function MobileApp(): JSX.Element {
     );
 
   return (
+    <SessionTimelineProvider store={timelines}>
     <div
       className="mobile-shell"
-      // A phone is read at arm's length: host the type scale two levels above
-      // the desktop default (6) so body text lands at 15px. The attribute
-      // recomputes every --text-* token for the subtree; see tokens.css.
-      data-font-size="8"
+      data-font-size={sessionOpen || newSessionOpen ? "8" : "6"}
       data-screen={sessionOpen ? "session" : newSessionOpen ? "new" : "list"}
     >
       {!sessionOpen && newSessionOpen ? (
@@ -645,8 +626,6 @@ export function MobileApp(): JSX.Element {
           <SessionPane
             approvals={snapshot.approvals}
             checks={snapshot.checks}
-            events={snapshot.events}
-            rawOutputs={snapshot.rawOutputs}
             pendingMessages={snapshot.pendingMessages}
             session={selectedSession}
             workspace={selectedWorkspace}
@@ -834,5 +813,6 @@ export function MobileApp(): JSX.Element {
         </div>
       ) : null}
     </div>
+    </SessionTimelineProvider>
   );
 }

@@ -32,6 +32,24 @@ describe("ModelSelector — one row per model", () => {
     expect(within(list).getByText("Haiku 4.5")).toBeInTheDocument();
   });
 
+  it("keeps GPT-6 Astra above Sol in the Codex picker", () => {
+    const value: ProviderModelSelection = {
+      label: "GPT-5.6 Sol",
+      modelId: "gpt-5.6-sol",
+      reasoningEffort: "medium"
+    };
+    render(<ModelSelector ariaLabel="Chat model" provider="codex" value={value} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
+
+    const options = within(screen.getByRole("listbox", { name: "Chat model" })).getAllByRole("option");
+    expect(options.map((option) => option.textContent?.trim())).toEqual([
+      "GPT-6 Astra",
+      "GPT-5.6 Sol",
+      "GPT-5.6 Terra",
+      "GPT-5.6 Luna"
+    ]);
+  });
+
   it("picking a model row selects it with the default Medium effort", () => {
     const onChange = openClaudePicker();
     fireEvent.click(screen.getByText("Opus 5"));
@@ -477,7 +495,7 @@ describe("ModelSelector — standalone effort slider", () => {
     });
   });
 
-  it("caps the Codex Sol/Terra effort slider at Ultra", () => {
+  it("caps the Codex Astra/Sol/Terra effort slider at Ultra", () => {
     const value: ModelPickerSelection = {
       provider: "codex",
       label: "GPT-5.6 Sol",

@@ -15,6 +15,8 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 - `session_messages` (v25) is the session inbox: one row per message an agent addressed to another session, plus the automatic `completion` notice a launched session leaves for whoever launched it. `delivered_at` records that the message also reached the recipient as a turn; `NULL` means it is still collectable by `inbox_read`. Indexed on `(to_session_id, delivered_at)`, which is the only query shape — the caller's undelivered mail. Both session references are `ON DELETE SET NULL`, so pruning one session never deletes another session's inbox history. See [agent-tools.md](agent-tools.md).
 - `sessions.launch_kind` (v26) separates a chat an agent launched (`agent`, the default) from one a person dispatched from inside another chat (`multitask`). The launch caps count `agent` rows only, and a multitask records its parent for the link back while starting its own lineage at depth 0. It also reaches the renderer on `SessionSummary`, which is how the sidebar knows to leave a multitask out. See [multitask.md](multitask.md).
 - `usage_scan_files`, `usage_hourly`, `usage_dedupe_keys`, and `usage_scan_meta` (v27) back the Usage page: a per-file scan cursor, an hourly token ledger keyed by provider, model, session, and source file, the billed-call keys that keep a resumed or forked session from counting twice, and the parser version. See [usage.md](usage.md).
+- `session_changes` and `session_change_watermarks` (v28) make transcript delivery recoverable. SQLite triggers record event and raw-output inserts, in-place updates, reparenting, and deletes in the same transaction as the source mutation. The feed keeps the newest 50,000 mutations globally and records a per-session prune watermark before removal.
+- The v29 cleanup removes change-feed rows and watermarks when a session is hard-deleted. Session metadata is authoritative for removal, so retaining its child-row revisions would only leak disk space.
 - Legacy checkpoint tables are preserved for backward compatibility without creating new entries.
 
 Reads take pooled `SQLITE_OPEN_READ_ONLY` connections through `Database::read_connection`, not the writer `Mutex<Connection>`, so a read never queues behind a write. A write attempted on the read path fails loudly; that is the point. See [performance.md](performance.md).
@@ -29,7 +31,12 @@ Typed modules (`projects.rs`, `workspaces.rs`, `sessions.rs`, `events.rs`, `appr
 
 Focused reads in `dashboard.rs`:
 - `dashboard:list`: Returns projects, workspaces, sessions, and checks.
-- `session:events-since`: Pages timeline events and raw output by SQLite `rowid`.
+- `session:events-since`: A cursorless request returns an authoritative bounded
+  tail and its change-sequence high-water mark from the same read transaction.
+  Later requests page at most 500 durable changes, including updates and
+  deletions. If a cursor predates its session's retained history or is ahead of
+  the database, the response requests replacement with a fresh bounded tail.
+  The older SQLite `rowid` cursors remain accepted for compatibility.
 - `approvals:pending`: Returns outstanding approval requests.
 
 A background sweeper deletes raw provider output older than 7 days. `system:vacuum-database` runs `VACUUM` in a background task.

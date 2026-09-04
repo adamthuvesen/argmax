@@ -694,6 +694,7 @@ describe("useDashboardSession — refresh / delta race", () => {
 
     expect(window.argmax!.session.eventsSince).toHaveBeenLastCalledWith({
       sessionId: "session-existing",
+      changeCursor: null,
       eventCursor: 20,
       rawOutputCursor: 10
     });
@@ -742,20 +743,139 @@ describe("useDashboardSession — refresh / delta race", () => {
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
     await waitFor(() => expect(result.current.loadState).toBe("ready"));
-    expect(result.current.snapshot.events).toHaveLength(2);
+    expect(result.current.timelines.getSnapshot("session-existing").events).toHaveLength(2);
 
     await act(async () => {
       await result.current.loadSessionEvents("session-existing");
     });
 
-    await waitFor(() => expect(result.current.snapshot.events).toHaveLength(0));
+    await waitFor(() => expect(result.current.timelines.getSnapshot("session-existing").events).toHaveLength(0));
   });
 
-  it("re-pulls a session's tail from scratch when its events were evicted from the global cap", async () => {
-    // Repro of the empty-session bug: switch to a busy session, its stream
-    // floods the global newest-N events cap and evicts the idle session's rows,
-    // then switch back. The parked cursor makes `eventsSince` return nothing, so
-    // the chat renders empty. The self-heal must re-read the tail from scratch.
+  it("delivers transcript pushes without rerendering dashboard metadata", async () => {
+    let onDelta!: (delta: DashboardDelta) => void;
+    window.argmax!.dashboard.onDelta = (listener) => {
+      onDelta = listener;
+      return () => {};
+    };
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useDashboardSession(loadSnapshot);
+    });
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    const before = renders;
+    const metadata = result.current.snapshot;
+    const notify = vi.fn();
+    const unsubscribe = result.current.timelines.subscribe("session-existing", notify);
+    act(() => {
+      onDelta({ events: [{ id: "token", sessionId: "session-existing", type: "message.delta", message: "Hello", payload: {}, createdAt: "2026-05-12T15:00:06.000Z" }] });
+    });
+    expect(result.current.snapshot).toBe(metadata);
+    expect(result.current.snapshot.events).toEqual([]);
+    expect(notify).toHaveBeenCalledOnce();
+    expect(renders).toBe(before);
+    unsubscribe();
+  });
+
+  it("does not restore a removed session from an in-flight transcript read", async () => {
+    let onDelta!: (delta: DashboardDelta) => void;
+    window.argmax!.dashboard.onDelta = (listener) => {
+      onDelta = listener;
+      return () => {};
+    };
+    let resolveRead!: (value: Awaited<ReturnType<ArgmaxApi["session"]["eventsSince"]>>) => void;
+    (window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>).mockImplementation(() => new Promise((resolve) => { resolveRead = resolve; }));
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    const read = result.current.loadSessionEvents("session-existing");
+    act(() => onDelta({ removedSessionIds: ["session-existing"] }));
+    await act(async () => {
+      resolveRead({ events: [{ id: "late", sessionId: "session-existing", type: "message.completed", message: "late", payload: {}, createdAt: "2026-05-12T15:00:06.000Z" }], rawOutputs: [], eventCursor: 10, rawOutputCursor: 0 });
+      await read;
+    });
+    expect(result.current.timelines.getSnapshot("session-existing").events).toEqual([]);
+  });
+
+  it("drains revision pages for an idle session and applies same-row updates and deletions", async () => {
+    const event: TimelineEvent = { id: "updated", sessionId: "session-existing", type: "message.completed", message: "old", payload: {}, createdAt: "2026-05-12T15:00:06.000Z", rowCursor: 1 };
+    baseSnapshot = { ...baseSnapshot, events: [event, { ...event, id: "deleted" }] };
+    const eventsSince = window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>;
+    eventsSince
+      .mockResolvedValueOnce({ events: [event, { ...event, id: "deleted" }], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: 10, resetRequired: true })
+      .mockResolvedValueOnce({ events: [{ ...event, message: "new" }], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: 11, hasMore: true })
+      .mockResolvedValueOnce({ events: [], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: 12, deletedEventIds: ["deleted"] });
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    await act(async () => { await result.current.loadSessionEvents("session-existing"); });
+    await act(async () => { await result.current.loadSessionEvents("session-existing"); });
+    expect(eventsSince).toHaveBeenLastCalledWith({ sessionId: "session-existing", eventCursor: 2, rawOutputCursor: 0, changeCursor: 11 });
+    expect(result.current.timelines.getSnapshot("session-existing").events).toEqual([{ ...event, message: "new" }]);
+  });
+
+  it("pulls hinted visible sessions and leaves inactive histories for their next open", async () => {
+    let onDelta!: (delta: DashboardDelta) => void;
+    window.argmax!.dashboard.onDelta = (listener) => { onDelta = listener; return () => {}; };
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    const unsubscribe = result.current.timelines.subscribe("session-existing", () => {});
+    await act(async () => { onDelta({ changedSessionIds: ["session-existing", "inactive"] }); await Promise.resolve(); });
+    expect(window.argmax!.session.eventsSince).toHaveBeenCalledExactlyOnceWith({ sessionId: "session-existing", eventCursor: null, rawOutputCursor: null, changeCursor: null });
+    unsubscribe();
+  });
+
+  it("recovers removed metadata, pending queues, and visible history after overflow", async () => {
+    let onDelta!: (delta: DashboardDelta) => void;
+    window.argmax!.dashboard.onDelta = (listener) => { onDelta = listener; return () => {}; };
+    const removedSession = makeSession({ id: "removed", workspaceId: "removed-workspace" });
+    const event: TimelineEvent = { id: "deleted", sessionId: "session-existing", type: "message.completed", message: "old", payload: {}, createdAt: "2026-05-12T15:00:06.000Z" };
+    const initial = { ...baseSnapshot, sessions: [...baseSnapshot.sessions, removedSession], events: [event] };
+    let resolveRecovery!: (snapshot: DashboardSnapshot) => void;
+    const loadSnapshot = vi.fn<() => Promise<DashboardSnapshot>>()
+      .mockResolvedValueOnce(initial)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveRecovery = resolve; }));
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    const unsubscribe = result.current.timelines.subscribe("session-existing", () => {});
+    act(() => onDelta({ resyncRequired: true }));
+    const concurrent = makeSession({ id: "concurrent" });
+    await waitFor(() => expect(loadSnapshot).toHaveBeenCalledTimes(2));
+    act(() => onDelta({ sessions: [concurrent] }));
+    await act(async () => { resolveRecovery({ ...baseSnapshot, pendingMessages: {} }); await Promise.resolve(); });
+    await waitFor(() => expect(window.argmax!.session.eventsSince).toHaveBeenCalledOnce());
+    expect(result.current.snapshot.sessions.map((session) => session.id)).toEqual(expect.arrayContaining(["session-existing", "concurrent"]));
+    expect(result.current.snapshot.sessions.some((session) => session.id === "removed")).toBe(false);
+    expect(result.current.snapshot.pendingMessages).toEqual({});
+    expect(result.current.timelines.getSnapshot("session-existing").events).toEqual([]);
+    unsubscribe();
+  });
+
+  it("treats a delayed metadata publication as a fresh read, not an older state", async () => {
+    let onDelta!: (delta: DashboardDelta) => void;
+    window.argmax!.dashboard.onDelta = (listener) => { onDelta = listener; return () => {}; };
+    const completed = makeSession({ state: "complete" });
+    const committed = { ...baseSnapshot, sessions: [completed] };
+    const loadSnapshot = vi.fn<() => Promise<DashboardSnapshot>>().mockResolvedValue(committed);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    // The earlier running-state publisher resumes after the complete snapshot
+    // was installed. Only its invalidation hint crosses the bridge.
+    act(() => onDelta({ dashboardChanged: true }));
+    await waitFor(() => expect(loadSnapshot).toHaveBeenCalledTimes(2));
+    expect(result.current.snapshot.sessions[0]?.state).toBe("complete");
+    loadSnapshot.mockResolvedValue({ ...committed, sessions: [], workspaces: [] });
+    act(() => onDelta({ dashboardChanged: true }));
+    await waitFor(() => expect(result.current.snapshot.sessions).toEqual([]));
+    act(() => onDelta({ dashboardChanged: true }));
+    await waitFor(() => expect(loadSnapshot).toHaveBeenCalledTimes(4));
+    expect(result.current.snapshot.sessions).toEqual([]);
+  });
+
+  it("re-pulls a session tail after its inactive history and cursor are evicted", async () => {
     const tail = [
       {
         id: "ev-user",
@@ -794,14 +914,15 @@ describe("useDashboardSession — refresh / delta race", () => {
     });
     expect(eventsSince).toHaveBeenLastCalledWith({
       sessionId: "session-existing",
+      changeCursor: null,
       eventCursor: null,
       rawOutputCursor: null
     });
-    expect(result.current.snapshot.events).toHaveLength(2);
+    expect(result.current.timelines.getSnapshot("session-existing").events).toHaveLength(2);
 
-    // A busy session floods the shared cap and evicts these rows.
+    // Visiting other sessions evicts this inactive history and its cursor.
     act(() => {
-      result.current.setSnapshot((current) => ({ ...current, events: [] }));
+      for (let i = 0; i < 20; i += 1) result.current.timelines.beginRead(`visited-${i}`);
     });
 
     // Re-focus: pre-fix this fetched with the parked cursor (4) and got nothing.
@@ -817,10 +938,11 @@ describe("useDashboardSession — refresh / delta race", () => {
 
     expect(eventsSince).toHaveBeenLastCalledWith({
       sessionId: "session-existing",
+      changeCursor: null,
       eventCursor: null,
       rawOutputCursor: null
     });
-    expect(result.current.snapshot.events).toHaveLength(2);
+    expect(result.current.timelines.getSnapshot("session-existing").events).toHaveLength(2);
   });
 
   it("keeps backfilled command rows when the global dashboard tail is already full", async () => {
@@ -833,7 +955,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       createdAt: new Date(Date.parse("2026-05-12T16:00:00.000Z") + i).toISOString(),
       rowCursor: 1_000 + i
     }));
-    baseSnapshot = { ...baseSnapshot, events: busyTail };
+    baseSnapshot = { ...baseSnapshot, events: busyTail, sessions: [...baseSnapshot.sessions, makeSession({ id: "busy-session" })] };
 
     const commandRows: TimelineEvent[] = [
       {
@@ -874,13 +996,14 @@ describe("useDashboardSession — refresh / delta race", () => {
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
     await waitFor(() => expect(result.current.loadState).toBe("ready"));
-    expect(result.current.snapshot.events).toHaveLength(500);
+    expect(result.current.timelines.getSnapshot("busy-session").events).toHaveLength(500);
+    expect(result.current.snapshot.events).toHaveLength(0);
 
     await act(async () => {
       await result.current.loadSessionEvents("session-existing");
     });
 
-    const ids = new Set(result.current.snapshot.events.map((event) => event.id));
+    const ids = new Set(result.current.timelines.getSnapshot("session-existing").events.map((event) => event.id));
     expect(ids.has("codex-edit-start")).toBe(true);
     expect(ids.has("codex-edit-end")).toBe(true);
   });
@@ -910,6 +1033,7 @@ describe("useDashboardSession — refresh / delta race", () => {
     // Never seeded → no heal → second call keeps the advanced cursor.
     expect(eventsSince).toHaveBeenLastCalledWith({
       sessionId: "session-existing",
+      changeCursor: null,
       eventCursor: 7,
       rawOutputCursor: 0
     });

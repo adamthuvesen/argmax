@@ -86,33 +86,8 @@ export type AttentionState = "normal" | "approval-needed" | "blocked" | "failed"
 
 export type CheckStatus = "queued" | "running" | "passed" | "failed" | "cancelled";
 
-export type EventType =
-  | "session.started"
-  | "session.streaming"
-  | "user.message"
-  | "message.delta"
-  | "message.completed"
-  | "command.started"
-  | "command.output"
-  | "command.completed"
-  | "approval.requested"
-  | "permission.blocked"
-  | "approval.resolved"
-  | "file.changed"
-  | "check.started"
-  | "check.completed"
-  | "error"
-  | "session.completed"
-  | "session.cancelled"
-  | "session.compacting"
-  | "session.compacted"
-  | "session.provider-changed"
-  | "session.cleared"
-  | "multitask.launched"
-  | "multitask.finished"
-  | "session.move-requested"
-  | "session.moved"
-  | "session.recovered-from-crash";
+/** Event type is an open wire string. The canonical decoder narrows known values. */
+export type EventType = Bindings.TimelineEvent["type"];
 
 export interface ProjectSettings {
   worktreeLocation: string;
@@ -148,7 +123,7 @@ export type AttachmentSaveImageResult = Bindings.SaveImageResult;
 export type ResolveApprovalInput = Bindings.ApprovalsResolveInput;
 export type SessionEventsSinceInput = OptionalNullable<
   Bindings.SessionEventsSinceInput,
-  "eventCursor" | "rawOutputCursor"
+  "eventCursor" | "rawOutputCursor" | "changeCursor"
 >;
 export type SessionAgentEventsInput = Bindings.SessionAgentEventsInput;
 export type SessionForkInput = Bindings.SessionForkInput;
@@ -358,6 +333,10 @@ export interface WorkspaceSummary {
   prState?: GhPrState | null;
   /** PR number paired with `prState`. */
   prNumber?: number | null;
+  /** GitHub's authoritative creation timestamp for the paired PR. */
+  prCreatedAt?: string | null;
+  /** GitHub's authoritative merge timestamp for the paired PR. */
+  prMergedAt?: string | null;
   /**
    * Curated Lucide icon name the user picked for this row's sidebar glyph
    * (null for none). With no custom icon the row keeps its live status marker.
@@ -438,6 +417,9 @@ export interface TimelineEvent {
   rowCursor?: number;
 }
 
+/** Persisted provider-normalized row before renderer-specific interpretation. */
+export type RawTimelineEvent = TimelineEvent;
+
 export interface RawProviderOutput {
   id: string;
   sessionId: string;
@@ -490,7 +472,7 @@ export interface DashboardSnapshot {
 
 export type DashboardListSnapshot = Pick<
   DashboardSnapshot,
-  "projects" | "workspaces" | "sessions" | "checks"
+  "projects" | "workspaces" | "sessions" | "checks" | "pendingMessages"
 >;
 
 export type WorkspaceStatusSnapshot = Pick<
@@ -503,6 +485,11 @@ export interface SessionEventsSinceResult {
   rawOutputs: RawProviderOutput[];
   eventCursor: number;
   rawOutputCursor: number;
+  changeCursor?: number | null;
+  deletedEventIds?: string[];
+  deletedRawOutputIds?: string[];
+  resetRequired?: boolean;
+  hasMore?: boolean;
 }
 
 /** Settings → Agents → Session sync. */
@@ -576,6 +563,9 @@ export type DashboardDelta = {
    */
   removedSessionIds?: string[];
   removedWorkspaceIds?: string[];
+  changedSessionIds?: string[];
+  dashboardChanged?: boolean;
+  resyncRequired?: boolean;
 };
 
 export interface ArgmaxApi {
@@ -959,6 +949,10 @@ export interface GhPrRecord {
   prState?: GhPrState | null;
   /** ISO timestamp the failure follow-up notification last fired for this head_sha. */
   notifiedAt?: string | null;
+  /** GitHub's authoritative PR creation timestamp. */
+  prCreatedAt?: string | null;
+  /** GitHub's authoritative merge timestamp. Null until the PR is merged. */
+  prMergedAt?: string | null;
   /**
    * Branch the PR was opened from. Sidebar markers resolve by this — a PR
    * belongs to its head branch, not to whichever session happened to be mid-turn

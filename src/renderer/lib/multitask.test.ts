@@ -16,7 +16,7 @@ function event(type: string, payload: Record<string, unknown>, message = "row"):
   return {
     id: `${type}-1`,
     sessionId: "session-parent",
-    type: type as TimelineEvent["type"],
+    type,
     message,
     payload,
     createdAt: "2026-09-02T10:00:00.000Z",

@@ -55,7 +55,7 @@ describe("SidebarSessionRow", () => {
     expect(screen.getByRole("button", { name: "Archive chat" })).toBeInTheDocument();
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    expect(screen.getByRole("menuitem", { name: "Open in IDE" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "Open in VS Code" })).toBeEnabled();
   });
 
   it("ArrowDown / ArrowUp moves focus between session-link buttons across rows", async () => {
@@ -103,8 +103,9 @@ describe("SidebarSessionRow", () => {
     expect(first).toHaveFocus();
   });
 
-  it("IDE picker opens with the current default focused and supports arrow-key nav", async () => {
+  it("opens the default IDE directly from the right-click menu", async () => {
     const { fireEvent } = await import("@testing-library/react");
+    const onOpenInIde = vi.fn();
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
@@ -113,84 +114,40 @@ describe("SidebarSessionRow", () => {
         canDragToGrid={true}
         onOpenWorkspaceChat={vi.fn()}
         onArchiveWorkspace={vi.fn()}
-        onOpenInIde={vi.fn()}
+        onOpenInIde={onOpenInIde}
         detectedIdes={detectedIdes}
         defaultIde="cursor"
       />
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Open in IDE" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in Cursor" }));
 
-    // Preferred (default IDE) is focused first.
-    const cursorItem = await screen.findByRole("menuitem", { name: /Cursor/ });
-    expect(cursorItem).toHaveFocus();
-
-    // ArrowUp wraps to the previous menuitem (VS Code, which precedes Cursor).
-    fireEvent.keyDown(cursorItem, { key: "ArrowUp" });
-    expect(screen.getByRole("menuitem", { name: /VS Code/ })).toHaveFocus();
-
-    // ArrowDown comes back to Cursor.
-    fireEvent.keyDown(screen.getByRole("menuitem", { name: /VS Code/ }), { key: "ArrowDown" });
-    expect(screen.getByRole("menuitem", { name: /Cursor/ })).toHaveFocus();
-
-    // End jumps to the last menuitem.
-    fireEvent.keyDown(screen.getByRole("menuitem", { name: /Cursor/ }), { key: "End" });
-    expect(screen.getByRole("menuitem", { name: /Cursor/ })).toHaveFocus();
-  });
-
-  // Keeping the picker on screen is Floating UI's job now, and jsdom has no
-  // layout for it to measure — so this checks the wiring instead: the menu is
-  // portaled out to <body> and carries the primitive's own fixed positioning.
-  // Drop the style spread and it falls back to the stylesheet's
-  // `position: absolute; bottom: calc(100% + 6px)`, which at <body> puts the
-  // menu at the top of the page rather than under its row.
-  it("positions the IDE picker with the shared anchored-popover styles", async () => {
-    const { fireEvent } = await import("@testing-library/react");
-    render(
-      <SidebarSessionRow
-        workspace={workspaceBase}
-        isSelected={false}
-        isOpenInGrid={false}
-        canDragToGrid={true}
-        onOpenWorkspaceChat={vi.fn()}
-        onArchiveWorkspace={vi.fn()}
-        onOpenInIde={vi.fn()}
-        detectedIdes={detectedIdes}
-        defaultIde="cursor"
-      />
-    );
-
-    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Open in IDE" }));
-
-    const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
-    expect(menu.parentElement).toBe(document.body);
-    expect(menu).toHaveStyle({ position: "fixed" });
-  });
-
-  it("dismisses the IDE picker on Escape", async () => {
-    const { fireEvent } = await import("@testing-library/react");
-    render(
-      <SidebarSessionRow
-        workspace={workspaceBase}
-        isSelected={false}
-        isOpenInGrid={false}
-        canDragToGrid={true}
-        onOpenWorkspaceChat={vi.fn()}
-        onArchiveWorkspace={vi.fn()}
-        onOpenInIde={vi.fn()}
-        detectedIdes={detectedIdes}
-        defaultIde="cursor"
-      />
-    );
-
-    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Open in IDE" }));
-    await screen.findByRole("menu", { name: "Open this worktree in" });
-
-    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onOpenInIde).toHaveBeenCalledTimes(1);
+    expect(onOpenInIde).toHaveBeenCalledWith("workspace-1", "cursor");
     expect(screen.queryByRole("menu", { name: "Open this worktree in" })).toBeNull();
+  });
+
+  it("disables Open in IDE when no default is set and multiple IDEs are detected", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde={null}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    const ideItem = screen.getByRole("menuitem", { name: "Open in IDE" });
+    expect(ideItem).toBeDisabled();
+    expect(ideItem).toHaveAttribute("title", "Set a default IDE in Settings → Handoff");
   });
 
   it("right-click → Rename edits the label in place and commits on Enter", async () => {
@@ -298,6 +255,7 @@ describe("SidebarSessionRow", () => {
 
     const picker = await screen.findByRole("dialog", { name: "Edit Icon" });
     expect(picker).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search icons" })).toHaveFocus();
 
     fireEvent.click(screen.getByRole("button", { name: "Violet icon color" }));
     fireEvent.click(screen.getByRole("button", { name: "Brain" }));

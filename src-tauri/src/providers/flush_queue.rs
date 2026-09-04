@@ -72,9 +72,27 @@ pub struct DashboardDelta {
     pub removed_session_ids: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub removed_workspace_ids: Vec<String>,
+    /// Sessions whose durable transcript changed. Live delivery sends these
+    /// compact hints instead of duplicating full event/raw-output payloads;
+    /// subscribed consumers pull the revision feed for the named sessions.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub changed_session_ids: Vec<String>,
+    /// Durable dashboard metadata changed. Consumers reload a coherent
+    /// snapshot instead of applying possibly stale individual payloads.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub dashboard_changed: bool,
+    /// The live delivery queue overflowed. Consumers must reload their
+    /// durable dashboard and transcript state instead of treating this delta
+    /// as a complete continuation of the push stream.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub resync_required: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PendingMessage {
     pub id: String,
@@ -482,6 +500,9 @@ impl DashboardDelta {
             && self.pending_messages.is_none()
             && self.removed_session_ids.is_empty()
             && self.removed_workspace_ids.is_empty()
+            && self.changed_session_ids.is_empty()
+            && !self.dashboard_changed
+            && !self.resync_required
     }
 
     /// Conflate `other` into `self`. Entity/event vectors are concatenated in
@@ -489,24 +510,9 @@ impl DashboardDelta {
     /// — row), and `pending_messages` is a per-session snapshot, so `other`'s
     /// entries overwrite `self`'s for any session it touches. Used by the delta
     /// emit worker to merge a burst of streamed deltas into a single push.
-    /// Rough serialized size, for deciding how much to conflate into one push.
-    ///
-    /// Event text dominates a delta by orders of magnitude — a single
-    /// `command.completed` payload reaches 711 KB in a real database — so
-    /// summing the variable-length fields tracks the JSON size closely enough
-    /// to budget against, and costs no allocation.
-    pub fn approx_payload_bytes(&self) -> usize {
-        let events: usize = self
-            .events
-            .iter()
-            .map(|event| event.message.len() + approx_json_bytes(&event.payload))
-            .sum();
-        let raw: usize = self
-            .raw_outputs
-            .iter()
-            .map(|output| output.content.len())
-            .sum();
-        events + raw
+    /// Exact serialized size used by the bounded live-delivery queue.
+    pub fn serialized_payload_bytes(&self) -> Result<usize, serde_json::Error> {
+        serde_json::to_vec(self).map(|payload| payload.len())
     }
 
     pub fn merge_from(&mut self, other: DashboardDelta) {
@@ -523,27 +529,11 @@ impl DashboardDelta {
         self.removed_session_ids.extend(other.removed_session_ids);
         self.removed_workspace_ids
             .extend(other.removed_workspace_ids);
-    }
-}
-
-/// Serialized size of a JSON value, without serializing it. Structural
-/// characters are counted approximately; the string and number leaves — which
-/// are what actually vary — are counted exactly.
-fn approx_json_bytes(value: &serde_json::Value) -> usize {
-    match value {
-        serde_json::Value::Null => 4,
-        serde_json::Value::Bool(_) => 5,
-        serde_json::Value::Number(_) => 8,
-        serde_json::Value::String(text) => text.len() + 2,
-        serde_json::Value::Array(items) => {
-            2 + items.len() + items.iter().map(approx_json_bytes).sum::<usize>()
-        }
-        serde_json::Value::Object(entries) => {
-            2 + entries
-                .iter()
-                .map(|(key, value)| key.len() + 4 + approx_json_bytes(value))
-                .sum::<usize>()
-        }
+        self.changed_session_ids.extend(other.changed_session_ids);
+        self.changed_session_ids.sort_unstable();
+        self.changed_session_ids.dedup();
+        self.dashboard_changed |= other.dashboard_changed;
+        self.resync_required |= other.resync_required;
     }
 }
 
@@ -856,6 +846,7 @@ mod tests {
 
         let mut a = DashboardDelta {
             events: vec![event("e1")],
+            changed_session_ids: vec!["s1".to_string()],
             pending_messages: Some(BTreeMap::from([
                 ("s1".to_string(), vec![pending("m1")]),
                 ("s2".to_string(), vec![pending("m2")]),
@@ -864,6 +855,9 @@ mod tests {
         };
         a.merge_from(DashboardDelta {
             events: vec![event("e2")],
+            changed_session_ids: vec!["s1".to_string(), "s2".to_string()],
+            dashboard_changed: true,
+            resync_required: true,
             // s1's queue is now empty — newer snapshot must override a's.
             pending_messages: Some(BTreeMap::from([("s1".to_string(), vec![])])),
             ..DashboardDelta::default()
@@ -876,6 +870,9 @@ mod tests {
         let pending = a.pending_messages.expect("pending merged");
         assert!(pending.get("s1").expect("s1 present").is_empty());
         assert_eq!(pending.get("s2").expect("s2 preserved").len(), 1);
+        assert_eq!(a.changed_session_ids, vec!["s1", "s2"]);
+        assert!(a.dashboard_changed);
+        assert!(a.resync_required);
     }
 
     #[test]

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::{inputs::*, live_database, read_off_main};
 use crate::{
-    error::{ArgmaxError, ArgmaxResult},
+    error::{ArgmaxError, ArgmaxResult, InvalidInputIssue},
     persistence::{
         dashboard::{list_session_agent_tail, list_session_tail},
         events::{latest_agent_message, SessionEventsSinceResult},
@@ -72,10 +72,22 @@ pub(crate) async fn session_events_since_impl(
     let session_id = input.session_id.into_string();
     let event_cursor = input.event_cursor.map(|cursor| cursor as i64);
     let raw_output_cursor = input.raw_output_cursor.map(|cursor| cursor as i64);
+    let change_cursor = input
+        .change_cursor
+        .map(|cursor| {
+            i64::try_from(cursor).map_err(|_| {
+                ArgmaxError::invalid(InvalidInputIssue::at(
+                    vec!["changeCursor".to_owned()],
+                    "CHANGE_CURSOR_TOO_LARGE",
+                    "change cursor exceeds SQLite's supported integer range",
+                ))
+            })
+        })
+        .transpose()?;
     read_off_main(move || {
         // Reconcile only the initial backfill. Running panes call this command
         // every 250 ms with a cursor, which must remain a cheap SQLite tail.
-        if event_cursor.is_none() {
+        if change_cursor.is_none() && event_cursor.is_none() {
             reconcile_subagent_traces_with_warning(&database, &session_id);
         }
         list_session_tail(
@@ -83,6 +95,7 @@ pub(crate) async fn session_events_since_impl(
             &session_id,
             event_cursor,
             raw_output_cursor,
+            change_cursor,
         )
     })
     .await

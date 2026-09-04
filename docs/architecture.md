@@ -41,6 +41,12 @@ Key directories:
 
 Dashboard state is SQLite-first: UI reads (`dashboard:list`, `session:events-since`, `workspace:status`) paired with post-commit `dashboard:delta` push events.
 
+Pushes invalidate data instead of carrying stale copies. Session reads use a
+transactional mutation sequence to recover updates and deletions as well as
+inserts. Queue overflow and remote reconnect use the same authoritative
+snapshot recovery. Queued follow-ups remain in memory and are included in
+`dashboard:list` so they also survive a missed notification.
+
 ### Dependencies
 
 - **tauri >= 2.11**: Enables `#[tauri::command(rename = "...")]` for stable IPC channel names.
@@ -50,6 +56,10 @@ Dashboard state is SQLite-first: UI reads (`dashboard:list`, `session:events-sin
 ## Renderer: `src/renderer`
 
 React 19 + Vite. [App.tsx](../src/renderer/App.tsx) renders the shell; [tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) handles IPC via `window.argmax`. Direct Tauri API usage is limited to window chrome in [windowChrome.ts](../src/renderer/lib/windowChrome.ts) and min-size constraints in [App.tsx](../src/renderer/App.tsx). In standalone browser previews, the renderer falls back to [demoSnapshot.ts](../src/renderer/demoSnapshot.ts).
+
+Dashboard React state contains metadata and approvals. Transcript events, raw output, and read cursors live together in [SessionTimelines](../src/renderer/lib/sessionTimelines.ts). Each conversation subscribes to its session through `useSessionTimeline`, so a token does not update unrelated panes or the dashboard shell. Agent traces use their parent session's history, while multitasks subscribe to their own session. Subscribed histories stay resident, and the store retains at most 12 inactive histories. Eviction drops the history and its cursors together so reopening a session fetches a complete tail.
+
+Renderer code routes timeline meaning through [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts). Its cached decoder turns each persisted `TimelineEvent` into a discriminated union for messages, tools, lifecycle rows, multitasks, approvals, errors, and unknown rows. Consumers branch on that union instead of interpreting provider payload keys independently. The original event remains available for lossless debug output and large tool input or output bodies.
 
 [SessionMultiGrid.tsx](../src/renderer/components/SessionMultiGrid.tsx) manages two pane types:
 - **Session panes**: Primary conversation views.

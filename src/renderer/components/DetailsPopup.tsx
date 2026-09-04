@@ -10,9 +10,10 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import type { ModelPickerSelection } from "../lib/models.js";
+import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { useReviewState } from "../hooks/useReviewState.js";
-import { useStableFilter } from "../hooks/useStableFilter.js";
+import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
 import { SessionConversation } from "./SessionConversation.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 
@@ -33,7 +34,7 @@ const DEFAULT_HEIGHT = 520;
  * frame (fixed position, corner resize, close-and-discard) is popup-specific.
  */
 export function DetailsPopup({
-  events,
+  events = [],
   onAttachToChat,
   onCancelQueuedMessage,
   onClose,
@@ -46,11 +47,11 @@ export function DetailsPopup({
   onClearSession,
   pendingMessages,
   project,
-  rawOutputs,
+  rawOutputs = [],
   session,
   workspace
 }: {
-  events: TimelineEvent[];
+  events?: TimelineEvent[];
   /** Adds the explained excerpt to the originating session's composer. */
   onAttachToChat?: () => void;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
@@ -73,28 +74,28 @@ export function DetailsPopup({
   onClearSession: (sessionId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   project: ProjectSummary | null;
-  rawOutputs: RawProviderOutput[];
+  rawOutputs?: RawProviderOutput[];
   session: SessionSummary;
   workspace: WorkspaceSummary;
 }): JSX.Element {
   const sessionId = session.id;
-  const sessionEvents = useStableFilter(events, sessionId, (event) => event.sessionId === sessionId);
+  const { events: sessionEvents, rawOutputs: visibleRawOutputs } = useSessionTimeline(
+    sessionId,
+    events,
+    rawOutputs
+  );
   // The seed prompt restates the excerpt the user just selected, so it only
   // eats panel space. Hide it (the oldest user message — events run newest
   // first) and give the whole panel to the answer; typed follow-ups still show.
   const visibleEvents = useMemo(() => {
     let seedId: string | null = null;
     for (const event of sessionEvents) {
-      if (event.type === "user.message") seedId = event.id;
+      const decoded = decodeTimelineEvent(event);
+      if (decoded.kind === "message" && decoded.role === "user") seedId = event.id;
     }
     if (seedId === null) return sessionEvents;
     return sessionEvents.filter((event) => event.id !== seedId);
   }, [sessionEvents]);
-  const visibleRawOutputs = useStableFilter(
-    rawOutputs,
-    sessionId,
-    (output) => output.sessionId === sessionId
-  );
   // The popup never shows a review panel; a null source keeps the state inert.
   const review = useReviewState(null);
 

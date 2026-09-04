@@ -156,7 +156,7 @@ function stubApi(system: Partial<ArgmaxApi["system"]>): void {
 }
 
 function timelineEvent(id: string, type: string, createdAt: string, message: string): TimelineEvent {
-  return { id, sessionId: "session-1", type: type as TimelineEvent["type"], message, payload: {}, createdAt };
+  return { id, sessionId: "session-1", type, message, payload: {}, createdAt };
 }
 
 function rawOutput(id: string, content: string, createdAt: string): RawProviderOutput {

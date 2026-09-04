@@ -113,6 +113,16 @@ describe("buildConversationEvents", () => {
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "delta-1", "delta-2"]);
   });
 
+  it("keeps an unfinished answer when the next user turn arrives", () => {
+    const events = [
+      event("follow-up", "user.message", "2026-05-12T15:00:03.000Z", "Next question"),
+      event("delta", "message.delta", "2026-05-12T15:00:02.000Z", "Unfinished answer"),
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+    ];
+
+    expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "delta", "follow-up"]);
+  });
+
   it("keeps pre-tool narration when a later completed answer lands", () => {
     const events = [
       event("done", "message.completed", "2026-05-12T15:00:05.000Z", "Final answer"),
@@ -455,6 +465,26 @@ describe("buildSessionToolCalls", () => {
     });
   });
 
+  it("uses row order for persisted progress even when optimistic progress has a later timestamp", () => {
+    const events = [
+      {
+        ...event("old-persisted", "message.delta", "2026-05-12T14:00:00.000Z", "Earlier by time"),
+        rowCursor: 100
+      },
+      event("new-optimistic", "message.delta", "2026-05-12T16:00:00.000Z", "Later by time"),
+      {
+        ...event("start", "command.started", "2026-05-12T17:00:01.000Z", "", {
+          id: "read-1",
+          name: "Read",
+          input: { file_path: "shot.png" }
+        }),
+        rowCursor: 50
+      }
+    ];
+
+    expect(buildSessionToolCalls(events, true)[0]).toMatchObject({ status: "done" });
+  });
+
   it("keeps an uncorrelated agent tool running even after later assistant text", () => {
     const events = [
       event("answer", "message.delta", "2026-05-12T15:00:02.000Z", "Waiting for the exploration agent."),
@@ -479,8 +509,6 @@ describe("buildSessionToolCalls", () => {
     const tools = buildSessionToolCalls([
       event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
         id: "spawn-1",
-        name: "spawn_agent",
-        status: "in_progress",
         input: {
           prompt: "Explore the repo.",
           receiver_thread_ids: ["thread-child"],

@@ -4,7 +4,6 @@ import type {
   AgentMode,
   ComposerAttachment,
   PendingMessage,
-  RawProviderOutput,
   SessionSummary,
   TimelineEvent,
   WorkspaceSummary
@@ -56,11 +55,9 @@ export function AgentsView({
   defaultThinkingExpanded,
   isFocused,
   multitasks,
-  multitaskEvents,
   parentSession,
   agentTabs,
   pendingMessages,
-  rawOutputs,
   workspace,
   onCancelQueuedMessage,
   onClearSession,
@@ -85,13 +82,9 @@ export function AgentsView({
   /** Multitasks dispatched from this pane's session, with the workspace each
    *  runs in. Empty when the surface cannot host their chats. */
   multitasks?: MultitaskChild[];
-  /** Every session's events: a multitask's chat is not this pane's session, so
-   *  it cannot read the pane-scoped `events` above. */
-  multitaskEvents?: TimelineEvent[];
   parentSession: SessionSummary | null;
   agentTabs: AgentTabsState;
   pendingMessages?: Record<string, PendingMessage[]>;
-  rawOutputs?: RawProviderOutput[];
   workspace: WorkspaceSummary | null;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onClearSession?: (sessionId: string) => Promise<void>;
@@ -282,7 +275,6 @@ export function AgentsView({
 
       {activeTab?.model ? (
         <div className="review-agent-model" role="status" aria-label="Agent model" aria-live="polite">
-          <Bot size={13} aria-hidden="true" />
           <span className="review-agent-model-value">{activeTab.model.label}</span>
           {activeTab.model.effort ? (
             <>
@@ -308,15 +300,15 @@ export function AgentsView({
             >
               {tab.multitask ? (
                 <MultitaskPanel
-                  events={multitaskEvents ?? events}
                   pendingMessages={pendingMessages?.[tab.multitask.session.id] ?? []}
-                  rawOutputs={rawOutputs ?? []}
                   session={tab.multitask.session}
                   taskLabel={tab.name}
                   workspace={tab.multitask.workspace}
                   onCancelQueuedMessage={onCancelQueuedMessage ?? noop}
                   onClearSession={onClearSession ?? noop}
+                  onOpenDiff={onOpenDiff}
                   onOpenFile={onOpenFile}
+                  onOpenReview={onOpenReview}
                   onLoadSessionEvents={onLoadSessionEvents}
                   onOpenFullChat={onOpenFullChat}
                   onSendQueuedMessageNow={onSendQueuedMessageNow ?? noop}

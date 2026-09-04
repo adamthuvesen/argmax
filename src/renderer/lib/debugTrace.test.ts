@@ -10,7 +10,7 @@ import {
 } from "./debugTrace.js";
 
 function event(id: string, type: string, createdAt: string, message = ""): TimelineEvent {
-  return { id, sessionId: "s1", type: type as TimelineEvent["type"], message, payload: {}, createdAt };
+  return { id, sessionId: "s1", type, message, payload: {}, createdAt };
 }
 
 function raw(id: string, content: string, createdAt: string, stream: RawProviderOutput["stream"] = "stdout"): RawProviderOutput {
@@ -54,6 +54,41 @@ describe("buildTraceRows", () => {
     expect(row?.summary).not.toContain("long private reasoning");
     expect(row?.raw).toBe(line);
     expect(row?.detail).toContain("long private reasoning");
+  });
+
+  it("shows compact canonical diagnostics while keeping the event copy lossless", () => {
+    const source = event("e1", "future.notice", "2026-09-01T10:00:00.000Z", "future event");
+    source.payload = { prompt: "large prompt", answer: "large answer", nested: { exact: true } };
+    const [row] = buildTraceRows([source], []);
+
+    expect(JSON.parse(row?.detail ?? "{}")).toEqual({
+      kind: "unknown",
+      reason: "unsupported-type"
+    });
+    expect(row?.detail).not.toContain("large prompt");
+    expect(row?.raw).toBe(JSON.stringify({
+      type: source.type,
+      message: source.message,
+      payload: source.payload
+    }, null, 2));
+  });
+
+  it("keeps malformed persisted events inspectable", () => {
+    const source = {
+      ...event("e1", "message.completed", "2026-09-01T10:00:00.000Z", "malformed event"),
+      payload: null
+    } as unknown as TimelineEvent;
+    const [row] = buildTraceRows([source], []);
+
+    expect(JSON.parse(row?.detail ?? "{}")).toEqual({
+      kind: "unknown",
+      reason: "invalid-payload"
+    });
+    expect(row?.raw).toBe(JSON.stringify({
+      type: source.type,
+      message: source.message,
+      payload: null
+    }, null, 2));
   });
 });
 

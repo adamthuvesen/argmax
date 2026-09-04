@@ -16,6 +16,10 @@ pub struct GhPrRecord {
     pub updated_at: String,
     pub pr_state: Option<String>,
     pub notified_at: Option<String>,
+    /// GitHub's authoritative PR creation timestamp.
+    pub pr_created_at: Option<String>,
+    /// GitHub's authoritative merge timestamp. Null until the PR is merged.
+    pub pr_merged_at: Option<String>,
     /// Branch the PR was opened from, per `gh pr view --json headRefName`.
     /// Null on rows written before the branch was recorded; those still attach
     /// to the observing workspace so a merged PR does not lose its marker.
@@ -26,22 +30,28 @@ pub fn upsert_gh_pr(connection: &Connection, input: &GhPrRecord) -> ArgmaxResult
     // Reset notified_at when head_sha rotates so a new commit is treated
     // as a fresh notification target; preserve it on a same-sha update so
     // unrelated metadata changes don't replay the notification.
-    let mut statement = connection.prepare_cached(r#"
-        INSERT INTO gh_pr (session_id, pr_number, head_sha, last_seen_check_state, updated_at, pr_state, head_ref_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        INSERT INTO gh_pr (
+          session_id, pr_number, head_sha, last_seen_check_state, updated_at,
+          pr_state, head_ref_name, pr_created_at, pr_merged_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(session_id, pr_number) DO UPDATE SET
           head_sha = excluded.head_sha,
           last_seen_check_state = excluded.last_seen_check_state,
           updated_at = excluded.updated_at,
           pr_state = excluded.pr_state,
           head_ref_name = excluded.head_ref_name,
+          pr_created_at = COALESCE(excluded.pr_created_at, gh_pr.pr_created_at),
+          pr_merged_at = COALESCE(excluded.pr_merged_at, gh_pr.pr_merged_at),
           notified_at = CASE
             WHEN excluded.head_sha = gh_pr.head_sha THEN gh_pr.notified_at
             ELSE NULL
           END
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     statement
         .execute((
             input.session_id.as_str(),
@@ -51,6 +61,8 @@ pub fn upsert_gh_pr(connection: &Connection, input: &GhPrRecord) -> ArgmaxResult
             input.updated_at.as_str(),
             input.pr_state.as_deref(),
             input.head_ref_name.as_deref(),
+            input.pr_created_at.as_deref(),
+            input.pr_merged_at.as_deref(),
         ))
         .map_err(sqlite_error)?;
 
@@ -227,6 +239,8 @@ fn row_to_gh_pr(row: &Row<'_>) -> rusqlite::Result<GhPrRecord> {
         updated_at: row.get("updated_at")?,
         pr_state: row.get("pr_state")?,
         notified_at: row.get("notified_at")?,
+        pr_created_at: row.get("pr_created_at")?,
+        pr_merged_at: row.get("pr_merged_at")?,
         head_ref_name: row.get("head_ref_name")?,
     })
 }

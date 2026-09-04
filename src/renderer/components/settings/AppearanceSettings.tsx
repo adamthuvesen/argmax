@@ -45,6 +45,8 @@ export function AppearanceSettings({
   onWorkspaceCardVisibleChange,
   pixelFieldEnabled,
   onPixelFieldEnabledChange,
+  prMilestoneCelebrationEnabled,
+  onPrMilestoneCelebrationEnabledChange,
   chatWidth,
   onChatWidthChange,
   reviewPanelSide,
@@ -72,6 +74,8 @@ export function AppearanceSettings({
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
   onPixelFieldEnabledChange: (v: boolean) => void;
+  prMilestoneCelebrationEnabled: boolean;
+  onPrMilestoneCelebrationEnabledChange: (v: boolean) => void;
   chatWidth: ChatWidth;
   onChatWidthChange: (width: ChatWidth) => void;
   reviewPanelSide: ReviewPanelSide;
@@ -235,6 +239,17 @@ export function AppearanceSettings({
               ariaLabel="Pixel field in composer"
               checked={pixelFieldEnabled}
               onChange={onPixelFieldEnabledChange}
+            />
+          }
+        />
+        <SettingRow
+          label="Celebrate PR milestones"
+          description="Play a pixel sweep when GitHub confirms a new pull request or merge."
+          control={
+            <Toggle
+              ariaLabel="Celebrate PR milestones"
+              checked={prMilestoneCelebrationEnabled}
+              onChange={onPrMilestoneCelebrationEnabledChange}
             />
           }
         />

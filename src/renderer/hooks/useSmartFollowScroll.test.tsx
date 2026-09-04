@@ -634,6 +634,97 @@ describe("useSmartFollowScroll", () => {
     expect(result.current.showScrollToBottom).toBe(true);
   });
 
+  it("anchors on the child straddling the probe line when the hit test lands in the gutter", () => {
+    // The reading column is centred by the list's inline padding, so a probe
+    // in the padding hits the scroller itself. The anchor must fall back to
+    // geometry rather than give up, or nothing keeps a detached reader still.
+    const observers = installResizeObservers();
+    const state: ScrollBoxState = { scrollHeight: 1200, clientHeight: 200, scrollTop: 1000 };
+    const el = makeScrollBox(state);
+    const older = document.createElement("article");
+    const turn = document.createElement("article");
+    el.appendChild(older);
+    el.appendChild(turn);
+    const emptyRect = { left: 0, width: 400, right: 400, x: 0, toJSON: () => ({}) };
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
+      ...emptyRect,
+      top: 0,
+      y: 0,
+      height: 200,
+      bottom: 200
+    });
+    // `older` ends above the probe line; `turn` straddles it.
+    vi.spyOn(older, "getBoundingClientRect").mockImplementation(
+      () => ({ ...emptyRect, top: -state.scrollTop, y: -state.scrollTop, height: 500, bottom: 500 - state.scrollTop })
+    );
+    let nodeContentTop = 560;
+    vi.spyOn(turn, "getBoundingClientRect").mockImplementation(
+      () => ({
+        ...emptyRect,
+        top: nodeContentTop - state.scrollTop,
+        y: nodeContentTop - state.scrollTop,
+        height: 300,
+        bottom: nodeContentTop - state.scrollTop + 300
+      })
+    );
+    document.elementFromPoint = () => el;
+
+    const { result } = renderHook(() => {
+      const api = useSmartFollowScroll("session-a", ["older", "turn"], false);
+      attachListRef(api.conversationListRef, el);
+      return api;
+    });
+    const childObserver = observers.find((observer) => observer.targets.includes(turn));
+
+    act(() => {
+      result.current.handleUserScrollIntent();
+      state.scrollTop = 600;
+      result.current.handleScroll();
+    });
+    expect(result.current.showScrollToBottom).toBe(true);
+
+    act(() => {
+      nodeContentTop = 860;
+      state.scrollHeight = 1500;
+      childObserver?.callback([], {} as ResizeObserver);
+    });
+
+    expect(state.scrollTop).toBe(900);
+  });
+
+  it("resumes following when momentum lands within a pixel of the bottom", () => {
+    // iOS reports fractional scrollTop against rounded scrollHeight, and the
+    // intent window has expired by the time momentum stops.
+    installResizeObservers();
+    const state: ScrollBoxState = { scrollHeight: 1200, clientHeight: 200, scrollTop: 1000 };
+    const el = makeScrollBox(state);
+    const { result } = renderHook(() => {
+      const api = useSmartFollowScroll("session-a", ["a"], false);
+      attachListRef(api.conversationListRef, el);
+      return api;
+    });
+
+    act(() => {
+      result.current.handleUserScrollIntent();
+      state.scrollTop = 600;
+      result.current.handleScroll();
+    });
+    expect(result.current.showScrollToBottom).toBe(true);
+
+    act(() => {
+      state.scrollTop = 999.5;
+      result.current.handleScroll();
+    });
+    expect(result.current.showScrollToBottom).toBe(false);
+
+    // Following again: the next content change pins to the new bottom.
+    act(() => {
+      state.scrollHeight = 1400;
+      result.current.handleScroll();
+    });
+    expect(state.scrollTop).toBe(1200);
+  });
+
   it("stays pinned to the bottom when a width reflow grows the transcript", () => {
     const observers = installResizeObservers();
     const state = { scrollHeight: 1000, clientHeight: 200, scrollTop: 800, clientWidth: 800 };

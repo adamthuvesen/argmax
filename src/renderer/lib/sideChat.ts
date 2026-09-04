@@ -1,4 +1,5 @@
 import type { TimelineEvent } from "../../shared/types.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
 
 /** How much of the source conversation travels into a side chat: the newest
  *  exchanges, each capped, so the seed stays a prompt and not a transcript
@@ -15,13 +16,17 @@ function clip(text: string): string {
 
 function quotedExcerptWithContext(excerpt: string, events: readonly TimelineEvent[]): string {
   const exchanges = events
-    .filter(
-      (event) =>
-        (event.type === "user.message" || event.type === "message.completed") &&
-        event.message.trim().length > 0
-    )
+    .flatMap((event) => {
+      const decoded = decodeTimelineEvent(event);
+      if (
+        decoded.kind !== "message" ||
+        (decoded.role !== "user" && decoded.phase !== "completed") ||
+        event.message.trim().length === 0
+      ) return [];
+      return [{ role: decoded.role, message: event.message }];
+    })
     .slice(-CONTEXT_EVENT_LIMIT)
-    .map((event) => `${event.type === "user.message" ? "User" : "Assistant"}: ${clip(event.message)}`);
+    .map((event) => `${event.role === "user" ? "User" : "Assistant"}: ${clip(event.message)}`);
   const quote = excerpt
     .split("\n")
     .map((line) => `> ${line}`)

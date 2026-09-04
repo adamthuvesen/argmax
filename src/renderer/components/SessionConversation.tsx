@@ -1,3 +1,5 @@
+import { usePrMilestone } from "../hooks/usePrMilestone.js";
+import { TurnExhale } from "./TurnExhale.js";
 import {
   ArrowDown,
   GitBranch,
@@ -39,6 +41,7 @@ import {
   writeStoredAgentMode
 } from "../lib/agentMode.js";
 import { summarizeChangedFiles } from "../lib/changedFiles.js";
+import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import {
   buildConversationEvents,
   buildSessionToolCalls,
@@ -68,7 +71,6 @@ import {
   isExitPlanModeToolName
 } from "../lib/turnInteractiveCards.js";
 import { liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
-import { isThinkingDelta } from "../lib/turnBoundaries.js";
 import { foldTurnToolItems } from "../lib/turnToolItems.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
@@ -591,6 +593,9 @@ export function SessionConversation({
     () => lastSignificantSessionEvent(liveEvents, childToolUseIds),
     [childToolUseIds, liveEvents]
   );
+  const canonicalLastSignificantEvent = lastSignificantEvent
+    ? decodeTimelineEvent(lastSignificantEvent)
+    : null;
   // A send from this pane proves a turn is starting, whether or not the
   // backend has flipped the session to `running` and whether or not the new
   // `user.message` has reached the renderer yet. Without this the chat sat
@@ -677,8 +682,10 @@ export function SessionConversation({
   // streaming let a model reason silently for 20 s behind no cue at all.
   const isStreamingText =
     !isTurnStarting &&
-    lastSignificantEvent?.type === "message.delta" &&
-    !isThinkingDelta(lastSignificantEvent);
+    canonicalLastSignificantEvent?.kind === "message" &&
+    canonicalLastSignificantEvent.role === "assistant" &&
+    canonicalLastSignificantEvent.phase === "delta" &&
+    canonicalLastSignificantEvent.content === "answer";
   const anyVisibleToolRunning = useMemo(
     () =>
       toolCalls.some(
@@ -742,7 +749,11 @@ export function SessionConversation({
   // completion and so were only ever exposed to the same tail on a turn that
   // ended silently.
   const answerBeatId =
-    lastSignificantEvent?.type === "message.completed" ? lastSignificantEvent.id : null;
+    canonicalLastSignificantEvent?.kind === "message" &&
+    canonicalLastSignificantEvent.role === "assistant" &&
+    canonicalLastSignificantEvent.phase === "completed"
+      ? canonicalLastSignificantEvent.raw.id
+      : null;
   // Held as the id whose window has *expired*, not as a "settling" flag: a flag
   // starts false, so the first render after the message lands would still claim
   // the beat for one commit and flash the label before the effect could set it.
@@ -776,8 +787,9 @@ export function SessionConversation({
   const isInitialThinkingBeat =
     isTurnStarting ||
     lastSignificantEvent === undefined ||
-    lastSignificantEvent.type === "user.message" ||
-    lastSignificantEvent.type === "message.completed";
+    (canonicalLastSignificantEvent?.kind === "message" &&
+      (canonicalLastSignificantEvent.role === "user" ||
+        canonicalLastSignificantEvent.phase === "completed"));
   const [isThinkingVisible, setIsThinkingVisible] = useState(false);
   const thinkingVisibleSinceRef = useRef(0);
   const thinkingShowTimerRef = useRef<number | null>(null);
@@ -947,6 +959,8 @@ export function SessionConversation({
     writeStoredAgentMode(sessionAgentModeKey(sessionId), agentMode);
   }, [agentMode, sessionId]);
 
+  const { milestone: prMilestone, finish: finishPrMilestone } = usePrMilestone(workspace);
+
   return (
     <section className="conversation-surface" aria-label="Conversation">
       <div className="section-heading" data-window-drag={floating ? undefined : true}>
@@ -1009,6 +1023,7 @@ export function SessionConversation({
           box, outside the scroller, so the sticky scroll-to-latest button
           inside the list never fades with the content passing under it. */}
       <div className="conversation-scroll" ref={conversationScrollRef} data-restoring={restoringTranscript ? "true" : undefined}>
+        {prMilestone ? <TurnExhale key={prMilestone} weight={1} onDone={finishPrMilestone} /> : null}
         {showWorkspaceCard && workspace && workspace.kind === "git" ? (
           <WorkspaceCard
             changeSummary={changeSummary}

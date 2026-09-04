@@ -632,6 +632,8 @@ mod tests {
                     updated_at: "2026-05-24T12:00:00.000Z".to_string(),
                     pr_state: Some("OPEN".to_string()),
                     notified_at: None,
+                    pr_created_at: None,
+                    pr_merged_at: None,
                     head_ref_name: None,
                 }])
             })

@@ -2,7 +2,9 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import type { AgentTabsState } from "../hooks/useAgentTabs.js";
+import { SessionTimelineProvider } from "../hooks/useSessionTimeline.js";
 import type { MultitaskChild } from "../lib/multitask.js";
+import { SessionTimelines } from "../lib/sessionTimelines.js";
 import { AgentsView } from "./AgentsView.js";
 
 function event(
@@ -149,6 +151,49 @@ describe("AgentsView", () => {
     );
 
     expect(screen.getByRole("status", { name: "Agent model" })).toHaveTextContent(/Sonnet 5\s*·\s*High/);
+  });
+
+  it("reads a multitask transcript from the child session timeline", () => {
+    const child: MultitaskChild = {
+      session: {
+        ...session,
+        id: "child-1",
+        workspaceId: "child-workspace",
+        launchKind: "multitask",
+        launchedBySessionId: session.id,
+        prompt: "Review the implementation"
+      },
+      workspace
+    };
+    const timelines = new SessionTimelines();
+    timelines.merge(
+      [
+        {
+          ...event("child-answer", "message.completed", "2026-05-12T15:00:03.000Z", "Child result"),
+          sessionId: child.session.id
+        },
+        event("parent-answer", "message.completed", "2026-05-12T15:00:02.000Z", "Parent result")
+      ],
+      []
+    );
+
+    render(
+      <SessionTimelineProvider store={timelines}>
+        <AgentsView
+          events={[]}
+          parentSession={session}
+          agentTabs={agentTabs({
+            tabIds: ["multitask:child-1"],
+            activeTabId: "multitask:child-1"
+          })}
+          multitasks={[child]}
+          workspace={workspace}
+        />
+      </SessionTimelineProvider>
+    );
+
+    expect(screen.getByText("Child result")).toBeInTheDocument();
+    expect(screen.queryByText("Parent result")).not.toBeInTheDocument();
   });
 
   it("closes a subagent from its tab", () => {

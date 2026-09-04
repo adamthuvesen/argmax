@@ -668,6 +668,7 @@ pub struct SessionEventsSinceInput {
     pub session_id: SessionId,
     pub event_cursor: Option<u64>,
     pub raw_output_cursor: Option<u64>,
+    pub change_cursor: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

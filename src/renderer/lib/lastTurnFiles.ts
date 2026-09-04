@@ -1,7 +1,8 @@
 import type { TimelineEvent } from "../../shared/types.js";
 import type { ChangedFileSummary } from "../../shared/types.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import { editedFilePaths } from "./fileChange.js";
-import { extractToolInput, extractToolName } from "./toolCalls.js";
+import { extractToolInput } from "./toolCalls.js";
 
 /**
  * Repo-relative paths the agent wrote during the newest turn.
@@ -20,9 +21,10 @@ import { extractToolInput, extractToolName } from "./toolCalls.js";
 export function lastTurnEditedPaths(events: readonly TimelineEvent[]): string[] {
   const paths = new Set<string>();
   for (const event of events) {
-    if (event.type === "user.message") break;
-    if (event.type !== "command.started") continue;
-    for (const path of editedFilePaths(extractToolName(event.payload), extractToolInput(event.payload))) {
+    const decoded = decodeTimelineEvent(event);
+    if (decoded.kind === "message" && decoded.role === "user") break;
+    if (decoded.kind !== "tool" || decoded.phase !== "started") continue;
+    for (const path of editedFilePaths(decoded.name, extractToolInput(decoded.raw.payload))) {
       paths.add(path);
     }
   }

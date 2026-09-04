@@ -1,15 +1,19 @@
 import type { TimelineEvent } from "../../shared/types.js";
-import { objectValue, stringValue } from "../../shared/typeGuards.js";
+import { decodeTimelineEvent } from "./canonicalTimeline.js";
 
 /**
- * Claude extended-thinking content, surfaced by the normalizer as a
- * `message.delta` carrying `thinking: true`. The dashboard merge budgets these
+ * Claude extended-thinking content. The dashboard merge budgets these
  * separately and never prunes them, and the chat view renders them as their own
- * "Thought" block — the two must agree on what counts, so this is the one
- * definition.
+ * "Thought" block. The two must agree on what counts, so both use the canonical
+ * decoder's classification.
  */
 export function isThinkingDelta(event: TimelineEvent): boolean {
-  return event.type === "message.delta" && event.payload?.["thinking"] === true;
+  const canonical = decodeTimelineEvent(event);
+  return (
+    canonical.kind === "message" &&
+    canonical.phase === "delta" &&
+    canonical.content === "thinking"
+  );
 }
 
 /**
@@ -21,17 +25,8 @@ export function isThinkingDelta(event: TimelineEvent): boolean {
  * parent's still-streaming answer.
  */
 export function isSubAgentProseEcho(event: TimelineEvent): boolean {
-  if (event.type !== "message.delta" && event.type !== "message.completed") return false;
-  const parentToolUseId = event.payload.parent_tool_use_id;
-  if (typeof parentToolUseId === "string" && parentToolUseId.length > 0) return true;
-  const item = objectValue(event.payload.item);
-  const isCodexAgentMessage = event.payload.item_type === "agent_message" ||
-    item?.type === "agent_message";
-  if (!isCodexAgentMessage) return false;
-  if (stringValue(event.payload.thread_id) !== null || stringValue(event.payload.sender_thread_id) !== null) {
-    return true;
-  }
-  return stringValue(item?.thread_id) !== null || stringValue(item?.sender_thread_id) !== null;
+  const canonical = decodeTimelineEvent(event);
+  return canonical.kind === "message" && canonical.childProse;
 }
 
 /**
@@ -69,16 +64,21 @@ export function advanceTurnBoundary(
   previous: TurnBoundary | undefined,
   event: TimelineEvent
 ): TurnBoundary | undefined {
-  if (event.type === "message.completed") {
+  const canonical = decodeTimelineEvent(event);
+  if (
+    canonical.kind === "message" &&
+    canonical.role === "assistant" &&
+    canonical.phase === "completed"
+  ) {
     return { kind: "completed", completedText: event.message };
   }
-  if (event.type === "command.started") {
-    if (stringValue(event.payload.parent_tool_use_id) !== null) return previous;
+  if (canonical.kind === "tool" && canonical.phase === "started") {
+    if (canonical.parentToolUseId !== null) return previous;
     return previous?.kind === "completed"
       ? { kind: "tool", completedText: previous.completedText }
       : previous;
   }
-  if (event.type === "user.message") return { kind: "user" };
+  if (canonical.kind === "message" && canonical.role === "user") return { kind: "user" };
   return previous;
 }
 
@@ -100,9 +100,11 @@ export function isSupersededAnswerDelta(
   event: TimelineEvent,
   nextBoundary: TurnBoundary | undefined
 ): boolean {
+  const canonical = decodeTimelineEvent(event);
   return (
-    event.type === "message.delta" &&
-    !isThinkingDelta(event) &&
+    canonical.kind === "message" &&
+    canonical.phase === "delta" &&
+    canonical.content === "answer" &&
     (nextBoundary?.kind === "completed" ||
       (nextBoundary?.kind === "tool" && isCompletedPrefixDuplicate(event, nextBoundary.completedText)))
   );

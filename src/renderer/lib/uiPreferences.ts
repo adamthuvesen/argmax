@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { createContext, useCallback, useState } from "react";
 
 export const SIDEBAR_PRIORITY_KEY = "argmax.sidebar.priority.visible";
 export const SIDEBAR_COLLAPSED_KEY = "argmax.sidebar.collapsed";
@@ -11,8 +11,11 @@ export const TOOL_CALL_GROUPS_EXPANDED_KEY = "argmax.toolCalls.groups.expanded";
 export const TURN_CHANGES_EXPANDED_KEY = "argmax.turnChanges.expanded";
 export const FAST_MODE_KEY = "argmax.fastMode.enabled";
 export const COMPOSER_PIXEL_FIELD_KEY = "argmax.composer.pixelField.enabled";
+export const PR_MILESTONE_CELEBRATION_KEY = "argmax.prMilestones.celebrate";
 export const RANDOM_SESSION_ICON_KEY = "argmax.sessionIcon.random.enabled";
 export const DESKTOP_NOTIFICATIONS_KEY = "argmax.desktopNotifications.enabled";
+
+export const PrMilestoneCelebrationContext = createContext(false);
 
 function readBooleanPreference(key: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;

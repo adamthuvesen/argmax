@@ -76,7 +76,9 @@ describe("App sidebar", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const forkedSession: DashboardSnapshot["sessions"][number] = {
       id: "session-forked",
@@ -187,7 +189,9 @@ describe("App sidebar", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const movedSession: DashboardSnapshot["sessions"][number] = {
       id: "session-moved",
@@ -274,7 +278,9 @@ describe("App sidebar", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -311,9 +317,9 @@ describe("App sidebar", () => {
     });
     sessionEventsSince.mockImplementation((input) => {
       if (input.sessionId === "session-2") {
-        return Promise.resolve({ events: [secondEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0 });
+        return Promise.resolve({ events: [secondEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
       }
-      return Promise.resolve({ events: snapshot.events, rawOutputs: [], eventCursor: 1, rawOutputCursor: 0 });
+      return Promise.resolve({ events: snapshot.events, rawOutputs: [], eventCursor: 1, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
     });
 
     render(<App />);
@@ -356,7 +362,12 @@ describe("App sidebar", () => {
       events: [],
       rawOutputs: [],
       eventCursor: 0,
-      rawOutputCursor: 0
+      rawOutputCursor: 0,
+      changeCursor: null,
+      deletedEventIds: [],
+      deletedRawOutputIds: [],
+      resetRequired: false,
+      hasMore: false
     });
 
     render(<App />);
@@ -411,7 +422,12 @@ describe("App sidebar", () => {
       events: [...snapshot.events, followUpEvent],
       rawOutputs: [oldRawOutput, rawOutputAfterFollowUp],
       eventCursor: 2,
-      rawOutputCursor: 2
+      rawOutputCursor: 2,
+      changeCursor: null,
+      deletedEventIds: [],
+      deletedRawOutputIds: [],
+      resetRequired: false,
+      hasMore: false
     });
 
     render(<App />);
@@ -1217,7 +1233,9 @@ describe("App sidebar", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const otherWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-other",
@@ -1238,7 +1256,9 @@ describe("App sidebar", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const waitingSession: DashboardSnapshot["sessions"][number] = {
       id: "session-wait",
@@ -1290,9 +1310,9 @@ describe("App sidebar", () => {
     mockDashboardSnapshot(demotionSnapshot);
     sessionEventsSince.mockImplementation((input) => {
       if (input.sessionId === "session-wait" || input.sessionId === "session-other") {
-        return Promise.resolve({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0 });
+        return Promise.resolve({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
       }
-      return Promise.resolve({ events: snapshot.events, rawOutputs: [], eventCursor: 1, rawOutputCursor: 0 });
+      return Promise.resolve({ events: snapshot.events, rawOutputs: [], eventCursor: 1, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
     });
     setPriorityDismissed.mockImplementation(({ workspaceId, dismissed }) => {
       const current =
@@ -1366,7 +1386,9 @@ describe("App sidebar", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const otherWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-other",
@@ -1387,7 +1409,9 @@ describe("App sidebar", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const workingSnapshot: DashboardSnapshot = {
       ...snapshot,

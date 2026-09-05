@@ -30,7 +30,9 @@ const childWorkspace: DashboardSnapshot["workspaces"][number] = {
   prState: null,
   prNumber: null,
   icon: null,
-  iconColor: null
+  iconColor: null,
+  prCreatedAt: null,
+  prMergedAt: null
 };
 
 const childSession: DashboardSnapshot["sessions"][number] = {

@@ -65,6 +65,8 @@ function workspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary 
     prNumber: null,
     icon: null,
     iconColor: null,
+    prCreatedAt: null,
+    prMergedAt: null,
     ...overrides
   };
 }

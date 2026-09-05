@@ -309,7 +309,12 @@ describe("App", () => {
       events: [snapshot.events[0], toolCompleted, toolStarted],
       rawOutputs: [],
       eventCursor: 3,
-      rawOutputCursor: 0
+      rawOutputCursor: 0,
+      changeCursor: null,
+      deletedEventIds: [],
+      deletedRawOutputIds: [],
+      resetRequired: false,
+      hasMore: false
     });
 
     render(<App />);
@@ -365,7 +370,12 @@ describe("App", () => {
       events: eventsBundle,
       rawOutputs: [],
       eventCursor: eventsBundle.length,
-      rawOutputCursor: 0
+      rawOutputCursor: 0,
+      changeCursor: null,
+      deletedEventIds: [],
+      deletedRawOutputIds: [],
+      resetRequired: false,
+      hasMore: false
     });
 
     render(<App />);
@@ -429,7 +439,12 @@ describe("App", () => {
       events: eventsBundle,
       rawOutputs: [],
       eventCursor: eventsBundle.length,
-      rawOutputCursor: 0
+      rawOutputCursor: 0,
+      changeCursor: null,
+      deletedEventIds: [],
+      deletedRawOutputIds: [],
+      resetRequired: false,
+      hasMore: false
     });
 
     render(<App />);
@@ -465,7 +480,12 @@ describe("App", () => {
       events: [],
       rawOutputs: lifecycleSnapshot.rawOutputs,
       eventCursor: 0,
-      rawOutputCursor: 1
+      rawOutputCursor: 1,
+      changeCursor: null,
+      deletedEventIds: [],
+      deletedRawOutputIds: [],
+      resetRequired: false,
+      hasMore: false
     });
 
     render(<App />);
@@ -800,7 +820,9 @@ describe("App", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const newSession: DashboardSnapshot["sessions"][number] = {
       id: "session-new",
@@ -834,9 +856,9 @@ describe("App", () => {
     mockDashboardSnapshot(snapshot);
     sessionEventsSince.mockImplementation((input) => {
       if (input.sessionId === "session-new") {
-        return Promise.resolve({ events: [newEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0 });
+        return Promise.resolve({ events: [newEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
       }
-      return Promise.resolve({ events: snapshot.events, rawOutputs: snapshot.rawOutputs, eventCursor: 1, rawOutputCursor: 0 });
+      return Promise.resolve({ events: snapshot.events, rawOutputs: snapshot.rawOutputs, eventCursor: 1, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
     });
     createCurrentWorkspace.mockResolvedValue(newWorkspace);
     launchProvider.mockResolvedValue(newSession);
@@ -883,7 +905,9 @@ describe("App", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const newSession: DashboardSnapshot["sessions"][number] = {
       id: "session-mention",
@@ -917,9 +941,9 @@ describe("App", () => {
     mockDashboardSnapshot(snapshot);
     sessionEventsSince.mockImplementation((input) => {
       if (input.sessionId === "session-mention") {
-        return Promise.resolve({ events: [userEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0 });
+        return Promise.resolve({ events: [userEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
       }
-      return Promise.resolve({ events: snapshot.events, rawOutputs: snapshot.rawOutputs, eventCursor: 1, rawOutputCursor: 0 });
+      return Promise.resolve({ events: snapshot.events, rawOutputs: snapshot.rawOutputs, eventCursor: 1, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
     });
     createCurrentWorkspace.mockResolvedValue(newWorkspace);
     launchProvider.mockResolvedValue(newSession);

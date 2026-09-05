@@ -343,9 +343,22 @@ export type WorkspaceStatusSnapshot = Pick<
   "workspaces" | "sessions" | "checks"
 >;
 
+/**
+ * The recovery fields are optional here: the renderer treats a missing one
+ * as "nothing to do", which is what a partial page from an older bridge or
+ * a test double looks like.
+ */
 export type SessionEventsSinceResult = Retype<
   Bindings.SessionEventsSinceResult,
-  { events: TimelineEvent[]; rawOutputs: RawProviderOutput[] }
+  {
+    events: TimelineEvent[];
+    rawOutputs: RawProviderOutput[];
+    changeCursor?: number | null;
+    deletedEventIds?: string[];
+    deletedRawOutputIds?: string[];
+    resetRequired?: boolean;
+    hasMore?: boolean;
+  }
 >;
 
 /** Settings → Agents → Session sync. `windowHours` is 24 or 168; the backend clamps anything else. */

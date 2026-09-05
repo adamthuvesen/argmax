@@ -78,7 +78,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -153,7 +155,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -236,7 +240,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -538,7 +544,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1098,7 +1106,7 @@ describe("App grid", () => {
             resolveAgentEvents = resolve;
           })
       )
-      .mockResolvedValue({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0 });
+      .mockResolvedValue({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
 
     render(<App />);
 
@@ -1110,7 +1118,7 @@ describe("App grid", () => {
     expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
 
     await act(async () => {
-      resolveAgentEvents({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0 });
+      resolveAgentEvents({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
       await Promise.resolve();
     });
 
@@ -1229,7 +1237,7 @@ describe("App grid", () => {
 
     expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
     await act(async () => {
-      resolveAgentEvents({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0 });
+      resolveAgentEvents({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
       await Promise.resolve();
     });
   });
@@ -1316,7 +1324,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const newSession: DashboardSnapshot["sessions"][number] = {
       id: "session-new",
@@ -1442,7 +1452,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const thirdWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-3",
@@ -1463,7 +1475,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1551,7 +1565,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1643,7 +1659,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1720,7 +1738,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const thirdWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-3",
@@ -1741,7 +1761,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1839,7 +1861,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1922,7 +1946,9 @@ describe("App grid", () => {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",

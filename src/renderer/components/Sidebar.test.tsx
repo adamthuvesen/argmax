@@ -50,7 +50,9 @@ const snapshot: DashboardSnapshot = {
       prState: null,
       prNumber: null,
       icon: null,
-      iconColor: null
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null
     }
   ],
   sessions: [],
@@ -426,7 +428,9 @@ describe("Sidebar — workspaces without sessions", () => {
           prState: null,
           prNumber: null,
           icon: null,
-          iconColor: null
+          iconColor: null,
+          prCreatedAt: null,
+          prMergedAt: null
         }
       ],
       sessions: [
@@ -522,7 +526,9 @@ describe("Sidebar — date (sessions) view mode", () => {
     prState: null,
     prNumber: null,
     icon: null,
-    iconColor: null
+    iconColor: null,
+    prCreatedAt: null,
+    prMergedAt: null
   });
 
   const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
@@ -1032,7 +1038,9 @@ describe("Sidebar — Priority section", () => {
     prState: null,
     prNumber: null,
     icon: null,
-    iconColor: null
+    iconColor: null,
+    prCreatedAt: null,
+    prMergedAt: null
   });
 
   const prioritySnapshot: DashboardSnapshot = {
@@ -1406,6 +1414,8 @@ describe("Sidebar — working rows in Priority", () => {
     priorityAddedAt: null,
     prState: null,
     prNumber: null,
+    prCreatedAt: null,
+    prMergedAt: null,
     icon: null,
     iconColor: null,
     ...overrides
@@ -1611,7 +1621,9 @@ describe("Sidebar — boot collapse defaults", () => {
     prState: null,
     prNumber: null,
     icon: null,
-    iconColor: null
+    iconColor: null,
+    prCreatedAt: null,
+    prMergedAt: null
   });
 
   const bootSession = (workspaceId: string, attention: "normal" | "blocked") => ({
@@ -1745,7 +1757,9 @@ describe("Sidebar — Side Chats section", () => {
     prState: null,
     prNumber: null,
     icon: null,
-    iconColor: null
+    iconColor: null,
+    prCreatedAt: null,
+    prMergedAt: null
   });
 
   const scratchProject = {

@@ -113,7 +113,9 @@ describe("App side chat launcher", () => {
           prState: null,
           prNumber: null,
           icon: null,
-          iconColor: null
+          iconColor: null,
+          prCreatedAt: null,
+          prMergedAt: null
         }
       ]
     });

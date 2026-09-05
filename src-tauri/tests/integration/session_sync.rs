@@ -17,6 +17,10 @@ use argmax_lib::persistence::{
     synced::{list_synced_sessions, mark_synced_session_adopted},
 };
 use argmax_lib::providers::flush_queue::DashboardDelta;
+use argmax_lib::providers::normalizer::{
+    normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream,
+};
+use argmax_lib::providers::ProviderId;
 use argmax_lib::sync::{run_sync, SyncConfig, WINDOW_24H, WINDOW_7D};
 use argmax_lib::workspaces::WorkspaceService;
 
@@ -755,5 +759,48 @@ fn smoke_test_against_the_real_claude_store() {
             .iter()
             .all(|session| !session.external_id.is_empty()),
         "every discovered session needs an id to resume with"
+    );
+
+    // The sweep hands every transcript line to the normalizer, so a row the
+    // CLI writes for itself (`attachment`, `queue-operation`, `custom-title`,
+    // …) must come back with nothing rather than as a stray bubble.
+    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for session in discovered.iter().take(20) {
+        let mut context = NormalizerSessionContext::for_transcript_replay();
+        for line in argmax_lib::sync::claude::timeline_lines(&session.source_path, 0) {
+            let output = ProviderOutputEvent {
+                session_id: "smoke".to_string(),
+                stream: ProviderOutputStream::Stdout,
+                message: line.raw,
+                created_at: line.timestamp.unwrap_or_default(),
+            };
+            for event in normalize_provider_event(ProviderId::Claude, &output, &mut context).events
+            {
+                *counts.entry(event.r#type).or_default() += 1;
+            }
+        }
+    }
+    println!("replayed event types: {counts:?}");
+    let known = [
+        "command.completed",
+        "command.started",
+        "error",
+        "message.completed",
+        "message.delta",
+        "session.compacted",
+        "session.compacting",
+        "user.message",
+    ];
+    let unknown = counts
+        .keys()
+        .filter(|event_type| !known.contains(&event_type.as_str()))
+        .collect::<Vec<_>>();
+    assert!(
+        unknown.is_empty(),
+        "unexpected replayed event types: {unknown:?}"
+    );
+    assert!(
+        counts.get("user.message").copied().unwrap_or(0) > 0,
+        "a real transcript carries the human's prompts: {counts:?}"
     );
 }

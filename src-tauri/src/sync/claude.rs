@@ -9,14 +9,16 @@
 //! The line shapes (`{"type":"user","message":{…}}`, `{"type":"assistant",…}`)
 //! are the same ones the CLI writes to stdout under
 //! `--output-format stream-json`, so the existing Claude normalizer turns
-//! them into timeline events unchanged.
+//! them into timeline events unchanged. This module decides which lines the
+//! sweep offers it — what a line then means is the normalizer's call, in
+//! transcript-replay mode.
 
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
 use super::DiscoveredSession;
-use crate::providers::normalizer::claude::HIDDEN_SYNTHETIC_PREFIXES;
+use crate::providers::normalizer::claude::{transcript_user_row, TranscriptUserRow};
 
 /// Cheap prefix read for metadata: enough lines to find `cwd` and the first
 /// prompt without parsing a 12MB transcript.
@@ -110,8 +112,15 @@ fn read_metadata(path: &Path, mtime_ms: i64) -> Option<DiscoveredSession> {
                     .filter(|title| !title.trim().is_empty())
                     .map(str::to_string);
             }
+            // The title comes from the first thing a human typed, read with
+            // the same predicate the replay uses, so a skill body or one of
+            // the CLI's own notes never titles a session.
             Some("user") if first_prompt.is_none() && !is_sidechain(&value) => {
-                first_prompt = user_message_text(&value);
+                if let Some(TranscriptUserRow::Prompt(text)) =
+                    value.as_object().map(transcript_user_row)
+                {
+                    first_prompt = Some(text);
+                }
             }
             Some("assistant") if model_id.is_none() => {
                 model_id = value
@@ -145,35 +154,20 @@ fn read_metadata(path: &Path, mtime_ms: i64) -> Option<DiscoveredSession> {
     })
 }
 
-/// One transcript row with timeline meaning: the line index it came from (the
-/// sweep's cursor), the row's own timestamp, and what the sweep should make of
-/// it.
+/// One transcript row for the normalizer: the line index it came from (the
+/// sweep's cursor), its raw JSON, and the row's own timestamp.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimelineLine {
     pub index: usize,
     pub raw: String,
     pub timestamp: Option<String>,
-    pub kind: LineKind,
 }
 
-/// What a transcript row becomes on the timeline.
-#[derive(Debug, Clone, PartialEq)]
-pub enum LineKind {
-    /// The human's own prompt. The stdout stream has no such row — a live
-    /// `type:"user"` line carries tool results — so the Claude normalizer has
-    /// no path for one and the sweep writes the `user.message` itself.
-    UserPrompt(String),
-    /// A compaction. The transcript records it as the replacement summary body
-    /// flagged `isCompactSummary`, never as the `system/compact_boundary` row
-    /// the stdout stream sends.
-    Compacted,
-    /// A row the Claude normalizer already understands.
-    Provider,
-}
-
-/// Transcript lines that should become timeline events, in order, starting at
-/// `from_line`. Sidechain (subagent) chatter is dropped: it belongs to a
-/// child agent, not this session's conversation.
+/// Transcript lines the normalizer should read, in order, starting at
+/// `from_line`. Only lines this reader cannot hand over are dropped: what is
+/// not a JSON object, what is too large to parse, and sidechain (subagent)
+/// chatter, which belongs to a child agent rather than this conversation.
+/// Whether a line means anything on the timeline is the normalizer's call.
 ///
 /// Read line by line rather than whole: a long-running session's transcript
 /// runs to tens of megabytes and every sweep re-reads it from `from_line`.
@@ -194,12 +188,9 @@ pub fn timeline_lines(path: &Path, from_line: usize) -> Vec<TimelineLine> {
         let Ok(value) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
-        if is_sidechain(&value) {
+        if !value.is_object() || is_sidechain(&value) {
             continue;
         }
-        let Some(kind) = line_kind(&value) else {
-            continue;
-        };
         lines.push(TimelineLine {
             index,
             raw: line,
@@ -207,62 +198,9 @@ pub fn timeline_lines(path: &Path, from_line: usize) -> Vec<TimelineLine> {
                 .get("timestamp")
                 .and_then(Value::as_str)
                 .map(str::to_string),
-            kind,
         });
     }
     lines
-}
-
-/// `None` for a row with no timeline meaning: the CLI internals
-/// (`bridge-session`, `custom-title`, `attachment`, queue bookkeeping), and the
-/// model-facing bodies Claude injects into the conversation for itself.
-fn line_kind(value: &Value) -> Option<LineKind> {
-    match value.get("type").and_then(Value::as_str) {
-        Some("assistant") => Some(LineKind::Provider),
-        Some("user") => user_line_kind(value),
-        _ => None,
-    }
-}
-
-fn user_line_kind(value: &Value) -> Option<LineKind> {
-    if flag(value, "isCompactSummary") {
-        return Some(LineKind::Compacted);
-    }
-    let content = value.get("message")?.get("content")?;
-    // A tool result rides a `user` row in the transcript exactly as it does in
-    // the stdout stream, so it stays the normalizer's business.
-    if has_tool_result(content) {
-        return Some(LineKind::Provider);
-    }
-    // `isMeta` marks the CLI's own notes to the model ("Caveat: the messages
-    // below were generated while running local commands"), never chat.
-    if flag(value, "isMeta") || is_hidden_synthetic_body(value) {
-        return None;
-    }
-    Some(LineKind::UserPrompt(user_message_text(value)?))
-}
-
-fn has_tool_result(content: &Value) -> bool {
-    content.as_array().is_some_and(|blocks| {
-        blocks
-            .iter()
-            .any(|block| block.get("type").and_then(Value::as_str) == Some("tool_result"))
-    })
-}
-
-/// The `user` rows Claude writes for the model to read rather than for a human
-/// to see — the same list the live stdout normalizer hides.
-fn is_hidden_synthetic_body(value: &Value) -> bool {
-    user_message_text(value).is_some_and(|text| {
-        let text = text.trim_start();
-        HIDDEN_SYNTHETIC_PREFIXES
-            .iter()
-            .any(|prefix| text.starts_with(prefix))
-    })
-}
-
-fn flag(value: &Value, key: &str) -> bool {
-    value.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
 fn is_sidechain(value: &Value) -> bool {
@@ -270,20 +208,6 @@ fn is_sidechain(value: &Value) -> bool {
         .get("isSidechain")
         .and_then(Value::as_bool)
         .unwrap_or(false)
-}
-
-fn user_message_text(value: &Value) -> Option<String> {
-    let content = value.get("message")?.get("content")?;
-    if let Some(text) = content.as_str() {
-        return non_empty(text);
-    }
-    // Content blocks: the first text block is the prompt; tool results are not.
-    content.as_array()?.iter().find_map(|block| {
-        if block.get("type").and_then(Value::as_str) != Some("text") {
-            return None;
-        }
-        non_empty(block.get("text")?.as_str()?)
-    })
 }
 
 /// A session's title from its first user message. The raw text is often not
@@ -480,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn timeline_lines_keep_conversation_rows_and_drop_sidechains() {
+    fn timeline_lines_hand_over_every_row_but_sidechains() {
         let home = tempfile::tempdir().expect("tempdir");
         let path = write_transcript(
             home.path(),
@@ -494,73 +418,38 @@ mod tests {
             ],
         );
 
+        // What a row means is the normalizer's call, so the reader keeps the
+        // CLI's own bookkeeping rows too — only the subagent's is dropped.
         let lines = timeline_lines(&path, 0);
-        assert_eq!(lines.len(), 2);
+        assert_eq!(lines.len(), 3);
         // Line indexes are absolute, so a resumed read picks up where it left off.
-        assert_eq!(lines[0].index, 1);
-        assert_eq!(lines[1].index, 3);
+        assert_eq!(
+            lines.iter().map(|line| line.index).collect::<Vec<_>>(),
+            vec![0, 1, 3]
+        );
         assert!(lines
             .iter()
             .all(|line| !line.raw.contains("subagent chatter")));
         // The row's own timestamp rides along; the file mtime is one instant
         // for the whole batch.
         assert_eq!(
-            lines[0].timestamp.as_deref(),
+            lines[1].timestamp.as_deref(),
             Some("2026-08-30T10:00:00.000Z")
         );
 
-        // Resuming past the first conversation row yields only the later one.
+        // Resuming past the first rows yields only the later one.
         let resumed = timeline_lines(&path, 2);
         assert_eq!(resumed.len(), 1);
         assert_eq!(resumed[0].index, 3);
     }
 
     #[test]
-    fn a_typed_prompt_is_a_user_message_whatever_shape_its_content_has() {
+    fn the_title_skips_the_clis_own_notes_for_the_first_typed_prompt() {
         let home = tempfile::tempdir().expect("tempdir");
-        let array_content = r#"{"type":"user","isSidechain":false,"cwd":"/repo/app","timestamp":"2026-08-30T10:01:00.000Z","message":{"role":"user","content":[{"type":"text","text":"And also this"}]}}"#;
-        let path = write_transcript(
-            home.path(),
-            "-repo-app",
-            "sess-1",
-            &[USER_LINE, array_content],
-        );
+        let meta = r#"{"type":"user","isSidechain":false,"isMeta":true,"cwd":"/repo/app","timestamp":"2026-08-30T09:59:00.000Z","message":{"role":"user","content":"Caveat: the messages below were generated while running local commands."}}"#;
+        write_transcript(home.path(), "-repo-app", "sess-1", &[meta, USER_LINE]);
 
-        let kinds = timeline_lines(&path, 0)
-            .into_iter()
-            .map(|line| line.kind)
-            .collect::<Vec<_>>();
-        assert_eq!(
-            kinds,
-            vec![
-                LineKind::UserPrompt("Fix the flaky test".to_string()),
-                LineKind::UserPrompt("And also this".to_string()),
-            ]
-        );
-    }
-
-    #[test]
-    fn tool_results_and_model_facing_bodies_are_not_prompts() {
-        let home = tempfile::tempdir().expect("tempdir");
-        let tool_result = r#"{"type":"user","isSidechain":false,"cwd":"/repo/app","timestamp":"2026-08-30T10:01:00.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}}"#;
-        // No `isSynthetic` — the transcript store never writes it.
-        let skill_body = r#"{"type":"user","isSidechain":false,"cwd":"/repo/app","timestamp":"2026-08-30T10:02:00.000Z","message":{"role":"user","content":[{"type":"text","text":"Base directory for this skill: /repo/.claude/skills/review"}]}}"#;
-        let meta = r#"{"type":"user","isSidechain":false,"isMeta":true,"cwd":"/repo/app","timestamp":"2026-08-30T10:03:00.000Z","message":{"role":"user","content":"Caveat: the messages below were generated while running local commands."}}"#;
-        let compacted = r#"{"type":"user","isSidechain":false,"isCompactSummary":true,"cwd":"/repo/app","timestamp":"2026-08-30T10:04:00.000Z","message":{"role":"user","content":"This session is being continued from a previous conversation…"}}"#;
-        let path = write_transcript(
-            home.path(),
-            "-repo-app",
-            "sess-1",
-            &[tool_result, skill_body, meta, compacted],
-        );
-
-        let kinds = timeline_lines(&path, 0)
-            .into_iter()
-            .map(|line| line.kind)
-            .collect::<Vec<_>>();
-        // The tool result stays the normalizer's; the skill body and the CLI's
-        // own note are dropped; the compaction becomes its marker.
-        assert_eq!(kinds, vec![LineKind::Provider, LineKind::Compacted]);
+        assert_eq!(discover(home.path(), 0)[0].prompt, "Fix the flaky test");
     }
 
     #[test]

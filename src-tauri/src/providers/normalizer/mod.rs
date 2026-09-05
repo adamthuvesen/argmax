@@ -25,6 +25,7 @@ use self::{
         is_hidden_synthetic_body as is_claude_hidden_synthetic_body,
         is_thinking_delta_payload as is_claude_thinking_delta_payload,
         synthesize_message_completed_from_result as synthesize_claude_message_completed_from_result,
+        transcript_user_row as claude_transcript_user_row, TranscriptUserRow,
     },
     codex::{
         detect_permission_gate as detect_codex_permission_gate, event_type as codex_event_type,
@@ -209,6 +210,12 @@ pub struct NormalizerSessionContext {
     /// After a tracing-format PTY line, following non-JSON lines are the rest
     /// of that record. Codex dumps apply_patch expected context that way.
     pub raw_tracing_continuation: RawTracingContinuation,
+    /// Set when the lines being normalized come from a provider's transcript
+    /// file rather than from a live process. A transcript records rows the
+    /// live stream never sends — above all the human's own prompts, which go
+    /// into a live session via argv — so only a replay may read a `user` line
+    /// as chat.
+    pub replaying_transcript: bool,
     /// Set once OpenCode's `sessionID` has been reported for this launch.
     /// Every OpenCode envelope carries it, and each report costs a session
     /// UPDATE plus a re-read that ships a session row in the dashboard delta —
@@ -242,6 +249,15 @@ impl NormalizerSessionContext {
                 ..Self::default()
             },
             ProviderId::Claude | ProviderId::Grok => Self::default(),
+        }
+    }
+
+    /// A context for replaying a transcript file, where every line of the
+    /// conversation is on disk — including the rows a live launch never sees.
+    pub fn for_transcript_replay() -> Self {
+        Self {
+            replaying_transcript: true,
+            ..Self::default()
         }
     }
 
@@ -666,6 +682,36 @@ fn normalize_json_payload(
     }
 
     if speaks_claude_stream_json(provider) {
+        if context.replaying_transcript && provider_type.as_deref() == Some("user") {
+            match claude_transcript_user_row(&payload) {
+                // `source` names where the row came from for the renderer;
+                // an imported prompt was never typed into the composer.
+                TranscriptUserRow::Prompt(text) => {
+                    return NormalizedProviderResult {
+                        events: vec![timeline_event(
+                            event,
+                            "user.message",
+                            text,
+                            json!({ "source": "sync" }),
+                        )],
+                        usages,
+                        provider_conversation_id,
+                        ..NormalizedProviderResult::default()
+                    };
+                }
+                TranscriptUserRow::Hidden => {
+                    return NormalizedProviderResult {
+                        events: Vec::new(),
+                        usages,
+                        provider_conversation_id,
+                        ..NormalizedProviderResult::default()
+                    };
+                }
+                // The same row the live stream sends; the shared path below
+                // turns it into a `command.completed`.
+                TranscriptUserRow::ToolResult => {}
+            }
+        }
         if let Some(marker) = claude_compaction_marker(event, &payload) {
             return NormalizedProviderResult {
                 events: vec![marker],

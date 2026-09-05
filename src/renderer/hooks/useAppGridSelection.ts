@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction
-} from "react";
+import { useCallback, useEffect, useMemo, type MutableRefObject } from "react";
 import {
   SCRATCH_PROJECT_ID,
   type DashboardSnapshot,
@@ -16,21 +8,25 @@ import {
 } from "../../shared/types.js";
 import type { WorkspaceClickModifiers } from "../components/SidebarSessionRow.js";
 import {
-  EMPTY_GRID,
-  closeCell,
-  dropWorkspaceInGrid,
-  findLauncherCell,
   focusedCell,
   isSessionCell,
-  openLauncherInGrid,
-  openWorkspaceInGrid,
-  setFocus,
-  setLauncherProject,
-  type GridCell,
   type GridCoord,
   type GridState,
   type SplitPosition
 } from "../lib/gridState.js";
+import {
+  closePane,
+  dropWorkspacePane,
+  openLauncherPane,
+  openWorkspacePane,
+  paneGridSnapshot,
+  prunePaneGrid,
+  usePaneGrid
+} from "../state/paneGrid.js";
+import {
+  useDraggingWorkspaceId,
+  useWorkspaceDragCleanup
+} from "../state/workspaceDrag.js";
 
 export interface UseAppGridSelectionParams {
   snapshot: DashboardSnapshot;
@@ -52,24 +48,22 @@ export interface UseAppGridSelectionParams {
 
 export interface UseAppGridSelectionResult {
   grid: GridState;
-  setGrid: Dispatch<SetStateAction<GridState>>;
   sessionsById: Map<string, SessionSummary>;
   workspacesById: Map<string, WorkspaceSummary>;
   projectsById: Map<string, ProjectSummary>;
   draggingWorkspaceId: string | null;
-  openWorkspaceIds: Set<string>;
-  canDragWorkspaceToGrid: boolean;
   openWorkspaceChat: (workspaceId: string, modifiers?: WorkspaceClickModifiers) => void;
-  closePane: (coord: GridCoord) => void;
-  focusPane: (coord: GridCoord) => void;
   closeFocusedPane: () => boolean;
   handleDropWorkspace: (workspaceId: string, target: GridCoord & { position: SplitPosition }) => void;
-  handleWorkspaceDragStart: (workspaceId: string) => void;
-  handleWorkspaceDragEnd: () => void;
   openLauncherPaneInGrid: () => void;
-  setLauncherPaneProject: (projectId: string) => void;
 }
 
+/**
+ * Resolves grid moves against the dashboard snapshot: which session a sidebar
+ * row opens, which project a new launcher cell targets, and which panes no
+ * longer have rows behind them. The grid itself lives in `state/paneGrid`,
+ * where panes and the sidebar read it without going through the shell.
+ */
 export function useAppGridSelection({
   snapshot,
   selectedProject,
@@ -82,8 +76,9 @@ export function useAppGridSelection({
   showErrorToast,
   mirrorFocusedSelection = true
 }: UseAppGridSelectionParams): UseAppGridSelectionResult {
-  const [grid, setGrid] = useState<GridState>(EMPTY_GRID);
-  const [draggingWorkspaceId, setDraggingWorkspaceId] = useState<string | null>(null);
+  const grid = usePaneGrid();
+  const draggingWorkspaceId = useDraggingWorkspaceId();
+  useWorkspaceDragCleanup();
 
   const sessionsById = useMemo(
     () => new Map(snapshot.sessions.map((s) => [s.id, s])),
@@ -97,60 +92,18 @@ export function useAppGridSelection({
     () => new Map(snapshot.projects.map((p) => [p.id, p])),
     [snapshot.projects]
   );
-  const openWorkspaceIds = useMemo(
-    () => new Set(grid.rows.flatMap((row) => row.filter(isSessionCell).map((cell) => cell.workspaceId))),
-    [grid.rows]
-  );
-  const canDragWorkspaceToGrid = snapshot.sessions.length > 0;
 
-  // Mirror the focused grid cell into the dashboard hook's single-selection
-  // state so palette/search/IDE-open code paths (which still look at
-  // `selectedSession`) keep working. Also drops grid cells whose session
-  // disappeared (archive, restart) so the grid stays in sync with the
-  // snapshot without stale panes.
+  // Drops grid cells whose session disappeared (archive, restart) so the grid
+  // stays in sync with the snapshot without stale panes.
   useEffect(() => {
-    setGrid((current) => {
-      if (current.rows.length === 0) return current;
-      let mutated = false;
+    prunePaneGrid((cell) => {
+      if (!isSessionCell(cell)) return projectsById.has(cell.projectId);
       const pending = pendingSelectionRef.current;
-      const rows = current.rows
-        .map((row) => {
-          const next: GridCell[] = [];
-          for (const cell of row) {
-            if (!isSessionCell(cell)) {
-              if (projectsById.has(cell.projectId)) next.push(cell);
-              else mutated = true;
-              continue;
-            }
-            if (
-              pending?.sessionId === cell.sessionId &&
-              pending.workspaceId === cell.workspaceId
-            ) {
-              next.push(cell);
-              continue;
-            }
-            const workspace = workspacesById.get(cell.workspaceId);
-            if (sessionsById.has(cell.sessionId) && workspace && workspace.state !== "archived") {
-              next.push(cell);
-            } else {
-              mutated = true;
-            }
-          }
-          return next;
-        })
-        .filter((row) => row.length > 0);
-      if (!mutated) return current;
-      if (rows.length === 0) return EMPTY_GRID;
-      const focused = current.focused;
-      if (focused) {
-        const nextRow = Math.min(focused.row, rows.length - 1);
-        const targetRow = rows[nextRow];
-        if (targetRow) {
-          const nextCol = Math.min(focused.col, targetRow.length - 1);
-          return { rows, focused: { row: nextRow, col: Math.max(nextCol, 0) } };
-        }
+      if (pending?.sessionId === cell.sessionId && pending.workspaceId === cell.workspaceId) {
+        return true;
       }
-      return { rows, focused: { row: 0, col: 0 } };
+      const workspace = workspacesById.get(cell.workspaceId);
+      return sessionsById.has(cell.sessionId) && workspace !== undefined && workspace.state !== "archived";
     });
   }, [pendingSelectionRef, projectsById, sessionsById, workspacesById]);
 
@@ -196,32 +149,21 @@ export function useAppGridSelection({
         return;
       }
       setSelectedProjectId(workspace.projectId);
-      setGrid((current) =>
-        openWorkspaceInGrid(
-          current,
-          { sessionId: sessionForWorkspace.id, workspaceId },
-          modifiers,
-          { maxColumns: maxColumnsPerRow }
-        )
+      openWorkspacePane(
+        { sessionId: sessionForWorkspace.id, workspaceId },
+        modifiers,
+        { maxColumns: maxColumnsPerRow }
       );
     },
     [maxColumnsPerRow, snapshot.sessions, workspacesById, setSelectedProjectId, showErrorToast]
   );
-
-  const closePane = useCallback((coord: GridCoord): void => {
-    setGrid((current) => closeCell(current, coord.row, coord.col));
-  }, []);
-
-  const focusPane = useCallback((coord: GridCoord): void => {
-    setGrid((current) => setFocus(current, coord));
-  }, []);
 
   const closeFocusedPane = useCallback((): boolean => {
     const focused = grid.focused;
     if (!focused) return false;
     closePane(focused);
     return true;
-  }, [grid.focused, closePane]);
+  }, [grid.focused]);
 
   const handleDropWorkspace = useCallback(
     (workspaceId: string, target: GridCoord & { position: SplitPosition }): void => {
@@ -233,69 +175,36 @@ export function useAppGridSelection({
         return;
       }
       setSelectedProjectId(workspace.projectId);
-      setGrid((current) =>
-        dropWorkspaceInGrid(
-          current,
-          { sessionId: sessionForWorkspace.id, workspaceId },
-          target,
-          { maxColumns: maxColumnsPerRow }
-        )
+      dropWorkspacePane(
+        { sessionId: sessionForWorkspace.id, workspaceId },
+        target,
+        { maxColumns: maxColumnsPerRow }
       );
     },
     [maxColumnsPerRow, snapshot.sessions, workspacesById, setSelectedProjectId, showErrorToast]
   );
 
-  const handleWorkspaceDragStart = useCallback((workspaceId: string): void => {
-    setDraggingWorkspaceId(workspaceId);
-  }, []);
-
-  const handleWorkspaceDragEnd = useCallback((): void => {
-    setDraggingWorkspaceId(null);
-  }, []);
-
-  useEffect(() => {
-    if (!draggingWorkspaceId) return;
-    const clear = (): void => setDraggingWorkspaceId(null);
-    document.addEventListener("dragend", clear, true);
-    document.addEventListener("drop", clear);
-    return () => {
-      document.removeEventListener("dragend", clear, true);
-      document.removeEventListener("drop", clear);
-    };
-  }, [draggingWorkspaceId]);
-
   const openLauncherPaneInGrid = useCallback((): void => {
-    setGrid((current) => {
-      if (current.rows.length === 0) return EMPTY_GRID;
-      const focused = focusedCell(current);
-      // Never seed a launcher cell with the hidden scratch project — it owns
-      // repo-less side chats, and a launcher targeting it would offer branch
-      // and worktree chrome against the app-owned scratch root.
-      const repoProjectId = (id: string | null | undefined): string | null =>
-        id && id !== SCRATCH_PROJECT_ID ? id : null;
-      let projectId =
-        repoProjectId(selectedProject?.id) ??
-        repoProjectId(selectedWorkspace?.projectId) ??
-        snapshot.projects.find((project) => project.id !== SCRATCH_PROJECT_ID)?.id ??
-        null;
-      if (focused && isSessionCell(focused)) {
-        projectId = repoProjectId(workspacesById.get(focused.workspaceId)?.projectId) ?? projectId;
-      } else if (focused?.kind === "launcher") {
-        projectId = focused.projectId;
-      }
-      if (!projectId) return current;
-      const next = openLauncherInGrid(
-        current,
-        { kind: "launcher", projectId },
-        { maxColumns: maxColumnsPerRow }
-      );
-      // A full grid silently swallows the request otherwise, which reads as a
-      // dead button rather than as a limit the user can act on.
-      if (next === current && findLauncherCell(current) === null) {
-        showErrorToast("The grid is full. Close a pane to start a new chat here.");
-      }
-      return next;
-    });
+    // Never seed a launcher cell with the hidden scratch project — it owns
+    // repo-less side chats, and a launcher targeting it would offer branch
+    // and worktree chrome against the app-owned scratch root.
+    const repoProjectId = (id: string | null | undefined): string | null =>
+      id && id !== SCRATCH_PROJECT_ID ? id : null;
+    const focused = focusedCell(paneGridSnapshot());
+    let projectId =
+      repoProjectId(selectedProject?.id) ??
+      repoProjectId(selectedWorkspace?.projectId) ??
+      snapshot.projects.find((project) => project.id !== SCRATCH_PROJECT_ID)?.id ??
+      null;
+    if (focused && isSessionCell(focused)) {
+      projectId = repoProjectId(workspacesById.get(focused.workspaceId)?.projectId) ?? projectId;
+    } else if (focused?.kind === "launcher") {
+      projectId = focused.projectId;
+    }
+    if (!projectId) return;
+    if (openLauncherPane({ kind: "launcher", projectId }, { maxColumns: maxColumnsPerRow }) === "grid-full") {
+      showErrorToast("The grid is full. Close a pane to start a new chat here.");
+    }
   }, [
     maxColumnsPerRow,
     selectedProject?.id,
@@ -305,27 +214,15 @@ export function useAppGridSelection({
     workspacesById
   ]);
 
-  const setLauncherPaneProject = useCallback((projectId: string): void => {
-    setGrid((current) => setLauncherProject(current, projectId));
-  }, []);
-
   return {
     grid,
-    setGrid,
     sessionsById,
     workspacesById,
     projectsById,
     draggingWorkspaceId,
-    openWorkspaceIds,
-    canDragWorkspaceToGrid,
     openWorkspaceChat,
-    closePane,
-    focusPane,
     closeFocusedPane,
     handleDropWorkspace,
-    handleWorkspaceDragStart,
-    handleWorkspaceDragEnd,
-    openLauncherPaneInGrid,
-    setLauncherPaneProject
+    openLauncherPaneInGrid
   };
 }

@@ -25,12 +25,7 @@ import { SCRATCH_PROJECT_ID } from "../shared/types.js";
 import { launcherDraftKey, writeDraftText } from "./lib/composerDrafts.js";
 import type { NewSessionSeed } from "./components/SessionComposer.js";
 import { effortForModel, PROVIDER_TITLE_MODEL, type ReasoningEffort } from "../shared/providerModels.js";
-import type {
-  MessageHit as PaletteMessageHit,
-  PaletteScope
-} from "./components/CommandPalette.js";
-import type { SettingsNavigationTarget } from "./components/SettingsPanel.js";
-import { DEFAULT_SETTINGS_GROUP, type SettingsGroupId } from "./components/settings/settingsMeta.js";
+import type { MessageHit as PaletteMessageHit } from "./components/CommandPalette.js";
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
 import { usePersistedSetting } from "./hooks/usePersistedSetting.js";
 import { EmptyState } from "./components/EmptyState.js";
@@ -40,12 +35,12 @@ import { PerfOverlay } from "./components/PerfOverlay.js";
 import { DetailsPopup } from "./components/DetailsPopup.js";
 import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/SessionMultiGrid.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
-import { BrowserPage } from "./components/BrowserPage.js";
 import { Sidebar } from "./components/Sidebar.js";
+import { BrowserPage } from "./components/BrowserPage.js";
 import { ScheduleRail } from "./components/scheduled/ScheduleRail.js";
 import { UsageRail } from "./components/usage/UsageRail.js";
 import { SettingsRail } from "./components/settings/SettingsRail.js";
-import { EMPTY_GRID, MAX_COLS, findSessionCell, openWorkspaceInGrid, revertSessionToLauncher, terminalWorkspaceId } from "./lib/gridState.js";
+import { MAX_COLS, findSessionCell, terminalWorkspaceId } from "./lib/gridState.js";
 import { isEarlySessionStop } from "./lib/earlyStop.js";
 import { getWorkspaceTerminalState, requestTerminalVisible } from "./lib/terminalTabs.js";
 import { requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
@@ -65,8 +60,37 @@ import {
   useLazyOverlayPrefetch
 } from "./hooks/useLazyOverlayPrefetch.js";
 import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
-import { useOverlays } from "./hooks/useOverlays.js";
 import { DEFAULT_WORKSPACE_MIN_WIDTH_PX, useSidebarResize } from "./hooks/useSidebarResize.js";
+import {
+  hideCommandPalette,
+  hideKeyboardCheatSheet,
+  hideStandalonePage,
+  showCommandPalette,
+  showKeyboardCheatSheet,
+  showSchedulePage,
+  showSettings,
+  showUsagePage,
+  useOverlayEscape,
+  useOverlays
+} from "./state/overlays.js";
+import {
+  hideFullLauncher,
+  requestLauncherReset,
+  setLauncherSideChatMode,
+  showFullLauncher,
+  useLauncherSurface
+} from "./state/launcherSurface.js";
+import {
+  clearPaneGrid,
+  closePane,
+  focusPane,
+  openWorkspacePane,
+  revertPaneToLauncher,
+  setLauncherPaneProject,
+  showOnlyPane
+} from "./state/paneGrid.js";
+import { setSidebarPeek, toggleSidebarCollapsed, useSidebarChrome } from "./state/sidebarChrome.js";
+import { dismissToast, showErrorToast, showInfoToast, showToast, useToast } from "./state/toast.js";
 import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange } from "./lib/theme.js";
 import { titleFromPrompt } from "./lib/projects.js";
@@ -107,7 +131,6 @@ import {
   PR_MILESTONE_CELEBRATION_KEY,
   TURN_CHANGES_EXPANDED_KEY,
   RANDOM_SESSION_ICON_KEY,
-  SIDEBAR_COLLAPSED_KEY,
   SIDEBAR_PRIORITY_KEY,
   WORKSPACE_CARD_KEY,
   PrMilestoneCelebrationContext,
@@ -124,13 +147,10 @@ import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 import { isTauriRuntime } from "./lib/tauriBridge.js";
 
-import { withToast, type ToastMessage } from "./lib/withToast.js";
+import { withToast } from "./lib/withToast.js";
 
 const APP_MIN_HEIGHT_PX = 640;
 const STATIC_APP_MIN_WIDTH_PX = 1024;
-// Full new-session view hides the grid. Reuse this empty set so the sidebar
-// does not paint the still-focused pane as current. Esc restores the highlight.
-const EMPTY_OPEN_WORKSPACE_IDS = new Set<string>();
 
 function widestGridRowColumnCount(rows: unknown[][]): number {
   return rows.reduce((max, row) => Math.max(max, row.length), 0);
@@ -142,26 +162,21 @@ export function App(): JSX.Element {
     () => readStoredLaunchModel() ?? factoryLaunchModel(readStoredDefaultEffort())
   );
   const {
-    isSettingsOpen,
-    setIsSettingsOpen,
-    isScheduledTasksOpen,
-    setIsScheduledTasksOpen,
-    isUsageOpen,
-    setIsUsageOpen,
-    isPaletteOpen,
-    setIsPaletteOpen,
-    isCheatSheetOpen,
-    setIsCheatSheetOpen
+    standalonePage,
+    settingsGroup,
+    settingsNavigation,
+    paletteOpen,
+    paletteScope,
+    cheatSheetOpen
   } = useOverlays();
-  const standalonePageOpen = isSettingsOpen || isScheduledTasksOpen || isUsageOpen;
-  const [toast, setToast] = useState<ToastMessage | null>(null);
+  useOverlayEscape();
+  const isSettingsOpen = standalonePage === "settings";
+  const isScheduledTasksOpen = standalonePage === "schedule";
+  const isUsageOpen = standalonePage === "usage";
+  const standalonePageOpen = standalonePage !== null;
+  const toast = useToast();
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const workspaceRef = useRef<HTMLElement | null>(null);
-  const settingsNavigationRequestRef = useRef(0);
-  const [settingsNavigationTarget, setSettingsNavigationTarget] = useState<SettingsNavigationTarget | null>(null);
-  // The settings rail replaces the app sidebar while the page is open, so the
-  // active group lives here rather than inside the lazily-mounted panel.
-  const [settingsGroup, setSettingsGroup] = useState<SettingsGroupId>(DEFAULT_SETTINGS_GROUP.id);
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [chatVerbosity, setChatVerbosity] = useChatVerbosityPreference();
   const { toolCallsDisplay, toolCallGroupsExpanded, thinkingExpanded } = useMemo(
@@ -169,15 +184,8 @@ export function App(): JSX.Element {
     [chatVerbosity]
   );
   const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
-  const [sidebarCollapsed, setSidebarCollapsed] = useBooleanUiPreference(SIDEBAR_COLLAPSED_KEY, false);
+  const { collapsed: sidebarCollapsed, peeking: sidebarPeek } = useSidebarChrome();
   const [isBrowserPageOpen, setIsBrowserPageOpen] = useBooleanUiPreference(BROWSER_PAGE_OPEN_KEY, false);
-  // Transient "peek" state: while collapsed, hovering the left edge slides the
-  // sidebar out as an overlay; leaving it slides back. Not persisted.
-  const [sidebarPeek, setSidebarPeek] = useState(false);
-  const toggleSidebarCollapsed = useCallback(() => {
-    setSidebarPeek(false);
-    setSidebarCollapsed(!sidebarCollapsed);
-  }, [sidebarCollapsed, setSidebarCollapsed]);
   const [workspaceCardVisible, setWorkspaceCardVisible] = useBooleanUiPreference(WORKSPACE_CARD_KEY, true);
   const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
   const [turnChangesExpanded, setTurnChangesExpanded] = useBooleanUiPreference(
@@ -260,15 +268,11 @@ export function App(): JSX.Element {
   const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
   const [chatWidth, setChatWidth] = useState<ChatWidth>(() => readStoredChatWidth());
   const [reviewPanelSide, setReviewPanelSide] = useState<ReviewPanelSide>(() => readStoredReviewPanelSide());
-  // `full` new-session mode hides the grid and renders LaunchSurface in its
-  // place when ⌘N fires from inside an active grid. The flag is purely local
-  // — it never persists; only the user's choice in Settings persists.
-  const [isFullLauncherOpen, setIsFullLauncherOpen] = useState<boolean>(false);
-  const [launcherResetSignal, setLauncherResetSignal] = useState(0);
-  // Launcher composes a repo-less side chat instead of a project session.
-  // Selected as Chat on the Auto/Plan/Chat mode chip (Tab). Armed by the
-  // sidebar's "New side chat", reset by every plain new-session entry point.
-  const [launcherSideChatMode, setLauncherSideChatMode] = useState(false);
+  const {
+    fullLauncherOpen: isFullLauncherOpen,
+    sideChatMode: launcherSideChatMode,
+    resetSignal: launcherResetSignal
+  } = useLauncherSurface();
   const [isWorkspaceDropPreviewVisible, setIsWorkspaceDropPreviewVisible] = useState(false);
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
   const [debugLogToggleSignal, setDebugLogToggleSignal] = useState(0);
@@ -277,7 +281,6 @@ export function App(): JSX.Element {
   // session is open) registers its file source + pick handler here so the
   // command palette can surface Files for that surface's scope.
   // ⌘K and ⌘P open the same palette; only the pre-selected filter differs.
-  const [paletteScope, setPaletteScope] = useState<PaletteScope>("all");
   const [paletteFileContext, setPaletteFileContext] = useState<{
     source: { kind: "workspace" | "project"; id: string };
     onPick: (path: string) => void;
@@ -288,10 +291,6 @@ export function App(): JSX.Element {
     },
     []
   );
-
-  const showErrorToast = useCallback((message: string): void => {
-    setToast({ kind: "error", message });
-  }, []);
 
   useLayoutEffect(() => {
     const node = workspaceRef.current;
@@ -351,22 +350,14 @@ export function App(): JSX.Element {
 
   const {
     grid,
-    setGrid,
     sessionsById,
     workspacesById,
     projectsById,
     draggingWorkspaceId,
-    openWorkspaceIds,
-    canDragWorkspaceToGrid,
     openWorkspaceChat,
-    closePane,
-    focusPane,
     closeFocusedPane,
     handleDropWorkspace,
-    handleWorkspaceDragStart,
-    handleWorkspaceDragEnd,
-    openLauncherPaneInGrid,
-    setLauncherPaneProject,
+    openLauncherPaneInGrid
   } = useAppGridSelection({
     snapshot,
     selectedProject,
@@ -444,35 +435,18 @@ export function App(): JSX.Element {
     }
   }, []);
 
-  const openSettingsTarget = useCallback(
-    (group: SettingsGroupId = "general", sectionId?: string): void => {
-      setIsPaletteOpen(false);
-      setIsFullLauncherOpen(false);
-      settingsNavigationRequestRef.current += 1;
-      setSettingsGroup(group);
-      setSettingsNavigationTarget({
-        group,
-        ...(sectionId ? { sectionId } : {}),
-        requestId: settingsNavigationRequestRef.current
-      });
-      if (isSettingsOpen && !sectionId) {
-        scrollSettingsToTop();
-      }
-      setIsSettingsOpen(true);
-    },
-    [
-      isSettingsOpen,
-      scrollSettingsToTop,
-      setIsFullLauncherOpen,
-      setIsPaletteOpen,
-      setIsSettingsOpen
-    ]
-  );
-
   useLayoutEffect(() => {
     if (!standalonePageOpen) return;
     scrollSettingsToTop();
   }, [standalonePageOpen, scrollSettingsToTop]);
+
+  // Navigating to another settings group starts that group at the top; a
+  // request that names a section leaves the scroll to the panel, which brings
+  // that section into view itself.
+  useLayoutEffect(() => {
+    if (!settingsNavigation || settingsNavigation.sectionId) return;
+    scrollSettingsToTop();
+  }, [settingsNavigation, scrollSettingsToTop]);
 
   useEffect(() => {
     // First non-loading render is the renderer's "first content" mark.
@@ -486,21 +460,20 @@ export function App(): JSX.Element {
     // Errors stick until the user dismisses — losing them on a 4 s timer
     // means a blink can hide why a launch failed. Info toasts auto-dismiss.
     if (toast.kind === "error") return;
-    const t = setTimeout(() => setToast(null), 4000);
+    const t = setTimeout(() => dismissToast(), 4000);
     return () => clearTimeout(t);
   }, [toast]);
 
   const openLauncherSurface = useCallback(
     (sideChat: boolean): void => {
       setLauncherSideChatMode(sideChat);
-      setIsBrowserPageOpen(false);
       if (newSessionMode === "full" && grid.rows.length > 0) {
-        setIsFullLauncherOpen(true);
+        showFullLauncher();
         return;
       }
       openLauncherPaneInGrid();
     },
-    [grid.rows.length, newSessionMode, openLauncherPaneInGrid, setIsBrowserPageOpen]
+    [grid.rows.length, newSessionMode, openLauncherPaneInGrid]
   );
   const openNewSessionPane = useCallback((): void => openLauncherSurface(false), [openLauncherSurface]);
   const handleMenuCommand = useCallback(
@@ -508,22 +481,22 @@ export function App(): JSX.Element {
       switch (command) {
         case "open-settings":
           if (isSettingsOpen) {
-            setIsSettingsOpen(false);
+            hideStandalonePage();
             return;
           }
-          openSettingsTarget("general");
+          showSettings("general");
           return;
         case "new-session":
-          setIsPaletteOpen(false);
-          setIsSettingsOpen(false);
+          hideCommandPalette();
+          hideStandalonePage();
+          setIsBrowserPageOpen(false);
           openNewSessionPane();
           return;
         case "open-command-palette":
-          setPaletteScope("all");
-          setIsPaletteOpen(true);
+          showCommandPalette("all");
           return;
         case "open-cheat-sheet":
-          setIsCheatSheetOpen(true);
+          showKeyboardCheatSheet();
           return;
         case "toggle-sidebar":
           setRightPanelToggleSignal((signal) => signal + 1);
@@ -546,22 +519,13 @@ export function App(): JSX.Element {
           return;
       }
     },
-    [closeFocusedPane, isSettingsOpen, openNewSessionPane, openSettingsTarget, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen, toggleSidebarCollapsed]
+    [closeFocusedPane, isSettingsOpen, openNewSessionPane]
   );
 
   // ⌘P / ⌘F / ⌘⇧F are all the ⌘K overlay; only the pre-selected filter differs.
-  const openFilePalette = useCallback((): void => {
-    setPaletteScope("files");
-    setIsPaletteOpen(true);
-  }, [setIsPaletteOpen]);
-  const openMessagePalette = useCallback((): void => {
-    setPaletteScope("messages");
-    setIsPaletteOpen(true);
-  }, [setIsPaletteOpen]);
-  const openContentPalette = useCallback((): void => {
-    setPaletteScope("contents");
-    setIsPaletteOpen(true);
-  }, [setIsPaletteOpen]);
+  const openFilePalette = useCallback((): void => showCommandPalette("files"), []);
+  const openMessagePalette = useCallback((): void => showCommandPalette("messages"), []);
+  const openContentPalette = useCallback((): void => showCommandPalette("contents"), []);
   const toggleIntegratedTerminal = useCallback((): void => {
     const workspaceId = terminalWorkspaceId(grid, [
       selectedWorkspace?.id,
@@ -569,14 +533,14 @@ export function App(): JSX.Element {
       snapshot.sessions[0]?.workspaceId
     ]);
     if (!workspaceId) {
-      setToast({ kind: "error", message: "Open a chat before toggling the terminal." });
+      showErrorToast("Open a chat before toggling the terminal.");
       return;
     }
 
-    setIsPaletteOpen(false);
-    setIsCheatSheetOpen(false);
-    setIsSettingsOpen(false);
-    setIsFullLauncherOpen(false);
+    hideCommandPalette();
+    hideKeyboardCheatSheet();
+    hideStandalonePage();
+    hideFullLauncher();
     setIsBrowserPageOpen(false);
     openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
     // Address the request to the workspace, not to a component: the pane that
@@ -591,16 +555,12 @@ export function App(): JSX.Element {
     openWorkspaceChat,
     selectedSession?.workspaceId,
     selectedWorkspace?.id,
-    setIsCheatSheetOpen,
-    setIsPaletteOpen,
-    setIsSettingsOpen,
-    setIsBrowserPageOpen,
     snapshot.sessions
   ]);
   const openWorkspaceFromKeybinding = useCallback(
     (workspaceId: string): void => {
       // Cmd+1..9 always replaces the focused pane (no split modifier).
-      setIsFullLauncherOpen(false);
+      hideFullLauncher();
       setIsBrowserPageOpen(false);
       openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
     },
@@ -613,17 +573,12 @@ export function App(): JSX.Element {
       if (!window.argmax) return;
       try {
         const forked = await window.argmax.session.fork({ sessionId });
-        setIsBrowserPageOpen(false);
         openWorkspaceChat(forked.workspace.id, { ctrlOrMeta: false, alt: false });
       } catch (error) {
         showErrorToast(error instanceof Error ? error.message : "Couldn't fork the chat.");
       }
     },
-    [openWorkspaceChat, setIsBrowserPageOpen, showErrorToast]
-  );
-  const closeSettingsFromKeybinding = useCallback(
-    (): void => setIsSettingsOpen(false),
-    [setIsSettingsOpen]
+    [openWorkspaceChat]
   );
   useGlobalKeybindings({
     onMenuCommand: handleMenuCommand,
@@ -633,7 +588,7 @@ export function App(): JSX.Element {
     onOpenContentSearch: openContentPalette,
     onToggleTerminal: toggleIntegratedTerminal,
     onSelectWorkspace: openWorkspaceFromKeybinding,
-    onCloseSettings: closeSettingsFromKeybinding
+    onCloseSettings: hideStandalonePage
   });
 
   usePersistedSetting(PERMISSION_MODE_KEY, permissionMode);
@@ -644,8 +599,8 @@ export function App(): JSX.Element {
   // Esc closes the standalone full launcher (only meaningful when the grid
   // has active panes — when the grid is empty, the LaunchSurface is the only
   // surface and dismissing it would strand the user). Mirrors the typing-
-  // target guard from useOverlays so Esc inside the prompt textarea doesn't
-  // dismiss the surface itself.
+  // target guard from the overlay store so Esc inside the prompt textarea
+  // doesn't dismiss the surface itself.
   useEffect(() => {
     if (!isFullLauncherOpen) return;
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -655,7 +610,7 @@ export function App(): JSX.Element {
         const tag = target.tagName;
         if (tag === "TEXTAREA" || tag === "INPUT" || target.isContentEditable) return;
       }
-      setIsFullLauncherOpen(false);
+      hideFullLauncher();
       event.preventDefault();
     };
     document.addEventListener("keydown", onKeyDown);
@@ -664,7 +619,7 @@ export function App(): JSX.Element {
 
   const handleArchiveWorkspace = useCallback(async (workspaceId: string): Promise<void> => {
     if (!window.argmax) {
-      setToast({ kind: "error", message: "Open the Tauri app window to archive workspaces." });
+      showErrorToast("Open the Tauri app window to archive workspaces.");
       return;
     }
     // Shared workspaces leave the filesystem alone — only the sidebar row
@@ -684,7 +639,7 @@ export function App(): JSX.Element {
     try {
       result = await window.argmax.workspaces.archive({ workspaceId, force });
     } catch (error) {
-      setToast({ kind: "error", message: error instanceof Error ? error.message : "Workspace archive failed." });
+      showErrorToast(error instanceof Error ? error.message : "Workspace archive failed.");
       return;
     }
     // Without force a dirty worktree comes back as "kept" — the backend's
@@ -703,16 +658,15 @@ export function App(): JSX.Element {
       try {
         result = await window.argmax.workspaces.archive({ workspaceId, force: true });
       } catch (error) {
-        setToast({ kind: "error", message: error instanceof Error ? error.message : "Workspace archive failed." });
+        showErrorToast(error instanceof Error ? error.message : "Workspace archive failed.");
         return;
       }
     }
     setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result] }));
     if (result.state !== "archived") {
-      setToast({
-        kind: "info",
-        message: "Workspace has uncommitted changes — kept in sidebar. Commit or discard, then retry archive."
-      });
+      showInfoToast(
+        "Workspace has uncommitted changes — kept in sidebar. Commit or discard, then retry archive."
+      );
       return;
     }
     if (selectedWorkspaceId === workspaceId) {
@@ -726,7 +680,7 @@ export function App(): JSX.Element {
   const handleOpenInIde = useCallback(
     async (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to launch an IDE." });
+        showErrorToast("Open the Tauri app window to launch an IDE.");
         return;
       }
       try {
@@ -736,12 +690,11 @@ export function App(): JSX.Element {
         }
       } catch (error) {
         const ideLabel = detectedIdes.find((entry) => entry.id === ide)?.label ?? ide;
-        setToast({
-          kind: "error",
-          message: error instanceof Error
+        showErrorToast(
+          error instanceof Error
             ? `Couldn't launch ${ideLabel}. ${error.message}`
             : `Couldn't launch ${ideLabel}.`
-        });
+        );
       }
     },
     [detectedIdes, setDefaultIde]
@@ -749,7 +702,7 @@ export function App(): JSX.Element {
 
   const addProject = useCallback(async (): Promise<void> => {
     if (!window.argmax) {
-      setToast({ kind: "error", message: "Open the Tauri app window to add a project." });
+      showErrorToast("Open the Tauri app window to add a project.");
       return;
     }
 
@@ -765,20 +718,19 @@ export function App(): JSX.Element {
       setSelectedSessionId(null);
       setSelectedWorkspaceId(null);
       setSelectedProjectId(result.project.id);
-      setGrid(EMPTY_GRID);
+      clearPaneGrid();
       setSnapshot((current) => mergeDashboardDelta(current, { projects: [result.project] }));
-      setToast({ kind: "info", message: `Added ${result.project.name}.` });
+      showInfoToast(`Added ${result.project.name}.`);
     } catch (error) {
-      setToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : "Argmax requires a local git repository."
-      });
+      showErrorToast(
+        error instanceof Error ? error.message : "Argmax requires a local git repository."
+      );
     }
-  }, [setGrid, setSelectedProjectId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot]);
+  }, [setSelectedProjectId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot]);
 
   const removeProject = useCallback(async (projectId: string): Promise<void> => {
     if (!window.argmax) {
-      setToast({ kind: "error", message: "Open the Tauri app window to remove a project." });
+      showErrorToast("Open the Tauri app window to remove a project.");
       return;
     }
     const projectName = snapshot.projects.find((p) => p.id === projectId)?.name ?? "project";
@@ -798,14 +750,13 @@ export function App(): JSX.Element {
         setSelectedProjectId(null);
         setSelectedWorkspaceId(null);
         setSelectedSessionId(null);
-        setGrid(EMPTY_GRID);
+        clearPaneGrid();
       }
-      setToast({ kind: "info", message: `Removed ${projectName}.` });
+      showInfoToast(`Removed ${projectName}.`);
     } catch (error) {
-      setToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : `Could not remove ${projectName}.`
-      });
+      showErrorToast(
+        error instanceof Error ? error.message : `Could not remove ${projectName}.`
+      );
     }
   }, [
     snapshot.projects,
@@ -813,19 +764,18 @@ export function App(): JSX.Element {
     setSelectedProjectId,
     setSelectedSessionId,
     setSelectedWorkspaceId,
-    setGrid,
     setSnapshot
   ]);
 
   const toggleWorkspacePinned = useCallback(
     async (workspaceId: string, pinned: boolean): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to pin a chat." });
+        showErrorToast("Open the Tauri app window to pin a chat.");
         return;
       }
       const ok = await withToast(
         () => window.argmax!.workspaces.setPinned({ workspaceId, pinned }),
-        setToast,
+        showToast,
         "Could not toggle pin."
       );
       if (ok) await refreshDashboardStatus();
@@ -836,12 +786,12 @@ export function App(): JSX.Element {
   const removeFromPriority = useCallback(
     async (workspaceId: string): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to change priority." });
+        showErrorToast("Open the Tauri app window to change priority.");
         return;
       }
       const ok = await withToast(
         () => window.argmax!.workspaces.setPriorityDismissed({ workspaceId, dismissed: true }),
-        setToast,
+        showToast,
         "Could not remove the chat from priority."
       );
       if (ok) await refreshDashboardStatus();
@@ -855,7 +805,7 @@ export function App(): JSX.Element {
   const clearPriority = useCallback(
     async (workspaceIds: string[]): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to change priority." });
+        showErrorToast("Open the Tauri app window to change priority.");
         return;
       }
       const ok = await withToast(
@@ -865,7 +815,7 @@ export function App(): JSX.Element {
               window.argmax!.workspaces.setPriorityDismissed({ workspaceId, dismissed: true })
             )
           ),
-        setToast,
+        showToast,
         "Could not clear priority."
       );
       if (ok) await refreshDashboardStatus();
@@ -876,12 +826,12 @@ export function App(): JSX.Element {
   const addToPriority = useCallback(
     async (workspaceId: string): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to change priority." });
+        showErrorToast("Open the Tauri app window to change priority.");
         return;
       }
       const ok = await withToast(
         () => window.argmax!.workspaces.setPriorityAdded({ workspaceId, added: true }),
-        setToast,
+        showToast,
         "Could not add the chat to priority."
       );
       if (ok) await refreshDashboardStatus();
@@ -921,12 +871,12 @@ export function App(): JSX.Element {
   const renameWorkspace = useCallback(
     async (workspaceId: string, taskLabel: string): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to rename a chat." });
+        showErrorToast("Open the Tauri app window to rename a chat.");
         return;
       }
       const ok = await withToast(
         () => window.argmax!.workspaces.setLabel({ workspaceId, taskLabel }),
-        setToast,
+        showToast,
         "Could not rename chat."
       );
       if (ok) await refreshDashboardStatus();
@@ -937,12 +887,12 @@ export function App(): JSX.Element {
   const setWorkspaceIcon = useCallback(
     async (workspaceId: string, icon: string | null, iconColor: string | null): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to change a chat icon." });
+        showErrorToast("Open the Tauri app window to change a chat icon.");
         return;
       }
       const ok = await withToast(
         () => window.argmax!.workspaces.setIcon({ workspaceId, icon, iconColor }),
-        setToast,
+        showToast,
         "Could not change the chat icon."
       );
       if (ok) await refreshDashboardStatus();
@@ -995,12 +945,12 @@ export function App(): JSX.Element {
   // row's conversation updates without a reopen.
   const onSyncNowWorkspaceRow = useCallback((): void => {
     if (!window.argmax) {
-      setToast({ kind: "error", message: "Open the Tauri app window to sync chats." });
+      showErrorToast("Open the Tauri app window to sync chats.");
       return;
     }
     void withToast(
       () => window.argmax!.sync.runNow(),
-      setToast,
+      showToast,
       "Could not run chat sync."
     );
   }, []);
@@ -1043,61 +993,29 @@ export function App(): JSX.Element {
   );
   const onOpenProjectRow = useCallback(
     (projectId: string): void => {
-      setIsSettingsOpen(false);
-      setIsFullLauncherOpen(false);
+      hideStandalonePage();
+      hideFullLauncher();
       setIsBrowserPageOpen(false);
-      setGrid(EMPTY_GRID);
+      clearPaneGrid();
       openRepoProjectLauncher(projectId);
     },
-    [openRepoProjectLauncher, setIsSettingsOpen, setIsFullLauncherOpen, setIsBrowserPageOpen, setGrid]
+    [openRepoProjectLauncher]
   );
-  const onOpenSettingsRow = useCallback((): void => {
-    openSettingsTarget("general");
-  }, [openSettingsTarget]);
-  const onOpenScheduledTasksRow = useCallback((): void => {
-    setIsPaletteOpen(false);
-    setIsFullLauncherOpen(false);
-    // Opening the panel closes settings for us: the two share the slot.
-    setIsScheduledTasksOpen(true);
-  }, [setIsFullLauncherOpen, setIsPaletteOpen, setIsScheduledTasksOpen]);
-  const onOpenUsageRow = useCallback((): void => {
-    setIsPaletteOpen(false);
-    setIsFullLauncherOpen(false);
-    // Opening the page closes settings and schedule for us: the three share
-    // the workspace slot.
-    setIsUsageOpen(true);
-  }, [setIsFullLauncherOpen, setIsPaletteOpen, setIsUsageOpen]);
-  const onOpenBrowserRow = useCallback((): void => {
-    setIsPaletteOpen(false);
-    setIsSettingsOpen(false);
-    setIsFullLauncherOpen(false);
-    setIsBrowserPageOpen(true);
-  }, [setIsBrowserPageOpen, setIsFullLauncherOpen, setIsPaletteOpen, setIsSettingsOpen]);
-  const onOpenProvidersRow = useCallback((): void => {
-    openSettingsTarget("agents", "settings-providers");
-  }, [openSettingsTarget]);
-  const onOpenDiagnosticsRow = useCallback((): void => {
-    openSettingsTarget("advanced", "settings-diagnostics");
-  }, [openSettingsTarget]);
-  const onOpenAboutRow = useCallback((): void => {
-    openSettingsTarget("advanced", "settings-about");
-  }, [openSettingsTarget]);
-  const onOpenCommandPaletteRow = useCallback((): void => {
-    setPaletteScope("all");
-    setIsPaletteOpen(true);
-  }, [setIsPaletteOpen]);
-  const onOpenKeyboardShortcutsRow = useCallback((): void => {
-    setIsCheatSheetOpen(true);
-  }, [setIsCheatSheetOpen]);
   const onOpenWorkspaceChatRow = useCallback(
     (workspaceId: string, modifiers: Parameters<typeof openWorkspaceChat>[1]): void => {
-      setIsSettingsOpen(false);
-      setIsFullLauncherOpen(false);
+      hideStandalonePage();
+      hideFullLauncher();
       setIsBrowserPageOpen(false);
       openWorkspaceChat(workspaceId, modifiers);
     },
-    [openWorkspaceChat, setIsSettingsOpen, setIsFullLauncherOpen, setIsBrowserPageOpen]
+    [openWorkspaceChat, setIsBrowserPageOpen]
   );
+  const onOpenBrowserRow = useCallback((): void => {
+    hideCommandPalette();
+    hideStandalonePage();
+    hideFullLauncher();
+    setIsBrowserPageOpen(true);
+  }, [setIsBrowserPageOpen]);
   // Focus another chat by session id: the sender named on an agent message's
   // bubble, and the chat whose agent launched this one. A session that has
   // since been pruned resolves to nothing and the click is a no-op.
@@ -1105,39 +1023,36 @@ export function App(): JSX.Element {
     (sessionId: string): void => {
       const target = snapshot.sessions.find((session) => session.id === sessionId);
       if (!target) return;
-      setIsSettingsOpen(false);
-      setIsFullLauncherOpen(false);
+      hideStandalonePage();
+      hideFullLauncher();
       setIsBrowserPageOpen(false);
       openWorkspaceChat(target.workspaceId, { ctrlOrMeta: false, alt: false });
     },
-    [snapshot.sessions, openWorkspaceChat, setIsSettingsOpen, setIsFullLauncherOpen, setIsBrowserPageOpen]
+    [snapshot.sessions, openWorkspaceChat]
   );
   const onOpenLauncherRow = useCallback((): void => {
-    setIsSettingsOpen(false);
-    setLauncherResetSignal((signal) => signal + 1);
+    hideStandalonePage();
+    setIsBrowserPageOpen(false);
+    requestLauncherReset();
     openNewSessionPane();
-  }, [openNewSessionPane, setIsSettingsOpen]);
+  }, [openNewSessionPane, setIsBrowserPageOpen]);
 
   const handleEarlyStop = useCallback(
-    (sessionId: string): string | undefined => {
+    (sessionId: string): void => {
       const session =
         sessionsById.get(sessionId) ?? snapshot.sessions.find((s) => s.id === sessionId);
-      if (!session || !isEarlySessionStop(session)) return undefined;
+      if (!session || !isEarlySessionStop(session)) return;
       // Restoring the launcher is a pane behaviour, and a multitask normally
       // has no pane: it was dispatched from inside another chat and runs in
       // that chat's dock. Stopping it there leaves that chat exactly where it
       // was — still on screen, and with its own prompt in the launcher draft,
       // not the multitask's. Once it has been promoted to a pane of its own it
       // is an ordinary chat again, and stopping it early behaves like one.
-      if (isMultitaskSession(session) && !findSessionCell(grid, sessionId)) return undefined;
+      if (isMultitaskSession(session) && !findSessionCell(grid, sessionId)) return;
 
       const workspace =
         workspacesById.get(session.workspaceId) ??
         snapshot.workspaces.find((w) => w.id === session.workspaceId);
-      // Popups have their own close-to-discard lifecycle; stopping one must
-      // not hand the main pane back to the launcher or archive out from under
-      // the still-open explainer.
-      if (workspace?.kind === "popup") return undefined;
       const isSideChat =
         !workspace || workspace.kind === "scratch" || workspace.projectId === SCRATCH_PROJECT_ID;
       const projectId = isSideChat ? SCRATCH_PROJECT_ID : workspace.projectId;
@@ -1154,26 +1069,18 @@ export function App(): JSX.Element {
       }
       setLauncherSideChatMode(isSideChat);
       handleLaunchModelChange(modelPickerSelectionFromSession(session));
-      setLauncherResetSignal((signal) => signal + 1);
+      requestLauncherReset();
 
       if (newSessionMode === "full" || grid.rows.length === 0) {
-        setIsFullLauncherOpen(true);
-        setGrid((current) => revertSessionToLauncher(current, session.id, projectId));
-      } else {
-        setGrid((current) => revertSessionToLauncher(current, session.id, projectId));
+        showFullLauncher();
       }
-      // Archive after terminate succeeds so a mistaken launch does not leave
-      // a cancelled row in the sidebar. force: the 10s window is an undo.
-      return session.workspaceId;
+      revertPaneToLauncher(session.id, projectId);
     },
     [
       grid,
       handleLaunchModelChange,
       newSessionMode,
       sessionsById,
-      setGrid,
-      setIsFullLauncherOpen,
-      setLauncherSideChatMode,
       setSelectedProjectId,
       snapshot.sessions,
       snapshot.workspaces,
@@ -1192,7 +1099,7 @@ export function App(): JSX.Element {
   } = useSessionCommands({
       refreshDashboardStatus,
       loadSessionEvents,
-      setToast,
+      setToast: showToast,
       fastMode: fastModeEnabled,
       onEarlyStop: handleEarlyStop
     });
@@ -1266,10 +1173,9 @@ export function App(): JSX.Element {
       // once per fresh worktree, before the agent starts). Say so, or a slow
       // `npm install` reads as a hung launch.
       if (workspaceMode === "worktree" && launchingProject?.settings.setupCommand.trim()) {
-        setToast({
-          kind: "info",
-          message: `Running setup command in the new worktree: ${launchingProject.settings.setupCommand}`
-        });
+        showInfoToast(
+          `Running setup command in the new worktree: ${launchingProject.settings.setupCommand}`
+        );
       }
       const api = window.argmax;
       let workspace =
@@ -1328,20 +1234,13 @@ export function App(): JSX.Element {
       // while composing, so stale split panes (especially agent activity panes)
       // should not reappear beside the fresh session after launch.
       const launchedFromFullLauncher = isFullLauncherOpen;
-      setIsFullLauncherOpen(false);
-      setIsBrowserPageOpen(false);
-      setGrid((current) => {
-        const cell = { sessionId: launchedSession.id, workspaceId: workspace.id };
-        if (launchedFromFullLauncher) {
-          return { rows: [[cell]], focused: { row: 0, col: 0 } };
-        }
-        return openWorkspaceInGrid(
-          current,
-          cell,
-          { ctrlOrMeta: false, alt: false },
-          { maxColumns: maxGridColumnsPerRow }
-        );
-      });
+      hideFullLauncher();
+      const cell = { sessionId: launchedSession.id, workspaceId: workspace.id };
+      if (launchedFromFullLauncher) {
+        showOnlyPane(cell);
+      } else {
+        openWorkspacePane(cell, { ctrlOrMeta: false, alt: false }, { maxColumns: maxGridColumnsPerRow });
+      }
       void window.argmax.workspaces
         .autoTitle({
           workspaceId: workspace.id,
@@ -1360,9 +1259,6 @@ export function App(): JSX.Element {
       permissionMode,
       fastModeEnabled,
       randomSessionIconEnabled,
-      setGrid,
-      setIsBrowserPageOpen,
-      setIsFullLauncherOpen,
       setSnapshot
     ]
   );
@@ -1432,20 +1328,13 @@ export function App(): JSX.Element {
       // Same hard context switch as launchTask: a full-launcher launch
       // replaces the hidden grid instead of splitting into it.
       const launchedFromFullLauncher = isFullLauncherOpen;
-      setIsFullLauncherOpen(false);
-      setIsBrowserPageOpen(false);
-      setGrid((current) => {
-        const cell = { sessionId: launchedSession.id, workspaceId: workspace.id };
-        if (launchedFromFullLauncher) {
-          return { rows: [[cell]], focused: { row: 0, col: 0 } };
-        }
-        return openWorkspaceInGrid(
-          current,
-          cell,
-          { ctrlOrMeta: false, alt: false },
-          { maxColumns: maxGridColumnsPerRow }
-        );
-      });
+      hideFullLauncher();
+      const cell = { sessionId: launchedSession.id, workspaceId: workspace.id };
+      if (launchedFromFullLauncher) {
+        showOnlyPane(cell);
+      } else {
+        openWorkspacePane(cell, { ctrlOrMeta: false, alt: false }, { maxColumns: maxGridColumnsPerRow });
+      }
       // The armed chat mode has served its purpose; the next plain new-session
       // entry should open in project mode again.
       setLauncherSideChatMode(false);
@@ -1466,19 +1355,17 @@ export function App(): JSX.Element {
       pendingSelectionRef,
       permissionMode,
       randomSessionIconEnabled,
-      setGrid,
-      setIsBrowserPageOpen,
-      setIsFullLauncherOpen,
       setSnapshot
     ]
   );
 
   // Sidebar's "New side chat": the launcher surface pre-set to chat mode.
   const openSideChatLauncher = useCallback((): void => {
-    setIsSettingsOpen(false);
-    setLauncherResetSignal((signal) => signal + 1);
+    hideStandalonePage();
+    setIsBrowserPageOpen(false);
+    requestLauncherReset();
     openLauncherSurface(true);
-  }, [openLauncherSurface, setIsSettingsOpen]);
+  }, [openLauncherSurface, setIsBrowserPageOpen]);
 
   // "More details" explainer popup: one at a time, backed by an ephemeral
   // popup-kind scratch session that is terminated and archived when it goes
@@ -1651,35 +1538,29 @@ export function App(): JSX.Element {
         snapshot: paletteSnapshot,
         selectedSession,
         onNewSession: () => handleMenuCommand("new-session"),
-        onOpenSettings: () => openSettingsTarget("general"),
-        onOpenScheduledTasks: onOpenScheduledTasksRow,
+        onOpenSettings: () => showSettings("general"),
+        onOpenScheduledTasks: showSchedulePage,
         onOpenBrowser: typeof window !== "undefined" && window.argmax?.browser ? onOpenBrowserRow : undefined,
-        onOpenUsage: onOpenUsageRow,
-        onOpenSettingsSection: (group, sectionId) => openSettingsTarget(group, sectionId),
+        onOpenUsage: showUsagePage,
+        onOpenSettingsSection: (group, sectionId) => showSettings(group, sectionId),
         onOpenSearch: openMessagePalette,
         onStopSession: (sessionId) => void terminateSession(sessionId),
-        onOpenWorkspace: (workspaceId) =>
-          onOpenWorkspaceChatRow(workspaceId, { ctrlOrMeta: false, alt: false }),
+        onOpenWorkspace: openWorkspaceChat,
         onSelectProject: (projectId) => {
           setLauncherSideChatMode(false);
           setSelectedProjectId(projectId);
         },
-        onClearGrid: () => setGrid(EMPTY_GRID),
-        onCloseOverlays: () => setIsSettingsOpen(false)
+        onClearGrid: () => clearPaneGrid(),
+        onCloseOverlays: () => hideStandalonePage()
       }),
     [
       paletteSnapshot,
       selectedSession,
       handleMenuCommand,
-      onOpenScheduledTasksRow,
-      onOpenBrowserRow,
-      onOpenUsageRow,
-      openSettingsTarget,
       terminateSession,
-      onOpenWorkspaceChatRow,
+      openWorkspaceChat,
       openMessagePalette,
-      setIsSettingsOpen,
-      setGrid,
+      onOpenBrowserRow,
       setSelectedProjectId
     ]
   );
@@ -1710,12 +1591,12 @@ export function App(): JSX.Element {
         snippetSegments: parseFtsSnippet(hit.snippet),
         run: () => {
           const target = snapshot.sessions.find((session) => session.id === hit.sessionId);
-          setIsSettingsOpen(false);
+          hideStandalonePage();
           if (target) openWorkspaceChat(target.workspaceId);
         }
       }));
     },
-    [sessionLabelById, snapshot.sessions, setIsSettingsOpen, openWorkspaceChat]
+    [sessionLabelById, snapshot.sessions, openWorkspaceChat]
   );
 
   // `git grep` over the active surface's checkout, backing the palette's
@@ -1815,8 +1696,7 @@ export function App(): JSX.Element {
       realProjects,
       registerPaletteFileContext,
       rightPanelToggleSignal,
-      setFastModeEnabled,
-      setLauncherPaneProject
+      setFastModeEnabled
     ]
   );
 
@@ -1847,10 +1727,9 @@ export function App(): JSX.Element {
     if (!draggingWorkspaceId || !showWorkspaceDropTarget) return;
     event.preventDefault();
     setIsWorkspaceDropPreviewVisible(false);
-    setIsFullLauncherOpen(false);
-    setIsBrowserPageOpen(false);
+    hideFullLauncher();
     handleDropWorkspace(draggingWorkspaceId, { row: 0, col: 0, position: "replace" });
-  }, [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget, setIsBrowserPageOpen]);
+  }, [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget]);
 
   return (
     <PrMilestoneCelebrationContext.Provider value={prMilestoneCelebrationEnabled}>
@@ -1909,13 +1788,13 @@ export function App(): JSX.Element {
         are full-screen modals and a loading spinner would flash worse
         than a 1-frame delay on the cold-open path.
       */}
-      {isPaletteOpen ? (
+      {paletteOpen ? (
         <Suspense fallback={null}>
           <CommandPalette
-            open={isPaletteOpen}
+            open={paletteOpen}
             commands={paletteCommands}
             initialScope={paletteScope}
-            onClose={() => setIsPaletteOpen(false)}
+            onClose={() => hideCommandPalette()}
             searchMessages={searchMessages}
             fileSource={paletteFileContext?.source ?? null}
             loadFiles={loadPaletteFiles}
@@ -1924,11 +1803,11 @@ export function App(): JSX.Element {
           />
         </Suspense>
       ) : null}
-      <KeyboardCheatSheet open={isCheatSheetOpen} onClose={() => setIsCheatSheetOpen(false)} />
+      <KeyboardCheatSheet open={cheatSheetOpen} onClose={() => hideKeyboardCheatSheet()} />
       {toast ? (
         <div className={`toast toast-${toast.kind}`} role="status">
           <span>{toast.message}</span>
-          <button type="button" onClick={() => setToast(null)} aria-label="Dismiss">
+          <button type="button" onClick={() => dismissToast()} aria-label="Dismiss">
             ×
           </button>
         </div>
@@ -1955,14 +1834,14 @@ export function App(): JSX.Element {
       {isSettingsOpen ? (
         <SettingsRail
           active={settingsGroup}
-          onChange={(group) => openSettingsTarget(group)}
-          onOpenSection={(group, sectionId) => openSettingsTarget(group, sectionId)}
-          onBack={() => setIsSettingsOpen(false)}
+          onChange={(group) => showSettings(group)}
+          onOpenSection={(group, sectionId) => showSettings(group, sectionId)}
+          onBack={() => hideStandalonePage()}
         />
       ) : isScheduledTasksOpen ? (
-        <ScheduleRail onBack={() => setIsScheduledTasksOpen(false)} />
+        <ScheduleRail onBack={() => hideStandalonePage()} />
       ) : isUsageOpen ? (
-        <UsageRail onBack={() => setIsUsageOpen(false)} />
+        <UsageRail onBack={() => hideStandalonePage()} />
       ) : (
         <Sidebar
           loadState={loadState}
@@ -1981,31 +1860,17 @@ export function App(): JSX.Element {
           onArchiveWorkspace={onArchiveWorkspaceRow}
           onOpenInIde={onOpenInIdeRow}
           onOpenProject={onOpenProjectRow}
-          onOpenScheduledTasks={onOpenScheduledTasksRow}
-          onOpenBrowser={onOpenBrowserRow}
-          onOpenUsage={onOpenUsageRow}
-          onOpenSettings={onOpenSettingsRow}
-          onOpenProviders={onOpenProvidersRow}
-          onOpenDiagnostics={onOpenDiagnosticsRow}
-          onOpenAbout={onOpenAboutRow}
-          onOpenCommandPalette={onOpenCommandPaletteRow}
-          onOpenKeyboardShortcuts={onOpenKeyboardShortcutsRow}
           onOpenWorkspaceChat={onOpenWorkspaceChatRow}
-          onWorkspaceDragStart={handleWorkspaceDragStart}
-          onWorkspaceDragEnd={handleWorkspaceDragEnd}
           onResizeMouseDown={onResizeMouseDown}
           selectedProjectId={selectedProject?.id ?? null}
           selectedWorkspaceId={
             isFullLauncherOpen || isBrowserPageOpen ? null : (selectedWorkspace?.id ?? null)
           }
           browserSelected={isBrowserPageOpen && !standalonePageOpen}
-          openWorkspaceIds={isFullLauncherOpen ? EMPTY_OPEN_WORKSPACE_IDS : openWorkspaceIds}
-          canDragWorkspaceToGrid={canDragWorkspaceToGrid}
+          onOpenBrowser={onOpenBrowserRow}
           snapshot={snapshot}
           detectedIdes={detectedIdes}
           defaultIde={defaultIde}
-          collapsed={sidebarCollapsed}
-          onPeekLeave={() => setSidebarPeek(false)}
         />
       )}
 
@@ -2027,7 +1892,7 @@ export function App(): JSX.Element {
             <Suspense fallback={<SkeletonPane />}>
               <SettingsPanel
                 activeGroup={settingsGroup}
-                onGroupChange={(group) => openSettingsTarget(group)}
+                onGroupChange={(group) => showSettings(group)}
                 defaultModel={launchModel}
                 onDefaultModelChange={handleLaunchModelChange}
                 defaultEffort={defaultEffort}
@@ -2084,8 +1949,8 @@ export function App(): JSX.Element {
                 onDesktopNotificationsEnabledChange={setDesktopNotificationsEnabled}
                 projects={realProjects}
                 onProjectUpdated={handleProjectUpdated}
-                navigationTarget={settingsNavigationTarget}
-                onOpenUsage={onOpenUsageRow}
+                navigationTarget={settingsNavigation}
+                onOpenUsage={showUsagePage}
               />
             </Suspense>
           ) : isScheduledTasksOpen ? (

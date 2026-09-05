@@ -28,6 +28,10 @@ function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSumm
     pinned: false,
     priorityDismissedAt: null,
     priorityAddedAt: null,
+    prState: null,
+    prNumber: null,
+    icon: null,
+    iconColor: null,
     ...overrides
   };
 }

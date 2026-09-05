@@ -39,7 +39,11 @@ export const demoSnapshot: DashboardSnapshot = {
       lastActivityAt: "2026-05-08T15:54:00.000Z",
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     },
     {
       // The multitask dispatched from the review-studio chat: same checkout,
@@ -58,7 +62,11 @@ export const demoSnapshot: DashboardSnapshot = {
       lastActivityAt: "2026-05-08T15:54:02.000Z",
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     },
     {
       id: "workspace-review-studio",
@@ -75,7 +83,11 @@ export const demoSnapshot: DashboardSnapshot = {
       lastActivityAt: "2026-05-08T15:48:00.000Z",
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     },
     {
       id: "workspace-approval-gate",
@@ -92,7 +104,11 @@ export const demoSnapshot: DashboardSnapshot = {
       lastActivityAt: "2026-05-08T15:42:00.000Z",
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     }
   ],
   sessions: [
@@ -111,6 +127,11 @@ export const demoSnapshot: DashboardSnapshot = {
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: null,
       lastActivityAt: "2026-05-08T15:54:00.000Z",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent",
     },
     {
       id: "session-multitask-changelog",
@@ -128,6 +149,10 @@ export const demoSnapshot: DashboardSnapshot = {
       lastActivityAt: "2026-05-08T15:54:02.000Z",
       launchedBySessionId: "session-review-studio",
       launchKind: "multitask",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
     },
     {
       id: "session-review-studio",
@@ -146,6 +171,11 @@ export const demoSnapshot: DashboardSnapshot = {
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: "2026-05-08T15:48:00.000Z",
       lastActivityAt: "2026-05-08T15:48:00.000Z",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent",
     },
     {
       id: "session-approval-gate",
@@ -163,6 +193,11 @@ export const demoSnapshot: DashboardSnapshot = {
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: null,
       lastActivityAt: "2026-05-08T15:42:00.000Z",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent",
     }
   ],
   events: [

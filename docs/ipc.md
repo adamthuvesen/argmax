@@ -66,7 +66,7 @@ immediate and drain revision pages before settling.
 3. Register the command in `ipc::specta_builder()` and in `REGISTERED_CHANNELS`.
 4. Either implement the channel in `src-tauri/src/remote/dispatch.rs` or list it in `REMOTE_UNSUPPORTED_CHANNELS`.
 5. Add the method to `ArgmaxApi` in `src/shared/types.ts` and `src/renderer/lib/tauriBridge.ts`.
-6. Run `npm run generate:bindings`. This regenerates `bindings.d.ts`, `channels.txt`, and `ipcSchemas.ts` from the registered commands. Then run `npm run precheck` (the Rust lane's `cargo test` includes the generated-file freshness test; the script also runs `check:tauri-bridge` and `check:main-thread`).
+6. Run `npm run generate:bindings`. Refer to new input and result types through `Bindings.*` from `types.ts`. Never re-declare the shape by hand. Then run `npm run precheck` (the Rust lane's `cargo test` includes the generated-file freshness test; the script also runs `check:tauri-bridge` and `check:main-thread`).
 
 A synchronous handler resolves on the macOS main thread. Make the handler
 `async` (or `spawn_blocking` for genuinely blocking work) unless it does no IO,

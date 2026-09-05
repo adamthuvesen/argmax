@@ -1,5 +1,4 @@
 import type * as Bindings from "./bindings.js";
-import type { UsageCounts } from "./providerModels.js";
 
 // Backend-derived IPC and diagnostics types come from generated Rust bindings.
 // `ArgmaxApi` and renderer-only domain shapes remain hand-written below.
@@ -63,9 +62,9 @@ export type WorkspaceState =
   | "kept"
   | "archived";
 
-export type SessionState = "created" | "running" | "waiting" | "blocked" | "complete" | "failed" | "cancelled";
+export type SessionState = Bindings.SessionState;
 
-export type AttentionState = "normal" | "approval-needed" | "blocked" | "failed" | "review-ready";
+export type AttentionState = Bindings.AttentionState;
 
 export type CheckStatus = "queued" | "running" | "passed" | "failed" | "cancelled";
 
@@ -84,6 +83,29 @@ export type AutotitleWorkspaceInput = Bindings.WorkspacesAutotitleInput;
 type OptionalNullable<T, K extends keyof T> = Omit<T, K> & {
   [P in K]?: T[P];
 };
+
+/**
+ * Re-type some fields of a generated binding. The rest of the shape comes
+ * from Rust, so a renamed or removed column is a compile error here rather
+ * than a silent undefined at runtime — the failure mode that once lost file
+ * saves when a serde string tag was read as a boolean. Keys in `R` must exist
+ * on `T`; the replacement is deliberately unchecked, because this is for
+ * fields the wire carries loosely (a `String` column, a serde-untagged enum)
+ * that the renderer knows more precisely.
+ */
+type Retype<T, R extends { [K in keyof R]: K extends keyof T ? unknown : never }> = Omit<
+  T,
+  keyof R
+> &
+  R;
+
+/**
+ * A hand-written union that must stay a subtype of what the wire carries.
+ * Rust serializes a few enums untagged, which leaves the binding unable to
+ * narrow on a discriminant the renderer relies on; the constraint makes
+ * drifting past the wire shape a compile error.
+ */
+type WireSubtype<Wire, Narrowed extends Wire> = Narrowed;
 
 export type LaunchProviderSessionInput = OptionalNullable<
   Bindings.ProvidersLaunchInput,
@@ -133,15 +155,7 @@ export type EventSubscription = (() => void) & {
 };
 
 export type SessionCostSummary = Bindings.SessionCostSummary;
-
-export interface ChangedFileSummary {
-  path: string;
-  status: string;
-  additions: number;
-  deletions: number;
-  oldPath?: string;
-}
-
+export type ChangedFileSummary = Bindings.ChangedFileSummary;
 export type WorkspaceDiff = Bindings.WorkspaceDiff;
 
 /**
@@ -153,11 +167,7 @@ export type ReviewComparison = Bindings.ReviewComparison;
 export type WorkspaceTarget = Pick<Bindings.WorkspaceListFilesInput, "kind" | "id">;
 
 export type WorkspaceFileEntry = Bindings.WorkspaceFileEntry;
-
-export type WorkspaceFilePreview =
-  | { kind: "text"; content: string; size: number; mtimeMs: number }
-  | { kind: "skipped"; reason: "binary" | "too-large" | "not-a-file"; size?: number };
-
+export type WorkspaceFilePreview = Bindings.WorkspaceFilePreview;
 export type WorkspaceFileStat = Bindings.WorkspaceFileStat;
 
 /**
@@ -188,27 +198,25 @@ export type GitViewOrCreatePrInput = Bindings.GitViewOrCreatePrInput;
 export type GitCommitResult = Bindings.GitCommitResult;
 export type GitPushResult = Bindings.GitPushResult;
 export type GitCreateBranchResult = Bindings.GitCreateBranchResult;
-
-export type GitViewOrCreatePrResult =
-  | { action: "opened"; url: string; prNumber: number }
-  | { action: "created"; url: string; prNumber: number | null };
+export type GitViewOrCreatePrResult = Bindings.GitViewOrCreatePrResult;
 export type SkillsListInput = OptionalNullable<Bindings.SkillsListInput, "workspaceId">;
 export type OpenInIdeInput = Bindings.WorkspacesOpenInIdeInput;
 
-export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system";
-
+export type SkillSource = Bindings.SkillSource;
 export type SkillSummary = Bindings.SkillSummary;
-
 export type ProjectSummary = Bindings.ProjectSummary;
 
-export type ProjectFolderPickResult =
+/** Untagged on the wire, so the binding has `cancelled: boolean` on both arms. */
+export type ProjectFolderPickResult = WireSubtype<
+  Bindings.ProjectFolderPickResult,
   | {
       cancelled: true;
     }
   | {
       cancelled: false;
       project: ProjectSummary;
-    };
+    }
+>;
 
 /**
  * 'git' is a workspace on a real project checkout (worktree or shared);
@@ -224,96 +232,35 @@ export type WorkspaceKind = "git" | "scratch" | "popup";
  *  Filter it out of repo pickers and per-project sidebar grouping. */
 export const SCRATCH_PROJECT_ID = "scratch-side-chats";
 
-export interface WorkspaceSummary {
-  id: string;
-  projectId: string;
-  taskLabel: string;
-  branch: string;
-  baseRef: string;
-  path: string;
-  state: WorkspaceState;
-  sharedWorkspace: boolean;
-  kind: WorkspaceKind;
-  dirty: boolean;
-  changedFiles: number;
-  lastActivityAt: string;
-  pinned: boolean;
-  /**
-   * When this workspace left the sidebar Priority section (null when not
-   * dismissed). Set by right-click "Done" or the header's Clear. Reading a
-   * row does not dismiss it — a quiet row ages out of the section on its own
-   * (`PRIORITY_IDLE_MS`), leaving no stamp. Spent (ignored) once session
-   * attention changes again. Compare against
-   * `SessionSummary.attentionChangedAt`. Required, matching the wire shape:
-   * an optional marker would let a locally-built summary omit it and erase
-   * the dismissal on whole-object delta merge.
-   */
-  priorityDismissedAt: string | null;
-  /**
-   * When the user manually added this workspace to the Priority section
-   * (null when not manually added). Manual entries need no attention and
-   * never age out; cleared by a dismissal or an explicit remove.
-   */
-  priorityAddedAt: string | null;
-  /** State of the most-recent PR across this workspace's sessions. Null/absent when none. */
-  prState?: GhPrState | null;
-  /** PR number paired with `prState`. */
-  prNumber?: number | null;
-  /** GitHub's authoritative creation timestamp for the paired PR. */
-  prCreatedAt?: string | null;
-  /** GitHub's authoritative merge timestamp for the paired PR. */
-  prMergedAt?: string | null;
-  /**
-   * Curated Lucide icon name the user picked for this row's sidebar glyph
-   * (null for none). With no custom icon the row keeps its live status marker.
-   */
-  icon?: string | null;
-  /** Named palette entry paired with `icon`. */
-  iconColor?: string | null;
-}
+/**
+ * Shape comes from Rust; only the columns it stores as plain strings are
+ * narrowed here. Every field is required, matching the wire: an optional
+ * marker would let a locally-built summary omit it and erase the real value
+ * on whole-object delta merge — that is how a priority dismissal once vanished.
+ */
+export type WorkspaceSummary = Retype<
+  Bindings.WorkspaceSummary,
+  {
+    state: WorkspaceState;
+    kind: WorkspaceKind;
+    /** State of the most-recent PR across this workspace's sessions. Null when none. */
+    prState: GhPrState | null;
+  }
+>;
 
-export interface SessionSummary {
-  id: string;
-  workspaceId: string;
-  provider: ProviderId;
-  modelLabel: string;
-  modelId: string;
-  reasoningEffort?: ReasoningEffort;
-  permissionMode: PermissionMode;
-  agentMode?: AgentMode;
-  providerConversationId: string | null;
-  prompt: string;
-  state: SessionState;
-  attention: AttentionState;
-  /**
-   * When `attention` last changed value. Absent on sessions that predate the
-   * column. The Priority section treats a dismissal as current only while
-   * `priorityDismissedAt >= attentionChangedAt`.
-   */
-  attentionChangedAt?: string | null;
-  startedAt: string;
-  completedAt: string | null;
-  lastActivityAt: string;
-  costUsd?: number;
-  tokens?: UsageCounts;
-  /** Input-side tokens of the latest turn — the live context-window occupancy. */
-  contextTokens?: number;
-  /** Set only when a provider reports a window on the session. No current
-   *  provider does, so the renderer falls back to the per-model table in
-   *  `providerModels.ts`. */
-  contextWindow?: number | null;
-  /** True when the session came from a provider CLI's own transcript store
-   *  (Settings → Agents → Session sync) rather than being launched here. */
-  imported?: boolean;
-  /** The session whose agent launched this one with the `argmax` MCP tools.
-   *  Absent for a session the user or a routine started. */
-  launchedBySessionId?: string | null;
-  /** How this session came to exist: `agent` for one an agent launched and for
-   *  every ordinary session, `multitask` for one dispatched from inside
-   *  another chat. A multitask stays out of the sidebar — it belongs to the
-   *  chat that dispatched it, which shows it in the subagent dock. */
-  launchKind?: string;
-}
+/**
+ * Shape comes from Rust; the four enum-shaped columns it stores as strings
+ * are narrowed here. `state` and `attention` already arrive typed.
+ */
+export type SessionSummary = Retype<
+  Bindings.SessionSummary,
+  {
+    provider: ProviderId;
+    reasoningEffort?: ReasoningEffort | null;
+    permissionMode: PermissionMode;
+    agentMode?: AgentMode | null;
+  }
+>;
 
 /**
  * A user-composed follow-up that arrived while the agent was mid-turn. Held in
@@ -333,52 +280,42 @@ export interface PendingMessage {
   queuedAt: string;
 }
 
-export interface TimelineEvent {
-  id: string;
-  sessionId: string;
-  type: EventType;
-  message: string;
-  payload: Record<string, unknown>;
-  createdAt: string;
-  rowCursor?: number;
-}
+/**
+ * `payload` and `rowCursor` are kept as the renderer has always read them
+ * (an open record, and absent on events it builds itself); the typed event
+ * contract that replaces the JSON payload with per-type variants is a
+ * separate change and will retire both loosenings.
+ */
+export type TimelineEvent = Retype<
+  Bindings.TimelineEvent,
+  {
+    type: EventType;
+    payload: Record<string, unknown>;
+    rowCursor?: number;
+  }
+>;
 
 /** Persisted provider-normalized row before renderer-specific interpretation. */
 export type RawTimelineEvent = TimelineEvent;
 
-export interface RawProviderOutput {
-  id: string;
-  sessionId: string;
-  stream: "stdout" | "stderr" | "pty" | "system";
-  content: string;
-  createdAt: string;
-  rowCursor?: number;
-}
+export type RawProviderOutput = Retype<
+  Bindings.RawProviderOutput,
+  {
+    stream: "stdout" | "stderr" | "pty" | "system";
+    rowCursor?: number;
+  }
+>;
 
-export interface ApprovalRequest {
-  id: string;
-  sessionId: string;
-  command: string;
-  cwd: string;
-  provider: ProviderId;
-  providerInvocationId: string | null;
-  providerRequestId: string | null;
-  riskLevel: "low" | "medium" | "high";
-  status: "pending" | "approved" | "rejected" | "cancelled";
-  createdAt: string;
-  resolvedAt: string | null;
-}
+export type ApprovalRequest = Retype<
+  Bindings.ApprovalRequest,
+  {
+    provider: ProviderId;
+    riskLevel: "low" | "medium" | "high";
+    status: "pending" | "approved" | "rejected" | "cancelled";
+  }
+>;
 
-export interface CheckRun {
-  id: string;
-  workspaceId: string;
-  command: string;
-  status: CheckStatus;
-  exitCode: number | null;
-  summary: string | null;
-  startedAt: string;
-  completedAt: string | null;
-}
+export type CheckRun = Retype<Bindings.CheckRun, { status: CheckStatus }>;
 
 export interface DashboardSnapshot {
   projects: ProjectSummary[];
@@ -406,37 +343,16 @@ export type WorkspaceStatusSnapshot = Pick<
   "workspaces" | "sessions" | "checks"
 >;
 
-export interface SessionEventsSinceResult {
-  events: TimelineEvent[];
-  rawOutputs: RawProviderOutput[];
-  eventCursor: number;
-  rawOutputCursor: number;
-  changeCursor?: number | null;
-  deletedEventIds?: string[];
-  deletedRawOutputIds?: string[];
-  resetRequired?: boolean;
-  hasMore?: boolean;
-}
+export type SessionEventsSinceResult = Retype<
+  Bindings.SessionEventsSinceResult,
+  { events: TimelineEvent[]; rawOutputs: RawProviderOutput[] }
+>;
 
-/** Settings → Agents → Session sync. */
-export interface SyncConfigInput {
-  claude: boolean;
-  codex: boolean;
-  cursor: boolean;
-  opencode: boolean;
-  grok: boolean;
-  /** 24 or 168; the backend clamps anything else. */
-  windowHours: number;
-}
+/** Settings → Agents → Session sync. `windowHours` is 24 or 168; the backend clamps anything else. */
+export type SyncConfigInput = Bindings.SyncSetConfigInput;
 
-export interface SyncStatus {
-  config: SyncConfigInput;
-  /** Providers whose transcript format Argmax can read; the rest render disabled. */
-  supportedProviders: string[];
-  lastRunAt: string | null;
-  importedCount: number;
-  lastError: string | null;
-}
+/** The status read echoes the config back fully populated, not the optional-everything `SyncConfig`. */
+export type SyncStatus = Retype<Bindings.SyncStatus, { config: SyncConfigInput }>;
 
 /** A stored scheduled task: a prompt plus schedule, fired by the Rust
  *  scheduler as a normal top-level session. Wire shape mirrors the Rust
@@ -444,40 +360,9 @@ export interface SyncStatus {
  *
  *  There is no permission or agent mode here: nobody is watching a scheduled
  *  run, so they always launch auto-approve. The scheduler hardcodes it. */
-export interface Routine {
-  id: string;
-  name: string;
-  projectId: string;
-  prompt: string;
-  provider: ProviderId;
-  modelLabel: string;
-  modelId: string;
-  worktree: boolean;
-  /** 6-field cron expression (sec min hour dom month dow); null for one-shots. */
-  cronExpr: string | null;
-  /** RFC 3339 UTC timestamp; null for recurring schedules. */
-  runOnceAt: string | null;
-  enabled: boolean;
-  lastRunAt: string | null;
-  nextRunAt: string | null;
-  lastError: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+export type Routine = Retype<Bindings.Routine, { provider: ProviderId }>;
 
-export interface RoutineUpsertInput {
-  id: string;
-  name: string;
-  projectId: string;
-  prompt: string;
-  provider: ProviderId;
-  modelLabel: string;
-  modelId: string;
-  worktree: boolean;
-  cronExpr: string | null;
-  runOnceAt: string | null;
-  enabled?: boolean;
-}
+export type RoutineUpsertInput = OptionalNullable<Bindings.RoutinesUpsertInput, "enabled">;
 
 export type DashboardDelta = {
   [K in keyof DashboardSnapshot]?: DashboardSnapshot[K];
@@ -740,13 +625,11 @@ export interface BrowserPageCommandEvent {
   command: "close-tab" | "new-tab" | "focus-address" | (string & {});
 }
 
-/** PNG dimensions are device pixels, including the retina scale factor. */
+/** `width`/`height` are device pixels: twice the captured CSS size on a retina display. */
 export type BrowserScreenshot = Bindings.BrowserScreenshot;
-
+/** `resultJson` is WebKit's JSON encoding of the value; empty when the script returned `undefined` — or threw. */
 export type BrowserEvaluateResult = Bindings.BrowserEvaluateResult;
-
 export type BrowserFillResult = Bindings.BrowserFillResult;
-
 /** One live browser tab, as the app (not the renderer) knows it. */
 export type BrowserTabInfo = Bindings.BrowserTabInfo;
 
@@ -819,8 +702,13 @@ export interface BrowserActionOutcome {
   detail: string | null;
 }
 
-/** One interaction, addressed by a `[ref=eN]` handle from a snapshot. */
-export type BrowserAction =
+/**
+ * One interaction, addressed by a `[ref=eN]` handle from a snapshot.
+ * `direction` is a `String` on the Rust side; this is an input, so the
+ * renderer may be stricter.
+ */
+export type BrowserAction = WireSubtype<
+  Bindings.BrowserAction,
   | { kind: "click"; ref: string }
   | { kind: "type"; ref: string; text: string; submit?: boolean }
   | { kind: "select"; ref: string; value: string }
@@ -839,30 +727,23 @@ export type BrowserAction =
     }
   | { kind: "pressKey"; key: string; modifiers?: string[] }
   | { kind: "scroll"; ref?: string; direction: "up" | "down" | "left" | "right"; amount?: number }
-  | { kind: "waitFor"; text?: string; ref?: string; urlIncludes?: string; timeoutMs?: number };
+  | { kind: "waitFor"; text?: string; ref?: string; urlIncludes?: string; timeoutMs?: number }
+>;
 
-export interface GhPrRecord {
-  sessionId: string;
-  prNumber: number;
-  headSha: string;
-  lastSeenCheckState: GhCheckState;
-  updatedAt: string;
-  /** Upper-case state from `gh pr view --json state`. Null when unknown. */
-  prState?: GhPrState | null;
-  /** ISO timestamp the failure follow-up notification last fired for this head_sha. */
-  notifiedAt?: string | null;
-  /** GitHub's authoritative PR creation timestamp. */
-  prCreatedAt?: string | null;
-  /** GitHub's authoritative merge timestamp. Null until the PR is merged. */
-  prMergedAt?: string | null;
-  /**
-   * Branch the PR was opened from. Sidebar markers resolve by this — a PR
-   * belongs to its head branch, not to whichever session happened to be mid-turn
-   * when the poller looked. Null on rows recorded before the branch was stored;
-   * those still attach to the observing workspace.
-   */
-  headRefName?: string | null;
-}
+/**
+ * Sidebar markers resolve by `headRefName` — a PR belongs to its head branch,
+ * not to whichever session was mid-turn when the poller looked. Null on rows
+ * recorded before the branch was stored; those still attach to the observing
+ * workspace.
+ */
+export type GhPrRecord = Retype<
+  Bindings.GhPrRecord,
+  {
+    lastSeenCheckState: GhCheckState;
+    /** Upper-case state from `gh pr view --json state`. Null when unknown. */
+    prState: GhPrState | null;
+  }
+>;
 
 export type GhPrState = "OPEN" | "CLOSED" | "MERGED";
 
@@ -877,18 +758,7 @@ export type GhCheckState =
 
 export type LearningKind = "pitfall" | "convention" | "command";
 
-export interface Learning {
-  id: string;
-  projectId: string;
-  kind: LearningKind;
-  summary: string;
-  evidenceSessionId: string | null;
-  evidenceEventId: string | null;
-  verified: boolean;
-  hits: number;
-  createdAt: string;
-  lastSeenAt: string;
-}
+export type Learning = Retype<Bindings.Learning, { kind: LearningKind }>;
 
 export type MenuCommand =
   | "new-session"

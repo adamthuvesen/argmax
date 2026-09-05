@@ -93,7 +93,7 @@ _Avoid_: Side task, background task, parallel turn, subagent
 Where a session is in its lifecycle: `created`, `running`, `waiting`, `blocked`, `complete`, `failed`, `cancelled`.
 
 **Attention**:
-Whether a session needs a human, derived from session state plus pending approvals: `normal`, `approval-needed`, `blocked`, `failed`, `review-ready`. Never set directly — it is computed. State says what the agent is doing; attention says whether you have to care.
+Whether a session needs a human, derived from session state plus pending approvals: `normal`, `approval-needed`, `blocked`, `failed`, `review-ready`. Never set directly — it is computed. State says what the agent is doing; attention says whether you have to care. Both are enums in `src-tauri/src/sessions/` (`SessionState`, `AttentionState`), exported to the renderer through the generated bindings; a state write goes through `SessionStateInput::transition`, which derives the attention.
 _Avoid_: Status, state, urgency
 
 **Priority**:

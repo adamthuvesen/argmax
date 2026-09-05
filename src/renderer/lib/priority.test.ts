@@ -18,6 +18,10 @@ const workspace = (id: string, overrides: Partial<WorkspaceSummary> = {}): Works
   pinned: false,
   priorityDismissedAt: null,
   priorityAddedAt: null,
+  prState: null,
+  prNumber: null,
+  icon: null,
+  iconColor: null,
   ...overrides
 });
 
@@ -44,6 +48,11 @@ const session = (
   completedAt: null,
   // Inside the idle window, so a settled row is listed on its attention alone.
   lastActivityAt: "2026-05-12T17:45:00.000Z",
+  costUsd: 0,
+  tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextTokens: 0,
+  imported: false,
+  launchKind: "agent",
   ...overrides
 });
 

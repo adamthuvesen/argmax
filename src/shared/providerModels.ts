@@ -1,5 +1,8 @@
 import { BoundedSet } from "./boundedSet.js";
-import type { ReasoningEffort as BindingReasoningEffort } from "./bindings.js";
+import type {
+  ReasoningEffort as BindingReasoningEffort,
+  UsageCounts as BindingUsageCounts
+} from "./bindings.js";
 import { logger } from "./logger.js";
 import type { ProviderId } from "./types.js";
 
@@ -423,12 +426,7 @@ const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
   "cursor-grok-4.5-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 };
 
-export interface UsageCounts {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-}
+export type UsageCounts = BindingUsageCounts;
 
 /** Strips a trailing `-YYYYMMDD` date suffix from a model id. */
 export function normalizeModelId(modelId: string): string {

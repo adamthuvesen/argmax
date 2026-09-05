@@ -14,9 +14,7 @@ use uuid::Uuid;
 
 use super::{claude, DiscoveredSession, SyncConfig};
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::events::{
-    persist_timeline_event_if_absent, PersistTimelineEventInput, TimelineEvent,
-};
+use crate::persistence::events::{persist_timeline_event_if_absent, TimelineEvent};
 use crate::persistence::projects::list_projects;
 use crate::persistence::sessions::{
     delete_session, persist_imported_session, touch_imported_session, PersistImportedSessionInput,
@@ -238,9 +236,12 @@ fn extend(
     Ok(true)
 }
 
-/// Normalize transcript lines into timeline events. Returns how many lines
-/// were consumed (the next read's starting point) and the events that were
-/// actually inserted — duplicates from a re-read come back as nothing.
+/// Normalize transcript lines into timeline events. Every line goes through
+/// the same normalizer the live stdout stream uses, in replay mode — the sweep
+/// reads no line itself, so an imported conversation and a launched one are
+/// built by one piece of code. Returns how many lines were consumed (the next
+/// read's starting point) and the events that were actually inserted —
+/// duplicates from a re-read come back as nothing.
 fn write_events(
     connection: &rusqlite::Connection,
     provider: &str,
@@ -253,7 +254,9 @@ fn write_events(
         _ => return Ok((from_line, Vec::new())),
     };
     let lines = claude::timeline_lines(&session.source_path, from_line);
-    let mut context = NormalizerSessionContext::default();
+    // Replay mode: a transcript carries rows a live launch never sends, above
+    // all the human's own prompts.
+    let mut context = NormalizerSessionContext::for_transcript_replay();
     let mut highest_line = from_line;
     let mut inserted = Vec::new();
 
@@ -268,43 +271,7 @@ fn write_events(
         // single instant.
         let created_at = line
             .timestamp
-            .clone()
             .unwrap_or_else(|| session.last_activity_at.clone());
-        // Deterministic ids: re-reading a transcript must never duplicate a
-        // bubble, whatever the cursor says.
-        let event_id = |index: usize| {
-            format!(
-                "sync:{provider}:{}:{}:{index}",
-                session.external_id, line.index
-            )
-        };
-
-        let own_event = match &line.kind {
-            claude::LineKind::UserPrompt(prompt) => Some(PersistTimelineEventInput {
-                id: event_id(0),
-                session_id: session_id.to_string(),
-                r#type: "user.message".to_string(),
-                message: prompt.clone(),
-                payload: serde_json::json!({ "source": "sync" }),
-                created_at: Some(created_at.clone()),
-            }),
-            claude::LineKind::Compacted => Some(PersistTimelineEventInput {
-                id: event_id(0),
-                session_id: session_id.to_string(),
-                r#type: "session.compacted".to_string(),
-                message: "Compacted context".to_string(),
-                payload: serde_json::json!({}),
-                created_at: Some(created_at.clone()),
-            }),
-            claude::LineKind::Provider => None,
-        };
-        if let Some(event) = own_event {
-            if let Some(persisted) = persist_timeline_event_if_absent(&transaction, &event)? {
-                inserted.push(persisted);
-            }
-            continue;
-        }
-
         let output = ProviderOutputEvent {
             session_id: session_id.to_string(),
             stream: ProviderOutputStream::Stdout,
@@ -313,7 +280,12 @@ fn write_events(
         };
         let normalized = normalize_provider_event(provider_id, &output, &mut context);
         for (index, mut event) in normalized.events.into_iter().enumerate() {
-            event.id = event_id(index);
+            // Deterministic ids: re-reading a transcript must never duplicate a
+            // bubble, whatever the cursor says.
+            event.id = format!(
+                "sync:{provider}:{}:{}:{index}",
+                session.external_id, line.index
+            );
             if let Some(persisted) = persist_timeline_event_if_absent(&transaction, &event)? {
                 inserted.push(persisted);
             }

@@ -366,6 +366,73 @@ fn has_hidden_synthetic_prefix(text: &str) -> bool {
         .any(|prefix| text.starts_with(prefix))
 }
 
+/// What a `type:"user"` row means when the line comes from a transcript file
+/// rather than from live stdout. Reading one takes a distinction the live
+/// stream never needs: there a `user` line only ever carries a tool result,
+/// because the human's prompt goes in via argv and never comes back out. A
+/// transcript records both, so the replay has to tell them apart.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TranscriptUserRow {
+    /// The human's own prompt, as typed.
+    Prompt(String),
+    /// A tool result, the same shape the live stream sends — so the shared
+    /// content-block path normalizes it.
+    ToolResult,
+    /// Nothing for the chat: a compaction summary, a skill body, one of the
+    /// CLI's own notes to the model, or a row with no text at all.
+    Hidden,
+}
+
+/// Read a transcript `user` row. Only a replay reaches this (the sweep sets
+/// `NormalizerSessionContext::replaying_transcript`); it is also the single
+/// predicate for "did a human type this", so the imported session's title and
+/// its timeline agree on what the first prompt was.
+pub fn transcript_user_row(payload: &Map<String, Value>) -> TranscriptUserRow {
+    if has_tool_result(payload) {
+        return TranscriptUserRow::ToolResult;
+    }
+    // `isCompactSummary` marks the replacement summary body; the
+    // `system/compact_boundary` row beside it is what marks the compaction.
+    // `isMeta` marks the CLI's own notes to the model ("Caveat: the messages
+    // below were generated while running local commands"), never chat.
+    if flag(payload, "isCompactSummary")
+        || flag(payload, "isMeta")
+        || is_hidden_synthetic_body(payload)
+    {
+        return TranscriptUserRow::Hidden;
+    }
+    match transcript_user_text(payload) {
+        Some(text) => TranscriptUserRow::Prompt(text),
+        None => TranscriptUserRow::Hidden,
+    }
+}
+
+fn has_tool_result(payload: &Map<String, Value>) -> bool {
+    object_value(payload.get("message"))
+        .and_then(|message| array_value(message.get("content")))
+        .is_some_and(|blocks| {
+            blocks
+                .iter()
+                .any(|block| string_value(block.get("type")) == Some("tool_result"))
+        })
+}
+
+/// A `user` row's own text. A transcript writes a one-shot prompt as a bare
+/// string and anything richer as content blocks.
+fn transcript_user_text(payload: &Map<String, Value>) -> Option<String> {
+    let content = object_value(payload.get("message"))?.get("content")?;
+    let text = match content {
+        Value::String(text) => text.clone(),
+        _ => extract_message_content(payload)?,
+    };
+    let trimmed = text.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn flag(payload: &Map<String, Value>, key: &str) -> bool {
+    payload.get(key) == Some(&Value::Bool(true))
+}
+
 /// Timeline row for a context-compaction phase, or `None` for any other
 /// payload. Claude brackets a compaction with
 /// `system/status status:"compacting"` and a `system/compact_boundary` row
@@ -1138,6 +1205,79 @@ mod tests {
         assert_eq!(event.payload["riskLevel"], "high");
         assert_eq!(event.payload["toolName"], "Bash");
         assert_eq!(event.payload["toolUseId"], "toolu_01ABC123");
+    }
+
+    /// Transcript `user` lines, in the shapes Claude's transcript store
+    /// actually writes. None of them carries `isSynthetic` — that flag rides
+    /// the stdout stream only.
+    const TRANSCRIPT_STRING_PROMPT: &str =
+        r#"{"type":"user","message":{"role":"user","content":"Fix the flaky test"}}"#;
+    const TRANSCRIPT_BLOCK_PROMPT: &str = r#"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"And also this"}]}}"#;
+    const TRANSCRIPT_TOOL_RESULT: &str = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"done"}]}}"#;
+    const TRANSCRIPT_SKILL_BODY: &str = r#"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Base directory for this skill: /repo/.claude/skills/review"}]}}"#;
+    const TRANSCRIPT_META_NOTE: &str = r#"{"type":"user","isMeta":true,"message":{"role":"user","content":"Caveat: the messages below were generated while running local commands."}}"#;
+    const TRANSCRIPT_COMPACT_SUMMARY: &str = r#"{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"Everything that happened so far…"}}"#;
+
+    fn replay(line: &str) -> Vec<PersistTimelineEventInput> {
+        let mut context = NormalizerSessionContext::for_transcript_replay();
+        normalize_provider_event(ProviderId::Claude, &output_event(line), &mut context).events
+    }
+
+    #[test]
+    fn a_replayed_prompt_is_a_user_message_whatever_shape_its_content_has() {
+        for (line, text) in [
+            (TRANSCRIPT_STRING_PROMPT, "Fix the flaky test"),
+            (TRANSCRIPT_BLOCK_PROMPT, "And also this"),
+        ] {
+            let events = replay(line);
+            assert_eq!(events.len(), 1, "{line}");
+            assert_eq!(events[0].r#type, "user.message");
+            assert_eq!(events[0].message, text);
+            // The renderer reads this to tell an imported prompt from a typed one.
+            assert_eq!(events[0].payload["source"], "sync");
+        }
+    }
+
+    #[test]
+    fn a_replayed_tool_result_is_not_a_prompt() {
+        let events = replay(TRANSCRIPT_TOOL_RESULT);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].r#type, "command.completed");
+    }
+
+    #[test]
+    fn replayed_model_facing_bodies_never_reach_the_timeline() {
+        // The skill body and the CLI's own note are written for the model; the
+        // compaction summary is the body the `system/compact_boundary` row
+        // beside it already marks.
+        for line in [
+            TRANSCRIPT_SKILL_BODY,
+            TRANSCRIPT_META_NOTE,
+            TRANSCRIPT_COMPACT_SUMMARY,
+        ] {
+            assert!(replay(line).is_empty(), "{line}");
+        }
+    }
+
+    #[test]
+    fn a_live_user_line_never_becomes_a_user_message() {
+        // Live stdout carries the human's prompt nowhere — it goes in via argv
+        // — so a `type:"user"` line off the wire is tool traffic, whatever it
+        // looks like. Only a transcript replay may read one as chat.
+        let mut context = NormalizerSessionContext::default();
+        for line in [TRANSCRIPT_STRING_PROMPT, TRANSCRIPT_BLOCK_PROMPT] {
+            let result =
+                normalize_provider_event(ProviderId::Claude, &output_event(line), &mut context);
+            assert!(
+                result
+                    .events
+                    .iter()
+                    .all(|event| event.r#type != "user.message"),
+                "{line}: {:#?}",
+                result.events
+            );
+        }
     }
 
     fn stable_event_snapshot(events: &[PersistTimelineEventInput]) -> Value {

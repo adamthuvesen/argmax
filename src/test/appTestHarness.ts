@@ -12,6 +12,12 @@ import {
   workspaceStatusSnapshot
 } from "./fixtures/dashboardSnapshot.js";
 import { usageSummaryFixture, usageSummaryFor } from "./fixtures/usageSummary.js";
+import { resetLauncherSurfaceForTests } from "../renderer/state/launcherSurface.js";
+import { resetOverlaysForTests } from "../renderer/state/overlays.js";
+import { resetPaneGridForTests } from "../renderer/state/paneGrid.js";
+import { resetSidebarChromeForTests } from "../renderer/state/sidebarChrome.js";
+import { resetToastForTests } from "../renderer/state/toast.js";
+import { resetWorkspaceDragForTests } from "../renderer/state/workspaceDrag.js";
 
 // Resolve the panels App.tsx mounts through `React.lazy` before any test runs.
 //
@@ -146,6 +152,14 @@ export let menuCommandListener: ((command: MenuCommand) => void) | null = null;
 
 export function setupAppTestMocks(): void {
   window.localStorage.clear();
+  // Shell state lives in modules that outlive an unmount, so a value one test
+  // leaves behind would otherwise decide what the next one renders.
+  resetOverlaysForTests();
+  resetLauncherSurfaceForTests();
+  resetPaneGridForTests();
+  resetToastForTests();
+  resetWorkspaceDragForTests();
+  resetSidebarChromeForTests();
   // Pre-seed the boot-collapse markers so existing App tests render the
   // sidebar with projects and session groups expanded (the pre-fix behavior).
   // Sidebar tests that exercise the boot-collapse seeds clear these markers

@@ -57,13 +57,26 @@ snapshot recovery. Queued follow-ups remain in memory and are included in
 
 React 19 + Vite. [App.tsx](../src/renderer/App.tsx) renders the shell; [tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) handles IPC via `window.argmax`. Direct Tauri API usage is limited to window chrome in [windowChrome.ts](../src/renderer/lib/windowChrome.ts) and min-size constraints in [App.tsx](../src/renderer/App.tsx). In standalone browser previews, the renderer falls back to [demoSnapshot.ts](../src/renderer/demoSnapshot.ts).
 
+Shell state that several surfaces move lives in `src/renderer/state/`, not in `App`: one module per concern, each a value plus named mutators and a `useSyncExternalStore` hook, and a `reset*ForTests` the App harness calls between tests. Consumers subscribe where they are instead of taking a prop from the shell.
+
+| Store | Owns | Read by |
+|---|---|---|
+| [toast.ts](../src/renderer/state/toast.ts) | The single transient message | The shell (auto-dismiss for info toasts stays there) |
+| [overlays.ts](../src/renderer/state/overlays.ts) | Which full-screen page holds the workspace column, the settings group and navigation request, palette open + scope, cheat sheet; Esc precedence | Shell, sidebar, command palette |
+| [launcherSurface.ts](../src/renderer/state/launcherSurface.ts) | Full-screen launcher visibility, side-chat arming, composer reset signal | Shell, sidebar |
+| [paneGrid.ts](../src/renderer/state/paneGrid.ts) | The live grid, folding the pure reducers in [gridState.ts](../src/renderer/lib/gridState.ts) | Shell, sidebar (open rows) |
+| [workspaceDrag.ts](../src/renderer/state/workspaceDrag.ts) | The sidebar row being dragged towards the grid | Shell, sidebar |
+| [sidebarChrome.ts](../src/renderer/state/sidebarChrome.ts) | Sidebar collapse (persisted) and peek | Shell, sidebar |
+
+Snapshot and selection stay in [useDashboardSession](../src/renderer/hooks/useDashboardSession.ts); [useAppGridSelection](../src/renderer/hooks/useAppGridSelection.ts) resolves grid moves against that snapshot and writes them to `paneGrid`.
+
 Dashboard React state contains metadata and approvals. Transcript events, raw output, and read cursors live together in [SessionTimelines](../src/renderer/lib/sessionTimelines.ts). Each conversation subscribes to its session through `useSessionTimeline`, so a token does not update unrelated panes or the dashboard shell. Agent traces use their parent session's history, while multitasks subscribe to their own session. Subscribed histories stay resident, and the store retains at most 12 inactive histories. Eviction drops the history and its cursors together so reopening a session fetches a complete tail.
 
 Renderer code routes timeline meaning through [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts). Its cached decoder turns each persisted `TimelineEvent` into a discriminated union for messages, tools, lifecycle rows, multitasks, approvals, errors, and unknown rows. Consumers branch on that union instead of interpreting provider payload keys independently. The original event remains available for lossless debug output and large tool input or output bodies.
 
 [SessionMultiGrid.tsx](../src/renderer/components/SessionMultiGrid.tsx) manages two pane types:
 - **Session panes**: Primary conversation views.
-- **Launcher panes**: In-grid session creation. Each launcher has its own `projectId` via `setLauncherProject` ([gridState.ts](../src/renderer/lib/gridState.ts)), so launching in another repo does not change the global app selection.
+- **Launcher panes**: In-grid session creation. Each launcher has its own `projectId` via `setLauncherPaneProject` ([paneGrid.ts](../src/renderer/state/paneGrid.ts)), so launching in another repo does not change the global app selection.
 - **Agents view**: Subagent traces linked to a parent session and tool use ID, shown as one mode of that session's review panel (Changes / Files / Agents / Browser / Terminal). They live and die with the session's pane.
 
 The [Browser page](browser.md) is a workspace-column surface, not a grid cell: the left-rail Browser item fills the workspace with the in-app browser while the session sidebar stays. Settings, Schedule, and Usage still replace the sidebar; this page does not.
@@ -73,6 +86,6 @@ The [Browser page](browser.md) is a workspace-column surface, not a grid cell: t
 ## Shared: `src/shared`
 
 - [bindings.d.ts](../src/shared/bindings.d.ts): Generated Rust types from `tauri-specta`.
-- [types.ts](../src/shared/types.ts): `ArgmaxApi` interface and renderer domain types.
+- [types.ts](../src/shared/types.ts): the `ArgmaxApi` interface, renderer-only shapes, and the wire types re-exported from `bindings.d.ts`. A type that crosses IPC is never declared by hand here: it is an alias of the generated binding, or a `Retype<>` of it that narrows the columns Rust stores as plain strings (`provider`, `state` on workspaces, event `type`). `WireSubtype<>` covers the two untagged enums the binding cannot narrow on its own.
 - [ipcSchemas.ts](../src/shared/ipcSchemas.ts): Channel-name union for the bridge.
 - [providerModels.ts](../src/shared/providerModels.ts): Model metadata, defaults, and pricing.

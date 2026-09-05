@@ -60,6 +60,17 @@ import {
   type SidebarViewMode
 } from "../lib/projects.js";
 import { hiddenMultitaskWorkspaceIds } from "../lib/multitask.js";
+import { useLauncherSurface } from "../state/launcherSurface.js";
+import {
+  showCommandPalette,
+  showKeyboardCheatSheet,
+  showSchedulePage,
+  showSettings,
+  showUsagePage
+} from "../state/overlays.js";
+import { usePaneGrid } from "../state/paneGrid.js";
+import { setSidebarPeek, useSidebarChrome } from "../state/sidebarChrome.js";
+import { beginWorkspaceDrag, endWorkspaceDrag } from "../state/workspaceDrag.js";
 import { computePriorityEntries, nextPriorityIdleAt } from "../lib/priority.js";
 import { formatSessionIds } from "../lib/sessionIds.js";
 import { Mascot } from "./Mascot.js";
@@ -151,6 +162,15 @@ const IMPORTED_PROVIDER_LABELS: Record<string, string> = {
   opencode: "OpenCode"
 };
 
+// Module scope, so these keep one identity across renders and the memoized
+// rows below don't re-render because the sidebar did.
+const openGeneralSettings = (): void => showSettings("general");
+const openProviderSettings = (): void => showSettings("agents", "settings-providers");
+const openDiagnosticsSettings = (): void => showSettings("advanced", "settings-diagnostics");
+const openAboutSettings = (): void => showSettings("advanced", "settings-about");
+const openCommandPalette = (): void => showCommandPalette("all");
+const endSidebarPeek = (): void => setSidebarPeek(false);
+
 export function Sidebar({
   loadState,
   onAddProject,
@@ -158,17 +178,9 @@ export function Sidebar({
   onArchiveWorkspace,
   onOpenInIde,
   onOpenLauncher,
-  onOpenAbout,
-  onOpenCommandPalette,
-  onOpenDiagnostics,
-  onOpenKeyboardShortcuts,
-  onOpenProviders,
   onOpenProject,
-  onOpenScheduledTasks,
-  onOpenBrowser,
-  onOpenUsage,
-  onOpenSettings,
   onOpenWorkspaceChat,
+  onOpenBrowser,
   onRemoveProject,
   onRenameWorkspace,
   onResizeMouseDown,
@@ -179,18 +191,12 @@ export function Sidebar({
   onSetWorkspaceIcon,
   onSyncNowWorkspace,
   showPriority,
-  onWorkspaceDragStart,
-  onWorkspaceDragEnd,
   selectedProjectId,
-  selectedWorkspaceId,
+  selectedWorkspaceId: currentWorkspaceId,
   browserSelected,
-  openWorkspaceIds,
-  canDragWorkspaceToGrid,
   snapshot,
   detectedIdes,
-  defaultIde,
-  collapsed,
-  onPeekLeave
+  defaultIde
 }: {
   loadState: "loading" | "ready" | "error";
   onAddProject: () => void;
@@ -199,17 +205,9 @@ export function Sidebar({
   onArchiveWorkspace: (workspaceId: string) => void;
   onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
   onOpenLauncher: () => void;
-  onOpenAbout: () => void;
-  onOpenCommandPalette: () => void;
-  onOpenDiagnostics: () => void;
-  onOpenKeyboardShortcuts: () => void;
-  onOpenProviders: () => void;
   onOpenProject: (projectId: string) => void;
-  onOpenScheduledTasks: () => void;
-  onOpenBrowser?: () => void;
-  onOpenUsage: () => void;
-  onOpenSettings: () => void;
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
+  onOpenBrowser?: () => void;
   onRemoveProject?: (projectId: string) => void;
   onRenameWorkspace?: (workspaceId: string, taskLabel: string) => void;
   onResizeMouseDown: (event: ReactMouseEvent) => void;
@@ -230,24 +228,32 @@ export function Sidebar({
   onSyncNowWorkspace?: () => void;
   /** Whether the Priority section renders at all (settings toggle). */
   showPriority: boolean;
-  /** Notifies the parent that a sidebar drag started carrying this workspace. */
-  onWorkspaceDragStart?: (workspaceId: string) => void;
-  /** Notifies the parent that a sidebar drag finished (drop or cancel). */
-  onWorkspaceDragEnd?: () => void;
   selectedProjectId: string | null;
   selectedWorkspaceId: string | null;
   /** True while the workspace is the Browser page, so the rail item is current. */
   browserSelected?: boolean;
-  openWorkspaceIds: Set<string>;
-  canDragWorkspaceToGrid: boolean;
   snapshot: DashboardSnapshot;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
-  /** Whether the sidebar is collapsed (rendered as a hover-peek overlay). */
-  collapsed?: boolean;
-  /** Pointer left the sidebar while collapsed — parent should end the peek. */
-  onPeekLeave?: () => void;
 }): JSX.Element {
+  const { collapsed } = useSidebarChrome();
+  const grid = usePaneGrid();
+  const { fullLauncherOpen } = useLauncherSurface();
+  // The full-screen launcher hides the grid, so no row is painted as current
+  // and none is marked as open. Esc restores both.
+  const selectedWorkspaceId = fullLauncherOpen || browserSelected ? null : currentWorkspaceId;
+  const openWorkspaceIds = useMemo(
+    () =>
+      fullLauncherOpen
+        ? new Set<string>()
+        : new Set(
+            grid.rows.flatMap((row) =>
+              row.flatMap((cell) => (cell.kind === "launcher" ? [] : [cell.workspaceId]))
+            )
+          ),
+    [fullLauncherOpen, grid.rows]
+  );
+  const canDragWorkspaceToGrid = snapshot.sessions.length > 0;
   // Per-launch behavior: every project starts collapsed so no sessions are
   // visible on app start. After the first non-empty snapshot, we set a
   // sessionStorage marker so subsequent re-mounts within the same renderer
@@ -801,8 +807,8 @@ export function Sidebar({
     event.dataTransfer.setData(WORKSPACE_DRAG_MIME, workspaceId);
     event.dataTransfer.effectAllowed = "copyMove";
     setDraggingWorkspaceId(workspaceId);
-    onWorkspaceDragStart?.(workspaceId);
-  }, [onWorkspaceDragStart]);
+    beginWorkspaceDrag(workspaceId);
+  }, []);
 
   const handleWorkspaceDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
     if (draggingWorkspaceId) {
@@ -843,8 +849,8 @@ export function Sidebar({
 
   const handleWorkspaceDragEnd = useCallback((): void => {
     setDraggingWorkspaceId(null);
-    onWorkspaceDragEnd?.();
-  }, [onWorkspaceDragEnd]);
+    endWorkspaceDrag();
+  }, []);
 
   const identitySubLabel = loadState === "loading"
     ? "Booting..."
@@ -998,8 +1004,8 @@ export function Sidebar({
                   onSetIcon={onSetWorkspaceIcon}
                   onSyncNow={onSyncNowWorkspace}
                   onAddToPriority={addToPriority}
-                  onWorkspaceDragStart={onWorkspaceDragStart}
-                  onWorkspaceDragEnd={onWorkspaceDragEnd}
+                  onWorkspaceDragStart={beginWorkspaceDrag}
+                  onWorkspaceDragEnd={endWorkspaceDrag}
                   detectedIdes={detectedIdes}
                   defaultIde={defaultIde}
                 />
@@ -1029,7 +1035,7 @@ export function Sidebar({
     <aside
       className="sidebar"
       data-loading={loadState === "loading" ? "true" : undefined}
-      onMouseLeave={collapsed ? onPeekLeave : undefined}
+      onMouseLeave={collapsed ? endSidebarPeek : undefined}
     >
       <div className="window-controls" data-window-drag />
       <nav className="rail-nav" aria-label="Primary">
@@ -1051,13 +1057,37 @@ export function Sidebar({
           type="button"
           title="Search"
           aria-label="Search"
-          onClick={onOpenCommandPalette}
+          onClick={openCommandPalette}
         >
           <span className="rail-nav-glyph" aria-hidden="true">
             <Search size={14} />
           </span>
           <span className="rail-nav-label">Search</span>
           <kbd aria-hidden="true">⌘K</kbd>
+        </button>
+        <button
+          className="rail-nav-item"
+          type="button"
+          title="Schedule"
+          aria-label="Schedule"
+          onClick={showSchedulePage}
+        >
+          <span className="rail-nav-glyph" aria-hidden="true">
+            <Clock size={14} />
+          </span>
+          <span className="rail-nav-label">Schedule</span>
+        </button>
+        <button
+          className="rail-nav-item"
+          type="button"
+          title="Usage"
+          aria-label="Usage"
+          onClick={showUsagePage}
+        >
+          <span className="rail-nav-glyph" aria-hidden="true">
+            <ChartNoAxesColumn size={14} />
+          </span>
+          <span className="rail-nav-label">Usage</span>
         </button>
         {onOpenBrowser && typeof window !== "undefined" && window.argmax?.browser ? (
           <button
@@ -1077,33 +1107,9 @@ export function Sidebar({
         <button
           className="rail-nav-item"
           type="button"
-          title="Schedule"
-          aria-label="Schedule"
-          onClick={onOpenScheduledTasks}
-        >
-          <span className="rail-nav-glyph" aria-hidden="true">
-            <Clock size={14} />
-          </span>
-          <span className="rail-nav-label">Schedule</span>
-        </button>
-        <button
-          className="rail-nav-item"
-          type="button"
-          title="Usage"
-          aria-label="Usage"
-          onClick={onOpenUsage}
-        >
-          <span className="rail-nav-glyph" aria-hidden="true">
-            <ChartNoAxesColumn size={14} />
-          </span>
-          <span className="rail-nav-label">Usage</span>
-        </button>
-        <button
-          className="rail-nav-item"
-          type="button"
           title="Customize"
           aria-label="Customize"
-          onClick={onOpenSettings}
+          onClick={openGeneralSettings}
         >
           <span className="rail-nav-glyph" aria-hidden="true">
             <Settings2 size={14} />
@@ -1152,8 +1158,8 @@ export function Sidebar({
                   onRename={onRenameWorkspace}
                   onSetIcon={onSetWorkspaceIcon}
                   onSyncNow={onSyncNowWorkspace}
-                  onWorkspaceDragStart={onWorkspaceDragStart}
-                  onWorkspaceDragEnd={onWorkspaceDragEnd}
+                  onWorkspaceDragStart={beginWorkspaceDrag}
+                  onWorkspaceDragEnd={endWorkspaceDrag}
                   detectedIdes={detectedIdes}
                   defaultIde={defaultIde}
                 />
@@ -1215,8 +1221,8 @@ export function Sidebar({
                       : undefined
                   }
                   priorityAttention={entry.attention ?? undefined}
-                  onWorkspaceDragStart={onWorkspaceDragStart}
-                  onWorkspaceDragEnd={onWorkspaceDragEnd}
+                  onWorkspaceDragStart={beginWorkspaceDrag}
+                  onWorkspaceDragEnd={endWorkspaceDrag}
                   detectedIdes={detectedIdes}
                   defaultIde={defaultIde}
                 />
@@ -1291,8 +1297,8 @@ export function Sidebar({
                             onSetIcon={onSetWorkspaceIcon}
                             onSyncNow={onSyncNowWorkspace}
                             onAddToPriority={addToPriority}
-                            onWorkspaceDragStart={onWorkspaceDragStart}
-                            onWorkspaceDragEnd={onWorkspaceDragEnd}
+                            onWorkspaceDragStart={beginWorkspaceDrag}
+                            onWorkspaceDragEnd={endWorkspaceDrag}
                             detectedIdes={detectedIdes}
                             defaultIde={defaultIde}
                           />
@@ -1452,8 +1458,8 @@ export function Sidebar({
                         onSetIcon={onSetWorkspaceIcon}
                         onSyncNow={onSyncNowWorkspace}
                         onAddToPriority={addToPriority}
-                        onWorkspaceDragStart={onWorkspaceDragStart}
-                        onWorkspaceDragEnd={onWorkspaceDragEnd}
+                        onWorkspaceDragStart={beginWorkspaceDrag}
+                        onWorkspaceDragEnd={endWorkspaceDrag}
                         detectedIdes={detectedIdes}
                         defaultIde={defaultIde}
                       />
@@ -1586,7 +1592,7 @@ export function Sidebar({
                   type="button"
                   role="menuitem"
                   className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(onOpenCommandPalette)}
+                  onClick={() => runIdentityAction(openCommandPalette)}
                 >
                   <Command size={14} aria-hidden="true" />
                   <span>Command Palette</span>
@@ -1598,7 +1604,7 @@ export function Sidebar({
                   type="button"
                   role="menuitem"
                   className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(onOpenSettings)}
+                  onClick={() => runIdentityAction(openGeneralSettings)}
                 >
                   <Settings size={14} aria-hidden="true" />
                   <span>Settings</span>
@@ -1610,7 +1616,7 @@ export function Sidebar({
                   type="button"
                   role="menuitem"
                   className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(onOpenProviders)}
+                  onClick={() => runIdentityAction(openProviderSettings)}
                 >
                   <Cpu size={14} aria-hidden="true" />
                   <span>Providers</span>
@@ -1621,7 +1627,7 @@ export function Sidebar({
                   type="button"
                   role="menuitem"
                   className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(onOpenDiagnostics)}
+                  onClick={() => runIdentityAction(openDiagnosticsSettings)}
                 >
                   <Activity size={14} aria-hidden="true" />
                   <span>Diagnostics & Logs</span>
@@ -1632,7 +1638,7 @@ export function Sidebar({
                   type="button"
                   role="menuitem"
                   className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(onOpenKeyboardShortcuts)}
+                  onClick={() => runIdentityAction(showKeyboardCheatSheet)}
                 >
                   <Keyboard size={14} aria-hidden="true" />
                   <span>Keyboard Shortcuts</span>
@@ -1644,7 +1650,7 @@ export function Sidebar({
                   type="button"
                   role="menuitem"
                   className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(onOpenAbout)}
+                  onClick={() => runIdentityAction(openAboutSettings)}
                 >
                   <Info size={14} aria-hidden="true" />
                   <span>About Argmax</span>

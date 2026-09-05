@@ -46,7 +46,11 @@ const snapshot: DashboardSnapshot = {
       lastActivityAt: "2026-05-12T15:54:00.000Z",
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     }
   ],
   sessions: [],
@@ -106,21 +110,11 @@ const baseProps = {
   onArchiveWorkspace: noop,
   onOpenInIde: noop,
   onOpenLauncher: noop,
-  onOpenAbout: noop,
-  onOpenCommandPalette: noop,
-  onOpenDiagnostics: noop,
-  onOpenKeyboardShortcuts: noop,
-  onOpenProviders: noop,
   onOpenProject: noop,
-  onOpenScheduledTasks: noop,
-  onOpenUsage: noop,
-  onOpenSettings: noop,
   onOpenWorkspaceChat: noop,
   onResizeMouseDown: noop,
   selectedProjectId: null,
   selectedWorkspaceId: null,
-  openWorkspaceIds: new Set<string>(),
-  canDragWorkspaceToGrid: false,
   detectedIdes: [],
   defaultIde: null,
   showPriority: false
@@ -171,21 +165,11 @@ describe("Sidebar — localStorage write isolation", () => {
           onArchiveWorkspace={noop}
           onOpenInIde={noop}
           onOpenLauncher={noop}
-          onOpenAbout={noop}
-          onOpenCommandPalette={noop}
-          onOpenDiagnostics={noop}
-          onOpenKeyboardShortcuts={noop}
-          onOpenProviders={noop}
           onOpenProject={noop}
-          onOpenScheduledTasks={noop}
-          onOpenUsage={noop}
-          onOpenSettings={noop}
           onOpenWorkspaceChat={noop}
           onResizeMouseDown={noop}
           selectedProjectId={null}
           selectedWorkspaceId={null}
-          openWorkspaceIds={new Set()}
-          canDragWorkspaceToGrid={false}
           snapshot={snapshot}
           detectedIdes={[]}
           defaultIde={null}
@@ -219,21 +203,11 @@ describe("Sidebar — localStorage write isolation", () => {
           onArchiveWorkspace={noop}
           onOpenInIde={noop}
           onOpenLauncher={noop}
-          onOpenAbout={noop}
-          onOpenCommandPalette={noop}
-          onOpenDiagnostics={noop}
-          onOpenKeyboardShortcuts={noop}
-          onOpenProviders={noop}
           onOpenProject={noop}
-          onOpenScheduledTasks={noop}
-          onOpenUsage={noop}
-          onOpenSettings={noop}
           onOpenWorkspaceChat={noop}
           onResizeMouseDown={noop}
           selectedProjectId={null}
           selectedWorkspaceId={null}
-          openWorkspaceIds={new Set()}
-          canDragWorkspaceToGrid={false}
           snapshot={snapshot}
           detectedIdes={[]}
           defaultIde={null}
@@ -448,7 +422,11 @@ describe("Sidebar — workspaces without sessions", () => {
           lastActivityAt: "2026-05-12T15:54:00.000Z",
           pinned: false,
           priorityDismissedAt: null,
-          priorityAddedAt: null
+          priorityAddedAt: null,
+          prState: null,
+          prNumber: null,
+          icon: null,
+          iconColor: null
         }
       ],
       sessions: [
@@ -467,6 +445,11 @@ describe("Sidebar — workspaces without sessions", () => {
           completedAt: null,
           lastActivityAt: "2026-05-12T15:54:00.000Z",
           prompt: "Build the dashboard",
+          costUsd: 0,
+          tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextTokens: 0,
+          imported: false,
+          launchKind: "agent",
         }
       ]
     };
@@ -512,7 +495,12 @@ describe("Sidebar — date (sessions) view mode", () => {
     startedAt: lastActivityAt,
     completedAt: lastActivityAt,
     lastActivityAt,
-    prompt: "Do the thing"
+    prompt: "Do the thing",
+    costUsd: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextTokens: 0,
+    imported: false,
+    launchKind: "agent"
   });
 
   const workspace = (id: string, projectId: string, taskLabel: string, lastActivityAt: string) => ({
@@ -530,7 +518,11 @@ describe("Sidebar — date (sessions) view mode", () => {
     lastActivityAt,
     pinned: false,
     priorityDismissedAt: null,
-    priorityAddedAt: null
+    priorityAddedAt: null,
+    prState: null,
+    prNumber: null,
+    icon: null,
+    iconColor: null
   });
 
   const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
@@ -1013,7 +1005,12 @@ describe("Sidebar — Priority section", () => {
     startedAt: "2026-05-12T15:00:00.000Z",
     completedAt: null,
     lastActivityAt: attentionChangedAt,
-    prompt: "Do the thing"
+    prompt: "Do the thing",
+    costUsd: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextTokens: 0,
+    imported: false,
+    launchKind: "agent"
   });
 
   const workspace = (id: string, taskLabel: string, priorityDismissedAt?: string) => ({
@@ -1031,7 +1028,11 @@ describe("Sidebar — Priority section", () => {
     lastActivityAt: "2026-05-12T15:54:00.000Z",
     pinned: false,
     priorityDismissedAt: priorityDismissedAt ?? null,
-    priorityAddedAt: null
+    priorityAddedAt: null,
+    prState: null,
+    prNumber: null,
+    icon: null,
+    iconColor: null
   });
 
   const prioritySnapshot: DashboardSnapshot = {
@@ -1387,7 +1388,6 @@ describe("Sidebar — Priority section", () => {
 
 describe("Sidebar — working rows in Priority", () => {
   const MINUTES_AGO_10 = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-
   const workingWorkspace = (id: string, taskLabel: string, overrides: Record<string, unknown> = {}) => ({
     id,
     projectId: "project-1",
@@ -1404,6 +1404,10 @@ describe("Sidebar — working rows in Priority", () => {
     pinned: false,
     priorityDismissedAt: null,
     priorityAddedAt: null,
+    prState: null,
+    prNumber: null,
+    icon: null,
+    iconColor: null,
     ...overrides
   });
 
@@ -1422,7 +1426,12 @@ describe("Sidebar — working rows in Priority", () => {
     startedAt: MINUTES_AGO_10,
     completedAt: null,
     lastActivityAt: MINUTES_AGO_10,
-    prompt: "Do the thing"
+    prompt: "Do the thing",
+    costUsd: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextTokens: 0,
+    imported: false,
+    launchKind: "agent"
   });
 
   beforeEach(() => {
@@ -1598,7 +1607,11 @@ describe("Sidebar — boot collapse defaults", () => {
     lastActivityAt,
     pinned: false,
     priorityDismissedAt: null,
-    priorityAddedAt: null
+    priorityAddedAt: null,
+    prState: null,
+    prNumber: null,
+    icon: null,
+    iconColor: null
   });
 
   const bootSession = (workspaceId: string, attention: "normal" | "blocked") => ({
@@ -1616,7 +1629,12 @@ describe("Sidebar — boot collapse defaults", () => {
     startedAt: "2026-05-12T15:00:00.000Z",
     completedAt: null,
     lastActivityAt: MINUTES_AGO_10,
-    prompt: "Do the thing"
+    prompt: "Do the thing",
+    costUsd: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextTokens: 0,
+    imported: false,
+    launchKind: "agent"
   });
 
   const bootSnapshot: DashboardSnapshot = {
@@ -1695,7 +1713,12 @@ describe("Sidebar — Side Chats section", () => {
     startedAt: TODAY,
     completedAt: TODAY,
     lastActivityAt: TODAY,
-    prompt: "Do the thing"
+    prompt: "Do the thing",
+    costUsd: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextTokens: 0,
+    imported: false,
+    launchKind: "agent"
   });
 
   const workspace = (
@@ -1718,7 +1741,11 @@ describe("Sidebar — Side Chats section", () => {
     lastActivityAt: TODAY,
     pinned: false,
     priorityDismissedAt: null,
-    priorityAddedAt: null
+    priorityAddedAt: null,
+    prState: null,
+    prNumber: null,
+    icon: null,
+    iconColor: null
   });
 
   const scratchProject = {

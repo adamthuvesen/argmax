@@ -31,9 +31,7 @@ use crate::persistence::sessions::{find_session_by_id, update_session_state, Ses
 use crate::persistence::time::now_iso;
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::runtime::DeltaPublisher;
-use crate::sessions::attention::{
-    compute_session_attention, AttentionState, SessionAttentionInput,
-};
+use crate::sessions::state::SessionState;
 
 /// Soft cap on how many pending approvals we return in one IPC roundtrip.
 /// Matches the dashboard's `DASHBOARD_ROW_LIMIT` so a single user can't
@@ -152,12 +150,7 @@ impl ApprovalService {
         update_session_state(
             &tx,
             &input.session_id,
-            &SessionStateInput {
-                state: "waiting".to_string(),
-                attention: AttentionState::ApprovalNeeded.as_str().to_string(),
-                completed_at: None,
-                last_activity_at: None,
-            },
+            &SessionStateInput::transition(SessionState::Waiting).with_pending_approval(),
         )?;
         persist_timeline_event(
             &tx,
@@ -200,24 +193,15 @@ impl ApprovalService {
         // provider has already exited. Resolving that stale row should
         // update the audit trail but must not revive a completed /
         // failed / cancelled session.
-        let updated_session = if session.state == "waiting" {
+        let updated_session = if session.state == SessionState::Waiting {
             let next_state = match status {
-                ResolveStatus::Approved => "running",
-                ResolveStatus::Rejected => "blocked",
+                ResolveStatus::Approved => SessionState::Running,
+                ResolveStatus::Rejected => SessionState::Blocked,
             };
-            let attention = compute_session_attention(SessionAttentionInput {
-                state: next_state,
-                has_pending_approval: false,
-            });
             Some(update_session_state(
                 &tx,
                 &approval.session_id,
-                &SessionStateInput {
-                    state: next_state.to_string(),
-                    attention: attention.as_str().to_string(),
-                    completed_at: None,
-                    last_activity_at: None,
-                },
+                &SessionStateInput::transition(next_state),
             )?)
         } else {
             None
@@ -342,6 +326,7 @@ mod tests {
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
     use crate::persistence::sessions::{persist_session, PersistSessionInput};
     use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
+    use crate::sessions::attention::AttentionState;
     use tempfile::TempDir;
 
     fn setup() -> (Arc<Database>, String, TempDir) {
@@ -395,8 +380,7 @@ mod tests {
                     reasoning_effort: None,
                     permission_mode: None,
                     agent_mode: Some("auto".to_string()),
-                    state: "running".to_string(),
-                    attention: "normal".to_string(),
+                    state: SessionState::Running,
                 },
             )
             .unwrap();
@@ -439,8 +423,8 @@ mod tests {
 
         let conn = database.connection();
         let session = find_session_by_id(&conn, &session_id).unwrap();
-        assert_eq!(session.state, "waiting");
-        assert_eq!(session.attention, "approval-needed");
+        assert_eq!(session.state, SessionState::Waiting);
+        assert_eq!(session.attention, AttentionState::ApprovalNeeded);
     }
 
     #[test]
@@ -487,8 +471,8 @@ mod tests {
 
         let conn = database.connection();
         let session = find_session_by_id(&conn, &session_id).unwrap();
-        assert_eq!(session.state, "running");
-        assert_eq!(session.attention, "normal");
+        assert_eq!(session.state, SessionState::Running);
+        assert_eq!(session.attention, AttentionState::Normal);
     }
 
     #[test]
@@ -509,7 +493,7 @@ mod tests {
 
         let conn = database.connection();
         let session = find_session_by_id(&conn, &session_id).unwrap();
-        assert_eq!(session.state, "blocked");
+        assert_eq!(session.state, SessionState::Blocked);
     }
 
     #[test]

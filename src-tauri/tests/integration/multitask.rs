@@ -8,6 +8,7 @@ use std::{
 };
 
 use crate::support::git_repo::seed_git_repo;
+use argmax_lib::sessions::state::SessionState;
 use argmax_lib::{
     error::{ArgmaxError, ArgmaxResult},
     multitask::{dispatch, MultitaskRequest, FINISHED_EVENT, LAUNCHED_EVENT, MULTITASK_KIND},
@@ -221,8 +222,7 @@ fn fixture() -> Fixture {
                 permission_mode: Some("auto-approve".to_string()),
                 agent_mode: Some("auto".to_string()),
                 prompt: "Rewrite auth".to_string(),
-                state: "running".to_string(),
-                attention: "normal".to_string(),
+                state: SessionState::Running,
             },
         )
         .expect("session");
@@ -290,7 +290,7 @@ async fn wait_for_launch(launcher: &ScriptedLauncher, session_id: &str) {
     }
 }
 
-async fn wait_for_state(database: &Database, session_id: &str, expected: &str) {
+async fn wait_for_state(database: &Database, session_id: &str, expected: SessionState) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
     loop {
         let state = {
@@ -399,7 +399,7 @@ async fn a_multitask_runs_in_the_parents_checkout_without_touching_its_turn() {
     assert_eq!(child.reasoning_effort.as_deref(), Some("high"));
 
     // The parent keeps running: no state change, no second launch against it.
-    assert_eq!(parent.state, "running");
+    assert_eq!(parent.state, SessionState::Running);
     let launched_sessions: Vec<String> = fixture
         .launcher
         .launches()
@@ -449,7 +449,7 @@ async fn a_finished_multitask_reports_back_without_starting_a_turn() {
     fixture
         .launcher
         .finish_turn(&child_id, "Fixed the typo in README.md.");
-    wait_for_state(&fixture.database, &child_id, "complete").await;
+    wait_for_state(&fixture.database, &child_id, SessionState::Complete).await;
     wait_for_event(&fixture.database, "session-parent", FINISHED_EVENT).await;
 
     let parent_events = events(&fixture.database, "session-parent");
@@ -495,7 +495,7 @@ async fn a_cursor_multitask_reports_back_even_though_its_process_never_exits() {
     fixture
         .launcher
         .finish_cursor_turn(&child_id, "Yes, in models/4_semantic_models.");
-    wait_for_state(&fixture.database, &child_id, "complete").await;
+    wait_for_state(&fixture.database, &child_id, SessionState::Complete).await;
     wait_for_event(&fixture.database, "session-parent", FINISHED_EVENT).await;
 
     // The row the chat draws, carrying what the multitask actually found.
@@ -533,7 +533,7 @@ async fn a_multitask_that_cannot_start_still_reports_back() {
     .expect("dispatch survives a launch that fails")
     .session_id;
 
-    wait_for_state(&fixture.database, &child_id, "failed").await;
+    wait_for_state(&fixture.database, &child_id, SessionState::Failed).await;
     wait_for_event(&fixture.database, "session-parent", FINISHED_EVENT).await;
 
     let connection = fixture.database.connection();
@@ -554,7 +554,7 @@ async fn the_result_rides_on_the_parents_next_prompt_but_not_on_the_persisted_me
     fixture
         .launcher
         .finish_turn(&child_id, "Fixed the typo in README.md.");
-    wait_for_state(&fixture.database, &child_id, "complete").await;
+    wait_for_state(&fixture.database, &child_id, SessionState::Complete).await;
     wait_for_event(&fixture.database, "session-parent", FINISHED_EVENT).await;
 
     // The person then types their next message in the parent chat.

@@ -35,6 +35,7 @@ use super::workspaces::{
     PersistWorkspaceInput, WorkspaceStatusInput,
 };
 use crate::error::ArgmaxError;
+use crate::sessions::state::SessionState;
 
 #[test]
 fn project_workspace_and_session_repositories_round_trip() {
@@ -171,15 +172,11 @@ fn project_workspace_and_session_repositories_round_trip() {
     let waiting = update_session_state(
         &connection,
         "s1",
-        &SessionStateInput {
-            state: "waiting".to_owned(),
-            attention: "blocked".to_owned(),
-            completed_at: None,
-            last_activity_at: Some("2026-05-24T10:02:00.000Z".to_owned()),
-        },
+        &SessionStateInput::transition(SessionState::Waiting)
+            .active_at("2026-05-24T10:02:00.000Z".to_owned()),
     )
     .expect("update session state");
-    assert_eq!(waiting.state, "waiting");
+    assert_eq!(waiting.state, SessionState::Waiting);
 
     let ticked = update_session_last_activity(&connection, "s1", "2026-05-24T10:03:00.000Z")
         .expect("update last activity");
@@ -756,12 +753,8 @@ fn priority_dismissal_tracks_attention_changes() {
     let unchanged = update_session_state(
         &connection,
         "s1",
-        &SessionStateInput {
-            state: "running".to_owned(),
-            attention: "normal".to_owned(),
-            completed_at: None,
-            last_activity_at: Some("2026-05-24T10:05:00.000Z".to_owned()),
-        },
+        &SessionStateInput::transition(SessionState::Running)
+            .active_at("2026-05-24T10:05:00.000Z".to_owned()),
     )
     .expect("update session state");
     assert_eq!(unchanged.attention_changed_at, session.attention_changed_at);
@@ -770,12 +763,8 @@ fn priority_dismissal_tracks_attention_changes() {
     let flipped = update_session_state(
         &connection,
         "s1",
-        &SessionStateInput {
-            state: "complete".to_owned(),
-            attention: "review-ready".to_owned(),
-            completed_at: Some("2026-05-24T10:06:00.000Z".to_owned()),
-            last_activity_at: Some("2026-05-24T10:06:00.000Z".to_owned()),
-        },
+        &SessionStateInput::transition(SessionState::Complete)
+            .finished_at("2026-05-24T10:06:00.000Z".to_owned()),
     )
     .expect("update session state");
     assert_eq!(
@@ -846,7 +835,7 @@ fn workspace_input() -> PersistWorkspaceInput {
         branch: "feature/rust".to_owned(),
         base_ref: "main".to_owned(),
         path: "/tmp/repo/.worktrees/w1".to_owned(),
-        state: "running".to_owned(),
+        state: "running".to_string(),
         shared_workspace: false,
         kind: "git".to_string(),
         dirty: false,
@@ -865,7 +854,6 @@ fn session_input() -> PersistSessionInput {
         permission_mode: None,
         agent_mode: None,
         prompt: "make it excellent".to_owned(),
-        state: "running".to_owned(),
-        attention: "normal".to_owned(),
+        state: SessionState::Running,
     }
 }

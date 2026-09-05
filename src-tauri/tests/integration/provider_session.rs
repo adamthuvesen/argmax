@@ -53,6 +53,8 @@ use argmax_lib::providers::session_service::{MessageOrigin, ProviderSessionServi
 use argmax_lib::providers::{
     flush_queue::DashboardDelta, normalizer::ProviderOutputStream, ProviderLaunchInput,
 };
+use argmax_lib::sessions::attention::AttentionState;
+use argmax_lib::sessions::state::SessionState;
 use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
 use serde_json::json;
 use uuid::Uuid;
@@ -466,7 +468,7 @@ fn fake_provider_script_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/provider/fake_provider_cli.sh")
 }
 
-async fn wait_for_session_state(database: &Database, session_id: &str, expected: &str) {
+async fn wait_for_session_state(database: &Database, session_id: &str, expected: SessionState) {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
     loop {
         let state = {
@@ -602,7 +604,7 @@ async fn launch_persists_session_and_seeds_timeline() {
         .launch(build_launch_input())
         .await
         .expect("launch ok");
-    assert_eq!(session.state, "running");
+    assert_eq!(session.state, SessionState::Running);
     assert_eq!(session.provider, "claude");
     assert_eq!(session.workspace_id, WORKSPACE_ID);
 
@@ -643,7 +645,7 @@ async fn fake_cli_streams_normalized_events_to_db_and_dashboard_delta() {
         .await
         .expect("launch ok");
 
-    wait_for_session_state(&database, &session.id, "complete").await;
+    wait_for_session_state(&database, &session.id, SessionState::Complete).await;
     wait_for_event(
         &database,
         &session.id,
@@ -693,7 +695,7 @@ async fn fake_cli_streams_normalized_events_to_db_and_dashboard_delta() {
     );
 
     wait_for_launch_count(&launcher, 2).await;
-    wait_for_session_state(&database, &session.id, "complete").await;
+    wait_for_session_state(&database, &session.id, SessionState::Complete).await;
     wait_for_event(&database, &session.id, "user.message", "follow up").await;
     wait_for_event(
         &database,
@@ -733,8 +735,7 @@ async fn cursor_follow_up_infers_missing_resume_id_from_raw_output() {
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
                 prompt: "first prompt".to_owned(),
-                state: "complete".to_owned(),
-                attention: "none".to_owned(),
+                state: SessionState::Complete,
             },
         )
         .expect("persist cursor session");
@@ -806,8 +807,7 @@ async fn cursor_follow_up_after_clear_does_not_resume_pre_clear_id() {
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
                 prompt: "first prompt".to_owned(),
-                state: "complete".to_owned(),
-                attention: "none".to_owned(),
+                state: SessionState::Complete,
             },
         )
         .expect("persist cursor session");
@@ -879,8 +879,7 @@ async fn provider_switch_relaunches_new_provider_fresh() {
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
                 prompt: "first".to_owned(),
-                state: "complete".to_owned(),
-                attention: "none".to_owned(),
+                state: SessionState::Complete,
             },
         )
         .expect("persist claude session");
@@ -981,8 +980,7 @@ async fn completed_session_follow_up_launch_without_native_resume_includes_visib
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
                 prompt: "ok".to_owned(),
-                state: "complete".to_owned(),
-                attention: "none".to_owned(),
+                state: SessionState::Complete,
             },
         )
         .expect("persist claude session");
@@ -1076,8 +1074,7 @@ async fn completed_session_follow_up_launch_with_native_resume_sends_message_alo
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
                 prompt: "ok".to_owned(),
-                state: "complete".to_owned(),
-                attention: "none".to_owned(),
+                state: SessionState::Complete,
             },
         )
         .expect("persist claude session");
@@ -1539,7 +1536,7 @@ async fn a_failed_turn_clears_the_queue_but_not_the_inbox() {
     })
     .join()
     .expect("exit emitted");
-    wait_for_session_state(&database, &session.id, "failed").await;
+    wait_for_session_state(&database, &session.id, SessionState::Failed).await;
 
     // The queue is gone: the last pending-messages delta for this session is
     // empty, so nothing will ever send this message as a turn.
@@ -1656,7 +1653,7 @@ async fn terminate_disposes_handle_and_cancels_session() {
 
     let connection = database.connection();
     let persisted = find_session_by_id(&connection, &session_id).expect("find session");
-    assert_eq!(persisted.state, "cancelled");
+    assert_eq!(persisted.state, SessionState::Cancelled);
 }
 
 #[tokio::test]
@@ -1683,8 +1680,7 @@ async fn clear_idle_session_drops_resume_id_and_writes_watermark() {
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
                 prompt: "first".to_owned(),
-                state: "complete".to_owned(),
-                attention: "none".to_owned(),
+                state: SessionState::Complete,
             },
         )
         .expect("persist session");
@@ -1787,12 +1783,7 @@ async fn terminate_workspace_cancels_a_blocked_live_provider() {
         update_session_state(
             &connection,
             &session.id,
-            &SessionStateInput {
-                state: "blocked".to_string(),
-                attention: "blocked".to_string(),
-                completed_at: None,
-                last_activity_at: None,
-            },
+            &SessionStateInput::transition(SessionState::Blocked),
         )
         .expect("mark provider blocked");
     }
@@ -1807,7 +1798,7 @@ async fn terminate_workspace_cancels_a_blocked_live_provider() {
         find_session_by_id(&connection, &session.id)
             .expect("find session")
             .state,
-        "cancelled"
+        SessionState::Cancelled
     );
 }
 
@@ -1911,7 +1902,7 @@ async fn terminate_during_spawn_disposes_handle_on_resolve() {
 
     let connection = database.connection();
     let persisted = find_session_by_id(&connection, &session_id).expect("find session");
-    assert_eq!(persisted.state, "cancelled");
+    assert_eq!(persisted.state, SessionState::Cancelled);
 }
 
 #[tokio::test]
@@ -1943,8 +1934,7 @@ async fn terminate_during_follow_up_spawn_disposes_handle_on_resolve() {
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
                 prompt: "before".to_owned(),
-                state: "complete".to_owned(),
-                attention: "none".to_owned(),
+                state: SessionState::Complete,
             },
         )
         .expect("persist completed session")
@@ -2007,7 +1997,7 @@ async fn terminate_during_follow_up_spawn_disposes_handle_on_resolve() {
 
     let connection = database.connection();
     let persisted = find_session_by_id(&connection, &session_id).expect("find session");
-    assert_eq!(persisted.state, "cancelled");
+    assert_eq!(persisted.state, SessionState::Cancelled);
 }
 
 #[test]
@@ -2027,13 +2017,12 @@ fn recover_orphaned_sessions_marks_running_rows_failed() {
             permission_mode: Some("auto-approve".to_owned()),
             agent_mode: Some("auto".to_owned()),
             prompt: "before crash".to_owned(),
-            state: "running".to_owned(),
-            attention: "normal".to_owned(),
+            state: SessionState::Running,
         },
     )
     .expect("seed orphan");
     drop(connection);
-    assert_eq!(orphan.state, "running");
+    assert_eq!(orphan.state, SessionState::Running);
 
     let service = ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
         database.clone(),
@@ -2049,8 +2038,8 @@ fn recover_orphaned_sessions_marks_running_rows_failed() {
 
     let connection = database.connection();
     let after = find_session_by_id(&connection, "orphan-1").expect("find orphan");
-    assert_eq!(after.state, "failed");
-    assert_eq!(after.attention, "failed");
+    assert_eq!(after.state, SessionState::Failed);
+    assert_eq!(after.attention, AttentionState::Failed);
 
     let tail = list_session_events_since(&connection, "orphan-1", None, None).expect("list events");
     let types: Vec<_> = tail
@@ -2069,7 +2058,7 @@ fn recover_orphaned_sessions_tells_the_chat_that_dispatched_a_multitask() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     seed_project_and_workspace(&database);
     let connection = database.connection();
-    let seed = |id: &str, state: &str| {
+    let seed = |id: &str, state: SessionState| {
         persist_session(
             &connection,
             &PersistSessionInput {
@@ -2082,14 +2071,13 @@ fn recover_orphaned_sessions_tells_the_chat_that_dispatched_a_multitask() {
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
                 prompt: "before crash".to_owned(),
-                state: state.to_owned(),
-                attention: "normal".to_owned(),
+                state,
             },
         )
         .expect("seed session");
     };
-    seed("parent-1", "complete");
-    seed("multitask-1", "running");
+    seed("parent-1", SessionState::Complete);
+    seed("multitask-1", SessionState::Running);
     record_session_launch(
         &connection,
         "multitask-1",
@@ -2131,11 +2119,11 @@ fn recover_orphaned_sessions_marks_waiting_and_blocked_rows_failed() {
     seed_project_and_workspace(&database);
     let connection = database.connection();
     for (session_id, state) in [
-        ("orphan-running", "running"),
-        ("orphan-waiting", "waiting"),
-        ("orphan-blocked", "blocked"),
-        ("terminal-complete", "complete"),
-        ("terminal-cancelled", "cancelled"),
+        ("orphan-running", SessionState::Running),
+        ("orphan-waiting", SessionState::Waiting),
+        ("orphan-blocked", SessionState::Blocked),
+        ("terminal-complete", SessionState::Complete),
+        ("terminal-cancelled", SessionState::Cancelled),
     ] {
         persist_session(
             &connection,
@@ -2149,8 +2137,7 @@ fn recover_orphaned_sessions_marks_waiting_and_blocked_rows_failed() {
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
                 prompt: "before crash".to_owned(),
-                state: state.to_owned(),
-                attention: "normal".to_owned(),
+                state,
             },
         )
         .expect("seed session");
@@ -2187,7 +2174,7 @@ fn recover_orphaned_sessions_marks_waiting_and_blocked_rows_failed() {
     let connection = database.connection();
     for session_id in ["orphan-running", "orphan-waiting", "orphan-blocked"] {
         let session = find_session_by_id(&connection, session_id).expect("find recovered session");
-        assert_eq!(session.state, "failed");
+        assert_eq!(session.state, SessionState::Failed);
         let approvals = list_approvals_for_session(&connection, session_id, "cancelled")
             .expect("list cancelled approvals");
         if session_id != "orphan-running" {
@@ -2208,13 +2195,13 @@ fn recover_orphaned_sessions_marks_waiting_and_blocked_rows_failed() {
         find_session_by_id(&connection, "terminal-complete")
             .unwrap()
             .state,
-        "complete"
+        SessionState::Complete
     );
     assert_eq!(
         find_session_by_id(&connection, "terminal-cancelled")
             .unwrap()
             .state,
-        "cancelled"
+        SessionState::Cancelled
     );
     drop(connection);
 

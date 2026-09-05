@@ -424,6 +424,7 @@ mod tests {
     use crate::persistence::sessions::{persist_session, PersistSessionInput};
     use crate::persistence::time::now_iso;
     use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
+    use crate::sessions::state::SessionState;
     use crate::util::gh_runner::GhRunner;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
@@ -515,8 +516,7 @@ mod tests {
                 permission_mode: Some("auto-approve".to_string()),
                 agent_mode: Some("auto".to_string()),
                 prompt: "test".to_string(),
-                state: "running".to_string(),
-                attention: "normal".to_string(),
+                state: SessionState::Running,
             },
         )
         .expect("session");
@@ -560,8 +560,7 @@ mod tests {
                     permission_mode: Some("auto-approve".to_string()),
                     agent_mode: Some("auto".to_string()),
                     prompt: "test".to_string(),
-                    state: "complete".to_string(),
-                    attention: "normal".to_string(),
+                    state: SessionState::Complete,
                 },
             )
             .expect("archived session");

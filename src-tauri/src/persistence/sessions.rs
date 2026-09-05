@@ -4,6 +4,10 @@ use specta::Type;
 
 use super::{json_error, sqlite_error, time::now_iso};
 use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::sessions::attention::{
+    compute_session_attention, AttentionState, SessionAttentionInput,
+};
+use crate::sessions::state::SessionState;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PersistSessionInput {
@@ -16,8 +20,10 @@ pub struct PersistSessionInput {
     pub permission_mode: Option<String>,
     pub agent_mode: Option<String>,
     pub prompt: String,
-    pub state: String,
-    pub attention: String,
+    /// Attention is not a field: it is derived from `state` on insert, the
+    /// same policy `SessionStateInput::transition` applies to every later
+    /// move. A new session has no approval pending by definition.
+    pub state: SessionState,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,12 +46,54 @@ pub struct SessionAgentModeInput {
     pub agent_mode: String,
 }
 
+/// A state write. Deliberately opaque: `attention` is derived from `state`, so
+/// there is no way to move a session without moving its pill with it. Build
+/// one with [`SessionStateInput::transition`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionStateInput {
-    pub state: String,
-    pub attention: String,
-    pub completed_at: Option<String>,
-    pub last_activity_at: Option<String>,
+    state: SessionState,
+    attention: AttentionState,
+    completed_at: Option<String>,
+    last_activity_at: Option<String>,
+}
+
+impl SessionStateInput {
+    /// Move a session to `state`. Attention follows the one policy in
+    /// [`compute_session_attention`]; timestamps default to "leave alone" and
+    /// are set by the builders below.
+    pub fn transition(state: SessionState) -> Self {
+        Self {
+            state,
+            attention: state.attention(),
+            completed_at: None,
+            last_activity_at: None,
+        }
+    }
+
+    /// The session has an approval waiting on the person, which outranks
+    /// whatever the state alone would have shown.
+    pub fn with_pending_approval(mut self) -> Self {
+        self.attention = compute_session_attention(SessionAttentionInput {
+            state: self.state,
+            has_pending_approval: true,
+        });
+        self
+    }
+
+    /// Stamp both `completed_at` and `last_activity_at` — the turn ended at
+    /// this instant. Terminal states only.
+    pub fn finished_at(mut self, timestamp: impl Into<String>) -> Self {
+        let timestamp = timestamp.into();
+        self.completed_at = Some(timestamp.clone());
+        self.last_activity_at = Some(timestamp);
+        self
+    }
+
+    /// Stamp `last_activity_at` without claiming the session finished.
+    pub fn active_at(mut self, timestamp: impl Into<String>) -> Self {
+        self.last_activity_at = Some(timestamp.into());
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -72,8 +120,8 @@ pub struct SessionSummary {
     pub agent_mode: Option<String>,
     pub provider_conversation_id: Option<String>,
     pub prompt: String,
-    pub state: String,
-    pub attention: String,
+    pub state: SessionState,
+    pub attention: AttentionState,
     /// When `attention` last changed value. NULL on rows that predate the
     /// column. The sidebar's Priority section compares this against
     /// `WorkspaceSummary.priority_dismissed_at` to decide whether a dismissal
@@ -290,7 +338,7 @@ pub fn persist_session(
             input.agent_mode.as_deref().unwrap_or("auto"),
             input.prompt.as_str(),
             input.state.as_str(),
-            input.attention.as_str(),
+            input.state.attention().as_str(),
             timestamp.as_str(),
             timestamp.as_str(),
             timestamp.as_str(),
@@ -600,6 +648,34 @@ pub fn list_session_ids_for_workspace(
     Ok(rows)
 }
 
+/// Rows are ours, but a column is still a string: a value from a future
+/// version, a hand-edited database, or an older spelling must not take the
+/// dashboard down. Fall back to the closest honest value and say so in the
+/// log, loudly enough to find.
+fn session_state_from_row(row: &Row<'_>) -> rusqlite::Result<SessionState> {
+    let raw: String = row.get("state")?;
+    Ok(SessionState::from_wire(&raw).unwrap_or_else(|| {
+        tracing::warn!(
+            target: "persistence::sessions",
+            state = raw.as_str(),
+            "unknown session state in database; reading it as failed",
+        );
+        SessionState::Failed
+    }))
+}
+
+fn attention_from_row(row: &Row<'_>) -> rusqlite::Result<AttentionState> {
+    let raw: String = row.get("attention")?;
+    Ok(AttentionState::from_wire(&raw).unwrap_or_else(|| {
+        tracing::warn!(
+            target: "persistence::sessions",
+            attention = raw.as_str(),
+            "unknown attention state in database; reading it as normal",
+        );
+        AttentionState::Normal
+    }))
+}
+
 fn session_row_to_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
     let model_id: Option<String> = row.get("model_id")?;
     Ok(SessionSummary {
@@ -613,8 +689,8 @@ fn session_row_to_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
         agent_mode: row.get("agent_mode")?,
         provider_conversation_id: row.get("provider_conversation_id")?,
         prompt: row.get("prompt")?,
-        state: row.get("state")?,
-        attention: row.get("attention")?,
+        state: session_state_from_row(row)?,
+        attention: attention_from_row(row)?,
         attention_changed_at: row.get("attention_changed_at")?,
         started_at: row.get("started_at")?,
         completed_at: row.get("completed_at")?,

@@ -13,7 +13,7 @@ use super::{
     },
     ProviderId,
 };
-use crate::sessions::attention::AttentionState;
+use crate::sessions::state::SessionState;
 use crate::{
     error::ArgmaxResult,
     ipc::inputs::ComposerAttachmentInput,
@@ -630,8 +630,8 @@ pub fn flush_session_buffer(
             transition_session_attention(
                 &transaction,
                 &approval.session_id,
-                "waiting",
-                AttentionState::ApprovalNeeded,
+                SessionState::Waiting,
+                true,
                 &mut delta,
             )?;
             delta.approvals.push(row);
@@ -641,8 +641,8 @@ pub fn flush_session_buffer(
             transition_session_attention(
                 &transaction,
                 session_id,
-                "blocked",
-                AttentionState::Blocked,
+                SessionState::Blocked,
+                false,
                 &mut delta,
             )?;
         }
@@ -667,24 +667,19 @@ pub fn flush_session_buffer(
 fn transition_session_attention(
     connection: &Connection,
     session_id: &str,
-    state: &str,
-    attention: AttentionState,
+    state: SessionState,
+    pending_approval: bool,
     delta: &mut DashboardDelta,
 ) -> ArgmaxResult<()> {
     let current_session = find_session_by_id(connection, session_id)?;
-    if !matches!(current_session.state.as_str(), "running" | "waiting") {
+    if !current_session.state.is_live() {
         return Ok(());
     }
-    let session = update_session_state(
-        connection,
-        session_id,
-        &SessionStateInput {
-            state: state.to_string(),
-            attention: attention.as_str().to_string(),
-            completed_at: None,
-            last_activity_at: None,
-        },
-    )?;
+    let mut input = SessionStateInput::transition(state);
+    if pending_approval {
+        input = input.with_pending_approval();
+    }
+    let session = update_session_state(connection, session_id, &input)?;
     let workspace_id = session.workspace_id.clone();
     delta.sessions.push(session);
     let workspace =
@@ -693,9 +688,11 @@ fn transition_session_attention(
         workspace.state.as_str(),
         "archiving" | "archive-failed" | "archived"
     ) {
-        delta
-            .workspaces
-            .push(update_workspace_state(connection, &workspace_id, state)?);
+        delta.workspaces.push(update_workspace_state(
+            connection,
+            &workspace_id,
+            state.as_str(),
+        )?);
     }
     Ok(())
 }
@@ -712,6 +709,7 @@ mod tests {
         database::Database,
         events::{list_session_events_since, PersistTimelineEventInput},
     };
+    use crate::sessions::attention::AttentionState;
     use serde_json::json;
 
     #[test]
@@ -876,8 +874,8 @@ mod tests {
             .delta
             .expect("permission delta");
         assert!(delta.approvals.is_empty());
-        assert_eq!(delta.sessions[0].state, "blocked");
-        assert_eq!(delta.sessions[0].attention, "blocked");
+        assert_eq!(delta.sessions[0].state, SessionState::Blocked);
+        assert_eq!(delta.sessions[0].attention, AttentionState::Blocked);
 
         let pending = list_pending_approvals(&connection, 10).expect("pending approvals");
         assert!(pending.is_empty());

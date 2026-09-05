@@ -16,6 +16,7 @@ use tempfile::TempDir;
 use tokio::sync::{broadcast, oneshot};
 use uuid::Uuid;
 
+use crate::sessions::state::SessionState;
 use crate::{
     error::ArgmaxError,
     ipc::{
@@ -675,7 +676,7 @@ pub struct SessionListEntry {
     pub project_name: String,
     pub task_label: String,
     pub provider: String,
-    pub state: String,
+    pub state: SessionState,
     pub last_activity_at: String,
     /// The session that launched this one, when an agent did.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -689,7 +690,7 @@ pub struct SessionStatus {
     pub task_label: String,
     pub provider: String,
     pub model_id: String,
-    pub state: String,
+    pub state: SessionState,
     /// Seconds since the current turn's prompt landed. `None` once the session
     /// has settled — there is no turn running to age.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -731,7 +732,7 @@ pub struct SessionRead {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionStopped {
     pub session_id: String,
-    pub state: String,
+    pub state: SessionState,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -757,7 +758,7 @@ pub struct InboxDelivery {
 pub struct WaitedSession {
     pub session_id: String,
     pub task_label: String,
-    pub state: String,
+    pub state: SessionState,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1382,7 +1383,9 @@ fn session_status(
         find_session_by_id(&connection, &action.session_id).map_err(argmax_protocol_error)?;
     let workspace =
         find_workspace_by_id(&connection, &session.workspace_id).map_err(argmax_protocol_error)?;
-    let turn_age_seconds = (!is_settled(&session.state))
+    let turn_age_seconds = session
+        .state
+        .is_active()
         .then(|| {
             latest_user_message_at(&connection, &action.session_id)
                 .ok()
@@ -1536,10 +1539,6 @@ fn to_inbox_messages(
             created_at: message.created_at,
         })
         .collect()
-}
-
-fn is_settled(state: &str) -> bool {
-    !matches!(state, "running" | "waiting" | "blocked")
 }
 
 fn seconds_since(at: &str) -> Option<i64> {
@@ -1748,7 +1747,7 @@ fn collect_wait_outcome(
             let Ok(session) = find_session_by_id(&connection, session_id) else {
                 continue;
             };
-            if !is_settled(&session.state) {
+            if session.state.is_active() {
                 continue;
             }
             settled.push(WaitedSession {

@@ -8,9 +8,9 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::gh::GhPrRecord;
 use crate::persistence::sessions::SessionSummary;
+use crate::sessions::state::SessionState;
 use crate::util::sync::LockOrRecover;
 
-const TERMINAL_STATES: [&str; 2] = ["complete", "failed"];
 const LAST_NOTIFIED_CAPACITY: usize = 2_000;
 const CHECK_FAILURE_CAPACITY: usize = 500;
 
@@ -32,7 +32,7 @@ pub struct NotificationService<S: NotificationSink> {
     enabled: Mutex<bool>,
     is_window_focused: FocusProbe,
     sink: S,
-    last_notified_state: Mutex<BoundedMap<String, String>>,
+    last_notified_state: Mutex<BoundedMap<String, SessionState>>,
     notified_check_keys: Mutex<BoundedSet<String>>,
 }
 
@@ -78,7 +78,8 @@ impl<S: NotificationSink> NotificationService<S> {
     }
 
     pub fn notify(&self, session: &SessionSummary) -> ArgmaxResult<bool> {
-        if !self.is_enabled() || !TERMINAL_STATES.contains(&session.state.as_str()) {
+        let notifiable = matches!(session.state, SessionState::Complete | SessionState::Failed);
+        if !self.is_enabled() || !notifiable {
             return Ok(false);
         }
 
@@ -104,7 +105,7 @@ impl<S: NotificationSink> NotificationService<S> {
         // until the user actually sees the toast.
         self.last_notified_state
             .lock_or_recover("last notified state")
-            .insert(session.id.clone(), session.state.clone());
+            .insert(session.id.clone(), session.state);
         Ok(true)
     }
 
@@ -203,7 +204,7 @@ pub fn main_window_focus_probe<R: Runtime>(app: AppHandle<R>) -> FocusProbe {
 }
 
 fn build_session_options(session: &SessionSummary) -> NotificationOptions {
-    if session.state == "complete" {
+    if session.state == SessionState::Complete {
         return NotificationOptions {
             title: "Chat complete".to_string(),
             body: format!("{} finished — open Argmax to review.", session.model_label),
@@ -330,7 +331,9 @@ mod tests {
         let sink = Arc::new(StubSink::supported());
         let service = service_with_focus(false, sink.clone());
 
-        assert!(service.notify(&session("complete")).expect("notify ok"));
+        assert!(service
+            .notify(&session(SessionState::Complete))
+            .expect("notify ok"));
 
         let fired = sink.fired();
         assert_eq!(fired.len(), 1);
@@ -370,7 +373,9 @@ mod tests {
         let sink = Arc::new(StubSink::supported());
         let service = service_with_focus(true, sink.clone());
 
-        assert!(!service.notify(&session("complete")).expect("notify ok"));
+        assert!(!service
+            .notify(&session(SessionState::Complete))
+            .expect("notify ok"));
         assert!(sink.fired().is_empty());
     }
 
@@ -380,7 +385,9 @@ mod tests {
         sink.supported.store(false, Ordering::SeqCst);
         let service = service_with_focus(false, sink.clone());
 
-        assert!(!service.notify(&session("complete")).expect("notify ok"));
+        assert!(!service
+            .notify(&session(SessionState::Complete))
+            .expect("notify ok"));
         assert!(sink.fired().is_empty());
     }
 
@@ -389,7 +396,11 @@ mod tests {
         let sink = Arc::new(StubSink::supported());
         let service = service_with_focus(false, sink.clone());
 
-        for state in ["running", "cancelled", "waiting"] {
+        for state in [
+            SessionState::Running,
+            SessionState::Cancelled,
+            SessionState::Waiting,
+        ] {
             assert!(!service.notify(&session(state)).expect("notify ok"));
         }
         assert!(sink.fired().is_empty());
@@ -399,7 +410,7 @@ mod tests {
     fn dedupes_repeated_terminal_state() {
         let sink = Arc::new(StubSink::supported());
         let service = service_with_focus(false, sink.clone());
-        let session = session("complete");
+        let session = session(SessionState::Complete);
 
         service.notify(&session).expect("notify ok");
         service.notify(&session).expect("notify ok");
@@ -414,10 +425,10 @@ mod tests {
         let service = service_with_focus(false, sink.clone());
 
         service
-            .notify(&session("complete"))
+            .notify(&session(SessionState::Complete))
             .expect("complete notify ok");
         service
-            .notify(&session("failed"))
+            .notify(&session(SessionState::Failed))
             .expect("failed notify ok");
 
         let fired = sink.fired();
@@ -433,7 +444,9 @@ mod tests {
 
         service.set_enabled(false);
 
-        assert!(!service.notify(&session("complete")).expect("notify ok"));
+        assert!(!service
+            .notify(&session(SessionState::Complete))
+            .expect("notify ok"));
         assert!(sink.fired().is_empty());
     }
 
@@ -448,7 +461,7 @@ mod tests {
             },
             sink.clone(),
         );
-        let session = session("complete");
+        let session = session(SessionState::Complete);
 
         // First attempt while focused: suppressed, but state must not be
         // stamped — otherwise the later unfocused call dedupes against
@@ -463,7 +476,7 @@ mod tests {
     fn renotifies_after_forget() {
         let sink = Arc::new(StubSink::supported());
         let service = service_with_focus(false, sink.clone());
-        let session = session("complete");
+        let session = session(SessionState::Complete);
 
         service.notify(&session).expect("notify ok");
         service.forget(&session.id);
@@ -483,7 +496,7 @@ mod tests {
             },
             sink.clone(),
         );
-        let session = session("complete");
+        let session = session(SessionState::Complete);
         let pr = pr();
 
         assert!(!service
@@ -510,7 +523,7 @@ mod tests {
         NotificationService::new(Arc::new(move || focused), sink)
     }
 
-    fn session(state: &str) -> SessionSummary {
+    fn session(state: SessionState) -> SessionSummary {
         SessionSummary {
             id: "session-1".to_string(),
             workspace_id: "workspace-1".to_string(),
@@ -522,8 +535,8 @@ mod tests {
             agent_mode: None,
             provider_conversation_id: None,
             prompt: "Build the thing".to_string(),
-            state: state.to_string(),
-            attention: "normal".to_string(),
+            state,
+            attention: state.attention(),
             attention_changed_at: None,
             imported: false,
             started_at: "2026-05-01T00:00:00.000Z".to_string(),

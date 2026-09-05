@@ -857,6 +857,7 @@ export type AttachmentMimeType = "image/png" | "image/jpeg" | "image/gif" | "ima
 export type AttachmentPath = string
 export type AttachmentSizeBytes = number
 export type AttachmentsSaveImageInput = { sessionId: SessionId; mimeType: AttachmentMimeType; dataBase64: Base64ImageData }
+export type AttentionState = "normal" | "blocked" | "failed" | "review-ready" | "approval-needed"
 export type Base64ImageData = string
 export type BaseRef = string
 export type BranchName = string
@@ -1267,8 +1268,14 @@ worktree?: boolean;
 taskLabel: NonEmptyString | null }
 export type SessionSearchInput = { query: SessionSearchQuery; limit: Limit200 | null }
 export type SessionSearchQuery = string
+/**
+ * The seven states a session can hold. The wire spelling is the lowercase
+ * variant name, which is what the `sessions.state` column and the renderer's
+ * `SessionState` union have always carried.
+ */
+export type SessionState = "created" | "running" | "waiting" | "blocked" | "complete" | "failed" | "cancelled"
 export type SessionSuggestFollowUpInput = { sessionId: SessionId; provider: ProviderId; modelId: NonEmptyString }
-export type SessionSummary = { id: string; workspaceId: string; provider: string; modelLabel: string; modelId: string; reasoningEffort?: string | null; permissionMode: string; agentMode?: string | null; providerConversationId: string | null; prompt: string; state: string; attention: string;
+export type SessionSummary = { id: string; workspaceId: string; provider: string; modelLabel: string; modelId: string; reasoningEffort?: string | null; permissionMode: string; agentMode?: string | null; providerConversationId: string | null; prompt: string; state: SessionState; attention: AttentionState;
 /**
  * When `attention` last changed value. NULL on rows that predate the
  * column. The sidebar's Priority section compares this against

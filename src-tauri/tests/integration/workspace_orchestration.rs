@@ -40,6 +40,7 @@ use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
 use argmax_lib::workspaces::WorkspaceService;
 
 use crate::support::git_repo::{run_git, seed_git_repo};
+use argmax_lib::sessions::state::SessionState;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -467,7 +468,7 @@ async fn keep_flips_state_to_kept() {
             branch: "main".to_owned(),
             base_ref: "main".to_owned(),
             path: repo.path().display().to_string(),
-            state: "created".to_owned(),
+            state: "created".to_string(),
             shared_workspace: true,
             kind: "git".to_string(),
             dirty: false,
@@ -506,7 +507,7 @@ async fn refresh_status_picks_up_uncommitted_changes() {
                 branch: "main".to_owned(),
                 base_ref: "main".to_owned(),
                 path: repo.path().display().to_string(),
-                state: "created".to_owned(),
+                state: "created".to_string(),
                 shared_workspace: true,
                 kind: "git".to_string(),
                 dirty: false,
@@ -679,7 +680,7 @@ async fn archive_shared_workspace_when_dirty_and_not_forced() {
                 branch: "main".to_owned(),
                 base_ref: "main".to_owned(),
                 path: repo.path().display().to_string(),
-                state: "created".to_owned(),
+                state: "created".to_string(),
                 shared_workspace: true,
                 kind: "git".to_string(),
                 dirty: false,
@@ -731,7 +732,7 @@ async fn archive_waits_for_and_cancels_a_live_check() {
                 branch: "main".to_owned(),
                 base_ref: "main".to_owned(),
                 path: repo.path().display().to_string(),
-                state: "created".to_owned(),
+                state: "created".to_string(),
                 shared_workspace: true,
                 kind: "git".to_string(),
                 dirty: false,
@@ -1128,7 +1129,7 @@ async fn watcher_debounces_burst_into_single_refresh() {
                 branch: "main".to_owned(),
                 base_ref: "main".to_owned(),
                 path: repo.path().display().to_string(),
-                state: "created".to_owned(),
+                state: "created".to_string(),
                 shared_workspace: true,
                 kind: "git".to_string(),
                 dirty: false,
@@ -1214,7 +1215,7 @@ async fn dropping_watched_service_releases_the_service_arc() {
                 branch: "main".to_owned(),
                 base_ref: "main".to_owned(),
                 path: repo.path().display().to_string(),
-                state: "created".to_owned(),
+                state: "created".to_string(),
                 shared_workspace: true,
                 kind: "git".to_string(),
                 dirty: false,
@@ -1334,7 +1335,7 @@ async fn one_shared_watch_refreshes_every_subscriber() {
                     branch: "main".to_owned(),
                     base_ref: "main".to_owned(),
                     path: repo.path().display().to_string(),
-                    state: "created".to_owned(),
+                    state: "created".to_string(),
                     shared_workspace: true,
                     kind: "git".to_string(),
                     dirty: false,
@@ -1415,7 +1416,7 @@ async fn a_shared_checkout_publishes_one_delta_for_all_subscribers() {
                     branch: "main".to_owned(),
                     base_ref: "main".to_owned(),
                     path: repo.path().display().to_string(),
-                    state: "created".to_owned(),
+                    state: "created".to_string(),
                     shared_workspace: true,
                     kind: "git".to_string(),
                     dirty: false,
@@ -1641,8 +1642,7 @@ fn seed_completed_session(database: &Database, workspace_id: &str, session_id: &
             permission_mode: Some("auto-approve".to_string()),
             agent_mode: Some("auto".to_string()),
             prompt: "Move this chat".to_string(),
-            state: "complete".to_string(),
-            attention: "normal".to_string(),
+            state: SessionState::Complete,
         },
     )
     .expect("source session");

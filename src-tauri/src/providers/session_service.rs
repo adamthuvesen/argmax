@@ -34,14 +34,15 @@ use super::{
     normalizer::{CodexCumulativeUsage, NormalizerSessionContext, ProviderOutputEvent},
     orphan_cleanup::{terminate_orphaned_provider_processes, RecoveredProviderSession},
     runtime::{
-        attention_for_state, composer_payload, parse_agent_mode, parse_permission_mode,
-        parse_provider, parse_reasoning_effort, sqlite_error, DeltaPublisher,
-        ProviderProcessLauncher, ProviderRuntimeEvent, ProviderRuntimeEventType,
-        ProviderRuntimeHandle, RealProviderProcessLauncher,
+        composer_payload, parse_agent_mode, parse_permission_mode, parse_provider,
+        parse_reasoning_effort, sqlite_error, DeltaPublisher, ProviderProcessLauncher,
+        ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
+        RealProviderProcessLauncher,
     },
     subagent_trace::reconcile_session_subagent_traces,
     AgentMode, ApprovalSupport, PermissionMode, ProviderId, ProviderLaunchInput,
 };
+use crate::sessions::state::SessionState;
 use crate::{
     approvals::service::ApprovalService,
     error::{ArgmaxError, ArgmaxResult},
@@ -163,7 +164,7 @@ struct CompletionNotice {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionStateChange {
     pub session_id: String,
-    pub state: String,
+    pub state: SessionState,
 }
 
 #[derive(Clone)]
@@ -428,8 +429,7 @@ impl ProviderSessionService {
                     permission_mode: Some(permission_mode.as_wire().to_string()),
                     agent_mode: Some(agent_mode.as_str().to_string()),
                     prompt: input.prompt.as_str().to_string(),
-                    state: "running".to_string(),
-                    attention: attention_for_state("running").to_string(),
+                    state: SessionState::Running,
                 },
             )?;
             // Claude and Grok are both handed `--session-id <our id>`, so the
@@ -440,8 +440,11 @@ impl ProviderSessionService {
                 session =
                     update_session_provider_conversation_id(&connection, &session_id, &session_id)?;
             }
-            let workspace =
-                update_workspace_state_for_session_state(&connection, &workspace.id, "running")?;
+            let workspace = update_workspace_state_for_session_state(
+                &connection,
+                &workspace.id,
+                SessionState::Running,
+            )?;
             let user_message = persist_timeline_event(
                 &connection,
                 &PersistTimelineEventInput {
@@ -865,15 +868,13 @@ impl ProviderSessionService {
             let running_session = update_session_state(
                 &connection,
                 &session_id,
-                &SessionStateInput {
-                    state: "running".to_string(),
-                    attention: attention_for_state("running").to_string(),
-                    completed_at: None,
-                    last_activity_at: None,
-                },
+                &SessionStateInput::transition(SessionState::Running),
             )?;
-            let running_workspace =
-                update_workspace_state_for_session_state(&connection, &workspace.id, "running")?;
+            let running_workspace = update_workspace_state_for_session_state(
+                &connection,
+                &workspace.id,
+                SessionState::Running,
+            )?;
             self.publish(DashboardDelta {
                 projects: list_projects(&connection)?,
                 workspaces: vec![running_workspace],
@@ -1081,7 +1082,7 @@ impl ProviderSessionService {
         let live = {
             let connection = self.database.connection();
             let session = find_session_by_id(&connection, &session_id)?;
-            matches!(session.state.as_str(), "running" | "waiting" | "blocked")
+            session.state.is_active()
         };
         if live {
             self.terminate(ProvidersTerminateInput {
@@ -1442,12 +1443,7 @@ impl ProviderSessionService {
             let session = update_session_state(
                 &connection,
                 session_id,
-                &SessionStateInput {
-                    state: "failed".to_string(),
-                    attention: attention_for_state("failed").to_string(),
-                    completed_at: Some(now_iso()),
-                    last_activity_at: None,
-                },
+                &SessionStateInput::transition(SessionState::Failed).finished_at(now_iso()),
             )?;
             // Mirror the session terminal-state onto the workspace so the
             // dashboard doesn't keep showing a `running` workspace whose
@@ -1455,7 +1451,7 @@ impl ProviderSessionService {
             let workspace = update_workspace_state_for_session_state(
                 &connection,
                 &session.workspace_id,
-                "failed",
+                SessionState::Failed,
             )?;
             let event = persist_timeline_event(
                 &connection,
@@ -1484,7 +1480,7 @@ impl ProviderSessionService {
             // where that becomes knowable, and the row says `failed` because
             // that is what happened to it.
             if is_multitask {
-                self.record_multitask_finish(session_id, "failed", &now_iso());
+                self.record_multitask_finish(session_id, SessionState::Failed, &now_iso());
             }
             if let Some(approvals) = self.approvals.as_ref() {
                 approvals.cancel_session_pending(session_id)?;
@@ -1680,7 +1676,11 @@ impl ProviderSessionService {
         let connection = self.database.connection();
         let succeeded =
             event.r#type == ProviderRuntimeEventType::Exit && event.exit_code == Some(0);
-        let state = if succeeded { "complete" } else { "failed" };
+        let state = if succeeded {
+            SessionState::Complete
+        } else {
+            SessionState::Failed
+        };
         let completed_at = event.created_at.clone();
         let raw_output = persist_raw_output(
             &connection,
@@ -1695,12 +1695,7 @@ impl ProviderSessionService {
         let session = update_session_state(
             &connection,
             &event.session_id,
-            &SessionStateInput {
-                state: state.to_string(),
-                attention: attention_for_state(state).to_string(),
-                completed_at: Some(event.created_at.clone()),
-                last_activity_at: Some(event.created_at.clone()),
-            },
+            &SessionStateInput::transition(state).finished_at(event.created_at.clone()),
         )?;
         let workspace =
             update_workspace_state_for_session_state(&connection, &session.workspace_id, state)?;
@@ -1776,7 +1771,12 @@ impl ProviderSessionService {
     /// the answer to "does the parent's completion-triggered turn notify the
     /// grandparent?" — it does, but only when the parent was itself launched,
     /// because otherwise it has no launcher to notify.
-    fn notify_launcher_of_turn_end(self: &Arc<Self>, session_id: &str, state: &str, at: &str) {
+    fn notify_launcher_of_turn_end(
+        self: &Arc<Self>,
+        session_id: &str,
+        state: SessionState,
+        at: &str,
+    ) {
         // A multitask is the one launch whose finish must not wake its parent:
         // the person dispatched it while watching another turn, and a turn that
         // says "noted" costs a provider relaunch to interrupt what they were
@@ -1810,7 +1810,7 @@ impl ProviderSessionService {
     /// Passive delivery of a finished multitask: a timeline row the parent's
     /// chat renders as a tail marker, plus the inbox row `inbox_read` and the
     /// next prompt's preamble pick up. No turn is started.
-    fn record_multitask_finish(&self, session_id: &str, state: &str, at: &str) {
+    fn record_multitask_finish(&self, session_id: &str, state: SessionState, at: &str) {
         let (parent_id, event) =
             match crate::multitask::record_finished(&self.database, session_id, state, at) {
                 Ok(Some(recorded)) => recorded,
@@ -1844,7 +1844,7 @@ impl ProviderSessionService {
     fn build_completion_notice(
         &self,
         session_id: &str,
-        state: &str,
+        state: SessionState,
         at: &str,
     ) -> ArgmaxResult<Option<CompletionNotice>> {
         let connection = self.database.connection();
@@ -1956,15 +1956,13 @@ impl ProviderSessionService {
         let session = update_session_state(
             &connection,
             session_id,
-            &SessionStateInput {
-                state: "failed".to_string(),
-                attention: attention_for_state("failed").to_string(),
-                completed_at: Some(completed_at.clone()),
-                last_activity_at: None,
-            },
+            &SessionStateInput::transition(SessionState::Failed).finished_at(completed_at.clone()),
         )?;
-        let workspace =
-            update_workspace_state_for_session_state(&connection, &session.workspace_id, "failed")?;
+        let workspace = update_workspace_state_for_session_state(
+            &connection,
+            &session.workspace_id,
+            SessionState::Failed,
+        )?;
         let event = persist_timeline_event(
             &connection,
             &PersistTimelineEventInput {
@@ -1996,31 +1994,27 @@ impl ProviderSessionService {
         // CLI could not start leaves a row that says "Running" for as long as
         // the transcript lives, since the finish row it falls back to was never
         // written.
-        self.notify_launcher_of_turn_end(session_id, "failed", &completed_at);
+        self.notify_launcher_of_turn_end(session_id, SessionState::Failed, &completed_at);
         Ok(())
     }
 
     fn cancel_session(self: &Arc<Self>, session_id: &str) -> ArgmaxResult<()> {
         let connection = self.database.connection();
         let current = find_session_by_id(&connection, session_id)?;
-        if !matches!(current.state.as_str(), "running" | "waiting" | "blocked") {
+        if !current.state.is_active() {
             return Ok(());
         }
         let completed_at = now_iso();
         let session = update_session_state(
             &connection,
             session_id,
-            &SessionStateInput {
-                state: "cancelled".to_string(),
-                attention: attention_for_state("cancelled").to_string(),
-                completed_at: Some(completed_at.clone()),
-                last_activity_at: Some(completed_at.clone()),
-            },
+            &SessionStateInput::transition(SessionState::Cancelled)
+                .finished_at(completed_at.clone()),
         )?;
         let workspace = update_workspace_state_for_session_state(
             &connection,
             &session.workspace_id,
-            "cancelled",
+            SessionState::Cancelled,
         )?;
         let event = persist_timeline_event(
             &connection,
@@ -2045,7 +2039,7 @@ impl ProviderSessionService {
         };
         drop(connection);
         self.publish(delta);
-        self.notify_launcher_of_turn_end(session_id, "cancelled", &completed_at);
+        self.notify_launcher_of_turn_end(session_id, SessionState::Cancelled, &completed_at);
         Ok(())
     }
 
@@ -2236,9 +2230,10 @@ impl ProviderSessionService {
             let connection = self.database.connection();
             find_session_by_id(&connection, session_id).map(|session| session.state)
         };
-        match state.as_deref() {
-            Ok("running" | "waiting" | "blocked") | Err(_) => {}
-            Ok(_) => self.drain_queue_after_complete(session_id.to_string()),
+        // A session still mid-turn, or one we could not read, keeps its queue:
+        // the drain belongs to whoever ends the turn.
+        if matches!(state, Ok(state) if state.is_settled()) {
+            self.drain_queue_after_complete(session_id.to_string());
         }
     }
 
@@ -2404,7 +2399,7 @@ impl ProviderSessionService {
         {
             let connection = self.database.connection();
             let session = find_session_by_id(&connection, session_id)?;
-            if session.state != "running" {
+            if session.state != SessionState::Running {
                 return Ok(());
             }
         }
@@ -2419,17 +2414,13 @@ impl ProviderSessionService {
             let session = update_session_state(
                 &connection,
                 session_id,
-                &SessionStateInput {
-                    state: "complete".to_string(),
-                    attention: attention_for_state("complete").to_string(),
-                    completed_at: Some(completed_at.clone()),
-                    last_activity_at: Some(completed_at.clone()),
-                },
+                &SessionStateInput::transition(SessionState::Complete)
+                    .finished_at(completed_at.clone()),
             )?;
             let workspace = update_workspace_state_for_session_state(
                 &connection,
                 &session.workspace_id,
-                "complete",
+                SessionState::Complete,
             )?;
             let projects = list_projects(&connection)?;
             (session, workspace, projects)
@@ -2463,7 +2454,7 @@ impl ProviderSessionService {
         // out, a Cursor child never reported back at all: no completion notice
         // for an agent's launch, and no `multitask.finished` row, so its chat
         // row could only say that it had stopped, never what it found.
-        self.notify_launcher_of_turn_end(session_id, "complete", &completed_at);
+        self.notify_launcher_of_turn_end(session_id, SessionState::Complete, &completed_at);
         self.drain_queue_after_complete(session_id.to_string());
         Ok(())
     }
@@ -2537,7 +2528,7 @@ impl ProviderSessionService {
         for session in &delta.sessions {
             let _ = self.session_states.send(SessionStateChange {
                 session_id: session.id.clone(),
-                state: session.state.clone(),
+                state: session.state,
             });
         }
         if !delta.is_empty() {
@@ -2787,7 +2778,7 @@ fn origin_row_is_delivered(service: &ProviderSessionService, message: &PendingMe
 fn update_workspace_state_for_session_state(
     connection: &rusqlite::Connection,
     workspace_id: &str,
-    state: &str,
+    state: SessionState,
 ) -> ArgmaxResult<WorkspaceSummary> {
     let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
     let current = find_workspace_by_id(&transaction, workspace_id)?;
@@ -2797,7 +2788,7 @@ fn update_workspace_state_for_session_state(
     ) {
         current
     } else {
-        update_workspace_state(&transaction, workspace_id, state)?
+        update_workspace_state(&transaction, workspace_id, state.as_str())?
     };
     transaction.commit().map_err(sqlite_error)?;
     Ok(workspace)
@@ -2956,8 +2947,7 @@ mod tests {
                     permission_mode: Some("auto-approve".to_string()),
                     agent_mode: Some("auto".to_string()),
                     prompt: "hello".to_string(),
-                    state: "running".to_string(),
-                    attention: attention_for_state("running").to_string(),
+                    state: SessionState::Running,
                 },
             )
             .expect("persist session");

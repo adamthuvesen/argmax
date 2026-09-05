@@ -10,6 +10,8 @@ use std::sync::Mutex;
 
 use crate::notifications::BoundedMap;
 use crate::persistence::sessions::SessionSummary;
+use crate::sessions::attention::AttentionState;
+use crate::sessions::state::SessionState;
 use crate::util::sync::LockOrRecover;
 
 const DEDUP_CAPACITY: usize = 2_000;
@@ -88,7 +90,7 @@ impl NtfyPublisher {
         let Some(message) = signal_for(session, self.mobile_url.as_deref()) else {
             return;
         };
-        let signature = format!("{}|{}", session.state, session.attention);
+        let signature = format!("{}|{}", session.state.as_str(), session.attention.as_str());
         {
             let mut last = self.last_signaled.lock_or_recover("ntfy last signaled");
             if last
@@ -122,11 +124,11 @@ pub fn post_test(topic_url: &str) -> Result<(), String> {
 
 fn signal_for(session: &SessionSummary, mobile_url: Option<&str>) -> Option<NtfyMessage> {
     let prompt = truncated_prompt(&session.prompt);
-    let (title, priority, tags) = match (session.attention.as_str(), session.state.as_str()) {
-        ("approval-needed", _) => ("Needs approval", "high", "raised_hand"),
-        ("blocked", _) => ("Waiting on you", "high", "speech_balloon"),
-        (_, "failed") => ("Chat failed", "default", "x"),
-        (_, "complete") => ("Chat complete", "default", ""),
+    let (title, priority, tags) = match (session.attention, session.state) {
+        (AttentionState::ApprovalNeeded, _) => ("Needs approval", "high", "raised_hand"),
+        (AttentionState::Blocked, _) => ("Waiting on you", "high", "speech_balloon"),
+        (_, SessionState::Failed) => ("Chat failed", "default", "x"),
+        (_, SessionState::Complete) => ("Chat complete", "default", ""),
         _ => return None,
     };
     Some(NtfyMessage {
@@ -173,7 +175,7 @@ mod tests {
 
     const MOBILE_URL: &str = "http://mac.tail1234.ts.net:8790/mobile.html";
 
-    fn session(state: &str, attention: &str) -> SessionSummary {
+    fn session(state: SessionState, attention: AttentionState) -> SessionSummary {
         SessionSummary {
             id: "s1".to_string(),
             workspace_id: "w1".to_string(),
@@ -185,8 +187,8 @@ mod tests {
             agent_mode: None,
             provider_conversation_id: None,
             prompt: "Build the dashboard".to_string(),
-            state: state.to_string(),
-            attention: attention.to_string(),
+            state,
+            attention,
             attention_changed_at: None,
             imported: false,
             started_at: "2026-01-01T00:00:00Z".to_string(),
@@ -226,9 +228,15 @@ mod tests {
     #[test]
     fn fires_once_per_transition_and_again_on_change() {
         let (publisher, rx) = capture_publisher();
-        publisher.observe(&session("running", "approval-needed"));
-        publisher.observe(&session("running", "approval-needed"));
-        publisher.observe(&session("complete", "normal"));
+        publisher.observe(&session(
+            SessionState::Running,
+            AttentionState::ApprovalNeeded,
+        ));
+        publisher.observe(&session(
+            SessionState::Running,
+            AttentionState::ApprovalNeeded,
+        ));
+        publisher.observe(&session(SessionState::Complete, AttentionState::Normal));
 
         let first = rx.try_recv().expect("approval push");
         assert_eq!(first.title, "Argmax: Needs approval");
@@ -241,10 +249,10 @@ mod tests {
     #[test]
     fn titles_are_ascii_header_safe() {
         for (state, attention) in [
-            ("running", "approval-needed"),
-            ("running", "blocked"),
-            ("failed", "normal"),
-            ("complete", "normal"),
+            (SessionState::Running, AttentionState::ApprovalNeeded),
+            (SessionState::Running, AttentionState::Blocked),
+            (SessionState::Failed, AttentionState::Normal),
+            (SessionState::Complete, AttentionState::Normal),
         ] {
             let message = signal_for(&session(state, attention), Some(MOBILE_URL)).expect("signal");
             assert!(
@@ -258,14 +266,17 @@ mod tests {
     #[test]
     fn normal_running_sessions_are_silent() {
         let (publisher, rx) = capture_publisher();
-        publisher.observe(&session("running", "normal"));
+        publisher.observe(&session(SessionState::Running, AttentionState::Normal));
         assert!(rx.try_recv().is_err());
     }
 
     #[test]
     fn pushes_deep_link_to_the_session_that_raised_them() {
         let (publisher, rx) = capture_publisher();
-        publisher.observe(&session("running", "approval-needed"));
+        publisher.observe(&session(
+            SessionState::Running,
+            AttentionState::ApprovalNeeded,
+        ));
         let message = rx.try_recv().expect("signal");
         assert_eq!(
             message.click.as_deref(),
@@ -279,13 +290,16 @@ mod tests {
     #[test]
     fn no_mobile_url_sends_a_push_without_a_link() {
         let (publisher, rx) = capture_publisher_linking(None);
-        publisher.observe(&session("running", "approval-needed"));
+        publisher.observe(&session(
+            SessionState::Running,
+            AttentionState::ApprovalNeeded,
+        ));
         assert_eq!(rx.try_recv().expect("signal").click, None);
     }
 
     #[test]
     fn an_exotic_session_id_falls_back_to_the_bare_page() {
-        let mut summary = session("running", "blocked");
+        let mut summary = session(SessionState::Running, AttentionState::Blocked);
         summary.id = "s 1?&".to_string();
         let message = signal_for(&summary, Some(MOBILE_URL)).expect("signal");
         assert_eq!(message.click.as_deref(), Some(MOBILE_URL));
@@ -294,7 +308,7 @@ mod tests {
     #[test]
     fn long_prompts_truncate() {
         let long = "x".repeat(400);
-        let mut summary = session("failed", "normal");
+        let mut summary = session(SessionState::Failed, AttentionState::Normal);
         summary.prompt = long;
         let message = signal_for(&summary, Some(MOBILE_URL)).expect("failed signal");
         assert!(message.body.chars().count() <= 141);

@@ -50,7 +50,7 @@ fn seed_project_and_workspace(
                 branch: current_branch.to_owned(),
                 base_ref: base_ref.to_owned(),
                 path: repo_path.to_owned(),
-                state: "running".to_owned(),
+                state: "running".to_string(),
                 shared_workspace: false,
                 kind: "git".to_string(),
                 dirty: false,

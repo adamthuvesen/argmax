@@ -47,6 +47,7 @@ use crate::persistence::workspaces::find_workspace_by_id;
 use crate::persistence::Database;
 use crate::providers::session_service::ProviderSessionService;
 use crate::session_control::{launch_with_spec, task_label, AlongsideCheckout, LaunchSpec};
+use crate::sessions::state::SessionState;
 use crate::workspaces::orchestration::WorkspaceService;
 
 /// Written into the parent's timeline the moment a multitask is dispatched.
@@ -243,7 +244,7 @@ and stop rather than making them here.\n\n\
 pub fn record_finished(
     database: &Database,
     session_id: &str,
-    state: &str,
+    state: SessionState,
     completed_at: &str,
 ) -> ArgmaxResult<Option<(String, TimelineEvent)>> {
     let connection = database.connection();

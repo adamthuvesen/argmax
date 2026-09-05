@@ -21,6 +21,7 @@ use argmax_lib::sync::{run_sync, SyncConfig, WINDOW_24H, WINDOW_7D};
 use argmax_lib::workspaces::WorkspaceService;
 
 use crate::support::git_repo::seed_git_repo;
+use argmax_lib::sessions::state::SessionState;
 
 const PROJECT_ID: &str = "p-sync-test";
 
@@ -670,8 +671,7 @@ fn a_session_argmax_launched_is_never_imported_as_a_duplicate() {
                 permission_mode: None,
                 agent_mode: None,
                 prompt: "Launched by Argmax".to_string(),
-                state: "complete".to_string(),
-                attention: "normal".to_string(),
+                state: SessionState::Complete,
             },
         )
         .expect("persist session");

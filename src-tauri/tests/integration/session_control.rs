@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use argmax_lib::sessions::state::SessionState;
 use argmax_lib::{
     error::ArgmaxResult,
     persistence::{
@@ -147,8 +148,7 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
                 permission_mode: Some("auto-approve".to_string()),
                 agent_mode: Some("auto".to_string()),
                 prompt: "Parent task".to_string(),
-                state: "running".to_string(),
-                attention: "normal".to_string(),
+                state: SessionState::Running,
             },
         )
         .expect("parent session");
@@ -456,8 +456,7 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
                 permission_mode: Some("auto-approve".to_string()),
                 agent_mode: Some("auto".to_string()),
                 prompt: "Parent task".to_string(),
-                state: "running".to_string(),
-                attention: "normal".to_string(),
+                state: SessionState::Running,
             },
         )
         .expect("parent session");
@@ -569,8 +568,7 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
                     permission_mode: Some("auto-approve".to_string()),
                     agent_mode: Some("auto".to_string()),
                     prompt: "Child task".to_string(),
-                    state: "complete".to_string(),
-                    attention: "normal".to_string(),
+                    state: SessionState::Complete,
                 },
             )
             .expect("child session");
@@ -653,8 +651,8 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
             .expect("workspace");
         }
         for (session_id, workspace_id, state) in [
-            ("session-parent", "workspace-parent", "complete"),
-            ("session-child", "workspace-child", "running"),
+            ("session-parent", "workspace-parent", SessionState::Complete),
+            ("session-child", "workspace-child", SessionState::Running),
         ] {
             persist_session(
                 &connection,
@@ -668,8 +666,7 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
                     permission_mode: Some("auto-approve".to_string()),
                     agent_mode: Some("auto".to_string()),
                     prompt: "Task".to_string(),
-                    state: state.to_string(),
-                    attention: "normal".to_string(),
+                    state,
                 },
             )
             .expect("session");
@@ -932,7 +929,7 @@ async fn wait_for<T>(mut read: impl FnMut() -> Option<T>) -> Option<T> {
 /// One project, one workspace per session, and the session rows themselves —
 /// the floor a control-socket test stands on. Each entry is
 /// `(session id, task label, state)`.
-fn seed_sessions(database: &Database, repo_path: &str, sessions: &[(&str, &str, &str)]) {
+fn seed_sessions(database: &Database, repo_path: &str, sessions: &[(&str, &str, SessionState)]) {
     let connection = database.connection();
     persist_project(
         &connection,
@@ -981,8 +978,7 @@ fn seed_sessions(database: &Database, repo_path: &str, sessions: &[(&str, &str, 
                 permission_mode: Some("auto-approve".to_string()),
                 agent_mode: Some("auto".to_string()),
                 prompt: "Task".to_string(),
-                state: (*state).to_string(),
-                attention: "normal".to_string(),
+                state: *state,
             },
         )
         .expect("session");
@@ -1058,8 +1054,8 @@ async fn a_large_inbox_drains_across_reads_within_the_reply_ceiling() {
         &database,
         &repo.path().display().to_string(),
         &[
-            ("session-parent", "Parent", "running"),
-            ("session-child", "Count to ten", "running"),
+            ("session-parent", "Parent", SessionState::Running),
+            ("session-child", "Count to ten", SessionState::Running),
         ],
     );
     {
@@ -1139,8 +1135,8 @@ async fn a_cursorless_read_starts_at_the_beginning_and_reports_more_to_come() {
         &database,
         &repo.path().display().to_string(),
         &[
-            ("session-parent", "Parent", "running"),
-            ("session-child", "Count to ten", "running"),
+            ("session-parent", "Parent", SessionState::Running),
+            ("session-child", "Count to ten", SessionState::Running),
         ],
     );
     {
@@ -1228,8 +1224,8 @@ async fn a_completion_notice_queued_behind_a_running_turn_stays_collectable() {
         &database,
         &repo.path().display().to_string(),
         &[
-            ("session-parent", "Parent", "running"),
-            ("session-child", "Count to ten", "running"),
+            ("session-parent", "Parent", SessionState::Running),
+            ("session-child", "Count to ten", SessionState::Running),
         ],
     );
     {

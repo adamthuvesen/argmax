@@ -65,6 +65,7 @@ use crate::persistence::workspaces::{
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::session_service::ProviderSessionService;
+use crate::sessions::state::SessionState;
 use crate::terminal::service::TerminalService;
 use crate::util::sync::LockOrRecover;
 use crate::util::workspace_paths::normalize;
@@ -772,8 +773,7 @@ impl WorkspaceService {
                 permission_mode: Some(source_session.permission_mode.clone()),
                 agent_mode: source_session.agent_mode.clone(),
                 prompt: source_session.prompt.clone(),
-                state: "complete".to_string(),
-                attention: "normal".to_string(),
+                state: SessionState::Complete,
             },
         )?;
         // Order matters: setting the conversation id clears resume_fork, so
@@ -901,8 +901,7 @@ impl WorkspaceService {
                     permission_mode: Some(source_session.permission_mode.clone()),
                     agent_mode: source_session.agent_mode.clone(),
                     prompt: source_session.prompt.clone(),
-                    state: "complete".to_string(),
-                    attention: "normal".to_string(),
+                    state: SessionState::Complete,
                 },
             )?;
             // A move relocates the same work, so its lineage travels with it:

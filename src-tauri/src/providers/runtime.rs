@@ -630,15 +630,6 @@ pub(super) fn composer_payload(
     payload
 }
 
-pub(super) fn attention_for_state(state: &str) -> &'static str {
-    match state {
-        "blocked" | "waiting" => "blocked",
-        "failed" => "failed",
-        "complete" => "review-ready",
-        _ => "normal",
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Wire ↔ enum coercions used by `recover_orphaned_sessions` and friends.
 // These are tiny and lossy; the typed surface in `ipc::inputs` is the

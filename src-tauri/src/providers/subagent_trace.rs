@@ -2007,6 +2007,7 @@ mod tests {
         sessions::{persist_session, update_session_provider_conversation_id, PersistSessionInput},
         workspaces::{persist_workspace, PersistWorkspaceInput},
     };
+    use crate::sessions::state::SessionState;
     use serde_json::json;
     use std::{
         sync::{
@@ -2896,8 +2897,7 @@ mod tests {
                 permission_mode: Some("auto-approve".to_string()),
                 agent_mode: Some("auto".to_string()),
                 prompt: "Prompt".to_string(),
-                state: "running".to_string(),
-                attention: "none".to_string(),
+                state: SessionState::Running,
             },
         )
         .expect("session");

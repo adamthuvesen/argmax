@@ -805,8 +805,32 @@ fn op_command(args: &[&str]) -> Command {
     let mut command = Command::new("op");
     command.args(args);
     #[cfg(unix)]
-    command.env("PATH", crate::util::login_shell::path());
+    {
+        command.env("PATH", crate::util::login_shell::path());
+        command.envs(op_environment(crate::util::login_shell::environment()));
+    }
     command
+}
+
+/// Environment for an `op` spawn: the user's own `OP_*` exports, with the
+/// desktop-app integration on unless they said otherwise.
+///
+/// `op` normally decides whether to use the 1Password app by reading the app's
+/// settings file. When that read fails, or the toggle is off, `op account list`
+/// succeeds with `[]` instead of erroring, which the fill reports as "no
+/// accounts". Asking for the integration explicitly skips that decision.
+/// Argmax has no terminal for `op signin`, so the app integration (and its
+/// Touch ID prompt) is the only sign-in path a fill can use anyway.
+fn op_environment(login_shell: Vec<(String, String)>) -> Vec<(String, String)> {
+    const APP_INTEGRATION: &str = "OP_BIOMETRIC_UNLOCK_ENABLED";
+    let mut vars: Vec<(String, String)> = login_shell
+        .into_iter()
+        .filter(|(key, _)| key.starts_with("OP_"))
+        .collect();
+    if !vars.iter().any(|(key, _)| key == APP_INTEGRATION) {
+        vars.push((APP_INTEGRATION.to_string(), "true".to_string()));
+    }
+    vars
 }
 
 async fn run_op(args: &[&str]) -> ArgmaxResult<Vec<u8>> {
@@ -862,7 +886,8 @@ pub async fn browser_fill_credentials(
     if accounts.is_empty() {
         return Err(ArgmaxError::service(
             "OP_NO_ACCOUNTS",
-            "no 1Password accounts on this device; sign in with `op signin` first",
+            "the 1Password CLI lists no accounts; in the 1Password app turn on \
+             Settings → Developer → Integrate with 1Password CLI, then try again",
         ));
     }
     personal_accounts_first(&mut accounts);
@@ -1037,6 +1062,45 @@ mod tests {
 
         assert!(entries.contains(&std::path::PathBuf::from("/opt/homebrew/bin")));
         assert!(entries.contains(&std::path::PathBuf::from("/usr/local/bin")));
+    }
+
+    #[test]
+    fn op_environment_keeps_op_exports_and_defaults_app_integration_on() {
+        let login_shell = vec![
+            ("OP_ACCOUNT".to_string(), "my.1password.com".to_string()),
+            ("GIT_DIR".to_string(), "/elsewhere".to_string()),
+        ];
+
+        let vars = op_environment(login_shell);
+
+        assert_eq!(
+            vars,
+            vec![
+                ("OP_ACCOUNT".to_string(), "my.1password.com".to_string()),
+                (
+                    "OP_BIOMETRIC_UNLOCK_ENABLED".to_string(),
+                    "true".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn op_environment_respects_an_explicit_integration_choice() {
+        let login_shell = vec![(
+            "OP_BIOMETRIC_UNLOCK_ENABLED".to_string(),
+            "false".to_string(),
+        )];
+
+        let vars = op_environment(login_shell);
+
+        assert_eq!(
+            vars,
+            vec![(
+                "OP_BIOMETRIC_UNLOCK_ENABLED".to_string(),
+                "false".to_string()
+            )]
+        );
     }
 
     #[test]

@@ -99,6 +99,12 @@ Both are async commands with a deadline. WebKit answers on the main queue and th
 2. Retrieves credentials using `op item get --reveal` (triggers Touch ID).
 3. Injects values into form fields via webview script evaluation. Fills require HTTPS (or loopback) and match the initial origin.
 
+`op` runs with the login shell's `PATH` and `OP_*` exports, and with
+`OP_BIOMETRIC_UNLOCK_ENABLED=true` unless the shell sets it. The 1Password app
+integration is the only sign-in path a fill can use (there is no terminal for
+`op signin`), and asking for it explicitly keeps `op` from silently listing zero
+accounts when it cannot read the app's settings file.
+
 ## Known Limitations
 
 - Extensions and native Safari password autofill are unavailable in WKWebView child views.

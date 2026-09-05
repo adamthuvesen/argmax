@@ -20,6 +20,8 @@ const workspace = (id: string, overrides: Partial<WorkspaceSummary> = {}): Works
   priorityAddedAt: null,
   prState: null,
   prNumber: null,
+  prCreatedAt: null,
+  prMergedAt: null,
   icon: null,
   iconColor: null,
   ...overrides

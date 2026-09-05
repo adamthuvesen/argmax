@@ -25,7 +25,9 @@ const workspaceBase: WorkspaceSummary = {
   prState: null,
   prNumber: null,
   icon: null,
-  iconColor: null
+  iconColor: null,
+  prCreatedAt: null,
+  prMergedAt: null
 };
 
 const detectedIdes = [

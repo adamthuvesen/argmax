@@ -216,13 +216,23 @@ export function setupAppTestMocks(): void {
     events: snapshot.events,
     rawOutputs: snapshot.rawOutputs,
     eventCursor: 0,
-    rawOutputCursor: 0
+    rawOutputCursor: 0,
+    changeCursor: null,
+    deletedEventIds: [],
+    deletedRawOutputIds: [],
+    resetRequired: false,
+    hasMore: false
   });
   sessionAgentEvents = vi.fn<ArgmaxApi["session"]["agentEvents"]>().mockResolvedValue({
     events: snapshot.events,
     rawOutputs: snapshot.rawOutputs,
     eventCursor: 0,
-    rawOutputCursor: 0
+    rawOutputCursor: 0,
+    changeCursor: null,
+    deletedEventIds: [],
+    deletedRawOutputIds: [],
+    resetRequired: false,
+    hasMore: false
   });
   sessionCostSummary = vi.fn<ArgmaxApi["session"]["costSummary"]>().mockResolvedValue({
     sessionId: "session-1",
@@ -653,13 +663,23 @@ export function mockDashboardSnapshot(data: DashboardSnapshot): void {
     events: data.events,
     rawOutputs: data.rawOutputs,
     eventCursor: 0,
-    rawOutputCursor: 0
+    rawOutputCursor: 0,
+    changeCursor: null,
+    deletedEventIds: [],
+    deletedRawOutputIds: [],
+    resetRequired: false,
+    hasMore: false
   });
   sessionAgentEvents.mockResolvedValue({
     events: data.events,
     rawOutputs: data.rawOutputs,
     eventCursor: 0,
-    rawOutputCursor: 0
+    rawOutputCursor: 0,
+    changeCursor: null,
+    deletedEventIds: [],
+    deletedRawOutputIds: [],
+    resetRequired: false,
+    hasMore: false
   });
   approvalsPending.mockResolvedValue(data.approvals);
   workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(data));

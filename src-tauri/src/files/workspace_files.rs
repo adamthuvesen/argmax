@@ -433,30 +433,26 @@ mod tests {
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
     use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
     use std::path::Path;
-    use std::process::Command as StdCommand;
     use tempfile::TempDir;
 
-    fn run_git(repo: &Path, args: &[&str]) {
-        let status = StdCommand::new("git")
-            .args(["-C", repo.to_str().unwrap()])
-            .args(args)
-            .status()
-            .expect("git invoke failed");
-        assert!(status.success(), "git {args:?} failed");
+    async fn run_git(repo: &Path, args: &[&str]) {
+        run_git_text(repo, args, GIT_TIMEOUT)
+            .await
+            .unwrap_or_else(|error| panic!("git {args:?} failed: {error}"));
     }
 
-    fn init_repo(dir: &Path) {
-        run_git(dir, &["init", "-q", "-b", "main"]);
-        run_git(dir, &["config", "user.email", "test@argmax.dev"]);
-        run_git(dir, &["config", "user.name", "Argmax Test"]);
+    async fn init_repo(dir: &Path) {
+        run_git(dir, &["init", "-q", "-b", "main"]).await;
+        run_git(dir, &["config", "user.email", "test@argmax.dev"]).await;
+        run_git(dir, &["config", "user.name", "Argmax Test"]).await;
         std::fs::write(dir.join("README.md"), "hello\n").unwrap();
         std::fs::create_dir_all(dir.join("src")).unwrap();
         std::fs::write(dir.join("src/lib.rs"), "fn main() {}\n").unwrap();
         // .gitignore + an ignored file
         std::fs::write(dir.join(".gitignore"), "ignored.txt\n").unwrap();
         std::fs::write(dir.join("ignored.txt"), "noise\n").unwrap();
-        run_git(dir, &["add", "."]);
-        run_git(dir, &["commit", "-q", "-m", "init"]);
+        run_git(dir, &["add", "."]).await;
+        run_git(dir, &["commit", "-q", "-m", "init"]).await;
     }
 
     fn fixture_workspace(database: &Arc<Database>, repo_path: &Path) -> String {
@@ -500,7 +496,7 @@ mod tests {
     #[tokio::test]
     async fn list_files_omits_gitignored_and_dedupes() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         let data_dir = TempDir::new().unwrap();
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
@@ -518,7 +514,7 @@ mod tests {
     #[tokio::test]
     async fn read_file_returns_text_for_utf8_under_cap() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         let data_dir = TempDir::new().unwrap();
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
@@ -536,7 +532,7 @@ mod tests {
     #[tokio::test]
     async fn read_file_allows_leading_dash_name() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         std::fs::write(repo.path().join("-notes.md"), "dash file\n").unwrap();
 
         let data_dir = TempDir::new().unwrap();
@@ -556,10 +552,10 @@ mod tests {
     #[tokio::test]
     async fn read_file_skips_binary() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         std::fs::write(repo.path().join("blob.bin"), [0u8, 1u8, 2u8, 0u8, 5u8]).unwrap();
-        run_git(repo.path(), &["add", "blob.bin"]);
-        run_git(repo.path(), &["commit", "-q", "-m", "bin"]);
+        run_git(repo.path(), &["add", "blob.bin"]).await;
+        run_git(repo.path(), &["commit", "-q", "-m", "bin"]).await;
 
         let data_dir = TempDir::new().unwrap();
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
@@ -580,7 +576,7 @@ mod tests {
     #[tokio::test]
     async fn write_file_rejects_stale_mtime() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         let data_dir = TempDir::new().unwrap();
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
@@ -606,7 +602,7 @@ mod tests {
     #[tokio::test]
     async fn write_file_replaces_content_when_mtime_matches() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         let data_dir = TempDir::new().unwrap();
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
@@ -636,7 +632,7 @@ mod tests {
     #[tokio::test]
     async fn grep_content_finds_query_and_handles_no_match() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         let data_dir = TempDir::new().unwrap();
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());

@@ -1020,20 +1020,17 @@ mod tests {
     async fn changed_file_counts_cover_tracked_and_untracked_files() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let repo = dir.path();
-        let git = |args: &[&str]| {
-            let status = std::process::Command::new("git")
-                .args(args)
-                .current_dir(repo)
-                .output()
-                .expect("git");
-            assert!(status.status.success(), "git {args:?} failed");
-        };
-        git(&["init", "-q", "."]);
-        git(&["config", "user.email", "t@example.com"]);
-        git(&["config", "user.name", "t"]);
+        async fn git(repo: &Path, args: &[&str]) {
+            run_git_text(repo, args, GIT_TIMEOUT)
+                .await
+                .unwrap_or_else(|error| panic!("git {args:?} failed: {error}"));
+        }
+        git(repo, &["init", "-q", "."]).await;
+        git(repo, &["config", "user.email", "t@example.com"]).await;
+        git(repo, &["config", "user.name", "t"]).await;
         std::fs::write(repo.join("kept.txt"), "a\nb\nc\n").expect("write");
-        git(&["add", "-A"]);
-        git(&["commit", "-qm", "base"]);
+        git(repo, &["add", "-A"]).await;
+        git(repo, &["commit", "-qm", "base"]).await;
 
         std::fs::write(repo.join("kept.txt"), "a\nB\nc\nd\n").expect("write");
         std::fs::write(repo.join("fresh.txt"), "one\ntwo\n").expect("write");

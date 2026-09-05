@@ -98,6 +98,43 @@ where
     decode_stdout(output)
 }
 
+/// Blocking counterpart to [`run_git_text`], for the callers that have no
+/// runtime to await on — startup archive recovery, and test fixtures that seed
+/// a repo before the service under test exists. The command runs on its own
+/// thread with a throwaway current-thread runtime, so an ambient runtime can
+/// neither be blocked nor panic the call, and every guarantee above still
+/// holds.
+pub fn run_git_text_blocking<P, I, S>(
+    workspace_path: P,
+    args: I,
+    timeout: Duration,
+) -> ArgmaxResult<String>
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let workspace_path = workspace_path.as_ref();
+    let args = collect_args(args);
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|error| {
+                        ArgmaxError::service(
+                            "GIT_RUNTIME_UNAVAILABLE",
+                            format!("failed to start a runtime for git: {error}"),
+                        )
+                    })?;
+                runtime.block_on(run_git_text(workspace_path, &args, timeout))
+            })
+            .join()
+            .map_err(|_| ArgmaxError::service("GIT_SPAWN_FAILED", "git worker thread panicked"))?
+    })
+}
+
 pub async fn run_git_text_with_allowed_exit_codes<P, I, S>(
     workspace_path: P,
     args: I,

@@ -59,18 +59,19 @@ pub(crate) async fn review_load_diff_impl(
 mod tests {
     use super::*;
     use crate::{
+        git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT},
         persistence::projects::{persist_project, PersistProjectInput, ProjectSettings},
         persistence::Database,
         review::git_review::ReviewComparison,
         workspaces::WorkspaceTargetKind,
     };
-    use std::{path::Path, process::Command, sync::Arc};
+    use std::{path::Path, sync::Arc};
     use tempfile::tempdir;
 
     #[tokio::test]
     async fn project_changed_files_command_reads_project_repo() {
         let repo = tempdir().expect("repo dir");
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         std::fs::write(repo.path().join("README.md"), "hello\nchanged\n").expect("write change");
 
         let state = state_with_project(repo.path());
@@ -96,15 +97,15 @@ mod tests {
         // README change, leaves app.txt edited but uncommitted, and adds an
         // untracked notes.txt.
         let repo = tempdir().expect("repo dir");
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         std::fs::write(repo.path().join("app.txt"), "v1\n").expect("write app");
-        run_git(repo.path(), &["add", "app.txt"]);
-        run_git(repo.path(), &["commit", "-q", "-m", "add app"]);
+        run_git(repo.path(), &["add", "app.txt"]).await;
+        run_git(repo.path(), &["commit", "-q", "-m", "add app"]).await;
 
-        run_git(repo.path(), &["checkout", "-q", "-b", "feature"]);
+        run_git(repo.path(), &["checkout", "-q", "-b", "feature"]).await;
         std::fs::write(repo.path().join("README.md"), "hello\nfrom feature\n")
             .expect("edit readme");
-        run_git(repo.path(), &["commit", "-q", "-am", "feature readme"]);
+        run_git(repo.path(), &["commit", "-q", "-am", "feature readme"]).await;
         std::fs::write(repo.path().join("app.txt"), "v1\nv2\n").expect("edit app");
         std::fs::write(repo.path().join("notes.txt"), "scratch\n").expect("write notes");
 
@@ -205,22 +206,18 @@ mod tests {
         state
     }
 
-    fn init_repo(repo_path: &Path) {
-        run_git(repo_path, &["init", "-q", "-b", "main"]);
-        run_git(repo_path, &["config", "user.email", "test@argmax.dev"]);
-        run_git(repo_path, &["config", "user.name", "Argmax Test"]);
+    async fn init_repo(repo_path: &Path) {
+        run_git(repo_path, &["init", "-q", "-b", "main"]).await;
+        run_git(repo_path, &["config", "user.email", "test@argmax.dev"]).await;
+        run_git(repo_path, &["config", "user.name", "Argmax Test"]).await;
         std::fs::write(repo_path.join("README.md"), "hello\n").expect("write readme");
-        run_git(repo_path, &["add", "README.md"]);
-        run_git(repo_path, &["commit", "-q", "-m", "init"]);
+        run_git(repo_path, &["add", "README.md"]).await;
+        run_git(repo_path, &["commit", "-q", "-m", "init"]).await;
     }
 
-    fn run_git(repo_path: &Path, args: &[&str]) {
-        let status = Command::new("git")
-            .arg("-C")
-            .arg(repo_path)
-            .args(args)
-            .status()
-            .expect("run git");
-        assert!(status.success(), "git {args:?} failed");
+    async fn run_git(repo_path: &Path, args: &[&str]) {
+        run_git_text(repo_path, args, GIT_DEFAULT_TIMEOUT)
+            .await
+            .unwrap_or_else(|error| panic!("git {args:?} failed: {error}"));
     }
 }

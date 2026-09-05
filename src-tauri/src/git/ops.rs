@@ -376,26 +376,22 @@ mod tests {
     use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
     use crate::sessions::state::SessionState;
     use std::path::Path;
-    use std::process::Command as StdCommand;
     use std::sync::Mutex;
     use tempfile::TempDir;
 
-    fn run_git(repo: &Path, args: &[&str]) {
-        let status = StdCommand::new("git")
-            .args(["-C", repo.to_str().unwrap()])
-            .args(args)
-            .status()
-            .expect("git invoke failed");
-        assert!(status.success(), "git {args:?} failed");
+    async fn run_git(repo: &Path, args: &[&str]) -> String {
+        run_git_text(repo, args, GIT_TIMEOUT)
+            .await
+            .unwrap_or_else(|error| panic!("git {args:?} failed: {error}"))
     }
 
-    fn init_repo(dir: &Path) {
-        run_git(dir, &["init", "-q", "-b", "main"]);
-        run_git(dir, &["config", "user.email", "test@argmax.dev"]);
-        run_git(dir, &["config", "user.name", "Argmax Test"]);
+    async fn init_repo(dir: &Path) {
+        run_git(dir, &["init", "-q", "-b", "main"]).await;
+        run_git(dir, &["config", "user.email", "test@argmax.dev"]).await;
+        run_git(dir, &["config", "user.name", "Argmax Test"]).await;
         std::fs::write(dir.join("README.md"), "hello\n").unwrap();
-        run_git(dir, &["add", "README.md"]);
-        run_git(dir, &["commit", "-q", "-m", "init"]);
+        run_git(dir, &["add", "README.md"]).await;
+        run_git(dir, &["commit", "-q", "-m", "init"]).await;
     }
 
     fn fixture_workspace(database: &Arc<Database>, repo_path: &Path) -> String {
@@ -460,7 +456,7 @@ mod tests {
     #[tokio::test]
     async fn commit_all_stages_and_commits_dirty_files() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         std::fs::write(repo.path().join("notes.txt"), "scratch\n").unwrap();
 
         let data_dir = TempDir::new().unwrap();
@@ -483,7 +479,7 @@ mod tests {
     #[tokio::test]
     async fn commit_all_rejects_leading_dash_message() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         std::fs::write(repo.path().join("notes.txt"), "scratch\n").unwrap();
 
         let data_dir = TempDir::new().unwrap();
@@ -505,9 +501,9 @@ mod tests {
     #[tokio::test]
     async fn selected_file_commit_leaves_unrelated_staged_changes_staged() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         std::fs::write(repo.path().join("README.md"), "staged edit\n").unwrap();
-        run_git(repo.path(), &["add", "README.md"]);
+        run_git(repo.path(), &["add", "README.md"]).await;
         std::fs::write(repo.path().join("notes.txt"), "selected\n").unwrap();
 
         let data_dir = TempDir::new().unwrap();
@@ -524,27 +520,18 @@ mod tests {
             .await
             .expect("commit succeeds");
 
-        let committed = StdCommand::new("git")
-            .args(["-C", repo.path().to_str().unwrap()])
-            .args(["show", "--name-only", "--format=", "HEAD"])
-            .output()
-            .expect("git show");
-        let committed = String::from_utf8_lossy(&committed.stdout);
+        let committed = run_git(repo.path(), &["show", "--name-only", "--format=", "HEAD"]).await;
         assert!(committed.lines().any(|line| line == "notes.txt"));
         assert!(!committed.lines().any(|line| line == "README.md"));
 
-        let cached = StdCommand::new("git")
-            .args(["-C", repo.path().to_str().unwrap()])
-            .args(["diff", "--cached", "--name-only"])
-            .output()
-            .expect("git diff --cached");
-        assert_eq!(String::from_utf8_lossy(&cached.stdout).trim(), "README.md");
+        let cached = run_git(repo.path(), &["diff", "--cached", "--name-only"]).await;
+        assert_eq!(cached.trim(), "README.md");
     }
 
     #[tokio::test]
     async fn create_branch_checks_out_new_branch() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
 
         let data_dir = TempDir::new().unwrap();
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
@@ -558,29 +545,23 @@ mod tests {
             })
             .await
             .expect("branch created");
-        let current = StdCommand::new("git")
-            .args(["-C", repo.path().to_str().unwrap()])
-            .args(["branch", "--show-current"])
-            .output()
-            .unwrap();
-        assert_eq!(
-            String::from_utf8_lossy(&current.stdout).trim(),
-            "feature/new"
-        );
+        let current = run_git(repo.path(), &["branch", "--show-current"]).await;
+        assert_eq!(current.trim(), "feature/new");
     }
 
     #[tokio::test]
     async fn push_sends_current_branch_to_fixture_remote() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         let remote = TempDir::new().unwrap();
-        run_git(remote.path(), &["init", "-q", "--bare"]);
+        run_git(remote.path(), &["init", "-q", "--bare"]).await;
         run_git(
             repo.path(),
             &["remote", "add", "origin", remote.path().to_str().unwrap()],
-        );
-        run_git(repo.path(), &["config", "push.default", "upstream"]);
-        run_git(repo.path(), &["config", "push.autoSetupRemote", "false"]);
+        )
+        .await;
+        run_git(repo.path(), &["config", "push.default", "upstream"]).await;
+        run_git(repo.path(), &["config", "push.autoSetupRemote", "false"]).await;
 
         let data_dir = TempDir::new().unwrap();
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
@@ -593,22 +574,14 @@ mod tests {
             .expect("push succeeds");
 
         assert_eq!(result.branch, "main");
-        let remote_head = StdCommand::new("git")
-            .args(["--git-dir", remote.path().to_str().unwrap()])
-            .args(["rev-parse", "refs/heads/main"])
-            .output()
-            .expect("rev-parse remote head");
-        assert!(remote_head.status.success());
-        assert_eq!(
-            String::from_utf8_lossy(&remote_head.stdout).trim().len(),
-            40
-        );
+        let remote_head = run_git(remote.path(), &["rev-parse", "refs/heads/main"]).await;
+        assert_eq!(remote_head.trim().len(), 40);
     }
 
     #[tokio::test]
     async fn view_or_create_pr_shells_to_gh_and_uses_refresh_result() {
         let repo = TempDir::new().unwrap();
-        init_repo(repo.path());
+        init_repo(repo.path()).await;
         let data_dir = TempDir::new().unwrap();
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());

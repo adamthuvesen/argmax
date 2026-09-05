@@ -796,7 +796,11 @@ describe("App", () => {
       lastActivityAt: "2026-05-08T16:10:00.000Z",
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     };
     const newSession: DashboardSnapshot["sessions"][number] = {
       id: "session-new",
@@ -813,6 +817,11 @@ describe("App", () => {
       startedAt: "2026-05-08T16:10:00.000Z",
       completedAt: null,
       lastActivityAt: "2026-05-08T16:10:00.000Z",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent",
     };
     const newEvent: DashboardSnapshot["events"][number] = {
       id: "event-new",
@@ -870,7 +879,11 @@ describe("App", () => {
       lastActivityAt: "2026-05-08T16:10:00.000Z",
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     };
     const newSession: DashboardSnapshot["sessions"][number] = {
       id: "session-mention",
@@ -887,6 +900,11 @@ describe("App", () => {
       startedAt: "2026-05-08T16:10:00.000Z",
       completedAt: null,
       lastActivityAt: "2026-05-08T16:10:00.000Z",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent",
     };
     const userEvent: DashboardSnapshot["events"][number] = {
       id: "event-user-mention",

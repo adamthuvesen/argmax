@@ -26,7 +26,12 @@ const BASE_SESSION: SessionSummary = {
   attention: "normal",
   startedAt: "2026-07-04T10:00:00.000Z",
   completedAt: "2026-07-04T10:01:00.000Z",
-  lastActivityAt: "2026-07-04T10:01:00.000Z"
+  lastActivityAt: "2026-07-04T10:01:00.000Z",
+  costUsd: 0,
+  tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextTokens: 0,
+  imported: false,
+  launchKind: "agent"
 };
 
 describe("modelSelectionFromSession", () => {

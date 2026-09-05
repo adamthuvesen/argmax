@@ -109,7 +109,11 @@ describe("App side chat launcher", () => {
           lastActivityAt: "2026-05-08T15:54:00.000Z",
           pinned: false,
           priorityDismissedAt: null,
-          priorityAddedAt: null
+          priorityAddedAt: null,
+          prState: null,
+          prNumber: null,
+          icon: null,
+          iconColor: null
         }
       ]
     });

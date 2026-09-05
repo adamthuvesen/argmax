@@ -21,7 +21,11 @@ const workspaceBase: WorkspaceSummary = {
   lastActivityAt: "2026-05-01T00:01:00.000Z",
   pinned: false,
   priorityDismissedAt: null,
-  priorityAddedAt: null
+  priorityAddedAt: null,
+  prState: null,
+  prNumber: null,
+  icon: null,
+  iconColor: null
 };
 
 const detectedIdes = [
@@ -366,10 +370,10 @@ describe("SidebarSessionRow", () => {
   });
 
   it.each([
-    ["failed" as const, undefined, undefined, "failed"],
+    ["failed" as const, null, null, "failed"],
     ["complete" as const, "MERGED" as const, 12, "pr-merged"],
     ["complete" as const, "OPEN" as const, 12, "pr-open"],
-    ["complete" as const, undefined, undefined, null]
+    ["complete" as const, null, null, null]
   ])(
     "overlays %s / pr %s on a custom icon as %s",
     (state, prState, prNumber, expectedOverlay) => {

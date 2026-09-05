@@ -16,7 +16,12 @@ const base: SessionSummary = {
   attention: "normal",
   startedAt: "2026-07-01T00:00:00.000Z",
   completedAt: null,
-  lastActivityAt: "2026-07-01T00:00:00.000Z"
+  lastActivityAt: "2026-07-01T00:00:00.000Z",
+  costUsd: 0,
+  tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextTokens: 0,
+  imported: false,
+  launchKind: "agent"
 };
 
 afterEach(cleanup);

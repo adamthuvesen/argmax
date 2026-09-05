@@ -38,7 +38,12 @@ const session: SessionSummary = {
   attention: "normal",
   startedAt: "2026-05-12T15:00:00.000Z",
   completedAt: "2026-05-12T15:00:09.000Z",
-  lastActivityAt: "2026-05-12T15:00:09.000Z"
+  lastActivityAt: "2026-05-12T15:00:09.000Z",
+  costUsd: 0,
+  tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextTokens: 0,
+  imported: false,
+  launchKind: "agent"
 };
 
 const edit: ToolCall = {

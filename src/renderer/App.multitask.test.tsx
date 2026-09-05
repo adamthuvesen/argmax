@@ -26,7 +26,11 @@ const childWorkspace: DashboardSnapshot["workspaces"][number] = {
   lastActivityAt: "2026-05-08T15:56:00.000Z",
   pinned: false,
   priorityDismissedAt: null,
-  priorityAddedAt: null
+  priorityAddedAt: null,
+  prState: null,
+  prNumber: null,
+  icon: null,
+  iconColor: null
 };
 
 const childSession: DashboardSnapshot["sessions"][number] = {
@@ -45,7 +49,11 @@ const childSession: DashboardSnapshot["sessions"][number] = {
   completedAt: "2026-05-08T15:56:00.000Z",
   lastActivityAt: "2026-05-08T15:56:00.000Z",
   launchedBySessionId: "session-1",
-  launchKind: "multitask"
+  launchKind: "multitask",
+  costUsd: 0,
+  tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextTokens: 0,
+  imported: false
 };
 
 const events: DashboardSnapshot["events"] = [

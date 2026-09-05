@@ -35,7 +35,12 @@ function session(): SessionSummary {
     attention: "normal",
     startedAt: "2026-05-12T15:00:00.000Z",
     completedAt: "2026-05-12T15:00:01.000Z",
-    lastActivityAt: "2026-05-12T15:00:01.000Z"
+    lastActivityAt: "2026-05-12T15:00:01.000Z",
+    costUsd: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextTokens: 0,
+    imported: false,
+    launchKind: "agent"
   };
 }
 
@@ -56,6 +61,10 @@ function workspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary 
     pinned: false,
     priorityDismissedAt: null,
     priorityAddedAt: null,
+    prState: null,
+    prNumber: null,
+    icon: null,
+    iconColor: null,
     ...overrides
   };
 }

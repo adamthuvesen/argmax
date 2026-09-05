@@ -72,7 +72,11 @@ describe("App sidebar", () => {
       lastActivityAt: new Date().toISOString(),
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     };
     const forkedSession: DashboardSnapshot["sessions"][number] = {
       id: "session-forked",
@@ -87,7 +91,12 @@ describe("App sidebar", () => {
       attention: "normal",
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
-      lastActivityAt: new Date().toISOString()
+      lastActivityAt: new Date().toISOString(),
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent"
     };
     await act(async () => {
       dashboardDeltaListener?.({ workspaces: [forkedWorkspace], sessions: [forkedSession] });
@@ -174,7 +183,11 @@ describe("App sidebar", () => {
       lastActivityAt: "2026-05-08T16:00:00.000Z",
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     };
     const movedSession: DashboardSnapshot["sessions"][number] = {
       id: "session-moved",
@@ -190,7 +203,12 @@ describe("App sidebar", () => {
       attention: "normal",
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: "2026-05-08T16:00:00.000Z",
-      lastActivityAt: "2026-05-08T16:00:00.000Z"
+      lastActivityAt: "2026-05-08T16:00:00.000Z",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent"
     };
     await act(async () => {
       dashboardDeltaListener?.({
@@ -252,7 +270,11 @@ describe("App sidebar", () => {
       lastActivityAt: "2026-05-08T16:04:00.000Z",
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -268,6 +290,11 @@ describe("App sidebar", () => {
       startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: "2026-05-08T16:04:00.000Z",
       lastActivityAt: "2026-05-08T16:04:00.000Z",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent",
     };
     const secondEvent: DashboardSnapshot["events"][number] = {
       id: "event-2",
@@ -1186,7 +1213,11 @@ describe("App sidebar", () => {
       lastActivityAt: attentionChangedAt,
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     };
     const otherWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-other",
@@ -1203,7 +1234,11 @@ describe("App sidebar", () => {
       lastActivityAt: "2026-05-08T16:00:00.000Z",
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     };
     const waitingSession: DashboardSnapshot["sessions"][number] = {
       id: "session-wait",
@@ -1219,7 +1254,12 @@ describe("App sidebar", () => {
       attentionChangedAt,
       startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: null,
-      lastActivityAt: attentionChangedAt
+      lastActivityAt: attentionChangedAt,
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent"
     };
     const otherSession: DashboardSnapshot["sessions"][number] = {
       id: "session-other",
@@ -1235,7 +1275,12 @@ describe("App sidebar", () => {
       attentionChangedAt,
       startedAt: "2026-05-08T15:50:00.000Z",
       completedAt: "2026-05-08T16:00:00.000Z",
-      lastActivityAt: "2026-05-08T16:00:00.000Z"
+      lastActivityAt: "2026-05-08T16:00:00.000Z",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent"
     };
     const demotionSnapshot: DashboardSnapshot = {
       ...snapshot,
@@ -1317,7 +1362,11 @@ describe("App sidebar", () => {
       lastActivityAt: "2026-05-08T16:04:00.000Z",
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     };
     const otherWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-other",
@@ -1334,7 +1383,11 @@ describe("App sidebar", () => {
       lastActivityAt: "2026-05-08T16:00:00.000Z",
       pinned: false,
       priorityDismissedAt: null,
-      priorityAddedAt: null
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null
     };
     const workingSnapshot: DashboardSnapshot = {
       ...snapshot,
@@ -1355,7 +1408,12 @@ describe("App sidebar", () => {
           attentionChangedAt,
           startedAt: "2026-05-08T16:00:00.000Z",
           completedAt: null,
-          lastActivityAt: "2026-05-08T16:04:00.000Z"
+          lastActivityAt: "2026-05-08T16:04:00.000Z",
+          costUsd: 0,
+          tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextTokens: 0,
+          imported: false,
+          launchKind: "agent"
         },
         {
           id: "session-other",
@@ -1371,7 +1429,12 @@ describe("App sidebar", () => {
           attentionChangedAt,
           startedAt: "2026-05-08T15:50:00.000Z",
           completedAt: "2026-05-08T16:00:00.000Z",
-          lastActivityAt: "2026-05-08T16:00:00.000Z"
+          lastActivityAt: "2026-05-08T16:00:00.000Z",
+          costUsd: 0,
+          tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextTokens: 0,
+          imported: false,
+          launchKind: "agent"
         }
       ]
     };

@@ -31,6 +31,11 @@ export function baseSession(overrides: Partial<SessionSummary> = {}): SessionSum
     startedAt: "2026-05-12T15:30:00.000Z",
     completedAt: "2026-05-12T15:54:00.000Z",
     lastActivityAt: "2026-05-12T15:54:00.000Z",
+    costUsd: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextTokens: 0,
+    imported: false,
+    launchKind: "agent",
     ...overrides
   };
 }
@@ -50,7 +55,11 @@ export const workspace: WorkspaceSummary = {
   lastActivityAt: "2026-05-12T15:54:00.000Z",
   pinned: false,
   priorityDismissedAt: null,
-  priorityAddedAt: null
+  priorityAddedAt: null,
+  prState: null,
+  prNumber: null,
+  icon: null,
+  iconColor: null
 };
 
 export const project: ProjectSummary = {

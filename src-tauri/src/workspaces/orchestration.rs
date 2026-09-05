@@ -36,7 +36,7 @@ use super::watcher::WatcherRegistry;
 use crate::approvals::service::ApprovalService;
 use crate::checks::service::{CheckService, RunWorkspaceCheckInput};
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::git::exec::run_git_text;
+use crate::git::exec::{run_git_text, run_git_text_blocking, GIT_DEFAULT_TIMEOUT};
 use crate::ipc::inputs::{
     OpenIdeChoice, ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesAutotitleInput,
     WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput,
@@ -2153,28 +2153,22 @@ fn invalid_workspace(
 }
 
 fn isolated_worktree_is_registered(repo_path: &Path, worktree_path: &Path) -> ArgmaxResult<bool> {
-    let output = Command::new("git")
-        .current_dir(repo_path)
-        .args(["worktree", "list", "--porcelain"])
-        .output()
-        .map_err(|error| {
-            invalid_workspace(
-                format!("Could not inspect git worktrees: {error}"),
-                "Verify the project repository and retry archive.",
-            )
-        })?;
-    if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr);
-        return Err(invalid_workspace(
-            format!("Could not inspect git worktrees: {}", detail.trim()),
+    // Startup recovery runs before any runtime is available to await on.
+    let stdout = run_git_text_blocking(
+        repo_path,
+        ["worktree", "list", "--porcelain"],
+        GIT_DEFAULT_TIMEOUT,
+    )
+    .map_err(|error| {
+        invalid_workspace(
+            format!("Could not inspect git worktrees: {error}"),
             "Verify the project repository and retry archive.",
-        ));
-    }
+        )
+    })?;
 
     let target = comparable_worktree_path(worktree_path)
         .to_string_lossy()
         .into_owned();
-    let stdout = String::from_utf8_lossy(&output.stdout);
     Ok(stdout
         .lines()
         .filter_map(|line| line.strip_prefix("worktree "))
@@ -2383,27 +2377,23 @@ mod tests {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let repo = dir.path().join("repo");
         std::fs::create_dir_all(&repo).expect("repo dir");
-        let git = |cwd: PathBuf, args: Vec<&str>| {
-            let out = std::process::Command::new("git")
-                .args(&args)
-                .current_dir(&cwd)
-                .output()
-                .expect("git");
-            assert!(out.status.success(), "git {args:?} failed");
-            String::from_utf8_lossy(&out.stdout).into_owned()
-        };
-        git(repo.clone(), vec!["init", "-q", "."]);
-        git(repo.clone(), vec!["config", "user.email", "t@example.com"]);
-        git(repo.clone(), vec!["config", "user.name", "t"]);
+        async fn git(cwd: &Path, args: &[&str]) -> String {
+            run_git_text(cwd, args, GIT_DEFAULT_TIMEOUT)
+                .await
+                .unwrap_or_else(|error| panic!("git {args:?} failed: {error}"))
+        }
+        git(&repo, &["init", "-q", "."]).await;
+        git(&repo, &["config", "user.email", "t@example.com"]).await;
+        git(&repo, &["config", "user.name", "t"]).await;
         std::fs::write(repo.join("f.txt"), "x\n").expect("write");
-        git(repo.clone(), vec!["add", "-A"]);
-        git(repo.clone(), vec!["commit", "-qm", "base"]);
+        git(&repo, &["add", "-A"]).await;
+        git(&repo, &["commit", "-qm", "base"]).await;
 
         let worktree = dir.path().join("wt");
         let worktree_arg = worktree.display().to_string();
         git(
-            repo.clone(),
-            vec![
+            &repo,
+            &[
                 "worktree",
                 "add",
                 "-b",
@@ -2411,18 +2401,19 @@ mod tests {
                 &worktree_arg,
                 "HEAD",
             ],
-        );
+        )
+        .await;
         assert!(worktree.exists());
 
         discard_worktree(&repo, &worktree, "argmax/doomed").await;
 
         assert!(!worktree.exists(), "worktree directory should be gone");
-        let listed = git(repo.clone(), vec!["worktree", "list"]);
+        let listed = git(&repo, &["worktree", "list"]).await;
         assert!(
             !listed.contains(&worktree_arg),
             "worktree still registered: {listed}"
         );
-        let branches = git(repo.clone(), vec!["branch", "--list", "argmax/doomed"]);
+        let branches = git(&repo, &["branch", "--list", "argmax/doomed"]).await;
         assert!(branches.trim().is_empty(), "branch survived: {branches}");
     }
 

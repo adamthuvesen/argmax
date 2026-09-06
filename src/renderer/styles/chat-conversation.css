@@ -848,13 +848,18 @@
 /* The Thinking line's slot: reserved whether the line is in it or not, so the
    list's scroll height doesn't change when the line arrives or leaves. It
    leaves at the instant the answer starts, which is exactly when a reader
-   pinned to the bottom is watching. The height is the label's own line box
-   (`--text-sm` at 1.2, plus its 4px/2px padding), and the pull-up trims the
-   32px list gap to the closer spacing the line needs to read as a note on the
-   activity above it rather than a row of its own. */
+   pinned to the bottom is watching. The height has to be the label's own line
+   box — `--text-base` at 1.2, plus its 4px/2px padding, and `--text-base` is
+   `--text-sm` plus a point, so measuring the slot off the smaller size left it
+   short at every type scale. With the label's baseline strut on top (see
+   `.thinking-label-stream`) the transcript moved 0.4px to 2.2px depending on
+   the scale, on both edges of every beat — a miniature of the shrink-clamp the
+   follow-scroll already has to defend against. The pull-up trims the 32px list
+   gap to the closer spacing the line needs to read as a note on the activity
+   above it rather than a row of its own. */
 .conversation-tail {
   flex: 0 0 auto;
-  min-height: calc(var(--text-sm) * 1.2 + 6px);
+  min-height: calc(var(--text-base) * 1.2 + 6px);
   overflow-anchor: none;
 }
 

@@ -314,16 +314,28 @@
   color: var(--muted-strong);
   border-radius: 0;
   overflow: visible;
-  animation: thinking-fade-in var(--motion-base) var(--ease-out);
+  animation: thinking-fade-in var(--motion-fast) var(--ease-out);
 }
 
+/* Opacity only, and short. The line alternates with the transcript many times
+   in a turn, and it leaves because real content arrived — it is sized and
+   weighted like the answer that replaces it, so that swap is a substitution,
+   not a departure. An exit fade would put a dissolve on exactly the frame the
+   reader is waiting for; a cut is the honest edge. The 1px rise this used to
+   carry was below perception as motion and above it as text blur, since the
+   element is layer-promoted while it animates. */
 @keyframes thinking-fade-in {
-  from { opacity: 0; transform: translateY(1px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
+/* Block-level flex, not inline-flex: an inline-flex box is baseline-aligned in
+   a line box of its own, and the parent's strut then makes the article a
+   fraction of a pixel taller than the label it holds — enough to outgrow the
+   reserved slot in `.conversation-tail` and nudge the transcript every time the
+   line arrives or leaves. The article is already full width, so nothing moves. */
 .thinking-label-stream {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: var(--space-1_5);
   min-height: 0;

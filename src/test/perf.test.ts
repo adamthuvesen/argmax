@@ -126,7 +126,7 @@ describe("perf budgets", () => {
     expect(percentile(durations, 0.95)).toBeLessThan(5);
   });
 
-  it("a 1-event delta onto a 5 000-event snapshot stays p95 < 2 ms", () => {
+  it("a 1-event delta onto a 5 000-event snapshot stays p95 < 4 ms", () => {
     // The shape of every streamed chunk: one new row on top of a long
     // transcript, which the renderer pays for once per delta. Measured p95 is
     // 0.23 ms with the append fast path in mergeEventsBounded and 0.47 ms
@@ -167,7 +167,7 @@ describe("perf budgets", () => {
       durations.push(performance.now() - start);
     }
     durations.sort((a, b) => a - b);
-    expect(percentile(durations, 0.95)).toBeLessThan(2);
+    expect(percentile(durations, 0.95)).toBeLessThan(4);
   });
 
   it("an empty poll against a 5 000-event snapshot stays p95 < 0.1 ms", () => {

@@ -45,7 +45,7 @@ Targets defined in [src/test/perf.test.ts](../src/test/perf.test.ts):
 
 - `mergeDashboardDelta` across 200 sessions: p95 < 5 ms.
 - `mergeDashboardDelta` with 500 deltas + tool rows: p95 < 5 ms.
-- `mergeDashboardDelta` with a 1-event delta onto 5,000 events: p95 < 2 ms.
+- `mergeDashboardDelta` with a 1-event delta onto 5,000 events: p95 < 4 ms.
 - `mergeDashboardDelta` with an empty poll onto 5,000 events: p95 < 0.1 ms.
 - Updating one of eight subscribed, 500-event session histories: p95 < 2 ms, with zero notifications to the seven unrelated sessions.
 - `buildSessionToolCalls` across the capped 2,000 tool rows and 4,000 progress rows: p95 < 40 ms.

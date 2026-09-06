@@ -93,4 +93,31 @@ describe("buildSubagentCluster", () => {
     expect(cluster?.entries[0]?.emblem).toBeNull();
     expect(SESSION_ICON_COLORS).toContain(cluster?.entries[0]?.iconColor);
   });
+
+  it("counts repeated native runs as one persistent agent", () => {
+    const tools = [
+      tool({
+        toolUseId: "task-root",
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent-native",
+        agentRootToolUseId: "task-root",
+        status: "done"
+      }),
+      tool({
+        id: "continued",
+        toolUseId: "send-2",
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent-native",
+        agentRootToolUseId: "task-root",
+        status: "running"
+      })
+    ];
+    const cluster = buildSubagentCluster(tools, assignAgentCodenames(tools));
+
+    expect(cluster?.entries).toHaveLength(1);
+    expect(cluster?.entries[0]).toMatchObject({
+      toolUseId: "native-agent:task-root:parent-native:child-native",
+      status: "running"
+    });
+  });
 });

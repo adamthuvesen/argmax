@@ -113,8 +113,10 @@ export type LaunchProviderSessionInput = OptionalNullable<
 >;
 export type ProviderSessionInput = OptionalNullable<
   Bindings.ProvidersSendInput,
-  "modelLabel" | "modelId" | "reasoningEffort" | "agentMode" | "attachments"
+  "modelLabel" | "modelId" | "reasoningEffort" | "agentMode" | "attachments" | "agentReferences"
 >;
+export type AgentReference = Bindings.AgentReference;
+export type NativeAgentIdentity = Pick<AgentReference, "providerParentConversationId" | "providerChildSessionId">;
 export type ProvidersCancelQueuedMessageInput = Bindings.ProvidersCancelQueuedMessageInput;
 export type ProvidersSendQueuedMessageNowInput = Bindings.ProvidersSendQueuedMessageNowInput;
 export type ProviderSessionResizeInput = Bindings.ProvidersResizeInput;
@@ -126,7 +128,10 @@ export type SessionEventsSinceInput = OptionalNullable<
   Bindings.SessionEventsSinceInput,
   "eventCursor" | "rawOutputCursor" | "changeCursor"
 >;
-export type SessionAgentEventsInput = Bindings.SessionAgentEventsInput;
+export type SessionAgentEventsInput = OptionalNullable<
+  Bindings.SessionAgentEventsInput,
+  "providerParentConversationId" | "providerChildSessionId"
+>;
 export type SessionForkInput = Bindings.SessionForkInput;
 export type SessionClearInput = Bindings.SessionClearInput;
 export type SessionSuggestFollowUpInput = Bindings.SessionSuggestFollowUpInput;

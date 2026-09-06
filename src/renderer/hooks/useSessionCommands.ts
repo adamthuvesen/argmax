@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { AgentMode, ComposerAttachment } from "../../shared/types.js";
+import type { AgentMode, AgentReference, ComposerAttachment } from "../../shared/types.js";
 import { modelSupportsFastMode, type ModelPickerSelection } from "../lib/models.js";
 import { withToast, type ToastMessage } from "../lib/withToast.js";
 
@@ -26,7 +26,8 @@ export interface SessionCommands {
     input: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
+    agentReferences?: AgentReference[]
   ) => Promise<void>;
   cancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   sendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
@@ -51,7 +52,8 @@ export function useSessionCommands({
       input: string,
       model: ModelPickerSelection,
       agentMode: AgentMode,
-      attachments?: ComposerAttachment[]
+      attachments?: ComposerAttachment[],
+      agentReferences?: AgentReference[]
     ): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to send input to a live chat.");
@@ -68,7 +70,8 @@ export function useSessionCommands({
         reasoningEffort: model.reasoningEffort ?? null,
         fastMode: fastMode && modelSupportsFastMode(model),
         agentMode,
-        attachments: attachments?.length ? attachments : null
+        attachments: attachments?.length ? attachments : null,
+        ...(agentReferences?.length ? { agentReferences } : {})
       });
       // The send already succeeded. Dashboard catch-up is best-effort and can
       // take a 100 ms metadata coalesce plus a transcript pull; awaiting it

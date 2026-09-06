@@ -17,11 +17,13 @@ import type { ReviewCommentInput } from "../lib/composerAnnotations.js";
 import type { MultitaskChild } from "../lib/multitask.js";
 import type {
   AgentMode,
+  AgentReference,
   ApprovalRequest,
   CheckRun,
   ComposerAttachment,
   DetectedIde,
   IdeId,
+  NativeAgentIdentity,
   PendingMessage,
   ProjectSummary,
   RawProviderOutput,
@@ -40,6 +42,7 @@ import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { readBoundedNumberPreference, type ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { ToolCall } from "../lib/toolCalls.js";
+import { agentTabId } from "../lib/agentTabs.js";
 import { CommitDialog } from "./CommitDialog.js";
 import { DebugPanel } from "./debug/DebugPanel.js";
 // ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
@@ -121,7 +124,7 @@ export function SessionPane({
   /** Called on mount and on session.id change to backfill timeline events for this pane's session. */
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   /** Backfills one subagent's child rows, for the review panel's Agents view. */
-  onLoadAgentEvents?: (sessionId: string, parentToolUseId: string) => Promise<void>;
+  onLoadAgentEvents?: (sessionId: string, parentToolUseId: string, identity?: NativeAgentIdentity) => Promise<void | { hasMore: boolean }>;
   /** Opens a launcher pane beside this one. Absent outside the grid. */
   onNewSession?: (seed?: NewSessionSeed) => void;
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
@@ -141,7 +144,8 @@ export function SessionPane({
     input: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
+    agentReferences?: AgentReference[]
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
@@ -273,7 +277,7 @@ export function SessionPane({
   const openAgentInPanel = reviewState.openAgent;
   const handleOpenAgent = useCallback(
     (tool: ToolCall): void => {
-      openAgentInPanel(tool.toolUseId);
+      openAgentInPanel(agentTabId(tool));
     },
     [openAgentInPanel]
   );

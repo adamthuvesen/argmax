@@ -27,6 +27,14 @@ type CanonicalCommon = {
   providerThreadId: string | null;
   agentModelId: string | null;
   agentReasoningEffort: string | null;
+  /** Stable native child identity for providers that support resuming a subagent. */
+  providerChildSessionId: string | null;
+  /** One invocation of a persistent native child. */
+  agentRunId: string | null;
+  agentRootToolUseId: string | null;
+  providerParentConversationId: string | null;
+  agentCodename: string | null;
+  providerInvocationId: string | null;
   traceSuperseded: boolean;
   traceImported: boolean;
 };
@@ -127,6 +135,12 @@ export type CanonicalLifecycleEvent =
   | MoveRequestedLifecycleEvent
   | MovedLifecycleEvent;
 
+export type CanonicalAgentEvent = CanonicalCommon & {
+  kind: "agent";
+  phase: "started" | "completed";
+  status: string | null;
+};
+
 export type CanonicalMultitaskEvent = CanonicalCommon & {
   kind: "multitask";
   phase: "launched" | "finished";
@@ -155,6 +169,7 @@ export type CanonicalTimelineEvent =
   | CanonicalToolEvent
   | CanonicalApprovalEvent
   | CanonicalLifecycleEvent
+  | CanonicalAgentEvent
   | CanonicalMultitaskEvent
   | CanonicalErrorEvent
   | CanonicalUnknownEvent;
@@ -192,6 +207,13 @@ function common(raw: TimelineEvent, payload: Record<string, unknown>): Canonical
     providerThreadId: providerThreadId(payload),
     agentModelId: nonBlankString(payload.agentModelId),
     agentReasoningEffort: nonBlankString(payload.agentReasoningEffort),
+    providerChildSessionId: nonBlankString(payload.providerChildSessionId),
+    agentRunId: nonBlankString(payload.agentRunId),
+    agentRootToolUseId: nonBlankString(payload.agentRootToolUseId)
+      ?? nonBlankString(payload.parentToolUseId),
+    providerParentConversationId: nonBlankString(payload.providerParentConversationId),
+    agentCodename: nonBlankString(payload.agentCodename),
+    providerInvocationId: extractProviderInvocationId(payload),
     traceSuperseded: payload.traceSyntheticSuperseded === true,
     traceImported: payload.traceImported === true
   };
@@ -265,6 +287,16 @@ function decodeApproval(raw: TimelineEvent, payload: Record<string, unknown>): C
     command: stringValue(payload.command),
     cwd: stringValue(payload.cwd),
     riskLevel: stringValue(payload.riskLevel)
+  };
+}
+
+function decodeAgent(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalAgentEvent {
+  return {
+    ...common(raw, payload),
+    kind: "agent",
+    phase: raw.type === "agent.started" ? "started" : "completed",
+    providerInvocationId: extractProviderInvocationId(payload),
+    status: stringValue(payload.status)
   };
 }
 
@@ -352,6 +384,8 @@ export function decodeTimelineEvent(raw: RawTimelineEvent): CanonicalTimelineEve
     decoded = decodeTool(raw, payload);
   } else if (raw.type === "approval.requested" || raw.type === "approval.resolved" || raw.type === "permission.blocked") {
     decoded = decodeApproval(raw, payload);
+  } else if (raw.type === "agent.started" || raw.type === "agent.completed") {
+    decoded = decodeAgent(raw, payload);
   } else if (
     raw.type === "session.started" ||
     raw.type === "session.streaming" ||

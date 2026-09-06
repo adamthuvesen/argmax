@@ -11,14 +11,16 @@ import type {
 import type { AgentTabsState } from "../hooks/useAgentTabs.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
 import { emblemForCodename, type Emblem } from "../lib/agentEmblems.js";
-import { multitaskTabId, readAgentTab } from "../lib/agentTabs.js";
-import { assignAgentCodenames, fallbackCodename } from "../lib/agentNames.js";
+import { agentTabId, multitaskTabId, readAgentTab } from "../lib/agentTabs.js";
+import { agentRootToolUseId, assignAgentCodenames, codenameForTool, fallbackCodename } from "../lib/agentNames.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
+import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentActivity } from "./AgentActivity.js";
+import type { NativeAgentIdentity } from "../../shared/types.js";
 import { AgentEmblem } from "./AgentEmblem.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { MultitaskPanel } from "./MultitaskPanel.js";
@@ -41,6 +43,7 @@ interface DockTab {
   /** A subagent's mark. Null for a multitask, which is named by Split. */
   emblem: Emblem | null;
   multitask: MultitaskChild | null;
+  rootToolUseId: string | null;
 }
 
 /**
@@ -90,7 +93,11 @@ export function AgentsView({
   workspace: WorkspaceSummary | null;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onClearSession?: (sessionId: string) => Promise<void>;
-  onLoadAgentEvents?: (sessionId: string, parentToolUseId: string) => Promise<void>;
+  onLoadAgentEvents?: (
+    sessionId: string,
+    parentToolUseId: string,
+    identity?: NativeAgentIdentity
+  ) => Promise<void | { hasMore: boolean }>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onOpenAgent?: (tool: ToolCall) => void;
   onOpenDiff?: (path: string) => void;
@@ -114,7 +121,12 @@ export function AgentsView({
 
   const tabs = useMemo((): DockTab[] => {
     const sessionRunning = parentSession?.state === "running";
-    const codenames = assignAgentCodenames(buildSessionToolCalls(events, sessionRunning));
+    const tools = buildSessionToolCalls(
+      events,
+      sessionRunning,
+      parentSession?.state === "failed" || parentSession?.state === "cancelled"
+    );
+    const codenames = assignAgentCodenames(tools);
     const childrenByTabId = new Map(
       (multitasks ?? []).map((child) => [multitaskTabId(child.session.id), child])
     );
@@ -134,15 +146,40 @@ export function AgentsView({
           status: child ? multitaskRowStatus(child.session.state) : "missing",
           name: label,
           emblem: null,
-          multitask: child
+          multitask: child,
+          rootToolUseId: null
         };
       }
-      const codename = codenames.get(id) ?? fallbackCodename(id);
+      const identityTool = tools.find((tool) =>
+        agentRootToolUseId(tool) === tab.toolUseId &&
+        (!tab.providerParentConversationId || tool.providerParentConversationId === tab.providerParentConversationId) &&
+        (!tab.providerChildSessionId || tool.providerChildSessionId === tab.providerChildSessionId)
+      );
+      const persistedCodename = events.find((event) => {
+        const decoded = decodeTimelineEvent(event);
+        return decoded.agentRootToolUseId === tab.toolUseId &&
+          decoded.providerParentConversationId === tab.providerParentConversationId &&
+          decoded.providerChildSessionId === tab.providerChildSessionId &&
+          decoded.agentCodename;
+      });
+      const decodedCodename = persistedCodename
+        ? decodeTimelineEvent(persistedCodename).agentCodename
+        : null;
+      const codename = identityTool
+        ? codenameForTool(identityTool, codenames) ?? fallbackCodename(tab.toolUseId)
+        : decodedCodename ?? fallbackCodename(tab.toolUseId);
       const activity = buildAgentActivity({
         parentToolUseId: tab.toolUseId,
         events,
         sessionRunning,
-        provider: parentSession?.provider
+        sessionInterrupted: parentSession?.state === "failed" || parentSession?.state === "cancelled",
+        provider: parentSession?.provider,
+        nativeIdentity: tab.providerParentConversationId && tab.providerChildSessionId
+          ? {
+              providerParentConversationId: tab.providerParentConversationId,
+              providerChildSessionId: tab.providerChildSessionId
+            }
+          : null
       });
       return {
         id,
@@ -150,7 +187,8 @@ export function AgentsView({
         status: activity.status,
         name: codename,
         emblem: emblemForCodename(codename),
-        multitask: null
+        multitask: null,
+        rootToolUseId: tab.toolUseId
       };
     });
   }, [events, multitasks, parentSession?.provider, parentSession?.state, tabIds]);
@@ -166,6 +204,27 @@ export function AgentsView({
       if (tab.status === "missing") closeTab(tab.id);
     }
   }, [closeTab, events.length, tabs]);
+
+  // A launch can be opened before Claude reports its native child id. Upgrade
+  // that provisional raw-tool tab in place once identity arrives. Selection
+  // and order stay unchanged, so a background continuation never steals focus.
+  useEffect(() => {
+    if (!parentSession) return;
+    for (const id of tabIds) {
+      const tab = readAgentTab(id);
+      if (tab.kind !== "subagent" || tab.providerChildSessionId) continue;
+      const activity = buildAgentActivity({
+        parentToolUseId: tab.toolUseId,
+        events,
+        sessionRunning: parentSession.state === "running",
+        sessionInterrupted: parentSession.state === "failed" || parentSession.state === "cancelled",
+        provider: parentSession.provider
+      });
+      if (!activity.parentTool) continue;
+      const durableId = agentTabId(activity.parentTool);
+      if (durableId !== id) agentTabs.replaceTab?.(id, durableId);
+    }
+  }, [agentTabs, events, parentSession, tabIds]);
 
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const setTabButtonRef = useCallback(
@@ -324,7 +383,16 @@ export function AgentsView({
                   onOpenFile={onOpenFile}
                   onOpenReview={onOpenReview}
                   parentSession={parentSession}
-                  parentToolUseId={tab.id}
+                  parentToolUseId={tab.rootToolUseId ?? tab.id}
+                  nativeIdentity={(() => {
+                    const parsed = readAgentTab(tab.id);
+                    return parsed.kind === "subagent" && parsed.providerParentConversationId && parsed.providerChildSessionId
+                      ? {
+                          providerParentConversationId: parsed.providerParentConversationId,
+                          providerChildSessionId: parsed.providerChildSessionId
+                        }
+                      : null;
+                  })()}
                   workspace={workspace}
                 />
               )}

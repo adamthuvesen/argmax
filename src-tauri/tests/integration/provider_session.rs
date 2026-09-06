@@ -677,6 +677,7 @@ async fn fake_cli_streams_normalized_events_to_db_and_dashboard_delta() {
     );
 
     let send = ProvidersSendInput {
+        agent_references: None,
         session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
         input: Prompt::try_from("follow up".to_owned()).expect("prompt valid"),
         provider: None,
@@ -756,6 +757,7 @@ async fn cursor_follow_up_infers_missing_resume_id_from_raw_output() {
 
     let result = service
         .send_input(ProvidersSendInput {
+            agent_references: None,
             session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
             input: Prompt::try_from("follow up".to_owned()).expect("prompt valid"),
             provider: None,
@@ -835,6 +837,7 @@ async fn cursor_follow_up_after_clear_does_not_resume_pre_clear_id() {
 
     let result = service
         .send_input(ProvidersSendInput {
+            agent_references: None,
             session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
             input: Prompt::try_from("fresh".to_owned()).expect("prompt valid"),
             provider: None,
@@ -902,6 +905,7 @@ async fn provider_switch_relaunches_new_provider_fresh() {
 
     let result = service
         .send_input(ProvidersSendInput {
+            agent_references: None,
             session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
             input: Prompt::try_from("now in codex".to_owned()).expect("prompt valid"),
             provider: Some(ProviderId::Codex),
@@ -1013,6 +1017,7 @@ async fn completed_session_follow_up_launch_without_native_resume_includes_visib
 
     let result = service
         .send_input(ProvidersSendInput {
+            agent_references: None,
             session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
             input: Prompt::try_from("hmm".to_owned()).expect("prompt valid"),
             provider: None,
@@ -1110,6 +1115,7 @@ async fn completed_session_follow_up_launch_with_native_resume_sends_message_alo
 
     let result = service
         .send_input(ProvidersSendInput {
+            agent_references: None,
             session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
             input: Prompt::try_from("hmm".to_owned()).expect("prompt valid"),
             provider: None,
@@ -1151,6 +1157,7 @@ async fn send_input_routes_to_handle_when_accepting() {
         .expect("launch ok");
     wait_for_resolved(&service, &session.id).await;
     let send = ProvidersSendInput {
+        agent_references: None,
         session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
         input: Prompt::try_from("- follow-up\nwith context".to_owned()).expect("prompt valid"),
         provider: None,
@@ -1192,6 +1199,7 @@ async fn send_input_queues_when_handle_rejecting() {
         .expect("launch ok");
     wait_for_resolved(&service, &session.id).await;
     let send = ProvidersSendInput {
+        agent_references: None,
         session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
         input: Prompt::try_from("queued one".to_owned()).expect("prompt valid"),
         provider: None,
@@ -1239,6 +1247,7 @@ async fn send_queued_message_now_interrupts_without_dropping_the_rest_of_the_que
     for content in ["send this now", "keep this queued"] {
         let result = service
             .send_input(ProvidersSendInput {
+                agent_references: None,
                 session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
                 input: Prompt::try_from(content.to_owned()).expect("prompt valid"),
                 provider: None,
@@ -1326,6 +1335,7 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
 
     let result = service
         .send_input(ProvidersSendInput {
+            agent_references: None,
             session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
             input: Prompt::try_from("queued after done".to_owned()).expect("prompt valid"),
             provider: None,
@@ -1425,6 +1435,7 @@ async fn a_queued_message_is_marked_delivered_once_the_drain_sends_it() {
     let result = service
         .send_input_with_origin(
             ProvidersSendInput {
+                agent_references: None,
                 session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
                 input: Prompt::try_from("handle the review".to_owned()).expect("prompt valid"),
                 provider: None,
@@ -1507,6 +1518,7 @@ async fn a_failed_turn_clears_the_queue_but_not_the_inbox() {
     let result = service
         .send_input_with_origin(
             ProvidersSendInput {
+                agent_references: None,
                 session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
                 input: Prompt::try_from("survives the failed turn".to_owned())
                     .expect("prompt valid"),
@@ -1584,6 +1596,7 @@ async fn queued_cross_provider_switch_keeps_current_provider_and_model() {
     // with a Codex --model flag.
     let result = service
         .send_input(ProvidersSendInput {
+            agent_references: None,
             session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
             input: Prompt::try_from("switch please".to_owned()).expect("prompt valid"),
             provider: Some(ProviderId::Codex),
@@ -1828,6 +1841,7 @@ async fn send_input_during_spawn_queues_instead_of_relaunching() {
     assert!(!service.is_handle_resolved(&session.id));
 
     let send = ProvidersSendInput {
+        agent_references: None,
         session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
         input: Prompt::try_from("during spawn".to_owned()).expect("prompt valid"),
         provider: None,
@@ -1947,6 +1961,7 @@ async fn terminate_during_follow_up_spawn_disposes_handle_on_resolve() {
         tokio::spawn(async move {
             service
                 .send_input(ProvidersSendInput {
+                    agent_references: None,
                     session_id: SessionId::try_from(session_id).expect("session id valid"),
                     input: Prompt::try_from("follow-up before stop".to_owned())
                         .expect("prompt valid"),
@@ -2453,6 +2468,7 @@ async fn panic_inside_locked_section_does_not_cascade_to_other_sessions() {
     assert_eq!(service.open_handle_count(), 2);
 
     let send = ProvidersSendInput {
+        agent_references: None,
         session_id: SessionId::try_from(session_b.id.clone()).expect("session id valid"),
         input: Prompt::try_from("still alive".to_owned()).expect("prompt valid"),
         provider: None,

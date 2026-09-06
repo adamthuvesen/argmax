@@ -1,6 +1,9 @@
-use std::collections::HashSet;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::OnceLock,
+};
 
-use rusqlite::{params_from_iter, Connection, OptionalExtension, Row};
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row};
 use serde::Serialize;
 use serde_json::{json, Value};
 use specta::Type;
@@ -9,6 +12,7 @@ use super::{json_error, sqlite_error, time::now_iso};
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 
 const INVALID_PAYLOAD_PREVIEW_CHARS: usize = 512;
+const AGENT_CODENAME_HEADLINE_COUNT: usize = 10;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PersistTimelineEventInput {
@@ -126,6 +130,16 @@ pub fn list_session_agent_events(
     session_id: &str,
     parent_tool_use_id: &str,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
+    list_session_agent_events_for_identity(connection, session_id, parent_tool_use_id, None, None)
+}
+
+pub fn list_session_agent_events_for_identity(
+    connection: &Connection,
+    session_id: &str,
+    parent_tool_use_id: &str,
+    provider_parent_conversation_id: Option<&str>,
+    provider_child_session_id: Option<&str>,
+) -> ArgmaxResult<SessionEventsSinceResult> {
     let rows = list_newest_event_rows(connection, session_id, SESSION_AGENT_EVENT_SCAN_LIMIT)?;
     let mut receiver_thread_ids = std::collections::HashSet::new();
     let mut child_tool_use_ids = std::collections::HashSet::new();
@@ -157,10 +171,62 @@ pub fn list_session_agent_events(
         }
     }
 
-    let events = rows
+    let mut events = rows
         .into_iter()
         .filter(|row| included_ids.contains(&row.id))
         .collect::<Vec<_>>();
+    append_native_claude_agent_events(
+        connection,
+        session_id,
+        parent_tool_use_id,
+        provider_parent_conversation_id,
+        provider_child_session_id,
+        &mut events,
+    )?;
+    let mut events_by_id = HashMap::new();
+    for event in events {
+        events_by_id.insert(event.id.clone(), event);
+    }
+    let mut events = events_by_id.into_values().collect::<Vec<_>>();
+    events.sort_by_key(|event| event.row_cursor.unwrap_or_default());
+    let has_more = events.len() > SESSION_AGENT_EVENT_SCAN_LIMIT;
+    if has_more {
+        let required_ids = events
+            .iter()
+            .filter(|event| {
+                (matches!(
+                    event.r#type.as_str(),
+                    "agent.started" | "agent.completed" | "command.started" | "command.completed"
+                ) && string_field(&event.payload, "providerChildSessionId").is_some())
+                    || (matches!(
+                        event.r#type.as_str(),
+                        "command.started" | "command.completed"
+                    ) && (tool_use_id_for_payload(&event.payload) == Some(parent_tool_use_id)
+                        || completion_id_for_payload(&event.payload) == Some(parent_tool_use_id)))
+                    || (matches!(event.r#type.as_str(), "agent.started" | "agent.completed")
+                        && string_field(&event.payload, "agentRootToolUseId")
+                            == Some(parent_tool_use_id)
+                        && string_field(&event.payload, "agentRunId") == Some(parent_tool_use_id))
+            })
+            .map(|event| event.id.clone())
+            .collect::<HashSet<_>>();
+        let newest_slots = SESSION_AGENT_EVENT_SCAN_LIMIT.saturating_sub(required_ids.len());
+        let mut bounded = events
+            .iter()
+            .filter(|event| required_ids.contains(&event.id))
+            .cloned()
+            .collect::<Vec<_>>();
+        bounded.extend(
+            events
+                .iter()
+                .rev()
+                .filter(|event| !required_ids.contains(&event.id))
+                .take(newest_slots)
+                .cloned(),
+        );
+        bounded.sort_by_key(|event| event.row_cursor.unwrap_or_default());
+        events = bounded;
+    }
     let next_event_cursor = max_row_cursor(&events, 0);
 
     Ok(SessionEventsSinceResult {
@@ -172,8 +238,358 @@ pub fn list_session_agent_events(
         deleted_event_ids: Vec::new(),
         deleted_raw_output_ids: Vec::new(),
         reset_required: false,
-        has_more: false,
+        has_more,
     })
+}
+
+/// Confirms that a native Claude child belongs to the session's current
+/// provider conversation. Clearing, switching provider, and forking away from
+/// that conversation therefore invalidate old renderer references even though
+/// their timeline rows remain readable history.
+pub fn has_current_claude_agent_identity(
+    connection: &Connection,
+    session_id: &str,
+    provider_parent_conversation_id: &str,
+    provider_child_session_id: &str,
+) -> ArgmaxResult<bool> {
+    let current: Option<(Option<String>, bool)> = connection
+        .query_row(
+            "SELECT provider_conversation_id, resume_fork FROM sessions WHERE id = ? AND provider = 'claude'",
+            (session_id,),
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some((current_parent, resume_fork)) = current else {
+        return Ok(false);
+    };
+    if resume_fork || current_parent.as_deref() != Some(provider_parent_conversation_id) {
+        return Ok(false);
+    }
+    connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM events
+                WHERE session_id = ?
+                  AND type = 'agent.started'
+                  AND json_extract(payload_json, '$.providerParentConversationId') = ?
+                  AND json_extract(payload_json, '$.providerChildSessionId') = ?
+                  AND rowid > COALESCE((
+                      SELECT MAX(rowid) FROM events boundary
+                      WHERE boundary.session_id = events.session_id
+                        AND boundary.type IN ('session.cleared', 'session.provider-changed')
+                  ), 0)
+            )
+            "#,
+            (
+                session_id,
+                provider_parent_conversation_id,
+                provider_child_session_id,
+            ),
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(sqlite_error)
+}
+
+fn append_native_claude_agent_events(
+    connection: &Connection,
+    session_id: &str,
+    root_tool_use_id: &str,
+    requested_parent_conversation_id: Option<&str>,
+    requested_child_id: Option<&str>,
+    events: &mut Vec<TimelineEvent>,
+) -> ArgmaxResult<()> {
+    let current_parent: Option<String> = connection
+        .query_row(
+            "SELECT provider_conversation_id FROM sessions WHERE id = ? AND provider = 'claude' AND resume_fork = 0",
+            (session_id,),
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?
+        .flatten();
+    let Some(current_parent) = current_parent else {
+        return Ok(());
+    };
+    if requested_parent_conversation_id.is_some_and(|parent| parent != current_parent) {
+        return Ok(());
+    }
+    let initial_lifecycle = connection
+        .query_row(
+            r#"
+            SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at
+            FROM events
+            WHERE session_id = ?1
+              AND type = 'agent.started'
+              AND json_extract(payload_json, '$.providerParentConversationId') = ?2
+              AND json_extract(payload_json, '$.agentRootToolUseId') = ?3
+              AND (?4 IS NULL OR json_extract(payload_json, '$.providerChildSessionId') = ?4)
+              AND rowid > COALESCE((
+                  SELECT MAX(rowid) FROM events boundary
+                  WHERE boundary.session_id = events.session_id
+                    AND boundary.type IN ('session.cleared', 'session.provider-changed')
+              ), 0)
+            ORDER BY rowid ASC
+            LIMIT 1
+            "#,
+            params![
+                session_id,
+                current_parent,
+                root_tool_use_id,
+                requested_child_id
+            ],
+            event_row_to_timeline_event,
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some(initial_lifecycle) = initial_lifecycle else {
+        return Ok(());
+    };
+    let child_id = string_field(&initial_lifecycle.payload, "providerChildSessionId")
+        .unwrap_or_default()
+        .to_string();
+    let initial_invocation = string_field(&initial_lifecycle.payload, "providerInvocationId")
+        .unwrap_or_default()
+        .to_string();
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at
+            FROM events candidate
+            WHERE session_id = ?1
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events boundary
+                  WHERE boundary.session_id = candidate.session_id
+                    AND boundary.type IN ('session.cleared', 'session.provider-changed')
+              ), 0)
+              AND (
+                json_extract(payload_json, '$.parent_tool_use_id') = ?4
+                OR (
+                  type IN ('agent.started', 'agent.completed')
+                  AND json_extract(payload_json, '$.providerParentConversationId') = ?2
+                  AND json_extract(payload_json, '$.providerChildSessionId') = ?3
+                )
+                OR (
+                  type IN ('command.started', 'command.completed')
+                  AND EXISTS (
+                    SELECT 1 FROM events lifecycle
+                    WHERE lifecycle.session_id = candidate.session_id
+                      AND lifecycle.type IN ('agent.started', 'agent.completed')
+                      AND json_extract(lifecycle.payload_json, '$.providerParentConversationId') = ?2
+                      AND json_extract(lifecycle.payload_json, '$.providerChildSessionId') = ?3
+                      AND json_extract(lifecycle.payload_json, '$.providerInvocationId') = json_extract(candidate.payload_json, '$.providerInvocationId')
+                      AND json_extract(lifecycle.payload_json, '$.agentRunId') = COALESCE(
+                        json_extract(candidate.payload_json, '$.tool_use_id'),
+                        json_extract(candidate.payload_json, '$.id'),
+                        json_extract(candidate.payload_json, '$.call_id')
+                      )
+                  )
+                )
+              )
+            ORDER BY
+              CASE WHEN type IN ('agent.started', 'agent.completed', 'command.started', 'command.completed')
+                THEN 0 ELSE 1 END,
+              rowid DESC
+            LIMIT ?5
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let mut candidates = statement
+        .query_map(
+            params![
+                session_id,
+                current_parent,
+                child_id,
+                root_tool_use_id,
+                (SESSION_AGENT_EVENT_SCAN_LIMIT + 1) as i64
+            ],
+            event_row_to_timeline_event,
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    candidates.push(initial_lifecycle);
+    if let Some(root_command) = connection
+        .query_row(
+            r#"
+            SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at
+            FROM events
+            WHERE session_id = ?
+              AND type = 'command.started'
+              AND json_extract(payload_json, '$.providerInvocationId') = ?
+              AND COALESCE(json_extract(payload_json, '$.id'), json_extract(payload_json, '$.call_id')) = ?
+            ORDER BY rowid ASC LIMIT 1
+            "#,
+            (session_id, initial_invocation.as_str(), root_tool_use_id),
+            event_row_to_timeline_event,
+        )
+        .optional()
+        .map_err(sqlite_error)?
+    {
+        candidates.push(root_command);
+    }
+    if let Some(initial_completion) = connection
+        .query_row(
+            r#"
+            SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at
+            FROM events
+            WHERE session_id = ?
+              AND type = 'agent.completed'
+              AND json_extract(payload_json, '$.providerParentConversationId') = ?
+              AND json_extract(payload_json, '$.providerChildSessionId') = ?
+              AND json_extract(payload_json, '$.providerInvocationId') = ?
+              AND json_extract(payload_json, '$.agentRunId') = ?
+            ORDER BY rowid ASC LIMIT 1
+            "#,
+            (
+                session_id,
+                current_parent.as_str(),
+                child_id.as_str(),
+                initial_invocation.as_str(),
+                root_tool_use_id,
+            ),
+            event_row_to_timeline_event,
+        )
+        .optional()
+        .map_err(sqlite_error)?
+    {
+        candidates.push(initial_completion);
+    }
+    if let Some(root_result) = connection
+        .query_row(
+            r#"
+            SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at
+            FROM events
+            WHERE session_id = ?
+              AND type = 'command.completed'
+              AND json_extract(payload_json, '$.providerInvocationId') = ?
+              AND COALESCE(json_extract(payload_json, '$.tool_use_id'), json_extract(payload_json, '$.id'), json_extract(payload_json, '$.call_id')) = ?
+            ORDER BY rowid ASC LIMIT 1
+            "#,
+            (session_id, initial_invocation.as_str(), root_tool_use_id),
+            event_row_to_timeline_event,
+        )
+        .optional()
+        .map_err(sqlite_error)?
+    {
+        candidates.push(root_result);
+    }
+    candidates.sort_by_key(|event| event.row_cursor.unwrap_or_default());
+
+    let child_ids = HashSet::from([child_id]);
+    let run_keys = candidates
+        .iter()
+        .filter(|event| {
+            string_field(&event.payload, "providerChildSessionId")
+                .is_some_and(|id| child_ids.contains(id))
+        })
+        .filter_map(|event| {
+            Some((
+                string_field(&event.payload, "providerInvocationId")?.to_string(),
+                string_field(&event.payload, "agentRunId")?.to_string(),
+            ))
+        })
+        .collect::<HashSet<_>>();
+    let identity = candidates.iter().find_map(|event| {
+        let child_id = string_field(&event.payload, "providerChildSessionId")?;
+        child_ids.contains(child_id).then(|| {
+            (
+                child_id.to_string(),
+                string_field(&event.payload, "providerParentConversationId")
+                    .unwrap_or_default()
+                    .to_string(),
+                string_field(&event.payload, "agentCodename")
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+        })
+    });
+    let run_starts = candidates
+        .iter()
+        .filter(|event| event.r#type == "agent.started")
+        .filter_map(|event| {
+            Some((
+                event.row_cursor?,
+                string_field(&event.payload, "providerInvocationId")?.to_string(),
+                string_field(&event.payload, "agentRunId")?.to_string(),
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    for mut event in candidates {
+        let is_child_row = parent_tool_use_id_for_payload(&event.payload) == Some(root_tool_use_id);
+        let invocation_id =
+            string_field(&event.payload, "providerInvocationId").unwrap_or_default();
+        let child_run_id = is_child_row.then(|| {
+            let row_cursor = event.row_cursor.unwrap_or_default();
+            run_starts
+                .iter()
+                .rev()
+                .find(|(started_at, invocation, _)| {
+                    invocation == invocation_id && *started_at <= row_cursor
+                })
+                .map(|(_, _, run_id)| run_id.clone())
+        });
+        let is_run_control = match event.r#type.as_str() {
+            "command.started" => tool_use_id_for_payload(&event.payload)
+                .is_some_and(|id| run_keys.contains(&(invocation_id.to_string(), id.to_string()))),
+            "command.completed" => completion_id_for_payload(&event.payload)
+                .is_some_and(|id| run_keys.contains(&(invocation_id.to_string(), id.to_string()))),
+            "agent.started" | "agent.completed" => {
+                string_field(&event.payload, "providerChildSessionId")
+                    .is_some_and(|id| child_ids.contains(id))
+            }
+            _ => false,
+        };
+        let child_invocation = is_child_row
+            && run_keys
+                .iter()
+                .any(|(invocation, _)| invocation == invocation_id);
+        if !child_invocation && !is_run_control {
+            continue;
+        }
+        if let (Some((child_id, parent_conversation_id, codename)), Value::Object(payload)) =
+            (&identity, &mut event.payload)
+        {
+            payload
+                .entry("providerChildSessionId".to_string())
+                .or_insert_with(|| Value::String(child_id.clone()));
+            if !parent_conversation_id.is_empty() {
+                payload
+                    .entry("providerParentConversationId".to_string())
+                    .or_insert_with(|| Value::String(parent_conversation_id.clone()));
+            }
+            payload
+                .entry("agentRootToolUseId".to_string())
+                .or_insert_with(|| Value::String(root_tool_use_id.to_string()));
+            if !codename.is_empty() {
+                payload
+                    .entry("agentCodename".to_string())
+                    .or_insert_with(|| Value::String(codename.clone()));
+            }
+            let run_id = child_run_id.flatten().or_else(|| {
+                match event.r#type.as_str() {
+                    "command.started" => payload.get("id").or_else(|| payload.get("call_id")),
+                    "command.completed" => payload
+                        .get("tool_use_id")
+                        .or_else(|| payload.get("id"))
+                        .or_else(|| payload.get("call_id")),
+                    _ => payload.get("agentRunId"),
+                }
+                .and_then(Value::as_str)
+                .map(str::to_string)
+            });
+            if let Some(run_id) = run_id {
+                payload
+                    .entry("agentRunId".to_string())
+                    .or_insert(Value::String(run_id));
+            }
+        }
+        events.push(event);
+    }
+    Ok(())
 }
 
 pub fn persist_timeline_event(
@@ -181,7 +597,8 @@ pub fn persist_timeline_event(
     input: &PersistTimelineEventInput,
 ) -> ArgmaxResult<TimelineEvent> {
     let created_at = input.created_at.clone().unwrap_or_else(now_iso);
-    let payload_json = serde_json::to_string(&input.payload).map_err(json_error)?;
+    let payload = enrich_native_agent_event(connection, input)?;
+    let payload_json = serde_json::to_string(&payload).map_err(json_error)?;
     let mut statement = connection
         .prepare_cached(
             r#"
@@ -205,10 +622,224 @@ pub fn persist_timeline_event(
         session_id: input.session_id.clone(),
         r#type: input.r#type.clone(),
         message: input.message.clone(),
-        payload: input.payload.clone(),
+        payload,
         created_at,
         row_cursor: Some(connection.last_insert_rowid()),
     })
+}
+
+fn enrich_native_agent_event(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+) -> ArgmaxResult<Value> {
+    if !matches!(input.r#type.as_str(), "agent.started" | "agent.completed") {
+        return enrich_native_agent_child_row(connection, input);
+    }
+    let Some(payload) = input.payload.as_object() else {
+        return Ok(input.payload.clone());
+    };
+    let Some(parent_conversation_id) = payload
+        .get("providerParentConversationId")
+        .and_then(Value::as_str)
+    else {
+        return Ok(input.payload.clone());
+    };
+    let Some(child_id) = payload
+        .get("providerChildSessionId")
+        .and_then(Value::as_str)
+    else {
+        return Ok(input.payload.clone());
+    };
+    let current_run_id = payload
+        .get("agentRunId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let existing_identity = connection
+        .query_row(
+            r#"
+            SELECT json_extract(payload_json, '$.agentRunId'),
+                   json_extract(payload_json, '$.agentCodename')
+            FROM events
+            WHERE session_id = ?
+              AND type = 'agent.started'
+              AND json_extract(payload_json, '$.providerParentConversationId') = ?
+              AND json_extract(payload_json, '$.providerChildSessionId') = ?
+              AND rowid > COALESCE((
+                  SELECT MAX(rowid) FROM events boundary
+                  WHERE boundary.session_id = events.session_id
+                    AND boundary.type IN ('session.cleared', 'session.provider-changed')
+              ), 0)
+            ORDER BY rowid ASC
+            LIMIT 1
+            "#,
+            (input.session_id.as_str(), parent_conversation_id, child_id),
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let root_tool_use_id = existing_identity
+        .as_ref()
+        .map(|(root, _)| root.clone())
+        .unwrap_or_else(|| current_run_id.to_string());
+    let mut enriched = payload.clone();
+    if !root_tool_use_id.is_empty() {
+        enriched.insert(
+            "agentRootToolUseId".to_string(),
+            Value::String(root_tool_use_id.clone()),
+        );
+    }
+    let codename = match existing_identity.and_then(|(_, codename)| codename) {
+        Some(codename) => Some(codename),
+        None => assign_native_agent_codename(
+            connection,
+            input.session_id.as_str(),
+            parent_conversation_id,
+            root_tool_use_id.as_str(),
+        )?,
+    };
+    if let Some(codename) = codename {
+        enriched.insert("agentCodename".to_string(), Value::String(codename));
+    }
+    Ok(Value::Object(enriched))
+}
+
+fn enrich_native_agent_child_row(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+) -> ArgmaxResult<Value> {
+    let Some(payload) = input.payload.as_object() else {
+        return Ok(input.payload.clone());
+    };
+    let Some(root_tool_use_id) = payload.get("parent_tool_use_id").and_then(Value::as_str) else {
+        return Ok(input.payload.clone());
+    };
+    let Some(provider_invocation_id) = payload.get("providerInvocationId").and_then(Value::as_str)
+    else {
+        return Ok(input.payload.clone());
+    };
+    let identity = connection
+        .query_row(
+            r#"
+            SELECT json_extract(payload_json, '$.providerChildSessionId'),
+                   json_extract(payload_json, '$.providerParentConversationId'),
+                   json_extract(payload_json, '$.agentRunId'),
+                   json_extract(payload_json, '$.agentCodename'),
+                   json_extract(payload_json, '$.agentRootToolUseId')
+            FROM events
+            WHERE session_id = ?
+              AND type = 'agent.started'
+              AND json_extract(payload_json, '$.providerInvocationId') = ?
+              AND json_extract(payload_json, '$.agentRootToolUseId') = ?
+              AND json_extract(payload_json, '$.providerParentConversationId') = (
+                  SELECT provider_conversation_id FROM sessions
+                  WHERE id = ? AND provider = 'claude' AND resume_fork = 0
+              )
+              AND rowid > COALESCE((
+                  SELECT MAX(rowid) FROM events boundary
+                  WHERE boundary.session_id = events.session_id
+                    AND boundary.type IN ('session.cleared', 'session.provider-changed')
+              ), 0)
+            ORDER BY rowid DESC
+            LIMIT 1
+            "#,
+            (
+                input.session_id.as_str(),
+                provider_invocation_id,
+                root_tool_use_id,
+                input.session_id.as_str(),
+            ),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some((child_id, parent_conversation_id, run_id, codename, root_tool_use_id)) = identity
+    else {
+        return Ok(input.payload.clone());
+    };
+    let mut enriched = payload.clone();
+    enriched.insert(
+        "providerChildSessionId".to_string(),
+        Value::String(child_id),
+    );
+    enriched.insert(
+        "providerParentConversationId".to_string(),
+        Value::String(parent_conversation_id),
+    );
+    enriched.insert("agentRunId".to_string(), Value::String(run_id));
+    enriched.insert(
+        "agentRootToolUseId".to_string(),
+        Value::String(root_tool_use_id),
+    );
+    if let Some(codename) = codename {
+        enriched.insert("agentCodename".to_string(), Value::String(codename));
+    }
+    Ok(Value::Object(enriched))
+}
+
+fn assign_native_agent_codename(
+    connection: &Connection,
+    session_id: &str,
+    parent_conversation_id: &str,
+    root_tool_use_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    static CODENAMES: OnceLock<Vec<String>> = OnceLock::new();
+    let codenames = CODENAMES.get_or_init(|| {
+        serde_json::from_str(include_str!("../../../src/shared/agentCodenames.json"))
+            .expect("shared agent codename catalog must be valid JSON")
+    });
+    if codenames.is_empty() {
+        return Ok(None);
+    }
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT DISTINCT json_extract(payload_json, '$.agentCodename')
+            FROM events
+            WHERE session_id = ?
+              AND type = 'agent.started'
+              AND json_extract(payload_json, '$.providerParentConversationId') = ?
+              AND json_extract(payload_json, '$.agentCodename') IS NOT NULL
+              AND rowid > COALESCE((
+                  SELECT MAX(rowid) FROM events boundary
+                  WHERE boundary.session_id = events.session_id
+                    AND boundary.type IN ('session.cleared', 'session.provider-changed')
+              ), 0)
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let taken = statement
+        .query_map((session_id, parent_conversation_id), |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(sqlite_error)?
+        .collect::<Result<HashSet<_>, _>>()
+        .map_err(sqlite_error)?;
+    let hash = root_tool_use_id
+        .encode_utf16()
+        .fold(0x811c9dc5_u32, |hash, unit| {
+            (hash ^ u32::from(unit)).wrapping_mul(0x01000193)
+        });
+    if taken.len() >= codenames.len() {
+        return Ok(Some(codenames[hash as usize % codenames.len()].clone()));
+    }
+    let modulus = if taken.is_empty() {
+        AGENT_CODENAME_HEADLINE_COUNT.min(codenames.len())
+    } else {
+        codenames.len()
+    };
+    let start = hash as usize % modulus;
+    Ok((0..codenames.len())
+        .map(|step| &codenames[(start + step) % codenames.len()])
+        .find(|name| !taken.contains(name.as_str()))
+        .cloned())
 }
 
 /// Returns the persisted event when the row was new, `None` when the id
@@ -219,7 +850,8 @@ pub fn persist_timeline_event_if_absent(
     input: &PersistTimelineEventInput,
 ) -> ArgmaxResult<Option<TimelineEvent>> {
     let created_at = input.created_at.clone().unwrap_or_else(now_iso);
-    let payload_json = serde_json::to_string(&input.payload).map_err(json_error)?;
+    let payload = enrich_native_agent_event(connection, input)?;
+    let payload_json = serde_json::to_string(&payload).map_err(json_error)?;
     let mut statement = connection
         .prepare_cached(
             r#"
@@ -246,7 +878,7 @@ pub fn persist_timeline_event_if_absent(
         session_id: input.session_id.clone(),
         r#type: input.r#type.clone(),
         message: input.message.clone(),
-        payload: input.payload.clone(),
+        payload,
         created_at,
         row_cursor: Some(connection.last_insert_rowid()),
     }))

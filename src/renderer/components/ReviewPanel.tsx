@@ -33,6 +33,7 @@ import {
 import type {
   AgentMode,
   ComposerAttachment,
+  NativeAgentIdentity,
   PendingMessage,
   SessionSummary,
   TimelineEvent,
@@ -78,7 +79,7 @@ export interface AgentsPanelContext {
   defaultThinkingExpanded?: boolean;
   parentSession: SessionSummary | null;
   workspace: WorkspaceSummary | null;
-  onLoadAgentEvents?: (sessionId: string, parentToolUseId: string) => Promise<void>;
+  onLoadAgentEvents?: (sessionId: string, parentToolUseId: string, identity?: NativeAgentIdentity) => Promise<void | { hasMore: boolean }>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onOpenAgent?: (tool: ToolCall) => void;
   /** Multitasks dispatched from this session. Their chats run in this dock, so

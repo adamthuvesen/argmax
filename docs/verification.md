@@ -10,6 +10,7 @@ ladder as the definition of "verified".
 ```bash
 npm run doctor
 npm run verify -- --scenario chat-resume
+npm run verify -- --scenario persistent-subagent --native off
 npm run verify -- --scenario cancellation
 npm run verify -- --scenario provider-error
 ```
@@ -24,6 +25,14 @@ calling a paid provider. Other providers remain unavailable in this profile.
 a running provider can be stopped. `provider-error` checks that a provider
 failure becomes a failed session. These commands are local checks and are not
 part of CI or the pre-push gate.
+
+`persistent-subagent --native off` checks the Claude native child identity,
+separate lifecycle runs for the initial launch and a `SendMessage` continuation,
+queryability after a scratch backend restart, and the Agents pane in light and
+dark browser renders. It uses the remote browser path because the scenario
+restarts the scratch backend. This fixture does not establish provider support.
+Also run a live Claude exchange through the scratch app, restart it, and verify
+that `SendMessage` continues the same native child with its earlier context.
 
 Each run prints a JSON result with its evidence location. Failures retain the
 diagnostics needed to reproduce the assertion. `--out <dir>` selects the

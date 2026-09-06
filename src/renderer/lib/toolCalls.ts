@@ -19,6 +19,15 @@ export type ToolCall = {
   // is a sub-agent's tool call. Lets the group bubble nest children under their
   // agent banner. Absent for top-level calls.
   parentToolUseId?: string | null;
+  /** Stable native identity when this call belongs to a resumable subagent. */
+  providerChildSessionId?: string | null;
+  /** Invocation identity for one run of a persistent native subagent. */
+  agentRunId?: string | null;
+  providerInvocationId?: string | null;
+  /** First launch tool id, stable across later native-child runs. */
+  agentRootToolUseId?: string | null;
+  providerParentConversationId?: string | null;
+  agentCodename?: string | null;
 };
 
 export type ToolCallGroup = {

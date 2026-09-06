@@ -1375,3 +1375,40 @@ describe("lastAgentResponseEvent", () => {
     expect(lastAgentResponseEvent(events)?.id).toBe("answer");
   });
 });
+
+describe("persistent native subagent runs", () => {
+  it("turns a Claude continuation into an agent row linked to the original launch", () => {
+    const events = [
+      event("agent-start", "agent.started", "2026-05-12T15:00:02.100Z", "Agent started", {
+        providerInvocationId: "invocation-2",
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent-native",
+        agentRunId: "send-2",
+        agentRootToolUseId: "task-root",
+        description: "Check the tests",
+        prompt: "Now check the tests."
+      }),
+      event("send", "command.started", "2026-05-12T15:00:02.000Z", "SendMessage", {
+        id: "send-2",
+        name: "SendMessage",
+        providerInvocationId: "invocation-2",
+        input: { to: "child-native", message: "Now check the tests." }
+      })
+    ];
+
+    expect(buildSessionToolCalls(events, true)).toEqual([
+      expect.objectContaining({
+        name: "Agent",
+        toolUseId: "send-2",
+        agentRunId: "send-2",
+        agentRootToolUseId: "task-root",
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent-native"
+      })
+    ]);
+    expect(buildSessionToolCalls(events, true)[0]?.inputFull).toMatchObject({
+      description: "Check the tests",
+      prompt: "Now check the tests."
+    });
+  });
+});

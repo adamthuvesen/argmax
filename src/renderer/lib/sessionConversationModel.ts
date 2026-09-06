@@ -1,5 +1,5 @@
 import type { EventType, TimelineEvent } from "../../shared/types.js";
-import { stringValue } from "../../shared/typeGuards.js";
+import { isPlainObject, stringValue } from "../../shared/typeGuards.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import {
@@ -438,8 +438,21 @@ function correlateToolEvents(events: readonly TimelineEvent[]): StartedTool[] {
 
 export function buildSessionToolCalls(
   events: readonly TimelineEvent[],
-  sessionRunning = true
+  sessionRunning = true,
+  sessionInterrupted = false
 ): ToolCall[] {
+  const nativeRunMetadata = new Map<string, Record<string, unknown>>();
+  const nativeRunLifecycle = new Map<string, { phase: "started" | "completed"; createdAt: string; status: string | null }>();
+  for (const event of events) {
+    const decoded = decodeTimelineEvent(event);
+    if (decoded.kind !== "agent" || !decoded.agentRunId || !isPlainObject(event.payload)) continue;
+    const key = `${decoded.providerInvocationId ?? ""}\u0000${decoded.agentRunId}`;
+    nativeRunMetadata.set(key, { ...(nativeRunMetadata.get(key) ?? {}), ...event.payload });
+    const current = nativeRunLifecycle.get(key);
+    if (!current || event.createdAt > current.createdAt) {
+      nativeRunLifecycle.set(key, { phase: decoded.phase, createdAt: event.createdAt, status: decoded.status });
+    }
+  }
   let latestProgressTimestamp = "";
   let latestCursorlessProgressTimestamp = "";
   let latestProgressCursor: number | undefined;
@@ -477,12 +490,24 @@ export function buildSessionToolCalls(
         throw new Error("correlated tool start decoded as a non-tool event");
       }
       const providerName = canonicalStart.providerName;
-      const name = canonicalStart.name;
+      const nativeMetadata = nativeRunMetadata.get(
+        `${canonicalStart.invocationId ?? ""}\u0000${canonicalStart.toolUseId ?? toolUseId}`
+      );
+      const nativeLifecycle = nativeRunLifecycle.get(
+        `${canonicalStart.invocationId ?? ""}\u0000${canonicalStart.toolUseId ?? toolUseId}`
+      );
+      const isNativeContinuation = canonicalStart.name.toLowerCase() === "sendmessage" && nativeMetadata !== undefined;
+      const name = isNativeContinuation ? "Agent" : canonicalStart.name;
       const startInput = extractToolInput(event.payload);
+      const metadataInput = nativeMetadata
+        ? Object.fromEntries(
+            ["description", "prompt", "instructions", "subagentType", "subagent_type"].flatMap((key) =>
+              nativeMetadata[key] === undefined ? [] : [[key, nativeMetadata[key]]]
+            )
+          )
+        : {};
       const completionInput = completion ? extractToolInput(completion.payload) : {};
-      const mergedInput = Object.keys(completionInput).length > 0
-        ? { ...startInput, ...completionInput }
-        : startInput;
+      const mergedInput = { ...startInput, ...completionInput, ...metadataInput };
       const input = cleanToolInput(name, mergedInput, providerName);
       const output = completion ? extractToolOutput(completion.payload) : null;
       const canonicalCompletion = completion ? decodeTimelineEvent(completion) : null;
@@ -514,10 +539,15 @@ export function buildSessionToolCalls(
         : inferredDone
           ? "done"
           : "running";
-      const renderedStatus: ToolCall["status"] =
-        status === "done" && sessionRunning && isStillRunningAgentLaunch(name, input, output, completion)
-          ? "running"
-          : status;
+      const renderedStatus: ToolCall["status"] = nativeLifecycle
+        ? nativeLifecycle.phase === "started"
+          ? sessionInterrupted ? "error" : "running"
+          : nativeLifecycle.status === "completed" || nativeLifecycle.status === "success"
+            ? "done"
+            : "error"
+        : status === "done" && sessionRunning && isStillRunningAgentLaunch(name, input, output, completion)
+            ? "running"
+            : status;
       const parentToolUseId = canonicalStart.parentToolUseId;
       return {
         id: event.id,
@@ -534,13 +564,27 @@ export function buildSessionToolCalls(
         // of a stale, ever-climbing timer.
         completedAt: renderedStatus === "running"
           ? null
+          : nativeLifecycle?.phase === "completed"
+            ? nativeLifecycle.createdAt
           : completion
             ? completion.createdAt
             : status === "done"
               ? event.createdAt
               : null,
         error: completion && isError ? extractToolError(completion.payload) : null,
-        parentToolUseId
+        parentToolUseId,
+        providerChildSessionId: canonicalStart.providerChildSessionId
+          ?? stringValue(nativeMetadata?.providerChildSessionId),
+        agentRunId: canonicalStart.agentRunId
+          ?? stringValue(nativeMetadata?.agentRunId),
+        providerInvocationId: canonicalStart.invocationId,
+        agentRootToolUseId: canonicalStart.agentRootToolUseId
+          ?? stringValue(nativeMetadata?.agentRootToolUseId)
+          ?? stringValue(nativeMetadata?.parentToolUseId),
+        providerParentConversationId: canonicalStart.providerParentConversationId
+          ?? stringValue(nativeMetadata?.providerParentConversationId),
+        agentCodename: canonicalStart.agentCodename
+          ?? stringValue(nativeMetadata?.agentCodename)
       };
     });
   const folded = foldCodexAgentControlTools(tools);

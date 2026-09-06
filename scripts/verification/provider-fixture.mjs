@@ -16,6 +16,14 @@ export const VERIFICATION_PROVIDER = Object.freeze({
 export const VERIFICATION_CONVERSATION_ID =
   "argmax-verification-conversation";
 
+export const VERIFICATION_SUBAGENT = Object.freeze({
+  id: "verification-persistent-agent",
+  rootToolUseId: "verification-task-launch",
+  followUpToolUseId: "verification-send-message",
+  description: "Verification persistent child",
+  subagentType: "general-purpose",
+});
+
 export const VERIFICATION_BARRIERS = Object.freeze({
   chatResumeStream: "chat-resume-stream",
   chatResumeTool: "chat-resume-tool",
@@ -30,6 +38,15 @@ export const VERIFICATION_SCENARIOS = Object.freeze({
   chatResumeSecond: {
     prompt: "[argmax-verification:chat-resume:second]",
     visibleText: "Verification resumed turn complete.",
+    resumeConversationId: VERIFICATION_CONVERSATION_ID,
+  },
+  persistentSubagentFirst: {
+    prompt: "[argmax-verification:persistent-subagent:first]",
+    visibleText: "Verification persistent child first response.",
+  },
+  persistentSubagentSecond: {
+    prompt: "[argmax-verification:persistent-subagent:second]",
+    visibleText: "Verification persistent child follow-up response.",
     resumeConversationId: VERIFICATION_CONVERSATION_ID,
   },
   cancellation: {
@@ -138,6 +155,172 @@ async function emitSuccess(result) {
   });
 }
 
+async function emitChildAssistant(text) {
+  await emit({
+    type: "assistant",
+    message: {
+      id: `verification-child-${text.includes("follow-up") ? "follow-up" : "first"}`,
+      type: "message",
+      role: "assistant",
+      model: VERIFICATION_PROVIDER.modelId,
+      content: [{ type: "text", text }],
+      usage: {
+        input_tokens: 4,
+        output_tokens: 8,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+    },
+    parent_tool_use_id: VERIFICATION_SUBAGENT.rootToolUseId,
+    session_id: VERIFICATION_CONVERSATION_ID,
+    subagent_type: VERIFICATION_SUBAGENT.subagentType,
+    task_description: VERIFICATION_SUBAGENT.description,
+  });
+}
+
+async function emitTaskStarted({ toolUseId, prompt, isBackgrounded }) {
+  await emit({
+    type: "system",
+    subtype: "task_started",
+    task_id: VERIFICATION_SUBAGENT.id,
+    tool_use_id: toolUseId,
+    description: VERIFICATION_SUBAGENT.description,
+    subagent_type: VERIFICATION_SUBAGENT.subagentType,
+    is_backgrounded: isBackgrounded,
+    spawn_depth: 1,
+    task_type: "local_agent",
+    prompt,
+    session_id: VERIFICATION_CONVERSATION_ID,
+  });
+}
+
+async function emitTaskCompleted({ toolUseId, summary }) {
+  await emit({
+    type: "system",
+    subtype: "task_updated",
+    task_id: VERIFICATION_SUBAGENT.id,
+    patch: { status: "completed", end_time: 1_788_675_207_644 },
+    session_id: VERIFICATION_CONVERSATION_ID,
+  });
+  await emit({
+    type: "system",
+    subtype: "task_notification",
+    task_id: VERIFICATION_SUBAGENT.id,
+    tool_use_id: toolUseId,
+    status: "completed",
+    output_file: "/tmp/argmax-verification-child.output",
+    summary,
+    usage: { total_tokens: 12, tool_uses: 0, duration_ms: 20 },
+    session_id: VERIFICATION_CONVERSATION_ID,
+  });
+}
+
+async function runPersistentSubagentFirst(args) {
+  if (args.includes("--resume")) {
+    throw new Error("fresh persistent-subagent fixture unexpectedly received --resume");
+  }
+  await emitInit();
+  await emitAssistant(
+    [{
+      type: "tool_use",
+      id: VERIFICATION_SUBAGENT.rootToolUseId,
+      name: "Agent",
+      input: {
+        description: VERIFICATION_SUBAGENT.description,
+        prompt: "Reply with the first verification response.",
+        subagent_type: VERIFICATION_SUBAGENT.subagentType,
+        run_in_background: false,
+      },
+    }],
+    "verification-persistent-parent-task",
+  );
+  await emitTaskStarted({
+    toolUseId: VERIFICATION_SUBAGENT.rootToolUseId,
+    prompt: "Reply with the first verification response.",
+    isBackgrounded: false,
+  });
+  await emitChildAssistant(VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText);
+  await emitTaskCompleted({
+    toolUseId: VERIFICATION_SUBAGENT.rootToolUseId,
+    summary: VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText,
+  });
+  await emit({
+    type: "user",
+    message: {
+      role: "user",
+      content: [{
+        tool_use_id: VERIFICATION_SUBAGENT.rootToolUseId,
+        type: "tool_result",
+        content: [{ type: "text", text: VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText }],
+      }],
+    },
+    session_id: VERIFICATION_CONVERSATION_ID,
+    tool_use_result: {
+      status: "completed",
+      agentId: VERIFICATION_SUBAGENT.id,
+      agentType: VERIFICATION_SUBAGENT.subagentType,
+    },
+  });
+  await emitAssistant(
+    [{ type: "text", text: "Verification parent first turn complete." }],
+    "verification-persistent-parent-first",
+  );
+  await emitSuccess("Verification parent first turn complete.");
+}
+
+async function runPersistentSubagentSecond(args) {
+  const resumeId = optionValue(args, "--resume");
+  if (resumeId !== VERIFICATION_CONVERSATION_ID) {
+    throw new Error(`persistent-subagent expected --resume ${VERIFICATION_CONVERSATION_ID}, received ${resumeId ?? "nothing"}`);
+  }
+  await emitInit();
+  await emitAssistant(
+    [{
+      type: "tool_use",
+      id: VERIFICATION_SUBAGENT.followUpToolUseId,
+      name: "SendMessage",
+      input: {
+        to: VERIFICATION_SUBAGENT.id,
+        message: "Reply with the follow-up verification response.",
+        summary: "persistent verification follow-up",
+      },
+    }],
+    "verification-persistent-parent-follow-up",
+  );
+  await emitTaskStarted({
+    toolUseId: VERIFICATION_SUBAGENT.followUpToolUseId,
+    prompt: "Reply with the follow-up verification response.",
+    isBackgrounded: true,
+  });
+  await emit({
+    type: "user",
+    message: {
+      role: "user",
+      content: [{
+        tool_use_id: VERIFICATION_SUBAGENT.followUpToolUseId,
+        type: "tool_result",
+        content: [{ type: "text", text: "Resuming verification persistent agent" }],
+      }],
+    },
+    session_id: VERIFICATION_CONVERSATION_ID,
+    tool_use_result: {
+      success: true,
+      resumedAgentId: VERIFICATION_SUBAGENT.id,
+      pin: { id: VERIFICATION_SUBAGENT.id, name: VERIFICATION_SUBAGENT.id, ref: "fixture" },
+    },
+  });
+  await emitChildAssistant(VERIFICATION_SCENARIOS.persistentSubagentSecond.visibleText);
+  await emitTaskCompleted({
+    toolUseId: VERIFICATION_SUBAGENT.followUpToolUseId,
+    summary: VERIFICATION_SCENARIOS.persistentSubagentSecond.visibleText,
+  });
+  await emitAssistant(
+    [{ type: "text", text: "Verification parent follow-up complete." }],
+    "verification-persistent-parent-complete",
+  );
+  await emitSuccess("Verification parent follow-up complete.");
+}
+
 async function runFirstTurn(args) {
   if (args.includes("--resume")) {
     throw new Error("fresh chat-resume fixture unexpectedly received --resume");
@@ -237,6 +420,14 @@ export async function runProviderFixture(args = process.argv.slice(2)) {
   }
   if (prompt.includes(VERIFICATION_SCENARIOS.chatResumeSecond.prompt)) {
     await runSecondTurn(args);
+    return;
+  }
+  if (prompt.includes(VERIFICATION_SCENARIOS.persistentSubagentFirst.prompt)) {
+    await runPersistentSubagentFirst(args);
+    return;
+  }
+  if (prompt.includes(VERIFICATION_SCENARIOS.persistentSubagentSecond.prompt)) {
+    await runPersistentSubagentSecond(args);
     return;
   }
   if (prompt.includes(VERIFICATION_SCENARIOS.cancellation.prompt)) {

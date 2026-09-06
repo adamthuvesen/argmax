@@ -68,6 +68,36 @@ const workspace: WorkspaceSummary = {
 };
 
 describe("AgentActivity", () => {
+  it("renders each persistent native invocation as its own run in one dock pane", () => {
+    render(
+      <AgentActivity
+        events={[
+          event("second-done", "agent.completed", "2026-05-12T15:01:03.000Z", "Second result", {
+            providerChildSessionId: "child-native", agentRootToolUseId: "task-1",
+            agentRunId: "send-2", status: "completed"
+          }),
+          event("second-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
+            providerChildSessionId: "child-native", agentRootToolUseId: "task-1", agentRunId: "send-2"
+          }),
+          event("first-done", "agent.completed", "2026-05-12T15:00:03.000Z", "First result", {
+            providerChildSessionId: "child-native", agentRootToolUseId: "task-1",
+            agentRunId: "task-1", status: "completed"
+          }),
+          event("first-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
+            providerChildSessionId: "child-native", agentRootToolUseId: "task-1", agentRunId: "task-1"
+          })
+        ]}
+        codename="Curie"
+        parentSession={{ ...session, state: "complete" }}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
+    );
+
+    expect(screen.getAllByRole("region", { name: /Agent result/ })).toHaveLength(2);
+    expect(screen.getByText("First result")).toBeInTheDocument();
+    expect(screen.getByText("Second result")).toBeInTheDocument();
+  });
   afterEach(() => {
     vi.useRealTimers();
     cleanup();

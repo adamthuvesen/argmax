@@ -1,5 +1,7 @@
 import { getToolTypeBucket, type ToolCall } from "./toolCalls.js";
 import { stableHash32 } from "./stableHash.js";
+import type { AgentReference } from "../../shared/types.js";
+import agentCodenames from "../../shared/agentCodenames.json";
 
 /**
  * Deterministic codenames for spawned subagents: 100 physicists,
@@ -12,25 +14,25 @@ import { stableHash32 } from "./stableHash.js";
  * are the household names, and a session's first spawn always draws from them
  * so the codename people see most often is one they know.
  */
-export const SCIENTIST_NAMES: readonly string[] = [
-  "Turing", "Einstein", "Curie", "Newton", "Noether", "Lovelace", "Feynman", "Euler",
-  "Gauss", "Hopper",
-  "Shannon", "Dirac", "Bohr", "Maxwell", "Faraday", "Planck", "Ramanujan", "Hilbert",
-  "Dijkstra", "Knuth", "Galileo", "Kepler", "Fermi", "Heisenberg", "Schrödinger", "Riemann",
-  "Cantor", "Meitner", "Hamming", "Neumann",
-  "Babbage", "Boole", "Gödel", "Church", "Kleene", "Lamport", "Liskov", "Hamilton",
-  "Erdős", "Galois", "Abel", "Fourier", "Laplace", "Lagrange", "Bayes", "Fermat",
-  "Pascal", "Leibniz", "Poincaré", "Kolmogorov", "Markov", "Pauli", "Rutherford", "Tesla",
-  "Hertz", "Kelvin", "Joule", "Hubble", "Franklin", "Hypatia",
-  "Archimedes", "Euclid", "Pythagoras", "Fibonacci", "Khwarizmi", "Descartes", "Bernoulli", "Cauchy",
-  "Banach", "Conway", "Germain", "Kovalevskaya", "Mirzakhani", "Mandelbrot", "Boltzmann", "Lorentz",
-  "Hawking", "Copernicus", "Ampère", "Ohm", "Ångström", "Bose", "Chandrasekhar", "Wu",
-  "Rubin", "Landau", "Higgs", "McCarthy", "Backus", "Ritchie", "Thompson", "Zuse",
-  "Wirth", "Hoare", "Karp", "Engelbart", "Cerf", "Rivest", "Codd", "Huffman"
-];
+export const SCIENTIST_NAMES: readonly string[] = agentCodenames;
 
 /** How many leading entries of `SCIENTIST_NAMES` a session's first spawn draws from. */
 export const HEADLINE_COUNT = 10;
+
+/** The first launch owns identity for a native child. Continuations point back
+ * to it, so discovering the provider's child id never renames or remounts the
+ * tab that was opened while the launch was still streaming. */
+export function agentRootToolUseId(tool: ToolCall): string {
+  return tool.agentRootToolUseId
+    ?? (tool.providerChildSessionId && tool.parentToolUseId ? tool.parentToolUseId : tool.toolUseId);
+}
+
+export function agentCodenameKey(tool: ToolCall): string {
+  const root = agentRootToolUseId(tool);
+  return tool.providerParentConversationId && tool.providerChildSessionId
+    ? `${root}\u0000${tool.providerParentConversationId}\u0000${tool.providerChildSessionId}`
+    : root;
+}
 
 /**
  * The name a spawn falls back to before the session's events have loaded and a
@@ -57,9 +59,14 @@ export function fallbackCodename(toolUseId: string): string {
 export function assignAgentCodenames(tools: readonly ToolCall[]): Map<string, string> {
   const assignments = new Map<string, string>();
   const taken = new Set<string>();
-  const agentToolUseIds = tools
-    .filter((tool) => getToolTypeBucket(tool.name) === "agent")
-    .map((tool) => tool.toolUseId);
+  const agentTools = tools.filter((tool) => getToolTypeBucket(tool.name) === "agent");
+  for (const tool of agentTools) {
+    const key = agentCodenameKey(tool);
+    if (assignments.has(key) || !tool.agentCodename) continue;
+    assignments.set(key, tool.agentCodename);
+    taken.add(tool.agentCodename);
+  }
+  const agentToolUseIds = agentTools.map(agentCodenameKey);
 
   for (const toolUseId of agentToolUseIds) {
     if (assignments.has(toolUseId)) continue;
@@ -81,6 +88,34 @@ export function assignAgentCodenames(tools: readonly ToolCall[]): Map<string, st
   return assignments;
 }
 
+/** References the parent can safely use when asking Claude to continue one of
+ * its own native children. Unsupported providers never acquire these fields,
+ * so this returns no speculative references for them. */
+export function claudeAgentReferences(
+  tools: readonly ToolCall[],
+  codenames: ReadonlyMap<string, string>,
+  providerParentConversationId: string | null
+): AgentReference[] {
+  if (!providerParentConversationId) return [];
+  const references = new Map<string, AgentReference>();
+  for (const tool of tools) {
+    const providerChildSessionId = tool.providerChildSessionId;
+    if (
+      !providerChildSessionId ||
+      tool.providerParentConversationId !== providerParentConversationId ||
+      references.has(providerChildSessionId)
+    ) continue;
+    const name = codenames.get(agentCodenameKey(tool));
+    if (!name) continue;
+    references.set(providerChildSessionId, {
+      name,
+      providerChildSessionId,
+      providerParentConversationId
+    });
+  }
+  return [...references.values()];
+}
+
 /**
  * Resolve the codename to show for a tool row: the assigned name for agent
  * spawns (falling back to the hash-only name if events aren't loaded yet), or
@@ -91,5 +126,6 @@ export function codenameForTool(
   codenames?: Map<string, string>
 ): string | undefined {
   if (getToolTypeBucket(tool.name) !== "agent") return undefined;
-  return codenames?.get(tool.toolUseId) ?? fallbackCodename(tool.toolUseId);
+  const key = agentCodenameKey(tool);
+  return codenames?.get(key) ?? fallbackCodename(key);
 }

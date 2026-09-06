@@ -95,6 +95,15 @@ function canonicalDiagnostic(event: CanonicalTimelineEvent): Record<string, unkn
       }
       return lifecycle;
     }
+    case "agent":
+      return {
+        ...diagnostic,
+        phase: event.phase,
+        status: event.status,
+        providerInvocationId: event.providerInvocationId,
+        providerChildSessionId: event.providerChildSessionId,
+        agentRunId: event.agentRunId
+      };
     case "multitask":
       return {
         ...diagnostic,

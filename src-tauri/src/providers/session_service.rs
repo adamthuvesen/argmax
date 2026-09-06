@@ -26,7 +26,7 @@ use uuid::Uuid;
 use super::{
     adapters::{get_provider_definition, prompt_for_agent_mode},
     flush_queue::{DashboardDelta, PendingMessage, ProviderEventFlushQueue},
-    follow_up::compose_follow_up_prompt,
+    follow_up::{agent_reference_prompt, compose_follow_up_prompt},
     measured_diffs::{
         capture_opening_mark, merge_measured_diffs, paths_awaiting_diff, MeasuredDiff,
         MeasuredDiffs,
@@ -731,10 +731,19 @@ impl ProviderSessionService {
                     queued: true,
                 });
             }
+            let prompt = {
+                let connection = self.database.connection();
+                agent_reference_prompt(
+                    &connection,
+                    &session_id,
+                    &message,
+                    input.agent_references.as_deref().unwrap_or_default(),
+                )?
+            };
             self.mark_turn_start(&session_id, workspace_path);
             handle.send_input(&format!(
                 "{}\r",
-                prompt_for_agent_mode(&message, input.agent_mode.unwrap_or(AgentMode::Auto))
+                prompt_for_agent_mode(&prompt, input.agent_mode.unwrap_or(AgentMode::Auto))
             ));
             self.persist_user_message(
                 &session_id,
@@ -886,6 +895,12 @@ impl ProviderSessionService {
                 &session_id,
                 &message,
                 resume_conversation_id.is_some(),
+            )?;
+            let launch_prompt = agent_reference_prompt(
+                &connection,
+                &session_id,
+                &launch_prompt,
+                input.agent_references.as_deref().unwrap_or_default(),
             )?;
             // A multitask that finished while this session was busy is told to
             // the agent here, on the front of the prompt — never as a turn of
@@ -1900,6 +1915,7 @@ impl ProviderSessionService {
             Prompt::try_from(notice.body),
         ) {
             (Ok(session_id), Ok(input)) => ProvidersSendInput {
+                agent_references: None,
                 session_id,
                 input,
                 provider: None,
@@ -2163,6 +2179,7 @@ impl ProviderSessionService {
             reasoning_effort,
             fast_mode,
             attachments: input.attachments.clone().unwrap_or_default(),
+            agent_references: input.agent_references.clone().unwrap_or_default(),
             origin,
             queued_at: now_iso(),
         });
@@ -2706,6 +2723,8 @@ fn pending_message_to_send_input(
     let session_id = SessionId::try_from(session_id).map_err(ArgmaxError::invalid)?;
     let input = Prompt::try_from(message.content).map_err(ArgmaxError::invalid)?;
     Ok(ProvidersSendInput {
+        agent_references: (!message.agent_references.is_empty())
+            .then_some(message.agent_references),
         session_id,
         input,
         // Queued follow-ups never switch provider — provider switching is gated to
@@ -2850,6 +2869,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn queued_follow_up_keeps_native_agent_references() {
+        let references = serde_json::from_value(json!([{
+            "name": "Gauss",
+            "providerChildSessionId": "child-1",
+            "providerParentConversationId": "parent-1"
+        }]))
+        .expect("references");
+        let message = PendingMessage {
+            id: "queued-reference".to_string(),
+            session_id: "s1".to_string(),
+            content: "Ask Gauss again".to_string(),
+            agent_mode: "auto".to_string(),
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            attachments: Vec::new(),
+            agent_references: references,
+            origin: None,
+            queued_at: now_iso(),
+        };
+        let expected = message.agent_references.clone();
+        let input = pending_message_to_send_input("s1".to_string(), message).expect("queued input");
+        assert_eq!(input.input.as_str(), "Ask Gauss again");
+        assert_eq!(input.agent_references.as_deref(), Some(expected.as_slice()));
+    }
+
+    #[test]
     fn only_agent_control_events_trigger_trace_reconciliation() {
         let mut delta = DashboardDelta {
             events: vec![crate::persistence::events::TimelineEvent {
@@ -2964,6 +3011,7 @@ mod tests {
                 reasoning_effort: None,
                 fast_mode: false,
                 attachments: Vec::new(),
+                agent_references: Vec::new(),
                 origin: None,
                 queued_at: now_iso(),
             });

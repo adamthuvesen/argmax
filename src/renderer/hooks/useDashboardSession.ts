@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 import type {
   ApprovalRequest,
   DashboardSnapshot,
+  NativeAgentIdentity,
   ProjectSummary,
   SessionSummary,
   TimelineEvent,
@@ -90,7 +91,7 @@ export interface UseDashboardSessionResult {
   refresh: () => Promise<void>;
   loadDashboard: () => Promise<void>;
   loadSessionEvents: (sessionId: string) => Promise<void>;
-  loadAgentEvents: (sessionId: string, parentToolUseId: string) => Promise<void>;
+  loadAgentEvents: (sessionId: string, parentToolUseId: string, identity?: NativeAgentIdentity) => Promise<{ hasMore: boolean }>;
   openWorkspaceChat: (workspaceId: string) => void;
   openProjectLauncher: (projectId: string) => void;
   resolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
@@ -196,14 +197,19 @@ export function useDashboardSession(
     }
   }, [timelines, rememberSessionMoves]);
 
-  const loadAgentEvents = useCallback(async (sessionId: string, parentToolUseId: string): Promise<void> => {
+  const loadAgentEvents = useCallback(async (
+    sessionId: string,
+    parentToolUseId: string,
+    identity?: NativeAgentIdentity
+  ): Promise<{ hasMore: boolean }> => {
     if (!window.argmax) {
-      return;
+      return { hasMore: false };
     }
     const ticket = timelines.beginRead(sessionId);
     try {
-      const data = await window.argmax.session.agentEvents({ sessionId, parentToolUseId });
+      const data = await window.argmax.session.agentEvents({ sessionId, parentToolUseId, ...identity });
       timelines.mergeAgentTail(sessionId, data, ticket);
+      return { hasMore: data.hasMore === true };
     } finally {
       timelines.cancelRead(sessionId, ticket);
     }

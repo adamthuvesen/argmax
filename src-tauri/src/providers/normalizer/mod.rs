@@ -24,6 +24,7 @@ use self::{
         extract_usage as extract_claude_usage,
         is_hidden_synthetic_body as is_claude_hidden_synthetic_body,
         is_thinking_delta_payload as is_claude_thinking_delta_payload,
+        native_agent_lifecycle_event as claude_native_agent_lifecycle_event,
         synthesize_message_completed_from_result as synthesize_claude_message_completed_from_result,
         transcript_user_row as claude_transcript_user_row, TranscriptUserRow,
     },
@@ -710,6 +711,16 @@ fn normalize_json_payload(
                 // The same row the live stream sends; the shared path below
                 // turns it into a `command.completed`.
                 TranscriptUserRow::ToolResult => {}
+            }
+        }
+        if provider == ProviderId::Claude {
+            if let Some(agent_event) = claude_native_agent_lifecycle_event(event, &payload) {
+                return NormalizedProviderResult {
+                    events: vec![agent_event],
+                    usages,
+                    provider_conversation_id,
+                    ..NormalizedProviderResult::default()
+                };
             }
         }
         if let Some(marker) = claude_compaction_marker(event, &payload) {

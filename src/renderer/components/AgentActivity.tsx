@@ -1,9 +1,9 @@
 import { ArrowDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
-import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
+import type { NativeAgentIdentity, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { SCROLL_INTENT_KEYS, useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
-import { buildAgentActivity, type AgentActivity as AgentActivityModel, type AgentModel } from "../lib/agentActivity.js";
+import { buildAgentActivity, persistentAgentRuns, type AgentActivity as AgentActivityModel, type AgentModel } from "../lib/agentActivity.js";
 import { emblemForCodename } from "../lib/agentEmblems.js";
 import { fallbackCodename } from "../lib/agentNames.js";
 import { foldConversationItems } from "../lib/foldConversation.js";
@@ -31,6 +31,7 @@ import { ToolCallRow } from "./ToolCallRow.js";
 import { TurnChangesCard } from "./TurnChangesCard.js";
 import { TurnBlock } from "./TurnBlock.js";
 import { WorkingNest } from "./WorkingNest.js";
+
 
 /**
  * The run's masthead: what the agent was asked to do as the title, and one
@@ -190,7 +191,7 @@ function AgentResult({
   );
 }
 
-export function AgentActivity({
+function AgentActivityRun({
   events,
   codename,
   defaultToolCallsDisplay,
@@ -205,7 +206,10 @@ export function AgentActivity({
   onOpenReview,
   parentSession,
   parentToolUseId,
-  workspace
+  workspace,
+  agentRunId = null,
+  providerInvocationId = null,
+  nativeIdentity = null
 }: {
   events: TimelineEvent[];
   codename?: string;
@@ -215,7 +219,11 @@ export function AgentActivity({
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
   isFocused?: boolean;
-  onLoadAgentEvents?: (sessionId: string, parentToolUseId: string) => Promise<void>;
+  onLoadAgentEvents?: (
+    sessionId: string,
+    parentToolUseId: string,
+    identity?: NativeAgentIdentity
+  ) => Promise<void | { hasMore: boolean }>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onOpenAgent?: (tool: ToolCall) => void;
   /** Open one file's diff in the review panel's Changes view. */
@@ -226,6 +234,9 @@ export function AgentActivity({
   parentSession: SessionSummary | null;
   parentToolUseId: string;
   workspace: WorkspaceSummary | null;
+  agentRunId?: string | null;
+  providerInvocationId?: string | null;
+  nativeIdentity?: NativeAgentIdentity | null;
 }): JSX.Element {
   const parentSessionId = parentSession?.id ?? null;
   const visibleEvents = useMemo(
@@ -236,11 +247,15 @@ export function AgentActivity({
     () =>
       buildAgentActivity({
         parentToolUseId,
+        agentRunId,
+        providerInvocationId,
+        nativeIdentity,
         events: visibleEvents,
         sessionRunning: parentSession?.state === "running",
+        sessionInterrupted: parentSession?.state === "failed" || parentSession?.state === "cancelled",
         provider: parentSession?.provider
       }),
-    [parentSession?.provider, parentSession?.state, parentToolUseId, visibleEvents]
+    [agentRunId, nativeIdentity, parentSession?.provider, parentSession?.state, parentToolUseId, providerInvocationId, visibleEvents]
   );
   const finalOutput = activity.finalOutput;
   // Per-agent state needs no reset when the run changes: the dock mounts one
@@ -249,10 +264,13 @@ export function AgentActivity({
   // opened — the mount's passive effects can still be queued when it lands, and
   // they then flush over the click's update.
   const [instructionsExpanded, setInstructionsExpanded] = useState(false);
-  const agentKey = parentSessionId ? `${parentSessionId}:${parentToolUseId}` : null;
+  const agentKey = parentSessionId
+    ? `${parentSessionId}:${parentToolUseId}:${agentRunId ?? "legacy"}`
+    : null;
   const [loadedAgentKey, setLoadedAgentKey] = useState<string | null>(null);
   const [failedAgentKey, setFailedAgentKey] = useState<string | null>(null);
   const [loadingAgentKey, setLoadingAgentKey] = useState<string | null>(null);
+  const [limitedHistoryKey, setLimitedHistoryKey] = useState<string | null>(null);
   const agentEventsInFlightKeysRef = useRef(new Set<string>());
   const followItems = useMemo(
     () => [...activity.items, finalOutput, activity.status],
@@ -410,7 +428,7 @@ export function AgentActivity({
     handleUserScrollIntent,
     handleScroll
   } = useSmartFollowScroll(
-    parentSessionId ? `${parentSessionId}:${parentToolUseId}` : null,
+    agentKey,
     followItems,
     false
   );
@@ -422,7 +440,14 @@ export function AgentActivity({
     agentEventsInFlightKeysRef.current.add(loadKey);
     setLoadingAgentKey(loadKey);
     try {
-      await onLoadAgentEvents(parentSessionId, parentToolUseId);
+      const identity = nativeIdentity ?? (activity.parentTool?.providerParentConversationId && activity.parentTool.providerChildSessionId
+        ? {
+            providerParentConversationId: activity.parentTool.providerParentConversationId,
+            providerChildSessionId: activity.parentTool.providerChildSessionId
+          }
+        : undefined);
+      const result = await onLoadAgentEvents(parentSessionId, parentToolUseId, identity);
+      setLimitedHistoryKey(result?.hasMore ? loadKey : (currentKey) => currentKey === loadKey ? null : currentKey);
       setFailedAgentKey((currentKey) => (currentKey === loadKey ? null : currentKey));
     } catch {
       setFailedAgentKey(loadKey);
@@ -431,7 +456,7 @@ export function AgentActivity({
       setLoadedAgentKey(loadKey);
       setLoadingAgentKey((currentKey) => (currentKey === loadKey ? null : currentKey));
     }
-  }, [agentKey, onLoadAgentEvents, parentSessionId, parentToolUseId]);
+  }, [activity.parentTool?.providerChildSessionId, activity.parentTool?.providerParentConversationId, agentKey, nativeIdentity, onLoadAgentEvents, parentSessionId, parentToolUseId]);
 
   useEffect(() => {
     if (!parentSessionId) return;
@@ -564,6 +589,12 @@ export function AgentActivity({
           </div>
         ) : null}
 
+        {limitedHistoryKey === agentKey ? (
+          <div className="agent-activity-empty" role="status">
+            Earlier agent activity is not shown.
+          </div>
+        ) : null}
+
         {activityChildren.length > 0 || toolItems.length > 0 ? (
           // The same block the transcript wraps a turn in, so the run carries
           // the same "Worked for Xs" chip: one control over every tool group
@@ -613,5 +644,30 @@ export function AgentActivity({
         ) : null}
       </div>
     </section>
+  );
+}
+
+export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JSX.Element {
+  const parentSessionId = props.parentSession?.id ?? null;
+  const visibleEvents = parentSessionId
+    ? props.events.filter((event) => event.sessionId === parentSessionId)
+    : [];
+  const runs = persistentAgentRuns(visibleEvents, props.parentToolUseId, props.nativeIdentity ?? null);
+  if (runs.length <= 1) {
+    return <AgentActivityRun {...props} agentRunId={runs[0]?.agentRunId ?? null} providerInvocationId={runs[0]?.providerInvocationId ?? null} />;
+  }
+  return (
+    <div className="agent-activity-history" aria-label={`Agent runs: ${props.codename ?? props.parentToolUseId}`}>
+      {runs.map((run, index) => (
+        <AgentActivityRun
+          key={run.key}
+          {...props}
+          agentRunId={run.agentRunId}
+          providerInvocationId={run.providerInvocationId}
+          onLoadAgentEvents={index === runs.length - 1 ? props.onLoadAgentEvents : undefined}
+          onLoadSessionEvents={index === runs.length - 1 ? props.onLoadSessionEvents : undefined}
+        />
+      ))}
+    </div>
   );
 }

@@ -16,7 +16,8 @@ import {
   VERIFICATION_BARRIERS,
   VERIFICATION_CONVERSATION_ID,
   VERIFICATION_PROVIDER,
-  VERIFICATION_SCENARIOS
+  VERIFICATION_SCENARIOS,
+  VERIFICATION_SUBAGENT,
 } from "./verification/provider-fixture.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -46,8 +47,8 @@ export function parseVerifyArgs(argv) {
     else if (arg === "--timeout") options.timeoutMs = Number(valueAfter(index++, arg)) * 1000;
     else throw new Error(`unknown argument: ${arg}`);
   }
-  if (!['chat-resume', 'cancellation', 'provider-error'].includes(options.scenario)) {
-    throw new Error("--scenario must be chat-resume, cancellation, or provider-error");
+  if (!['chat-resume', 'persistent-subagent', 'cancellation', 'provider-error'].includes(options.scenario)) {
+    throw new Error("--scenario must be chat-resume, persistent-subagent, cancellation, or provider-error");
   }
   if (!['required', 'auto', 'off'].includes(options.native)) {
     throw new Error("--native must be required, auto, or off");
@@ -221,8 +222,20 @@ function assertIncludes(records, expected, label) {
   }
 }
 
-async function runScenario({ bridge, scenario, repoPath, controlDir, verifyUi, sendInput, terminate, timeoutMs, timeline }) {
-  const definition = scenario === "chat-resume" ? VERIFICATION_SCENARIOS.chatResumeFirst : VERIFICATION_SCENARIOS[scenario === "provider-error" ? "providerError" : scenario];
+function assertRecordIncludes(records, expected, label) {
+  if (!records.some((record) => String(record.content ?? JSON.stringify(record)).includes(expected))) {
+    throw new Error(`${label} missing from provider records: ${expected}`);
+  }
+}
+
+async function runScenario({ bridge, scenario, repoPath, controlDir, verifyUi, sendInput, terminate, restartBackend, timeoutMs, timeline }) {
+  const scenarioDefinition = {
+    "chat-resume": "chatResumeFirst",
+    "persistent-subagent": "persistentSubagentFirst",
+    cancellation: "cancellation",
+    "provider-error": "providerError",
+  };
+  const definition = VERIFICATION_SCENARIOS[scenarioDefinition[scenario]];
   const { workspace } = await resolveProjectAndWorkspace(bridge, repoPath, definition.prompt);
   const launched = await launchFixture(bridge, workspace.id, definition.prompt);
   timeline.push({ at: new Date().toISOString(), type: "session-launched", sessionId: launched.id, workspaceId: workspace.id });
@@ -261,6 +274,76 @@ async function runScenario({ bridge, scenario, repoPath, controlDir, verifyUi, s
     return { session: second.session, workspace, records: combined, browser: [streamingUi, toolUi, ui] };
   }
 
+  if (scenario === "persistent-subagent") {
+    const first = await collectUntilTerminal(bridge, launched.id, timeoutMs);
+    if (first.session.state !== "complete") throw new Error(`persistent child first turn ended in ${first.session.state}`);
+    if (first.session.providerConversationId !== VERIFICATION_CONVERSATION_ID) throw new Error("persistent child parent conversation id was not persisted");
+    assertRecordIncludes(first.records, `\"task_id\":\"${VERIFICATION_SUBAGENT.id}\"`, "persistent child start");
+    assertRecordIncludes(first.records, `\"parent_tool_use_id\":\"${VERIFICATION_SUBAGENT.rootToolUseId}\"`, "persistent child parent linkage");
+    assertRecordIncludes(first.records, VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText, "persistent child first response");
+
+    const resumedBridge = await restartBackend();
+    timeline.push({ at: new Date().toISOString(), type: "backend-restarted", sessionId: launched.id });
+    const before = await resumedBridge.call("session:events-since", {
+      sessionId: launched.id,
+      eventCursor: null,
+      rawOutputCursor: null,
+      changeCursor: null,
+    });
+    await sendInput(launched.id, VERIFICATION_SCENARIOS.persistentSubagentSecond.prompt);
+    const second = await collectUntilTerminal(resumedBridge, launched.id, timeoutMs, before);
+    if (second.session.state !== "complete") throw new Error(`persistent child follow-up ended in ${second.session.state}`);
+    assertRecordIncludes(second.records, `\"resumedAgentId\":\"${VERIFICATION_SUBAGENT.id}\"`, "persistent child resume identity");
+    assertRecordIncludes(second.records, `\"tool_use_id\":\"${VERIFICATION_SUBAGENT.followUpToolUseId}\"`, "persistent child follow-up invocation");
+    assertRecordIncludes(second.records, VERIFICATION_SCENARIOS.persistentSubagentSecond.visibleText, "persistent child follow-up response");
+    const agentEvents = await resumedBridge.call("session:agent-events", {
+      sessionId: launched.id,
+      parentToolUseId: VERIFICATION_SUBAGENT.rootToolUseId,
+    });
+    const lifecycle = agentEvents.events.filter((event) => event.type === "agent.started" || event.type === "agent.completed");
+    for (const event of lifecycle) {
+      const payload = event.payload ?? {};
+      if (
+        payload.providerChildSessionId !== VERIFICATION_SUBAGENT.id
+        || payload.providerParentConversationId !== VERIFICATION_CONVERSATION_ID
+        || payload.agentRootToolUseId !== VERIFICATION_SUBAGENT.rootToolUseId
+        || typeof payload.providerInvocationId !== "string"
+      ) {
+        throw new Error("persistent child lifecycle correlation fields were not persisted");
+      }
+    }
+    for (const runId of [VERIFICATION_SUBAGENT.rootToolUseId, VERIFICATION_SUBAGENT.followUpToolUseId]) {
+      if (!lifecycle.some((event) => event.payload?.agentRunId === runId && event.type === "agent.started")) {
+        throw new Error(`persistent child start for ${runId} was not queryable after restart`);
+      }
+      if (!lifecycle.some((event) => event.payload?.agentRunId === runId && event.type === "agent.completed")) {
+        throw new Error(`persistent child completion for ${runId} was not queryable after restart`);
+      }
+    }
+    timeline.push({ at: new Date().toISOString(), type: "persistent-agent-events", count: agentEvents.events.length });
+    const browser = [];
+    for (const theme of ["light", "dark"]) {
+      browser.push(await verifyUi({
+        name: `persistent-agent-${theme}`,
+        expectedTexts: [],
+        agentExpectedTexts: [
+          VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText,
+          VERIFICATION_SCENARIOS.persistentSubagentSecond.visibleText,
+        ],
+        theme,
+      }));
+    }
+    return {
+      session: second.session,
+      workspace,
+      records: [...first.records, ...second.records],
+      browser,
+      bridge: resumedBridge,
+      nativeChildId: VERIFICATION_SUBAGENT.id,
+      agentEventCount: agentEvents.events.length,
+    };
+  }
+
   if (scenario === "cancellation") {
     const partial = await collectUntilText(bridge, launched.id, definition.visibleText, timeoutMs);
     const streamingUi = await verifyUi({ name: "cancellation-streaming", expectedTexts: [definition.visibleText], expectIdle: false });
@@ -292,6 +375,12 @@ async function sqliteSnapshot(databasePath, sessionId) {
 function expectedPersistenceTexts(scenario) {
   if (scenario === "chat-resume") {
     return [VERIFICATION_SCENARIOS.chatResumeFirst.visibleText, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
+  }
+  if (scenario === "persistent-subagent") {
+    return [
+      VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText,
+      VERIFICATION_SCENARIOS.persistentSubagentSecond.visibleText,
+    ];
   }
   if (scenario === "cancellation") return [VERIFICATION_SCENARIOS.cancellation.visibleText];
   return [VERIFICATION_SCENARIOS.providerError.diagnostic];
@@ -468,6 +557,9 @@ export async function runVerification(options) {
   process.once("SIGINT", onSigint);
   process.once("SIGTERM", onSigterm);
   try {
+    if (options.scenario === "persistent-subagent" && options.native !== "off") {
+      throw new Error("persistent-subagent requires --native off because it verifies a scratch backend restart");
+    }
     report.source.beforeBuild = await checkoutFingerprint(repoRoot);
     const targetDir = path.join(repoRoot, "src-tauri", "target", "verification");
     const rendererOutDir = path.join(repoRoot, "dist", "verification");
@@ -557,7 +649,15 @@ export async function runVerification(options) {
     bridge = await connectBridgeWhenReady({ port: remotePort, token: remoteToken }, options.timeoutMs);
     const health = await bridge.call("health:ping", {});
     report.assertions.push({ name: "backend-ready", ok: Boolean(health) });
-    const titleIncludes = VERIFICATION_SCENARIOS[options.scenario === "chat-resume" ? "chatResumeFirst" : options.scenario === "provider-error" ? "providerError" : "cancellation"].prompt;
+    const titleIncludes = VERIFICATION_SCENARIOS[
+      options.scenario === "chat-resume"
+        ? "chatResumeFirst"
+        : options.scenario === "persistent-subagent"
+          ? "persistentSubagentFirst"
+          : options.scenario === "provider-error"
+            ? "providerError"
+            : "cancellation"
+    ].prompt;
     const verifyUi = desktopHandle
       ? async ({ name, expectedTexts, expectIdle }) => {
           const result = await desktopModule.verifyDesktopSession({
@@ -573,14 +673,16 @@ export async function runVerification(options) {
           if (!result.ok) throw new Error(`native UI verification failed: ${result.errors.join("; ")}`);
           return result;
         }
-      : ({ name, expectedTexts }) => verifyBrowserSession({
+      : ({ name, expectedTexts, agentExpectedTexts, theme }) => verifyBrowserSession({
           repoRoot,
           port: remotePort,
           token: remoteToken,
           outputDir,
           name: `browser-${name}`,
           titleIncludes,
-          expectedTexts
+          expectedTexts,
+          agentExpectedTexts,
+          theme
         });
     const recordNativeAction = (result) => {
       report.native.actions ??= [];
@@ -601,6 +703,24 @@ export async function runVerification(options) {
     const terminate = desktopHandle
       ? async () => recordNativeAction(await desktopModule.stopDesktopSession({ browser: desktopHandle.browser }))
       : (sessionId) => bridge.call("providers:terminate", { sessionId });
+    const restartBackend = async () => {
+      if (desktopHandle || !app) throw new Error("scratch backend restart is unavailable");
+      bridge?.close();
+      bridge = null;
+      report.process.scratch.restart = await app.stop();
+      app = await startScratchApp({
+        dataDir: profile,
+        binary,
+        env,
+        port: remotePort,
+        readyTimeoutMs: Math.min(options.timeoutMs, 60_000),
+      });
+      report.process.scratch.restarted = { pid: app.pid, port: app.port };
+      bridge = await connectBridgeWhenReady({ port: remotePort, token: remoteToken }, options.timeoutMs);
+      const health = await bridge.call("health:ping", {});
+      if (!health) throw new Error("scratch backend did not become healthy after restart");
+      return bridge;
+    };
     scenarioResult = await runScenario({
       bridge,
       scenario: options.scenario,
@@ -610,10 +730,18 @@ export async function runVerification(options) {
       timeline: report.timeline,
       verifyUi,
       sendInput,
-      terminate
+      terminate,
+      restartBackend,
     });
+    bridge = scenarioResult.bridge ?? bridge;
     report.session = { id: scenarioResult.session.id, workspaceId: scenarioResult.workspace.id, state: scenarioResult.session.state };
     report.assertions.push({ name: "scenario-state", ok: true, value: scenarioResult.session.state });
+    if (options.scenario === "persistent-subagent") {
+      report.assertions.push(
+        { name: "persistent-child-stable-id", ok: true, value: scenarioResult.nativeChildId },
+        { name: "persistent-child-queryable-after-restart", ok: true, value: scenarioResult.agentEventCount },
+      );
+    }
     await writeNdjson(path.join(outputDir, "timeline.ndjson"), scenarioResult.records);
     report.debugSnapshot = redact(await bridge.call("system:debug-snapshot", { afterLogSeq: null }));
     if (desktopHandle) {

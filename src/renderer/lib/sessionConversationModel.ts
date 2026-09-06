@@ -307,7 +307,7 @@ function isStillRunningAgentLaunch(
   // A trace-synthesized completion represents the child lifecycle itself,
   // unlike Codex's normal spawn completion, which only says the child started.
   if (canonical.traceSyntheticLaunch) return false;
-  if (name.toLowerCase() === "spawn_agent") return true;
+  if (name.toLowerCase() === "spawn_agent" || name.toLowerCase() === "spawn_subagent") return true;
   if (canonical.running) return true;
   if (output && isInternalAgentLaunchMetadata(output)) return true;
   const runInBackground = input.run_in_background ?? input.runInBackground;

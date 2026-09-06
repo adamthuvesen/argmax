@@ -63,6 +63,19 @@ describe("isInternalAgentLaunchMetadata", () => {
     expect(isInternalAgentLaunchMetadata("This tool result is internal metadata. Use SendMessage with to: ...")).toBe(true);
     expect(isInternalAgentLaunchMetadata("Background task launched.")).toBe(true);
     expect(isInternalAgentLaunchMetadata("Subagent launched successfully.")).toBe(true);
+    expect(
+      isInternalAgentLaunchMetadata(
+        "Subagent started in background.\nsubagent_id: 01a07579-bad6-7b31-b248-8aa103ee10a8"
+      )
+    ).toBe(true);
+    expect(
+      isInternalAgentLaunchMetadata(
+        JSON.stringify({
+          type: "Text",
+          text: "Subagent started in background.\nsubagent_id: child-1\ntype: reviewer"
+        })
+      )
+    ).toBe(true);
   });
 
   it("returns false for real subagent completion text", () => {

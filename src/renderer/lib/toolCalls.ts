@@ -571,16 +571,33 @@ function previewChangedPaths(changes: unknown): string {
   return paths.length === 1 ? first : `${first} +${paths.length - 1}`;
 }
 
+/**
+ * Grok wraps tool results as `{"type":"Text","text":"..."}`. Lift the inner
+ * string so callers see the payload, not the envelope. Anything else is left
+ * alone — including JSON that just happens to have a `text` field beside data.
+ */
+export function unwrapOutputEnvelope(output: string): string {
+  const trimmed = output.trim();
+  if (!trimmed.startsWith("{")) return output;
+  const parsed = safeJsonParse(trimmed, "toolCalls.outputEnvelope");
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return output;
+  const envelope = parsed as Record<string, unknown>;
+  if (envelope.type !== "Text" && envelope.type !== "text") return output;
+  if (typeof envelope.text !== "string") return output;
+  const extra = Object.keys(envelope).some((key) => key !== "type" && key !== "text");
+  return extra ? output : envelope.text;
+}
+
 export function extractToolOutput(payload: Record<string, unknown>): string | null {
-  if (typeof payload.content === "string") return payload.content;
+  if (typeof payload.content === "string") return unwrapOutputEnvelope(payload.content);
   if (Array.isArray(payload.content)) {
     const text = payload.content
       .map((c: unknown) => (c && typeof c === "object" && "text" in c ? String((c as Record<string, unknown>).text) : ""))
       .filter(Boolean)
       .join("\n");
-    return text || null;
+    return text ? unwrapOutputEnvelope(text) : null;
   }
-  if (typeof payload.output === "string") return payload.output;
+  if (typeof payload.output === "string") return unwrapOutputEnvelope(payload.output);
   return null;
 }
 

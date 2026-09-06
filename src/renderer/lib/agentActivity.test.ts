@@ -226,6 +226,34 @@ describe("buildAgentActivity", () => {
     expect(activity.limited).toBe(false);
   });
 
+  it("hides Grok spawn_subagent launch receipts from the result", () => {
+    const activity = buildAgentActivity({
+      parentToolUseId: "call-spawn",
+      events: [
+        event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+          tool_use_id: "call-spawn",
+          content: JSON.stringify({
+            type: "Text",
+            text: "Subagent started in background.\nsubagent_id: child-1\ntype: reviewer\ndescription: Review screenshot drop fix"
+          })
+        }),
+        event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_subagent", {
+          id: "call-spawn",
+          name: "spawn_subagent",
+          input: { description: "Review screenshot drop fix", subagent_type: "reviewer" }
+        })
+      ],
+      sessionRunning: true
+    });
+
+    expect(activity.title).toBe("Review screenshot drop fix");
+    expect(activity.subagentType).toBe("reviewer");
+    expect(activity.finalOutput).toBeNull();
+    expect(activity.status).toBe("running");
+    expect(activity.items).toEqual([]);
+    expect(activity.limited).toBe(true);
+  });
+
   it("marks provider-limited panes when only launch metadata exists", () => {
     const activity = buildAgentActivity({
       parentToolUseId: "call_task",

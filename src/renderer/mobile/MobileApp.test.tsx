@@ -244,6 +244,29 @@ describe("MobileApp", () => {
     expect(await screen.findByRole("region", { name: "Chat list" })).toBeInTheDocument();
   });
 
+  it("keeps the chat list scrolled where it was after opening a session", async () => {
+    render(<MobileApp />);
+
+    const section = await screen.findByRole("region", { name: "Chat list" });
+    const search = screen.getByRole("searchbox", { name: "Search chats" });
+    fireEvent.change(search, { target: { value: "dashboard" } });
+    section.scrollTop = 240;
+    fireEvent.scroll(section);
+
+    fireEvent.click(within(section).getByRole("button", { name: /Build dashboard/ }));
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Chat list" })).not.toBeInTheDocument();
+    // The parked list still sits in the shell, so a keyboard-sized viewport
+    // can clamp the scroller. Restore must ignore that and put the offset back.
+    section.scrollTop = 0;
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to chats" }));
+    const restored = await screen.findByRole("region", { name: "Chat list" });
+    expect(restored).toBe(section);
+    expect(restored.scrollTop).toBe(240);
+    expect(screen.getByRole("searchbox", { name: "Search chats" })).toHaveValue("dashboard");
+  });
+
   it("keeps a review-ready session in Priority after it was opened and left", async () => {
     // Mirror of the desktop sidebar: attention is not an unread marker. The
     // row holds its Priority place until the session goes quiet, whatever the

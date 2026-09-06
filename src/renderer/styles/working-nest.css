@@ -289,7 +289,12 @@
   background: var(--working-nest-lead, currentColor);
 }
 
+/* `from` is spelled out because the part's own `transform` is `scale(1)`, and an
+   implicit first keyframe would take it: `scale(1)` and `rotate(360deg)` are
+   different function lists, so the browser drops to interpolating matrices —
+   both of which are the identity here. The comet held still. */
 @keyframes working-nest-orbit {
+  from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 

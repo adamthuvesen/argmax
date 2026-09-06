@@ -26,7 +26,9 @@ use uuid::Uuid;
 use super::{
     adapters::{get_provider_definition, prompt_for_agent_mode},
     flush_queue::{DashboardDelta, PendingMessage, ProviderEventFlushQueue},
-    follow_up::compose_follow_up_prompt,
+    follow_up::{
+        agent_reference_prompt, compose_follow_up_prompt, ensure_agent_references_supported,
+    },
     measured_diffs::{
         capture_opening_mark, merge_measured_diffs, paths_awaiting_diff, MeasuredDiff,
         MeasuredDiffs,
@@ -667,6 +669,17 @@ impl ProviderSessionService {
         let (workspace_id, session_provider, session_permission_mode) = {
             let connection = self.database.connection();
             let session = find_session_by_id(&connection, &session_id)?;
+            let target_provider = input.provider.unwrap_or(parse_provider(&session.provider)?);
+            let target_model_id = input
+                .model_id
+                .as_ref()
+                .map(|model_id| model_id.as_str())
+                .unwrap_or(&session.model_id);
+            ensure_agent_references_supported(
+                target_provider.as_str(),
+                target_model_id,
+                input.agent_references.as_deref().unwrap_or_default(),
+            )?;
             if session.imported {
                 // Continuing an imported session is what adopts it: from here
                 // it is an ordinary session and the sync pruner leaves it
@@ -731,10 +744,19 @@ impl ProviderSessionService {
                     queued: true,
                 });
             }
+            let prompt = {
+                let connection = self.database.connection();
+                agent_reference_prompt(
+                    &connection,
+                    &session_id,
+                    &message,
+                    input.agent_references.as_deref().unwrap_or_default(),
+                )?
+            };
             self.mark_turn_start(&session_id, workspace_path);
             handle.send_input(&format!(
                 "{}\r",
-                prompt_for_agent_mode(&message, input.agent_mode.unwrap_or(AgentMode::Auto))
+                prompt_for_agent_mode(&prompt, input.agent_mode.unwrap_or(AgentMode::Auto))
             ));
             self.persist_user_message(
                 &session_id,
@@ -886,6 +908,12 @@ impl ProviderSessionService {
                 &session_id,
                 &message,
                 resume_conversation_id.is_some(),
+            )?;
+            let launch_prompt = agent_reference_prompt(
+                &connection,
+                &session_id,
+                &launch_prompt,
+                input.agent_references.as_deref().unwrap_or_default(),
             )?;
             // A multitask that finished while this session was busy is told to
             // the agent here, on the front of the prompt — never as a turn of
@@ -1900,6 +1928,7 @@ impl ProviderSessionService {
             Prompt::try_from(notice.body),
         ) {
             (Ok(session_id), Ok(input)) => ProvidersSendInput {
+                agent_references: None,
                 session_id,
                 input,
                 provider: None,
@@ -2163,6 +2192,7 @@ impl ProviderSessionService {
             reasoning_effort,
             fast_mode,
             attachments: input.attachments.clone().unwrap_or_default(),
+            agent_references: input.agent_references.clone().unwrap_or_default(),
             origin,
             queued_at: now_iso(),
         });
@@ -2706,6 +2736,8 @@ fn pending_message_to_send_input(
     let session_id = SessionId::try_from(session_id).map_err(ArgmaxError::invalid)?;
     let input = Prompt::try_from(message.content).map_err(ArgmaxError::invalid)?;
     Ok(ProvidersSendInput {
+        agent_references: (!message.agent_references.is_empty())
+            .then_some(message.agent_references),
         session_id,
         input,
         // Queued follow-ups never switch provider — provider switching is gated to
@@ -2850,6 +2882,132 @@ mod tests {
     use super::*;
 
     #[test]
+    fn queued_follow_up_keeps_native_agent_references() {
+        let references = serde_json::from_value(json!([{
+            "name": "Gauss",
+            "providerChildSessionId": "child-1",
+            "providerParentConversationId": "parent-1"
+        }]))
+        .expect("references");
+        let message = PendingMessage {
+            id: "queued-reference".to_string(),
+            session_id: "s1".to_string(),
+            content: "Ask Gauss again".to_string(),
+            agent_mode: "auto".to_string(),
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            attachments: Vec::new(),
+            agent_references: references,
+            origin: None,
+            queued_at: now_iso(),
+        };
+        let expected = message.agent_references.clone();
+        let input = pending_message_to_send_input("s1".to_string(), message).expect("queued input");
+        assert_eq!(input.input.as_str(), "Ask Gauss again");
+        assert_eq!(input.agent_references.as_deref(), Some(expected.as_slice()));
+    }
+
+    #[tokio::test]
+    async fn cursor_composer_reference_is_rejected_before_a_queued_model_update() {
+        use crate::persistence::{
+            projects::{persist_project, PersistProjectInput, ProjectSettings},
+            workspaces::{persist_workspace, PersistWorkspaceInput},
+        };
+
+        let database = Arc::new(Database::open_in_memory().expect("open db"));
+        {
+            let connection = database.connection();
+            persist_project(
+                &connection,
+                &PersistProjectInput {
+                    id: "project-1".to_string(),
+                    name: "argmax-test".to_string(),
+                    repo_path: "/tmp/repo".to_string(),
+                    current_branch: "main".to_string(),
+                    default_branch: Some("main".to_string()),
+                    settings: ProjectSettings {
+                        worktree_location: "/tmp/worktrees".to_string(),
+                        setup_command: String::new(),
+                        check_commands: Vec::new(),
+                    },
+                },
+            )
+            .expect("persist project");
+            persist_workspace(
+                &connection,
+                &PersistWorkspaceInput {
+                    id: "workspace-1".to_string(),
+                    project_id: "project-1".to_string(),
+                    task_label: "test workspace".to_string(),
+                    branch: "feature/test".to_string(),
+                    base_ref: "main".to_string(),
+                    path: "/tmp/repo".to_string(),
+                    state: "complete".to_string(),
+                    shared_workspace: false,
+                    kind: "git".to_string(),
+                    dirty: false,
+                    changed_files: 0,
+                },
+            )
+            .expect("persist workspace");
+            persist_session(
+                &connection,
+                &PersistSessionInput {
+                    id: "session-1".to_string(),
+                    workspace_id: "workspace-1".to_string(),
+                    provider: "cursor".to_string(),
+                    model_label: "Safe one-shot".to_string(),
+                    model_id: "gpt-5".to_string(),
+                    reasoning_effort: None,
+                    permission_mode: Some("auto-approve".to_string()),
+                    agent_mode: Some("auto".to_string()),
+                    prompt: "hello".to_string(),
+                    state: SessionState::Complete,
+                },
+            )
+            .expect("persist session");
+        }
+        let references = serde_json::from_value(json!([{
+            "name": "Gauss",
+            "providerChildSessionId": "child-1",
+            "providerParentConversationId": "parent-1"
+        }]))
+        .expect("references");
+        let queued = PendingMessage {
+            id: "queued-reference".to_string(),
+            session_id: "session-1".to_string(),
+            content: "Ask Gauss again".to_string(),
+            agent_mode: "auto".to_string(),
+            model_label: Some("Composer".to_string()),
+            model_id: Some("composer-2.5".to_string()),
+            reasoning_effort: None,
+            fast_mode: false,
+            attachments: Vec::new(),
+            agent_references: references,
+            origin: None,
+            queued_at: now_iso(),
+        };
+        let input =
+            pending_message_to_send_input("session-1".to_string(), queued).expect("queued input");
+        let service = ProviderSessionService::new(Arc::clone(&database));
+        let error = service
+            .send_input(input)
+            .await
+            .expect_err("Composer references must be rejected");
+        assert!(matches!(
+            error,
+            ArgmaxError::ServiceError { ref sub_code, .. }
+                if sub_code == "AGENT_REFERENCE_UNAVAILABLE"
+        ));
+        let connection = database.connection();
+        let session = find_session_by_id(&connection, "session-1").expect("session remains");
+        assert_eq!(session.model_id, "gpt-5");
+        assert!(service.pending_messages_snapshot().is_empty());
+    }
+
+    #[test]
     fn only_agent_control_events_trigger_trace_reconciliation() {
         let mut delta = DashboardDelta {
             events: vec![crate::persistence::events::TimelineEvent {
@@ -2964,6 +3122,7 @@ mod tests {
                 reasoning_effort: None,
                 fast_mode: false,
                 attachments: Vec::new(),
+                agent_references: Vec::new(),
                 origin: None,
                 queued_at: now_iso(),
             });

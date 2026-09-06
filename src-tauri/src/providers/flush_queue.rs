@@ -16,7 +16,7 @@ use super::{
 use crate::sessions::state::SessionState;
 use crate::{
     error::ArgmaxResult,
-    ipc::inputs::ComposerAttachmentInput,
+    ipc::inputs::{AgentReference, ComposerAttachmentInput},
     persistence::{
         approvals::{
             find_approval_by_provider_request, find_pending_approval, persist_approval,
@@ -111,6 +111,8 @@ pub struct PendingMessage {
     // an attachment loses the image in the chat UI once the turn sends.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<ComposerAttachmentInput>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub agent_references: Vec<AgentReference>,
     // A message another session sent while this one was mid-turn. Carried
     // through the queue so the drained turn still renders as "From <label>"
     // rather than as something the user typed.
@@ -770,6 +772,7 @@ mod tests {
             reasoning_effort: None,
             fast_mode: false,
             attachments: Vec::new(),
+            agent_references: Vec::new(),
             origin: None,
             queued_at: "2026-01-01T00:00:00Z".to_string(),
         };

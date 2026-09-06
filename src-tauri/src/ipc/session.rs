@@ -117,6 +117,12 @@ pub(crate) async fn session_agent_events_impl(
     let database = live_database(state)?;
     let session_id = input.session_id.into_string();
     let parent_tool_use_id = input.parent_tool_use_id.into_string();
+    let provider_parent_conversation_id = input
+        .provider_parent_conversation_id
+        .map(|value| value.into_string());
+    let provider_child_session_id = input
+        .provider_child_session_id
+        .map(|value| value.into_string());
     tauri::async_runtime::spawn_blocking(move || {
         reconcile_subagent_traces_with_warning(&database, &session_id);
         if let Err(error) =
@@ -130,7 +136,13 @@ pub(crate) async fn session_agent_events_impl(
             );
         }
         let connection = database.connection();
-        list_session_agent_tail(&connection, &session_id, &parent_tool_use_id)
+        list_session_agent_tail(
+            &connection,
+            &session_id,
+            &parent_tool_use_id,
+            provider_parent_conversation_id.as_deref(),
+            provider_child_session_id.as_deref(),
+        )
     })
     .await
     .map_err(|error| ArgmaxError::service("SESSION_AGENT_EVENTS_JOIN", error.to_string()))?

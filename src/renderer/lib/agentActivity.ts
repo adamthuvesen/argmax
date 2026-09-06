@@ -1,10 +1,11 @@
 import { modelLabelForReference, REASONING_EFFORTS } from "../../shared/providerModels.js";
-import type { ProviderId, TimelineEvent } from "../../shared/types.js";
+import type { NativeAgentIdentity, ProviderId, TimelineEvent } from "../../shared/types.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
+import { agentRootToolUseId } from "./agentNames.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import { effortLabel } from "./models.js";
 import { buildSessionToolCalls } from "./sessionConversationModel.js";
-import { type ToolCall } from "./toolCalls.js";
+import { getToolTypeBucket, type ToolCall } from "./toolCalls.js";
 
 export type AgentActivityItem =
   | { kind: "message"; event: TimelineEvent }
@@ -150,19 +151,53 @@ export function activityTitle(tool: ToolCall | null, parentToolUseId: string): s
 
 export function buildAgentActivity(params: {
   parentToolUseId: string;
+  agentRunId?: string | null;
+  providerInvocationId?: string | null;
+  nativeIdentity?: NativeAgentIdentity | null;
   events: readonly TimelineEvent[];
   sessionRunning?: boolean;
+  sessionInterrupted?: boolean;
   /** Parent session's provider, which the subagent shares. Without it a known
    *  model id can't be resolved to its catalog label and shows as the id. */
   provider?: ProviderId;
 }): AgentActivity {
-  const { parentToolUseId, events, sessionRunning = true, provider } = params;
-  const tools = buildSessionToolCalls(events, sessionRunning);
-  const parentTool = tools.find((tool) => tool.toolUseId === parentToolUseId) ?? null;
+  const { parentToolUseId, agentRunId = null, providerInvocationId = null, nativeIdentity = null, events, sessionRunning = true, sessionInterrupted = false, provider } = params;
+  const tools = buildSessionToolCalls(events, sessionRunning, sessionInterrupted);
+  const identityRuns = tools.filter((tool) =>
+    getToolTypeBucket(tool.name) === "agent" &&
+    agentRootToolUseId(tool) === parentToolUseId &&
+    (!nativeIdentity || (
+      tool.providerParentConversationId === nativeIdentity.providerParentConversationId &&
+      tool.providerChildSessionId === nativeIdentity.providerChildSessionId
+    ))
+  );
+  const parentTool = (agentRunId
+    ? identityRuns.find((tool) => tool.agentRunId === agentRunId &&
+        (!providerInvocationId || tool.providerInvocationId === providerInvocationId))
+    : identityRuns.at(-1)) ?? null;
   const receiverThreadIds = receiverThreadIdsFromTool(parentTool);
-  const childTools = tools.filter((tool) => tool.parentToolUseId === parentToolUseId);
+  // Native lifecycle and child rows carry both IDs. Legacy callers leave one
+  // or both null, so each supplied ID narrows the run independently.
+  const matchesRun = (value: Pick<ToolCall, "agentRunId" | "providerInvocationId">): boolean =>
+    (!agentRunId || value.agentRunId === agentRunId) &&
+    (!providerInvocationId || value.providerInvocationId === providerInvocationId);
+  const childTools = tools.filter((tool) =>
+    tool.parentToolUseId === parentToolUseId &&
+    (!nativeIdentity || (
+      tool.providerParentConversationId === nativeIdentity.providerParentConversationId &&
+      tool.providerChildSessionId === nativeIdentity.providerChildSessionId
+    )) &&
+    matchesRun(tool)
+  );
   const childMessages = events
-    .filter((event) => isChildMessage(event, parentToolUseId, receiverThreadIds))
+    .filter((event) => {
+      if (!isChildMessage(event, parentToolUseId, receiverThreadIds)) return false;
+      const decoded = decodeTimelineEvent(event);
+      return (!nativeIdentity || (
+        decoded.providerParentConversationId === nativeIdentity.providerParentConversationId &&
+        decoded.providerChildSessionId === nativeIdentity.providerChildSessionId
+      )) && matchesRun(decoded);
+    })
     .slice()
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const childToolIds = new Set(childTools.map((tool) => tool.id));
@@ -184,10 +219,51 @@ export function buildAgentActivity(params: {
   const subagentType = parentTool
     ? nonBlankText(parentTool.inputFull.subagent_type) ?? nonBlankText(parentTool.inputFull.subagentType)
     : null;
-  const status = parentTool?.status ?? "missing";
-  const finalOutput = parentTool?.output && !isInternalAgentLaunchMetadata(parentTool.output)
-    ? parentTool.output
+  const lifecycle = events
+    .filter((event) => {
+      const decoded = decodeTimelineEvent(event);
+      return decoded.kind === "agent" &&
+        decoded.agentRootToolUseId === parentToolUseId &&
+        (!nativeIdentity || (
+          decoded.providerParentConversationId === nativeIdentity.providerParentConversationId &&
+          decoded.providerChildSessionId === nativeIdentity.providerChildSessionId
+        )) &&
+        (!agentRunId || decoded.agentRunId === agentRunId) &&
+        (!providerInvocationId || decoded.providerInvocationId === providerInvocationId);
+    })
+    .sort((a, b) => {
+      const aCursor = typeof a.rowCursor === "number" ? a.rowCursor : null;
+      const bCursor = typeof b.rowCursor === "number" ? b.rowCursor : null;
+      if (aCursor !== null && bCursor !== null && aCursor !== bCursor) return aCursor - bCursor;
+      const time = a.createdAt.localeCompare(b.createdAt);
+      if (time !== 0) return time;
+      return Number(a.type === "agent.completed") - Number(b.type === "agent.completed");
+    });
+  const latestLifecycle = lifecycle.at(-1);
+  const latestAgentEvent = latestLifecycle ? decodeTimelineEvent(latestLifecycle) : null;
+  const status = latestAgentEvent?.kind === "agent"
+    ? latestAgentEvent.phase === "started"
+      ? sessionInterrupted ? "error" : "running"
+      : latestAgentEvent.status === "completed" || latestAgentEvent.status === "success"
+        ? "done"
+        : "error"
+    : parentTool?.status ?? "missing";
+  const lifecycleResult = latestAgentEvent?.kind === "agent" && latestAgentEvent.phase === "completed" &&
+    latestLifecycle?.message !== "Agent completed"
+    ? latestLifecycle?.message ?? null
     : null;
+  const candidateFinalOutput = lifecycleResult ?? (
+    parentTool?.output && !isInternalAgentLaunchMetadata(parentTool.output)
+      ? parentTool.output
+      : null
+  );
+  const duplicatesVisibleAnswer = candidateFinalOutput !== null && visibleChildMessages.some((event) => {
+    const decoded = decodeTimelineEvent(event);
+    return decoded.kind === "message" &&
+      decoded.content === "answer" &&
+      normalizedPromptEcho(event.message) === normalizedPromptEcho(candidateFinalOutput);
+  });
+  const finalOutput = duplicatesVisibleAnswer ? null : candidateFinalOutput;
   return {
     parentTool,
     title: activityTitle(parentTool, parentToolUseId),
@@ -200,4 +276,37 @@ export function buildAgentActivity(params: {
     limited: parentTool !== null && visibleChildMessages.length === 0 && childToolIds.size === 0,
     receiverThreadIds
   };
+}
+
+/** Native run ids in chronological order. Legacy providers return none and
+ * retain the established single-run activity pane. */
+export type PersistentAgentRun = { key: string; agentRunId: string; providerInvocationId: string | null };
+
+export function persistentAgentRuns(
+  events: readonly TimelineEvent[],
+  parentToolUseId: string,
+  nativeIdentity: NativeAgentIdentity | null = null
+): PersistentAgentRun[] {
+  const runs = new Map<string, { createdAt: string; agentRunId: string; providerInvocationId: string | null }>();
+  for (const event of events) {
+    const decoded = decodeTimelineEvent(event);
+    if (
+      decoded.kind !== "agent" ||
+      decoded.phase !== "started" ||
+      !decoded.agentRunId ||
+      decoded.agentRootToolUseId !== parentToolUseId ||
+      (nativeIdentity && (
+        decoded.providerParentConversationId !== nativeIdentity.providerParentConversationId ||
+        decoded.providerChildSessionId !== nativeIdentity.providerChildSessionId
+      ))
+    ) continue;
+    const key = `${decoded.providerInvocationId ?? ""}\u0000${decoded.agentRunId}`;
+    const previous = runs.get(key);
+    if (!previous || event.createdAt < previous.createdAt) {
+      runs.set(key, { createdAt: event.createdAt, agentRunId: decoded.agentRunId, providerInvocationId: decoded.providerInvocationId });
+    }
+  }
+  return [...runs.entries()]
+    .sort((a, b) => a[1].createdAt.localeCompare(b[1].createdAt))
+    .map(([key, run]) => ({ key, agentRunId: run.agentRunId, providerInvocationId: run.providerInvocationId }));
 }

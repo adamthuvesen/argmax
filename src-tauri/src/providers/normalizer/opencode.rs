@@ -21,6 +21,107 @@ pub fn extract_session_id(payload: &Map<String, Value>) -> Option<String> {
     string_value(payload.get("sessionID")).map(str::to_string)
 }
 
+/// OpenCode only puts native `task` lifecycle information in the parent's
+/// completed tool row. The child body never reaches parent stdout, but the row
+/// carries both native session ids and a distinct call id for this invocation.
+pub fn native_agent_lifecycle_events(
+    event: &ProviderOutputEvent,
+    payload: &Map<String, Value>,
+    provider_type: Option<&str>,
+) -> Vec<PersistTimelineEventInput> {
+    if provider_type != Some("tool_use") {
+        return Vec::new();
+    }
+    let Some(part) = object_value(payload.get("part")) else {
+        return Vec::new();
+    };
+    if string_value(part.get("tool")) != Some("task") {
+        return Vec::new();
+    }
+    let Some(parent_id) = string_value(payload.get("sessionID")) else {
+        return Vec::new();
+    };
+    let Some(call_id) = string_value(part.get("callID")) else {
+        return Vec::new();
+    };
+    let state = object_value(part.get("state"));
+    let metadata = state.and_then(|state| object_value(state.get("metadata")));
+    let Some(child_id) = metadata.and_then(|metadata| string_value(metadata.get("sessionId")))
+    else {
+        return Vec::new();
+    };
+    if metadata.and_then(|metadata| string_value(metadata.get("parentSessionId")))
+        != Some(parent_id)
+    {
+        return Vec::new();
+    }
+
+    let mut lifecycle_payload = part.clone();
+    lifecycle_payload.insert(
+        "providerParentConversationId".to_string(),
+        Value::String(parent_id.to_string()),
+    );
+    lifecycle_payload.insert(
+        "providerChildSessionId".to_string(),
+        Value::String(child_id.to_string()),
+    );
+    lifecycle_payload.insert("agentRunId".to_string(), Value::String(call_id.to_string()));
+    if let Some(status) = state.and_then(|state| string_value(state.get("status"))) {
+        lifecycle_payload.insert("status".to_string(), Value::String(status.to_string()));
+    }
+    if let Some(model) = metadata.and_then(|metadata| object_value(metadata.get("model"))) {
+        let model_id = match (
+            string_value(model.get("providerID")),
+            string_value(model.get("modelID")),
+        ) {
+            (Some(provider), Some(model)) => format!("{provider}/{model}"),
+            (None, Some(model)) => model.to_string(),
+            _ => String::new(),
+        };
+        if !model_id.is_empty() {
+            lifecycle_payload.insert("agentModelId".to_string(), Value::String(model_id));
+        }
+    }
+
+    let started_message = state
+        .and_then(|state| string_value(state.get("title")))
+        .or_else(|| {
+            state
+                .and_then(|state| object_value(state.get("input")))
+                .and_then(|input| string_value(input.get("description")))
+        })
+        .unwrap_or("Agent started");
+    let completed_message = state
+        .and_then(|state| string_value(state.get("output")))
+        .map(|output| native_task_result_body(output).unwrap_or(output))
+        .filter(|output| !output.trim().is_empty())
+        .unwrap_or("Agent completed");
+    vec![
+        timeline_event(
+            event,
+            "agent.started",
+            started_message,
+            Value::Object(lifecycle_payload.clone()),
+        ),
+        timeline_event(
+            event,
+            "agent.completed",
+            completed_message,
+            Value::Object(lifecycle_payload),
+        ),
+    ]
+}
+
+/// OpenCode 1.18.29 wraps a completed native task result in this exact outer
+/// envelope. The body is user-visible agent output, while the envelope is
+/// provider protocol. Keep the original `state.output` in the payload for
+/// diagnostics and only unwrap the known shape for the lifecycle message.
+fn native_task_result_body(output: &str) -> Option<&str> {
+    let task = output.strip_prefix("<task ")?;
+    let (_, result) = task.split_once(">\n<task_result>\n")?;
+    result.strip_suffix("\n</task_result>\n</task>")
+}
+
 /// Maps one OpenCode envelope to timeline events. Returns an empty vec for
 /// lifecycle rows (`step_start`, mid-turn `step_finish`) and unknown types —
 /// OpenCode's protocol is fully typed, so an unrecognized JSON envelope is
@@ -281,6 +382,79 @@ mod tests {
         assert_eq!(result.events[0].payload["call_id"], "call_1");
         assert_eq!(result.events[1].r#type, "command.completed");
         assert_eq!(result.events[1].payload["result"], "42 passing");
+    }
+
+    #[test]
+    fn opencode_task_lifecycle_captures_native_ids_and_each_call_run() {
+        let mut context = NormalizerSessionContext::default();
+        let first = normalize_provider_event(
+            ProviderId::Opencode,
+            &output_event(
+                r#"{"type":"tool_use","sessionID":"parent-1","part":{"type":"tool","tool":"task","callID":"call-first","state":{"title":"Inspect","status":"completed","input":{"description":"Inspect"},"output":"<task_result>first</task_result>","metadata":{"parentSessionId":"parent-1","sessionId":"child-1","model":{"providerID":"opencode","modelID":"big-pickle"}}}}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(first.events.len(), 4);
+        let lifecycle = &first.events[2];
+        assert_eq!(lifecycle.r#type, "agent.started");
+        assert_eq!(
+            lifecycle.payload["providerParentConversationId"],
+            "parent-1"
+        );
+        assert_eq!(lifecycle.payload["providerChildSessionId"], "child-1");
+        assert_eq!(lifecycle.payload["agentRunId"], "call-first");
+        assert_eq!(lifecycle.payload["status"], "completed");
+        assert_eq!(lifecycle.payload["agentModelId"], "opencode/big-pickle");
+        assert_eq!(first.events[3].r#type, "agent.completed");
+
+        let second = normalize_provider_event(
+            ProviderId::Opencode,
+            &output_event(
+                r#"{"type":"tool_use","sessionID":"parent-1","part":{"type":"tool","tool":"task","callID":"call-second","state":{"input":{"task_id":"child-1"},"output":"<task_result>second</task_result>","metadata":{"parentSessionId":"parent-1","sessionId":"child-1"}}}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(
+            second.events[2].payload["providerChildSessionId"],
+            "child-1"
+        );
+        assert_eq!(second.events[2].payload["agentRunId"], "call-second");
+    }
+
+    #[test]
+    fn opencode_task_lifecycle_unwraps_only_the_native_task_envelope() {
+        let mut context = NormalizerSessionContext::default();
+        let output = "<task id=\"child-1\" state=\"completed\">\n<task_result>\n<result><task_result>inner</task_result></result>\n```xml\n<node />\n```\n</task_result>\n</task>";
+        let result = normalize_provider_event(
+            ProviderId::Opencode,
+            &output_event(
+                &json!({
+                    "type": "tool_use",
+                    "sessionID": "parent-1",
+                    "part": {
+                        "type": "tool",
+                        "tool": "task",
+                        "callID": "call-first",
+                        "state": {
+                            "status": "completed",
+                            "output": output,
+                            "metadata": {
+                                "parentSessionId": "parent-1",
+                                "sessionId": "child-1"
+                            }
+                        }
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+
+        assert_eq!(
+            result.events[3].message,
+            "<result><task_result>inner</task_result></result>\n```xml\n<node />\n```"
+        );
+        assert_eq!(result.events[3].payload["state"]["output"], output);
     }
 
     #[test]

@@ -12,10 +12,12 @@ export interface AgentTabsState {
   activeTabId: string | null;
   selectTab: (tabId: string) => void;
   closeTab: (tabId: string) => void;
+  replaceTab?: (fromTabId: string, toTabId: string) => void;
 }
 
 export interface AgentTabs extends AgentTabsState {
   openTab: (tabId: string) => void;
+  replaceTab: (fromTabId: string, toTabId: string) => void;
   resetForSourceChange: () => void;
 }
 
@@ -52,5 +54,12 @@ export function useAgentTabs(): AgentTabs {
     setActiveTabId(null);
   }, []);
 
-  return { tabIds, activeTabId, openTab, selectTab, closeTab, resetForSourceChange };
+  const replaceTab = useCallback((fromTabId: string, toTabId: string): void => {
+    if (fromTabId === toTabId) return;
+    setTabIds((current) => current.map((id) => id === fromTabId ? toTabId : id)
+      .filter((id, index, all) => all.indexOf(id) === index));
+    setActiveTabId((current) => current === fromTabId ? toTabId : current);
+  }, []);
+
+  return { tabIds, activeTabId, openTab, selectTab, closeTab, replaceTab, resetForSourceChange };
 }

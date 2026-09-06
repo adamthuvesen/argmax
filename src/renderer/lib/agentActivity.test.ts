@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EventType, TimelineEvent } from "../../shared/types.js";
-import { buildAgentActivity } from "./agentActivity.js";
+import { buildAgentActivity, persistentAgentRuns } from "./agentActivity.js";
 
 function event(
   id: string,
@@ -20,6 +20,32 @@ function event(
 }
 
 describe("buildAgentActivity", () => {
+  it("uses row cursors so same-time completed lifecycle rows win newest-first reads", () => {
+    const identity = {
+      providerParentConversationId: "parent-native",
+      providerChildSessionId: "child-native",
+      agentRootToolUseId: "task-root",
+      status: "completed"
+    };
+    const activity = buildAgentActivity({
+      parentToolUseId: "task-root",
+      events: [
+        { ...event("completed", "agent.completed", "2026-05-12T15:00:01.000Z", "OpenCode task result", identity), rowCursor: 12 },
+        { ...event("started", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", identity), rowCursor: 11 },
+        { ...event("parent", "command.completed", "2026-05-12T15:00:01.000Z", "task", {
+          id: "task-root", name: "task", providerChildSessionId: "child-native", providerParentConversationId: "parent-native",
+          agentRootToolUseId: "task-root", agentRunId: "task-root", providerInvocationId: "invoke-1", status: "completed",
+          input: { description: "Inspect" }
+        }), rowCursor: 10 }
+      ],
+      sessionRunning: false,
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-native" }
+    });
+
+    expect(activity.status).toBe("done");
+    expect(activity.finalOutput).toContain("OpenCode task result");
+  });
+
   it("collects Claude-style subagent messages and child tool calls", () => {
     const activity = buildAgentActivity({
       parentToolUseId: "toolu_parent",
@@ -271,5 +297,178 @@ describe("buildAgentActivity", () => {
     expect(activity.status).toBe("running");
     expect(activity.items).toEqual([]);
     expect(activity.limited).toBe(true);
+  });
+
+  it("keeps native continuation activity and results in separate runs", () => {
+    const events = [
+      event("continued-result", "agent.completed", "2026-05-12T15:01:03.000Z", "Tests pass.", {
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-root",
+        agentRunId: "send-2", status: "completed"
+      }),
+      event("continued-text", "message.completed", "2026-05-12T15:01:02.000Z", "Running the tests.", {
+        parent_tool_use_id: "task-root", providerChildSessionId: "child-native", agentRunId: "send-2"
+      }),
+      event("continued-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-root", agentRunId: "send-2"
+      }),
+      event("initial-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-root", agentRunId: "task-root"
+      })
+    ];
+
+    expect(persistentAgentRuns(events, "task-root").map((run) => run.agentRunId))
+      .toEqual(["task-root", "send-2"]);
+    const continued = buildAgentActivity({
+      parentToolUseId: "task-root", agentRunId: "send-2", events, sessionRunning: false
+    });
+    expect(continued.items.map((item) => item.kind === "message" ? item.event.message : null))
+      .toEqual(["Running the tests."]);
+    expect(continued.finalOutput).toBe("Tests pass.");
+    expect(continued.status).toBe("done");
+  });
+
+  it("does not mix child activity when invocation and run ids disagree", () => {
+    const events = [
+      event("leaked-tool", "command.started", "2026-05-12T15:00:02.500Z", "Read", {
+        id: "child-leaked", name: "Read", parent_tool_use_id: "task-root",
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-native", agentRunId: "send-2",
+        input: { file_path: "should-not-appear.ts" }
+      }),
+      event("leaked-text", "message.completed", "2026-05-12T15:00:02.000Z", "Wrong run", {
+        parent_tool_use_id: "task-root", providerInvocationId: "invocation-a",
+        providerParentConversationId: "parent-native", providerChildSessionId: "child-native",
+        agentRunId: "send-2"
+      }),
+      event("done", "agent.completed", "2026-05-12T15:00:03.000Z", "Run A result", {
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-root",
+        agentRunId: "task-root", status: "completed"
+      }),
+      event("start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-root",
+        agentRunId: "task-root"
+      })
+    ];
+
+    const activity = buildAgentActivity({
+      parentToolUseId: "task-root", agentRunId: "task-root", providerInvocationId: "invocation-a",
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-native" },
+      events, sessionRunning: false
+    });
+
+    expect(activity.items).toEqual([]);
+    expect(activity.finalOutput).toBe("Run A result");
+  });
+
+  it("suppresses an exact lifecycle-summary duplicate of the visible child answer", () => {
+    const events = [
+      event("answer", "message.completed", "2026-05-12T15:00:02.000Z", "The tests pass.\n", {
+        parent_tool_use_id: "task-root", providerInvocationId: "invocation-a",
+        providerParentConversationId: "parent-native", providerChildSessionId: "child-a",
+        agentRunId: "task-root"
+      }),
+      event("done", "agent.completed", "2026-05-12T15:00:03.000Z", "The tests pass.", {
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-a", agentRootToolUseId: "task-root",
+        agentRunId: "task-root", status: "completed"
+      })
+    ];
+    const activity = buildAgentActivity({
+      parentToolUseId: "task-root", agentRunId: "task-root", providerInvocationId: "invocation-a",
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-a" },
+      events, sessionRunning: false
+    });
+
+    expect(activity.items).toHaveLength(1);
+    expect(activity.finalOutput).toBeNull();
+  });
+
+  it("preserves a lifecycle summary that differs from the visible child answer", () => {
+    const events = [
+      event("answer", "message.completed", "2026-05-12T15:00:02.000Z", "Detailed findings.", {
+        parent_tool_use_id: "task-root", providerInvocationId: "invocation-a",
+        providerParentConversationId: "parent-native", providerChildSessionId: "child-a",
+        agentRunId: "task-root"
+      }),
+      event("done", "agent.completed", "2026-05-12T15:00:03.000Z", "Audit completed successfully.", {
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-a", agentRootToolUseId: "task-root",
+        agentRunId: "task-root", status: "completed"
+      })
+    ];
+    const activity = buildAgentActivity({
+      parentToolUseId: "task-root", agentRunId: "task-root", providerInvocationId: "invocation-a",
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-a" },
+      events, sessionRunning: false
+    });
+
+    expect(activity.finalOutput).toBe("Audit completed successfully.");
+  });
+
+  it("separates native children that reused the same raw Task id", () => {
+    const events = [
+      event("b-text", "message.completed", "2026-05-12T15:01:02.000Z", "Child B body", {
+        parent_tool_use_id: "task-reused", providerInvocationId: "invocation-b",
+        providerParentConversationId: "parent-native", providerChildSessionId: "child-b",
+        agentRunId: "task-reused"
+      }),
+      event("b-done", "agent.completed", "2026-05-12T15:01:03.000Z", "Child B result", {
+        providerInvocationId: "invocation-b", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-b", agentRootToolUseId: "task-reused",
+        agentRunId: "task-reused", status: "completed"
+      }),
+      event("b-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
+        providerInvocationId: "invocation-b", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-b", agentRootToolUseId: "task-reused", agentRunId: "task-reused"
+      }),
+      event("a-text", "message.completed", "2026-05-12T15:00:02.000Z", "Child A body", {
+        parent_tool_use_id: "task-reused", providerInvocationId: "invocation-a",
+        providerParentConversationId: "parent-native", providerChildSessionId: "child-a",
+        agentRunId: "task-reused"
+      }),
+      event("a-done", "agent.completed", "2026-05-12T15:00:03.000Z", "Child A result", {
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-a", agentRootToolUseId: "task-reused",
+        agentRunId: "task-reused", status: "completed"
+      }),
+      event("a-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-a", agentRootToolUseId: "task-reused", agentRunId: "task-reused"
+      })
+    ];
+    const childA = buildAgentActivity({
+      parentToolUseId: "task-reused", agentRunId: "task-reused", providerInvocationId: "invocation-a",
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-a" },
+      events, sessionRunning: false
+    });
+    const childB = buildAgentActivity({
+      parentToolUseId: "task-reused", agentRunId: "task-reused", providerInvocationId: "invocation-b",
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-b" },
+      events, sessionRunning: false
+    });
+
+    expect(childA.items.map((item) => item.kind === "message" ? item.event.message : null)).toEqual(["Child A body"]);
+    expect(childA.finalOutput).toBe("Child A result");
+    expect(childB.items.map((item) => item.kind === "message" ? item.event.message : null)).toEqual(["Child B body"]);
+    expect(childB.finalOutput).toBe("Child B result");
+  });
+
+  it("marks an unfinished native child interrupted when its parent failed", () => {
+    const activity = buildAgentActivity({
+      parentToolUseId: "task-root",
+      agentRunId: "task-root",
+      providerInvocationId: "invocation-a",
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-a" },
+      events: [event("start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-a", agentRootToolUseId: "task-root", agentRunId: "task-root"
+      })],
+      sessionRunning: false,
+      sessionInterrupted: true
+    });
+
+    expect(activity.status).toBe("error");
   });
 });

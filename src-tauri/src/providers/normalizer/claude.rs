@@ -64,6 +64,46 @@ pub fn detect_permission_gate(payload: &Map<String, Value>) -> Option<Permission
     })
 }
 
+/// Claude's native subagent lifecycle is reported independently from the
+/// `Task` / `SendMessage` tool result. Keep it as its own event so a delivered
+/// SendMessage result cannot be mistaken for the child finishing its work.
+pub fn native_agent_lifecycle_event(
+    event: &ProviderOutputEvent,
+    payload: &Map<String, Value>,
+) -> Option<PersistTimelineEventInput> {
+    if string_value(payload.get("type")) != Some("system") {
+        return None;
+    }
+    let subtype = string_value(payload.get("subtype"))?;
+    let (event_type, default_message) = match subtype {
+        "task_started" => ("agent.started", "Agent started"),
+        "task_notification" => ("agent.completed", "Agent completed"),
+        _ => return None,
+    };
+    let child_id = string_value(payload.get("task_id"))?;
+    let run_id = string_value(payload.get("tool_use_id"))?;
+    let parent_conversation_id = string_value(payload.get("session_id"))?;
+    let message = string_value(payload.get("summary"))
+        .filter(|summary| !summary.trim().is_empty())
+        .unwrap_or(default_message);
+    let mut normalized = payload.clone();
+    normalized.insert(
+        "providerChildSessionId".to_string(),
+        Value::String(child_id.to_string()),
+    );
+    normalized.insert(
+        "providerParentConversationId".to_string(),
+        Value::String(parent_conversation_id.to_string()),
+    );
+    normalized.insert("agentRunId".to_string(), Value::String(run_id.to_string()));
+    Some(timeline_event(
+        event,
+        event_type,
+        message,
+        Value::Object(normalized),
+    ))
+}
+
 pub fn extract_content_blocks(
     event: &ProviderOutputEvent,
     payload: &Map<String, Value>,
@@ -1013,6 +1053,41 @@ mod tests {
             result.events[0].payload["parent_tool_use_id"],
             "toolu_parent_task"
         );
+    }
+
+    #[test]
+    fn claude_native_agent_lifecycle_is_separate_from_tool_delivery() {
+        let mut context = NormalizerSessionContext::default();
+        let started = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                r#"{"type":"system","subtype":"task_started","task_id":"agent-a7","tool_use_id":"toolu_task","session_id":"parent-6b","subagent_type":"general-purpose","description":"Inspect persistence"}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(started.events.len(), 1);
+        assert_eq!(started.events[0].r#type, "agent.started");
+        assert_eq!(
+            started.events[0].payload["providerChildSessionId"],
+            "agent-a7"
+        );
+        assert_eq!(
+            started.events[0].payload["providerParentConversationId"],
+            "parent-6b"
+        );
+        assert_eq!(started.events[0].payload["agentRunId"], "toolu_task");
+
+        let completed = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                r#"{"type":"system","subtype":"task_notification","task_id":"agent-a7","tool_use_id":"toolu_message","session_id":"parent-6b","status":"completed","summary":"Follow-up finished"}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(completed.events.len(), 1);
+        assert_eq!(completed.events[0].r#type, "agent.completed");
+        assert_eq!(completed.events[0].payload["agentRunId"], "toolu_message");
+        assert_eq!(completed.events[0].message, "Follow-up finished");
     }
 
     #[test]

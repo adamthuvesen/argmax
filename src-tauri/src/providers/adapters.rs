@@ -595,11 +595,10 @@ fn opencode_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
     }
 }
 
+const CLAUDE_NATIVE_AGENT_GUIDANCE: &str = "When delegating bounded work, use Claude's native subagents. If an existing native agent is named in the prompt and its context is relevant, continue it with SendMessage using the supplied native agent ID. Treat SendMessage delivery separately from the agent's task completion.";
+
 fn claude_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
-    let Some(reasoning_effort) = input.reasoning_effort else {
-        return Vec::new();
-    };
-    let prompt = match reasoning_effort {
+    let reasoning_prompt = input.reasoning_effort.map(|reasoning_effort| match reasoning_effort {
         ReasoningEffort::Low => "Reason step by step through this task before acting.",
         ReasoningEffort::Medium => {
             "Reason carefully through this task. Consider edge cases and trade-offs before acting."
@@ -616,7 +615,10 @@ fn claude_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
         ReasoningEffort::Ultra => {
             "Ultrathink. Use your maximum reasoning budget on this task. Exhaustively decompose the problem, enumerate and evaluate every alternative and edge case, adversarially challenge each conclusion, and re-derive and verify your answer before acting. Spare no thinking."
         }
-    };
+    });
+    let prompt = reasoning_prompt
+        .map(|reasoning| format!("{reasoning}\n\n{CLAUDE_NATIVE_AGENT_GUIDANCE}"))
+        .unwrap_or_else(|| CLAUDE_NATIVE_AGENT_GUIDANCE.to_string());
     vec!["--append-system-prompt".to_string(), prompt.to_string()]
 }
 
@@ -714,6 +716,8 @@ mod tests {
                 "--brief",
                 "--permission-mode",
                 "bypassPermissions",
+                "--append-system-prompt",
+                CLAUDE_NATIVE_AGENT_GUIDANCE,
                 "--settings",
                 r#"{"fastMode":false}"#,
                 "--model",
@@ -791,6 +795,8 @@ mod tests {
                 "conv-7",
                 "--permission-mode",
                 "bypassPermissions",
+                "--append-system-prompt",
+                CLAUDE_NATIVE_AGENT_GUIDANCE,
                 "--settings",
                 r#"{"fastMode":false}"#,
                 "--model",
@@ -831,6 +837,18 @@ mod tests {
             .position(|arg| arg == "--append-system-prompt")
             .expect("append system prompt flag");
         assert!(args[index + 1].contains("Reason deeply"));
+        assert!(args[index + 1].contains("continue it with SendMessage"));
+    }
+
+    #[test]
+    fn claude_native_agent_guidance_does_not_require_reasoning_effort() {
+        let input = launch_input(ProviderId::Claude);
+        let args = (get_provider_definition(ProviderId::Claude).structured_args)(&input, None);
+        let index = args
+            .iter()
+            .position(|arg| arg == "--append-system-prompt")
+            .expect("append system prompt flag");
+        assert!(args[index + 1].contains("continue it with SendMessage"));
     }
 
     #[test]

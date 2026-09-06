@@ -189,6 +189,96 @@ pub fn normalize_tool_call(
     ))
 }
 
+/// Cursor's one-shot task tool assigns the authoritative child identity only
+/// in the completed result. `args.agentId` is a request-side id and can differ
+/// from the returned child, so it must never create a dock identity.
+pub fn native_agent_lifecycle_events(
+    event: &ProviderOutputEvent,
+    payload: &Map<String, Value>,
+    provider_type: Option<&str>,
+) -> Vec<PersistTimelineEventInput> {
+    if provider_type != Some("tool_call")
+        || string_value(payload.get("subtype")) != Some("completed")
+    {
+        return Vec::new();
+    }
+    let Some(task) = object_value(
+        object_value(payload.get("tool_call")).and_then(|tool_call| tool_call.get("taskToolCall")),
+    ) else {
+        return Vec::new();
+    };
+    let Some(child_id) = task
+        .get("result")
+        .and_then(|result| object_value(Some(result)))
+        .and_then(|result| result.get("success"))
+        .and_then(|success| object_value(Some(success)))
+        .and_then(|success| string_value(success.get("agentId")))
+        .filter(|id| !id.is_empty())
+    else {
+        return Vec::new();
+    };
+    let Some(parent_id) = string_value(payload.get("session_id")).filter(|id| !id.is_empty())
+    else {
+        return Vec::new();
+    };
+    let Some(run_id) = string_value(payload.get("call_id")).filter(|id| !id.is_empty()) else {
+        return Vec::new();
+    };
+
+    let mut lifecycle_payload = payload.clone();
+    lifecycle_payload.insert(
+        "providerParentConversationId".to_string(),
+        Value::String(parent_id.to_string()),
+    );
+    lifecycle_payload.insert(
+        "providerChildSessionId".to_string(),
+        Value::String(child_id.to_string()),
+    );
+    lifecycle_payload.insert("agentRunId".to_string(), Value::String(run_id.to_string()));
+    lifecycle_payload.insert("status".to_string(), Value::String("completed".to_string()));
+
+    let args = task.get("args").and_then(|args| object_value(Some(args)));
+    let started_message = args
+        .and_then(|args| string_value(args.get("description")))
+        .filter(|description| !description.trim().is_empty())
+        .unwrap_or("Agent started");
+    let completed_message = task
+        .get("result")
+        .and_then(|result| object_value(Some(result)))
+        .and_then(|result| result.get("success"))
+        .and_then(|success| object_value(Some(success)))
+        .and_then(cursor_task_result_summary)
+        .unwrap_or("Agent completed");
+
+    vec![
+        timeline_event(
+            event,
+            "agent.started",
+            started_message,
+            Value::Object(lifecycle_payload.clone()),
+        ),
+        timeline_event(
+            event,
+            "agent.completed",
+            completed_message,
+            Value::Object(lifecycle_payload),
+        ),
+    ]
+}
+
+fn cursor_task_result_summary(success: &Map<String, Value>) -> Option<&str> {
+    success
+        .get("conversationSteps")
+        .and_then(Value::as_array)?
+        .iter()
+        .find_map(|step| {
+            step.get("assistantMessage")
+                .and_then(|message| object_value(Some(message)))
+                .and_then(|message| string_value(message.get("text")))
+                .filter(|text| !text.trim().is_empty())
+        })
+}
+
 pub fn extract_usage(
     payload: &Map<String, Value>,
     provider_type: Option<&str>,
@@ -362,6 +452,68 @@ mod tests {
             result.events[0].payload["input"]["description"],
             "Map renderer surface"
         );
+    }
+
+    #[test]
+    fn cursor_task_lifecycle_uses_the_completed_result_agent_id() {
+        let mut context = NormalizerSessionContext::default();
+        let first = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(
+                &json!({
+                    "type": "tool_call",
+                    "subtype": "completed",
+                    "session_id": "parent-1",
+                    "call_id": "call-first",
+                    "model_call_id": "model-step-1",
+                    "tool_call": {
+                        "taskToolCall": {
+                            "args": { "description": "Remember this", "agentId": "request-id" },
+                            "result": { "success": {
+                                "agentId": "child-1",
+                                "conversationSteps": [{ "assistantMessage": { "text": "First result" } }]
+                            }}
+                        }
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(first.events.len(), 3);
+        assert_eq!(first.events[1].r#type, "agent.started");
+        assert_eq!(first.events[1].payload["providerChildSessionId"], "child-1");
+        assert_eq!(first.events[1].payload["agentRunId"], "call-first");
+        assert_eq!(first.events[2].message, "First result");
+        assert_eq!(
+            first.events[2].payload["tool_call"]["taskToolCall"]["args"]["agentId"],
+            "request-id"
+        );
+
+        let second = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(
+                &json!({
+                    "type": "tool_call",
+                    "subtype": "completed",
+                    "session_id": "parent-1",
+                    "call_id": "call-second",
+                    "tool_call": {
+                        "taskToolCall": {
+                            "args": { "resume": "child-1", "agentId": "child-1" },
+                            "result": { "success": { "agentId": "child-1" } }
+                        }
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(
+            second.events[1].payload["providerChildSessionId"],
+            "child-1"
+        );
+        assert_eq!(second.events[1].payload["agentRunId"], "call-second");
     }
 
     #[test]

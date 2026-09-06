@@ -446,6 +446,31 @@
   animation: fade-in 200ms var(--ease);
 }
 
+/* A persistent native child keeps one tab while each invocation remains its
+   own readable run. The history owns scrolling so adding a continuation does
+   not replace or remount the earlier work. */
+.agent-activity-history {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.agent-activity-history > .agent-activity {
+  flex: 0 0 auto;
+  animation: none;
+}
+
+.agent-activity-history > .agent-activity + .agent-activity {
+  border-top: 1px solid var(--line);
+}
+
+.agent-activity-history > .agent-activity .agent-activity-scroll {
+  overflow: visible;
+}
+
 /* Masthead: a mark, the task as the title, and one muted line of facts. It is
    inset like the body so the mark sits on the content edge, and its hairline
    runs the full width so the body reads as scrolling under it. */

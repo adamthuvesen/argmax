@@ -854,6 +854,7 @@ url: string;
  */
 detail: string | null }
 export type AgentMode = "auto" | "plan"
+export type AgentReference = { name: NonEmptyString; providerChildSessionId: NonEmptyString; providerParentConversationId: NonEmptyString }
 export type ApprovalId = string
 export type ApprovalRequest = { id: string; sessionId: string; command: string; cwd: string; provider: string; providerInvocationId: string | null; providerRequestId: string | null; riskLevel: string; status: string; createdAt: string; resolvedAt: string | null }
 export type ApprovalResolution = "approved" | "rejected"
@@ -1130,7 +1131,7 @@ tree: string;
 truncated: boolean }
 export type PageTable = { caption: string | null; headers: string[]; rows: string[][] }
 export type PageText = { tabId: string; url: string; title: string; text: string; truncated: boolean }
-export type PendingMessage = { id: string; sessionId: string; content: string; agentMode: string; modelLabel?: string | null; modelId?: string | null; reasoningEffort?: string | null; fastMode: boolean; attachments: ComposerAttachmentInput[]; origin?: MessageOrigin | null; queuedAt: string }
+export type PendingMessage = { id: string; sessionId: string; content: string; agentMode: string; modelLabel?: string | null; modelId?: string | null; reasoningEffort?: string | null; fastMode: boolean; attachments: ComposerAttachmentInput[]; agentReferences: AgentReference[]; origin?: MessageOrigin | null; queuedAt: string }
 export type PermissionMode = "auto-approve" | "ask-each-time"
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
@@ -1182,7 +1183,7 @@ export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
  * the message queues under the session's current provider and the switch's
  * model metadata is dropped with it.
  */
-provider?: ProviderId | null; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null }
+provider?: ProviderId | null; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null; agentReferences?: AgentReference[] | null }
 export type ProvidersSendQueuedMessageNowInput = { sessionId: SessionId; messageId: NonEmptyString }
 export type ProvidersTerminateInput = { sessionId: SessionId }
 export type PrsListForSessionInput = { sessionId: SessionId }
@@ -1249,7 +1250,7 @@ export type SaveImageResult = { filePath: string; sizeBytes: number }
 export type ScratchWorkspaceKind = "scratch" | "popup"
 export type SearchQuery = string
 export type SendInputResult = { ok: boolean; queued: boolean }
-export type SessionAgentEventsInput = { sessionId: SessionId; parentToolUseId: NonEmptyString }
+export type SessionAgentEventsInput = { sessionId: SessionId; parentToolUseId: NonEmptyString; providerParentConversationId?: NonEmptyString | null; providerChildSessionId?: NonEmptyString | null }
 export type SessionClearInput = { sessionId: SessionId }
 export type SessionCostSummary = { sessionId: string; modelId: string | null; tokens: UsageCounts; costUsd: number }
 export type SessionCostSummaryInput = { sessionId: SessionId }

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import type { AgentTabsState } from "../hooks/useAgentTabs.js";
@@ -76,6 +76,7 @@ function agentTabs(overrides: Partial<AgentTabsState> = {}): AgentTabsState {
     activeTabId: null,
     selectTab: vi.fn(),
     closeTab: vi.fn(),
+    replaceTab: vi.fn(),
     ...overrides
   };
 }
@@ -97,6 +98,66 @@ function renderView(
 }
 
 describe("AgentsView", () => {
+  it("upgrades a provisional Claude tab without changing the selected agent", () => {
+    const replaceTab = vi.fn();
+    renderView(
+      agentTabs({ tabIds: ["task-root"], activeTabId: "task-root", replaceTab }),
+      [
+        event("native-start", "agent.started", "2026-05-12T15:00:02.000Z", "Agent started", {
+          providerInvocationId: "invocation-1",
+          providerChildSessionId: "child-native",
+          providerParentConversationId: "parent-native",
+          agentRootToolUseId: "task-root",
+          agentRunId: "task-root"
+        }),
+        event("task", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+          id: "task-root", name: "Task", providerInvocationId: "invocation-1",
+          input: { description: "Explore repo" }
+        })
+      ]
+    );
+
+    expect(replaceTab).toHaveBeenCalledWith(
+      "task-root",
+      "native-agent:task-root:parent-native:child-native"
+    );
+  });
+
+  it("keeps two native children with the same raw Task id in distinct panes", () => {
+    const firstTab = "native-agent:task-reused:parent-native:child-a";
+    const secondTab = "native-agent:task-reused:parent-native:child-b";
+    renderView(agentTabs({ tabIds: [firstTab, secondTab], activeTabId: firstTab }), [
+      event("b-done", "agent.completed", "2026-05-12T15:01:03.000Z", "Child B answer", {
+        providerInvocationId: "invocation-b", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-b", agentRootToolUseId: "task-reused",
+        agentRunId: "task-reused", status: "completed", agentCodename: "Curie"
+      }),
+      event("b-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
+        providerInvocationId: "invocation-b", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-b", agentRootToolUseId: "task-reused",
+        agentRunId: "task-reused", status: "running", agentCodename: "Curie"
+      }),
+      event("a-done", "agent.completed", "2026-05-12T15:00:03.000Z", "Child A answer", {
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-a", agentRootToolUseId: "task-reused",
+        agentRunId: "task-reused", status: "completed", agentCodename: "Turing"
+      }),
+      event("a-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-a", agentRootToolUseId: "task-reused",
+        agentRunId: "task-reused", status: "running", agentCodename: "Turing"
+      })
+    ]);
+
+    const firstPane = document.getElementById(`review-agent-${firstTab}`);
+    const secondPane = document.getElementById(`review-agent-${secondTab}`);
+    expect(firstPane).not.toBeNull();
+    expect(secondPane).not.toBeNull();
+    expect(within(firstPane as HTMLElement).getByText("Child A answer")).toBeInTheDocument();
+    expect(within(firstPane as HTMLElement).queryByText("Child B answer")).toBeNull();
+    expect(within(secondPane as HTMLElement).getByText("Child B answer")).toBeInTheDocument();
+    expect(within(secondPane as HTMLElement).queryByText("Child A answer")).toBeNull();
+  });
   afterEach(() => {
     cleanup();
   });

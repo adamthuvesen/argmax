@@ -42,6 +42,9 @@ export async function verifyBrowserSession(options) {
     name = "browser-session",
     titleIncludes,
     expectedTexts,
+    agentExpectedTexts = null,
+    agentMustSucceed = false,
+    theme = null,
     timeoutMs = 30_000
   } = options;
   const screenshot = path.join(outputDir, `${name}.png`);
@@ -57,7 +60,52 @@ export async function verifyBrowserSession(options) {
       "--settle",
       "250",
       "--eval",
-      sessionProbe({ titleIncludes, expectedTexts, timeoutMs: 15_000 })
+      agentExpectedTexts
+        ? `(async () => {
+            const session = await ${sessionProbe({ titleIncludes, expectedTexts, timeoutMs: 15_000 })};
+            if (!session.ok) return session;
+            const deadline = Date.now() + 15000;
+            const wait = () => new Promise(resolve => setTimeout(resolve, 100));
+            let launchButtons = [];
+            while (Date.now() < deadline) {
+              // Minimal verbosity hides completed activity behind the turn chip,
+              // then condenses the restored Task rows behind an activity group.
+              // Long transcripts additionally leave older turns outside the
+              // render window. Open those user-facing disclosures before asking
+              // for both assignments, as a reader would.
+              const earlier = document.querySelector('button.conversation-show-earlier');
+              if (earlier) earlier.click();
+              for (const chip of document.querySelectorAll('button.turn-block-chip[aria-expanded="false"]')) chip.click();
+              for (const group of document.querySelectorAll('button.tool-call-group-header[aria-expanded="false"]')) group.click();
+              await wait();
+              launchButtons = [...document.querySelectorAll('button[aria-label^="Started agent "]')];
+              if (launchButtons.length >= 2) break;
+              await wait();
+            }
+            if (launchButtons.length < 2) return {
+              ok: false,
+              error: "two parent assignment rows missing",
+              count: launchButtons.length,
+              chips: [...document.querySelectorAll('button.turn-block-chip')].map(button => ({ label: button.getAttribute('aria-label'), expanded: button.getAttribute('aria-expanded') })),
+              groups: [...document.querySelectorAll('button.tool-call-group-header')].map(button => ({ label: button.getAttribute('aria-label'), expanded: button.getAttribute('aria-expanded') })),
+            };
+            for (const button of launchButtons) { button.click(); await wait(); }
+            while (Date.now() < deadline) {
+              const panel = document.querySelector('[role="tabpanel"][aria-labelledby^="review-agent-tab-"]');
+              const text = panel?.innerText ?? '';
+              const tabs = document.querySelectorAll('[aria-label="Subagents and multitasks"] [role="tab"]');
+              const missing = ${JSON.stringify(agentExpectedTexts)}.filter(expected => !text.includes(expected));
+              const activities = [...(panel?.querySelectorAll('[aria-label^="Agent activity:"]') ?? [])];
+              const statuses = activities.map((activity) => activity.querySelector('.agent-activity-mark')?.getAttribute("data-status") ?? "missing");
+              const failedRuns = statuses.filter((status) => status === "error").length;
+              const doneRuns = statuses.filter((status) => status === "done").length;
+              if (!missing.length && tabs.length === 1 && (!${JSON.stringify(agentMustSucceed)} || (activities.length >= 2 && doneRuns === activities.length))) return {ok: true, tabCount: tabs.length, runCount: activities.length, statuses, failedRuns, text};
+              await wait();
+            }
+            return {ok: false, error: "persistent dock did not show two successful runs in one tab", text: document.body.innerText.slice(-4000)};
+          })()`
+        : sessionProbe({ titleIncludes, expectedTexts, timeoutMs: 15_000 }),
+      ...(theme ? ["--theme", theme] : [])
     ],
     { cwd: repoRoot, timeoutMs }
   );

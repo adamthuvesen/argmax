@@ -19,9 +19,11 @@ use crate::{
     persistence::{
         database::Database,
         events::{
-            completion_id_for_payload, delete_event_row, list_imported_trace_events,
-            list_session_agent_events, list_session_tool_events, persist_timeline_event_if_absent,
-            rewrite_trace_event, supersede_synthetic_launch_events, tool_use_id_for_payload,
+            completion_id_for_payload, delete_event_row, find_event_by_id,
+            list_imported_trace_events, list_session_agent_events,
+            list_session_native_agent_events, list_session_tool_events,
+            persist_timeline_event_if_absent, rewrite_trace_event,
+            supersede_synthetic_launch_events, tool_use_id_for_payload, update_event_payload,
             upgrade_trace_no_output_completion, PersistTimelineEventInput,
         },
         sessions::find_session_by_id,
@@ -57,6 +59,7 @@ struct AgentTraceContext {
     workspace_path: Option<String>,
     cursor_prompt: Option<String>,
     child_ids: Vec<String>,
+    codex_runs: Vec<CodexNativeRun>,
 }
 
 impl AgentTraceContext {
@@ -64,6 +67,12 @@ impl AgentTraceContext {
         TraceFileKey {
             session_id: self.session_id.clone(),
             parent_tool_use_id: self.parent_tool_use_id.clone(),
+            run_revision: self
+                .codex_runs
+                .iter()
+                .map(CodexNativeRun::revision_part)
+                .collect::<Vec<_>>()
+                .join("|"),
             path,
         }
     }
@@ -88,6 +97,26 @@ struct TraceLine {
 struct CodexRunModel {
     model_id: Option<String>,
     reasoning_effort: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct CodexNativeRun {
+    child_id: String,
+    parent_conversation_id: String,
+    root_tool_use_id: String,
+    run_id: String,
+    provider_invocation_id: String,
+    codename: Option<String>,
+    completed: bool,
+}
+
+impl CodexNativeRun {
+    fn revision_part(&self) -> String {
+        format!(
+            "{}:{}:{}:{}",
+            self.child_id, self.provider_invocation_id, self.run_id, self.completed
+        )
+    }
 }
 
 impl CodexRunModel {
@@ -130,6 +159,7 @@ type TraceFileStamp = (u64, SystemTime);
 struct TraceFileKey {
     session_id: String,
     parent_tool_use_id: String,
+    run_revision: String,
     path: PathBuf,
 }
 
@@ -284,13 +314,65 @@ fn persist_trace_events(
 ) -> ArgmaxResult<usize> {
     let mut inserted = 0;
     for event in events {
-        if persist_timeline_event_if_absent(connection, &event)?.is_some()
-            || upgrade_trace_no_output_completion(connection, &event)?
-        {
+        let was_inserted = persist_timeline_event_if_absent(connection, &event)?.is_some();
+        let completion_upgraded = if was_inserted {
+            false
+        } else {
+            upgrade_trace_no_output_completion(connection, &event)?
+        };
+        let metadata_upgraded = if was_inserted {
+            false
+        } else {
+            upgrade_trace_native_metadata(connection, &event)?
+        };
+        if was_inserted || completion_upgraded || metadata_upgraded {
             inserted += 1;
         }
     }
     Ok(inserted)
+}
+
+fn upgrade_trace_native_metadata(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+) -> ArgmaxResult<bool> {
+    let Some(incoming) = input.payload.as_object() else {
+        return Ok(false);
+    };
+    if incoming.get("traceImported") != Some(&Value::Bool(true)) {
+        return Ok(false);
+    }
+    let Some(existing) = find_event_by_id(connection, &input.id)? else {
+        return Ok(false);
+    };
+    let Some(existing_payload) = existing.payload.as_object() else {
+        return Ok(false);
+    };
+    if existing_payload.get("traceImported") != Some(&Value::Bool(true)) {
+        return Ok(false);
+    }
+    let mut merged = existing_payload.clone();
+    let mut changed = false;
+    for key in [
+        "providerParentConversationId",
+        "providerChildSessionId",
+        "agentRootToolUseId",
+        "agentRunId",
+        "providerInvocationId",
+        "agentCodename",
+    ] {
+        let Some(value) = incoming.get(key) else {
+            continue;
+        };
+        if merged.get(key) != Some(value) {
+            merged.insert(key.to_string(), value.clone());
+            changed = true;
+        }
+    }
+    if !changed {
+        return Ok(false);
+    }
+    update_event_payload(connection, &input.id, &Value::Object(merged))
 }
 
 /// Marks a launch row Argmax invented because the provider never wrote one.
@@ -311,6 +393,7 @@ struct ReconciliationPlan {
     real_launch_by_child: HashMap<String, String>,
     /// Child thread id -> tool id of a launch row an earlier sweep invented.
     synthetic_launch_by_child: HashMap<String, String>,
+    native_runs_by_child: HashMap<String, Vec<CodexNativeRun>>,
     used_tool_ids: HashSet<String>,
 }
 
@@ -450,6 +533,17 @@ fn reconciliation_plan(
                 .or_insert_with(|| tool_use_id.to_string());
         }
     }
+    let native_runs_by_child = codex_native_runs(
+        list_session_native_agent_events(connection, session_id)?,
+        &parent_thread_id,
+    );
+    for (child_id, runs) in &native_runs_by_child {
+        if let Some(first_run) = runs.first() {
+            real_launch_by_child
+                .entry(child_id.clone())
+                .or_insert_with(|| first_run.root_tool_use_id.clone());
+        }
+    }
 
     Ok(Some(ReconciliationPlan {
         session_id: session_id.to_string(),
@@ -459,8 +553,91 @@ fn reconciliation_plan(
         workspace_path,
         real_launch_by_child,
         synthetic_launch_by_child,
+        native_runs_by_child,
         used_tool_ids,
     }))
+}
+
+fn codex_native_runs(
+    events: Vec<crate::persistence::events::TimelineEvent>,
+    parent_thread_id: &str,
+) -> HashMap<String, Vec<CodexNativeRun>> {
+    let mut runs_by_child: HashMap<String, Vec<CodexNativeRun>> = HashMap::new();
+    let mut completed = HashSet::new();
+    for event in &events {
+        if event.r#type != "agent.completed" {
+            continue;
+        }
+        let payload = &event.payload;
+        let identity = (
+            payload
+                .get("providerChildSessionId")
+                .and_then(Value::as_str),
+            payload.get("agentRunId").and_then(Value::as_str),
+            payload.get("providerInvocationId").and_then(Value::as_str),
+        );
+        if let (Some(child_id), Some(run_id), Some(invocation_id)) = identity {
+            completed.insert((
+                child_id.to_string(),
+                run_id.to_string(),
+                invocation_id.to_string(),
+            ));
+        }
+    }
+    for event in events {
+        if event.r#type != "agent.started"
+            || event
+                .payload
+                .get("providerParentConversationId")
+                .and_then(Value::as_str)
+                != Some(parent_thread_id)
+        {
+            continue;
+        }
+        let Some(child_id) = event
+            .payload
+            .get("providerChildSessionId")
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        let Some(run_id) = event.payload.get("agentRunId").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(invocation_id) = event
+            .payload
+            .get("providerInvocationId")
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        let root_tool_use_id = event
+            .payload
+            .get("agentRootToolUseId")
+            .and_then(Value::as_str)
+            .unwrap_or(run_id);
+        runs_by_child
+            .entry(child_id.to_string())
+            .or_default()
+            .push(CodexNativeRun {
+                child_id: child_id.to_string(),
+                parent_conversation_id: parent_thread_id.to_string(),
+                root_tool_use_id: root_tool_use_id.to_string(),
+                run_id: run_id.to_string(),
+                provider_invocation_id: invocation_id.to_string(),
+                codename: event
+                    .payload
+                    .get("agentCodename")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                completed: completed.contains(&(
+                    child_id.to_string(),
+                    run_id.to_string(),
+                    invocation_id.to_string(),
+                )),
+            });
+    }
+    runs_by_child
 }
 
 /// Disk phase: no database connection is held while transcripts are read.
@@ -502,6 +679,11 @@ fn reconciliation_work(home: &Path, plan: &ReconciliationPlan) -> Reconciliation
             workspace_path: plan.workspace_path.clone(),
             cursor_prompt: None,
             child_ids: vec![child_id.to_string()],
+            codex_runs: plan
+                .native_runs_by_child
+                .get(child_id)
+                .cloned()
+                .unwrap_or_default(),
         };
         let key = context.trace_file_key(child.path);
         let stamp = match trace_file_step(&key) {
@@ -851,6 +1033,22 @@ fn agent_trace_context(
     {
         return Ok(None);
     }
+    let codex_runs = if provider == TraceProvider::Codex {
+        if let Some(parent_thread_id) = session.provider_conversation_id.as_deref() {
+            codex_native_runs(
+                list_session_native_agent_events(connection, session_id)?,
+                parent_thread_id,
+            )
+            .into_values()
+            .flatten()
+            .filter(|run| run.root_tool_use_id == parent_tool_use_id)
+            .collect()
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
     Ok(Some(AgentTraceContext {
         provider,
         session_id: session_id.to_string(),
@@ -860,6 +1058,7 @@ fn agent_trace_context(
         workspace_path,
         cursor_prompt,
         child_ids,
+        codex_runs,
     }))
 }
 
@@ -910,10 +1109,71 @@ fn codex_child_events(
     let mut seen_thinking = HashSet::new();
     let mut sequence = 0;
     let mut run_model = CodexRunModel::default();
+    let mut turn_ids = Vec::new();
     for line in lines {
         let Some(object) = line.value.as_object() else {
             continue;
         };
+        if object.get("type").and_then(Value::as_str) == Some("event_msg")
+            && object
+                .get("payload")
+                .and_then(Value::as_object)
+                .and_then(|payload| payload.get("type"))
+                .and_then(Value::as_str)
+                == Some("task_started")
+        {
+            if let Some(turn_id) = codex_trace_turn_id(object) {
+                push_unique(&mut turn_ids, turn_id.to_string());
+            }
+        }
+    }
+    let child_runs = context
+        .codex_runs
+        .iter()
+        .filter(|run| run.child_id == child_id)
+        .collect::<Vec<_>>();
+    let runs_by_turn = if turn_ids.len() == child_runs.len() {
+        turn_ids
+            .iter()
+            .zip(child_runs.iter().copied())
+            .map(|(turn_id, run)| (turn_id.as_str(), run))
+            .collect::<HashMap<_, _>>()
+    } else {
+        HashMap::new()
+    };
+    let fallback_run = if turn_ids.len() <= 1 && child_runs.len() == 1 {
+        child_runs.first().copied()
+    } else {
+        None
+    };
+    let mut current_turn_id = None;
+    for line in lines {
+        let Some(object) = line.value.as_object() else {
+            continue;
+        };
+        if let Some(turn_id) = codex_trace_turn_id(object) {
+            if current_turn_id != Some(turn_id) {
+                seen_messages.clear();
+                seen_thinking.clear();
+                current_turn_id = Some(turn_id);
+            }
+        }
+        let native_run = current_turn_id
+            .and_then(|turn_id| runs_by_turn.get(turn_id).copied())
+            .or(fallback_run);
+        if is_codex_task_complete(object) {
+            if let Some(run) = native_run.filter(|run| !run.completed) {
+                events.push(codex_trace_completion_event(
+                    context,
+                    child_id,
+                    &source,
+                    run,
+                    object,
+                    line.timestamp.clone(),
+                ));
+            }
+            continue;
+        }
         // A rollout opens with `turn_context` and repeats it per turn, so the
         // model and effort are known before the first row they get stamped on.
         run_model.absorb(object);
@@ -928,6 +1188,9 @@ fn codex_child_events(
         let event_sequence = sequence;
         sequence += 1;
         stamp_trace_payload(&mut payload, context, child_id, &source, event_sequence);
+        if let Some(run) = native_run {
+            stamp_codex_native_run(&mut payload, run);
+        }
         run_model.stamp(&mut payload);
         events.push(trace_event(
             context,
@@ -940,6 +1203,84 @@ fn codex_child_events(
         ));
     }
     events
+}
+
+fn codex_trace_turn_id(object: &Map<String, Value>) -> Option<&str> {
+    let payload = object.get("payload")?.as_object()?;
+    payload.get("turn_id").and_then(Value::as_str).or_else(|| {
+        payload
+            .get("internal_chat_message_metadata_passthrough")
+            .and_then(Value::as_object)
+            .and_then(|metadata| metadata.get("turn_id"))
+            .and_then(Value::as_str)
+    })
+}
+
+fn is_codex_task_complete(object: &Map<String, Value>) -> bool {
+    object.get("type").and_then(Value::as_str) == Some("event_msg")
+        && object
+            .get("payload")
+            .and_then(Value::as_object)
+            .and_then(|payload| payload.get("type"))
+            .and_then(Value::as_str)
+            == Some("task_complete")
+}
+
+fn stamp_codex_native_run(payload: &mut Map<String, Value>, run: &CodexNativeRun) {
+    payload.insert(
+        "providerParentConversationId".to_string(),
+        Value::String(run.parent_conversation_id.clone()),
+    );
+    payload.insert(
+        "providerChildSessionId".to_string(),
+        Value::String(run.child_id.clone()),
+    );
+    payload.insert(
+        "agentRootToolUseId".to_string(),
+        Value::String(run.root_tool_use_id.clone()),
+    );
+    payload.insert("agentRunId".to_string(), Value::String(run.run_id.clone()));
+    payload.insert(
+        "providerInvocationId".to_string(),
+        Value::String(run.provider_invocation_id.clone()),
+    );
+    if let Some(codename) = &run.codename {
+        payload.insert("agentCodename".to_string(), Value::String(codename.clone()));
+    }
+}
+
+fn codex_trace_completion_event(
+    context: &AgentTraceContext,
+    child_id: &str,
+    source: &str,
+    run: &CodexNativeRun,
+    object: &Map<String, Value>,
+    created_at: Option<String>,
+) -> PersistTimelineEventInput {
+    let payload = object.get("payload").and_then(Value::as_object);
+    let message = payload
+        .and_then(|payload| payload.get("last_agent_message"))
+        .and_then(Value::as_str)
+        .filter(|message| !message.trim().is_empty())
+        .unwrap_or("Agent completed")
+        .to_string();
+    let mut stamped = Map::new();
+    stamp_trace_payload(&mut stamped, context, child_id, source, usize::MAX);
+    stamp_codex_native_run(&mut stamped, run);
+    stamped.insert("status".to_string(), Value::String("completed".to_string()));
+    PersistTimelineEventInput {
+        id: format!(
+            "trace-codex-agent-completed-{}-{}-{}-{}",
+            context.session_id, child_id, run.provider_invocation_id, run.run_id
+        ),
+        session_id: context.session_id.clone(),
+        r#type: "agent.completed".to_string(),
+        message,
+        payload: Value::Object(stamped),
+        created_at: Some(
+            created_at.unwrap_or_else(|| fallback_timestamp(&context.parent_created_at, 0)),
+        ),
+    }
 }
 
 fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> TraceImport {
@@ -2337,11 +2678,7 @@ fn receiver_thread_ids(payload: &Value) -> Vec<String> {
 
 fn cursor_child_agent_ids(payload: &Value) -> Vec<String> {
     let mut ids = Vec::new();
-    for path in [
-        ["result", "success", "agentId"].as_slice(),
-        ["input", "agentId"].as_slice(),
-        ["input", "agent_id"].as_slice(),
-    ] {
+    for path in [["result", "success", "agentId"].as_slice()] {
         if let Some(id) = value_at_path(payload, path)
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty())
@@ -3115,6 +3452,7 @@ mod tests {
         let key = TraceFileKey {
             session_id: "s1".to_string(),
             parent_tool_use_id: "spawn-1".to_string(),
+            run_revision: String::new(),
             path: path.clone(),
         };
 
@@ -3134,6 +3472,180 @@ mod tests {
         fs::remove_file(&path).expect("remove trace");
         assert!(matches!(trace_file_step(&key), TraceFileStep::Read(None)));
         assert!(!imported_trace_files().contains_key(&key));
+    }
+
+    #[test]
+    fn codex_trace_turns_keep_their_native_run_boundaries() {
+        let run = |run_id: &str, invocation_id: &str| CodexNativeRun {
+            child_id: "child-thread".to_string(),
+            parent_conversation_id: "parent-thread".to_string(),
+            root_tool_use_id: "item_5".to_string(),
+            run_id: run_id.to_string(),
+            provider_invocation_id: invocation_id.to_string(),
+            codename: Some("Scout".to_string()),
+            completed: false,
+        };
+        let context = AgentTraceContext {
+            provider: TraceProvider::Codex,
+            session_id: "s1".to_string(),
+            parent_tool_use_id: "item_5".to_string(),
+            parent_created_at: "2026-09-06T06:50:53.000Z".to_string(),
+            provider_conversation_id: Some("parent-thread".to_string()),
+            workspace_path: None,
+            cursor_prompt: None,
+            child_ids: vec!["child-thread".to_string()],
+            codex_runs: vec![run("item_5", "invoke-1"), run("item_3", "invoke-2")],
+        };
+        let line = |value: Value| TraceLine {
+            value,
+            timestamp: Some("2026-09-06T06:51:00.000Z".to_string()),
+        };
+        let lines = vec![
+            line(json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}})),
+            line(
+                json!({"type":"event_msg","payload":{"type":"agent_message","turn_id":"turn-1","message":"First answer"}}),
+            ),
+            line(
+                json!({"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","last_agent_message":"First answer"}}),
+            ),
+            line(json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-2"}})),
+            line(
+                json!({"type":"event_msg","payload":{"type":"agent_message","turn_id":"turn-2","message":"Second answer"}}),
+            ),
+            line(
+                json!({"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-2","last_agent_message":"Second answer"}}),
+            ),
+        ];
+
+        let events = codex_child_events(
+            &context,
+            "child-thread",
+            Path::new("/tmp/child.jsonl"),
+            &lines,
+        );
+        let first = events
+            .iter()
+            .find(|event| event.message == "First answer" && event.r#type == "message.completed")
+            .expect("first message");
+        let second = events
+            .iter()
+            .find(|event| event.message == "Second answer" && event.r#type == "message.completed")
+            .expect("second message");
+        assert_eq!(first.payload["agentRunId"], "item_5");
+        assert_eq!(first.payload["providerInvocationId"], "invoke-1");
+        assert_eq!(second.payload["agentRunId"], "item_3");
+        assert_eq!(second.payload["providerInvocationId"], "invoke-2");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.r#type == "agent.completed")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn codex_trace_omits_native_identity_when_turn_and_run_counts_disagree() {
+        let context = AgentTraceContext {
+            provider: TraceProvider::Codex,
+            session_id: "s1".to_string(),
+            parent_tool_use_id: "item_5".to_string(),
+            parent_created_at: "2026-09-06T06:50:53.000Z".to_string(),
+            provider_conversation_id: Some("parent-thread".to_string()),
+            workspace_path: None,
+            cursor_prompt: None,
+            child_ids: vec!["child-thread".to_string()],
+            codex_runs: vec![CodexNativeRun {
+                child_id: "child-thread".to_string(),
+                parent_conversation_id: "parent-thread".to_string(),
+                root_tool_use_id: "item_5".to_string(),
+                run_id: "item_3".to_string(),
+                provider_invocation_id: "invoke-2".to_string(),
+                codename: None,
+                completed: false,
+            }],
+        };
+        let lines = ["old", "current"]
+            .into_iter()
+            .flat_map(|turn| {
+                [
+                    TraceLine {
+                        value: json!({"type":"event_msg","payload":{"type":"task_started","turn_id":turn}}),
+                        timestamp: None,
+                    },
+                    TraceLine {
+                        value: json!({"type":"event_msg","payload":{"type":"agent_message","turn_id":turn,"message":format!("{turn} answer")}}),
+                        timestamp: None,
+                    },
+                    TraceLine {
+                        value: json!({"type":"event_msg","payload":{"type":"task_complete","turn_id":turn}}),
+                        timestamp: None,
+                    },
+                ]
+            })
+            .collect::<Vec<_>>();
+
+        let events = codex_child_events(
+            &context,
+            "child-thread",
+            Path::new("/tmp/child.jsonl"),
+            &lines,
+        );
+        assert!(events
+            .iter()
+            .all(|event| event.payload.get("agentRunId").is_none()));
+        assert!(!events.iter().any(|event| event.r#type == "agent.completed"));
+    }
+
+    #[test]
+    fn imported_trace_rows_gain_native_identity_in_place() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        seed_session(&connection, "codex", "s1");
+        let base = PersistTimelineEventInput {
+            id: "stable-trace-row".to_string(),
+            session_id: "s1".to_string(),
+            r#type: "message.completed".to_string(),
+            message: "Answer".to_string(),
+            payload: json!({
+                "parent_tool_use_id": "item_5",
+                "providerChildSessionId": "child-thread",
+                "traceImported": true,
+            }),
+            created_at: Some("2026-09-06T06:51:00.000Z".to_string()),
+        };
+        assert_eq!(
+            persist_trace_events(&connection, vec![base.clone()]).expect("base"),
+            1
+        );
+        let before = find_event_by_id(&connection, &base.id)
+            .expect("find before")
+            .expect("row before");
+        let mut upgraded = base;
+        upgraded.payload = json!({
+            "parent_tool_use_id": "item_5",
+            "providerChildSessionId": "child-thread",
+            "providerParentConversationId": "parent-thread",
+            "agentRootToolUseId": "item_5",
+            "agentRunId": "item_3",
+            "providerInvocationId": "invoke-2",
+            "agentCodename": "Scout",
+            "traceImported": true,
+        });
+        assert_eq!(
+            persist_trace_events(&connection, vec![upgraded.clone()]).expect("upgrade"),
+            1
+        );
+        let after = find_event_by_id(&connection, &upgraded.id)
+            .expect("find after")
+            .expect("row after");
+        assert_eq!(after.row_cursor, before.row_cursor);
+        assert_eq!(after.payload["agentRunId"], "item_3");
+        assert_eq!(after.payload["providerInvocationId"], "invoke-2");
+        assert_eq!(
+            persist_trace_events(&connection, vec![upgraded]).expect("repeat"),
+            0
+        );
     }
 
     #[test]
@@ -3204,6 +3716,7 @@ mod tests {
             workspace_path: None,
             cursor_prompt: Some("Inspect the renderer files.".to_string()),
             child_ids,
+            codex_runs: Vec::new(),
         };
 
         // Both transcripts match the prompt, so the walk would pick one of them

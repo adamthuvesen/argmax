@@ -1375,3 +1375,90 @@ describe("lastAgentResponseEvent", () => {
     expect(lastAgentResponseEvent(events)?.id).toBe("answer");
   });
 });
+
+describe("persistent native subagent runs", () => {
+  it.each(["SendMessage", "send_input"])("turns %s into an agent row linked to the original launch", (name) => {
+    const events = [
+      event("agent-start", "agent.started", "2026-05-12T15:00:02.100Z", "Agent started", {
+        providerInvocationId: "invocation-2",
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent-native",
+        agentRunId: "send-2",
+        agentRootToolUseId: "task-root",
+        description: "Check the tests",
+        prompt: "Now check the tests."
+      }),
+      event("send", "command.started", "2026-05-12T15:00:02.000Z", name, {
+        id: "send-2",
+        name,
+        providerInvocationId: "invocation-2",
+        input: { to: "child-native", message: "Now check the tests." }
+      })
+    ];
+
+    expect(buildSessionToolCalls(events, true)).toEqual([
+      expect.objectContaining({
+        name: "Agent",
+        toolUseId: "send-2",
+        agentRunId: "send-2",
+        agentRootToolUseId: "task-root",
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent-native"
+      })
+    ]);
+    expect(buildSessionToolCalls(events, true)[0]?.inputFull).toMatchObject({
+      description: "Check the tests",
+      prompt: "Now check the tests."
+    });
+  });
+
+  it("hides Codex transport without letting a completed wait settle an active native run", () => {
+    const input = { sender_thread_id: "parent", receiver_thread_ids: ["child"] };
+    const identity = {
+      providerInvocationId: "invocation", providerChildSessionId: "child",
+      providerParentConversationId: "parent", agentRootToolUseId: "spawn", agentRunId: "spawn"
+    };
+    const events = [
+      event("spawn", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+        id: "spawn", name: "spawn_agent", providerInvocationId: "invocation", input
+      }),
+      event("native", "agent.started", "2026-05-12T15:00:01.100Z", "Agent started", {
+        ...identity, prompt: "Original assignment"
+      }),
+      ...["resume_agent", "send_input", "wait"].flatMap((name, index) => [
+        event(`${name}-start`, "command.started", `2026-05-12T15:00:0${index + 2}.000Z`, name, {
+          id: name, name, providerInvocationId: "invocation", input
+        }),
+        event(`${name}-end`, "command.completed", `2026-05-12T15:00:0${index + 2}.100Z`, name, {
+          id: name, name, providerInvocationId: "invocation", input, status: "completed"
+        })
+      ])
+    ];
+    const active = buildSessionToolCalls(events, true);
+    expect(active).toHaveLength(1);
+    expect(active[0]?.status).toBe("running");
+    events.push(event("native-end", "agent.completed", "2026-05-12T15:00:05.000Z", "Done", {
+      ...identity, prompt: null, status: "completed"
+    }));
+    const completed = buildSessionToolCalls(events, true);
+    expect(completed[0]?.status).toBe("done");
+    expect(completed[0]?.inputFull.prompt).toBe("Original assignment");
+  });
+
+  it("uses persisted order when native start and completion share a timestamp", () => {
+    const timestamp = "2026-05-12T15:00:01.000Z";
+    const identity = {
+      providerInvocationId: "invocation", providerChildSessionId: "child",
+      providerParentConversationId: "parent", agentRootToolUseId: "spawn", agentRunId: "spawn"
+    };
+    const events = [
+      { ...event("start", "agent.started", timestamp, "Started", identity), rowCursor: 2 },
+      { ...event("done", "agent.completed", timestamp, "Done", { ...identity, status: "completed" }), rowCursor: 3 },
+      { ...event("tool", "command.started", timestamp, "spawn_agent", {
+        id: "spawn", name: "spawn_agent", providerInvocationId: "invocation"
+      }), rowCursor: 1 }
+    ];
+    expect(buildSessionToolCalls(events, true)[0]?.status).toBe("done");
+    expect(buildSessionToolCalls([...events].reverse(), true)[0]?.status).toBe("done");
+  });
+});

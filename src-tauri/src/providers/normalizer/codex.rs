@@ -157,6 +157,134 @@ pub fn normalize_tool_item(
     ))
 }
 
+/// Codex reports native child work through collab tool rows. `spawn_agent` and
+/// an idle child's `send_input` open a logical run; input delivered while the
+/// child is still active stays inside that run. Transport completions only
+/// close the tracked run when `agents_states` reports a terminal child state.
+pub fn normalize_native_agent_lifecycle_events(
+    event: &ProviderOutputEvent,
+    provider_type: Option<&str>,
+    item: Option<&Map<String, Value>>,
+    item_type: Option<&str>,
+    context: &mut NormalizerSessionContext,
+) -> Vec<PersistTimelineEventInput> {
+    if provider_type != Some("item.completed") || item_type != Some("collab_tool_call") {
+        return Vec::new();
+    }
+    let Some(item) = item else {
+        return Vec::new();
+    };
+    let Some(tool_name) = string_value(item.get("tool")) else {
+        return Vec::new();
+    };
+    let Some(parent_conversation_id) = string_value(item.get("sender_thread_id")) else {
+        return Vec::new();
+    };
+    let Some(run_id) = string_value(item.get("id")) else {
+        return Vec::new();
+    };
+    let receiver_ids = array_value(item.get("receiver_thread_ids"))
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .collect::<Vec<_>>();
+    if receiver_ids.is_empty() {
+        return Vec::new();
+    }
+    let states = object_value(item.get("agents_states"));
+    let opens_run = matches!(tool_name, "spawn_agent" | "send_input");
+    let delivery_succeeded = string_value(item.get("status")) == Some("completed");
+    let mut events = Vec::new();
+
+    for child_id in receiver_ids {
+        let state = states.and_then(|states| object_value(states.get(child_id)));
+        let status = state.and_then(|state| string_value(state.get("status")));
+        if opens_run && !delivery_succeeded {
+            continue;
+        }
+        if opens_run
+            && delivery_succeeded
+            && !context.codex_active_agent_runs.contains_key(child_id)
+        {
+            context
+                .codex_active_agent_runs
+                .insert(child_id.to_string(), run_id.to_string());
+            events.push(codex_agent_lifecycle_event(
+                event,
+                item,
+                "agent.started",
+                "Agent started",
+                parent_conversation_id,
+                child_id,
+                run_id,
+                status,
+            ));
+        }
+        if !status.is_some_and(is_terminal_agent_status) {
+            continue;
+        }
+        let active_run_id = context.codex_active_agent_runs.remove(child_id);
+        let Some(active_run_id) = active_run_id else {
+            continue;
+        };
+        let message = state
+            .and_then(|state| string_value(state.get("message")))
+            .filter(|message| !message.trim().is_empty())
+            .unwrap_or("Agent completed");
+        events.push(codex_agent_lifecycle_event(
+            event,
+            item,
+            "agent.completed",
+            message,
+            parent_conversation_id,
+            child_id,
+            active_run_id.as_str(),
+            status,
+        ));
+    }
+    events
+}
+
+fn is_terminal_agent_status(status: &str) -> bool {
+    matches!(
+        status.to_ascii_lowercase().as_str(),
+        "completed" | "success" | "failed" | "error" | "errored" | "cancelled" | "canceled"
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn codex_agent_lifecycle_event(
+    event: &ProviderOutputEvent,
+    item: &Map<String, Value>,
+    event_type: &str,
+    message: &str,
+    parent_conversation_id: &str,
+    child_id: &str,
+    run_id: &str,
+    status: Option<&str>,
+) -> PersistTimelineEventInput {
+    let mut payload = item.clone();
+    payload.insert(
+        "providerParentConversationId".to_string(),
+        Value::String(parent_conversation_id.to_string()),
+    );
+    payload.insert(
+        "providerChildSessionId".to_string(),
+        Value::String(child_id.to_string()),
+    );
+    payload.insert("agentRunId".to_string(), Value::String(run_id.to_string()));
+    if let Some(status) = status {
+        let lowercase_status = status.to_ascii_lowercase();
+        let normalized = match lowercase_status.as_str() {
+            "errored" => "error",
+            value => value,
+        };
+        payload.insert("status".to_string(), Value::String(normalized.to_string()));
+    }
+    timeline_event(event, event_type, message, Value::Object(payload))
+}
+
 /// A Codex `error` item carries the only human-readable message for a stream
 /// or turn failure — dropping it with the other non-tool items leaves the chat
 /// blank while the session dies. Surface it as an `error` timeline event (the
@@ -747,14 +875,14 @@ mod tests {
                         "receiver_thread_ids": ["019f2214-c736-7f60-bb78-75b6ecff57a3"],
                         "prompt": "Do a quick repo reconnaissance. Read-only only.",
                         "agents_states": {},
-                        "status": "in_progress"
+                        "status": "completed"
                     }
                 })
                 .to_string(),
             ),
             &mut context,
         );
-        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events.len(), 2);
         let event = &result.events[0];
         assert_eq!(event.r#type, "command.completed");
         // The renderer correlates completion back to the started row via `id`.
@@ -762,6 +890,125 @@ mod tests {
         assert_eq!(
             event.payload["input"]["receiver_thread_ids"][0],
             "019f2214-c736-7f60-bb78-75b6ecff57a3"
+        );
+        let lifecycle = &result.events[1];
+        assert_eq!(lifecycle.r#type, "agent.started");
+        assert_eq!(lifecycle.payload["agentRunId"], "item_2");
+        assert_eq!(
+            lifecycle.payload["providerParentConversationId"],
+            "019f2214-983b-7f43-958b-7f68e1dba989"
+        );
+        assert_eq!(
+            lifecycle.payload["providerChildSessionId"],
+            "019f2214-c736-7f60-bb78-75b6ecff57a3"
+        );
+    }
+
+    #[test]
+    fn codex_collab_wait_completes_only_the_active_run_once() {
+        let child = "019f2214-c736-7f60-bb78-75b6ecff57a3";
+        let parent = "019f2214-983b-7f43-958b-7f68e1dba989";
+        let mut context = NormalizerSessionContext::default();
+        let completed = |id: &str, tool: &str, status: &str| {
+            output_event(
+                &json!({
+                    "type": "item.completed",
+                    "item": {
+                        "id": id,
+                        "type": "collab_tool_call",
+                        "tool": tool,
+                        "sender_thread_id": parent,
+                        "receiver_thread_ids": [child],
+                        "prompt": "Continue",
+                        "agents_states": { (child): { "status": status, "message": "Done" } },
+                        "status": "completed"
+                    }
+                })
+                .to_string(),
+            )
+        };
+
+        let started = normalize_provider_event(
+            ProviderId::Codex,
+            &completed("item_3", "spawn_agent", "pending_init"),
+            &mut context,
+        );
+        assert_eq!(started.events[1].r#type, "agent.started");
+        assert_eq!(started.events[1].payload["agentRunId"], "item_3");
+
+        let in_flight_input = normalize_provider_event(
+            ProviderId::Codex,
+            &completed("item_4", "send_input", "running"),
+            &mut context,
+        );
+        assert_eq!(in_flight_input.events.len(), 1);
+        assert_eq!(
+            context
+                .codex_active_agent_runs
+                .get(child)
+                .map(String::as_str),
+            Some("item_3")
+        );
+
+        let finished = normalize_provider_event(
+            ProviderId::Codex,
+            &completed("item_5", "wait", "completed"),
+            &mut context,
+        );
+        assert_eq!(finished.events.len(), 2);
+        assert_eq!(finished.events[1].r#type, "agent.completed");
+        assert_eq!(finished.events[1].payload["agentRunId"], "item_3");
+
+        let repeated = normalize_provider_event(
+            ProviderId::Codex,
+            &completed("item_6", "wait", "completed"),
+            &mut context,
+        );
+        assert_eq!(repeated.events.len(), 1);
+
+        let continued = normalize_provider_event(
+            ProviderId::Codex,
+            &completed("item_7", "send_input", "pending_init"),
+            &mut context,
+        );
+        assert_eq!(continued.events.len(), 2);
+        assert_eq!(continued.events[1].r#type, "agent.started");
+        assert_eq!(continued.events[1].payload["agentRunId"], "item_7");
+    }
+
+    #[test]
+    fn codex_collab_failed_delivery_does_not_open_a_run() {
+        let mut context = NormalizerSessionContext::default();
+        context
+            .codex_active_agent_runs
+            .insert("child".to_string(), "active-run".to_string());
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.completed",
+                    "item": {
+                        "id": "item_3",
+                        "type": "collab_tool_call",
+                        "tool": "send_input",
+                        "sender_thread_id": "parent",
+                        "receiver_thread_ids": ["child"],
+                        "prompt": "Continue",
+                        "agents_states": { "child": { "status": "failed", "message": "No delivery" } },
+                        "status": "failed"
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(
+            context
+                .codex_active_agent_runs
+                .get("child")
+                .map(String::as_str),
+            Some("active-run")
         );
     }
 

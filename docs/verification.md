@@ -10,13 +10,16 @@ ladder as the definition of "verified".
 ```bash
 npm run doctor
 npm run verify -- --scenario chat-resume
+npm run verify -- --scenario persistent-subagent --native off
+npm run verify -- --scenario persistent-codex-subagent --native off
+npm run verify -- --scenario persistent-cursor-subagent --native off
 npm run verify -- --scenario cancellation
 npm run verify -- --scenario provider-error
 ```
 
 The scenario runner builds a verification binary and renderer from the current
 checkout, creates a temporary project and app profile, and drives the real
-backend with a scripted Claude provider. Native UI verification is required by
+backend with a scripted provider. Native UI verification is required by
 default. The fixture exercises the production launcher and normalizer without
 calling a paid provider. Other providers remain unavailable in this profile.
 
@@ -24,6 +27,34 @@ calling a paid provider. Other providers remain unavailable in this profile.
 a running provider can be stopped. `provider-error` checks that a provider
 failure becomes a failed session. These commands are local checks and are not
 part of CI or the pre-push gate.
+
+`persistent-subagent --native off` checks the Claude native child identity,
+separate lifecycle runs for the initial launch and a `SendMessage` continuation,
+queryability after a scratch backend restart, and the Agents pane in light and
+dark browser renders. It uses the remote browser path because the scenario
+restarts the scratch backend. This fixture does not establish provider support.
+Also run a live Claude exchange through the scratch app, restart it, and verify
+that `SendMessage` continues the same native child with its earlier context.
+
+`persistent-codex-subagent --native off` exercises Codex's `spawn_agent`,
+`send_input`, and `wait` events through the same restart and dock checks. It
+requires persisted lifecycle rows for both assignments. A successful `wait`
+reporting `pending_init` must leave the child running. Verify provider support
+separately with a live Codex exchange through the scratch app, then restart and
+continue the same child with `send_input` and `resume_agent` when needed.
+
+`persistent-opencode-subagent --native off` exercises OpenCode's native `task`
+tool, including a continuation with the same `task_id`, persisted lifecycle
+rows across a scratch backend restart, and the Agents pane in light and dark
+browser renders. OpenCode emits the child result in the parent `tool_use`
+envelope, so this fixture verifies native identity and dock history rather than
+child transcript streaming.
+
+`persistent-cursor-subagent --native off` exercises Cursor's one-shot native
+`taskToolCall` through a backend restart. It checks the authoritative child id
+from the completed task result, a fresh invocation id on resume, two completed
+dock runs, and both light and dark browser renders. Composer 2.5 is excluded
+because it uses the ACP path.
 
 Each run prints a JSON result with its evidence location. Failures retain the
 diagnostics needed to reproduce the assertion. `--out <dir>` selects the

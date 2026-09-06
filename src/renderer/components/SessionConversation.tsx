@@ -17,6 +17,7 @@ import {
 } from "react";
 import type {
   AgentMode,
+  AgentReference,
   CheckRun,
   ComposerAttachment,
   DetectedIde,
@@ -53,7 +54,7 @@ import {
   outputsAfterClear,
   subAgentToolUseIds
 } from "../lib/sessionConversationModel.js";
-import { assignAgentCodenames } from "../lib/agentNames.js";
+import { assignAgentCodenames, nativeAgentReferences } from "../lib/agentNames.js";
 import { multitaskTabId } from "../lib/agentTabs.js";
 import { buildSubagentCluster } from "../lib/subagentSummary.js";
 import { isCompacting } from "../lib/compaction.js";
@@ -237,7 +238,8 @@ export function SessionConversation({
     input: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
+    agentReferences?: AgentReference[]
   ) => Promise<void>;
   /** Follow-ups composed while the agent was running. Render as cancellable
       chips above the composer; cleared from the parent as the queue drains. */
@@ -417,8 +419,12 @@ export function SessionConversation({
   // instead of leaving a tool row spinning forever.
   const sessionRunning = session?.state === "running";
   const toolCalls = useMemo(
-    () => buildSessionToolCalls(liveEvents, sessionRunning),
-    [liveEvents, sessionRunning]
+    () => buildSessionToolCalls(
+      liveEvents,
+      sessionRunning,
+      session?.state === "failed" || session?.state === "cancelled"
+    ),
+    [liveEvents, session?.state, sessionRunning]
   );
   const agentCodenames = useMemo(() => assignAgentCodenames(toolCalls), [toolCalls]);
   // The workspace card's Subagents section reads the same tool list the agent
@@ -661,13 +667,28 @@ export function SessionConversation({
         sentAtMs: Date.now()
       });
       try {
-        await onSendSessionInput(targetSessionId, text, model, mode, attachments);
+        const mentionedNames = new Set(text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []);
+        const references =
+          (model.provider === "claude" ||
+            model.provider === "codex" ||
+            model.provider === "opencode" ||
+            (model.provider === "cursor" && model.modelId !== "composer-2.5")) &&
+          model.provider === session?.provider &&
+          targetSessionId === session?.id
+          ? nativeAgentReferences(toolCalls, agentCodenames, session.providerConversationId)
+              .filter((reference) => mentionedNames.has(reference.name.toLowerCase()))
+          : [];
+        if (references.length > 0) {
+          await onSendSessionInput(targetSessionId, text, model, mode, attachments, references);
+        } else {
+          await onSendSessionInput(targetSessionId, text, model, mode, attachments);
+        }
       } catch (error) {
         setTurnStartBaseline(null);
         throw error;
       }
     },
-    [onSendSessionInput]
+    [onSendSessionInput, session?.id, session?.provider, session?.providerConversationId, toolCalls, agentCodenames]
   );
   const isTurnStarting = turnStartBaseline !== null;
   // Whether the session reached a live state after the send. A follow-up sent

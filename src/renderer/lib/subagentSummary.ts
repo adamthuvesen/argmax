@@ -3,7 +3,8 @@ import { isAgentToolName } from "./toolCalls.js";
 import { multitaskRowStatus, type MultitaskChild } from "./multitask.js";
 import { stableHash32 } from "./stableHash.js";
 import { activityTitle } from "./agentActivity.js";
-import { codenameForTool } from "./agentNames.js";
+import { agentCodenameKey, codenameForTool } from "./agentNames.js";
+import { agentTabId } from "./agentTabs.js";
 import { emblemForCodename, type Emblem } from "./agentEmblems.js";
 import { SESSION_ICON_COLORS } from "./sessionIcons.js";
 
@@ -47,17 +48,25 @@ export function buildSubagentCluster(
   codenames: Map<string, string>,
   multitasks: readonly MultitaskChild[] = []
 ): SubagentCluster | null {
-  const spawns = tools.filter((tool) => isAgentToolName(tool.name));
+  const spawnsByIdentity = new Map<string, { first: ToolCall; latest: ToolCall }>();
+  for (const tool of tools) {
+    if (!isAgentToolName(tool.name)) continue;
+    const identityKey = agentCodenameKey(tool);
+    const existing = spawnsByIdentity.get(identityKey);
+    if (existing) existing.latest = tool;
+    else spawnsByIdentity.set(identityKey, { first: tool, latest: tool });
+  }
+  const spawns = [...spawnsByIdentity.entries()];
   if (spawns.length === 0 && multitasks.length === 0) return null;
   const entries: SubagentClusterEntry[] = [
-    ...spawns.map((tool) => {
-      const codename = codenameForTool(tool, codenames) ?? "Agent";
+    ...spawns.map(([, { first, latest }]) => {
+      const codename = codenameForTool(first, codenames) ?? "Agent";
       const emblem = emblemForCodename(codename);
       return {
-        toolUseId: tool.toolUseId,
+        toolUseId: agentTabId(first),
         codename,
-        title: activityTitle(tool, tool.toolUseId),
-        status: tool.status,
+        title: activityTitle(first, first.toolUseId),
+        status: latest.status,
         // The ring wears the emblem's hue, not a second hash: a teal mark on a
         // red chip would read as two identities for one agent.
         iconColor: emblem.hue,

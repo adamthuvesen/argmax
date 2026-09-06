@@ -37,6 +37,12 @@ Focused reads in `dashboard.rs`:
   deletions. If a cursor predates its session's retained history or is ahead of
   the database, the response requests replacement with a fresh bounded tail.
   The older SQLite `rowid` cursors remain accepted for compatibility.
+
+Native Cursor task runs persist the same lifecycle correlation fields as the
+other native providers. The child id comes from
+`tool_call.taskToolCall.result.success.agentId`, not the initial `args.agentId`.
+Each invocation keeps its own `agentRunId` and `providerInvocationId`, while a
+resume keeps the child id and parent conversation id.
 - `approvals:pending`: Returns outstanding approval requests.
 
 A background sweeper deletes raw provider output older than 7 days. `system:vacuum-database` runs `VACUUM` in a background task.
@@ -50,4 +56,25 @@ The repository uses insert-if-absent to avoid duplicate events across repeated p
 
 Payloads include `parent_tool_use_id`, `traceImported: true`, `providerChildSessionId`, `traceSource`, and `traceSequence`. Child rows also carry `agentModelId` (and `agentReasoningEffort` where the provider reports one) — the model the *subagent* ran on, which the parent session's own model does not answer. Parent conversation views filter out child events, while `session:agent-events` fetches them for subagent panes.
 
+Claude native subagent lifecycle rows use the existing `events` table and `payload_json`. They carry the parent conversation id, child session id, parent tool id, provider invocation id, `agentRunId`, and a persisted `agentCodename`. Each native launch and `SendMessage` continuation has its own lifecycle pair, so `task_started` and `task_notification` do not stand in for the message delivery event. The renderer can query these rows after a backend restart, but only while the identity still belongs to the current parent conversation. Clearing, switching provider, or forking invalidates the reference without deleting the history. This behavior adds no migration.
+
+Native agent reads return at most 2,000 events, including original launch metadata. The dock reports when earlier activity is omitted. Older events remain stored, but this view does not yet offer pagination.
+
+Codex uses the same native identity and lifecycle fields. `spawn_agent` and
+`send_input` to an idle child open assignments, while a terminal child state closes them.
+Additional inputs delivered during an active assignment stay within that run.
+The enclosing tool's completion alone is a delivery acknowledgement. Each
+parent CLI invocation scopes Codex's reusable tool item IDs.
+Child trace turns are attached only when their correspondence to native
+assignments is unambiguous. Older trace history remains stored when it cannot
+be assigned safely, and the native completion summary remains available.
+
 Codex child traces also carry authoritative parent-thread lineage. If structured stdout omitted the matching `spawn_agent`, trace reconciliation stores a deterministic synthetic launch before importing the child. A later real launch reparents those child rows and supersedes the synthetic pair. Imported rows keep their `rowid` values. The synthetic rows are replaced by hidden tombstones with fresh `rowid` values so an incremental session read removes stale launch cards from an open renderer.
+
+OpenCode native `task` launches persist the child session from the tool
+metadata (`sessionId`) together with the parent conversation (`parentSessionId`)
+and the task call id. A continuation supplies the same child as
+`state.input.task_id`, so each parent invocation gets its own lifecycle run
+while the renderer keeps one dock tab. OpenCode has no separate child trace
+reader, and its parent stream carries the child result rather than child body
+events.

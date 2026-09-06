@@ -1328,6 +1328,7 @@ async fn message_session(
     let result = providers
         .send_input_with_origin(
             ProvidersSendInput {
+                agent_references: None,
                 session_id: target,
                 input: message,
                 provider: None,
@@ -1965,6 +1966,7 @@ async fn continue_moved_session(
     let asked = prompt.as_str().to_string();
     if let Err(error) = providers
         .send_input(ProvidersSendInput {
+            agent_references: None,
             session_id,
             input: prompt,
             provider: None,

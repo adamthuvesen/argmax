@@ -15,11 +15,13 @@ import type { ModelPickerSelection } from "../lib/models.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
 import type {
   AgentMode,
+  AgentReference,
   ApprovalRequest,
   CheckRun,
   ComposerAttachment,
   DetectedIde,
   IdeId,
+  NativeAgentIdentity,
   PendingMessage,
   ProjectSummary,
   SessionSummary,
@@ -88,7 +90,7 @@ interface SessionMultiGridProps {
   onDropWorkspace: (workspaceId: string, target: GridCoord & { position: SplitPosition }) => void;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
-  onLoadAgentEvents: (sessionId: string, parentToolUseId: string) => Promise<void>;
+  onLoadAgentEvents: (sessionId: string, parentToolUseId: string, identity?: NativeAgentIdentity) => Promise<void | { hasMore: boolean }>;
   /** Opens a launcher cell beside the focused pane. */
   onNewSession: (seed?: NewSessionSeed) => void;
   /** Launches a repo-less side chat seeded with the given first message. */
@@ -108,7 +110,8 @@ interface SessionMultiGridProps {
     input: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
+    agentReferences?: AgentReference[]
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;

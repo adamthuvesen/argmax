@@ -51,7 +51,7 @@ use crate::util::sync::LockOrRecover;
 /// The only model family routed through ACP today. Composer has no reasoning
 /// effort dimension, so the id Cursor lists for it is not a silent downgrade
 /// of anything the user picked.
-const ACP_MODEL_FAMILY: &str = "composer-2.5";
+pub const ACP_MODEL_FAMILY: &str = "composer-2.5";
 
 /// How long `terminate` waits for a cancelled prompt to resolve before giving
 /// up. The warm process is never killed on turn termination.
@@ -68,7 +68,11 @@ fn acp_mode_id(agent_mode: AgentMode) -> &'static str {
 }
 
 pub fn is_acp_eligible(input: &ProviderLaunchInput) -> bool {
-    input.provider == ProviderId::Cursor && input.model_id == ACP_MODEL_FAMILY
+    input.provider == ProviderId::Cursor && is_acp_model_id(&input.model_id)
+}
+
+pub fn is_acp_model_id(model_id: &str) -> bool {
+    model_id == ACP_MODEL_FAMILY
 }
 
 // ---------------------------------------------------------------------------

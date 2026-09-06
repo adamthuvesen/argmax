@@ -5,8 +5,10 @@ use super::approvals::{
 use super::checks::{persist_check, update_check, PersistCheckInput, UpdateCheckInput};
 use super::database::Database;
 use super::events::{
-    latest_agent_message, list_session_agent_events, list_session_events_since, persist_raw_output,
+    has_current_native_agent_identity, latest_agent_message, list_session_agent_events,
+    list_session_agent_events_for_identity, list_session_events_since, persist_raw_output,
     persist_timeline_event, PersistRawOutputInput, PersistTimelineEventInput,
+    SESSION_AGENT_EVENT_SCAN_LIMIT,
 };
 use super::gh::{
     list_gh_pr_for_session, list_open_gh_pr_session_ids, mark_gh_pr_notified, upsert_gh_pr,
@@ -577,6 +579,483 @@ fn list_session_agent_events_returns_parent_child_and_thread_rows() {
         ]
     );
     assert!(tail.raw_outputs.is_empty());
+}
+
+#[test]
+fn native_claude_agent_history_links_continuations_without_hiding_them() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    let mut session = session_input();
+    session.provider = "claude".to_owned();
+    persist_session(&connection, &session).expect("persist session");
+    update_session_provider_conversation_id(&connection, "s1", "parent-6b")
+        .expect("set parent conversation");
+
+    let rows = [
+        (
+            "task",
+            "command.started",
+            serde_json::json!({"id":"toolu_task","name":"Task","providerInvocationId":"invoke-1"}),
+        ),
+        (
+            "agent-start",
+            "agent.started",
+            serde_json::json!({
+                "providerChildSessionId":"agent-a7", "providerParentConversationId":"parent-6b",
+                "agentRunId":"toolu_task", "providerInvocationId":"invoke-1"
+            }),
+        ),
+        (
+            "child-first",
+            "message.completed",
+            serde_json::json!({"parent_tool_use_id":"toolu_task","providerInvocationId":"invoke-1"}),
+        ),
+        (
+            "agent-first-done",
+            "agent.completed",
+            serde_json::json!({
+                "providerChildSessionId":"agent-a7", "providerParentConversationId":"parent-6b",
+                "agentRunId":"toolu_task", "providerInvocationId":"invoke-1", "status":"completed"
+            }),
+        ),
+        (
+            "task-result",
+            "command.completed",
+            serde_json::json!({"tool_use_id":"toolu_task","content":"initial answer","providerInvocationId":"invoke-1"}),
+        ),
+        (
+            "send",
+            "command.started",
+            serde_json::json!({"id":"toolu_send","name":"SendMessage","input":{"to":"agent-a7"},"providerInvocationId":"invoke-2"}),
+        ),
+        (
+            "agent-restart",
+            "agent.started",
+            serde_json::json!({
+                "providerChildSessionId":"agent-a7", "providerParentConversationId":"parent-6b",
+                "agentRunId":"toolu_send", "providerInvocationId":"invoke-2"
+            }),
+        ),
+        (
+            "child-followup",
+            "message.completed",
+            serde_json::json!({"parent_tool_use_id":"toolu_task","providerInvocationId":"invoke-2"}),
+        ),
+        (
+            "child-tool-followup",
+            "command.started",
+            serde_json::json!({"id":"toolu_child_read","name":"Read","parent_tool_use_id":"toolu_task","providerInvocationId":"invoke-2"}),
+        ),
+        (
+            "child-tool-followup-result",
+            "command.completed",
+            serde_json::json!({"tool_use_id":"toolu_child_read","parent_tool_use_id":"toolu_task","providerInvocationId":"invoke-2"}),
+        ),
+        (
+            "agent-done",
+            "agent.completed",
+            serde_json::json!({
+                "providerChildSessionId":"agent-a7", "providerParentConversationId":"parent-6b",
+                "agentRunId":"toolu_send", "providerInvocationId":"invoke-2", "status":"completed"
+            }),
+        ),
+        (
+            "send-result",
+            "command.completed",
+            serde_json::json!({"tool_use_id":"toolu_send","content":"delivered","providerInvocationId":"invoke-2"}),
+        ),
+    ];
+    for (id, event_type, payload) in rows {
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: id.to_owned(),
+                session_id: "s1".to_owned(),
+                r#type: event_type.to_owned(),
+                message: id.to_owned(),
+                payload,
+                created_at: None,
+            },
+        )
+        .expect("persist native agent event");
+    }
+    let durable =
+        list_session_events_since(&connection, "s1", None, None).expect("durable session events");
+    for (id, expected_run) in [
+        ("child-first", "toolu_task"),
+        ("child-followup", "toolu_send"),
+        ("child-tool-followup", "toolu_send"),
+        ("child-tool-followup-result", "toolu_send"),
+    ] {
+        let event = durable.events.iter().find(|event| event.id == id).unwrap();
+        assert_eq!(event.payload["agentRunId"], expected_run, "persisted {id}");
+        assert_eq!(event.payload["providerChildSessionId"], "agent-a7");
+        assert!(event.payload["agentCodename"].is_string());
+    }
+    let before_limit = list_session_agent_events_for_identity(
+        &connection,
+        "s1",
+        "toolu_task",
+        Some("parent-6b"),
+        Some("agent-a7"),
+    )
+    .expect("unbounded fixture history");
+    for (id, expected_run) in [
+        ("child-first", "toolu_task"),
+        ("child-followup", "toolu_send"),
+        ("child-tool-followup", "toolu_send"),
+        ("child-tool-followup-result", "toolu_send"),
+    ] {
+        let event = before_limit
+            .events
+            .iter()
+            .find(|event| event.id == id)
+            .unwrap();
+        assert_eq!(event.payload["agentRunId"], expected_run, "{id}");
+    }
+    let initial_name = before_limit
+        .events
+        .iter()
+        .find(|event| event.id == "agent-start")
+        .unwrap()
+        .payload["agentCodename"]
+        .clone();
+    assert_eq!(
+        before_limit
+            .events
+            .iter()
+            .find(|event| event.id == "agent-restart")
+            .unwrap()
+            .payload["agentCodename"],
+        initial_name
+    );
+    for index in 0..SESSION_AGENT_EVENT_SCAN_LIMIT + 1 {
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: format!("later-child-{index}"),
+                session_id: "s1".to_owned(),
+                r#type: "message.completed".to_owned(),
+                message: format!("later activity {index}"),
+                payload: serde_json::json!({
+                    "parent_tool_use_id":"toolu_task", "providerInvocationId":"invoke-2"
+                }),
+                created_at: None,
+            },
+        )
+        .expect("persist later activity");
+    }
+
+    let history = list_session_agent_events_for_identity(
+        &connection,
+        "s1",
+        "toolu_task",
+        Some("parent-6b"),
+        Some("agent-a7"),
+    )
+    .expect("history");
+    let ids = history
+        .events
+        .iter()
+        .map(|event| event.id.as_str())
+        .collect::<Vec<_>>();
+    assert!(ids.contains(&"send"));
+    assert!(ids.contains(&"send-result"));
+    assert!(ids.contains(&"agent-first-done"));
+    assert!(ids.contains(&"task-result"));
+    assert!(history.has_more);
+    assert_eq!(history.events.len(), SESSION_AGENT_EVENT_SCAN_LIMIT);
+    let continuation = history
+        .events
+        .iter()
+        .find(|event| event.id == "agent-restart")
+        .unwrap();
+    assert_eq!(continuation.payload["agentRootToolUseId"], "toolu_task");
+    assert_eq!(continuation.payload["agentRunId"], "toolu_send");
+    assert!(
+        has_current_native_agent_identity(&connection, "s1", "parent-6b", "agent-a7")
+            .expect("validate identity")
+    );
+    update_session_provider_conversation_id(&connection, "s1", "parent-cleared")
+        .expect("clear boundary");
+    assert!(
+        !has_current_native_agent_identity(&connection, "s1", "parent-6b", "agent-a7")
+            .expect("reject stale identity")
+    );
+}
+
+#[test]
+fn native_claude_agent_codenames_probe_collisions_and_persist() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    let mut session = session_input();
+    session.provider = "claude".to_owned();
+    persist_session(&connection, &session).expect("persist session");
+    update_session_provider_conversation_id(&connection, "s1", "parent-1").unwrap();
+
+    let persist_agent = |id: &str, event_type: &str, child: &str, run: &str| {
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: id.to_owned(),
+                session_id: "s1".to_owned(),
+                r#type: event_type.to_owned(),
+                message: id.to_owned(),
+                payload: serde_json::json!({
+                    "providerChildSessionId": child,
+                    "providerParentConversationId": "parent-1",
+                    "agentRunId": run,
+                    "providerInvocationId": id,
+                }),
+                created_at: None,
+            },
+        )
+        .unwrap()
+    };
+    let first = persist_agent("first", "agent.started", "child-1", "toolu_0");
+    let second = persist_agent("second", "agent.started", "child-2", "toolu_22");
+    assert_ne!(
+        first.payload["agentCodename"],
+        second.payload["agentCodename"]
+    );
+    let continued = persist_agent("continued", "agent.started", "child-1", "toolu_continue");
+    assert_eq!(
+        continued.payload["agentCodename"],
+        first.payload["agentCodename"]
+    );
+    assert_eq!(continued.payload["agentRootToolUseId"], "toolu_0");
+}
+
+#[test]
+fn native_codex_agent_identity_enriches_child_rows_and_rejects_other_providers() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+    update_session_provider_conversation_id(&connection, "s1", "parent-codex")
+        .expect("set parent conversation");
+
+    let lifecycle = persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "codex-agent-start".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "agent.started".to_owned(),
+            message: "Inspect persistence".to_owned(),
+            payload: serde_json::json!({
+                "providerChildSessionId": "child-codex",
+                "providerParentConversationId": "parent-codex",
+                "agentRunId": "spawn-codex",
+                "providerInvocationId": "invoke-codex",
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist lifecycle");
+    assert_eq!(lifecycle.payload["agentRootToolUseId"], "spawn-codex");
+    assert!(lifecycle.payload["agentCodename"].is_string());
+
+    let child = persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "codex-child-message".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "message.completed".to_owned(),
+            message: "Persistence mapped.".to_owned(),
+            payload: serde_json::json!({
+                "parent_tool_use_id": "spawn-codex",
+                "providerInvocationId": "invoke-codex",
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist child row");
+    assert_eq!(child.payload["providerChildSessionId"], "child-codex");
+    assert_eq!(
+        child.payload["providerParentConversationId"],
+        "parent-codex"
+    );
+    assert_eq!(child.payload["agentRunId"], "spawn-codex");
+    assert_eq!(child.payload["agentRootToolUseId"], "spawn-codex");
+
+    persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "codex-agent-start-2".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "agent.started".to_owned(),
+            message: "Continue persistence".to_owned(),
+            payload: serde_json::json!({
+                "providerChildSessionId": "child-codex",
+                "providerParentConversationId": "parent-codex",
+                "agentRunId": "send-codex",
+                "providerInvocationId": "invoke-codex",
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist second lifecycle");
+    let first_run_trace = persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "codex-first-run-trace".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "message.completed".to_owned(),
+            message: "First run".to_owned(),
+            payload: serde_json::json!({
+                "parent_tool_use_id": "spawn-codex",
+                "providerChildSessionId": "child-codex",
+                "providerParentConversationId": "parent-codex",
+                "agentRunId": "spawn-codex",
+                "agentRootToolUseId": "spawn-codex",
+                "providerInvocationId": "invoke-codex",
+                "traceImported": true,
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist first-run trace after second start");
+    assert_eq!(first_run_trace.payload["agentRunId"], "spawn-codex");
+    assert!(
+        has_current_native_agent_identity(&connection, "s1", "parent-codex", "child-codex")
+            .expect("validate Codex identity")
+    );
+
+    connection
+        .execute("UPDATE sessions SET provider = 'grok' WHERE id = 's1'", [])
+        .expect("switch to unsupported provider");
+    assert!(
+        !has_current_native_agent_identity(&connection, "s1", "parent-codex", "child-codex")
+            .expect("reject unsupported provider")
+    );
+}
+
+#[test]
+fn native_opencode_agent_identity_keeps_the_first_task_as_the_root() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    let mut session = session_input();
+    session.provider = "opencode".to_owned();
+    persist_session(&connection, &session).expect("persist session");
+    update_session_provider_conversation_id(&connection, "s1", "parent-opencode")
+        .expect("set parent conversation");
+
+    let first = persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "opencode-task-first".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "agent.started".to_owned(),
+            message: "First task".to_owned(),
+            payload: serde_json::json!({
+                "providerChildSessionId": "child-opencode",
+                "providerParentConversationId": "parent-opencode",
+                "agentRunId": "call-first",
+                "providerInvocationId": "invoke-first",
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist first task");
+    let continued = persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "opencode-task-resume".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "agent.started".to_owned(),
+            message: "Resumed task".to_owned(),
+            payload: serde_json::json!({
+                "providerChildSessionId": "child-opencode",
+                "providerParentConversationId": "parent-opencode",
+                "agentRunId": "call-resume",
+                "providerInvocationId": "invoke-resume",
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist resumed task");
+
+    assert_eq!(first.payload["agentRootToolUseId"], "call-first");
+    assert_eq!(continued.payload["agentRootToolUseId"], "call-first");
+    assert_eq!(continued.payload["agentRunId"], "call-resume");
+    assert_eq!(
+        continued.payload["agentCodename"],
+        first.payload["agentCodename"]
+    );
+    assert!(has_current_native_agent_identity(
+        &connection,
+        "s1",
+        "parent-opencode",
+        "child-opencode"
+    )
+    .expect("validate OpenCode identity"));
+}
+
+#[test]
+fn native_cursor_agent_identity_keeps_the_returned_child_as_the_root() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    let mut session = session_input();
+    session.provider = "cursor".to_owned();
+    persist_session(&connection, &session).expect("persist session");
+    update_session_provider_conversation_id(&connection, "s1", "parent-cursor")
+        .expect("set parent conversation");
+
+    let first = persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "cursor-task-first".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "agent.started".to_owned(),
+            message: "First task".to_owned(),
+            payload: serde_json::json!({
+                "providerChildSessionId": "returned-child",
+                "providerParentConversationId": "parent-cursor",
+                "agentRunId": "call-first",
+                "providerInvocationId": "invoke-first",
+                "requestAgentId": "different-request-id",
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist first task");
+    let continued = persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "cursor-task-resume".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "agent.started".to_owned(),
+            message: "Resumed task".to_owned(),
+            payload: serde_json::json!({
+                "providerChildSessionId": "returned-child",
+                "providerParentConversationId": "parent-cursor",
+                "agentRunId": "call-resume",
+                "providerInvocationId": "invoke-resume",
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist resumed task");
+
+    assert_eq!(first.payload["agentRootToolUseId"], "call-first");
+    assert_eq!(continued.payload["agentRootToolUseId"], "call-first");
+    assert_eq!(continued.payload["agentRunId"], "call-resume");
+    assert!(has_current_native_agent_identity(
+        &connection,
+        "s1",
+        "parent-cursor",
+        "returned-child"
+    )
+    .expect("validate Cursor identity"));
 }
 
 #[test]

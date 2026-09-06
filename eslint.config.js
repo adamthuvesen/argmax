@@ -15,6 +15,7 @@ export default tseslint.config(
       "src-tauri/src/browser/*.js",
       "src/shared/bindings.d.ts",
       ".claude/**",
+      ".argmax/worktrees/**",
       "eslint.config.js",
       "scripts/*.cjs",
       "scripts/**/*.mjs",

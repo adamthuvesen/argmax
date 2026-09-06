@@ -5,7 +5,6 @@ mod opencode;
 
 pub use cursor::synthesize_message_completed_from_exit;
 
-#[cfg(test)]
 use std::collections::HashMap;
 
 use regex::Regex;
@@ -24,12 +23,14 @@ use self::{
         extract_usage as extract_claude_usage,
         is_hidden_synthetic_body as is_claude_hidden_synthetic_body,
         is_thinking_delta_payload as is_claude_thinking_delta_payload,
+        native_agent_lifecycle_event as claude_native_agent_lifecycle_event,
         synthesize_message_completed_from_result as synthesize_claude_message_completed_from_result,
         transcript_user_row as claude_transcript_user_row, TranscriptUserRow,
     },
     codex::{
         detect_permission_gate as detect_codex_permission_gate, event_type as codex_event_type,
         extract_usage as extract_codex_usage, normalize_error_item as normalize_codex_error_item,
+        normalize_native_agent_lifecycle_events as normalize_codex_native_agent_lifecycle_events,
         normalize_reasoning_item as normalize_codex_reasoning_item,
         normalize_tool_item as normalize_codex_tool_item,
         update_turn_context_model as update_codex_turn_context_model,
@@ -37,6 +38,7 @@ use self::{
     cursor::{
         event_type as cursor_event_type, extract_usage as extract_cursor_usage,
         is_lifecycle_event as is_cursor_lifecycle_event,
+        native_agent_lifecycle_events as normalize_cursor_native_agent_lifecycle_events,
         normalize_assistant_text as normalize_cursor_assistant_text,
         normalize_result_success as normalize_cursor_result_success,
         normalize_thinking_delta as normalize_cursor_thinking_delta,
@@ -44,6 +46,7 @@ use self::{
     },
     opencode::{
         extract_session_id as extract_opencode_session_id, extract_usage as extract_opencode_usage,
+        native_agent_lifecycle_events as normalize_opencode_native_agent_lifecycle_events,
         normalize_event as normalize_opencode_event,
     },
 };
@@ -207,6 +210,10 @@ pub struct NormalizerSessionContext {
     /// whose appended bytes carry no `token_count` reuses this instead of
     /// losing the occupancy readout.
     pub codex_rollout_last_token_count: Option<(u64, Option<u64>)>,
+    /// Native Codex child id to the collab item id that opened its current run.
+    /// A fresh map per provider invocation keeps repeated waits from completing
+    /// an earlier run again after `codex exec resume`.
+    pub codex_active_agent_runs: HashMap<String, String>,
     /// After a tracing-format PTY line, following non-JSON lines are the rest
     /// of that record. Codex dumps apply_patch expected context that way.
     pub raw_tracing_continuation: RawTracingContinuation,
@@ -508,8 +515,14 @@ fn normalize_json_payload(
     };
 
     if provider == ProviderId::Opencode {
+        let mut events = normalize_opencode_event(event, &payload, provider_type.as_deref());
+        events.extend(normalize_opencode_native_agent_lifecycle_events(
+            event,
+            &payload,
+            provider_type.as_deref(),
+        ));
         return NormalizedProviderResult {
-            events: normalize_opencode_event(event, &payload, provider_type.as_deref()),
+            events,
             usages,
             provider_conversation_id,
             ..NormalizedProviderResult::default()
@@ -637,8 +650,16 @@ fn normalize_json_payload(
             item,
             item_type.as_deref(),
         ) {
+            let mut normalized_events = vec![tool_event];
+            normalized_events.extend(normalize_codex_native_agent_lifecycle_events(
+                event,
+                provider_type.as_deref(),
+                item,
+                item_type.as_deref(),
+                context,
+            ));
             return NormalizedProviderResult {
-                events: vec![tool_event],
+                events: normalized_events,
                 usages,
                 provider_conversation_id,
                 ..NormalizedProviderResult::default()
@@ -672,8 +693,14 @@ fn normalize_json_payload(
         if let Some(tool_event) =
             normalize_cursor_tool_call(event, &payload, provider_type.as_deref())
         {
+            let mut events = vec![tool_event];
+            events.extend(normalize_cursor_native_agent_lifecycle_events(
+                event,
+                &payload,
+                provider_type.as_deref(),
+            ));
             return NormalizedProviderResult {
-                events: vec![tool_event],
+                events,
                 usages,
                 provider_conversation_id,
                 ..NormalizedProviderResult::default()
@@ -710,6 +737,16 @@ fn normalize_json_payload(
                 // The same row the live stream sends; the shared path below
                 // turns it into a `command.completed`.
                 TranscriptUserRow::ToolResult => {}
+            }
+        }
+        if provider == ProviderId::Claude {
+            if let Some(agent_event) = claude_native_agent_lifecycle_event(event, &payload) {
+                return NormalizedProviderResult {
+                    events: vec![agent_event],
+                    usages,
+                    provider_conversation_id,
+                    ..NormalizedProviderResult::default()
+                };
             }
         }
         if let Some(marker) = claude_compaction_marker(event, &payload) {

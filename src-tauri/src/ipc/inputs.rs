@@ -581,6 +581,16 @@ pub struct ProvidersSendInput {
     pub fast_mode: bool,
     pub agent_mode: Option<AgentMode>,
     pub attachments: Option<Vec<ComposerAttachmentInput>>,
+    #[serde(default)]
+    pub agent_references: Option<Vec<AgentReference>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AgentReference {
+    pub name: NonEmptyString,
+    pub provider_child_session_id: NonEmptyString,
+    pub provider_parent_conversation_id: NonEmptyString,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -676,6 +686,10 @@ pub struct SessionEventsSinceInput {
 pub struct SessionAgentEventsInput {
     pub session_id: SessionId,
     pub parent_tool_use_id: NonEmptyString,
+    #[serde(default)]
+    pub provider_parent_conversation_id: Option<NonEmptyString>,
+    #[serde(default)]
+    pub provider_child_session_id: Option<NonEmptyString>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

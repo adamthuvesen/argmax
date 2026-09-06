@@ -156,7 +156,8 @@ describe("WorkspaceCard", () => {
 
   it("offers to create a pull request when the workspace has none, and to open the one it has", async () => {
     const viewOrCreatePr = vi.fn().mockResolvedValue({ action: "created", url: "https://x/1", prNumber: 1 });
-    (window as { argmax?: unknown }).argmax = { git: { viewOrCreatePr } };
+    const openPath = vi.fn().mockResolvedValue({ ok: true });
+    (window as { argmax?: unknown }).argmax = { git: { viewOrCreatePr }, system: { openPath } };
     const setStatus = vi.fn();
 
     const { rerender } = renderCard({ setStatus });
@@ -168,7 +169,10 @@ describe("WorkspaceCard", () => {
         message: "Created pull request. Opening https://x/1."
       })
     );
+    expect(openPath).toHaveBeenCalledWith({ path: "https://x/1" });
 
+    viewOrCreatePr.mockResolvedValue({ action: "opened", url: "https://github.com/o/r/pull/1158", prNumber: 1158 });
+    const openStatus = vi.fn();
     rerender(
       <WorkspaceCard
         changeSummary={{ fileCount: 1, additions: 1, deletions: 0 }}
@@ -180,13 +184,23 @@ describe("WorkspaceCard", () => {
         onOpenCommitDialog={vi.fn()}
         onToggleTerminal={vi.fn()}
         session={baseSession()}
-        setStatus={vi.fn()}
+        setStatus={openStatus}
         workspace={{ ...workspace, prNumber: 1158, prState: "OPEN" }}
       />
     );
 
     const prRow = screen.getByRole("button", { name: "PR #1158" });
-    expect(prRow.textContent).toContain("open");
+    expect(prRow).toHaveTextContent("PR #1158");
+    expect(prRow).not.toHaveTextContent("open");
+
+    fireEvent.click(prRow);
+    await waitFor(() =>
+      expect(openPath).toHaveBeenCalledWith({ path: "https://github.com/o/r/pull/1158" })
+    );
+    expect(openStatus).toHaveBeenCalledWith({
+      kind: "info",
+      message: "Opening pull request #1158."
+    });
 
     rerender(
       <WorkspaceCard
@@ -210,7 +224,8 @@ describe("WorkspaceCard", () => {
   it("reports a failed pull-request call through the session status line", async () => {
     const setStatus = vi.fn();
     (window as { argmax?: unknown }).argmax = {
-      git: { viewOrCreatePr: vi.fn().mockRejectedValue(new Error("gh not authenticated")) }
+      git: { viewOrCreatePr: vi.fn().mockRejectedValue(new Error("gh not authenticated")) },
+      system: { openPath: vi.fn() }
     };
 
     renderCard({ setStatus });

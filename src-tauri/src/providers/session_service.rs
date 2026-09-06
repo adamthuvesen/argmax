@@ -2964,8 +2964,7 @@ mod tests {
                     permission_mode: Some("auto-approve".to_string()),
                     agent_mode: Some("auto".to_string()),
                     prompt: "hello".to_string(),
-                    state: "complete".to_string(),
-                    attention: attention_for_state("complete").to_string(),
+                    state: SessionState::Complete,
                 },
             )
             .expect("persist session");

@@ -2075,6 +2075,7 @@ async fn follow_up_send_input_returns_before_provider_spawn() {
             fast_mode: false,
             agent_mode: None,
             attachments: None,
+            agent_references: None,
         }),
     )
     .await

@@ -14,6 +14,33 @@ function nodeContentTop(scroller: HTMLElement, node: Element): number {
   return node.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
 }
 
+const VERTICAL_SCROLL_OVERFLOW = new Set(["auto", "hidden", "scroll"]);
+
+/**
+ * A descendant's viewport position includes the scroll offset of every nested
+ * scroller. Anchor on the outermost such container so its own scrolling does
+ * not look like layout movement in the conversation list. `hidden` also
+ * creates a programmatically scrollable container; `clip` deliberately does
+ * not.
+ */
+function stableViewportAnchor(scroller: HTMLDivElement, hit: Element): Element {
+  let anchor = hit;
+  let current: Element | null = hit;
+  while (current && current !== scroller) {
+    if (current instanceof HTMLElement) {
+      const overflowY = getComputedStyle(current).overflowY;
+      if (
+        VERTICAL_SCROLL_OVERFLOW.has(overflowY) &&
+        current.scrollHeight > current.clientHeight
+      ) {
+        anchor = current;
+      }
+    }
+    current = current.parentElement;
+  }
+  return anchor;
+}
+
 /**
  * The in-view element whose content-coordinate we keep still while detached.
  * WKWebView has no CSS overflow-anchor, so streamed insertions above this
@@ -36,11 +63,12 @@ function readViewportAnchor(scroller: HTMLDivElement): ViewportAnchor | null {
   const paddingRight = Number.parseFloat(style.paddingRight) || 0;
   const columnWidth = Math.max(0, rect.width - paddingLeft - paddingRight);
   const hit = document.elementFromPoint(rect.left + paddingLeft + columnWidth / 2, y);
-  const node =
+  const hitNode =
     hit instanceof Element && hit !== scroller && scroller.contains(hit)
       ? hit
       : childStraddling(scroller, y);
-  if (!node) return null;
+  if (!hitNode) return null;
+  const node = stableViewportAnchor(scroller, hitNode);
   return { node, contentTop: nodeContentTop(scroller, node) };
 }
 

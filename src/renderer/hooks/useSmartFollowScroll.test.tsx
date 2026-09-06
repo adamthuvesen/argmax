@@ -582,6 +582,8 @@ describe("useSmartFollowScroll", () => {
     const state: ScrollBoxState = { scrollHeight: 1200, clientHeight: 200, scrollTop: 1000 };
     const el = makeScrollBox(state);
     const turn = document.createElement("article");
+    const paragraph = document.createElement("p");
+    turn.appendChild(paragraph);
     el.appendChild(turn);
     const emptyRect = {
       left: 0,
@@ -598,7 +600,7 @@ describe("useSmartFollowScroll", () => {
       bottom: 200
     });
     let nodeContentTop = 800;
-    vi.spyOn(turn, "getBoundingClientRect").mockImplementation(
+    vi.spyOn(paragraph, "getBoundingClientRect").mockImplementation(
       () =>
         ({
           ...emptyRect,
@@ -608,7 +610,7 @@ describe("useSmartFollowScroll", () => {
           bottom: nodeContentTop - state.scrollTop + 40
         })
     );
-    document.elementFromPoint = () => turn;
+    document.elementFromPoint = () => paragraph;
 
     const { result } = renderHook(() => {
       const api = useSmartFollowScroll("session-a", ["turn"], false);
@@ -633,6 +635,84 @@ describe("useSmartFollowScroll", () => {
     expect(state.scrollTop).toBe(900);
     expect(result.current.showScrollToBottom).toBe(true);
   });
+
+  it.each(["auto", "hidden"])(
+    "anchors a nested %s scroll container instead of its moving descendant",
+    (overflowY) => {
+      const observers = installResizeObservers();
+      const state: ScrollBoxState = { scrollHeight: 1213, clientHeight: 200, scrollTop: 1013 };
+      const el = makeScrollBox(state);
+      const turn = document.createElement("article");
+      const nestedScroller = document.createElement("div");
+      const line = document.createElement("span");
+      nestedScroller.style.overflowY = overflowY;
+      nestedScroller.appendChild(line);
+      turn.appendChild(nestedScroller);
+      el.appendChild(turn);
+      Object.defineProperties(nestedScroller, {
+        scrollHeight: { configurable: true, get: () => 800 },
+        clientHeight: { configurable: true, get: () => 300 }
+      });
+      const emptyRect = { left: 0, width: 400, right: 400, x: 0, toJSON: () => ({}) };
+      vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
+        ...emptyRect,
+        top: 0,
+        y: 0,
+        height: 200,
+        bottom: 200
+      });
+      let nestedContentTop = 1040;
+      let nestedScrollTop = 0;
+      vi.spyOn(nestedScroller, "getBoundingClientRect").mockImplementation(() => ({
+        ...emptyRect,
+        top: nestedContentTop - state.scrollTop,
+        y: nestedContentTop - state.scrollTop,
+        height: 300,
+        bottom: nestedContentTop - state.scrollTop + 300
+      }));
+      vi.spyOn(line, "getBoundingClientRect").mockImplementation(() => ({
+        ...emptyRect,
+        top: nestedContentTop + 10 - nestedScrollTop - state.scrollTop,
+        y: nestedContentTop + 10 - nestedScrollTop - state.scrollTop,
+        height: 20,
+        bottom: nestedContentTop + 30 - nestedScrollTop - state.scrollTop
+      }));
+      document.elementFromPoint = () => line;
+
+      const { result } = renderHook(() => {
+        const api = useSmartFollowScroll("session-a", ["turn"], false);
+        attachListRef(api.conversationListRef, el);
+        return api;
+      });
+      const childObserver = observers.find((observer) => observer.targets.includes(turn));
+
+      act(() => {
+        result.current.handleUserScrollIntent();
+        state.scrollTop = 1003;
+        result.current.handleScroll();
+      });
+
+      act(() => {
+        nestedScrollTop = 500;
+        state.scrollHeight = 1263;
+        childObserver?.callback([], {} as ResizeObserver);
+      });
+
+      // The file diff scrolled and more output arrived below the viewport.
+      // Neither event moved the nested card in the outer transcript.
+      expect(state.scrollTop).toBe(1003);
+
+      act(() => {
+        nestedContentTop += 120;
+        state.scrollHeight = 1383;
+        childObserver?.callback([], {} as ResizeObserver);
+      });
+
+      // Actual layout growth above the card still keeps the reader's outer
+      // viewport anchored on that card.
+      expect(state.scrollTop).toBe(1123);
+    }
+  );
 
   it("anchors on the child straddling the probe line when the hit test lands in the gutter", () => {
     // The reading column is centred by the list's inline padding, so a probe

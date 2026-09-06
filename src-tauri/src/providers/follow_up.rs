@@ -204,7 +204,8 @@ fn pending_project_handoff(
             SELECT
               json_extract(moved.payload_json, '$.sourceProjectName'),
               json_extract(moved.payload_json, '$.destinationProjectName'),
-              json_extract(moved.payload_json, '$.destinationPath')
+              json_extract(moved.payload_json, '$.destinationPath'),
+              json_extract(moved.payload_json, '$.checkoutMode')
             FROM events moved
             WHERE moved.session_id = ?
               AND moved.type = 'session.moved'
@@ -224,9 +225,17 @@ fn pending_project_handoff(
                 let source: String = row.get(0)?;
                 let destination: String = row.get(1)?;
                 let path: String = row.get(2)?;
-                Ok(format!(
-                    "This chat moved from {source} to {destination}. Work in the destination checkout at {path}."
-                ))
+                let checkout_mode: Option<String> = row.get(3)?;
+                // A checkout move stays in one project, so naming it twice
+                // would read "moved from Argmax to Argmax" on the one move
+                // where the directory is the whole point.
+                Ok(if checkout_mode.as_deref() == Some("attached") {
+                    format!("This chat moved to another checkout of {destination}. Work in it at {path}.")
+                } else {
+                    format!(
+                        "This chat moved from {source} to {destination}. Work in the destination checkout at {path}."
+                    )
+                })
             },
         )
         .optional()

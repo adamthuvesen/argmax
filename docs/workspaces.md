@@ -21,13 +21,19 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
 
 ### Session Moves
 
-`$ARGMAX_BIN session move --project <name-or-path> --prompt <what-to-do-there>` schedules an explicit cross-project handoff from inside an active agent turn. When the turn settles, `WorkspaceService` creates a destination workspace, copies the timeline into a fresh session, and leaves the provider conversation id empty. The source workspace is never retargeted.
+`$ARGMAX_BIN session move (--project <name-or-path> | --path <checkout>) --prompt <what-to-do-there>` schedules an explicit handoff from inside an active agent turn. When the turn settles, `WorkspaceService` creates a destination workspace and copies the timeline into a fresh session. The source workspace is never retargeted: a workspace's `path` is write-once, so landing somewhere new always means a new row.
+
+Exactly one destination is required. `--project` moves to another registered project. `--path` moves to another checkout of the *same* project — any directory `git worktree list` reports for its repository, including the main one. That is the supported answer to "this work belongs in a different worktree"; running `cd` inside a tool call only moves the agent's shell, leaving the workspace, its diff, and its commit and pull-request actions pointed at the checkout the session started in, and the next turn relaunches back there.
+
+A `--path` destination is validated against the project's own `git worktree list`, so an arbitrary directory is refused rather than attached. It is always recorded as a shared checkout (`shared_workspace = 1`): Argmax did not create that worktree, so archiving the workspace must never delete it. A detached HEAD is refused too — a workspace records the branch it sits on.
 
 The prompt is required because a move relocates work in progress: it starts the destination chat's first turn there, so the chat carries on in the new checkout instead of waiting for a person. The destination keeps the source's launch lineage, so whoever dispatched the chat still hears when it finishes and the launch caps still count it. A chat that has arrived somewhere by moving more than three times stops continuing on its own and says so. See [agent-tools.md](agent-tools.md).
 
-The destination uses the shared checkout by default. `--worktree` creates an isolated workspace and runs its setup command. The source archives after a successful copy unless `--keep-source` was passed. Archive never uses `force`, so an isolated source with uncommitted changes returns to `kept`.
+A `--project` destination uses that project's shared checkout by default; `--worktree` creates an isolated workspace and runs its setup command. The source archives after a successful copy unless `--keep-source` was passed. Archive never uses `force`, so an isolated source with uncommitted changes returns to `kept`.
 
-`session.moved` marks the handoff in both timelines. The renderer follows the destination only when the source session is still selected.
+A cross-project move always leaves the provider conversation id empty. A `--path` move carries it where the provider supports that, so the same work continues in the new worktree instead of starting cold — see [providers.md](providers.md#session-moves-and-the-provider-conversation).
+
+`session.moved` marks the handoff in both timelines; its payload carries `checkoutMode` (`shared`, `worktree`, or `attached`) and `conversationCarried`. The renderer follows the destination only when the source session is still selected.
 
 ## Scratch Workspaces
 

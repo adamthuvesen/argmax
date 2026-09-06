@@ -25,7 +25,7 @@ A workspace backed by its own `git worktree`, forked onto `argmax/<slug>-<short-
 _Avoid_: Worktree workspace, forked workspace
 
 **Shared checkout**:
-A workspace pointing at the project's main checkout, shared with every other session doing the same. `shared_workspace = 1`. Archiving one flips state and drains processes but never touches the tree. The sharing is what makes archive non-destructive, which is why the term names it.
+A workspace pointing at a checkout Argmax did not create, shared with every other session doing the same. `shared_workspace = 1`. Usually the project's main checkout; also any worktree a session was moved into with `session move --path`, which the user made and Argmax only borrows. Archiving one flips state and drains processes but never touches the tree. The flag is what licenses `git worktree remove` on archive, so it reads as "Argmax owns this directory" — the sharing is the usual reason it does not, which is why the term names it.
 _Avoid_: Current workspace, main workspace, non-isolated workspace
 
 Two surfaces still say `current` for this: the `argmax.workspaceMode` value stored in `localStorage` (`worktree` | `current`) and the launcher's "Worktree" toggle. Those are wire and label values, not the domain term — leave them alone and say "shared checkout" everywhere else.

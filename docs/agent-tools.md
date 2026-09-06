@@ -23,7 +23,7 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `session_stop` | `session` | `{sessionId, state}` |
 | `inbox_read` | — | `{messages: [{fromSessionId?, fromLabel?, kind, body, createdAt}]}` |
 | `session_wait` | `sessions?`, `timeoutS?` | `{timedOut, sessions: [{sessionId, taskLabel, state}], messages: […]}` |
-| `session_move` | `project`, `prompt`, `worktree?`, `keepSource?` | `{scheduled, sourceSessionId, projectId, projectName}` |
+| `session_move` | `project?` \| `path?`, `prompt`, `worktree?`, `keepSource?` | `{scheduled, sourceSessionId, projectId, projectName, path?}` |
 | `workspace_archive` | — | `{scheduled, sessionId, workspaceId, removesWorktree}` |
 
 ### Browser
@@ -141,6 +141,15 @@ has no model-label catalog, that lives in
 
 A move is scheduled rather than immediate: it runs once the calling turn
 settles, since the agent asking for it is mid-turn.
+
+`session_move` takes exactly one destination. `project` moves to another
+registered project; `path` moves to another checkout of the project the chat is
+already in. `path` is the reason an agent should never reach for `cd` when the
+work belongs in a different worktree: `cd` moves only that shell, so the
+workspace card, its diff, and its commit and pull-request actions keep targeting
+the checkout the session started in, and the next turn relaunches there — the
+agent's work lands somewhere Argmax is not looking. The tool description says so
+directly, because the alternative is one an agent reaches for by habit.
 
 A move relocates work, so it does not stop at relocating the transcript: once
 the destination workspace exists, its `prompt` starts the chat's first turn

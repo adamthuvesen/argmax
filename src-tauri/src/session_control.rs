@@ -53,7 +53,10 @@ use crate::{
         session_service::{MessageOrigin, ProviderSessionService},
         ProviderLaunchInput,
     },
-    workspaces::{orchestration::WorkspacesCreateAlongsideInput, WorkspaceService},
+    workspaces::{
+        orchestration::{MoveDestination, WorkspacesCreateAlongsideInput},
+        WorkspaceService,
+    },
 };
 
 const PROTOCOL_VERSION: u32 = 1;
@@ -558,7 +561,13 @@ pub struct LaunchAction {
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MoveAction {
-    pub project: String,
+    /// Another registered project to move to. Mutually exclusive with `path`.
+    #[serde(default)]
+    pub project: Option<String>,
+    /// An existing checkout of the current project to move to — any directory
+    /// `git worktree list` reports for it. Mutually exclusive with `project`.
+    #[serde(default)]
+    pub path: Option<String>,
     /// The turn the destination chat opens with. A move relocates work in
     /// progress, so the destination has to be told what to pick up there.
     pub prompt: String,
@@ -683,6 +692,9 @@ pub struct ScheduledMove {
     pub source_session_id: String,
     pub project_id: String,
     pub project_name: String,
+    /// Set for a checkout move: the directory the chat is headed for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1974,18 +1986,55 @@ async fn schedule_session_move(
     // way to the provider, which is the same dead end.
     let continuation =
         Prompt::try_from(action.prompt.trim().to_string()).map_err(invalid_input_error)?;
-    let selector = action.project.as_str();
+    // Exactly one destination. Both, or neither, is a caller mistake worth
+    // naming rather than silently preferring one.
+    let checkout_path = match (action.project.as_deref(), action.path.as_deref()) {
+        (Some(_), Some(_)) => {
+            return Err(protocol_error(
+                "MOVE_DESTINATION_AMBIGUOUS",
+                "Pass either project or path, not both.",
+            ))
+        }
+        (None, None) => {
+            return Err(protocol_error(
+                "MOVE_DESTINATION_MISSING",
+                "Pass the project to move to, or the path of a checkout of this project.",
+            ))
+        }
+        (None, Some(path)) => {
+            if action.worktree {
+                return Err(protocol_error(
+                    "MOVE_WORKTREE_WITH_PATH",
+                    "worktree creates a new worktree; path moves into one that exists. Pass only one.",
+                ));
+            }
+            Some(path.to_string())
+        }
+        (Some(_), None) => None,
+    };
     let (source_session, source_workspace, destination) = {
         let connection = database.connection();
         let source_session =
             find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
         let source_workspace = find_workspace_by_id(&connection, &source_session.workspace_id)
             .map_err(argmax_protocol_error)?;
+        if checkout_path.is_some() && source_workspace.kind != "git" {
+            return Err(protocol_error(
+                "MOVE_PATH_WITHOUT_REPO",
+                "This chat has no repository, so it has no checkouts to move between.",
+            ));
+        }
         let projects = list_projects(&connection).map_err(argmax_protocol_error)?;
-        let destination = resolve_project(&projects, Some(selector), &source_workspace.project_id)?;
+        // A checkout move stays in the project it is already in, which is what
+        // `resolve_project` returns for a `None` selector.
+        let destination = resolve_project(
+            &projects,
+            action.project.as_deref(),
+            &source_workspace.project_id,
+        )?;
         (source_session, source_workspace, destination)
     };
-    if destination.id == source_workspace.project_id {
+    if checkout_path.is_none() && destination.id == source_workspace.project_id {
         return Err(protocol_error(
             "MOVE_SAME_PROJECT",
             "The destination must be a different project.",
@@ -2007,10 +2056,14 @@ async fn schedule_session_move(
                 id: Uuid::new_v4().to_string(),
                 session_id: parent.session_id.clone(),
                 r#type: "session.move-requested".to_string(),
-                message: format!("Move to {} scheduled.", destination.name),
+                message: match checkout_path.as_deref() {
+                    Some(path) => format!("Move to {path} scheduled."),
+                    None => format!("Move to {} scheduled.", destination.name),
+                },
                 payload: serde_json::json!({
                     "destinationProjectId": destination.id,
                     "destinationProjectName": destination.name,
+                    "destinationPath": checkout_path,
                     "worktree": action.worktree,
                     "keepSource": action.keep_source,
                 }),
@@ -2030,7 +2083,13 @@ async fn schedule_session_move(
     let source_session_id = parent.session_id.clone();
     let destination_project_id = destination.id.clone();
     let destination_project_name = destination.name.clone();
-    let scheduled_destination_project_id = destination_project_id.clone();
+    let move_destination = match checkout_path.clone() {
+        Some(path) => MoveDestination::Checkout { path },
+        None => MoveDestination::Project {
+            project_id: destination_project_id.clone(),
+            worktree: action.worktree,
+        },
+    };
     let move_registry = Arc::clone(&registry);
     tauri::async_runtime::spawn(async move {
         if settled_rx.await.is_err() {
@@ -2038,12 +2097,7 @@ async fn schedule_session_move(
             return;
         }
         let result = workspaces
-            .move_session_to_project(
-                &source_session_id,
-                &scheduled_destination_project_id,
-                action.worktree,
-                action.keep_source,
-            )
+            .move_session(&source_session_id, move_destination, action.keep_source)
             .await;
         // The pending-move guard belongs to the source and the move is over
         // either way. Holding it across the destination's launch would refuse
@@ -2085,12 +2139,14 @@ async fn schedule_session_move(
             source_session_id: parent.session_id,
             project_id: destination_project_id,
             project_name: destination_project_name,
+            path: checkout_path,
         }),
     ))
 }
 
-/// The destination's first turn. A move carries the transcript over but not
-/// the provider conversation, so nothing runs there until a turn is sent —
+/// The destination's first turn. A move always carries the transcript, and
+/// carries the provider conversation only where the provider supports it
+/// (`move_carries_conversation`). Nothing runs there until a turn is sent —
 /// this is that turn, the handoff the moving agent wrote. `send_input`
 /// composes it with the move seam's own handoff note (`providers::follow_up`),
 /// so the agent that wakes up in the destination is told where it is and what
@@ -2365,7 +2421,8 @@ pub enum SessionControlCliInput {
         worktree: bool,
     },
     Move {
-        project: String,
+        project: Option<String>,
+        path: Option<String>,
         prompt: CliPrompt,
         worktree: bool,
         keep_source: bool,
@@ -2397,11 +2454,13 @@ impl SessionControlCliInput {
             }),
             SessionControlCliInput::Move {
                 project,
+                path,
                 prompt,
                 worktree,
                 keep_source,
             } => SessionControlAction::Move(MoveAction {
                 project,
+                path,
                 prompt: prompt.read()?,
                 worktree,
                 keep_source,
@@ -2518,6 +2577,7 @@ fn parse_session_launch_cli(args: &[OsString]) -> Result<SessionControlCliInput,
 
 fn parse_session_move_cli(args: &[OsString]) -> Result<SessionControlCliInput, String> {
     let mut project = None;
+    let mut path = None;
     let mut prompt = None;
     let mut worktree = false;
     let mut keep_source = false;
@@ -2540,6 +2600,20 @@ fn parse_session_move_cli(args: &[OsString]) -> Result<SessionControlCliInput, S
                     return Err("--project must not be empty".to_string());
                 }
                 project = Some(value.to_string());
+            }
+            "--path" => {
+                if path.is_some() {
+                    return Err("--path may be provided only once".to_string());
+                }
+                index += 1;
+                let value = args
+                    .get(index)
+                    .and_then(|value| value.to_str())
+                    .ok_or_else(|| "--path requires a value".to_string())?;
+                if value.is_empty() {
+                    return Err("--path must not be empty".to_string());
+                }
+                path = Some(value.to_string());
             }
             "--worktree" => {
                 if worktree {
@@ -2574,8 +2648,12 @@ fn parse_session_move_cli(args: &[OsString]) -> Result<SessionControlCliInput, S
         }
         index += 1;
     }
+    if project.is_some() == path.is_some() {
+        return Err("provide exactly one of --project or --path".to_string());
+    }
     Ok(SessionControlCliInput::Move {
-        project: project.ok_or_else(session_move_usage)?,
+        project,
+        path,
         prompt: prompt.ok_or_else(session_move_usage)?,
         worktree,
         keep_source,
@@ -2677,7 +2755,7 @@ fn session_launch_usage() -> String {
 }
 
 fn session_move_usage() -> String {
-    "usage: argmax session move --project VALUE (--prompt VALUE | --prompt-stdin) [--worktree] [--keep-source]"
+    "usage: argmax session move (--project VALUE | --path VALUE) (--prompt VALUE | --prompt-stdin) [--worktree] [--keep-source]"
         .to_string()
 }
 
@@ -2946,6 +3024,62 @@ mod tests {
     }
 
     #[test]
+    fn a_move_action_accepts_either_destination_on_the_wire() {
+        // What an agent's `session_move` call actually deserializes into.
+        let by_path: MoveAction =
+            serde_json::from_str(r#"{"path":"/repo/worktrees/feature","prompt":"Carry on here"}"#)
+                .expect("path-only move");
+        assert_eq!(by_path.path.as_deref(), Some("/repo/worktrees/feature"));
+        assert_eq!(by_path.project, None);
+
+        let by_project: MoveAction =
+            serde_json::from_str(r#"{"project":"Other","prompt":"Port the fix"}"#)
+                .expect("project-only move");
+        assert_eq!(by_project.project.as_deref(), Some("Other"));
+        assert_eq!(by_project.path, None);
+    }
+
+    #[test]
+    fn cli_parser_takes_a_checkout_path_and_rejects_two_destinations() {
+        let args = [
+            "argmax",
+            "session",
+            "move",
+            "--path",
+            "/repo/worktrees/feature",
+            "--prompt",
+            "Carry on here",
+        ]
+        .map(OsString::from);
+        assert_eq!(
+            parse_session_control_cli(&args).unwrap(),
+            SessionControlCliInput::Move {
+                project: None,
+                path: Some("/repo/worktrees/feature".to_string()),
+                prompt: CliPrompt::Value("Carry on here".to_string()),
+                worktree: false,
+                keep_source: false,
+            }
+        );
+
+        // Naming both destinations is a mistake worth reporting: silently
+        // preferring one would move the chat somewhere the caller did not ask.
+        let both = [
+            "argmax",
+            "session",
+            "move",
+            "--project",
+            "Other",
+            "--path",
+            "/repo/worktrees/feature",
+            "--prompt",
+            "Carry on here",
+        ]
+        .map(OsString::from);
+        assert!(parse_session_control_cli(&both).is_err());
+    }
+
+    #[test]
     fn cli_parser_accepts_move_flags_and_requires_project() {
         let args = [
             "argmax",
@@ -2962,7 +3096,8 @@ mod tests {
         assert_eq!(
             parse_session_control_cli(&args).unwrap(),
             SessionControlCliInput::Move {
-                project: "Other".to_string(),
+                project: Some("Other".to_string()),
+                path: None,
                 prompt: CliPrompt::Value("Port the fix here".to_string()),
                 worktree: true,
                 keep_source: true,
@@ -3125,7 +3260,8 @@ mod tests {
 
         for action in [
             SessionControlAction::Move(MoveAction {
-                project: "Other".to_string(),
+                project: Some("Other".to_string()),
+                path: None,
                 prompt: "Port the fix here".to_string(),
                 worktree: false,
                 keep_source: true,

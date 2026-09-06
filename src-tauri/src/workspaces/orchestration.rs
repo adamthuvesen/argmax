@@ -84,6 +84,24 @@ pub struct SessionMoveResult {
     pub source_archive_state: String,
 }
 
+/// Where a moved session lands.
+///
+/// A workspace's `path` is write-once, so a session that needs to work in a
+/// different directory gets a new workspace rather than having its own
+/// retargeted — the same rule cross-project moves already follow.
+#[derive(Debug, Clone)]
+pub enum MoveDestination {
+    /// Another registered project, on its shared checkout or a fresh worktree.
+    Project { project_id: String, worktree: bool },
+    /// An existing checkout of the *same* project: any directory `git worktree
+    /// list` reports for it, including the main one. The row Argmax adds for it
+    /// is always a shared checkout, so archiving the moved chat never deletes
+    /// the tree. A checkout an isolated workspace already owns is refused —
+    /// `git worktree list` reports those too, and that workspace's own archive
+    /// would remove the directory out from under the moved chat.
+    Checkout { path: String },
+}
+
 /// Trailing-edge coalescing window for fs.watch bursts (e.g. `npm install`).
 pub(super) const WATCH_DEBOUNCE_MS: u64 = 200;
 pub(super) const WATCH_MAX_DEBOUNCE_MS: u64 = 1_000;
@@ -263,7 +281,7 @@ impl WorkspaceService {
                     let registration = {
                         let connection = self.database.connection();
                         require_project(&connection, &workspace.project_id).and_then(|project| {
-                            isolated_worktree_is_registered(
+                            worktree_is_registered(
                                 Path::new(&project.repo_path),
                                 Path::new(&workspace.path),
                             )
@@ -337,7 +355,7 @@ impl WorkspaceService {
                     let registration = {
                         let connection = self.database.connection();
                         require_project(&connection, &workspace.project_id).and_then(|project| {
-                            isolated_worktree_is_registered(
+                            worktree_is_registered(
                                 Path::new(&project.repo_path),
                                 Path::new(&workspace.path),
                             )
@@ -859,11 +877,40 @@ impl WorkspaceService {
         Ok(SessionForkResult { workspace, session })
     }
 
-    pub async fn move_session_to_project(
+    /// The task label of a live isolated workspace whose worktree is `path`, if
+    /// there is one. Paths are compared the way `git worktree list` output is,
+    /// so a symlinked or non-canonical spelling still matches.
+    fn isolated_workspace_at(&self, path: &str) -> ArgmaxResult<Option<String>> {
+        let target = comparable_worktree_path(Path::new(path));
+        let connection = self.database.connection();
+        let mut statement = connection
+            .prepare_cached(
+                "SELECT task_label, path FROM workspaces \
+                 WHERE shared_workspace = 0 AND state != 'archived'",
+            )
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>("task_label")?,
+                    row.get::<_, String>("path")?,
+                ))
+            })
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        for row in rows {
+            let (task_label, workspace_path) =
+                row.map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+            if comparable_worktree_path(Path::new(&workspace_path)) == target {
+                return Ok(Some(task_label));
+            }
+        }
+        Ok(None)
+    }
+
+    pub async fn move_session(
         self: &Arc<Self>,
         source_session_id: &str,
-        destination_project_id: &str,
-        worktree: bool,
+        destination: MoveDestination,
         keep_source: bool,
     ) -> ArgmaxResult<SessionMoveResult> {
         let (source_session, source_workspace, source_project, destination_project) = {
@@ -879,14 +926,22 @@ impl WorkspaceService {
                 ));
             }
             let source_workspace = find_workspace_by_id(&connection, &source_session.workspace_id)?;
-            if source_workspace.project_id == destination_project_id {
-                return Err(invalid_workspace(
-                    "The destination must be a different project.",
-                    "Choose another registered project.",
-                ));
-            }
             let source_project = require_project(&connection, &source_workspace.project_id)?;
-            let destination_project = require_project(&connection, destination_project_id)?;
+            // A checkout move stays inside the project it started in; only a
+            // project move has a second project to look up, and only it has to
+            // be somewhere else.
+            let destination_project = match &destination {
+                MoveDestination::Project { project_id, .. } => {
+                    if &source_workspace.project_id == project_id {
+                        return Err(invalid_workspace(
+                            "The destination must be a different project.",
+                            "Choose another registered project.",
+                        ));
+                    }
+                    require_project(&connection, project_id)?
+                }
+                MoveDestination::Checkout { .. } => source_project.clone(),
+            };
             (
                 source_session,
                 source_workspace,
@@ -901,22 +956,96 @@ impl WorkspaceService {
         let task_label =
             crate::ipc::validation::TaskLabel::try_from(source_workspace.task_label.clone())
                 .map_err(ArgmaxError::invalid)?;
-        let destination_workspace = if worktree {
-            let base_ref = crate::ipc::validation::BaseRef::try_from(
-                destination_project.current_branch.clone(),
-            )
-            .map_err(ArgmaxError::invalid)?;
-            self.create_isolated(WorkspacesCreateIsolatedInput {
+        let destination_workspace = match &destination {
+            MoveDestination::Project { worktree: true, .. } => {
+                let base_ref = crate::ipc::validation::BaseRef::try_from(
+                    destination_project.current_branch.clone(),
+                )
+                .map_err(ArgmaxError::invalid)?;
+                self.create_isolated(WorkspacesCreateIsolatedInput {
+                    project_id,
+                    task_label,
+                    base_ref: Some(base_ref),
+                })
+                .await?
+            }
+            MoveDestination::Project {
+                worktree: false, ..
+            } => self.create_current(WorkspacesCreateCurrentInput {
                 project_id,
                 task_label,
-                base_ref: Some(base_ref),
-            })
-            .await?
-        } else {
-            self.create_current(WorkspacesCreateCurrentInput {
-                project_id,
-                task_label,
-            })?
+            })?,
+            MoveDestination::Checkout { path } => {
+                let (path, branch) =
+                    attached_checkout(&destination_project.repo_path, &source_workspace, path)
+                        .await?;
+                // `git worktree list` reports the worktrees Argmax minted as
+                // well as the user's own. Attaching to one Argmax owns would
+                // leave two rows on it, and the owning row's archive removes
+                // the directory — it is the only row licensed to, and it does
+                // not look for company.
+                if let Some(owner) = self.isolated_workspace_at(&path)? {
+                    return Err(invalid_workspace(
+                        format!(
+                            "{path} is the worktree of another workspace ({}).",
+                            owner
+                        ),
+                        "Move into a checkout Argmax does not own, or archive that workspace first.",
+                    ));
+                }
+                self.create_alongside(WorkspacesCreateAlongsideInput {
+                    project_id,
+                    task_label,
+                    path,
+                    branch,
+                    base_ref: destination_project
+                        .default_branch
+                        .clone()
+                        .unwrap_or_else(|| destination_project.current_branch.clone()),
+                })?
+            }
+        };
+
+        // Whether the destination picks the provider conversation up or starts
+        // cold there. Only a checkout move carries it: that is the same work
+        // continuing in another worktree of the same repository, where losing
+        // the conversation is the regression. A cross-project move keeps the
+        // long-standing cold start — its transcript describes a different
+        // repository. Provider-dependent on top of that, because resume has to
+        // follow the new directory and be able to fork; see
+        // `ProviderLaunchDefinition::move_carries_conversation`. An unknown
+        // provider string starts cold, which is the safe direction.
+        let carried_conversation = source_session
+            .provider_conversation_id
+            .clone()
+            .filter(|_| matches!(destination, MoveDestination::Checkout { .. }))
+            .filter(|_| {
+                crate::providers::runtime::parse_provider(&source_session.provider)
+                    .map(|provider| {
+                        crate::providers::adapters::get_provider_definition(provider)
+                            .move_carries_conversation
+                    })
+                    .unwrap_or(false)
+            });
+        let checkout_mode = match &destination {
+            MoveDestination::Project { worktree: true, .. } => "worktree",
+            MoveDestination::Project {
+                worktree: false, ..
+            } => "shared",
+            MoveDestination::Checkout { .. } => "attached",
+        };
+        // A cross-project move is named by where it landed; a checkout move
+        // stays in one project, so the project name would say nothing.
+        let destination_label = match &destination {
+            MoveDestination::Project { .. } => destination_project.name.clone(),
+            MoveDestination::Checkout { .. } => format!(
+                "{} on {}",
+                Path::new(&destination_workspace.path)
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| destination_workspace.path.clone()),
+                destination_workspace.branch
+            ),
         };
 
         let copied = (|| -> ArgmaxResult<(WorkspaceSummary, SessionSummary, TimelineEvent)> {
@@ -956,6 +1085,23 @@ impl WorkspaceService {
                 }
                 None => destination_session,
             };
+            // Carry the provider conversation where the provider supports it,
+            // as a fork: the source row keeps the original, so resuming the
+            // same id from both would interleave two chats into one CLI
+            // conversation. Order matters — setting the id clears resume_fork,
+            // so the flag goes on afterwards.
+            let destination_session = match carried_conversation.as_deref() {
+                Some(conversation_id) => {
+                    let session = update_session_provider_conversation_id(
+                        &transaction,
+                        &destination_session.id,
+                        conversation_id,
+                    )?;
+                    set_session_resume_fork(&transaction, &session.id)?;
+                    session
+                }
+                None => destination_session,
+            };
             for event in list_all_session_events(&transaction, source_session_id)? {
                 persist_timeline_event(
                     &transaction,
@@ -975,10 +1121,15 @@ impl WorkspaceService {
                     id: Uuid::new_v4().to_string(),
                     session_id: destination_session.id.clone(),
                     r#type: "session.moved".to_string(),
-                    message: format!(
-                        "Moved from {} to {}.",
-                        source_project.name, destination_project.name
-                    ),
+                    message: match &destination {
+                        MoveDestination::Project { .. } => format!(
+                            "Moved from {} to {}.",
+                            source_project.name, destination_label
+                        ),
+                        MoveDestination::Checkout { .. } => {
+                            format!("Moved to {destination_label}.")
+                        }
+                    },
                     payload: json!({
                         "direction": "destination",
                         "sourceSessionId": source_session.id,
@@ -990,7 +1141,8 @@ impl WorkspaceService {
                         "destinationProjectId": destination_project.id,
                         "destinationProjectName": destination_project.name,
                         "destinationPath": destination_workspace.path,
-                        "checkoutMode": if worktree { "worktree" } else { "shared" },
+                        "checkoutMode": checkout_mode,
+                        "conversationCarried": carried_conversation.is_some(),
                         "sourceArchiveRequested": !keep_source,
                     }),
                     created_at: None,
@@ -1069,7 +1221,7 @@ impl WorkspaceService {
                     id: Uuid::new_v4().to_string(),
                     session_id: source_session_id.to_string(),
                     r#type: "session.moved".to_string(),
-                    message: format!("Moved to {}.", destination_project.name),
+                    message: format!("Moved to {destination_label}."),
                     payload: json!({
                         "direction": "source",
                         "sourceSessionId": source_session_id,
@@ -1081,7 +1233,8 @@ impl WorkspaceService {
                         "destinationProjectId": destination_project.id,
                         "destinationProjectName": destination_project.name,
                         "destinationPath": destination_workspace.path,
-                        "checkoutMode": if worktree { "worktree" } else { "shared" },
+                        "checkoutMode": checkout_mode,
+                        "conversationCarried": carried_conversation.is_some(),
                         "sourceArchiveState": source_archive_state,
                         "archiveError": archive_error,
                     }),
@@ -1524,7 +1677,7 @@ impl WorkspaceService {
                     )
                     .await;
                 }
-                let is_unregistered = !isolated_worktree_is_registered(
+                let is_unregistered = !worktree_is_registered(
                     Path::new(&project.repo_path),
                     Path::new(&workspace.path),
                 )
@@ -1544,7 +1697,7 @@ impl WorkspaceService {
                         Duration::from_millis(GIT_TIMEOUT_MS),
                     )
                     .await;
-                    let now_unregistered = !isolated_worktree_is_registered(
+                    let now_unregistered = !worktree_is_registered(
                         Path::new(&project.repo_path),
                         Path::new(&workspace.path),
                     )
@@ -1797,7 +1950,7 @@ impl WorkspaceService {
                 let is_unregistered = {
                     let connection = self.database.connection();
                     require_project(&connection, &workspace.project_id).and_then(|project| {
-                        isolated_worktree_is_registered(Path::new(&project.repo_path), path)
+                        worktree_is_registered(Path::new(&project.repo_path), path)
                     })
                 };
                 if matches!(is_unregistered, Ok(false)) {
@@ -1865,7 +2018,7 @@ impl WorkspaceService {
                 let is_unregistered = {
                     let connection = self.database.connection();
                     require_project(&connection, &workspace.project_id).and_then(|project| {
-                        isolated_worktree_is_registered(
+                        worktree_is_registered(
                             Path::new(&project.repo_path),
                             Path::new(&workspace.path),
                         )
@@ -2303,7 +2456,79 @@ fn invalid_workspace(
     .into()
 }
 
-fn isolated_worktree_is_registered(repo_path: &Path, worktree_path: &Path) -> ArgmaxResult<bool> {
+/// Resolve the checkout a session asked to move into, or say why it cannot.
+///
+/// Returns the canonical path and the branch checked out there. The path has to
+/// be a working tree `git worktree list` reports for the project's repository:
+/// that is what turns "a checkout of this project" into a claim Argmax can
+/// check, rather than trusting any directory an agent happens to name. The
+/// project's main checkout is listed too, so moving back to it is allowed.
+async fn attached_checkout(
+    repo_path: &str,
+    source_workspace: &WorkspaceSummary,
+    requested: &str,
+) -> ArgmaxResult<(String, String)> {
+    let requested = requested.trim();
+    let path = Path::new(requested);
+    if !path.is_absolute() {
+        return Err(invalid_workspace(
+            format!("Checkout path '{requested}' is not absolute."),
+            "Pass the absolute path of a worktree of this project.",
+        ));
+    }
+    let path = path.canonicalize().map_err(|error| {
+        invalid_workspace(
+            format!("No directory at {requested}: {error}"),
+            "Check the path and retry.",
+        )
+    })?;
+    if !path.is_dir() {
+        return Err(invalid_workspace(
+            format!("{} is not a directory.", path.display()),
+            "Pass the root directory of a worktree.",
+        ));
+    }
+    if comparable_worktree_path(&path)
+        == comparable_worktree_path(Path::new(&source_workspace.path))
+    {
+        return Err(invalid_workspace(
+            "This chat is already working in that checkout.",
+            "Name a different worktree, or skip the move.",
+        ));
+    }
+    if !worktree_is_registered(Path::new(repo_path), &path)? {
+        return Err(invalid_workspace(
+            format!("{} is not a worktree of this project.", path.display()),
+            "Run `git worktree list` in the project to see the checkouts a chat can move into.",
+        ));
+    }
+    let branch = run_git_text(
+        &path,
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        Duration::from_millis(GIT_TIMEOUT_MS),
+    )
+    .await
+    .map_err(|error| {
+        invalid_workspace(
+            format!("Could not read the branch at {}: {error}", path.display()),
+            "Check the checkout and retry.",
+        )
+    })?;
+    let branch = branch.trim();
+    // A workspace records the branch it sits on, and a detached HEAD has no
+    // name to record.
+    if branch.is_empty() || branch == "HEAD" {
+        return Err(invalid_workspace(
+            format!("{} has a detached HEAD.", path.display()),
+            "Check out a branch there first.",
+        ));
+    }
+    Ok((path.to_string_lossy().into_owned(), branch.to_string()))
+}
+
+/// Whether `git worktree list` in `repo_path` reports `worktree_path`. True for
+/// the repository's main checkout as well as its added worktrees.
+fn worktree_is_registered(repo_path: &Path, worktree_path: &Path) -> ArgmaxResult<bool> {
     // Startup recovery runs before any runtime is available to await on.
     let stdout = run_git_text_blocking(
         repo_path,

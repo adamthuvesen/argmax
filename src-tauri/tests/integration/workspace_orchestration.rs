@@ -16,6 +16,7 @@ use argmax_lib::ipc::inputs::{
     WorkspacesKeepInput, WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
 };
 use argmax_lib::ipc::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
+use argmax_lib::persistence::workspaces::WorkspaceSummary;
 use argmax_lib::persistence::{
     checks::list_checks,
     database::Database,
@@ -37,9 +38,10 @@ use argmax_lib::providers::runtime::{
 use argmax_lib::providers::session_service::ProviderSessionService;
 use argmax_lib::providers::ProviderLaunchInput;
 use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
+use argmax_lib::workspaces::orchestration::MoveDestination;
 use argmax_lib::workspaces::WorkspaceService;
 
-use crate::support::git_repo::{run_git, run_git_stdout, seed_git_repo};
+use crate::support::git_repo::{run_git, run_git_stdout, seed_git_repo, SeededGitRepo};
 use argmax_lib::sessions::state::SessionState;
 
 // ---------------------------------------------------------------------------
@@ -1795,7 +1797,14 @@ async fn move_session_copies_history_without_native_resume_and_can_keep_source()
     .expect("source lineage");
 
     let moved = service
-        .move_session_to_project("source-session", "destination-project", false, true)
+        .move_session(
+            "source-session",
+            MoveDestination::Project {
+                project_id: "destination-project".to_string(),
+                worktree: false,
+            },
+            true,
+        )
         .await
         .expect("move session");
 
@@ -1833,6 +1842,257 @@ async fn move_session_copies_history_without_native_resume_and_can_keep_source()
     assert_eq!(seam.payload["destinationProjectName"], "Destination");
 }
 
+/// Seeds one project whose repository has a second worktree, and a completed
+/// session sitting on the main checkout. Returns the service, the source
+/// workspace and the sibling worktree's path.
+fn checkout_move_fixture(
+    database: &Arc<Database>,
+    provider: &str,
+) -> (
+    Arc<WorkspaceService>,
+    WorkspaceSummary,
+    String,
+    SeededGitRepo,
+) {
+    let repo = seed_git_repo(&[("README.md", "source")]);
+    ensure_main_branch(repo.path());
+    // The worktree has to outlive the `TempDir` guard the fixture drops, so it
+    // goes inside the repository rather than beside it.
+    let sibling = repo.path().join("worktrees").join("feature");
+    run_git(
+        repo.path(),
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feature",
+            &sibling.display().to_string(),
+        ],
+    );
+    build_named_project(
+        database,
+        "source-project",
+        "Source",
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let service = WorkspaceService::new(Arc::clone(database));
+    let source_workspace = service
+        .create_current(WorkspacesCreateCurrentInput {
+            project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Move this chat".to_string()).expect("task label"),
+        })
+        .expect("source workspace");
+    seed_completed_session(database, &source_workspace.id, "source-session");
+    {
+        let connection = database.connection();
+        connection
+            .execute(
+                "UPDATE sessions SET provider = ? WHERE id = 'source-session'",
+                [provider],
+            )
+            .expect("session provider");
+    }
+    // The guard travels with the fixture: the worktree lives inside the
+    // repository, so one guard keeps both directories alive for the test.
+    (
+        service,
+        source_workspace,
+        sibling.display().to_string(),
+        repo,
+    )
+}
+
+#[tokio::test]
+async fn move_session_to_a_sibling_worktree_lands_on_its_branch_and_carries_the_conversation() {
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let (service, source_workspace, sibling, _repo) = checkout_move_fixture(&database, "claude");
+
+    let moved = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout {
+                path: sibling.clone(),
+            },
+            true,
+        )
+        .await
+        .expect("move session");
+
+    assert_eq!(
+        moved.workspace.project_id, "source-project",
+        "a checkout move stays in the project it started in"
+    );
+    assert_eq!(moved.workspace.branch, "feature");
+    assert!(
+        moved.workspace.shared_workspace,
+        "Argmax did not create this worktree, so archiving must never delete it"
+    );
+    assert_ne!(moved.workspace.id, source_workspace.id);
+    assert_ne!(
+        moved.workspace.path, source_workspace.path,
+        "the destination is a different directory"
+    );
+    // Claude's resume follows the new working directory and can fork, so the
+    // chat carries on rather than starting cold in the new worktree.
+    assert_eq!(
+        moved.session.provider_conversation_id.as_deref(),
+        Some("native-conversation")
+    );
+    let connection = database.connection();
+    let resume_fork: i64 = connection
+        .query_row(
+            "SELECT resume_fork FROM sessions WHERE id = ?",
+            [&moved.session.id],
+            |row| row.get(0),
+        )
+        .expect("resume_fork");
+    assert_eq!(
+        resume_fork, 1,
+        "the carried conversation forks so the source and destination rows never share one"
+    );
+    let copied = list_all_session_events(&connection, &moved.session.id).expect("copied events");
+    assert!(copied.iter().any(|event| event.message == "Source answer"));
+    let seam = copied
+        .iter()
+        .find(|event| event.r#type == "session.moved")
+        .expect("move seam");
+    assert_eq!(seam.payload["checkoutMode"], "attached");
+    assert_eq!(seam.payload["conversationCarried"], true);
+}
+
+#[tokio::test]
+async fn move_session_to_a_checkout_starts_cold_when_the_provider_resume_ignores_the_new_directory()
+{
+    // Grok and OpenCode keep executing in the directory a conversation started
+    // in, whatever `--cwd` / `--dir` says on resume. Carrying the conversation
+    // would edit the old checkout from a workspace showing the new one.
+    for provider in ["grok", "opencode", "cursor"] {
+        let database = Arc::new(Database::open_in_memory().expect("db"));
+        let (service, _source, sibling, _repo) = checkout_move_fixture(&database, provider);
+        let moved = service
+            .move_session(
+                "source-session",
+                MoveDestination::Checkout { path: sibling },
+                true,
+            )
+            .await
+            .unwrap_or_else(|error| panic!("move session for {provider}: {error}"));
+        assert_eq!(
+            moved.session.provider_conversation_id, None,
+            "{provider} must start a fresh conversation in the new checkout"
+        );
+        let connection = database.connection();
+        let seam = list_all_session_events(&connection, &moved.session.id)
+            .expect("copied events")
+            .into_iter()
+            .find(|event| event.r#type == "session.moved")
+            .expect("move seam");
+        assert_eq!(seam.payload["conversationCarried"], false);
+    }
+}
+
+#[tokio::test]
+async fn move_session_refuses_a_checkout_another_workspace_owns_or_one_with_no_branch() {
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let (service, _source, sibling, _repo) = checkout_move_fixture(&database, "claude");
+
+    // `git worktree list` reports the worktrees Argmax minted too. Attaching to
+    // one leaves two rows on it, and the owning row's archive removes the
+    // directory out from under the moved chat.
+    let owned = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Owns a worktree".to_string()).expect("task label"),
+            base_ref: None,
+        })
+        .await
+        .expect("isolated workspace");
+    assert!(!owned.shared_workspace);
+    let error = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout {
+                path: owned.path.clone(),
+            },
+            true,
+        )
+        .await
+        .expect_err("a worktree Argmax owns is not a destination");
+    assert!(
+        error.to_string().contains("another workspace"),
+        "unexpected error: {error}"
+    );
+
+    // A workspace records the branch it sits on, so a detached HEAD has no
+    // name to record.
+    run_git(std::path::Path::new(&sibling), &["checkout", "--detach"]);
+    let detached = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout { path: sibling },
+            true,
+        )
+        .await
+        .expect_err("a detached HEAD has no branch to record");
+    assert!(
+        detached.to_string().contains("detached HEAD"),
+        "unexpected error: {detached}"
+    );
+}
+
+#[tokio::test]
+async fn move_session_refuses_a_checkout_that_is_not_a_worktree_of_the_project() {
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let (service, source_workspace, _sibling, _repo) = checkout_move_fixture(&database, "claude");
+    let stranger = seed_git_repo(&[("README.md", "elsewhere")]);
+
+    let error = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout {
+                path: stranger.path().display().to_string(),
+            },
+            true,
+        )
+        .await
+        .expect_err("a checkout of another repository is not a destination");
+    assert!(
+        error.to_string().contains("not a worktree of this project"),
+        "unexpected error: {error}"
+    );
+
+    let already_here = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout {
+                path: source_workspace.path.clone(),
+            },
+            true,
+        )
+        .await
+        .expect_err("moving into the checkout the chat is already in is a no-op, not a move");
+    assert!(
+        already_here.to_string().contains("already working"),
+        "unexpected error: {already_here}"
+    );
+
+    let missing = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout {
+                path: "relative/path".to_string(),
+            },
+            true,
+        )
+        .await
+        .expect_err("a relative path has no single meaning");
+    assert!(
+        missing.to_string().contains("not absolute"),
+        "unexpected error: {missing}"
+    );
+}
+
 #[tokio::test]
 async fn move_session_archives_clean_source_and_can_create_isolated_destination() {
     let source_repo = seed_git_repo(&[("README.md", "source")]);
@@ -1868,7 +2128,14 @@ async fn move_session_archives_clean_source_and_can_create_isolated_destination(
     seed_completed_session(&database, &source_workspace.id, "source-session");
 
     let moved = service
-        .move_session_to_project("source-session", "destination-project", true, false)
+        .move_session(
+            "source-session",
+            MoveDestination::Project {
+                project_id: "destination-project".to_string(),
+                worktree: true,
+            },
+            false,
+        )
         .await
         .expect("move session");
 
@@ -1926,7 +2193,14 @@ async fn move_session_keeps_dirty_isolated_source_without_forcing_archive() {
     .expect("dirty file");
 
     let moved = service
-        .move_session_to_project("source-session", "destination-project", false, false)
+        .move_session(
+            "source-session",
+            MoveDestination::Project {
+                project_id: "destination-project".to_string(),
+                worktree: false,
+            },
+            false,
+        )
         .await
         .expect("move session");
 
@@ -1972,11 +2246,25 @@ async fn each_move_adds_an_arrival_the_copied_transcript_carries_on() {
     seed_completed_session(&database, &source_workspace.id, "source-session");
 
     let first = service
-        .move_session_to_project("source-session", "project-1", false, true)
+        .move_session(
+            "source-session",
+            MoveDestination::Project {
+                project_id: "project-1".to_string(),
+                worktree: false,
+            },
+            true,
+        )
         .await
         .expect("first move");
     let second = service
-        .move_session_to_project(&first.session.id, "project-2", false, true)
+        .move_session(
+            &first.session.id,
+            MoveDestination::Project {
+                project_id: "project-2".to_string(),
+                worktree: false,
+            },
+            true,
+        )
         .await
         .expect("second move");
 

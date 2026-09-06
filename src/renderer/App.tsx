@@ -1038,21 +1038,25 @@ export function App(): JSX.Element {
   }, [openNewSessionPane, setIsBrowserPageOpen]);
 
   const handleEarlyStop = useCallback(
-    (sessionId: string): void => {
+    (sessionId: string): string | undefined => {
       const session =
         sessionsById.get(sessionId) ?? snapshot.sessions.find((s) => s.id === sessionId);
-      if (!session || !isEarlySessionStop(session)) return;
+      if (!session || !isEarlySessionStop(session)) return undefined;
       // Restoring the launcher is a pane behaviour, and a multitask normally
       // has no pane: it was dispatched from inside another chat and runs in
       // that chat's dock. Stopping it there leaves that chat exactly where it
       // was — still on screen, and with its own prompt in the launcher draft,
       // not the multitask's. Once it has been promoted to a pane of its own it
       // is an ordinary chat again, and stopping it early behaves like one.
-      if (isMultitaskSession(session) && !findSessionCell(grid, sessionId)) return;
+      if (isMultitaskSession(session) && !findSessionCell(grid, sessionId)) return undefined;
 
       const workspace =
         workspacesById.get(session.workspaceId) ??
         snapshot.workspaces.find((w) => w.id === session.workspaceId);
+      // Popups have their own close-to-discard lifecycle; stopping one must
+      // not hand the main pane back to the launcher or archive out from under
+      // the still-open explainer.
+      if (workspace?.kind === "popup") return undefined;
       const isSideChat =
         !workspace || workspace.kind === "scratch" || workspace.projectId === SCRATCH_PROJECT_ID;
       const projectId = isSideChat ? SCRATCH_PROJECT_ID : workspace.projectId;
@@ -1075,6 +1079,7 @@ export function App(): JSX.Element {
         showFullLauncher();
       }
       revertPaneToLauncher(session.id, projectId);
+      return session.workspaceId;
     },
     [
       grid,

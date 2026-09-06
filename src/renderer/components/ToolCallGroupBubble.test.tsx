@@ -119,6 +119,38 @@ describe("ToolCallGroupBubble", () => {
     expect(screen.queryByText("npm test")).toBeNull();
   });
 
+  it("holds the edit total back until the group stops working", () => {
+    const edit = tool("edit", {
+      name: "Edit",
+      inputPreview: "first.ts",
+      inputFull: {
+        file_path: "/repo/first.ts",
+        old_string: "old one\nold two",
+        new_string: "new one\nnew two"
+      }
+    });
+    const running = tool("running", { status: "running", completedAt: null });
+    const { rerender } = render(
+      <ToolCallGroupBubble group={buildToolCallGroup([edit, running])} />
+    );
+
+    // Both would otherwise claim the trailing slot and split it, parking a live
+    // animation mid-row beside a total that is still growing.
+    expect(screen.getByLabelText("running")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Group edits:/ })).toBeNull();
+
+    rerender(
+      <ToolCallGroupBubble
+        group={buildToolCallGroup([edit, { ...running, status: "done" }])}
+      />
+    );
+
+    expect(screen.queryByLabelText("running")).toBeNull();
+    expect(
+      screen.getByRole("img", { name: "Group edits: 2 lines added, 2 lines removed" })
+    ).toBeInTheDocument();
+  });
+
   it("keeps cumulative edit totals on the group header as interleaved tools arrive", () => {
     const firstEdit = tool("first-edit", {
       name: "Edit",

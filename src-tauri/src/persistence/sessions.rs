@@ -648,6 +648,22 @@ pub fn list_session_ids_for_workspace(
     Ok(rows)
 }
 
+/// Whether a turn is live in this workspace. A second agent started here now
+/// would edit the same checkout the running one is mid-turn in, and the
+/// sidebar only ever resolves one session per workspace, so the newcomer would
+/// also be invisible.
+pub fn workspace_has_running_session(
+    connection: &Connection,
+    workspace_id: &str,
+) -> ArgmaxResult<bool> {
+    let mut statement = connection
+        .prepare_cached(
+            "SELECT 1 FROM sessions WHERE workspace_id = ? AND state = 'running' LIMIT 1",
+        )
+        .map_err(sqlite_error)?;
+    statement.exists([workspace_id]).map_err(sqlite_error)
+}
+
 /// Rows are ours, but a column is still a string: a value from a future
 /// version, a hand-edited database, or an older spelling must not take the
 /// dashboard down. Fall back to the closest honest value and say so in the

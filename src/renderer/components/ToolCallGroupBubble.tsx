@@ -155,12 +155,16 @@ function ToolCallGroupBubbleInner({
             {previewText ? (
               <span className="tool-call-group-preview" aria-hidden="true">{previewText}</span>
             ) : null}
+            {/* One trailing slot, not two. While the group is working the nest
+                owns the end of the line; the running total arrives when it
+                stops. Showing both put a live animation mid-row — each claimed
+                `margin-left: auto` and split the gap between them — and gave a
+                still-growing count the finality of a result. */}
             {summary.status === "running" ? (
               <span className="tool-call-group-running" aria-label="running" title="Running">
                 <WorkingNest active size={13} />
               </span>
-            ) : null}
-            {changeCounts ? (
+            ) : changeCounts ? (
               <span
                 className="tool-call-group-stat"
                 role="img"

@@ -548,6 +548,7 @@
   min-height: 0;
   flex-direction: column;
   gap: var(--space-6);
+  --scroll-fab-gap: var(--space-6);
   overflow: auto;
   padding: var(--space-6) var(--session-inline-padding) var(--space-8);
 }
@@ -825,6 +826,7 @@
 
 .conversation-list {
   --conversation-list-gap: var(--space-8);
+  --scroll-fab-gap: var(--conversation-list-gap);
   display: flex;
   min-height: 0;
   flex-direction: column;
@@ -1713,7 +1715,12 @@
   min-height: 28px;
   max-height: 28px;
   padding: 0;
-  margin-top: -28px;
+  /* Layout-neutral: the button sits at the viewport bottom, so it must not add
+     to the list's scroll height — arriving at the bottom would otherwise shrink
+     the content under the reader as the button leaves. Its own height is
+     cancelled here, and `--scroll-fab-gap` cancels the flex gap its presence
+     adds between it and the last message. */
+  margin-top: calc(-28px - var(--scroll-fab-gap, 0px));
   margin-right: var(--space-1_5);
   appearance: none;
   -webkit-appearance: none;

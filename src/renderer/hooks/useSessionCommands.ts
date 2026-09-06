@@ -70,20 +70,18 @@ export function useSessionCommands({
         agentMode,
         attachments: attachments?.length ? attachments : null
       });
-      // Queued messages don't write a user.message event yet — the chip in the
-      // pending lane is the only renderer-visible artifact, and that arrives
-      // via dashboard:delta. Skip the targeted event refresh to avoid a stale
-      // empty page racing the delta.
+      // The send already succeeded. Dashboard catch-up is best-effort and can
+      // take a 100 ms metadata coalesce plus a transcript pull; awaiting it
+      // kept the draft in the composer until that finished. Fire it off so
+      // Enter can clear as soon as the backend has the message. A rejecting
+      // refresh must not look like a failed send (that would skip clearing
+      // and invite a double-send). Queued messages skip the event pull: the
+      // chip arrives via dashboard:delta, and a stale empty page would race it.
       if (result.queued) {
-        await refreshDashboardStatus();
+        void refreshDashboardStatus();
         return;
       }
-      // The send already succeeded; this post-send refresh is best-effort
-      // catch-up. Use allSettled so a rejecting refresh/event-load never
-      // bubbles out of sendSessionInput and makes the caller treat the
-      // delivered input as failed (which would skip clearing the composer
-      // and invite a double-send).
-      await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
+      void Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
     [refreshDashboardStatus, loadSessionEvents, fastMode]
   );

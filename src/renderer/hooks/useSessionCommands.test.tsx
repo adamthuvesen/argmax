@@ -9,15 +9,18 @@ describe("useSessionCommands", () => {
   const onEarlyStop = vi.fn();
   const terminateMock = vi.fn().mockResolvedValue({ ok: true });
   const archiveMock = vi.fn().mockResolvedValue({ state: "archived" });
+  const sendInputMock = vi.fn().mockResolvedValue({ ok: true, queued: false });
 
   beforeEach(() => {
     vi.clearAllMocks();
     onEarlyStop.mockReturnValue(undefined);
     terminateMock.mockResolvedValue({ ok: true });
     archiveMock.mockResolvedValue({ state: "archived" });
+    sendInputMock.mockResolvedValue({ ok: true, queued: false });
     (window as unknown as { argmax: unknown }).argmax = {
       providers: {
-        terminate: terminateMock
+        terminate: terminateMock,
+        sendInput: sendInputMock
       },
       workspaces: {
         archive: archiveMock
@@ -107,5 +110,65 @@ describe("useSessionCommands", () => {
     expect(onEarlyStop).not.toHaveBeenCalled();
     expect(terminateMock).toHaveBeenCalledWith("session-1");
     expect(archiveMock).not.toHaveBeenCalled();
+  });
+
+  it("resolves sendSessionInput without waiting on dashboard catch-up", async () => {
+    let resolveRefresh: (() => void) | undefined;
+    refreshDashboardStatus.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRefresh = resolve;
+        })
+    );
+    loadSessionEvents.mockImplementation(() => new Promise<void>(() => {}));
+    const { result } = renderHook(() =>
+      useSessionCommands({
+        refreshDashboardStatus,
+        loadSessionEvents,
+        setToast,
+        fastMode: false,
+        onEarlyStop
+      })
+    );
+
+    await act(async () => {
+      await result.current.sendSessionInput(
+        "session-1",
+        "continue",
+        { provider: "claude", label: "Opus 5", modelId: "claude-opus-5" },
+        "auto"
+      );
+    });
+
+    expect(sendInputMock).toHaveBeenCalledTimes(1);
+    expect(refreshDashboardStatus).toHaveBeenCalled();
+    expect(loadSessionEvents).toHaveBeenCalledWith("session-1");
+    resolveRefresh?.();
+  });
+
+  it("does not wait on dashboard catch-up for a queued follow-up", async () => {
+    sendInputMock.mockResolvedValue({ ok: true, queued: true });
+    refreshDashboardStatus.mockImplementation(() => new Promise<void>(() => {}));
+    const { result } = renderHook(() =>
+      useSessionCommands({
+        refreshDashboardStatus,
+        loadSessionEvents,
+        setToast,
+        fastMode: false,
+        onEarlyStop
+      })
+    );
+
+    await act(async () => {
+      await result.current.sendSessionInput(
+        "session-1",
+        "queue me",
+        { provider: "claude", label: "Opus 5", modelId: "claude-opus-5" },
+        "auto"
+      );
+    });
+
+    expect(refreshDashboardStatus).toHaveBeenCalled();
+    expect(loadSessionEvents).not.toHaveBeenCalled();
   });
 });

@@ -75,7 +75,7 @@ use crate::{
         workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
     },
     session_control::SessionLaunchRegistry,
-    workspaces::lifecycle::WorkspaceLifecycle,
+    workspaces::lifecycle::{WorkspaceAdmission, WorkspaceLifecycle},
 };
 
 const MAX_PENDING_QUEUE: usize = 64;
@@ -517,16 +517,42 @@ impl ProviderSessionService {
         // on a cold launch) no longer blocks the IPC response. The Pending
         // handle inserted above keeps send_input queueing (not relaunching) and
         // resize buffering until the handle resolves; a terminate during the
-        // window removes the Pending entry, which the task detects below and
-        // disposes the freshly spawned handle so nothing runs orphaned.
+        // window removes the Pending entry, which the spawn task treats as
+        // cancellation and disposes the child.
+        self.spawn_provider_in_background(
+            session_id,
+            provider,
+            launch_input,
+            provider_invocation_id,
+            admission,
+            |_| {},
+        );
+        Ok(session)
+    }
+
+    /// Drive the PTY/CLI spawn off the IPC caller. `launch` and idle follow-up
+    /// `send_input` both persist the turn first, then return while this task
+    /// finishes spawning. Hundreds of ms of process start must not hold the
+    /// composer open. The Pending handle inserted by the caller queues later
+    /// input and resize until this resolves; terminate removes that entry,
+    /// which this task treats as cancellation and disposes the child.
+    fn spawn_provider_in_background(
+        self: &Arc<Self>,
+        session_id: String,
+        provider: ProviderId,
+        launch_input: ProviderLaunchInput,
+        provider_invocation_id: String,
+        admission: WorkspaceAdmission,
+        on_launched: impl FnOnce(&Arc<Self>) + Send + 'static,
+    ) {
         let service = Arc::clone(self);
-        let callback_invocation_id = provider_invocation_id.clone();
         tokio::spawn(async move {
             // Keep the workspace admission through the real provider spawn
             // and handle registration. Archive must not remove the worktree
             // while a cold launcher still owns its current directory.
             let _admission = admission;
             let event_service = Arc::clone(&service);
+            let callback_invocation_id = provider_invocation_id;
             let handle = match service
                 .launcher
                 .launch(
@@ -557,9 +583,14 @@ impl ProviderSessionService {
                             );
                         }
                     }
+                    service
+                        .preserve_queue_on_launch_failure
+                        .lock_or_recover("queue-preserving launches")
+                        .remove(&session_id);
                     return;
                 }
             };
+            on_launched(&service);
             // Swap the Pending entry for the resolved handle. Keep the lock
             // scoped to this block so it's released before any await below.
             let pending_ops = {
@@ -584,6 +615,10 @@ impl ProviderSessionService {
                 if let Err(error) = handle.terminate().await {
                     tracing::error!(?error, "failed to dispose handle cancelled during spawn");
                 }
+                service
+                    .preserve_queue_on_launch_failure
+                    .lock_or_recover("queue-preserving launches")
+                    .remove(&session_id);
                 return;
             };
             for op in pending_ops {
@@ -591,8 +626,11 @@ impl ProviderSessionService {
                     tracing::error!(?error, "failed to apply queued op after launch");
                 }
             }
+            service
+                .preserve_queue_on_launch_failure
+                .lock_or_recover("queue-preserving launches")
+                .remove(&session_id);
         });
-        Ok(session)
     }
 
     pub async fn send_input(
@@ -607,6 +645,7 @@ impl ProviderSessionService {
     /// agent tools and the completion notice pass one, and it rides all the
     /// way to the persisted `user.message` payload — including through the
     /// queue, when the recipient turns out to be mid-turn.
+    #[allow(clippy::unused_async)] // Callers await; the provider spawn is backgrounded.
     pub async fn send_input_with_origin(
         self: &Arc<Self>,
         input: ProvidersSendInput,
@@ -958,81 +997,35 @@ impl ProviderSessionService {
         self.handles
             .lock_or_recover("handles")
             .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
-        let service = Arc::clone(self);
-        let callback_invocation_id = provider_invocation_id.clone();
-        let handle = match self
-            .launcher
-            .launch(
-                launch_input,
-                Arc::new(move |event| {
-                    let service = Arc::clone(&service);
-                    service.handle_provider_event(event, callback_invocation_id.clone());
-                }),
-            )
-            .await
-        {
-            Ok(handle) => handle,
-            Err(error) => {
-                let prior = self.handles.lock_or_recover("handles").remove(&session_id);
-                if matches!(prior, Some(HandleEntry::Pending(_))) {
-                    self.record_launch_failure(&session_id, provider, error.clone())?;
-                    drop(admission);
-                    return Err(error);
+        // Same background spawn as `launch`: the user.message and running
+        // state are already persisted and broadcast, so the composer can
+        // clear as soon as this returns. Waiting on the PTY/CLI here is
+        // what made follow-up Enter feel lagged.
+        let results_session_id = session_id.clone();
+        self.spawn_provider_in_background(
+            session_id,
+            provider,
+            launch_input,
+            provider_invocation_id,
+            admission,
+            move |service| {
+                // The prompt carrying them reached the provider, so the
+                // results are spent. Marking them while the preamble was
+                // built would have lost them to a launch that then failed.
+                if let Some(results) = &pending_results {
+                    let connection = service.database.connection();
+                    if let Err(error) =
+                        crate::multitask::mark_results_delivered(&connection, &results.ids)
+                    {
+                        tracing::warn!(
+                            session_id = %results_session_id,
+                            ?error,
+                            "failed to mark multitask results delivered"
+                        );
+                    }
                 }
-                drop(admission);
-                return Ok(SendInputResult {
-                    ok: true,
-                    queued: false,
-                });
-            }
-        };
-        // The prompt carrying them reached the provider, so the results are
-        // spent. Marking them while the preamble was built would have lost
-        // them to a launch that then failed.
-        if let Some(results) = &pending_results {
-            let connection = self.database.connection();
-            if let Err(error) = crate::multitask::mark_results_delivered(&connection, &results.ids)
-            {
-                tracing::warn!(
-                    session_id,
-                    ?error,
-                    "failed to mark multitask results delivered"
-                );
-            }
-        }
-        // Drain ops the renderer queued while the launch future was in
-        // flight — most notably resize ops issued from the very first
-        // render of the resumed session. Mirrors the launch() path.
-        let pending_ops = {
-            let mut handles = self.handles.lock_or_recover("handles");
-            match handles.insert(
-                session_id.clone(),
-                HandleEntry::Resolved(Arc::clone(&handle)),
-            ) {
-                Some(HandleEntry::Pending(ops)) => Some(ops),
-                _ => {
-                    handles.remove(&session_id);
-                    None
-                }
-            }
-        };
-        let Some(pending_ops) = pending_ops else {
-            if let Err(error) = handle.terminate().await {
-                tracing::error!(
-                    ?error,
-                    "failed to dispose follow-up handle cancelled during spawn"
-                );
-            }
-            drop(admission);
-            return Ok(SendInputResult {
-                ok: true,
-                queued: false,
-            });
-        };
-        for op in pending_ops {
-            self.apply_op(&handle, op).await?;
-        }
-        drop(admission);
+            },
+        );
         Ok(SendInputResult {
             ok: true,
             queued: false,
@@ -1346,19 +1339,20 @@ impl ProviderSessionService {
             // send_input can reject before the message is persisted as a
             // user.message — an archiving workspace, a refused lifecycle
             // admission, a pending move, a terminating provider. Put the
-            // follow-up back instead of losing what the user typed. The
-            // queue-preserving marker is still set here, so a launch failure
-            // cannot clear the restored message straight back out.
+            // follow-up back instead of losing what the user typed. Spawn
+            // happens after this returns, so drop the marker here; a later
+            // launch failure is owned by the background spawn task, which
+            // clears the marker when it finishes.
             tracing::warn!(
                 session_id,
                 error = %error,
                 "restoring queued follow-up after a failed send"
             );
             restore(self, message);
+            self.preserve_queue_on_launch_failure
+                .lock_or_recover("queue-preserving launches")
+                .remove(&session_id);
         }
-        self.preserve_queue_on_launch_failure
-            .lock_or_recover("queue-preserving launches")
-            .remove(&session_id);
         let promotion_active = self
             .queue_promotions
             .lock_or_recover("queue promotions")

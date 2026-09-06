@@ -62,7 +62,7 @@ Argmax adds one server of its own per launch — `argmax`, the agent tools — t
 ## Session Lifecycle and Follow-ups
 
 - **Startup cleanup:** Sessions left in `running`, `waiting`, or `blocked` states are marked failed on startup. Matching background provider processes are terminated and pending approvals cancelled.
-- **Follow-up prompts:** Follow-up turns use the provider resume ID when available, passing a capped transcript of visible `user.message`, `message.completed`, and `error` events. Hidden subagent rows are excluded.
+- **Follow-up prompts:** Follow-up turns use the provider resume ID when available, passing a capped transcript of visible `user.message`, `message.completed`, and `error` events. Hidden subagent rows are excluded. An idle follow-up relaunches the same way the first turn launches: persist the user message and return, spawn the provider in the background. The PTY/CLI spawn does not block the send IPC.
 - **Provider switching:** Changing the provider on an idle session clears `provider_conversation_id`, starts a new provider process with the capped transcript, and records a `session.provider-changed` marker.
 - **Clear:** `/clear` in the session composer drops `provider_conversation_id`, writes a `session.cleared` watermark, and hides the existing transcript. The next message starts a fresh provider conversation in the same workspace. A running session is stopped first. Headless provider CLIs do not honor `/clear` as a prompt, so Argmax owns the command for every provider.
 - **Forking:** `session:fork` creates a new session flagged with `resume_fork`. The next turn invokes the provider's fork flag (`--fork-session` for Claude and Grok, `exec fork` for Codex, `--fork` for OpenCode). Cursor does not support session forking.

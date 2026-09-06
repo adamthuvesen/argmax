@@ -1,10 +1,16 @@
 import { ArrowUp, ChevronsUpDown, Folder, GitBranch, Paperclip, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { PROVIDER_TITLE_MODEL } from "../../shared/providerModels.js";
-import { SCRATCH_PROJECT_ID, type ComposerAttachment, type ProjectSummary } from "../../shared/types.js";
+import {
+  SCRATCH_PROJECT_ID,
+  type ComposerAttachment,
+  type ProjectSummary,
+  type WorkspaceSummary
+} from "../../shared/types.js";
 import { Mascot } from "../components/Mascot.js";
 import { ImageLightbox } from "../components/ImageLightbox.js";
 import { LaunchModelSelector } from "../components/ModelSelector.js";
+import type { NewSessionSeed } from "../components/SessionComposer.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useComposerDraft } from "../hooks/useComposerDraft.js";
@@ -115,6 +121,10 @@ export type PickerKind = "project" | "workspace" | "model" | "model-effort";
 
 export function NewSessionScreen({
   projects,
+  workspaces,
+  initialWorkspaceId,
+  initialSeed,
+  backLabel,
   onClose,
   onLaunched,
   onError,
@@ -122,6 +132,10 @@ export function NewSessionScreen({
   onOpenSheetChange
 }: {
   projects: ProjectSummary[];
+  workspaces?: WorkspaceSummary[];
+  initialWorkspaceId?: string | null;
+  initialSeed?: NewSessionSeed | null;
+  backLabel?: string;
   onClose: () => void;
   /** Called with the new workspace id after refresh-worthy state exists. */
   onLaunched: (workspaceId: string) => Promise<void>;
@@ -131,8 +145,27 @@ export function NewSessionScreen({
   openSheet: PickerKind | null;
   onOpenSheetChange: (kind: PickerKind | null) => void;
 }): JSX.Element {
-  const [projectId, setProjectId] = useState(() => projects[0]?.id ?? "");
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
+  const initialWorkspace = useMemo(
+    () => (initialWorkspaceId && workspaces ? workspaces.find((w) => w.id === initialWorkspaceId) ?? null : null),
+    [initialWorkspaceId, workspaces]
+  );
+
+  const [projectId, setProjectId] = useState(
+    () => initialWorkspace?.projectId ?? projects[0]?.id ?? ""
+  );
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
+    if (initialWorkspace && initialWorkspace.kind === "git" && !initialWorkspace.sharedWorkspace) {
+      return "worktree";
+    }
+    return readStoredWorkspaceMode();
+  });
+  const [chosenBaseRef, setChosenBaseRef] = useState<string | null>(() => {
+    if (initialWorkspace && initialWorkspace.kind === "git" && !initialWorkspace.sharedWorkspace) {
+      return initialWorkspace.branch;
+    }
+    return null;
+  });
+
   // Side chat is the repo-less flavor of this screen, the same mode the
   // desktop launcher cycles into: a scratch workspace instead of a checkout,
   // so no project and no branch. Per launch, not persisted — the desktop
@@ -154,6 +187,18 @@ export function NewSessionScreen({
     [projectId, projects]
   );
 
+  const projectWorktrees = useMemo(
+    () =>
+      (workspaces ?? []).filter(
+        (w) =>
+          w.projectId === project?.id &&
+          w.kind === "git" &&
+          !w.sharedWorkspace &&
+          w.branch.length > 0
+      ),
+    [project?.id, workspaces]
+  );
+
   // Keep the mobile launcher on the same draft keys as the desktop launcher.
   // Switching projects or choosing Side chat carries the sentence and its
   // screenshots together instead of stranding either half on the old target.
@@ -162,6 +207,13 @@ export function NewSessionScreen({
     carryTextOnRetarget: true,
     persist: !launching
   });
+
+  useEffect(() => {
+    if (initialSeed?.prompt && initialSeed.prompt.trim() !== "") {
+      setPrompt(initialSeed.prompt);
+    }
+  }, [initialSeed?.prompt, setPrompt]);
+
   useAutoGrowTextArea(promptRef, prompt, PROMPT_MAX_HEIGHT_PX);
   const {
     pendingAttachments,
@@ -193,11 +245,10 @@ export function NewSessionScreen({
     return () => input.removeEventListener("cancel", onCancel);
   }, [attachmentInputRef]);
 
-  // Same default as the desktop launcher: the stored global preference, then
-  // the factory pick (Claude Opus 5) — not the project's configured model. The
-  // phone's localStorage is its own store, so the preference is per device.
+  // Same default as the desktop launcher: seeded model if present, then
+  // the stored global preference, then the factory pick (Claude Opus 5).
   const [model, setModel] = useState<ModelPickerSelection>(
-    () => readStoredLaunchModel() ?? factoryLaunchModel()
+    () => initialSeed?.model ?? readStoredLaunchModel() ?? factoryLaunchModel()
   );
 
   const chooseWorkspaceMode = useCallback((mode: WorkspaceMode): void => {
@@ -220,12 +271,16 @@ export function NewSessionScreen({
     const repoTarget = sideChat ? null : project;
     try {
       const taskLabel = titleFromPrompt(trimmed);
+      const baseRef =
+        workspaceMode === "worktree"
+          ? chosenBaseRef ?? repoTarget?.currentBranch ?? null
+          : null;
       const workspace = repoTarget
         ? workspaceMode === "worktree"
           ? await window.argmax.workspaces.createIsolated({
               projectId: repoTarget.id,
               taskLabel,
-              baseRef: repoTarget.currentBranch ?? null
+              baseRef
             })
           : await window.argmax.workspaces.createCurrent({ projectId: repoTarget.id, taskLabel })
         : await window.argmax.workspaces.createScratch({ taskLabel, kind: null });
@@ -272,6 +327,7 @@ export function NewSessionScreen({
       setLaunching(false);
     }
   }, [
+    chosenBaseRef,
     clearAttachments,
     draftKey,
     launching,
@@ -286,10 +342,16 @@ export function NewSessionScreen({
     workspaceMode
   ]);
 
+  const baseWorktree = chosenBaseRef
+    ? projectWorktrees.find((w) => w.branch === chosenBaseRef)
+    : null;
+
   const workspaceValue = sideChat
     ? "Side chat"
     : workspaceMode === "worktree"
-      ? "New worktree"
+      ? chosenBaseRef
+        ? `New worktree · from ${baseWorktree?.taskLabel ?? chosenBaseRef}`
+        : "New worktree"
       : `Current branch · ${project?.currentBranch ?? "main"}`;
 
   return (
@@ -298,7 +360,7 @@ export function NewSessionScreen({
       className="mobile-new-screen"
       style={attachmentPickerHeight === null ? undefined : { height: attachmentPickerHeight, flex: "none" }}
     >
-      <MobileScreenHeader onBack={onClose} backLabel="Back to chats" title="New chat" />
+      <MobileScreenHeader onBack={onClose} backLabel={backLabel ?? "Back to chats"} title="New chat" />
 
       <div className="mobile-new-body">
         <div className="mobile-new-hero launcher-hero">
@@ -439,6 +501,7 @@ export function NewSessionScreen({
                 selected={candidate.id === project?.id}
                 onSelect={() => {
                   setProjectId(candidate.id);
+                  setChosenBaseRef(null);
                   onOpenSheetChange(null);
                 }}
               />
@@ -459,17 +522,35 @@ export function NewSessionScreen({
                   selected={!sideChat && workspaceMode === "current"}
                   onSelect={() => {
                     chooseWorkspaceMode("current");
+                    setChosenBaseRef(null);
                     onOpenSheetChange(null);
                   }}
                 />
                 <SheetOption
                   label="New worktree"
-                  selected={!sideChat && workspaceMode === "worktree"}
+                  selected={!sideChat && workspaceMode === "worktree" && chosenBaseRef === null}
                   onSelect={() => {
                     chooseWorkspaceMode("worktree");
+                    setChosenBaseRef(null);
                     onOpenSheetChange(null);
                   }}
                 />
+                {projectWorktrees.map((wt) => (
+                  <SheetOption
+                    key={wt.id}
+                    label={`New worktree from “${wt.taskLabel}” (${wt.branch})`}
+                    selected={
+                      !sideChat &&
+                      workspaceMode === "worktree" &&
+                      chosenBaseRef === wt.branch
+                    }
+                    onSelect={() => {
+                      chooseWorkspaceMode("worktree");
+                      setChosenBaseRef(wt.branch);
+                      onOpenSheetChange(null);
+                    }}
+                  />
+                ))}
               </>
             )}
             <SheetOption

@@ -1,8 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type JSX } from "react";
-import { Archive, FolderGit2, Laptop, Menu, MoreHorizontal, PenLine, Search } from "lucide-react";
+import { Archive, FolderGit2, Laptop, Menu, MoreHorizontal, PenLine, Search, SquarePen } from "lucide-react";
 import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
 import { LinesSkeleton } from "../components/LinesSkeleton.js";
 import { SessionPane } from "../components/SessionPane.js";
+import type { NewSessionSeed } from "../components/SessionComposer.js";
 import { BottomSheet, SheetOption } from "./BottomSheet.js";
 import { takeDeepLinkSessionId } from "./deepLink.js";
 import { MobileScreenHeader } from "./MobileScreenHeader.js";
@@ -607,18 +608,43 @@ export function MobileApp(): JSX.Element {
   );
 
   const [newSessionOpen, setNewSessionOpen] = useState(false);
+  const [newSessionWorkspaceId, setNewSessionWorkspaceId] = useState<string | null>(null);
+  const [newSessionSeed, setNewSessionSeed] = useState<NewSessionSeed | null>(null);
   // New-session picker state lives here, not inside that screen, so a back
   // gesture can dismiss a picker without discarding the typed prompt.
   const [newSessionSheet, setNewSessionSheet] = useState<PickerKind | null>(null);
+
+  const startNewChatFromWorkspace = useCallback(
+    (workspace: WorkspaceSummary, seed?: NewSessionSeed) => {
+      setNewSessionWorkspaceId(workspace.id);
+      setNewSessionSeed(seed ?? null);
+      setNewSessionOpen(true);
+    },
+    []
+  );
+
+  const startNewChat = useCallback(() => {
+    setNewSessionWorkspaceId(null);
+    setNewSessionSeed(null);
+    setNewSessionOpen(true);
+  }, []);
+
+  const closeNewSession = useCallback(() => {
+    setNewSessionOpen(false);
+    setNewSessionWorkspaceId(null);
+    setNewSessionSeed(null);
+    setNewSessionSheet(null);
+  }, []);
+
   const handleLaunched = useCallback(
     async (workspaceId: string): Promise<void> => {
       // The snapshot predates the new workspace; refresh before opening it so
       // openWorkspaceChat can resolve the row.
       await refresh();
-      setNewSessionOpen(false);
+      closeNewSession();
       openWorkspaceChat(workspaceId);
     },
-    [openWorkspaceChat, refresh]
+    [closeNewSession, openWorkspaceChat, refresh]
   );
 
   // The phone has no dock: with no `multitasks` handed to the pane, a multitask
@@ -648,8 +674,17 @@ export function MobileApp(): JSX.Element {
   // Screen depth for the hardware back button: list → session/new → review →
   // file preview, plus one for an open sheet.
   const screenDepth =
-    (sessionOpen ? (reviewShown ? (filePreviewShown ? 3 : 2) : 1) : newSessionOpen ? 1 : 0) +
-    (sheetOpen ? 1 : 0);
+    (newSessionOpen
+      ? sessionOpen
+        ? 2
+        : 1
+      : sessionOpen
+        ? reviewShown
+          ? filePreviewShown
+            ? 3
+            : 2
+          : 1
+        : 0) + (sheetOpen ? 1 : 0);
   const goBackOneScreen = useCallback((): void => {
     if (actionsRow !== null) {
       setActionsRow(null);
@@ -663,6 +698,10 @@ export function MobileApp(): JSX.Element {
       setNewSessionSheet(null);
       return;
     }
+    if (newSessionOpen) {
+      closeNewSession();
+      return;
+    }
     if (filePreviewShown) {
       setReviewFilePreviewOpen(false);
       return;
@@ -671,21 +710,17 @@ export function MobileApp(): JSX.Element {
       closeReview();
       return;
     }
-    if (newSessionOpen && !sessionOpen) {
-      setNewSessionOpen(false);
-      return;
-    }
     closeSession();
   }, [
     actionsRow,
+    closeNewSession,
     closeReview,
     closeSession,
     filePreviewShown,
     listMenuOpen,
     newSessionOpen,
     newSessionSheet,
-    reviewShown,
-    sessionOpen
+    reviewShown
   ]);
   useMobileBackNavigation(screenDepth, goBackOneScreen);
 
@@ -707,12 +742,16 @@ export function MobileApp(): JSX.Element {
     <div
       className="mobile-shell"
       data-font-size={sessionOpen || newSessionOpen ? "8" : "6"}
-      data-screen={sessionOpen ? "session" : newSessionOpen ? "new" : "list"}
+      data-screen={newSessionOpen ? "new" : sessionOpen ? "session" : "list"}
     >
-      {!sessionOpen && newSessionOpen ? (
+      {newSessionOpen ? (
         <NewSessionScreen
           projects={snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID)}
-          onClose={() => setNewSessionOpen(false)}
+          workspaces={snapshot.workspaces}
+          initialWorkspaceId={newSessionWorkspaceId}
+          initialSeed={newSessionSeed}
+          backLabel={sessionOpen ? "Back to chat" : "Back to chats"}
+          onClose={closeNewSession}
           onLaunched={handleLaunched}
           onError={(message) => showToast({ kind: "error", message })}
           openSheet={newSessionSheet}
@@ -739,6 +778,14 @@ export function MobileApp(): JSX.Element {
             actions={
               selectedWorkspace ? (
                 <>
+                  <button
+                    type="button"
+                    className="mobile-icon-button"
+                    onClick={() => startNewChatFromWorkspace(selectedWorkspace)}
+                    aria-label="New chat"
+                  >
+                    <SquarePen size={18} aria-hidden />
+                  </button>
                   <button
                     type="button"
                     className="mobile-icon-button"
@@ -796,6 +843,11 @@ export function MobileApp(): JSX.Element {
             onOpenSession={openSessionById}
             onClearSession={commands.clearSession}
             onForkSession={forkSession}
+            onNewSession={
+              selectedWorkspace
+                ? (seed) => startNewChatFromWorkspace(selectedWorkspace, seed)
+                : undefined
+            }
             onOpenFile={(path) => {
               setReviewFilePath(path);
               setReviewOpen(true);
@@ -903,7 +955,7 @@ export function MobileApp(): JSX.Element {
               type="button"
               className="mobile-list-compose"
               aria-label="New chat"
-              onClick={() => setNewSessionOpen(true)}
+              onClick={startNewChat}
             >
               <PenLine size={23} aria-hidden="true" />
             </button>
@@ -918,7 +970,7 @@ export function MobileApp(): JSX.Element {
               label="New chat"
               onSelect={() => {
                 setListMenuOpen(false);
-                setNewSessionOpen(true);
+                startNewChat();
               }}
             />
           </div>
@@ -936,6 +988,14 @@ export function MobileApp(): JSX.Element {
         <BottomSheet label="Chat actions" onClose={() => setActionsRow(null)}>
           <p className="mobile-sheet-group-label">{actionsRow.workspace.taskLabel}</p>
           <div className="mobile-sheet-group">
+            <SheetOption
+              label="New chat here"
+              onSelect={() => {
+                const { workspace } = actionsRow;
+                setActionsRow(null);
+                startNewChatFromWorkspace(workspace);
+              }}
+            />
             <SheetOption
               label={actionsRow.workspace.pinned ? "Unpin" : "Pin to top"}
               onSelect={() => {

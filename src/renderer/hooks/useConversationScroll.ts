@@ -224,6 +224,15 @@ export function useConversationScroll({
       !clampedToNewBottom
     ) {
       detach();
+    } else if (
+      modeRef.current === "detached" &&
+      scroll.scrollTop > lastScrollTopRef.current &&
+      scroll.scrollTop >= lastMaxScrollTopRef.current - BOTTOM_EPSILON_PX &&
+      !rangeShrank
+    ) {
+      // Recognize a return before the queued scroll event is consumed. New
+      // output may already have grown past the bottom the reader reached.
+      startFollowing();
     }
 
     if (content) {
@@ -282,7 +291,7 @@ export function useConversationScroll({
 
     lastScrollTopRef.current = scroll.scrollTop;
     lastMaxScrollTopRef.current = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-  }, [detach, enabled, rememberAnchor]);
+  }, [detach, enabled, rememberAnchor, startFollowing]);
 
   const scrollToBottom = useCallback((): void => {
     startFollowing();
@@ -386,12 +395,12 @@ export function useConversationScroll({
         previousTop > maxTop + BOTTOM_EPSILON_PX &&
         Math.abs(top - maxTop) <= BOTTOM_EPSILON_PX;
       const movedUp = top < previousTop - BOTTOM_EPSILON_PX;
-      const movedDown = top > previousTop + BOTTOM_EPSILON_PX;
-      const atBottom = height - scroll.clientHeight - top <= BOTTOM_EPSILON_PX;
+      const movedDown = top > previousTop;
+      const reachedPreviousBottom = top >= lastMaxScrollTopRef.current - BOTTOM_EPSILON_PX;
 
       if (modeRef.current === "following" && movedUp && !clampedToNewBottom) {
         detach();
-      } else if (modeRef.current === "detached" && movedDown && atBottom && !rangeShrank) {
+      } else if (modeRef.current === "detached" && movedDown && reachedPreviousBottom && !rangeShrank) {
         startFollowing();
       }
 

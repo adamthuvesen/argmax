@@ -63,6 +63,7 @@ function run(command, args, options = {}) {
 export const browserFixtureSource = String.raw`
 import React, { useLayoutEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
 import { useConversationScroll } from "/src/renderer/hooks/useConversationScroll.ts";
 
 const h = React.createElement;
@@ -210,6 +211,16 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
       scrollToPhysicalBottom: async () => {
         const scroller = api.scrollRef.current;
         scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight;
+        await nextFrame();
+        return measure();
+      },
+      scrollToBottomBeforeCommit: async (growth) => {
+        const scroller = api.scrollRef.current;
+        scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight;
+        flushSync(() => {
+          setLiveHeight((height) => height + growth);
+          setItemVersion((version) => version + 1);
+        });
         await nextFrame();
         return measure();
       },
@@ -488,6 +499,24 @@ async function runChecks() {
       extraOk: !scrollbarFollowed.showFab,
       tolerance: 1
     });
+
+    for (const growth of [0, 260]) {
+      await mount(surface);
+      await active.scrollUp(180);
+      await active.scrollToBottomBeforeCommit(growth);
+      const returnedBeforeCommit = active.measure();
+      await active.growBelow(260);
+      const pendingReturnFollowed = active.measure();
+      results.push({
+        name: surface + ": return to bottom before a commit with " + growth + "px growth resumes follow",
+        surface,
+        before: returnedBeforeCommit,
+        after: pendingReturnFollowed,
+        movement: Math.round(pendingReturnFollowed.distanceFromBottom * 100) / 100,
+        extraOk: !returnedBeforeCommit.showFab && !pendingReturnFollowed.showFab,
+        tolerance: 1
+      });
+    }
   }
 
   await mount("main", { initialLiveHeight: 720 });

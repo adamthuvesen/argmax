@@ -25,6 +25,11 @@ owns programmatic scroll writes. Reaching the bottom by scrolling downward,
 sending a new message, switching session, or clicking scroll-to-latest resumes
 following. A content resize alone cannot resume it.
 
+Returning to the bottom is recognized before layout reconciliation records
+the position, even if the native scroll event is still queued. If output
+grows in that interval, the controller uses the bottom the reader reached
+before growth. This keeps a render from swallowing the return to live output.
+
 The chat content has a minimum height that lets the latest user message sit
 at the top of the viewport. Output fills that space naturally as the turn
 grows. While detached, the content also retains a minimum height from before

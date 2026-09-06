@@ -225,6 +225,44 @@ describe("useConversationScroll", () => {
     expect(controller.newBelowCount).toBe(1);
   });
 
+  it.each([
+    ["commit", 12], ["observer", 12], ["scroll", 12],
+    ["commit", 0.5], ["observer", 0.5], ["scroll", 0.5]
+  ] as const)(
+    "resumes after returning to bottom when growth precedes the %s callback (%s px movement)",
+    (firstCallback, movement) => {
+      const props: HarnessProps = { items: ["one"] };
+      const view = render(<Harness {...props} />);
+      const geometry: Geometry = {
+        viewportHeight: 500,
+        naturalHeight: 1300,
+        top: 0,
+        promptTop: 600,
+        blockTop: 650,
+        turnTop: 0
+      };
+      const { scroll } = installGeometry(geometry);
+      act(() => view.rerender(<Harness {...props} />));
+      act(() => wheel(scroll, -12));
+      geometry.top = 800 - movement;
+      act(() => { scroll.dispatchEvent(new Event("scroll")); });
+
+      geometry.top = 800;
+      geometry.naturalHeight = 1600;
+      act(() => {
+        if (firstCallback === "commit") view.rerender(<Harness {...props} />);
+        else if (firstCallback === "observer") ResizeObserverMock.instances[0]?.fire();
+        else scroll.dispatchEvent(new Event("scroll"));
+      });
+      act(() => { scroll.dispatchEvent(new Event("scroll")); });
+      geometry.naturalHeight = 1800;
+      act(() => ResizeObserverMock.instances[0]?.fire());
+
+      expect(geometry.top).toBe(1300);
+      expect(controller.showScrollToBottom).toBe(false);
+    }
+  );
+
   it("stays attached when a taller viewport clamps following to its new bottom", () => {
     const props: HarnessProps = { items: ["one"] };
     const view = render(<Harness {...props} />);

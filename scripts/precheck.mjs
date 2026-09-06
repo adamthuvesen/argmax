@@ -89,7 +89,15 @@ function decideScope() {
 function step(label, command, commandArgs) {
   const started = Date.now();
   process.stdout.write(`\n▶ ${label}\n`);
-  const run = spawnSync(command, commandArgs, { cwd: ROOT, stdio: "inherit" });
+  // `git push` exports GIT_DIR / GIT_WORK_TREE into this process. cargo tests
+  // that shell out to `git init` in a temp dir then hit Argmax's repo instead
+  // of the fixture. Strip the hook vars for child steps. The `git()` helper
+  // above still sees them, so merge-base against this repo keeps working.
+  const env = { ...process.env };
+  for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY"]) {
+    delete env[key];
+  }
+  const run = spawnSync(command, commandArgs, { cwd: ROOT, env, stdio: "inherit" });
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   if (run.status !== 0) {
     console.error(`\nerror: ${label} failed after ${seconds}s (${command} ${commandArgs.join(" ")})`);

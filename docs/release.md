@@ -33,6 +33,11 @@ sprite [Mascot.tsx](../src/renderer/components/Mascot.tsx) renders in the app:
 
 Requires Xcode on macOS. Never manually edit generated icon outputs.
 
+The `.icns` is `iconutil` output with the 256px `ic13` PNG first. 1Password's
+CLI approval prompt reads the first PNG in `CFBundleIconFile` rather than
+asking Icon Services for a size-appropriate rendition, so a file that led
+with 16px (`icp4`) showed a stamp-sized fox in that popup.
+
 ## Packaging
 
 ```bash

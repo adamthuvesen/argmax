@@ -571,6 +571,92 @@ describe("MobileApp", () => {
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
   });
 
+  it("starts a new chat from a worktree session via the header button", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Chat list" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Build dashboard/ }));
+    await screen.findByRole("region", { name: "Conversation" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+
+    // Back button returns to the open chat
+    expect(screen.getByRole("button", { name: "Back to chat" })).toBeInTheDocument();
+
+    // Workspace picker reflects that the new chat branches from the current worktree
+    const workspaceBtn = screen.getByRole("button", { name: "Workspace" });
+    expect(workspaceBtn.closest(".mobile-new-row")).toHaveTextContent("New worktree · from Build dashboard");
+
+    fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Continue building feature" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
+
+    await waitFor(() => {
+      expect(createIsolatedWorkspace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: snapshot.projects[0].id,
+          baseRef: "argmax/dashboard"
+        })
+      );
+    });
+  });
+
+  it("starts a new chat from a worktree via the chat actions menu", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Chat list" });
+
+    const row = screen.getByRole("button", { name: /Build dashboard/ }).closest("li");
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
+    const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
+
+    fireEvent.click(within(sheet).getByRole("button", { name: "New chat here" }));
+
+    const workspaceBtn = screen.getByRole("button", { name: "Workspace" });
+    expect(workspaceBtn.closest(".mobile-new-row")).toHaveTextContent("New worktree · from Build dashboard");
+
+    fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Follow up work" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
+
+    await waitFor(() => {
+      expect(createIsolatedWorkspace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: snapshot.projects[0].id,
+          baseRef: "argmax/dashboard"
+        })
+      );
+    });
+  });
+
+  it("branches from an existing worktree when picked from the workspace sheet", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Chat list" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    const sheet = await screen.findByRole("dialog", { name: "Choose workspace" });
+
+    fireEvent.click(
+      within(sheet).getByRole("button", {
+        name: "New worktree from “Build dashboard” (argmax/dashboard)"
+      })
+    );
+    expect(screen.queryByRole("dialog", { name: "Choose workspace" })).not.toBeInTheDocument();
+
+    const workspaceBtn = screen.getByRole("button", { name: "Workspace" });
+    expect(workspaceBtn.closest(".mobile-new-row")).toHaveTextContent("New worktree · from Build dashboard");
+
+    fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Branch from dashboard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
+
+    await waitFor(() => {
+      expect(createIsolatedWorkspace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: snapshot.projects[0].id,
+          baseRef: "argmax/dashboard"
+        })
+      );
+    });
+  });
+
   it("lists a side chat under the Side chats project, outside Priority", async () => {
     mockDashboardSnapshot(sideChatSnapshot());
 

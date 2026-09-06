@@ -836,6 +836,10 @@
      under the thumb. Wide blocks own their own sideways scroller instead. */
   overflow-y: auto;
   overflow-x: hidden;
+  /* JS owns follow and detached anchoring. Safari 27+ ships CSS scroll
+     anchoring; a leftover spacer as the last child is a bad anchor and
+     jumps a 1px-up gesture onto the previous message. */
+  overflow-anchor: none;
   /* A constant tail gap keeps the newest streamed line clear of the bottom
      edge. It stays the same in the idle and live states on purpose: a gap
      that only appeared while streaming would be reclaimed the instant the
@@ -875,7 +879,6 @@
   flex: 0 0 auto;
   pointer-events: none;
   margin-top: calc(-1 * var(--conversation-list-gap));
-  /* Chromium-only: never pick the leftover spacer as a scroll anchor. */
   overflow-anchor: none;
 }
 

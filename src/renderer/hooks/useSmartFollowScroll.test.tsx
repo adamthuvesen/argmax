@@ -7,6 +7,8 @@ type ScrollBoxState = {
   scrollHeight: number;
   clientHeight: number;
   scrollTop: number;
+  /** When set, `scrollHeight` and the scrollTop clamp read this instead. */
+  scrollHeightOf?: () => number;
 };
 
 type ObserverEntry = {
@@ -23,13 +25,14 @@ function attachListRef(
 
 function makeScrollBox(state: ScrollBoxState): HTMLDivElement {
   const el = document.createElement("div");
+  const scrollHeightOf = (): number => state.scrollHeightOf?.() ?? state.scrollHeight;
   const clampTop = (value: number): number =>
-    Math.max(0, Math.min(value, Math.max(0, state.scrollHeight - state.clientHeight)));
+    Math.max(0, Math.min(value, Math.max(0, scrollHeightOf() - state.clientHeight)));
 
   Object.defineProperties(el, {
     scrollHeight: {
       configurable: true,
-      get: () => state.scrollHeight
+      get: () => scrollHeightOf()
     },
     clientHeight: {
       configurable: true,
@@ -977,5 +980,102 @@ describe("useSmartFollowScroll", () => {
     });
 
     expect(state.scrollTop).toBe(1100);
+  });
+
+  it("does not jump a leftover-viewport spacer when a tiny upward gesture detaches", () => {
+    // Pinning to the bottom of a leftover spacer sits the latest user message
+    // at the top of the pane. A shrink in the live turn (or clearing the
+    // spacer) while the reader is 1px off the bottom clamps them onto the
+    // previous message. Recompute the leftover so used+spacer stays the
+    // viewport, then put scrollTop back if the browser already clamped.
+    const observers = installResizeObservers();
+    const spacer = document.createElement("div");
+    spacer.setAttribute("data-conversation-spacer", "");
+    spacer.style.height = "600px";
+    const contentHeight = 1000;
+    const state: ScrollBoxState = {
+      scrollHeight: contentHeight + 600,
+      clientHeight: 800,
+      scrollTop: 800,
+      scrollHeightOf: () => contentHeight + (Number.parseFloat(spacer.style.height) || 0)
+    };
+    const el = makeScrollBox(state);
+    const user = document.createElement("div");
+    user.setAttribute("data-turn-anchor", "true");
+    Object.defineProperty(user, "offsetTop", { configurable: true, get: () => 200 });
+    Object.defineProperty(user, "offsetHeight", { configurable: true, get: () => 40 });
+    const tail = document.createElement("div");
+    tail.className = "conversation-tail";
+    Object.defineProperty(tail, "offsetTop", { configurable: true, get: () => 380 });
+    Object.defineProperty(tail, "offsetHeight", { configurable: true, get: () => 20 });
+    const turn = document.createElement("article");
+    el.append(user, turn, tail, spacer);
+    const originalGetComputedStyle = window.getComputedStyle.bind(window);
+    const styleSpy = vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+      if (element === el) {
+        return { paddingTop: "32px", paddingBottom: "32px" } as CSSStyleDeclaration;
+      }
+      return originalGetComputedStyle(element);
+    });
+
+    const { result, rerender } = renderHook(
+      ({ items }: { items: readonly string[] }) => {
+        const api = useSmartFollowScroll("session-a", items, false, undefined, "u1");
+        attachListRef(api.conversationListRef, el);
+        return api;
+      },
+      { initialProps: { items: ["turn"] } }
+    );
+    const childObserver = observers.find((observer) => observer.targets.includes(turn));
+
+    act(() => {
+      rerender({ items: ["turn"] });
+    });
+    // 800px pane - 64px padding - 200px from user message through the tail.
+    expect(spacer.style.height).toBe("536px");
+    expect(state.scrollTop).toBe(contentHeight + 536 - 800);
+
+    const pinnedTop = state.scrollTop;
+    act(() => {
+      result.current.handleUserScrollIntent();
+      state.scrollTop = pinnedTop - 4;
+      result.current.handleScroll();
+    });
+    expect(state.scrollTop).toBe(pinnedTop - 4);
+    expect(spacer.style.height).toBe("536px");
+
+    act(() => {
+      // A remount, a missed following-path apply, or a missing turn-anchor
+      // used to write 0px here. Restoring after the clamp is too late if
+      // we also forget the pre-collapse scrollTop.
+      spacer.style.height = "0px";
+      state.scrollTop = Math.max(0, contentHeight - 800);
+      childObserver?.callback([], {} as ResizeObserver);
+      result.current.handleScroll();
+    });
+
+    expect(spacer.style.height).toBe("536px");
+    expect(state.scrollTop).toBe(pinnedTop - 4);
+    expect(result.current.showScrollToBottom).toBe(false);
+
+    act(() => {
+      // Further reader movement must not be rewound to the detach snapshot.
+      state.scrollTop = pinnedTop - 200;
+      result.current.handleScroll();
+    });
+    expect(spacer.style.height).toBe("536px");
+    expect(state.scrollTop).toBe(pinnedTop - 200);
+    expect(result.current.showScrollToBottom).toBe(true);
+
+    act(() => {
+      spacer.style.height = "0px";
+      state.scrollTop = Math.max(0, contentHeight - 800);
+      childObserver?.callback([], {} as ResizeObserver);
+      result.current.handleScroll();
+    });
+    expect(spacer.style.height).toBe("536px");
+    expect(state.scrollTop).toBe(pinnedTop - 200);
+
+    styleSpy.mockRestore();
   });
 });

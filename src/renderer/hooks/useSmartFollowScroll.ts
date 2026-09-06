@@ -124,7 +124,10 @@ export interface SmartFollowScroll {
  * spacer after the latest user message is sized first so pinning to the
  * bottom puts that message at the top of the pane until the new turn fills it.
  *
- * The spacer is a follow layout, so it is frozen while the reader is away.
+ * The leftover spacer keeps `used + spacer` equal to the leftover viewport
+ * even while detached, so a folding thought cannot clamp a near-bottom
+ * reader onto the previous message. A user-scroll event while attached
+ * only pins; it does not resize the spacer.
  * Re-attach only when the reader moves toward the bottom (including trackpad
  * momentum) or uses scroll-to-latest / a new user message / a session change.
  * Landing on the bottom because content collapsed under them is not a request
@@ -181,7 +184,11 @@ export function useSmartFollowScroll(
     const tail = el.querySelector(".conversation-tail");
     if (!(spacer instanceof HTMLElement)) return;
     if (!(anchor instanceof HTMLElement) || !(tail instanceof HTMLElement)) {
-      if (spacer.style.height !== "0px") spacer.style.height = "0px";
+      // Only the follow path may collapse the leftover. Zeroing it while
+      // detached is the jump onto the previous message.
+      if (isFollowingRef.current && spacer.style.height !== "0px") {
+        spacer.style.height = "0px";
+      }
       return;
     }
     const style = getComputedStyle(el);
@@ -196,9 +203,7 @@ export function useSmartFollowScroll(
     if (spacer.style.height !== px) spacer.style.height = px;
   }, []);
 
-  const scrollToFollowTarget = useCallback((el: HTMLDivElement, force = false): void => {
-    applyTurnSpacer(el);
-    if (!force && !isFollowingRef.current) return;
+  const pinToBottom = useCallback((el: HTMLDivElement): void => {
     const top = Math.max(0, el.scrollHeight - el.clientHeight);
     lastMaxTopRef.current = top;
     lastWidthRef.current = el.clientWidth;
@@ -220,7 +225,13 @@ export function useSmartFollowScroll(
         userScrollStartTopRef.current = el.scrollTop;
       }
     }
-  }, [applyTurnSpacer]);
+  }, []);
+
+  const scrollToFollowTarget = useCallback((el: HTMLDivElement, force = false): void => {
+    applyTurnSpacer(el);
+    if (!force && !isFollowingRef.current) return;
+    pinToBottom(el);
+  }, [applyTurnSpacer, pinToBottom]);
 
   const handleUserScrollIntent = useCallback((): void => {
     const el = conversationListRef.current;
@@ -266,6 +277,34 @@ export function useSmartFollowScroll(
     anchor.contentTop = nextTop;
   }, [rememberViewportAnchor]);
 
+  /**
+   * Keep `used + spacer` equal to the leftover viewport so a shrink in the
+   * live turn (a thought folding) cannot clamp a near-bottom reader onto the
+   * previous message. Re-apply the spacer, correct an in-view node that
+   * moved (content above the reader), then put scrollTop back if the
+   * browser clamped because content *below* them shrank.
+   */
+  const preserveDetachedScroll = useCallback((el: HTMLDivElement, previousTop: number): void => {
+    applyTurnSpacer(el);
+    const topBeforeAnchor = el.scrollTop;
+    restoreViewportAnchor(el);
+    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    const anchorAdjusted = Math.abs(el.scrollTop - topBeforeAnchor) > 1;
+    // Content below the reader shrank: the in-view node did not move, so
+    // restore the pre-clamp scrollTop now that the leftover spacer has
+    // grown the range back. Skip when the anchor pass already moved us
+    // (insertions or shrinks above the reader).
+    if (
+      !anchorAdjusted &&
+      previousTop <= maxTop + 1 &&
+      Math.abs(el.scrollTop - previousTop) > 1
+    ) {
+      el.scrollTop = Math.max(0, Math.min(previousTop, maxTop));
+    }
+    lastScrollTopRef.current = el.scrollTop;
+    lastMaxTopRef.current = maxTop;
+  }, [applyTurnSpacer, restoreViewportAnchor]);
+
   const handleScroll = useCallback((): void => {
     const el = conversationListRef.current;
     if (!el) return;
@@ -275,6 +314,16 @@ export function useSmartFollowScroll(
     const previousMax = lastMaxTopRef.current;
     const movedTowardBottom = el.scrollTop > previousTop + 1;
     const contentShrunk = maxTop < previousMax - 1;
+    const clampedWhileDetached = !isFollowingRef.current &&
+      contentShrunk &&
+      previousTop > maxTop + 1 &&
+      Math.abs(el.scrollTop - maxTop) <= 1;
+    if (clampedWhileDetached) {
+      preserveDetachedScroll(el, previousTop);
+      const restored = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
+      setShowScrollToBottom(restored.showFab);
+      return;
+    }
     lastScrollTopRef.current = el.scrollTop;
     lastMaxTopRef.current = maxTop;
     lastWidthRef.current = el.clientWidth;
@@ -297,7 +346,9 @@ export function useSmartFollowScroll(
     }
 
     if (isFollowingRef.current) {
-      scrollToFollowTarget(el, true);
+      // Pin only. The leftover spacer is a content/viewport layout, not a
+      // reaction to the user's scroll position.
+      pinToBottom(el);
       setShowScrollToBottom(false);
       setNewBelowCount(0);
       return;
@@ -327,7 +378,13 @@ export function useSmartFollowScroll(
 
     rememberViewportAnchor(el);
     setShowScrollToBottom(decision.showFab);
-  }, [clearUserScrollIntent, rememberViewportAnchor, scrollToFollowTarget]);
+  }, [
+    clearUserScrollIntent,
+    pinToBottom,
+    preserveDetachedScroll,
+    rememberViewportAnchor,
+    scrollToFollowTarget
+  ]);
 
   const reconcileScrollAffordance = useCallback((el: HTMLDivElement): void => {
     if (isFollowingRef.current) {
@@ -342,9 +399,8 @@ export function useSmartFollowScroll(
     // top-anchored node instead would leave the new bottom out of view,
     // reading as a jump up to an earlier message. Pin without touching the
     // follow flag (staying detached keeps the next streamed chunk on the FAB
-    // path) and without resizing the turn spacer, which is a follow layout
-    // frozen while away. Height-only growth is new content below a detached
-    // reader and must leave them alone.
+    // path). Height-only growth is new content below a detached reader and
+    // must leave them alone.
     const prevTop = lastScrollTopRef.current;
     const prevMax = lastMaxTopRef.current;
     const prevWidth = lastWidthRef.current;
@@ -363,15 +419,14 @@ export function useSmartFollowScroll(
       setNewBelowCount(0);
       return;
     }
-    // Spacer is a follow layout. Mutating it while detached changes
-    // scrollHeight and is what used to yank a near-bottom reader to the
-    // latest user message once the bottom arrived on its own.
-    restoreViewportAnchor(el);
-    lastMaxTopRef.current = Math.max(0, el.scrollHeight - el.clientHeight);
-    lastScrollTopRef.current = el.scrollTop;
+    // Keep the leftover spacer in sync while detached so a folding thought
+    // cannot shrink the document and clamp the reader onto the previous
+    // message. Do not pin: landing on the bottom after a layout change is
+    // not a request to follow.
+    preserveDetachedScroll(el, prevTop);
     const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
     setShowScrollToBottom(decision.showFab);
-  }, [restoreViewportAnchor, scrollToFollowTarget]);
+  }, [preserveDetachedScroll, restoreViewportAnchor, scrollToFollowTarget]);
 
   const scrollToBottom = useCallback((): void => {
     const el = conversationListRef.current;
@@ -401,11 +456,17 @@ export function useSmartFollowScroll(
     const el = conversationListRef.current;
     if (!el) return;
     if (!isFollowingRef.current) {
-      restoreViewportAnchor(el);
+      preserveDetachedScroll(el, lastScrollTopRef.current);
       return;
     }
     scrollToFollowTarget(el, true);
-  }, [conversationItems, isThinking, restoreViewportAnchor, scrollToFollowTarget]);
+  }, [
+    conversationItems,
+    isThinking,
+    preserveDetachedScroll,
+    restoreViewportAnchor,
+    scrollToFollowTarget
+  ]);
 
   const preserveLayoutKeyRef = useRef(preserveLayoutKey);
   useLayoutEffect(() => {

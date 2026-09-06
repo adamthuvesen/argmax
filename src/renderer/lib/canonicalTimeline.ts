@@ -131,7 +131,7 @@ type MovedLifecycleEvent = CanonicalCommon & {
   destinationWorkspaceId: string | null;
   destinationProjectName: string | null;
   destinationPath: string | null;
-  checkoutMode: "shared" | "worktree" | null;
+  checkoutMode: "shared" | "worktree" | "attached" | null;
   sourceArchiveState: string | null;
 };
 
@@ -346,7 +346,12 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
   }
   if (name === "moved") {
     const direction = payload.direction === "source" || payload.direction === "destination" ? payload.direction : null;
-    const checkoutMode = payload.checkoutMode === "shared" || payload.checkoutMode === "worktree" ? payload.checkoutMode : null;
+    const checkoutMode =
+      payload.checkoutMode === "shared" ||
+      payload.checkoutMode === "worktree" ||
+      payload.checkoutMode === "attached"
+        ? payload.checkoutMode
+        : null;
     return {
       ...shared,
       kind: "lifecycle",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
+import { projectMoveNoticeFor } from "./projectMove.js";
 
 function event(
   type: string,
@@ -106,6 +107,22 @@ describe("decodeTimelineEvent", () => {
       destinationWorkspaceId: "workspace",
       checkoutMode: "shared"
     });
+    // A checkout move names the directory, not the project — both project
+    // names are the same one, so "Argmax → Argmax" is all the other branch
+    // could render.
+    const attached = projectMoveNoticeFor(
+      event("session.moved", {
+        direction: "destination",
+        sourceSessionId: "source",
+        destinationSessionId: "destination",
+        destinationWorkspaceId: "workspace",
+        sourceProjectName: "Argmax",
+        destinationProjectName: "Argmax",
+        destinationPath: "/repo/worktrees/feature",
+        checkoutMode: "attached"
+      })
+    );
+    expect(attached).toMatchObject({ from: null, to: "feature", checkoutMode: "attached" });
     expect(decodeTimelineEvent(event("session.archive-requested", {
       workspaceId: "workspace-1",
       removesWorktree: true

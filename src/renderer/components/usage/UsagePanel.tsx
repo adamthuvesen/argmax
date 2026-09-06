@@ -1,12 +1,13 @@
 import { CalendarDays } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
-import type { ProviderId, UsageSummary, UsageWindow } from "../../../shared/types.js";
+import type { ProviderId, UsageRemaining, UsageSummary, UsageWindow } from "../../../shared/types.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
 import { SkeletonPane } from "../SkeletonPane.js";
 import { UsageAreaChart } from "./UsageAreaChart.js";
 import { UsageBreakdown } from "./UsageBreakdown.js";
 import { UsageHero } from "./UsageHero.js";
 import { UsageProviderRows } from "./UsageProviderRows.js";
+import { UsageRemainingCard } from "./UsageRemaining.js";
 import { UsageTokenFlow } from "./UsageTokenFlow.js";
 import { formatCount, formatRangeLabel, formatScanStamp } from "./usageFormat.js";
 import type { UsageDelta } from "./usageInsights.js";
@@ -85,6 +86,13 @@ async function fetchSummary(
   return demoUsageSummary({ window, provider, timeZone });
 }
 
+async function fetchRemaining(): Promise<UsageRemaining> {
+  const api = globalThis.window?.argmax;
+  if (api?.usage.remaining) return api.usage.remaining();
+  const { demoUsageRemaining } = await import("../../demoUsage.js");
+  return demoUsageRemaining();
+}
+
 export function UsagePanel(): JSX.Element {
   const [usageWindow, setUsageWindow] = useState<UsageWindow>("30d");
   const [metric, setMetric] = useState<UsageMetric>("cost");
@@ -92,10 +100,13 @@ export function UsagePanel(): JSX.Element {
   const [provider, setProvider] = useState<ProviderId | null>(null);
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [remaining, setRemaining] = useState<UsageRemaining | null>(null);
+  const [remainingError, setRemainingError] = useState<string | null>(null);
   const timeZoneRef = useRef(hostTimeZone());
   // Only the newest request may write state: a slow 30-day scan must not
   // land on top of the 24h window the user switched to while it ran.
   const requestRef = useRef(0);
+  const remainingRequestRef = useRef(0);
 
   const load = useCallback(
     async (target: UsageWindow, scope: ProviderId | null): Promise<void> => {
@@ -114,6 +125,20 @@ export function UsagePanel(): JSX.Element {
     []
   );
 
+  const loadRemaining = useCallback(async (): Promise<void> => {
+    const request = remainingRequestRef.current + 1;
+    remainingRequestRef.current = request;
+    try {
+      const next = await fetchRemaining();
+      if (remainingRequestRef.current !== request) return;
+      setRemaining(next);
+      setRemainingError(null);
+    } catch (cause) {
+      if (remainingRequestRef.current !== request) return;
+      setRemainingError(cause instanceof Error ? cause.message : "Could not read remaining usage.");
+    }
+  }, []);
+
   // A new window clears the page to a skeleton: its numbers mean something
   // else. A new provider keeps the page up and swaps the figures when they
   // land — a warm sweep is sub-second, and a skeleton flash on every row
@@ -125,6 +150,10 @@ export function UsagePanel(): JSX.Element {
   useEffect(() => {
     void load(usageWindow, provider);
   }, [load, provider, usageWindow]);
+
+  useEffect(() => {
+    void loadRemaining();
+  }, [loadRemaining]);
 
   const scanning = summary?.scan.phase === "scanning";
   useEffect(() => {
@@ -206,6 +235,13 @@ export function UsagePanel(): JSX.Element {
           />
         ) : null}
         {!summary && !error ? <SkeletonPane /> : null}
+
+        <UsageRemainingCard
+          remaining={remaining}
+          error={remainingError}
+          timeZone={timeZoneRef.current}
+          onRefresh={() => void loadRemaining()}
+        />
       </div>
     </div>
   );

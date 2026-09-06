@@ -15,6 +15,7 @@ pub mod codex;
 pub mod grok;
 pub mod opencode;
 pub mod records;
+pub mod remaining;
 pub mod scanner;
 pub mod summary;
 

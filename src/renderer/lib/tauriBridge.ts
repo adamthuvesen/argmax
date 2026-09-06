@@ -54,6 +54,7 @@ import type {
   ReviewComparison,
   Routine,
   RoutineUpsertInput,
+  UsageRemaining,
   UsageSummary,
   UsageSummaryInput,
   RunCheckInput,
@@ -412,7 +413,8 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       runNow: (id: string) => invokeCommand<Routine>("routines:run-now", { id })
     },
     usage: {
-      summary: (input: UsageSummaryInput) => invokeCommand<UsageSummary>("usage:summary", input)
+      summary: (input: UsageSummaryInput) => invokeCommand<UsageSummary>("usage:summary", input),
+      remaining: () => invokeCommand<UsageRemaining>("usage:remaining")
     },
     menu: {
       onCommand: (listener) => subscribe<MenuCommand>("menu:command", listener)

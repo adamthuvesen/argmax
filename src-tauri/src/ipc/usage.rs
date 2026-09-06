@@ -1,14 +1,19 @@
-//! The Usage page's one request. A ledger that has completed before is swept
-//! inline (a warm sweep stats a few thousand files and reads only what grew)
-//! so the numbers are current; the first cold sweep runs in the background and
-//! the page polls its progress.
+//! The Usage page's requests. `usage:summary` is the local transcript ledger.
+//! `usage:remaining` is live plan remaining from each provider login.
+
+use std::sync::Arc;
 
 use chrono::Utc;
 use tauri::State;
 
-use super::{inputs::UsageSummaryInput, live_database, read_off_main, validation::ProviderId};
+use super::{
+    inputs::{UsageRemainingInput, UsageSummaryInput},
+    live_database, read_off_main,
+    validation::ProviderId,
+};
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::state::AppState;
+use crate::usage::remaining::{fetch_remaining, LiveRemainingSource, UsageRemaining};
 use crate::usage::scanner::{spawn_sweep, ScanProgress};
 use crate::usage::{summary, UsageScanPhase, UsageScanState, UsageSummary, PRICING_AS_OF};
 
@@ -56,6 +61,22 @@ pub async fn usage_summary_impl(
         summary::build_summary(&connection, window, provider, time_zone, scan, Utc::now())
     })
     .await
+}
+
+#[tauri::command(rename = "usage:remaining")]
+#[specta::specta]
+pub async fn usage_remaining(
+    state: State<'_, AppState>,
+    input: UsageRemainingInput,
+) -> ArgmaxResult<UsageRemaining> {
+    usage_remaining_impl(&state, input).await
+}
+
+pub async fn usage_remaining_impl(
+    _state: &AppState,
+    _input: UsageRemainingInput,
+) -> ArgmaxResult<UsageRemaining> {
+    read_off_main(|| Ok(fetch_remaining(Arc::new(LiveRemainingSource::new())))).await
 }
 
 fn scan_state(progress: &ScanProgress) -> UsageScanState {

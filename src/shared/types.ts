@@ -29,6 +29,11 @@ export type UsageDayRow = Bindings.UsageDayRow;
 export type UsageSummary = Bindings.UsageSummary;
 /** Input for usage summaries, including the IANA timezone used for day buckets. */
 export type UsageSummaryInput = Bindings.UsageSummaryInput;
+export type UsageRemaining = Bindings.UsageRemaining;
+export type UsageRemainingInput = Bindings.UsageRemainingInput;
+export type UsageProviderRemaining = Bindings.UsageProviderRemaining;
+export type UsageLimitWindow = Bindings.UsageLimitWindow;
+export type UsagePlanKind = Bindings.UsagePlanKind;
 export type RemoteStatus = Bindings.RemoteStatus;
 export type StartupPhaseRecord = Bindings.StartupPhaseRecord;
 
@@ -542,6 +547,7 @@ export interface ArgmaxApi {
   };
   usage: {
     summary: (input: UsageSummaryInput) => Promise<UsageSummary>;
+    remaining: () => Promise<UsageRemaining>;
   };
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;

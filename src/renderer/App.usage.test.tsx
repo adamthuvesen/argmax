@@ -1,7 +1,13 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
-import { setupAppTestMocks, usageSummary, usageSummaryFixture } from "../test/appTestHarness.js";
+import {
+  setupAppTestMocks,
+  usageRemaining,
+  usageRemainingFixture,
+  usageSummary,
+  usageSummaryFixture
+} from "../test/appTestHarness.js";
 
 /** Chooses an entry in an open picker menu. The row is the option; its button takes the click. */
 function pickOption(name: string): void {
@@ -222,5 +228,42 @@ describe("App usage", () => {
     expect(cursor).not.toBeNull();
     expect(within(cursor as HTMLElement).getByText("No local usage data")).toBeInTheDocument();
     expect(within(cursor as HTMLElement).queryByText("$0.00")).not.toBeInTheDocument();
+  });
+
+  it("shows remaining usage per provider under the local spend", async () => {
+    await openUsage();
+
+    const remaining = await screen.findByRole("region", { name: "Remaining on your plans" });
+    expect(within(remaining).getByText("Max 20x")).toBeInTheDocument();
+    expect(within(remaining).getByText("85% left")).toBeInTheDocument();
+    expect(within(remaining).getAllByText("5-hour").length).toBeGreaterThan(0);
+
+    const cursor = within(remaining).getByText("Cursor").closest("li");
+    expect(cursor).not.toBeNull();
+    expect(within(cursor as HTMLElement).getByText("Teams")).toBeInTheDocument();
+    expect(within(cursor as HTMLElement).queryByText(/% left/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the local spend up when remaining usage fails", async () => {
+    usageRemaining.mockRejectedValue(new Error("Claude remaining usage returned HTTP 429."));
+    await openUsage();
+
+    expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$100.00");
+    const remaining = await screen.findByRole("region", { name: "Remaining on your plans" });
+    expect(within(remaining).getByText("Claude remaining usage returned HTTP 429.")).toBeInTheDocument();
+  });
+
+  it("refreshes remaining usage without asking for a new summary", async () => {
+    await openUsage();
+    await screen.findByRole("region", { name: "Remaining on your plans" });
+    usageSummary.mockClear();
+    usageRemaining.mockClear();
+    usageRemaining.mockResolvedValue(usageRemainingFixture());
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByText("Max 20x")).toBeInTheDocument();
+    expect(usageRemaining).toHaveBeenCalled();
+    expect(usageSummary).not.toHaveBeenCalled();
   });
 });

@@ -831,6 +831,14 @@ async usageSummary(input: UsageSummaryInput) : Promise<Result<UsageSummary, Argm
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async usageRemaining(input: UsageRemainingInput) : Promise<Result<UsageRemaining, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("usage_remaining", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -1402,7 +1410,17 @@ export type TimelineEvent = { id: string; sessionId: string; type: string; messa
 export type UsageCostSource = "provider_reported" | "list_price" | "unpriced" | "mixed"
 export type UsageCounts = { input: number; output: number; cacheRead: number; cacheWrite: number }
 export type UsageDayRow = { bucketStart: string; sessions: number; tokens: UsageTokenTotals; costUsd: number; costSource: UsageCostSource }
+export type UsageLimitWindow = { id: string; label: string;
+/**
+ * 0–100, how much of the window is still left.
+ */
+remainingPercent: number;
+/**
+ * RFC 3339 UTC; `None` when the provider did not send a reset.
+ */
+resetsAt: string | null }
 export type UsageModelRow = { provider: ProviderId; modelId: string; sessions: number; tokens: UsageTokenTotals; costUsd: number; costSource: UsageCostSource }
+export type UsagePlanKind = "subscription" | "enterprise" | "api_key" | "unavailable" | "error"
 /**
  * Totals for the same-length window immediately before `range_start`, so the
  * page can say whether this window is up or down on the last one. `None` when
@@ -1410,6 +1428,7 @@ export type UsageModelRow = { provider: ProviderId; modelId: string; sessions: n
  * read as "up 100%".
  */
 export type UsagePreviousPeriod = { costUsd: number; tokens: UsageTokenTotals; sessions: number }
+export type UsageProviderRemaining = { provider: ProviderId; kind: UsagePlanKind; planLabel: string | null; windows: UsageLimitWindow[]; message: string | null }
 export type UsageProviderSummary = { provider: ProviderId;
 /**
  * `false` when the provider has no local usage source (Cursor). Such a
@@ -1421,6 +1440,12 @@ available: boolean; sessions: number; tokens: UsageTokenTotals; costUsd: number;
  * it did cost.
  */
 cacheSavingsUsd: number; costSource: UsageCostSource }
+export type UsageRemaining = {
+/**
+ * RFC 3339 UTC.
+ */
+fetchedAt: string; providers: UsageProviderRemaining[] }
+export type UsageRemainingInput = Record<string, never>
 export type UsageResolution = "hour" | "day"
 export type UsageScanPhase = "idle" | "scanning"
 export type UsageScanState = { phase: UsageScanPhase; filesTotal: number; filesDone: number;

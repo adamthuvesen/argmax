@@ -11,6 +11,7 @@ import {
   secondProject,
   workspaceStatusSnapshot
 } from "./fixtures/dashboardSnapshot.js";
+import { usageRemainingFixture } from "./fixtures/usageRemaining.js";
 import { usageSummaryFixture, usageSummaryFor } from "./fixtures/usageSummary.js";
 import { resetLauncherSurfaceForTests } from "../renderer/state/launcherSurface.js";
 import { resetOverlaysForTests } from "../renderer/state/overlays.js";
@@ -43,7 +44,7 @@ await Promise.all([
 
 export const snapshot = defaultDashboardSnapshot;
 
-export { usageSummaryFixture, usageSummaryFor };
+export { usageRemainingFixture, usageSummaryFixture, usageSummaryFor };
 
 export {
   dashboardListSnapshot,
@@ -107,6 +108,7 @@ export type AppTestMocks = {
   setWorkspaceIcon: AppTestMockFn<ArgmaxApi["workspaces"]["setIcon"]>;
   setPriorityDismissed: AppTestMockFn<ArgmaxApi["workspaces"]["setPriorityDismissed"]>;
   usageSummary: AppTestMockFn<ArgmaxApi["usage"]["summary"]>;
+  usageRemaining: AppTestMockFn<ArgmaxApi["usage"]["remaining"]>;
 };
 
 export let createCurrentWorkspace: AppTestMocks["createCurrentWorkspace"];
@@ -150,6 +152,7 @@ export let setPriorityDismissed: AppTestMocks["setPriorityDismissed"];
 /** Override with `usageSummary.mockResolvedValue(usageSummaryFixture({ … }))`
  *  to put the Usage page into a specific state. */
 export let usageSummary: AppTestMocks["usageSummary"];
+export let usageRemaining: AppTestMocks["usageRemaining"];
 export let menuCommandListener: ((command: MenuCommand) => void) | null = null;
 
 export function setupAppTestMocks(): void {
@@ -350,6 +353,9 @@ export function setupAppTestMocks(): void {
   usageSummary = vi
     .fn<ArgmaxApi["usage"]["summary"]>()
     .mockImplementation((input) => Promise.resolve(usageSummaryFor(input)));
+  usageRemaining = vi
+    .fn<ArgmaxApi["usage"]["remaining"]>()
+    .mockResolvedValue(usageRemainingFixture());
   openInIde = vi.fn<ArgmaxApi["workspaces"]["openInIde"]>().mockResolvedValue({ ok: true });
   listDetectedIdes = vi.fn<ArgmaxApi["system"]["listDetectedIdes"]>().mockResolvedValue([
     { id: "vscode", label: "VS Code", appPath: "/Applications/Visual Studio Code.app", hasCli: true },
@@ -388,7 +394,8 @@ export function setupAppTestMocks(): void {
       }
     },
     usage: {
-      summary: usageSummary
+      summary: usageSummary,
+      remaining: usageRemaining
     },
     routines: {
       list: () => Promise.resolve([]),

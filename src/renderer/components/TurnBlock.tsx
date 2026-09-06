@@ -1,4 +1,4 @@
-import { ChevronRight, Copy, GitFork } from "lucide-react";
+import { Check, ChevronRight, Copy, GitFork, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import { formatElapsedSeconds } from "../formatElapsed.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
@@ -296,7 +296,16 @@ function TurnFooter({
           }
           onClick={() => void copy(turnMarkdown)}
         >
-          <Copy size={13} aria-hidden />
+          {/* The outcome has to be visible on the button: a tooltip nobody
+              hovers long enough to read left a refused write looking exactly
+              like a click that never landed. */}
+          {copyFlash === "copied" ? (
+            <Check size={13} aria-hidden />
+          ) : copyFlash === "failed" ? (
+            <X size={13} aria-hidden />
+          ) : (
+            <Copy size={13} aria-hidden />
+          )}
         </button>
       ) : null}
       {onFork ? (

@@ -7,6 +7,13 @@ model or day. It reads every provider
 transcript on disk, not only the sessions Argmax launched, so it is the same
 number a terminal-only user would get.
 
+Below that ledger is **Remaining on your plans**: live included usage left on
+each provider login (plan name, remaining percent, next reset). Those figures
+come from the provider account, including use outside Argmax, and are not the
+list-price spend above. Enterprise, Teams, API-key, and unsigned-in rows show
+a label instead of remaining bars. Fetch happens once when the page opens;
+Refresh on that card retries remaining only.
+
 The header carries the page's three controls: a provider picker, a range
 picker, and the Cost/Tokens switch. Choosing a provider narrows the total,
 chart, token flow, and breakdown to it; so does pressing that provider's tile
@@ -45,6 +52,16 @@ their logs; those win over the table and are marked *provider reported*.
 | Grok Build | `~/.grok/sessions/<cwd>/<session>/updates.jsonl` | `turn_completed` → `usage` and `usage.modelUsage` |
 | OpenCode | `~/.local/share/opencode/opencode.db` (`message.data`, read-only) | `tokens` and `cost` on assistant rows |
 | Cursor | none | Cursor keeps no local token log; the page says so |
+
+Remaining usage is a second, live read. It does not go through `usage_hourly`.
+
+| Provider | Remaining source | Notes |
+|---|---|---|
+| Claude | `GET https://api.anthropic.com/api/oauth/usage` with Claude Code OAuth (Keychain / `.credentials.json` / `CLAUDE_CODE_OAUTH_TOKEN`). Plan from `~/.claude.json` `oauthAccount`. | Undocumented; the same endpoint Claude Code uses for `/usage`. Rate-limited if polled hard. |
+| Codex | `codex app-server` `account/rateLimits/read`, else the newest `rate_limits` object in a local rollout. | Official JSON-RPC. Windows are labeled from duration — Pro may report weekly on `primary` with no 5-hour window. |
+| Grok | `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` with `~/.grok/auth.json`. | Same call Grok Build's `/usage` makes. |
+| OpenCode | `GET https://opencode.ai/zen/go/v1/usage` when an OpenCode Go key is present. | Zen / BYOK have no OpenCode subscription quota. |
+| Cursor | Local `cli-config.json` `authInfo` only. | Teams/Enterprise is a label. Remaining numbers need unofficial dashboard APIs; the card points at the Spending dashboard. |
 
 Parsers live in [usage/claude.rs](../src-tauri/src/usage/claude.rs),
 [codex.rs](../src-tauri/src/usage/codex.rs), [grok.rs](../src-tauri/src/usage/grok.rs),

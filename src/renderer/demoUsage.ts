@@ -3,6 +3,7 @@ import type {
   UsageDayRow,
   UsageModelRow,
   UsageProviderSummary,
+  UsageRemaining,
   UsageSeriesPoint,
   UsageSummary,
   UsageSummaryInput,
@@ -325,5 +326,59 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
     series,
     models,
     days
+  };
+}
+
+export function demoUsageRemaining(): UsageRemaining {
+  return {
+    fetchedAt: "2026-09-06T12:00:00Z",
+    providers: [
+      {
+        provider: "claude",
+        kind: "subscription",
+        planLabel: "Max 20x",
+        windows: [
+          { id: "five_hour", label: "5-hour", remainingPercent: 84.8, resetsAt: "2026-09-06T16:00:00Z" },
+          { id: "seven_day", label: "Weekly", remainingPercent: 58, resetsAt: "2026-09-13T00:00:00Z" }
+        ],
+        message: null
+      },
+      {
+        provider: "codex",
+        kind: "subscription",
+        planLabel: "Pro",
+        windows: [
+          { id: "seven_day", label: "Weekly", remainingPercent: 88, resetsAt: "2026-09-13T06:00:00Z" }
+        ],
+        message: null
+      },
+      {
+        provider: "cursor",
+        kind: "enterprise",
+        planLabel: "Teams",
+        windows: [],
+        message: "Cursor remaining lives on the Spending dashboard."
+      },
+      {
+        provider: "opencode",
+        kind: "subscription",
+        planLabel: "OpenCode Go",
+        windows: [
+          { id: "five_hour", label: "5-hour", remainingPercent: 96, resetsAt: "2026-09-06T16:27:38Z" },
+          { id: "seven_day", label: "Weekly", remainingPercent: 97, resetsAt: "2026-09-13T00:00:00Z" },
+          { id: "monthly", label: "Monthly", remainingPercent: 99, resetsAt: "2026-10-01T00:00:00Z" }
+        ],
+        message: null
+      },
+      {
+        provider: "grok",
+        kind: "subscription",
+        planLabel: "SuperGrok",
+        windows: [
+          { id: "seven_day", label: "Weekly", remainingPercent: 62, resetsAt: "2026-09-13T00:00:00Z" }
+        ],
+        message: null
+      }
+    ]
   };
 }

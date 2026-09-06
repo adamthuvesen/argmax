@@ -106,6 +106,7 @@ export const IPC_CHANNELS = [
   "routines:set-enabled",
   "routines:run-now",
   "usage:summary",
+  "usage:remaining",
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];

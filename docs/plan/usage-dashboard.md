@@ -8,7 +8,7 @@
 
 **Binding constraints.** Rust owns file IO and SQLite (ADR 0001); migrations are append-only; IPC follows the seven-step checklist in `docs/ipc.md`; blocking work goes through `read_off_main`; no third-party UI or chart library (`docs/styling.md`); pricing stays in `providers/pricing.rs` and `src/shared/providerModels.ts`; renderer tests query by role and label; standalone pages own the sidebar column like Schedule does.
 
-**Out of scope.** Cursor local usage (no local token source exists), rate-limit and quota windows, a 90-day view, exports, remote-bridge support for the page.
+**Out of scope.** Cursor local usage (no local token source exists), a 90-day view, exports. Remaining plan usage is a later addition (`usage:remaining`); see [usage.md](../usage.md).
 
 ## Data sources (verified 2026-09-03)
 

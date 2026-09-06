@@ -137,6 +137,7 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "routines:set-enabled",
     "routines:run-now",
     "usage:summary",
+    "usage:remaining",
 ];
 
 /// Resolve the live `Database` Arc from `AppState`. Shared across IPC
@@ -298,6 +299,7 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         routines::routines_delete,
         routines::routines_set_enabled,
         routines::routines_run_now,
-        usage::usage_summary
+        usage::usage_summary,
+        usage::usage_remaining
     ])
 }

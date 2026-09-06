@@ -143,6 +143,31 @@ export function formatRangeLabel(
   return `${day.format(start)} to ${day.format(lastInside)}`;
 }
 
+/**
+ * `resets in 2h` when the window is close, `resets Oct 1` when it is not.
+ * Remaining windows are live account clocks, so a relative phrase is the
+ * useful one until the date itself starts to matter — and a weekday alone
+ * would read as this week for a monthly window a month out.
+ */
+export function formatResetIn(
+  value: string | null,
+  timeZone: string,
+  now: Date = new Date()
+): string | null {
+  if (!value) return null;
+  const at = parseInstant(value);
+  if (!at) return null;
+  const deltaMs = at.getTime() - now.getTime();
+  if (deltaMs <= 0) return "resets now";
+  const minutes = Math.round(deltaMs / 60_000);
+  if (minutes < 60) return `resets in ${Math.max(1, minutes)}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `resets in ${hours}h`;
+  const days = Math.round(hours / 24);
+  if (days < 5) return `resets in ${days}d`;
+  return `resets ${dateFormat(timeZone, { month: "short", day: "numeric" }).format(at)}`;
+}
+
 /** `Sep 3, 14:02` — when the numbers were last refreshed from disk. */
 export function formatScanStamp(value: string | null, timeZone: string): string | null {
   if (!value) return null;

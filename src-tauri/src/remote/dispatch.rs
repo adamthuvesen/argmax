@@ -119,6 +119,10 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
             let input: UsageSummaryInput = parse(channel, input)?;
             encode(usage::usage_summary_impl(state, input).await?)
         }
+        "usage:remaining" => {
+            let input: UsageRemainingInput = parse(channel, input)?;
+            encode(usage::usage_remaining_impl(state, input).await?)
+        }
         "workspace:status" => {
             let input: WorkspaceStatusInput = parse(channel, input)?;
             encode(workspace_files::workspace_status_impl(state, input).await?)

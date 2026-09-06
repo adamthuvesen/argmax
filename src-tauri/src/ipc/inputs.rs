@@ -20,6 +20,7 @@ macro_rules! empty_input {
 }
 
 empty_input!(HealthPingInput);
+empty_input!(UsageRemainingInput);
 empty_input!(ProjectsListInput);
 empty_input!(ProjectsPickFolderInput);
 empty_input!(DashboardListInput);

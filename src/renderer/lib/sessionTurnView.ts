@@ -23,11 +23,16 @@ export type AssistantGroup = {
   // matching how a completed message (anchored at its end) already sorts.
   lastActivityAt: string;
   text: string;
-  /** Revealed live: the group belongs to the turn still running. */
+  /** Revealed live: this is the newest group of a turn still running, so it is
+      the one the typewriter animates. Earlier groups of the same turn were
+      closed by a tool call, a thinking switch, or an error and can never grow
+      again, so they render settled. */
   streaming: boolean;
-  /** More text may still arrive: folded from deltas in a live turn, with no
-      completed message yet. A block that landed whole is live but not growing,
-      so a plan in it can be parsed at once. */
+  /** Folded from deltas in a live turn, with no completed message yet — so the
+      text may be mid-sentence. Read only to defer parsing a plan out of the
+      block; it is not cleared when the group is closed, because deferring is
+      the safe side of that call. A block that landed whole is never growing, so
+      a plan in it can be parsed at once. */
   growing?: boolean;
   // Claude extended-thinking content, decoded as thinking instead of answer
   // text. Rendered as a separate collapsible "Thought" block.
@@ -355,6 +360,18 @@ export function coalesceAssistantGroups(
   }
   flushThinking();
   flushAnswer();
+  // Only the newest group is still live. Events arrive in ascending time order,
+  // so every earlier group was closed by a tool call, a thinking switch, or an
+  // error: its buffer was nulled and the next group took a new boundary-keyed
+  // id, so nothing can ever append to it again. Leaving them marked `streaming`
+  // made each one eligible for the typewriter, and a group that first mounts
+  // with no recorded reveal progress starts at zero characters — so reopening a
+  // running session retyped every block of the turn at once. `growing` stays as
+  // it was: its only reader defers parsing a plan out of a block, and deferring
+  // is the safe side of that call.
+  for (let index = 0; index < assistantGroups.length - 1; index += 1) {
+    assistantGroups[index].streaming = false;
+  }
   return assistantGroups;
 }
 

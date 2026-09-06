@@ -458,24 +458,22 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn ambient_git_dir_does_not_retarget_minus_c() {
+    #[test]
+    fn ambient_git_dir_does_not_retarget_minus_c() {
         let _lock = GIT_DIR_LOCK.lock().expect("git dir lock");
         let repo = TempDir::new().expect("temp dir");
         let _git_dir = RestoreEnv::set("GIT_DIR", "/tmp/argmax-git-dir-should-not-win");
-        run_git_text(
+        run_git_text_blocking(
             repo.path(),
             ["init", "-q", "-b", "main"],
             GIT_DEFAULT_TIMEOUT,
         )
-        .await
         .expect("init should ignore ambient GIT_DIR");
-        let toplevel = run_git_text(
+        let toplevel = run_git_text_blocking(
             repo.path(),
             ["rev-parse", "--show-toplevel"],
             GIT_DEFAULT_TIMEOUT,
         )
-        .await
         .expect("toplevel");
         assert_eq!(
             Path::new(toplevel.trim()),

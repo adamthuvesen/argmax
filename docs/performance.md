@@ -150,10 +150,22 @@ than every other animation in the app combined (8.8% total → 3.8% with just
 pseudo-element ring). Pausing *all* animations reaches 0.0%, so the remainder is
 spread thinly across the composited ones.
 
-Two keyframes still drive non-composited properties, both deliberately: 
+`transform`/`opacity` is necessary but not sufficient — the element also has to
+be an HTML box. WebKit's legacy SVG renderer has no accelerated compositing at
+all (the layer tree does not know SVG exists; the Layer-Based SVG Engine that
+fixes it is still not default-on as of 2026-07), so an SVG `<circle>` animating
+`transform` re-rasters every frame exactly like animating `fill` does. The
+working nest was SVG for that reason and is now absolutely-positioned `<span>`s
+([WorkingNest.tsx](../src/renderer/components/WorkingNest.tsx)), which is what
+makes it affordable to run one per visible row.
+
+Two keyframes still drive non-composited properties, both deliberately:
 `skeleton-shimmer` (`background-position`) only runs while a review is loading,
-and `working-nest-relay` (`fill`) only under `[data-active="true"]`. Neither runs
-at rest. Anything new that loops forever should animate `transform`/`opacity`.
+and `working-nest-relay` (`background`) only under `[data-active="true"]`, for
+the two-tone hand-off that is the whole idea of the `nest` style — the
+alternative, two stacked dots cross-fading, doubles the element count of the
+default mark to save a repaint on four 4px boxes. Neither runs at rest. Anything
+new that loops forever should animate `transform`/`opacity` on an HTML element.
 
 Renderer CPU does not depend on the Rust build profile; the release build idles
 at 3.2% with no session running, matching the debug measurement.

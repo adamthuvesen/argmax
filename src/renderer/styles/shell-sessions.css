@@ -629,3 +629,69 @@
 .app-shell[data-review-panel-side="left"] .launcher-shell[data-review-open="true"] .review-panel {
   border-right: 0;
 }
+
+/* A running row draws a light travelling under its text, the way a caret
+   crosses a line being written. Directional, so a column of running sessions
+   reads as flow rather than as noise, and it says "this row is live" without
+   competing with the 18px marker for the same 18px of attention.
+
+   Off by default and turned on in Settings → Appearance → Running row underline
+   (lib/activityMark.ts), which puts the choice on `<html>`. Gating in CSS rather
+   than in the component keeps the row markup identical either way — only the
+   pseudo-element and its clip appear.
+
+   Composited: one translated gradient, no blur, no filter. The clip is scoped
+   to running rows so no other state pays for it — `overflow` here cannot touch
+   the focus ring, which is a box-shadow on this element rather than on a
+   descendant. `--row-phase` is set per row in SidebarSessionRow.tsx; a
+   pseudo-element does not inherit `animation-delay`, so it has to arrive as a
+   custom property. */
+:root[data-session-underline="sweep"] .session-link[data-status="running"] {
+  overflow: hidden;
+}
+
+:root[data-session-underline="sweep"] .session-link[data-status="running"]::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  left: 0;
+  height: 1.5px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent) 45%,
+    var(--accent-deep) 55%,
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: session-underline-sweep 1.8s var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
+  animation-delay: var(--row-phase, 0s);
+  pointer-events: none;
+}
+
+@keyframes session-underline-sweep {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+
+  15%,
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-session-underline="sweep"] .session-link[data-status="running"]::after {
+    animation: none;
+    transform: none;
+    opacity: 0.5;
+  }
+}

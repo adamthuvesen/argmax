@@ -4,10 +4,15 @@ import { App } from "./App.js";
 import { AppErrorBoundary } from "./components/AppErrorBoundary.js";
 import "./lib/tauriBridge.js";
 import "./lib/windowChrome.js";
+import { initActivityMark } from "./lib/activityMark.js";
 import { installVerificationDiagnostics } from "./lib/verificationDiagnostics.js";
 // Non-default font CSS bundles download only when the user picks them in
 // Settings → Appearance.
 import "./styles.css";
+
+// Before the first mark paints, so the sidebar underline (a stylesheet-only
+// effect keyed off `<html data-activity-mark>`) is never a frame behind.
+initActivityMark();
 
 if (import.meta.env.VITE_ARGMAX_VERIFICATION === "1") {
   installVerificationDiagnostics();

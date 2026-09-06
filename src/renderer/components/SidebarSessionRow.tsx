@@ -21,6 +21,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type DragEvent as ReactDragEvent,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -34,6 +35,7 @@ import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscap
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import type { PriorityAttention } from "../lib/priority.js";
 import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
+import { stableHash32 } from "../lib/stableHash.js";
 import { SessionIconPicker } from "./SessionIconPicker.js";
 import { WorkingNest } from "./WorkingNest.js";
 
@@ -474,6 +476,12 @@ function SidebarSessionRowInner({
             data-status={workspace.state}
             type="button"
             title={title}
+            // The underline sweep's phase. Rows start their turns at different
+            // times, so a shared beat would make a column of running sessions
+            // strobe together; the same stable hash the marker uses keeps them
+            // apart. A pseudo-element cannot inherit `animation-delay`, so it
+            // travels as a custom property (styles/shell-sessions.css).
+            style={{ "--row-phase": `-${stableHash32(workspace.id) % 1800}ms` } as CSSProperties}
             draggable={canDragToGrid}
             onKeyDown={handleSessionLinkKeyDown}
             onContextMenu={handleContextMenu}

@@ -2,18 +2,53 @@
    by the sidebar's session rows, sub-agent launch rows in the transcript, agent
    tabs, and the agent pane header (components/WorkingNest.tsx).
 
-   A live nest wears the configurable accent by default, the same tint as the
-   mascot. A surface with its own identity color can override the three working
-   nest color properties. A settled nest stays muted and still. That is what
-   "done" should look like. */
+   Four styles, chosen in Settings → Appearance → Activity mark
+   (lib/activityMark.ts) and selected here off `[data-mark]`. They share the box,
+   the colours and the landing; only the parts inside differ.
+
+   A live mark wears the configurable accent by default, the same tint as the
+   mascot. A surface with its own identity color overrides the three working
+   nest color properties (see agent-emblems.css, shell-session-icons.css) and
+   every style picks that up, because every style takes its colour from
+   `--working-nest-lead` / `--working-nest-rest` / `currentColor` and nothing
+   else. A settled mark stays muted and still. That is what "done" should look
+   like.
+
+   Everything animates `transform` and `opacity` on HTML boxes, which is the
+   only combination WebKit runs on the compositor: its legacy SVG renderer gets
+   no layers at all, so the old `<circle>` version repainted every frame even
+   where it only scaled. `nest` keeps one `background` in its keyframes for the
+   two-tone relay — see the note there. */
 .working-nest {
   --working-nest-phase: 0;
   --working-nest-phase-offset: calc(var(--working-nest-cycle) * var(--working-nest-phase) / -4);
+  /* 3x3 field geometry for `cascade`: a 26% cell on a 37% pitch leaves an 11%
+     gutter, enough for the cells to read as separate pixels at 14px. */
+  --working-nest-cell: 26%;
+  --working-nest-pitch: 37%;
+  position: relative;
+  /* The mark used to be an `<svg>`, which sized itself from its width/height
+     attributes in any container. A `<span>` needs to be told: inline-block so
+     the inline width/height apply, middle-aligned so a mark sitting in a run of
+     text does not ride the baseline. */
+  display: inline-block;
+  vertical-align: middle;
+  /* The `size` prop arrives as an inline `--working-nest-size`, and a class can
+     never outrank an inline declaration — so a stylesheet that wants the mark
+     to track something else (`.thinking-working-nest` follows the chat type
+     scale) sets `--working-nest-size-override`, which is consulted first. The
+     old `<svg width>` was a presentation attribute that any rule outranked;
+     this restores that ordering explicitly. */
+  width: var(--working-nest-size-override, var(--working-nest-size));
+  height: var(--working-nest-size-override, var(--working-nest-size));
   flex: 0 0 auto;
   color: color-mix(in oklab, var(--muted) 78%, transparent);
-  fill: currentColor;
   transform-origin: center;
   transition: color var(--duration-fast) var(--ease);
+}
+
+.working-nest > * {
+  position: absolute;
 }
 
 /* The leader wears `--accent-deep`, which each theme defines as the
@@ -27,9 +62,8 @@
   animation: working-nest-enter var(--motion-fast) var(--ease-out);
 }
 
-.working-nest-dot {
+.working-nest-part {
   opacity: 1;
-  transform-box: fill-box;
   transform-origin: center;
   transform: scale(1);
   transition:
@@ -37,77 +71,304 @@
     transform var(--motion-base) var(--ease-out);
 }
 
-/* The leader rises quickly, holds, then gives way more slowly than it arrived.
-   The next dot starts before the outgoing dot settles, so emphasis moves around
-   a stable cluster instead of making the whole mark blink. */
-.working-nest[data-active="true"] .working-nest-dot {
+/* ───────────────────────────────────────────────────────────── nest
+   Four dots in a 2x2 where emphasis passes clockwise from one leader to the
+   next, so the cluster reads as rearranging rather than blinking. The leader
+   rises quickly, holds, then gives way more slowly than it arrived; the next
+   dot starts before the outgoing one settles. */
+
+.working-nest[data-mark="nest"] .working-nest-part {
+  width: 31.4%;
+  height: 31.4%;
+  border-radius: 50%;
+  background: var(--working-nest-rest, currentColor);
+}
+
+.working-nest[data-mark="nest"] .working-nest-part[data-dot="1"] { left: 14.3%; top: 14.3%; }
+.working-nest[data-mark="nest"] .working-nest-part[data-dot="2"] { left: 54.3%; top: 14.3%; }
+.working-nest[data-mark="nest"] .working-nest-part[data-dot="3"] { left: 54.3%; top: 54.3%; }
+.working-nest[data-mark="nest"] .working-nest-part[data-dot="4"] { left: 14.3%; top: 54.3%; }
+
+.working-nest[data-active="true"][data-mark="nest"] .working-nest-part {
   animation: working-nest-relay var(--working-nest-cycle) linear infinite;
   animation-play-state: var(--loop-play-state, running);
   animation-delay: var(--working-nest-phase-offset);
 }
 
-.working-nest[data-active="true"] .working-nest-dot[data-dot="2"] {
+.working-nest[data-active="true"][data-mark="nest"] .working-nest-part[data-dot="2"] {
   animation-delay: calc(var(--working-nest-phase-offset) - var(--working-nest-cycle) * 0.75);
 }
 
-.working-nest[data-active="true"] .working-nest-dot[data-dot="3"] {
+.working-nest[data-active="true"][data-mark="nest"] .working-nest-part[data-dot="3"] {
   animation-delay: calc(var(--working-nest-phase-offset) - var(--working-nest-cycle) * 0.5);
 }
 
-.working-nest[data-active="true"] .working-nest-dot[data-dot="4"] {
+.working-nest[data-active="true"][data-mark="nest"] .working-nest-part[data-dot="4"] {
   animation-delay: calc(var(--working-nest-phase-offset) - var(--working-nest-cycle) * 0.25);
 }
 
-/* The landing. Work ending is the one beat the mark never had: the relay simply
-   stopped and the four dots were suddenly muted. Now they gather to the centre,
-   overlap into a single dot that pulses once in the leader's color, and open
-   back out to the settled 2x2. Four dots becoming one and then four again is
-   the same cluster the relay animates, read as a single breath.
+/* The one paint-tier keyframe left in the file. The relay's whole idea is a
+   leader in `--accent-deep` handing off to a rest colour, and the alternative —
+   two stacked dots cross-fading — doubles the element count of the default
+   style to save a repaint on four 4px boxes. Deliberate, and the only place it
+   is allowed. */
+@keyframes working-nest-relay {
+  0%, 5% {
+    opacity: 1;
+    background: var(--working-nest-lead);
+    transform: scale(1.2);
+    animation-timing-function: var(--ease-in-out);
+  }
 
-   Short on purpose — it lands under the threshold of being noticed, which is
-   where punctuation belongs. You would only feel its absence. */
+  22% {
+    opacity: 0.72;
+    background: currentColor;
+    transform: scale(0.98);
+    animation-timing-function: var(--ease-out);
+  }
+
+  30%, 91.25% {
+    opacity: 0.3;
+    background: var(--working-nest-rest);
+    transform: scale(0.78);
+    animation-timing-function: var(--ease-out);
+  }
+
+  100% {
+    opacity: 1;
+    background: var(--working-nest-lead);
+    transform: scale(1.2);
+  }
+}
+
+/* ────────────────────────────────────────────────────────── cascade
+   The nest's material at higher resolution: a wave running down the diagonal of
+   a 3x3 field, the closest sibling to the composer's pixel field. Delay is by
+   (col + row), so the lit band travels along the anti-diagonal. */
+
+.working-nest[data-mark="cascade"] .working-nest-part {
+  width: var(--working-nest-cell);
+  height: var(--working-nest-cell);
+  border-radius: 22%;
+  background: currentColor;
+  opacity: 0.22;
+  transform: scale(0.66);
+}
+
+.working-nest[data-mark="cascade"] .working-nest-part:nth-child(3n + 1) { left: 0; }
+.working-nest[data-mark="cascade"] .working-nest-part:nth-child(3n + 2) { left: var(--working-nest-pitch); }
+.working-nest[data-mark="cascade"] .working-nest-part:nth-child(3n + 3) { left: calc(var(--working-nest-pitch) * 2); }
+.working-nest[data-mark="cascade"] .working-nest-part:nth-child(-n + 3) { top: 0; }
+.working-nest[data-mark="cascade"] .working-nest-part:nth-child(n + 4):nth-child(-n + 6) { top: var(--working-nest-pitch); }
+.working-nest[data-mark="cascade"] .working-nest-part:nth-child(n + 7) { top: calc(var(--working-nest-pitch) * 2); }
+
+.working-nest[data-active="true"][data-mark="cascade"] .working-nest-part {
+  animation: working-nest-cascade 1.15s var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
+  animation-delay: var(--working-nest-phase-offset);
+}
+
+.working-nest[data-active="true"][data-mark="cascade"] .working-nest-part:is([data-dot="2"], [data-dot="4"]) {
+  animation-delay: calc(var(--working-nest-phase-offset) - 1.15s * 0.125);
+}
+
+.working-nest[data-active="true"][data-mark="cascade"] .working-nest-part:is([data-dot="3"], [data-dot="5"], [data-dot="7"]) {
+  animation-delay: calc(var(--working-nest-phase-offset) - 1.15s * 0.25);
+}
+
+.working-nest[data-active="true"][data-mark="cascade"] .working-nest-part:is([data-dot="6"], [data-dot="8"]) {
+  animation-delay: calc(var(--working-nest-phase-offset) - 1.15s * 0.375);
+}
+
+.working-nest[data-active="true"][data-mark="cascade"] .working-nest-part[data-dot="9"] {
+  animation-delay: calc(var(--working-nest-phase-offset) - 1.15s * 0.5);
+}
+
+@keyframes working-nest-cascade {
+  0%, 62% { opacity: 0.22; transform: scale(0.66); }
+  18% { opacity: 1; transform: scale(1.06); }
+  40% { opacity: 0.4; transform: scale(0.8); }
+  100% { opacity: 0.22; transform: scale(0.66); }
+}
+
+/* ──────────────────────────────────────────────────────────── meter
+   Three bars on periods with no common multiple worth noticing, so the figure
+   never visibly repeats. Reads as throughput rather than as waiting. The
+   phase offset is deliberately not applied: these bars are already mutually
+   out of step, and giving two marks the same offset would make them agree more,
+   not less. */
+
+.working-nest[data-mark="meter"] .working-nest-part {
+  bottom: 0;
+  width: 22%;
+  height: 100%;
+  border-radius: 1.5px;
+  background: currentColor;
+  transform-origin: 50% 100%;
+}
+
+.working-nest[data-mark="meter"] .working-nest-part[data-dot="1"] { left: 6%; }
+.working-nest[data-mark="meter"] .working-nest-part[data-dot="2"] { left: 39%; background: var(--working-nest-lead, currentColor); }
+.working-nest[data-mark="meter"] .working-nest-part[data-dot="3"] { left: 72%; }
+
+.working-nest[data-active="true"][data-mark="meter"] .working-nest-part {
+  animation-play-state: var(--loop-play-state, running);
+  animation-timing-function: var(--ease-in-out);
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+.working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="1"] {
+  animation-name: working-nest-meter-a;
+  animation-duration: 0.62s;
+}
+
+.working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="2"] {
+  animation-name: working-nest-meter-b;
+  animation-duration: 0.83s;
+}
+
+.working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="3"] {
+  animation-name: working-nest-meter-c;
+  animation-duration: 0.71s;
+}
+
+@keyframes working-nest-meter-a {
+  from { transform: scaleY(0.24); opacity: 0.55; }
+  to { transform: scaleY(0.86); opacity: 1; }
+}
+
+@keyframes working-nest-meter-b {
+  from { transform: scaleY(0.9); opacity: 1; }
+  to { transform: scaleY(0.3); opacity: 0.6; }
+}
+
+@keyframes working-nest-meter-c {
+  from { transform: scaleY(0.4); opacity: 0.7; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+
+/* ──────────────────────────────────────────────────────────── orbit
+   A comet and its trail on a fixed track. The trail is a static arrangement of
+   five dots inside the group that rotates, so the whole figure costs one
+   animation — the cheapest style here, and the smoothest, because a linear
+   rotation has nothing to stutter on. */
+
+.working-nest[data-mark="orbit"] .working-nest-part {
+  inset: 0;
+}
+
+.working-nest[data-active="true"][data-mark="orbit"] .working-nest-part {
+  animation: working-nest-orbit 1.1s linear infinite;
+  animation-play-state: var(--loop-play-state, running);
+  animation-delay: var(--working-nest-phase-offset);
+}
+
+/* Each trail dot is a full-box layer rotated to its own angle, so the dot sits
+   on the track without any per-size arithmetic. */
+.working-nest[data-mark="orbit"] .working-nest-part > i {
+  position: absolute;
+  inset: 0;
+  transform: rotate(calc(var(--working-nest-trail) * -34deg));
+}
+
+.working-nest[data-mark="orbit"] .working-nest-part > i::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 36%;
+  width: 28%;
+  height: 28%;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: calc(1 - var(--working-nest-trail) * 0.21);
+  transform: scale(calc(1 - var(--working-nest-trail) * 0.16));
+}
+
+.working-nest[data-mark="orbit"] .working-nest-part > i:first-child::after {
+  background: var(--working-nest-lead, currentColor);
+}
+
+@keyframes working-nest-orbit {
+  to { transform: rotate(360deg); }
+}
+
+/* ─────────────────────────────────────────────────────────── landing
+   Work ending is the one beat the mark never had: the loop simply stopped and
+   the parts were suddenly muted. Now the whole mark takes one short breath —
+   it draws in, pulses once in the leader's colour, and opens back out.
+
+   Short on purpose: it lands under the threshold of being noticed, which is
+   where punctuation belongs. You would only feel its absence.
+
+   Applied to the container rather than to the parts, so it reads the same
+   whether the mark is four dots, nine cells, three bars or a comet. */
 .working-nest[data-settling="true"] {
   /* The leader's color is defined under [data-active] and goes away with it, so
      the landing names its own. A surface with its own identity color overrides
      `--working-nest-lead` at higher specificity and is picked up here too. */
   --working-nest-lead: var(--accent-deep);
-}
-
-.working-nest[data-settling="true"] .working-nest-dot {
+  color: var(--working-nest-lead);
   animation: working-nest-land var(--working-nest-settle-duration) var(--ease) both;
 }
 
-/* Each dot's trip to the centre of the 14-unit box. CSS transform lengths on an
-   SVG child are user units, so these are the exact offsets from each dot's
-   cx/cy to (7, 7) — they meet as one circle rather than a cluster. */
-.working-nest[data-settling="true"] .working-nest-dot[data-dot="1"] {
-  --working-nest-land-x: 2.8px;
-  --working-nest-land-y: 2.8px;
+.working-nest[data-settling="true"] .working-nest-part {
+  /* Freeze the loop's parts at their resting geometry so the container's breath
+     is the only motion in the landing. */
+  animation: none;
+  opacity: 1;
+  transform: none;
 }
 
-.working-nest[data-settling="true"] .working-nest-dot[data-dot="2"] {
-  --working-nest-land-x: -2.8px;
-  --working-nest-land-y: 2.8px;
+@keyframes working-nest-land {
+  0% {
+    transform: scale(1);
+    opacity: 0.82;
+    animation-timing-function: var(--ease-in-out);
+  }
+
+  46% {
+    transform: scale(0.94);
+    opacity: 1;
+    animation-timing-function: var(--ease-out);
+  }
+
+  /* The pulse — the only frame in the mark's life where it is bigger than its
+     resting size, and the whole reason the landing reads as an event. */
+  60% {
+    transform: scale(1.16);
+    opacity: 1;
+    animation-timing-function: var(--ease-out);
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
-.working-nest[data-settling="true"] .working-nest-dot[data-dot="3"] {
-  --working-nest-land-x: -2.8px;
-  --working-nest-land-y: -2.8px;
-}
+/* A mark asked to hold still (WorkingNest's `still`) lands on exactly the state
+   reduced motion already defines: the live accent on a filled figure, no loop,
+   no entrance, no landing. Placed after the active and settling rules so equal
+   specificity resolves in its favour.
 
-.working-nest[data-settling="true"] .working-nest-dot[data-dot="4"] {
-  --working-nest-land-x: 2.8px;
-  --working-nest-land-y: -2.8px;
-}
-
-/* A nest asked to hold still (WorkingNest's `still`) lands on exactly the state
-   reduced motion already defines: the live accent on a filled 2x2, no relay, no
-   entrance, no landing. Placed after the active and settling rules so equal
-   specificity resolves in its favour. */
+   The reduced-motion block below also pins the resting geometry per style,
+   because a `cascade` cell and a `meter` bar rest at a scale their keyframes
+   set rather than at 1. `still` reuses those rules by matching the same
+   selectors. */
 .working-nest[data-still="true"],
-.working-nest[data-still="true"] .working-nest-dot {
+.working-nest[data-still="true"] .working-nest-part {
   animation: none;
 }
+
+.working-nest[data-still="true"][data-mark="cascade"] .working-nest-part {
+  opacity: 0.62;
+  transform: scale(0.9);
+}
+
+.working-nest[data-still="true"][data-mark="meter"] .working-nest-part[data-dot="1"] { transform: scaleY(0.5); }
+.working-nest[data-still="true"][data-mark="meter"] .working-nest-part[data-dot="2"] { transform: scaleY(0.85); }
+.working-nest[data-still="true"][data-mark="meter"] .working-nest-part[data-dot="3"] { transform: scaleY(0.65); }
 
 @keyframes working-nest-enter {
   from {
@@ -120,75 +381,22 @@
   }
 }
 
-@keyframes working-nest-relay {
-  0%, 5% {
-    opacity: 1;
-    fill: var(--working-nest-lead);
-    transform: scale(1.2);
-    animation-timing-function: var(--ease-in-out);
-  }
-
-  22% {
-    opacity: 0.72;
-    fill: currentColor;
-    transform: scale(0.98);
-    animation-timing-function: var(--ease-out);
-  }
-
-  30%, 91.25% {
-    opacity: 0.3;
-    fill: var(--working-nest-rest);
-    transform: scale(0.78);
-    animation-timing-function: var(--ease-out);
-  }
-
-  100% {
-    opacity: 1;
-    fill: var(--working-nest-lead);
-    transform: scale(1.2);
-  }
-}
-
-@keyframes working-nest-land {
-  0% {
-    opacity: 0.82;
-    fill: currentColor;
-    transform: translate(0, 0) scale(1);
-    animation-timing-function: var(--ease-in-out);
-  }
-
-  /* Gathered: one dot, four times over, in the leader's color. */
-  46% {
-    opacity: 1;
-    fill: var(--working-nest-lead);
-    transform: translate(var(--working-nest-land-x, 0), var(--working-nest-land-y, 0)) scale(0.94);
-    animation-timing-function: var(--ease-out);
-  }
-
-  /* The pulse — the only frame in the mark's life where it is bigger than its
-     resting size, and the whole reason the landing reads as an event. */
-  60% {
-    opacity: 1;
-    fill: var(--working-nest-lead);
-    transform: translate(var(--working-nest-land-x, 0), var(--working-nest-land-y, 0)) scale(1.16);
-    animation-timing-function: var(--ease-out);
-  }
-
-  100% {
-    opacity: 1;
-    fill: currentColor;
-    transform: translate(0, 0) scale(1);
-  }
-}
-
-/* Reduced motion pins the dots. The filled 2x2 still reads as "working" at
-   rest, and the accent color carries the signal on its own. */
+/* Reduced motion pins every style to a still frame. Each one still reads as
+   "working" at rest — a filled 2x2, a filled field, three bars, a comet parked
+   on its track — and the accent color carries the signal on its own. */
 @media (prefers-reduced-motion: reduce) {
-  .working-nest[data-active="true"] .working-nest-dot {
+  .working-nest[data-active="true"] .working-nest-part,
+  .working-nest[data-settling="true"] .working-nest-part,
+  .working-nest[data-settling="true"] {
     animation: none;
   }
 
-  .working-nest[data-settling="true"] .working-nest-dot {
-    animation: none;
+  .working-nest[data-active="true"][data-mark="cascade"] .working-nest-part {
+    opacity: 0.62;
+    transform: scale(0.9);
   }
+
+  .working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="1"] { transform: scaleY(0.5); }
+  .working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="2"] { transform: scaleY(0.85); }
+  .working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="3"] { transform: scaleY(0.65); }
 }

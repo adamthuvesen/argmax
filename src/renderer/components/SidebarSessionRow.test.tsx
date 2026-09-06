@@ -610,7 +610,9 @@ describe("SidebarSessionRow", () => {
 
     const row = screen.getByTitle(/Build the dashboard — complete/);
     // No leading glyph at all: a done session is not worth a column of checks.
-    expect(row.querySelector("svg")).toBeNull();
+    // `.status-marker` rather than "svg": the working nest is HTML now, so an
+    // svg check would pass whether or not a mark was rendered.
+    expect(row.querySelector(".status-marker")).toBeNull();
   });
 
   it("keeps a leading marker on rows that carry a live signal", () => {
@@ -628,10 +630,16 @@ describe("SidebarSessionRow", () => {
     const { rerender } = render(
       <SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "failed" }} />
     );
-    expect(screen.getByTitle(/Build the dashboard — failed/).querySelector("svg")).not.toBeNull();
+    // `.status-marker` rather than "svg": a running row's marker is the working
+    // nest, which is HTML boxes so WebKit will composite it (styles/working-nest.css).
+    expect(
+      screen.getByTitle(/Build the dashboard — failed/).querySelector(".status-marker")
+    ).not.toBeNull();
 
     rerender(<SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "running" }} />);
-    expect(screen.getByTitle(/Build the dashboard — running/).querySelector("svg")).not.toBeNull();
+    expect(
+      screen.getByTitle(/Build the dashboard — running/).querySelector(".status-marker")
+    ).not.toBeNull();
 
     rerender(
       <SidebarSessionRow
@@ -641,7 +649,9 @@ describe("SidebarSessionRow", () => {
       />
     );
     expect(
-      screen.getByTitle(/Build the dashboard — complete — waiting for input/).querySelector("svg")
+      screen
+        .getByTitle(/Build the dashboard — complete — waiting for input/)
+        .querySelector(".status-marker")
     ).not.toBeNull();
   });
 
@@ -799,15 +809,17 @@ describe("SidebarSessionRow", () => {
     expect(iconColorRule?.[1]).toContain("--working-nest-rest: color-mix(in oklab, var(--session-row-icon-color)");
     expect(iconColorRule?.[1]).toContain("color: var(--session-row-icon-color)");
 
-    // ...its dots share the asymmetric relay and stable phase offset...
-    const dotRule = /\.working-nest\[data-active="true"\]\s\.working-nest-dot\s*\{[^}]*animation:\s*working-nest-relay/i.exec(css);
-    expect(dotRule, "expected relay animation on the working dots").not.toBeNull();
+    // ...its parts share the asymmetric relay and stable phase offset...
+    const partRule =
+      /\.working-nest\[data-active="true"\]\[data-mark="nest"\]\s\.working-nest-part\s*\{[^}]*animation:\s*working-nest-relay/i.exec(css);
+    expect(partRule, "expected relay animation on the nest parts").not.toBeNull();
     expect(css).toContain("@keyframes working-nest-relay");
     expect(css).toContain("--working-nest-phase-offset");
 
-    // ...and reduced-motion users get a static dot.
-    const reduceBlock = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^{}]*\.working-nest\[data-active="true"\]\s\.working-nest-dot\s*\{[^}]*animation:\s*none/i.exec(css);
-    expect(reduceBlock, "expected reduced-motion override for the working dot").not.toBeNull();
+    // ...and reduced-motion users get a static mark, whichever style is picked.
+    const reduceBlock =
+      /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^{}]*\.working-nest\[data-active="true"\]\s\.working-nest-part[^{}]*\{[^}]*animation:\s*none/i.exec(css);
+    expect(reduceBlock, "expected reduced-motion override for the working parts").not.toBeNull();
   });
 
   it("ships sidebar action CSS that reveals on hover and stays keyboard-reachable", () => {

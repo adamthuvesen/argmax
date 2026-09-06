@@ -1,6 +1,14 @@
 import type { JSX } from "react";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
 import {
+  ACTIVITY_MARK_OPTIONS,
+  SESSION_UNDERLINE_OPTIONS,
+  setActivityMark,
+  setSessionUnderline,
+  useActivityMark,
+  useSessionUnderline
+} from "../../lib/activityMark.js";
+import {
   CHAT_WIDTH_HINTS,
   CHAT_WIDTH_MAX,
   CHAT_WIDTH_MIN,
@@ -21,9 +29,11 @@ import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import { isUserBubbleTint, type UserBubbleTint } from "../../lib/userBubbleTint.js";
 import {
   AccentPicker,
+  ActivityMarkPicker,
   FontFamilyPicker,
   SegmentedControl,
   SettingGroup,
+  SessionUnderlinePicker,
   SettingRow,
   Slider,
   ThemePicker,
@@ -93,6 +103,11 @@ export function AppearanceSettings({
     if (size) apply(size);
   };
   const fontStack = FONT_OPTIONS.find((option) => option.id === fontFamily)?.stack;
+  // Straight from the store rather than through props: every running mark in
+  // the app subscribes to it, and a second copy in App state would be a second
+  // source of truth. See lib/activityMark.ts.
+  const activityMark = useActivityMark();
+  const sessionUnderline = useSessionUnderline();
 
   return (
     <>
@@ -106,6 +121,32 @@ export function AppearanceSettings({
           label="Accent"
           description={ACCENT_OPTIONS.find((option) => option.id === accentId)?.hint}
           control={<AccentPicker value={accentId} onChange={onAccentChange} />}
+        />
+        <SettingRow
+          label="Activity mark"
+          description={ACTIVITY_MARK_OPTIONS.find((option) => option.id === activityMark)?.hint}
+          htmlFor="settings-activity-mark"
+          control={
+            <ActivityMarkPicker
+              inputId="settings-activity-mark"
+              value={activityMark}
+              onChange={setActivityMark}
+            />
+          }
+        />
+        <SettingRow
+          label="Running row underline"
+          description={
+            SESSION_UNDERLINE_OPTIONS.find((option) => option.id === sessionUnderline)?.hint
+          }
+          htmlFor="settings-session-underline"
+          control={
+            <SessionUnderlinePicker
+              inputId="settings-session-underline"
+              value={sessionUnderline}
+              onChange={setSessionUnderline}
+            />
+          }
         />
         <SettingRow
           label="Your message bubbles"

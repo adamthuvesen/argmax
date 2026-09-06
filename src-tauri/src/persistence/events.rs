@@ -804,7 +804,7 @@ fn current_native_agent_parent_conversation_id(
     let Some((provider, parent_conversation_id, resume_fork)) = current else {
         return Ok(None);
     };
-    if resume_fork || !matches!(provider.as_str(), "claude" | "codex") {
+    if resume_fork || !matches!(provider.as_str(), "claude" | "codex" | "opencode") {
         return Ok(None);
     }
     Ok(parent_conversation_id.filter(|id| !id.is_empty()))

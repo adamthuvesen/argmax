@@ -22,6 +22,15 @@ export const VERIFICATION_CODEX_PROVIDER = Object.freeze({
   homeEnv: "ARGMAX_VERIFICATION_HOME",
 });
 
+export const VERIFICATION_OPENCODE_PROVIDER = Object.freeze({
+  provider: "opencode",
+  modelId: "opencode/big-pickle",
+  modelLabel: "Big Pickle",
+  modeEnv: "ARGMAX_VERIFICATION",
+  binaryEnv: "ARGMAX_VERIFICATION_OPENCODE_BINARY",
+  homeEnv: "ARGMAX_VERIFICATION_HOME",
+});
+
 export const VERIFICATION_CONVERSATION_ID =
   "argmax-verification-conversation";
 
@@ -38,6 +47,13 @@ export const VERIFICATION_CODEX_SUBAGENT = Object.freeze({
   rootToolUseId: "verification-codex-spawn-agent",
   followUpToolUseId: "verification-codex-send-input",
   description: "Verification persistent Codex child",
+});
+
+export const VERIFICATION_OPENCODE_SUBAGENT = Object.freeze({
+  id: "ses_argmax_verification_child",
+  rootToolUseId: "call_argmax_task_first",
+  followUpToolUseId: "call_argmax_task_follow_up",
+  description: "Verification persistent OpenCode child",
 });
 
 export const VERIFICATION_BARRIERS = Object.freeze({
@@ -72,6 +88,15 @@ export const VERIFICATION_SCENARIOS = Object.freeze({
   persistentCodexSubagentSecond: {
     prompt: "[argmax-verification:persistent-codex-subagent:second]",
     visibleText: "Verification persistent Codex child follow-up response.",
+    resumeConversationId: VERIFICATION_CONVERSATION_ID,
+  },
+  persistentOpencodeSubagentFirst: {
+    prompt: "[argmax-verification:persistent-opencode-subagent:first]",
+    visibleText: "Verification persistent OpenCode child first response.",
+  },
+  persistentOpencodeSubagentSecond: {
+    prompt: "[argmax-verification:persistent-opencode-subagent:second]",
+    visibleText: "Verification persistent OpenCode child follow-up response.",
     resumeConversationId: VERIFICATION_CONVERSATION_ID,
   },
   cancellation: {
@@ -471,6 +496,81 @@ async function runPersistentCodexSubagentSecond(args) {
   await emitCodexSuccess();
 }
 
+async function emitOpencodeEvent(type, part) {
+  await emit({
+    type,
+    timestamp: 1_788_675_207_644,
+    sessionID: VERIFICATION_CONVERSATION_ID,
+    part: { ...part, sessionID: VERIFICATION_CONVERSATION_ID },
+  });
+}
+
+async function emitOpencodeTask({ callId, childId, prompt, visibleText, continuation = false }) {
+  await emitOpencodeEvent("tool_use", {
+    id: `${callId}-part`,
+    type: "tool",
+    callID: callId,
+    tool: "task",
+    state: {
+      status: "completed",
+      metadata: {
+        parentSessionId: VERIFICATION_CONVERSATION_ID,
+        sessionId: childId,
+      },
+      input: {
+        description: VERIFICATION_OPENCODE_SUBAGENT.description,
+        prompt,
+        subagent_type: "general",
+        ...(continuation ? { task_id: childId } : {}),
+      },
+      output: `<task id="${childId}" state="completed">\n<task_result>\n${visibleText}\n</task_result>\n</task>`,
+    },
+  });
+}
+
+async function emitOpencodeSuccess() {
+  await emitOpencodeEvent("step_finish", {
+    type: "step-finish",
+    reason: "stop",
+    tokens: { input: 24, output: 12, reasoning: 0, cache: { read: 8, write: 0 } },
+    cost: 0,
+  });
+}
+
+async function runPersistentOpencodeSubagentFirst(args) {
+  if (args.includes("-s") || args.includes("--resume")) {
+    throw new Error("fresh persistent-opencode-subagent fixture unexpectedly received resume");
+  }
+  const definition = VERIFICATION_SCENARIOS.persistentOpencodeSubagentFirst;
+  await emitOpencodeEvent("step_start", { type: "step-start" });
+  await emitOpencodeTask({
+    callId: VERIFICATION_OPENCODE_SUBAGENT.rootToolUseId,
+    childId: VERIFICATION_OPENCODE_SUBAGENT.id,
+    prompt: "Reply with the first persistent OpenCode verification response.",
+    visibleText: definition.visibleText,
+  });
+  await emitOpencodeEvent("text", { type: "text", text: "Verification OpenCode parent first turn complete." });
+  await emitOpencodeSuccess();
+}
+
+async function runPersistentOpencodeSubagentSecond(args) {
+  const resumeIndex = args.indexOf("-s");
+  if (resumeIndex < 0 || args[resumeIndex + 1] !== VERIFICATION_CONVERSATION_ID) {
+    throw new Error("persistent-opencode-subagent fixture expected opencode run -s with its parent session id");
+  }
+  const definition = VERIFICATION_SCENARIOS.persistentOpencodeSubagentSecond;
+  await emitOpencodeEvent("step_start", { type: "step-start" });
+  await emitOpencodeTask({
+    callId: VERIFICATION_OPENCODE_SUBAGENT.followUpToolUseId,
+    childId: VERIFICATION_OPENCODE_SUBAGENT.id,
+    prompt: "Reply with the follow-up persistent OpenCode verification response.",
+    visibleText: definition.visibleText,
+    continuation: true,
+  });
+  await emitOpencodeEvent("text", { type: "text", text: "Verification OpenCode parent follow-up complete." });
+  await emitOpencodeSuccess();
+}
+
 async function runFirstTurn(args) {
   if (args.includes("--resume")) {
     throw new Error("fresh chat-resume fixture unexpectedly received --resume");
@@ -590,6 +690,14 @@ export async function runProviderFixture(args = process.argv.slice(2)) {
   }
   if (prompt.includes(VERIFICATION_SCENARIOS.persistentCodexSubagentSecond.prompt)) {
     await runPersistentCodexSubagentSecond(args);
+    return;
+  }
+  if (prompt.includes(VERIFICATION_SCENARIOS.persistentOpencodeSubagentFirst.prompt)) {
+    await runPersistentOpencodeSubagentFirst(args);
+    return;
+  }
+  if (prompt.includes(VERIFICATION_SCENARIOS.persistentOpencodeSubagentSecond.prompt)) {
+    await runPersistentOpencodeSubagentSecond(args);
     return;
   }
   if (prompt.includes(VERIFICATION_SCENARIOS.cancellation.prompt)) {

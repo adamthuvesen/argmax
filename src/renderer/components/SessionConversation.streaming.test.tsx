@@ -1171,9 +1171,11 @@ describe("SessionConversation — streaming & composer", () => {
   });
 
   it.each([
-    { prompt: "ask Curie to continue", hasReferences: true },
-    { prompt: "ask Curieville to continue", hasReferences: false }
-  ])("passes native child references for a Codex follow-up only for a whole-word alias ($prompt)", async ({
+    { provider: "codex" as const, prompt: "ask Curie to continue", hasReferences: true },
+    { provider: "opencode" as const, prompt: "ask Curie to continue", hasReferences: true },
+    { provider: "opencode" as const, prompt: "ask Curieville to continue", hasReferences: false }
+  ])("passes native child references for $provider follow-up only for a whole-word alias ($prompt)", async ({
+    provider,
     prompt,
     hasReferences
   }) => {
@@ -1190,7 +1192,7 @@ describe("SessionConversation — streaming & composer", () => {
       agentCodename: "Curie"
     });
     renderConversation(
-      baseSession({ provider: "codex", state: "complete", providerConversationId: "parent-native" }),
+      baseSession({ provider, state: "complete", providerConversationId: "parent-native" }),
       [nativeAgent],
       { onSendSessionInput }
     );

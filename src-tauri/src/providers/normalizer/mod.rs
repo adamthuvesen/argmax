@@ -45,6 +45,7 @@ use self::{
     },
     opencode::{
         extract_session_id as extract_opencode_session_id, extract_usage as extract_opencode_usage,
+        native_agent_lifecycle_events as normalize_opencode_native_agent_lifecycle_events,
         normalize_event as normalize_opencode_event,
     },
 };
@@ -513,8 +514,14 @@ fn normalize_json_payload(
     };
 
     if provider == ProviderId::Opencode {
+        let mut events = normalize_opencode_event(event, &payload, provider_type.as_deref());
+        events.extend(normalize_opencode_native_agent_lifecycle_events(
+            event,
+            &payload,
+            provider_type.as_deref(),
+        ));
         return NormalizedProviderResult {
-            events: normalize_opencode_event(event, &payload, provider_type.as_deref()),
+            events,
             usages,
             provider_conversation_id,
             ..NormalizedProviderResult::default()

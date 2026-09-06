@@ -43,6 +43,7 @@ export async function verifyBrowserSession(options) {
     titleIncludes,
     expectedTexts,
     agentExpectedTexts = null,
+    agentMustSucceed = false,
     theme = null,
     timeoutMs = 30_000
   } = options;
@@ -94,10 +95,14 @@ export async function verifyBrowserSession(options) {
               const text = panel?.innerText ?? '';
               const tabs = document.querySelectorAll('[aria-label="Subagents and multitasks"] [role="tab"]');
               const missing = ${JSON.stringify(agentExpectedTexts)}.filter(expected => !text.includes(expected));
-              if (!missing.length && tabs.length === 1) return {ok: true, tabCount: tabs.length, runCount: panel.querySelectorAll('[aria-label^="Agent activity:"]').length, text};
+              const activities = [...(panel?.querySelectorAll('[aria-label^="Agent activity:"]') ?? [])];
+              const statuses = activities.map((activity) => activity.querySelector('.agent-activity-mark')?.getAttribute("data-status") ?? "missing");
+              const failedRuns = statuses.filter((status) => status === "error").length;
+              const doneRuns = statuses.filter((status) => status === "done").length;
+              if (!missing.length && tabs.length === 1 && (!${JSON.stringify(agentMustSucceed)} || (activities.length >= 2 && doneRuns === activities.length))) return {ok: true, tabCount: tabs.length, runCount: activities.length, statuses, failedRuns, text};
               await wait();
             }
-            return {ok: false, error: "persistent dock did not show both runs in one tab", text: document.body.innerText.slice(-4000)};
+            return {ok: false, error: "persistent dock did not show two successful runs in one tab", text: document.body.innerText.slice(-4000)};
           })()`
         : sessionProbe({ titleIncludes, expectedTexts, timeoutMs: 15_000 }),
       ...(theme ? ["--theme", theme] : [])

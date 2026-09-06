@@ -20,6 +20,32 @@ function event(
 }
 
 describe("buildAgentActivity", () => {
+  it("uses row cursors so same-time completed lifecycle rows win newest-first reads", () => {
+    const identity = {
+      providerParentConversationId: "parent-native",
+      providerChildSessionId: "child-native",
+      agentRootToolUseId: "task-root",
+      status: "completed"
+    };
+    const activity = buildAgentActivity({
+      parentToolUseId: "task-root",
+      events: [
+        { ...event("completed", "agent.completed", "2026-05-12T15:00:01.000Z", "OpenCode task result", identity), rowCursor: 12 },
+        { ...event("started", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", identity), rowCursor: 11 },
+        { ...event("parent", "command.completed", "2026-05-12T15:00:01.000Z", "task", {
+          id: "task-root", name: "task", providerChildSessionId: "child-native", providerParentConversationId: "parent-native",
+          agentRootToolUseId: "task-root", agentRunId: "task-root", providerInvocationId: "invoke-1", status: "completed",
+          input: { description: "Inspect" }
+        }), rowCursor: 10 }
+      ],
+      sessionRunning: false,
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-native" }
+    });
+
+    expect(activity.status).toBe("done");
+    expect(activity.finalOutput).toContain("OpenCode task result");
+  });
+
   it("collects Claude-style subagent messages and child tool calls", () => {
     const activity = buildAgentActivity({
       parentToolUseId: "toolu_parent",

@@ -231,7 +231,14 @@ export function buildAgentActivity(params: {
         (!agentRunId || decoded.agentRunId === agentRunId) &&
         (!providerInvocationId || decoded.providerInvocationId === providerInvocationId);
     })
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    .sort((a, b) => {
+      const aCursor = typeof a.rowCursor === "number" ? a.rowCursor : null;
+      const bCursor = typeof b.rowCursor === "number" ? b.rowCursor : null;
+      if (aCursor !== null && bCursor !== null && aCursor !== bCursor) return aCursor - bCursor;
+      const time = a.createdAt.localeCompare(b.createdAt);
+      if (time !== 0) return time;
+      return Number(a.type === "agent.completed") - Number(b.type === "agent.completed");
+    });
   const latestLifecycle = lifecycle.at(-1);
   const latestAgentEvent = latestLifecycle ? decodeTimelineEvent(latestLifecycle) : null;
   const status = latestAgentEvent?.kind === "agent"

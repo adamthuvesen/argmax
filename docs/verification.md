@@ -42,6 +42,13 @@ reporting `pending_init` must leave the child running. Verify provider support
 separately with a live Codex exchange through the scratch app, then restart and
 continue the same child with `send_input` and `resume_agent` when needed.
 
+`persistent-opencode-subagent --native off` exercises OpenCode's native `task`
+tool, including a continuation with the same `task_id`, persisted lifecycle
+rows across a scratch backend restart, and the Agents pane in light and dark
+browser renders. OpenCode emits the child result in the parent `tool_use`
+envelope, so this fixture verifies native identity and dock history rather than
+child transcript streaming.
+
 Each run prints a JSON result with its evidence location. Failures retain the
 diagnostics needed to reproduce the assertion. `--out <dir>` selects the
 evidence destination, which must be empty or new. `--keep` retains the

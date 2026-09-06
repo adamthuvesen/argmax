@@ -17,6 +17,8 @@ import {
   VERIFICATION_CONVERSATION_ID,
   VERIFICATION_CODEX_PROVIDER,
   VERIFICATION_CODEX_SUBAGENT,
+  VERIFICATION_OPENCODE_PROVIDER,
+  VERIFICATION_OPENCODE_SUBAGENT,
   VERIFICATION_PROVIDER,
   VERIFICATION_SCENARIOS,
   VERIFICATION_SUBAGENT,
@@ -24,19 +26,20 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const terminalStates = new Set(["complete", "failed", "cancelled"]);
-const persistentSubagentScenarios = new Set(["persistent-subagent", "persistent-codex-subagent"]);
+const persistentSubagentScenarios = new Set(["persistent-subagent", "persistent-codex-subagent", "persistent-opencode-subagent"]);
 const scenarioDefinitionKeys = Object.freeze({
   "chat-resume": "chatResumeFirst",
   "persistent-subagent": "persistentSubagentFirst",
   "persistent-codex-subagent": "persistentCodexSubagentFirst",
+  "persistent-opencode-subagent": "persistentOpencodeSubagentFirst",
   cancellation: "cancellation",
   "provider-error": "providerError",
 });
 
 function providerForScenario(scenario) {
-  return scenario === "persistent-codex-subagent"
-    ? VERIFICATION_CODEX_PROVIDER
-    : VERIFICATION_PROVIDER;
+  if (scenario === "persistent-codex-subagent") return VERIFICATION_CODEX_PROVIDER;
+  if (scenario === "persistent-opencode-subagent") return VERIFICATION_OPENCODE_PROVIDER;
+  return VERIFICATION_PROVIDER;
 }
 
 function definitionForScenario(scenario) {
@@ -68,7 +71,7 @@ export function parseVerifyArgs(argv) {
     else throw new Error(`unknown argument: ${arg}`);
   }
   if (!Object.hasOwn(scenarioDefinitionKeys, options.scenario)) {
-    throw new Error("--scenario must be chat-resume, persistent-subagent, persistent-codex-subagent, cancellation, or provider-error");
+    throw new Error("--scenario must be chat-resume, persistent-subagent, persistent-codex-subagent, persistent-opencode-subagent, cancellation, or provider-error");
   }
   if (!['required', 'auto', 'off'].includes(options.native)) {
     throw new Error("--native must be required, auto, or off");
@@ -290,13 +293,22 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
 
   if (persistentSubagentScenarios.has(scenario)) {
     const isCodex = provider.provider === "codex";
-    const subagent = isCodex ? VERIFICATION_CODEX_SUBAGENT : VERIFICATION_SUBAGENT;
+    const isOpencode = provider.provider === "opencode";
+    const subagent = isCodex
+      ? VERIFICATION_CODEX_SUBAGENT
+      : isOpencode
+        ? VERIFICATION_OPENCODE_SUBAGENT
+        : VERIFICATION_SUBAGENT;
     const firstDefinition = isCodex
       ? VERIFICATION_SCENARIOS.persistentCodexSubagentFirst
-      : VERIFICATION_SCENARIOS.persistentSubagentFirst;
+      : isOpencode
+        ? VERIFICATION_SCENARIOS.persistentOpencodeSubagentFirst
+        : VERIFICATION_SCENARIOS.persistentSubagentFirst;
     const secondDefinition = isCodex
       ? VERIFICATION_SCENARIOS.persistentCodexSubagentSecond
-      : VERIFICATION_SCENARIOS.persistentSubagentSecond;
+      : isOpencode
+        ? VERIFICATION_SCENARIOS.persistentOpencodeSubagentSecond
+        : VERIFICATION_SCENARIOS.persistentSubagentSecond;
     const first = await collectUntilTerminal(bridge, launched.id, timeoutMs);
     if (first.session.state !== "complete") throw new Error(`persistent child first turn ended in ${first.session.state}`);
     if (first.session.providerConversationId !== VERIFICATION_CONVERSATION_ID) throw new Error("persistent child parent conversation id was not persisted");
@@ -304,6 +316,10 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
       assertRecordIncludes(first.records, `\"tool\":\"spawn_agent\"`, "persistent Codex child spawn");
       assertRecordIncludes(first.records, `\"receiver_thread_ids\":[\"${subagent.id}\"]`, "persistent Codex child identity");
       assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent Codex child first response");
+    } else if (isOpencode) {
+      assertRecordIncludes(first.records, `\"tool\":\"task\"`, "persistent OpenCode child task");
+      assertRecordIncludes(first.records, `\"sessionId\":\"${subagent.id}\"`, "persistent OpenCode child identity");
+      assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent OpenCode child first response");
     } else {
       assertRecordIncludes(first.records, `\"task_id\":\"${subagent.id}\"`, "persistent child start");
       assertRecordIncludes(first.records, `\"parent_tool_use_id\":\"${subagent.rootToolUseId}\"`, "persistent child parent linkage");
@@ -328,6 +344,10 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
       assertRecordIncludes(second.records, `\"receiver_thread_ids\":[\"${subagent.id}\"]`, "persistent Codex child stable identity");
       assertRecordIncludes(second.records, `\"status\":\"pending_init\"`, "persistent Codex child restart state");
       assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent Codex child follow-up response");
+    } else if (isOpencode) {
+      assertRecordIncludes(second.records, `\"task_id\":\"${subagent.id}\"`, "persistent OpenCode child continuation");
+      assertRecordIncludes(second.records, `\"callID\":\"${subagent.followUpToolUseId}\"`, "persistent OpenCode child follow-up invocation");
+      assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent OpenCode child follow-up response");
     } else {
       assertRecordIncludes(second.records, `\"resumedAgentId\":\"${subagent.id}\"`, "persistent child resume identity");
       assertRecordIncludes(second.records, `\"tool_use_id\":\"${subagent.followUpToolUseId}\"`, "persistent child follow-up invocation");
@@ -376,6 +396,7 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
           firstDefinition.visibleText,
           secondDefinition.visibleText,
         ],
+        agentMustSucceed: true,
         theme,
       }));
     }
@@ -432,6 +453,12 @@ function expectedPersistenceTexts(scenario) {
     return [
       VERIFICATION_SCENARIOS.persistentCodexSubagentFirst.visibleText,
       VERIFICATION_SCENARIOS.persistentCodexSubagentSecond.visibleText,
+    ];
+  }
+  if (scenario === "persistent-opencode-subagent") {
+    return [
+      VERIFICATION_SCENARIOS.persistentOpencodeSubagentFirst.visibleText,
+      VERIFICATION_SCENARIOS.persistentOpencodeSubagentSecond.visibleText,
     ];
   }
   if (scenario === "cancellation") return [VERIFICATION_SCENARIOS.cancellation.visibleText];
@@ -718,7 +745,7 @@ export async function runVerification(options) {
           if (!result.ok) throw new Error(`native UI verification failed: ${result.errors.join("; ")}`);
           return result;
         }
-      : ({ name, expectedTexts, agentExpectedTexts, theme }) => verifyBrowserSession({
+      : ({ name, expectedTexts, agentExpectedTexts, agentMustSucceed, theme }) => verifyBrowserSession({
           repoRoot,
           port: remotePort,
           token: remoteToken,
@@ -727,6 +754,7 @@ export async function runVerification(options) {
           titleIncludes,
           expectedTexts,
           agentExpectedTexts,
+          agentMustSucceed,
           theme
         });
     const recordNativeAction = (result) => {

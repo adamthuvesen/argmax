@@ -64,3 +64,11 @@ assignments is unambiguous. Older trace history remains stored when it cannot
 be assigned safely, and the native completion summary remains available.
 
 Codex child traces also carry authoritative parent-thread lineage. If structured stdout omitted the matching `spawn_agent`, trace reconciliation stores a deterministic synthetic launch before importing the child. A later real launch reparents those child rows and supersedes the synthetic pair. Imported rows keep their `rowid` values. The synthetic rows are replaced by hidden tombstones with fresh `rowid` values so an incremental session read removes stale launch cards from an open renderer.
+
+OpenCode native `task` launches persist the child session from the tool
+metadata (`sessionId`) together with the parent conversation (`parentSessionId`)
+and the task call id. A continuation supplies the same child as
+`state.input.task_id`, so each parent invocation gets its own lifecycle run
+while the renderer keeps one dock tab. OpenCode has no separate child trace
+reader, and its parent stream carries the child result rather than child body
+events.

@@ -60,6 +60,7 @@ pub(super) fn agent_reference_prompt(
     let guidance = match provider.as_str() {
         "claude" => "Use SendMessage to continue a referenced agent when its existing context is relevant.",
         "codex" => "Use send_input to continue the referenced native child with its existing context, using resume_agent first if the child is no longer active. Wait for the child's terminal status and answer. A successful delivery or pending_init status does not mean the child has completed.",
+        "opencode" => "Use the task tool with the referenced native task_id to continue it with its existing context. Verify the returned task id matches the referenced id before treating it as a continuation. Wait for the task result and answer. Do not use direct dock input.",
         _ => return Err(ArgmaxError::service("AGENT_REFERENCE_UNAVAILABLE", "This provider does not support native agent references.")),
     };
     Ok(format!(
@@ -470,7 +471,7 @@ mod tests {
 
     #[test]
     fn dock_references_resolve_only_in_their_current_native_conversation() {
-        for provider in ["claude", "codex"] {
+        for provider in ["claude", "codex", "opencode"] {
             let database = Database::open_in_memory().expect("open db");
             let connection = database.connection();
             seed_session(&connection);
@@ -507,6 +508,9 @@ mod tests {
             assert!(prompt.contains(r#"{"Gauss":"child-1"}"#));
             assert!(prompt.ends_with("Ask Gauss again"));
             assert!(prompt.contains(&format!("this {provider} conversation")));
+            if provider == "opencode" {
+                assert!(prompt.contains("task_id"));
+            }
             connection
                 .execute(
                     "UPDATE sessions SET provider = 'cursor' WHERE id = 's1'",

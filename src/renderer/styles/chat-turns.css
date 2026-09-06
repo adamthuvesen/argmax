@@ -331,9 +331,12 @@
   user-select: none;
 }
 
+/* The one mark that ignores its `size` prop: in the transcript it has to grow
+   with the chat type scale, not stay pinned at 12px. `-override` rather than
+   `width`, because the prop arrives as an inline custom property that no class
+   could outrank — see styles/working-nest.css. */
 .thinking-working-nest {
-  width: calc(var(--text-base) + 2px);
-  height: calc(var(--text-base) + 2px);
+  --working-nest-size-override: calc(var(--text-base) + 2px);
 }
 
 /* Sized and weighted like the answer that replaces it, so the label reads as
@@ -1235,6 +1238,11 @@ button.tool-call-row-button {
      line, which is `--text-base * 1.3` tall inside the button's 2px of top
      padding. A fixed 14px mark drifted off the text at the larger type sizes. */
   --agent-launch-mark-size: calc(var(--text-base) + 2px);
+  /* The class rides three different elements — the working nest, an emblem and
+     a lucide glyph — so it states the size both ways: the nest reads the
+     override (its own size arrives inline and no class could outrank it), the
+     other two read plain width/height. */
+  --working-nest-size-override: var(--agent-launch-mark-size);
   flex: 0 0 auto;
   width: var(--agent-launch-mark-size);
   height: var(--agent-launch-mark-size);

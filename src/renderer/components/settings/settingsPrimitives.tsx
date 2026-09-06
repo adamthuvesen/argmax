@@ -2,9 +2,16 @@ import { ChevronDown } from "lucide-react";
 import { useRef, useState, type CSSProperties, type JSX, type ReactNode } from "react";
 import type { DiagnosticsReport } from "../../../shared/types.js";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
+import {
+  ACTIVITY_MARK_OPTIONS,
+  SESSION_UNDERLINE_OPTIONS,
+  type ActivityMarkId,
+  type SessionUnderlineId
+} from "../../lib/activityMark.js";
 import { FONT_OPTIONS, type FontFamilyId, type FontOption } from "../../lib/fonts.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import { readFirstContentMeasure } from "../../lib/paintTimings.js";
+import { WorkingNest } from "../WorkingNest.js";
 import { useDismissOnOutsideOrEscape } from "../../hooks/useDismissOnOutsideOrEscape.js";
 
 export const COLD_START_BUDGET_MS = 1500;
@@ -405,6 +412,57 @@ export function ThemePicker({
         if (picked) onChange(picked.id);
       }}
       options={THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
+    />
+  );
+}
+
+export function ActivityMarkPicker({
+  value,
+  onChange,
+  inputId
+}: {
+  value: ActivityMarkId;
+  onChange: (markId: ActivityMarkId) => void;
+  inputId?: string;
+}): JSX.Element {
+  return (
+    <SettingsListPicker
+      ariaLabel="Activity mark"
+      inputId={inputId}
+      value={value}
+      onChange={onChange}
+      options={ACTIVITY_MARK_OPTIONS.map((option) => ({
+        value: option.id,
+        label: option.label,
+        // Running, not a still frame: the motion is the thing being chosen, and
+        // four dots at rest look the same as nine cells at rest.
+        icon: <WorkingNest active size={14} markId={option.id} />
+      }))}
+    />
+  );
+}
+
+/** Off / Sweep for the running row's underline, on the same list picker as the
+ *  mark above so one settings group reads as one choice made twice. */
+export function SessionUnderlinePicker({
+  value,
+  onChange,
+  inputId
+}: {
+  value: SessionUnderlineId;
+  onChange: (underlineId: SessionUnderlineId) => void;
+  inputId?: string;
+}): JSX.Element {
+  return (
+    <SettingsListPicker
+      ariaLabel="Running row underline"
+      inputId={inputId}
+      value={value}
+      onChange={onChange}
+      options={SESSION_UNDERLINE_OPTIONS.map((option) => ({
+        value: option.id,
+        label: option.label
+      }))}
     />
   );
 }

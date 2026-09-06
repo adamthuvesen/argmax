@@ -250,7 +250,15 @@ export function useSmartFollowScroll(
     const nextTop = nodeContentTop(el, anchor.node);
     const delta = nextTop - anchor.contentTop;
     if (Math.abs(delta) > 1) {
-      el.scrollTop += delta;
+      const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      // Shrinking content can clamp scrollTop before the browser delivers a
+      // scroll event. Apply the anchor shift from the position before that
+      // clamp, or we count the shrink twice and jump past the reading point.
+      // Other movement may be pending user input and must stay in the base.
+      const clampedToBottom = lastScrollTopRef.current > maxTop + 1 &&
+        Math.abs(el.scrollTop - maxTop) <= 1;
+      const baseTop = clampedToBottom ? lastScrollTopRef.current : el.scrollTop;
+      el.scrollTop = baseTop + delta;
       lastScrollTopRef.current = el.scrollTop;
     }
     // Content-coordinate is independent of scrollTop, so a second pass in the

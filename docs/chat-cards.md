@@ -18,6 +18,8 @@ The macOS app is WKWebView, which has no CSS `overflow-anchor`. While attached, 
 
 An anchor inside a nested scroll area, such as an expanded file diff, uses that area's outer box. Scrolling the diff changes its descendants' coordinates without moving the surrounding transcript. Anchoring to a descendant would apply that inner movement to the conversation on the next streamed update. Ordinary text keeps its fine-grained anchor so insertions earlier in the same turn still preserve the reading position.
 
+Content can also shrink automatically, such as when an older live Thought block folds as a new reasoning burst starts. WebKit may clamp the scroll position to the new bottom before delivering a scroll event. Detached anchoring applies the layout shift from the position before that clamp, so the same shrink is not counted twice. Pending user movement that has not been clamped remains part of the correction.
+
 ## The Sent Prompt
 
 A user bubble shows the text that was typed, not markdown: `SessionConversationUserMessage` renders it into a `<p>` with `white-space: pre-wrap` so a pasted snippet keeps its own line breaks and a `**bold**` stays two asterisks. Two things are marked up on top of that plain text, both in `markUserMessage`.

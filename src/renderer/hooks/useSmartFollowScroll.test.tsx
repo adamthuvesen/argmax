@@ -714,6 +714,84 @@ describe("useSmartFollowScroll", () => {
     }
   );
 
+  it.each(["item update", "child resize"] as const)(
+    "does not apply a shrink twice after the browser clamps scrollTop (%s)",
+    (trigger) => {
+      const observers = installResizeObservers();
+      const state: ScrollBoxState = { scrollHeight: 1513, clientHeight: 500, scrollTop: 1013 };
+      const el = makeScrollBox(state);
+      const turn = document.createElement("article");
+      const paragraph = document.createElement("p");
+      turn.appendChild(paragraph);
+      el.appendChild(turn);
+      const emptyRect = { left: 0, width: 400, right: 400, x: 0, toJSON: () => ({}) };
+      vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
+        ...emptyRect,
+        top: 0,
+        y: 0,
+        height: 500,
+        bottom: 500
+      });
+      let paragraphContentTop = 1040;
+      vi.spyOn(paragraph, "getBoundingClientRect").mockImplementation(() => ({
+        ...emptyRect,
+        top: paragraphContentTop - state.scrollTop,
+        y: paragraphContentTop - state.scrollTop,
+        height: 40,
+        bottom: paragraphContentTop - state.scrollTop + 40
+      }));
+      document.elementFromPoint = () => paragraph;
+
+      const { result, rerender } = renderHook(
+        ({ items }: { items: readonly string[] }) => {
+          const api = useSmartFollowScroll("session-a", items, false);
+          attachListRef(api.conversationListRef, el);
+          return api;
+        },
+        { initialProps: { items: ["turn"] } }
+      );
+      const childObserver = observers.find((observer) => observer.targets.includes(turn));
+
+      act(() => {
+        result.current.handleUserScrollIntent();
+        state.scrollTop = 1003;
+        result.current.handleScroll();
+      });
+
+      act(() => {
+        paragraphContentTop = 540;
+        state.scrollHeight = 1013;
+        // WebKit clamps to the new maximum before delivering either update.
+        state.scrollTop = 513;
+        if (trigger === "item update") {
+          rerender({ items: ["turn", "shrunk"] });
+        } else {
+          childObserver?.callback([], {} as ResizeObserver);
+        }
+      });
+
+      // The paragraph moved up by 500px, so the reader should move from 1003
+      // to 503. The browser's 490px clamp already supplied most of that move.
+      expect(state.scrollTop).toBe(503);
+
+      act(() => {
+        result.current.handleUserScrollIntent();
+        state.scrollTop = 400;
+        paragraphContentTop = 640;
+        state.scrollHeight = 1113;
+        if (trigger === "item update") {
+          rerender({ items: ["turn", "grown"] });
+        } else {
+          childObserver?.callback([], {} as ResizeObserver);
+        }
+      });
+
+      // This time the list was not clamped: a pending user movement supplied
+      // the new base, and the 100px anchor correction is added to that base.
+      expect(state.scrollTop).toBe(500);
+    }
+  );
+
   it("anchors on the child straddling the probe line when the hit test lands in the gutter", () => {
     // The reading column is centred by the list's inline padding, so a probe
     // in the padding hits the scroller itself. The anchor must fall back to

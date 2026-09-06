@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use argmax_lib::git::exec::{run_git_text_blocking, GIT_DEFAULT_TIMEOUT};
 use tempfile::TempDir;
 
 pub struct SeededGitRepo {
@@ -42,22 +43,15 @@ pub fn seed_git_repo(files: &[(&str, &str)]) -> SeededGitRepo {
 }
 
 pub fn run_git(repo_path: &Path, args: &[&str]) {
-    let output = std::process::Command::new("git")
-        .arg("-C")
-        .arg(repo_path)
-        .args(args)
-        .env("LC_ALL", "C")
-        .env("LANG", "C")
-        .env("LANGUAGE", "")
-        .output()
-        .expect("run git fixture command");
+    let _ = run_git_stdout(repo_path, args);
+}
 
-    assert!(
-        output.status.success(),
-        "git fixture command failed: git -C {} {}\nstdout:\n{}\nstderr:\n{}",
-        repo_path.display(),
-        args.join(" "),
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+pub fn run_git_stdout(repo_path: &Path, args: &[&str]) -> String {
+    run_git_text_blocking(repo_path, args, GIT_DEFAULT_TIMEOUT).unwrap_or_else(|error| {
+        panic!(
+            "git fixture command failed: git -C {} {}: {error}",
+            repo_path.display(),
+            args.join(" ")
+        )
+    })
 }

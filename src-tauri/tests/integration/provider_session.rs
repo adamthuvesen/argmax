@@ -2394,27 +2394,12 @@ async fn panic_inside_locked_section_does_not_cascade_to_other_sessions() {
 async fn a_codex_file_change_gets_the_diff_argmax_measured_from_git() {
     let repo = tempfile::TempDir::new().expect("temp dir");
     let repo_path = repo.path().to_path_buf();
-    for args in [
-        vec!["init", "--initial-branch=main"],
-        vec!["config", "user.email", "test@example.com"],
-        vec!["config", "user.name", "Test"],
-    ] {
-        Command::new("git")
-            .arg("-C")
-            .arg(&repo_path)
-            .args(&args)
-            .output()
-            .expect("git setup");
-    }
+    crate::support::git_repo::run_git(&repo_path, &["init", "--initial-branch=main"]);
+    crate::support::git_repo::run_git(&repo_path, &["config", "user.email", "test@example.com"]);
+    crate::support::git_repo::run_git(&repo_path, &["config", "user.name", "Test"]);
     std::fs::write(repo_path.join("model.sql"), "one\ntwo\nthree\n").expect("write");
-    for args in [vec!["add", "-A"], vec!["commit", "-m", "init"]] {
-        Command::new("git")
-            .arg("-C")
-            .arg(&repo_path)
-            .args(&args)
-            .output()
-            .expect("git commit");
-    }
+    crate::support::git_repo::run_git(&repo_path, &["add", "-A"]);
+    crate::support::git_repo::run_git(&repo_path, &["commit", "-m", "init"]);
 
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     seed_project_and_workspace_at(&database, &repo_path.to_string_lossy());

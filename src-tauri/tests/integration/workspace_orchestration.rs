@@ -39,7 +39,7 @@ use argmax_lib::providers::ProviderLaunchInput;
 use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
 use argmax_lib::workspaces::WorkspaceService;
 
-use crate::support::git_repo::{run_git, seed_git_repo};
+use crate::support::git_repo::{run_git, run_git_stdout, seed_git_repo};
 use argmax_lib::sessions::state::SessionState;
 
 // ---------------------------------------------------------------------------
@@ -345,14 +345,8 @@ async fn create_scratch_initializes_repoless_workspace() {
     assert!(path.starts_with(scratch_root.path()));
     // The scratch dir is a real minimal repo: HEAD resolves (one empty commit
     // on main), so provider CLIs with git-repo checks accept it.
-    let head = std::process::Command::new("git")
-        .arg("-C")
-        .arg(&path)
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .output()
-        .expect("git rev-parse");
-    assert!(head.status.success(), "scratch dir HEAD must resolve");
-    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "main");
+    let head = run_git_stdout(&path, &["rev-parse", "--abbrev-ref", "HEAD"]);
+    assert_eq!(head.trim(), "main");
 
     // A second scratch chat reuses the singleton project.
     let second = service

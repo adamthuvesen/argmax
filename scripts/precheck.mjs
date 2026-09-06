@@ -19,6 +19,21 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
+// `git push` exports GIT_DIR / GIT_INDEX_FILE into the hook. Cargo tests that
+// seed a temp repo with `git init` then inherit those and lock this checkout's
+// config instead of the fixture. Drop them so merge-base still uses cwd
+// discovery, and the tests get a clean git.
+for (const key of [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_PREFIX"
+]) {
+  delete process.env[key];
+}
+
 const ROOT = resolve(new URL("..", import.meta.url).pathname);
 const CARGO_MANIFEST = "src-tauri/Cargo.toml";
 

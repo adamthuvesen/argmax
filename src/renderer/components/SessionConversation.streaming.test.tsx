@@ -1130,7 +1130,11 @@ describe("SessionConversation — streaming & composer", () => {
       [event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")]
     );
 
-    expect(THINKING_WORDS).toContain(screen.getByTestId("thinking-label").textContent);
+    // The elapsed clock (anchored on the user message) shares the testid's
+    // textContent, so match on the leading word.
+    expect(
+      THINKING_WORDS.some((word) => screen.getByTestId("thinking-label").textContent?.startsWith(word))
+    ).toBe(true);
     expect(screen.getByTestId("thinking-label").querySelector('[data-working="true"]')).not.toBeNull();
     expect(container.querySelector(".thinking-label")).not.toBeNull();
   });

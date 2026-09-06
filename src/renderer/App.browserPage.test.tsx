@@ -43,6 +43,33 @@ describe("App browser page", () => {
     expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
   });
 
+  it("returns to a chat from the palette while Browser is open", async () => {
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Browser" }));
+    await screen.findByRole("region", { name: "Browser" });
+
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    fireEvent.mouseDown(within(palette).getByRole("option", { name: /Build dashboard/ }));
+
+    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Browser" })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(BROWSER_PAGE_OPEN_KEY)).toBe("false");
+  });
+
+  it("opens a project from the palette while Browser is open", async () => {
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Browser" }));
+    await screen.findByRole("region", { name: "Browser" });
+
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    fireEvent.mouseDown(within(palette).getByRole("option", { name: /\/tmp\/argmax/ }));
+
+    expect(screen.queryByRole("region", { name: "Browser" })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(BROWSER_PAGE_OPEN_KEY)).toBe("false");
+  });
+
   it("returns to a chat when that session is clicked", async () => {
     await renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Browser" }));

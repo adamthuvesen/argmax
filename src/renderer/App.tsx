@@ -1556,7 +1556,10 @@ export function App(): JSX.Element {
           setSelectedProjectId(projectId);
         },
         onClearGrid: () => clearPaneGrid(),
-        onCloseOverlays: () => hideStandalonePage()
+        onCloseOverlays: () => {
+          hideStandalonePage();
+          setIsBrowserPageOpen(false);
+        }
       }),
     [
       paletteSnapshot,
@@ -1597,6 +1600,7 @@ export function App(): JSX.Element {
         run: () => {
           const target = snapshot.sessions.find((session) => session.id === hit.sessionId);
           hideStandalonePage();
+          setIsBrowserPageOpen(false);
           if (target) openWorkspaceChat(target.workspaceId);
         }
       }));

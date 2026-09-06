@@ -154,6 +154,14 @@ describe("WorkspaceCard", () => {
     expect(screen.getByRole("button", { name: "Terminal" })).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("refreshes PR state from GitHub on mount for a git workspace", () => {
+    const refresh = vi.fn().mockResolvedValue([]);
+    (window as { argmax?: unknown }).argmax = { prs: { refresh } };
+
+    renderCard();
+    expect(refresh).toHaveBeenCalledWith({ sessionId: "session-a" });
+  });
+
   it("offers to create a pull request when the workspace has none, and to open the one it has", async () => {
     const viewOrCreatePr = vi.fn().mockResolvedValue({ action: "created", url: "https://x/1", prNumber: 1 });
     const openPath = vi.fn().mockResolvedValue({ ok: true });

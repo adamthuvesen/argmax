@@ -252,25 +252,81 @@ pub fn update_project_remote(
     Ok(())
 }
 
+pub fn parse_github_remote(url: &str) -> Option<ProjectRemote> {
+    let url = url.trim();
+    let path = if let Some(stripped) = url.strip_prefix("git@github.com:") {
+        stripped
+    } else if let Some(stripped) = url.strip_prefix("https://github.com/") {
+        stripped
+    } else if let Some(stripped) = url.strip_prefix("http://github.com/") {
+        stripped
+    } else {
+        url.strip_prefix("ssh://git@github.com/")?
+    };
+    let path = path.strip_suffix(".git").unwrap_or(path).trim_matches('/');
+    let (owner, name) = path.split_once('/')?;
+    if owner.is_empty() || name.is_empty() || name.contains('/') {
+        return None;
+    }
+    Some(ProjectRemote {
+        owner: owner.to_string(),
+        name: name.to_string(),
+    })
+}
+
+fn discover_repo_remote(repo_path: &str) -> Option<ProjectRemote> {
+    let path = std::path::Path::new(repo_path);
+    if !path.exists() {
+        return None;
+    }
+    let output = std::process::Command::new("git")
+        .args(["config", "--get", "remote.origin.url"])
+        .current_dir(path)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let url = String::from_utf8_lossy(&output.stdout);
+    parse_github_remote(&url)
+}
+
 pub fn get_project_remote(
     connection: &Connection,
     project_id: &str,
 ) -> ArgmaxResult<Option<ProjectRemote>> {
     let mut statement = connection
-        .prepare_cached("SELECT repo_remote_owner, repo_remote_name FROM projects WHERE id = ?")
+        .prepare_cached(
+            "SELECT repo_path, repo_remote_owner, repo_remote_name FROM projects WHERE id = ?",
+        )
         .map_err(sqlite_error)?;
-    match statement.query_row([project_id], |row| {
+    let (repo_path, remote) = match statement.query_row([project_id], |row| {
+        let repo_path: String = row.get("repo_path")?;
         let owner: Option<String> = row.get("repo_remote_owner")?;
         let name: Option<String> = row.get("repo_remote_name")?;
-        Ok((owner, name))
+        let remote = match (owner, name) {
+            (Some(owner), Some(name)) => Some(ProjectRemote { owner, name }),
+            _ => None,
+        };
+        Ok((repo_path, remote))
     }) {
-        Ok((Some(owner), Some(name))) => Ok(Some(ProjectRemote { owner, name })),
-        Ok(_) => Ok(None),
+        Ok(result) => result,
         Err(rusqlite::Error::QueryReturnedNoRows) => {
-            Err(ArgmaxError::record_not_found("project", project_id))
+            return Err(ArgmaxError::record_not_found("project", project_id));
         }
-        Err(error) => Err(sqlite_error(error)),
+        Err(error) => return Err(sqlite_error(error)),
+    };
+
+    if let Some(remote) = remote {
+        return Ok(Some(remote));
     }
+
+    if let Some(discovered) = discover_repo_remote(&repo_path) {
+        let _ = update_project_remote(connection, project_id, Some(&discovered));
+        return Ok(Some(discovered));
+    }
+
+    Ok(None)
 }
 
 fn project_row_to_summary(row: &Row<'_>) -> rusqlite::Result<ProjectSummary> {
@@ -349,5 +405,44 @@ fn max_nullable_iso(left: Option<String>, right: Option<String>) -> Option<Strin
         (Some(left), None) => Some(left),
         (None, Some(right)) => Some(right),
         (None, None) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_github_remote_handles_ssh_and_https() {
+        assert_eq!(
+            parse_github_remote("git@github.com:menti/argmax.git"),
+            Some(ProjectRemote {
+                owner: "menti".to_string(),
+                name: "argmax".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_github_remote("https://github.com/menti/argmax.git"),
+            Some(ProjectRemote {
+                owner: "menti".to_string(),
+                name: "argmax".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_github_remote("https://github.com/menti/argmax"),
+            Some(ProjectRemote {
+                owner: "menti".to_string(),
+                name: "argmax".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_github_remote("ssh://git@github.com/menti/argmax.git"),
+            Some(ProjectRemote {
+                owner: "menti".to_string(),
+                name: "argmax".to_string(),
+            })
+        );
+        assert_eq!(parse_github_remote("git@gitlab.com:menti/argmax.git"), None);
+        assert_eq!(parse_github_remote(""), None);
     }
 }

@@ -12,8 +12,9 @@ use super::{live_database, read_off_main};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use crate::persistence::projects::{
-    delete_project, list_projects, persist_project, require_project, update_project_branch,
-    update_project_settings, PersistProjectInput, ProjectSettings, ProjectSummary,
+    delete_project, list_projects, parse_github_remote, persist_project, require_project,
+    update_project_branch, update_project_settings, PersistProjectInput, ProjectRemote,
+    ProjectSettings, ProjectSummary,
 };
 use crate::state::AppState;
 
@@ -252,6 +253,7 @@ struct GitMetadata {
     repo_path: PathBuf,
     current_branch: String,
     default_branch: Option<String>,
+    remote: Option<ProjectRemote>,
 }
 
 async fn pick_project_folder(app: AppHandle) -> ArgmaxResult<Option<PathBuf>> {
@@ -303,13 +305,17 @@ pub(crate) async fn register_project_path(
         let connection = database.connection();
         persist_project(&connection, &project)?
     };
-    if let Some(remote) = crate::git::ops::resolve_project_remote(&canonical_path).await {
+    let remote = match metadata.remote {
+        Some(remote) => Some(remote),
+        None => crate::git::ops::resolve_project_remote(&canonical_path).await,
+    };
+    if let Some(remote) = remote.as_ref() {
         let database = live_database(state)?;
         let connection = database.connection();
         let _ = crate::persistence::projects::update_project_remote(
             &connection,
             &project.id,
-            Some(&remote),
+            Some(remote),
         );
     }
     Ok(project)
@@ -375,11 +381,20 @@ async fn read_git_metadata(candidate_path: &Path) -> ArgmaxResult<GitMetadata> {
         current_branch
     };
     let default_branch = discover_default_branch(&repo_path, &current_branch).await?;
+    let remote_url = run_git_text(
+        &repo_path,
+        ["config", "--get", "remote.origin.url"],
+        GIT_DEFAULT_TIMEOUT,
+    )
+    .await
+    .ok();
+    let remote = remote_url.as_deref().and_then(parse_github_remote);
 
     Ok(GitMetadata {
         repo_path,
         current_branch,
         default_branch,
+        remote,
     })
 }
 

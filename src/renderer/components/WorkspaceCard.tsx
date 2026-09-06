@@ -8,7 +8,7 @@ import {
   SquareTerminal,
   X
 } from "lucide-react";
-import { useState, type JSX, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type JSX, type MouseEvent, type ReactNode } from "react";
 import { errorMessage } from "../../shared/error.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
@@ -78,6 +78,13 @@ export function WorkspaceCard({
   const hasPr = typeof workspace.prNumber === "number";
   const prState = workspace.prState ?? null;
   const prLabel = hasPr ? `PR #${workspace.prNumber}` : "Create pull request";
+
+  useEffect(() => {
+    if (!session?.id || workspace.kind !== "git" || !window.argmax?.prs?.refresh) return;
+    void window.argmax.prs
+      .refresh({ sessionId: session.id })
+      .catch(() => undefined);
+  }, [session?.id, workspace.kind, workspace.branch]);
 
   // Same one-call flow as the git actions menu: an existing PR opens in the
   // browser, and a workspace without one gets a PR created and opened.

@@ -261,8 +261,18 @@ export function AgentActivity({
     !minimalActivity && (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded");
   const [activityExpandOverride, setActivityExpandOverride] = useState<boolean | null>(null);
   const activityExpanded = activityExpandOverride ?? activityExpandedDefault;
-  // Restored turns must not replay their entrance animation on every reopen.
-  const restoringTranscript = useRestoreWithoutMotion();
+  // `loadedAgentKey` is set in the load's `finally`, so this clears whether the
+  // read succeeded or failed — a pane that never settled would keep motion
+  // suppressed for good.
+  const initialAgentEventsLoadPending = Boolean(
+    agentKey && onLoadAgentEvents && loadedAgentKey !== agentKey
+  );
+  // Restored turns must not replay their entrance animation on every reopen,
+  // and the run's trace only arrives once `loadAgentEvents` has answered — so
+  // the window runs from there, not from mount. Timed from mount it expired
+  // first, and the whole run then animated and typed itself out as if it had
+  // just happened.
+  const restoringTranscript = useRestoreWithoutMotion(!initialAgentEventsLoadPending);
   const { activityChildren, toolItems, assistantTimestamps } = useMemo((): {
     activityChildren: TurnBodyChild[];
     toolItems: TurnToolItem[];
@@ -448,9 +458,6 @@ export function AgentActivity({
   // child is still a rendered run, not a pane still waiting for one.
   const hasRenderedActivity =
     activityChildren.length > 0 || toolItems.length > 0 || finalOutput !== null;
-  const initialAgentEventsLoadPending = Boolean(
-    agentKey && onLoadAgentEvents && loadedAgentKey !== agentKey
-  );
   const waitingForRunningAgentActivity = Boolean(
     (parentSession?.state === "running" || activity.status === "running") &&
     activity.limited

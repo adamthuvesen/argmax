@@ -1,5 +1,6 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { JSX } from "react";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import { AgentActivity } from "./AgentActivity.js";
@@ -68,7 +69,58 @@ const workspace: WorkspaceSummary = {
 
 describe("AgentActivity", () => {
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
+  });
+
+  it("does not retype a run whose trace arrives after the pane has mounted", async () => {
+    // The same race the chat pane had: a run's trace only exists once
+    // `loadAgentEvents` has answered, so a restore window timed from mount
+    // expires first and the whole run types itself out from nothing as if it
+    // had just happened.
+    const narration =
+      "I'll map the repo layout first, then read the provider adapters and the IPC surface they register.";
+    const taskStart = event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+      id: "task-1",
+      name: "Task",
+      input: { description: "Explore repo", prompt: "Map the repo." }
+    });
+    let settleLoad = (): void => {};
+    const agentEventsLoad = new Promise<void>((resolve) => {
+      settleLoad = resolve;
+    });
+    const onLoadAgentEvents = vi.fn(() => agentEventsLoad);
+    const pane = (events: TimelineEvent[]): JSX.Element => (
+      <AgentActivity
+        events={events}
+        parentSession={session}
+        parentToolUseId="task-1"
+        workspace={workspace}
+        onLoadAgentEvents={onLoadAgentEvents}
+      />
+    );
+
+    vi.useFakeTimers();
+    const { rerender } = render(pane([taskStart]));
+
+    // Longer than RESTORE_MS: a mount-anchored window is long gone by now.
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    await act(async () => {
+      settleLoad();
+      await agentEventsLoad;
+    });
+    rerender(
+      pane([
+        taskStart,
+        event("child-note", "message.completed", "2026-05-12T15:00:02.000Z", narration, {
+          parent_tool_use_id: "task-1"
+        })
+      ])
+    );
+
+    expect(screen.getByText(narration)).toBeInTheDocument();
   });
 
   it("folds a run into collapsed group headers, the same shape as the chat", () => {

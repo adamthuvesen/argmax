@@ -263,10 +263,6 @@
   color: var(--muted);
 }
 
-.workspace-card-pr-state[data-pr-state="OPEN"] {
-  color: var(--pr-open);
-}
-
 .workspace-card-pr-state[data-pr-state="MERGED"] {
   color: var(--pr-merged);
 }

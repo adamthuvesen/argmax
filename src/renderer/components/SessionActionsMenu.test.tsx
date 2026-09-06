@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 
-function installArgmax(listForSession: ReturnType<typeof vi.fn>): void {
+function installArgmax(
+  listForSession: ReturnType<typeof vi.fn>,
+  viewOrCreatePr: ReturnType<typeof vi.fn> = vi.fn()
+): void {
   Object.defineProperty(window, "argmax", {
     configurable: true,
     writable: true,
@@ -14,7 +17,10 @@ function installArgmax(listForSession: ReturnType<typeof vi.fn>): void {
       git: {
         push: vi.fn(),
         createBranch: vi.fn(),
-        viewOrCreatePr: vi.fn()
+        viewOrCreatePr
+      },
+      system: {
+        openPath: vi.fn().mockResolvedValue({ ok: true })
       }
     }
   });
@@ -167,10 +173,38 @@ describe("SessionActionsMenu", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Back to chat actions" }));
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
+  });
 
-    await waitFor(() => {
-      expect(listForSession).toHaveBeenCalledWith({ sessionId: "session-1" });
+  it("opens an existing pull request in the system browser from git actions", async () => {
+    const viewOrCreatePr = vi.fn().mockResolvedValue({
+      action: "opened",
+      url: "https://github.com/o/r/pull/12",
+      prNumber: 12
     });
+    listForSession.mockResolvedValue([{ prNumber: 12 }]);
+    installArgmax(listForSession, viewOrCreatePr);
+
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        session={session()}
+        workspace={workspace()}
+      />
+    );
+
+    await openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Git actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "View pull request" }));
+
+    await waitFor(() =>
+      expect(viewOrCreatePr).toHaveBeenCalledWith({ sessionId: "session-1" })
+    );
+    expect(
+      (window as unknown as { argmax: { system: { openPath: ReturnType<typeof vi.fn> } } }).argmax.system
+        .openPath
+    ).toHaveBeenCalledWith({ path: "https://github.com/o/r/pull/12" });
   });
 });
 

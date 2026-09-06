@@ -8,11 +8,12 @@ import {
   SquareTerminal,
   X
 } from "lucide-react";
-import { useState, type JSX, type ReactNode } from "react";
+import { useState, type JSX, type MouseEvent, type ReactNode } from "react";
 import { errorMessage } from "../../shared/error.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { agentStatusLabel } from "../lib/agentLaunch.js";
+import { openWebUrl } from "../lib/openWebUrl.js";
 import type { SubagentCluster } from "../lib/subagentSummary.js";
 import { AgentEmblem } from "./AgentEmblem.js";
 import { WorkingNest } from "./WorkingNest.js";
@@ -20,7 +21,6 @@ import { ChangeCount } from "./ChangeCount.js";
 import type { ComposerStatus } from "./SessionComposer.js";
 
 const PR_STATE_LABELS: Record<string, string> = {
-  OPEN: "open",
   CLOSED: "closed",
   MERGED: "merged"
 };
@@ -81,13 +81,15 @@ export function WorkspaceCard({
 
   // Same one-call flow as the git actions menu: an existing PR opens in the
   // browser, and a workspace without one gets a PR created and opened.
-  const openOrCreatePr = (): void => {
+  const openOrCreatePr = (event: MouseEvent<HTMLButtonElement>): void => {
     if (!session || !window.argmax) return;
+    const flip = event.metaKey || event.ctrlKey;
     setIsPrPending(true);
     setStatus(null);
     void window.argmax.git
       .viewOrCreatePr({ sessionId: session.id })
       .then((result) => {
+        openWebUrl(result.url, { flip });
         setStatus({
           kind: "info",
           message:
@@ -181,7 +183,7 @@ export function WorkspaceCard({
           }
           label={prLabel}
           meta={
-            prState ? (
+            prState && prState !== "OPEN" ? (
               <span className="workspace-card-pr-state" data-pr-state={prState}>
                 {PR_STATE_LABELS[prState] ?? prState.toLowerCase()}
               </span>
@@ -292,7 +294,7 @@ function WorkspaceCardRow({
   icon: ReactNode;
   label: string;
   meta?: ReactNode;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   pressed?: boolean;
   title: string;
 }): JSX.Element {

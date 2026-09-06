@@ -8,8 +8,9 @@ import {
   Github,
   Upload
 } from "lucide-react";
-import { useCallback, useState, type FormEvent, type JSX } from "react";
+import { useCallback, useState, type FormEvent, type JSX, type MouseEvent } from "react";
 import type { GhPrRecord, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import { openWebUrl } from "../lib/openWebUrl.js";
 
 const BRANCH_NAME_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
@@ -74,26 +75,31 @@ export function GitActionsMenu({
     }
   }, [workspace]);
 
-  const runViewOrCreatePr = useCallback(async (): Promise<void> => {
-    if (!session || !window.argmax) return;
-    setBusy(true);
-    setFeedback(null);
-    try {
-      const result = await window.argmax.git.viewOrCreatePr({ sessionId: session.id });
-      setFeedback({
-        kind: "success",
-        message:
-          result.action === "created"
-            ? `Created pull request — opening ${result.url}.`
-            : `Opening pull request #${result.prNumber}.`
-      });
-      onPrsRefresh?.();
-    } catch (error) {
-      setFeedback(errorFeedback(error, "Could not open PR."));
-    } finally {
-      setBusy(false);
-    }
-  }, [session, onPrsRefresh]);
+  const runViewOrCreatePr = useCallback(
+    async (event: MouseEvent<HTMLButtonElement>): Promise<void> => {
+      if (!session || !window.argmax) return;
+      const flip = event.metaKey || event.ctrlKey;
+      setBusy(true);
+      setFeedback(null);
+      try {
+        const result = await window.argmax.git.viewOrCreatePr({ sessionId: session.id });
+        openWebUrl(result.url, { flip });
+        setFeedback({
+          kind: "success",
+          message:
+            result.action === "created"
+              ? `Created pull request — opening ${result.url}.`
+              : `Opening pull request #${result.prNumber}.`
+        });
+        onPrsRefresh?.();
+      } catch (error) {
+        setFeedback(errorFeedback(error, "Could not open PR."));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [session, onPrsRefresh]
+  );
 
   const runCreateBranch = useCallback(
     (event: FormEvent<HTMLFormElement>): void => {
@@ -167,7 +173,7 @@ export function GitActionsMenu({
               role="menuitem"
               className="project-picker-item"
               disabled={busy || !session}
-              onClick={() => void runViewOrCreatePr()}
+              onClick={(event) => void runViewOrCreatePr(event)}
             >
               {hasPr ? (
                 <Github size={14} aria-hidden="true" />

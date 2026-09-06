@@ -137,7 +137,7 @@ let sessionCostSummary: AppTestMocks["sessionCostSummary"];
 export let sendProviderInput: AppTestMocks["sendProviderInput"];
 export let terminateProvider: AppTestMocks["terminateProvider"];
 export let providersDiscover: AppTestMocks["providersDiscover"];
-let diagnosticsStub: AppTestMocks["diagnosticsStub"];
+export let diagnosticsStub: AppTestMocks["diagnosticsStub"];
 let vacuumDatabaseStub: AppTestMocks["vacuumDatabaseStub"];
 export let setNotificationsEnabledStub: AppTestMocks["setNotificationsEnabledStub"];
 let setKeepAwakeStub: AppTestMocks["setKeepAwakeStub"];

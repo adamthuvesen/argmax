@@ -176,9 +176,13 @@ export function SettingsPanel({
     }
   }, []);
 
+  // Only Advanced renders the report, and collecting it means nine `COUNT(*)`
+  // scans over the whole database. Loading it from every group charged that to
+  // opening Settings at all.
   useEffect(() => {
+    if (activeGroup !== "advanced") return;
     void loadDiagnostics();
-  }, [loadDiagnostics]);
+  }, [activeGroup, loadDiagnostics]);
 
   const copyDiagnostics = useCallback(async (): Promise<void> => {
     if (!diagnostics) return;

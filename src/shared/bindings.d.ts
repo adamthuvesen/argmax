@@ -395,6 +395,14 @@ async systemOpenPath(input: SystemOpenPathInput) : Promise<Result<SystemOk, Argm
 async systemListDetectedIdes(input: SystemListDetectedIdesInput) : Promise<DetectedIde[]> {
     return await TAURI_INVOKE("system_list_detected_ides", { input });
 },
+/**
+ * Nothing here is a small read: the row counts are nine `COUNT(*)` scans, and
+ * on a database that has been collecting transcripts for a while that is
+ * seconds of table scan. `rss_bytes` forks `ps` on top. Resolved on the main
+ * thread it froze the whole window — the Settings page could not paint until
+ * the scans finished. The reader pool serves the counts so they never queue
+ * behind the writer either.
+ */
 async systemDiagnostics(input: SystemDiagnosticsInput) : Promise<Result<DiagnosticsReport, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("system_diagnostics", { input }) };

@@ -26,7 +26,6 @@ const MAIN_THREAD_ALLOWLIST = new Map([
   ["system:set-keep-awake", "in-memory setting update; the assertion itself is driven from the delta publisher"],
   ["system:test-notification", "fires an in-memory desktop notification toast"],
   ["system:open-path", "hands the path to the system opener"],
-  ["system:diagnostics", "small fixed-size reads for the Settings pane"],
   ["system:debug-snapshot", "reads two in-memory ring buffers; no IO"],
   ["browser:open", "manipulates the native child webview"],
   ["browser:navigate", "manipulates the native child webview"],

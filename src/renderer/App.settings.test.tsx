@@ -14,6 +14,7 @@ import {
 import { USER_BUBBLE_TINT_STORAGE_KEY } from "./lib/userBubbleTint.js";
 import { APP_VERSION_LABEL } from "../shared/appVersion.js";
 import {
+  diagnosticsStub,
   launchProvider,
   listDetectedIdes,
   mockDashboardSnapshot,
@@ -128,6 +129,23 @@ describe("App settings", () => {
     fireEvent.click(within(menu).getByRole("menuitem", { name: /About Argmax/ }));
     expect(await screen.findByRole("heading", { name: "About" })).toBeInTheDocument();
     expect(screen.getByText("Claude · Codex · Cursor · OpenCode · Grok")).toBeInTheDocument();
+  });
+
+  // The report is nine `COUNT(*)` scans over the whole database, so it belongs
+  // to the one group that shows it — collecting it on every open is what made
+  // Settings take a second and a half to appear.
+  it("collects diagnostics only for the group that shows them", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("General");
+    expect(diagnosticsStub).not.toHaveBeenCalled();
+
+    await closeSettings();
+    const menu = await openArgmaxMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /Diagnostics & Logs/ }));
+    await screen.findByRole("heading", { name: "Diagnostics" });
+    await waitFor(() => expect(diagnosticsStub).toHaveBeenCalled());
   });
 
   it("resets the reused workspace scroller when opening settings", async () => {

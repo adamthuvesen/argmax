@@ -451,15 +451,21 @@ pub fn compaction_marker(
             timeline_event(event, "session.compacting", "Compacting context", json!({})),
         ),
         Some("compact_boundary") => {
-            let metadata = object_value(payload.get("compact_metadata"));
+            // Live stream-json uses snake_case; the JSONL transcript uses camelCase.
+            let metadata = object_value(payload.get("compact_metadata"))
+                .or_else(|| object_value(payload.get("compactMetadata")));
             Some(timeline_event(
                 event,
                 "session.compacted",
                 "Compacted context",
                 json!({
                     "trigger": metadata.and_then(|data| string_value(data.get("trigger"))),
-                    "preTokens": metadata.map(|data| number_value(data.get("pre_tokens"))),
-                    "postTokens": metadata.map(|data| number_value(data.get("post_tokens"))),
+                    "preTokens": metadata.map(|data| {
+                        number_value(data.get("pre_tokens").or_else(|| data.get("preTokens")))
+                    }),
+                    "postTokens": metadata.map(|data| {
+                        number_value(data.get("post_tokens").or_else(|| data.get("postTokens")))
+                    }),
                 }),
             ))
         }
@@ -717,6 +723,23 @@ mod tests {
         assert_eq!(finished.events[0].r#type, "session.compacted");
         assert_eq!(finished.events[0].payload["trigger"], "auto");
         assert_eq!(finished.events[0].payload["preTokens"], 470_664);
+        assert_eq!(finished.events[0].payload["postTokens"], 10_703);
+    }
+
+    #[test]
+    fn claude_transcript_compaction_reads_camel_case_metadata() {
+        let mut context = NormalizerSessionContext::default();
+        let finished = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                r#"{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"auto","preTokens":468447,"postTokens":10703}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(finished.events.len(), 1);
+        assert_eq!(finished.events[0].r#type, "session.compacted");
+        assert_eq!(finished.events[0].payload["trigger"], "auto");
+        assert_eq!(finished.events[0].payload["preTokens"], 468_447);
         assert_eq!(finished.events[0].payload["postTokens"], 10_703);
     }
 

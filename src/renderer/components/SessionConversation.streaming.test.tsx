@@ -1102,6 +1102,32 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
+  it("keeps Thinking up while a backgrounded agent works, since its launch row never closes", async () => {
+    // Claude answers an async `Agent` launch in 105 ms with a receipt, not a
+    // result. The row is re-marked running so it keeps its nest, but nothing
+    // ever completes it: the child's finish arrives as a `<task-notification>`
+    // prompt the normalizer does not yet parse. Counting that frozen row as a
+    // running tool suppressed the cue for the rest of the session — a real
+    // session sat blank for 1m52s here, then 71s and 96s on later turns that
+    // launched nothing at all.
+    renderConversation(baseSession({ provider: "claude", state: "running" }), [
+      event("a1-end", "command.completed", "tool_result", "2026-05-12T15:00:01.100Z", {
+        id: "tu_agent",
+        content:
+          "Async agent launched successfully. (This tool result is internal metadata — never quote or paste any part of it into a user-facing reply.)"
+      }),
+      event("a1", "command.started", "Agent", "2026-05-12T15:00:01.000Z", {
+        id: "tu_agent",
+        name: "Agent",
+        input: { description: "Research loading animation SOTA", prompt: "Research task." }
+      }),
+      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
+    ]);
+
+    await waitFor(() => expect(screen.queryByLabelText("Thinking")).toBeTruthy());
+    expect(chatCueLogSnapshot().at(-1)?.fields.reason).toBe("shown");
+  });
+
   it("records why the progress cue is off screen, for the next time it should not be", async () => {
     // The cue is derived from half a dozen suppression rules and leaves no
     // trace: when it wrongly stays down, the pane is blank and the state that

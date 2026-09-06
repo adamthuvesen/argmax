@@ -549,13 +549,25 @@ export function buildSessionToolCalls(
         : inferredDone
           ? "done"
           : "running";
+      // An async launch answers in milliseconds with a receipt, so the tool is
+      // `done` while its agent has barely started. The row keeps spinning to
+      // say so — but it is the only running row the session will ever show for
+      // that agent, since the child's completion arrives as a
+      // `<task-notification>` prompt nothing here parses yet. Flag it so
+      // consumers can tell "an agent is off working" from "a tool is executing
+      // in front of the reader".
+      const isBackgroundLaunch =
+        nativeLifecycle === undefined &&
+        status === "done" &&
+        sessionRunning &&
+        isStillRunningAgentLaunch(name, input, output, completion);
       const renderedStatus: ToolCall["status"] = nativeLifecycle
         ? nativeLifecycle.phase === "started"
           ? sessionInterrupted ? "error" : "running"
           : nativeLifecycle.status === "completed" || nativeLifecycle.status === "success"
             ? "done"
             : "error"
-        : status === "done" && sessionRunning && isStillRunningAgentLaunch(name, input, output, completion)
+        : isBackgroundLaunch
             ? "running"
             : status;
       const parentToolUseId = canonicalStart.parentToolUseId;
@@ -582,6 +594,7 @@ export function buildSessionToolCalls(
               ? event.createdAt
               : null,
         error: completion && isError ? extractToolError(completion.payload) : null,
+        backgroundLaunch: isBackgroundLaunch,
         parentToolUseId,
         providerChildSessionId: canonicalStart.providerChildSessionId
           ?? stringValue(nativeMetadata?.providerChildSessionId),

@@ -751,6 +751,11 @@ export function SessionConversation({
         (tool) =>
           tool.status === "running" &&
           tool.parentToolUseId === null &&
+          // A backgrounded agent's launch row spins forever — no completion for
+          // it ever arrives — and nothing about it advances while the child
+          // works. Reading it as visible progress silenced this cue for the
+          // rest of the session, including on later turns that launched nothing.
+          !tool.backgroundLaunch &&
           !isExitPlanModeToolName(tool.name) &&
           !isAskUserQuestionToolName(tool.name)
       ),

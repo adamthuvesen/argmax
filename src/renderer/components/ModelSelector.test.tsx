@@ -92,6 +92,21 @@ describe("ModelSelector type to filter", () => {
     });
   });
 
+  it("takes focus on open without panning ancestor scrollers", () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    try {
+      openClaudePicker(OPUS_MEDIUM);
+      const list = screen.getByRole("listbox", { name: "Chat model" });
+      expect(document.activeElement).toBe(list);
+      expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    } finally {
+      scrollIntoView.mockRestore();
+      focus.mockRestore();
+    }
+  });
+
   it("takes focus on open so typing narrows the list instead of the input behind it", () => {
     openClaudePicker();
     const list = screen.getByRole("listbox", { name: "Chat model" });

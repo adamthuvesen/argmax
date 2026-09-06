@@ -8,6 +8,7 @@ import {
   type RefObject
 } from "react";
 import { searchFilePaths } from "../lib/paletteSearch.js";
+import { scrollChildIntoNearest } from "../lib/scrollChildIntoNearest.js";
 import { useRestoreFocus } from "./useRestoreFocus.js";
 
 export interface TypeToFilter<T> {
@@ -98,13 +99,19 @@ export function useTypeToFilter<T>({
     const startingIndex = initialIndexRef.current >= 0 ? initialIndexRef.current : 0;
     setActiveIndex(startingIndex);
     // Take focus so typing filters the list rather than the input behind it.
-    listRef.current?.focus();
+    // preventScroll: WKWebView otherwise pans the session so the listbox sits
+    // in the visual viewport, which lifts the composer off the bottom.
+    listRef.current?.focus({ preventScroll: true });
   }, [listRef, open]);
 
   // Keep the row Enter would pick on screen while arrowing through a long list.
+  // Scroll only this list — scrollIntoView also pans ancestor scrollers, and
+  // a selected model below the fold is enough to jump a session composer.
   useEffect(() => {
     if (!open) return;
-    listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
+    const list = listRef.current;
+    const active = list?.querySelector('[data-active="true"]');
+    if (list && active) scrollChildIntoNearest(list, active);
   }, [clampedIndex, listRef, open, query]);
 
   const onKeyDown = useCallback(

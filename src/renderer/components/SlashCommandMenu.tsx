@@ -1,6 +1,7 @@
 import { Package, type LucideIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, type JSX } from "react";
 import { SKILL_SOURCE_LABELS } from "../lib/composerCommands.js";
+import { scrollChildIntoNearest } from "../lib/scrollChildIntoNearest.js";
 import type { SlashAutocompleteState, SlashItem } from "../hooks/useSlashAutocomplete.js";
 
 interface SlashRow {
@@ -42,7 +43,9 @@ export function SlashCommandMenu({ state }: { state: SlashAutocompleteState }): 
     if (!state.popoverOpen) {
       return;
     }
-    selectedOptionRef.current?.scrollIntoView?.({ block: "nearest" });
+    const list = menuRef.current;
+    const active = selectedOptionRef.current;
+    if (list && active) scrollChildIntoNearest(list, active);
   }, [state.popoverOpen, state.selectionIndex]);
 
   // A press anywhere else — the transcript, the toolbar, the prompt itself —

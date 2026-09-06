@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { ListChecks } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SlashAutocompleteState } from "../hooks/useSlashAutocomplete.js";
+import * as scrollChildIntoNearest from "../lib/scrollChildIntoNearest.js";
 import { SlashCommandMenu } from "./SlashCommandMenu.js";
 
 function makeState(selectionIndex: number, commandCount = 1): SlashAutocompleteState {
@@ -33,26 +34,17 @@ function makeState(selectionIndex: number, commandCount = 1): SlashAutocompleteS
 }
 
 describe("SlashCommandMenu", () => {
-  // eslint-disable-next-line @typescript-eslint/unbound-method -- captured purely to restore after the test; never invoked unbound.
-  const originalScrollIntoView = Element.prototype.scrollIntoView;
-
   afterEach(() => {
-    if (originalScrollIntoView) {
-      Element.prototype.scrollIntoView = originalScrollIntoView;
-    } else {
-      delete (Element.prototype as Partial<Element>).scrollIntoView;
-    }
     vi.restoreAllMocks();
   });
 
   it("keeps the selected row scrolled into view for keyboard navigation", () => {
-    const scrollIntoView = vi.fn();
-    Element.prototype.scrollIntoView = scrollIntoView;
+    const scrollIntoNearest = vi.spyOn(scrollChildIntoNearest, "scrollChildIntoNearest");
     const { rerender } = render(<SlashCommandMenu state={makeState(0)} />);
 
     rerender(<SlashCommandMenu state={makeState(14)} />);
 
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(scrollIntoNearest).toHaveBeenCalled();
     expect(screen.getByRole("option", { selected: true })).toHaveTextContent("skill-13");
   });
 

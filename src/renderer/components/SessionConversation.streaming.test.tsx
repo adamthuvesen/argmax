@@ -482,6 +482,44 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText(thinking)).toBeTruthy();
   });
 
+  // A tool boundary flushes a fresh thinking group, so a model that reasons
+  // between calls without narrating holds one per call. Read turn-wide, `live`
+  // expanded every one of them: a Gemini turn through Cursor put 272 reasoning
+  // bursts on screen as 272 simultaneously open blocks. Only the newest burst
+  // is the live beat; the ones behind it are settled history.
+  it("keeps only the newest reasoning burst live across a tool boundary", () => {
+    const earlier = "First I should look at the normalizer.";
+    const newest = "Now I know where the deltas come from.";
+
+    renderConversation(
+      baseSession({ provider: "cursor", state: "running" }),
+      [
+        event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
+        event("t1", "message.delta", earlier, "2026-05-12T15:00:01.000Z", { thinking: true }),
+        event("c1", "command.started", "Bash", "2026-05-12T15:00:02.000Z", {
+          type: "tool_use",
+          tool_use_id: "tu_grep",
+          input: { command: "grep -rn thinking" }
+        }),
+        event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:03.000Z", {
+          tool_use_id: "tu_grep",
+          content: "cursor.rs:24"
+        }),
+        event("t2", "message.delta", newest, "2026-05-12T15:00:04.000Z", { thinking: true })
+      ]
+    );
+
+    const live = screen.getAllByRole("button", { name: "Thinking" });
+    expect(live).toHaveLength(1);
+    expect(live[0]).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(newest)).toBeTruthy();
+    // The superseded burst settles to a collapsed "Thought" header, so its body
+    // is out of the transcript rather than stacked above the live one.
+    const settled = screen.getByRole("button", { name: /^Thought/ });
+    expect(settled).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(earlier)).toBeNull();
+  });
+
   // Reasoning is normalized as a `message.delta` (`thinking: true`), so before
   // this the newest event during a reasoning pause looked like streaming answer
   // text and suppressed the generic indicator. Post-answer that reasoning is a

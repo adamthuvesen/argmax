@@ -178,8 +178,9 @@ The animated thinking indicator displays during inactive periods while a session
 
 ### Extended-Thinking (Thought Blocks)
 Model reasoning traces (`content: "thinking"` in the canonical timeline event from Claude thinking deltas, Codex reasoning, or Cursor stream events) are routed to [ThoughtBlock.tsx](../src/renderer/components/ThoughtBlock.tsx):
-- **Live streaming:** Thought blocks expand while active and collapse when answer text begins streaming.
-- **Hold open on scroll:** `holdOpen` keeps a block expanded while it is the newest turn to avoid scroll-jumping the viewport mid-stream.
+- **Live streaming:** the block that owns the beat renders expanded and labelled "Thinking".
+- **One burst at a time.** A tool boundary flushes the thinking buffer into a fresh group, so a turn that reasons between calls without narrating holds one group per call — hundreds of them for a model like Gemini through Cursor. Read turn-wide, `live` opened all of them: replaying one such session put 114k characters of reasoning on screen across 131 expanded blocks, against 262 characters in one block after. `liveThoughtOwnsProgress` still decides whether the turn's reasoning owns the beat at all; `lastThinkingGroupId` ([sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts)) decides which block carries it. Everything behind the newest burst is settled history and folds to its `Thought 12s` header. Claude reaches the same shape by narrating before each tool; this is what gets a silent reasoner there too.
+- **Hold open on scroll:** `holdOpen` keeps the newest burst expanded while it is the newest turn, so the answer lands under an open block instead of yanking a bottom-pinned viewport by the block's whole height. It is keyed on that group rather than on `live`, because the hold has to outlast live to do its job — and because a block that opened while live holds itself open afterwards (`openedLive`), so a turn-wide hold would keep every superseded block open and narrowing `live` alone would change nothing.
 - **Persistence:** [snapshot.ts](../src/renderer/lib/snapshot.ts) and [sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts) preserve thinking deltas during event pruning.
 
 ## Context Compaction & Provider Handoff

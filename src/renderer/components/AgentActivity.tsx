@@ -10,6 +10,7 @@ import { foldConversationItems } from "../lib/foldConversation.js";
 import {
   assistantGroupHasVisibleChat,
   coalesceAssistantGroups,
+  lastThinkingGroupId,
   preToolNarrationGroupIds,
   type AssistantGroup
 } from "../lib/sessionTurnView.js";
@@ -129,9 +130,11 @@ function renderAssistantGroup({
         key={group.id}
         defaultExpanded={thoughtExpanded}
         live={thinkingLive}
-        // Never fold in place: the pane follows its own scroll to the bottom,
-        // so losing the reasoning's height the moment the answer starts would
-        // yank the view up. An explicit fold from the pane chip still wins.
+        // The newest burst never folds in place: the pane follows its own
+        // scroll to the bottom, so losing the reasoning's height the moment the
+        // answer starts would yank the view up. A burst that a later one has
+        // superseded is history and folds. An explicit fold from the pane chip
+        // still wins over both.
         holdOpen={holdThoughtOpen}
         durationMs={thoughtDurationMs(group.createdAt, group.lastActivityAt)}
       >
@@ -305,6 +308,11 @@ export function AgentActivity({
       (group) => !group.thinking && assistantGroupHasVisibleChat(group)
     );
     const thinkingLive = streaming && !hasAnswerText;
+    // Only the run's newest reasoning burst is live: tool boundaries flush a
+    // fresh thinking group, so a run that never narrates holds one per call and
+    // a turn-wide flag opened every one of them at once. See
+    // `lastThinkingGroupId`.
+    const liveThoughtGroupId = lastThinkingGroupId(assistantGroups);
     const hiddenNarrationIds = preToolNarrationGroupIds(
       assistantGroups,
       minimalActivity && !streaming && !activityExpanded ? latestToolCreatedAt(folded) : null,
@@ -313,17 +321,20 @@ export function AgentActivity({
       { separateAnswer: finalOutput !== null }
     );
     const assistantChildren = assistantGroups.flatMap<TurnBodyChild & { createdAt: string; sortAt: string }>((group) => {
+      const groupLive = thinkingLive && group.id === liveThoughtGroupId;
       // Minimal folds settled Thought blocks away entirely — only the live
       // "Thinking" indicator survives.
-      if (minimalActivity && group.thinking && !thinkingLive) return [];
+      if (minimalActivity && group.thinking && !groupLive) return [];
       if (hiddenNarrationIds.has(group.id)) {
         return [{ kind: "assistant" as const, id: `assistant-${group.id}`, createdAt: group.createdAt, sortAt: group.lastActivityAt, node: null }];
       }
       const node = renderAssistantGroup({
         group,
-        thinkingLive,
+        thinkingLive: groupLive,
         thoughtExpanded: activityExpandOverride ?? defaultThinkingExpanded,
-        holdThoughtOpen: activityExpandOverride !== false,
+        // Keyed on the group, not on `groupLive`: the hold has to outlast live
+        // so the newest block is still open when the answer lands under it.
+        holdThoughtOpen: activityExpandOverride !== false && group.id === liveThoughtGroupId,
         agentKey,
         workspace,
         onOpenFile,

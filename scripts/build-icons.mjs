@@ -25,9 +25,13 @@
 // transparency to white. That is what left the icon with a white border in
 // c50356e.
 //
-// macOS only: the .icns needs sips and Assets.car needs Xcode 26's
-// actool. Both artifacts are committed so an ordinary `tauri build` never has
-// to run this.
+// macOS only: the .icns needs sips and iconutil, and Assets.car needs
+// Xcode 26's actool. Both artifacts are committed so an ordinary `tauri build`
+// never has to run this. The icns is Apple's iconutil output with ic13
+// (256px PNG) moved first: 1Password's CLI approval prompt reads the first
+// PNG in CFBundleIconFile, and a hand-rolled file that led with icp4 (16px)
+// showed up there as a stamp. Safari and 1Password's own icns files also
+// lead with ic13.
 
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -304,64 +308,93 @@ function writePng(pixels, outPath) {
   );
 }
 
-const ICNS_RENDITIONS = [
-  { points: 16, scale: 1, type: "icp4" },
-  { points: 16, scale: 2, type: "ic11" },
-  { points: 32, scale: 1, type: "icp5" },
-  { points: 32, scale: 2, type: "ic12" },
-  { points: 128, scale: 1, type: "ic07" },
-  { points: 128, scale: 2, type: "ic13" },
-  { points: 256, scale: 1, type: "ic08" },
-  { points: 256, scale: 2, type: "ic14" },
-  { points: 512, scale: 1, type: "ic09" },
-  { points: 512, scale: 2, type: "ic10" }
+const ICONSET_RENDITIONS = [
+  { points: 16, scale: 1, file: "icon_16x16.png" },
+  { points: 16, scale: 2, file: "icon_16x16@2x.png" },
+  { points: 32, scale: 1, file: "icon_32x32.png" },
+  { points: 32, scale: 2, file: "icon_32x32@2x.png" },
+  { points: 128, scale: 1, file: "icon_128x128.png" },
+  { points: 128, scale: 2, file: "icon_128x128@2x.png" },
+  { points: 256, scale: 1, file: "icon_256x256.png" },
+  { points: 256, scale: 2, file: "icon_256x256@2x.png" },
+  { points: 512, scale: 1, file: "icon_512x512.png" },
+  { points: 512, scale: 2, file: "icon_512x512@2x.png" }
 ];
 
-function icnsChunk(type, png) {
-  const header = Buffer.alloc(8);
-  header.write(type, 0, 4, "ascii");
-  header.writeUInt32BE(png.length + header.length, 4);
-  return Buffer.concat([header, png]);
-}
-
-function validateIcns(icns) {
+function parseIcns(icns) {
   if (icns.subarray(0, 4).toString("ascii") !== "icns" || icns.readUInt32BE(4) !== icns.length) {
     throw new Error("Generated ICNS has an invalid container header");
   }
 
-  const types = [];
+  const chunks = [];
   for (let offset = 8; offset < icns.length; ) {
     const type = icns.subarray(offset, offset + 4).toString("ascii");
     const length = icns.readUInt32BE(offset + 4);
-    if (length < 16 || offset + length > icns.length) {
+    if (length < 8 || offset + length > icns.length) {
       throw new Error(`Generated ICNS has an invalid ${type} chunk`);
     }
-    const signature = icns.subarray(offset + 8, offset + 16).toString("hex");
-    if (signature !== "89504e470d0a1a0a") {
-      throw new Error(`Generated ICNS ${type} chunk is not a PNG`);
-    }
-    types.push(type);
+    chunks.push({ type, data: icns.subarray(offset, offset + length) });
     offset += length;
   }
+  return chunks;
+}
 
-  const expected = ICNS_RENDITIONS.map(({ type }) => type);
-  if (types.join(",") !== expected.join(",")) {
-    throw new Error(`Generated ICNS has unexpected chunks: ${types.join(", ")}`);
+function pngWidth(chunk) {
+  const png = chunk.data.subarray(8);
+  if (png.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") return null;
+  return png.readUInt32BE(16);
+}
+
+function assembleIcns(chunks) {
+  const body = Buffer.concat(chunks.map((chunk) => chunk.data));
+  const header = Buffer.alloc(8);
+  header.write("icns", 0, 4, "ascii");
+  header.writeUInt32BE(header.length + body.length, 4);
+  return Buffer.concat([header, body]);
+}
+
+function leadWithDialogIcon(icns) {
+  // Drop iconutil's `info` archive: it describes the original chunk order,
+  // and 1Password / Safari icns files don't include one.
+  const chunks = parseIcns(icns).filter(({ type }) => type !== "info");
+  const lead = chunks.find(({ type }) => type === "ic13");
+  if (!lead) {
+    throw new Error("Generated ICNS has no ic13 (256px PNG) chunk");
+  }
+  return assembleIcns([lead, ...chunks.filter((chunk) => chunk !== lead)]);
+}
+
+function validateIcns(icns) {
+  const chunks = parseIcns(icns);
+  const types = chunks.map(({ type }) => type);
+  if (types.includes("icp4") || types.includes("icp5")) {
+    throw new Error("Generated ICNS still has icp4/icp5; 1Password would pick the 16px PNG");
+  }
+  const firstPng = chunks.map(pngWidth).find((width) => width !== null);
+  if (!(firstPng >= 256)) {
+    throw new Error(`Generated ICNS first PNG is ${firstPng ?? "missing"}px; 1Password needs >= 256`);
+  }
+  if (!chunks.some((chunk) => chunk.type === "ic10" && pngWidth(chunk) === 1024)) {
+    throw new Error("Generated ICNS is missing the 1024px ic10 rendition");
   }
 }
 
 function buildIcns(sourcePng, scratch) {
-  const chunks = ICNS_RENDITIONS.map(({ points, scale, type }) => {
-    const target = path.join(scratch, `${type}.png`);
-    const pixels = String(points * scale);
-    run("sips", ["-z", pixels, pixels, sourcePng, "--out", target]);
-    return icnsChunk(type, readFileSync(target));
-  });
-  const header = Buffer.alloc(8);
-  const length = header.length + chunks.reduce((total, chunk) => total + chunk.length, 0);
-  header.write("icns", 0, 4, "ascii");
-  header.writeUInt32BE(length, 4);
-  const icns = Buffer.concat([header, ...chunks]);
+  const iconset = path.join(scratch, "icon.iconset");
+  mkdirSync(iconset);
+  for (const { points, scale, file } of ICONSET_RENDITIONS) {
+    run("sips", [
+      "-z",
+      String(points * scale),
+      String(points * scale),
+      sourcePng,
+      "--out",
+      path.join(iconset, file)
+    ]);
+  }
+  const icnsPath = path.join(scratch, "icon.icns");
+  run("iconutil", ["-c", "icns", iconset, "-o", icnsPath]);
+  const icns = leadWithDialogIcon(readFileSync(icnsPath));
   validateIcns(icns);
   writeFileSync(path.join(TAURI_ICONS, "icon.icns"), icns);
 }

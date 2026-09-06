@@ -4,6 +4,7 @@ import type {
   ComposerAttachment,
   PendingMessage,
   ProjectSummary,
+  ProviderId,
   RawProviderOutput,
   SessionSummary,
   TimelineEvent,
@@ -58,7 +59,7 @@ export function DetailsPopup({
   onClose: () => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
   /** The popup has no dock, so a multitask dispatched from it opens as a full
    *  chat — the same fallback the phone uses. Without it the row is a button
    *  that goes nowhere, and the chat has no sidebar row either. */

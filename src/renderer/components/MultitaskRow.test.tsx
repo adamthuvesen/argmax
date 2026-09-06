@@ -118,6 +118,23 @@ describe("MultitaskRow", () => {
     expect(screen.getByText("Running")).toBeInTheDocument();
   });
 
+  it("takes the title its chat was given over the one written at dispatch", () => {
+    // The dispatch row carries the first line of the prompt; the short title
+    // lands on the workspace a second or two later.
+    render(
+      <MultitaskRow
+        notice={notice({ taskLabel: "Fix the README typo in the install section, it..." })}
+        liveLabel="Fix Install Section Typo"
+        onOpen={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Fix Install Section Typo")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Open multitask: Fix Install Section Typo" })
+    ).toBeInTheDocument();
+  });
+
   it("is a plain row when there is nothing to open", () => {
     // A finish row whose dispatch fell out of the transcript window carries no
     // session id: it still says what happened, it just goes nowhere.

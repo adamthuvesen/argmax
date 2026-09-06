@@ -37,6 +37,7 @@ import type {
   AgentMode,
   ComposerAttachment,
   PendingMessage,
+  ProviderId,
   SessionSummary,
   WorkspaceSummary
 } from "../../shared/types.js";
@@ -151,8 +152,9 @@ export function SessionComposer({
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
   /** Dispatch a prompt as a multitask: a sibling chat in this checkout that
-   *  runs alongside the current turn instead of waiting behind it. */
-  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
+   *  runs alongside the current turn instead of waiting behind it. It inherits
+   *  this chat's provider, which is why the call carries it. */
+  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
   /** For a chat that lives inside a panel (a multitask in the Agents dock):
    *  promote it to the pane it is docked beside. Absent in a pane, which is
    *  already the full chat. */
@@ -505,7 +507,7 @@ export function SessionComposer({
       setStatus(null);
       shouldRefocusInput.current = true;
       try {
-        await onMultitask(session.id, multitaskPrompt);
+        await onMultitask(session.id, multitaskPrompt, session.provider);
         setInput("");
         clearDraft(session.id);
       } catch (error) {
@@ -608,7 +610,7 @@ export function SessionComposer({
               setSendingQueuedMessageId(id);
               setStatus(null);
               try {
-                await onMultitask(session.id, content);
+                await onMultitask(session.id, content, session.provider);
               } catch (error) {
                 setStatus({
                   kind: "error",

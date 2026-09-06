@@ -29,6 +29,7 @@ function statusLabel(state: string | null, status: RowStatus): string {
 export function MultitaskRow({
   notice,
   liveState,
+  liveLabel,
   onDismiss,
   onOpen,
   onStop
@@ -39,12 +40,17 @@ export function MultitaskRow({
    *  row never landed (the app went down mid-turn) would otherwise claim to be
    *  running forever. */
   liveState?: string | null;
+  /** Its workspace's label, for the same reason: the dispatch row was written
+   *  with the first line of the prompt, and the short title that replaces it is
+   *  minted a second or two later. */
+  liveLabel?: string | null;
   /** Closes a settled row. Its chat stays reachable from the dock. */
   onDismiss?: () => void;
   onOpen?: (sessionId: string) => void;
   onStop?: (sessionId: string) => void;
 }): JSX.Element {
   const state = liveState ?? notice.state;
+  const taskLabel = liveLabel || notice.taskLabel;
   const status = multitaskRowStatus(state);
   // Hold the nest through its landing before the split glyph takes the slot.
   // A stopped or failed multitask skips it: the landing marks work arriving.
@@ -59,7 +65,7 @@ export function MultitaskRow({
   const headline = (
     <>
       <span className="agent-launch-headline">
-        <span className="agent-launch-title">{notice.taskLabel}</span>
+        <span className="agent-launch-title">{taskLabel}</span>
         <span className="agent-launch-identity">{identity}</span>
       </span>
       <span className="agent-launch-status">
@@ -78,7 +84,7 @@ export function MultitaskRow({
               active={markPhase === "running"}
               className="agent-launch-mark"
               size={14}
-              phaseKey={childSessionId ?? notice.taskLabel}
+              phaseKey={childSessionId ?? taskLabel}
             />
           ) : (
             <span className="agent-launch-mark multitask-row-mark" aria-hidden="true">
@@ -89,14 +95,14 @@ export function MultitaskRow({
             <button
               type="button"
               className="agent-launch-row-button"
-              aria-label={`Open multitask: ${notice.taskLabel}`}
-              title={notice.prompt ?? notice.taskLabel}
+              aria-label={`Open multitask: ${taskLabel}`}
+              title={notice.prompt ?? taskLabel}
               onClick={() => onOpen(childSessionId)}
             >
               {headline}
             </button>
           ) : (
-            <span className="agent-launch-row-button" title={notice.prompt ?? notice.taskLabel}>
+            <span className="agent-launch-row-button" title={notice.prompt ?? taskLabel}>
               {headline}
             </span>
           )}
@@ -107,7 +113,7 @@ export function MultitaskRow({
             <button
               type="button"
               className="multitask-row-stop"
-              aria-label={`Stop multitask: ${notice.taskLabel}`}
+              aria-label={`Stop multitask: ${taskLabel}`}
               title="Stop this multitask"
               onClick={() => onStop(childSessionId)}
             >
@@ -120,7 +126,7 @@ export function MultitaskRow({
             <button
               type="button"
               className="multitask-row-stop multitask-row-dismiss"
-              aria-label={`Dismiss multitask: ${notice.taskLabel}`}
+              aria-label={`Dismiss multitask: ${taskLabel}`}
               title="Dismiss this multitask"
               onClick={onDismiss}
             >

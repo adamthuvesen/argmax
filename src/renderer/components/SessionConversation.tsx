@@ -24,6 +24,7 @@ import type {
   IdeId,
   PendingMessage,
   ProjectSummary,
+  ProviderId,
   RawProviderOutput,
   SessionSummary,
   TimelineEvent,
@@ -246,7 +247,7 @@ export function SessionConversation({
   pendingMessages?: PendingMessage[];
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
@@ -350,28 +351,33 @@ export function SessionConversation({
     [events, rawOutputs]
   );
   const conversationEvents = useMemo(() => buildConversationEvents(liveEvents), [liveEvents]);
-  // Child session state by id: a multitask row believes this over its own
-  // timeline, which cannot know about a turn that ended while the app was shut.
+  // Child session state and title by id: a multitask row believes these over
+  // its own timeline, which knows only what was written at dispatch — not a
+  // turn that ended while the app was shut, and not the short title minted a
+  // second or two after the dispatch row landed.
   //
-  // Keyed on the states themselves, not on the array: `multitasksByParentSession`
+  // Keyed on the values themselves, not on the array: `multitasksByParentSession`
   // rebuilds its arrays on every snapshot delta, and this map is a prop of every
   // memoized turn — keying on the array identity re-rendered the whole
-  // transcript each time any session row changed.
-  const multitaskStateKey = (multitasks ?? [])
-    .map((child) => `${child.session.id}:${child.session.state}`)
-    .join("|");
-  const multitaskStates = useMemo(
+  // transcript each time any session row changed. A title is free text, so the
+  // separators are control characters no label can contain.
+  const multitaskLiveKey = (multitasks ?? [])
+    .map((child) =>
+      [child.session.id, child.session.state, child.workspace?.taskLabel ?? ""].join("\u0000")
+    )
+    .join("\u0001");
+  const multitaskLive = useMemo(
     () =>
       new Map(
-        multitaskStateKey
-          .split("|")
+        multitaskLiveKey
+          .split("\u0001")
           .filter((entry) => entry.length > 0)
           .map((entry) => {
-            const at = entry.lastIndexOf(":");
-            return [entry.slice(0, at), entry.slice(at + 1)] as const;
+            const [id, state, taskLabel] = entry.split("\u0000");
+            return [id, { state, taskLabel }] as const;
           })
       ),
-    [multitaskStateKey]
+    [multitaskLiveKey]
   );
   const askSideChat = useMemo(() => {
     if (!onOpenSideChat) return undefined;
@@ -515,9 +521,11 @@ export function SessionConversation({
         .filter((notice) => {
           const childId = notice.childSessionId;
           if (!childId || !dismissedMultitasks.has(childId)) return true;
-          return multitaskRowStatus(multitaskStates.get(childId) ?? notice.state) === "running";
+          return (
+            multitaskRowStatus(multitaskLive.get(childId)?.state ?? notice.state) === "running"
+          );
         }),
-    [renderItems, dismissedMultitasks, multitaskStates]
+    [renderItems, dismissedMultitasks, multitaskLive]
   );
   const transcriptRenderItems = useMemo(
     () =>
@@ -1297,13 +1305,14 @@ export function SessionConversation({
         <section className="multitask-composer-lane" aria-label="Multitasks">
           {composerMultitaskNotices.map((notice) => {
             const childId = notice.childSessionId;
-            const opens = childId !== null && multitaskStates.has(childId);
+            const live = childId ? multitaskLive.get(childId) : undefined;
             return (
               <MultitaskRow
                 key={`multitask-${childId ?? notice.createdAt}`}
                 notice={notice}
-                liveState={childId ? (multitaskStates.get(childId) ?? null) : null}
-                {...(opens && (onOpenMultitask ?? onOpenSession)
+                liveState={live?.state ?? null}
+                liveLabel={live?.taskLabel || null}
+                {...(live && (onOpenMultitask ?? onOpenSession)
                   ? { onOpen: onOpenMultitask ?? onOpenSession }
                   : {})}
                 onStop={(sessionId) => void onTerminateSession(sessionId)}

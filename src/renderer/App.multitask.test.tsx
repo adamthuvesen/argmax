@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import { launcherDraftKey, readDraft } from "./lib/composerDrafts.js";
+import { PROVIDER_TITLE_MODEL } from "../shared/providerModels.js";
 import {
   archiveWorkspace,
+  autotitleWorkspace,
   mockDashboardSnapshot,
   setupAppTestMocks,
   snapshot,
@@ -151,6 +153,30 @@ describe("multitask in the chat that dispatched it", () => {
     // Its own transcript, in the dock — the parent chat is still the one on the
     // left, and nothing navigated away from it.
     expect(await screen.findByText("Corrected the 0.4 heading to 2026.")).toBeInTheDocument();
+  });
+
+  it("names the multitask with a short title instead of the prompt", async () => {
+    // Its label is what the row above the composer, the dock tab and the finish
+    // notice all read, so it is minted the way a launched chat's is: on this
+    // chat's provider, with that provider's cheap title model.
+    const dispatched = "The changelog says 2025 for the 0.4 entry, fix it";
+    mountWithMultitask();
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const prompt = await screen.findByLabelText("Chat prompt");
+    fireEvent.change(prompt, { target: { value: `/multitask ${dispatched}` } });
+    fireEvent.mouseDown(document.body);
+    fireEvent.keyDown(prompt, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(autotitleWorkspace).toHaveBeenCalledWith({
+        workspaceId: "multitask-workspace",
+        provider: "codex",
+        modelId: PROVIDER_TITLE_MODEL.codex,
+        prompt: dispatched
+      })
+    );
   });
 
   it("stops only the multitask, leaving the chat that dispatched it where it was", async () => {

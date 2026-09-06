@@ -1,5 +1,11 @@
 import { useCallback } from "react";
-import type { AgentMode, AgentReference, ComposerAttachment } from "../../shared/types.js";
+import { PROVIDER_TITLE_MODEL } from "../../shared/providerModels.js";
+import type {
+  AgentMode,
+  AgentReference,
+  ComposerAttachment,
+  ProviderId
+} from "../../shared/types.js";
 import { modelSupportsFastMode, type ModelPickerSelection } from "../lib/models.js";
 import { withToast, type ToastMessage } from "../lib/withToast.js";
 
@@ -32,8 +38,9 @@ export interface SessionCommands {
   cancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   sendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
   /** Dispatch a prompt as a sibling chat that runs alongside this session's
-   *  turn, in the same checkout. */
-  multitask: (sessionId: string, prompt: string) => Promise<void>;
+   *  turn, in the same checkout. `provider` is this session's, which the
+   *  sibling inherits: it picks the cheap model that names the new chat. */
+  multitask: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
   runCheck: (workspaceId: string, command: string) => Promise<void>;
   terminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   clearSession: (sessionId: string) => Promise<void>;
@@ -109,11 +116,24 @@ export function useSessionCommands({
   // and this session's own turn is untouched. The dashboard refresh is what
   // brings its sidebar row and the parent's card in.
   const multitask = useCallback(
-    async (sessionId: string, prompt: string): Promise<void> => {
+    async (sessionId: string, prompt: string, provider: ProviderId): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to run a multitask.");
       }
-      await window.argmax.session.multitask({ sessionId, prompt });
+      const launched = await window.argmax.session.multitask({ sessionId, prompt });
+      // A multitask is named in as many places as a session is — the row above
+      // the composer, the dock tab, the workspace card, the finish notice —
+      // and all of them read the workspace's label. So it gets the same short
+      // title a launched chat does instead of the first line of the prompt.
+      // Best-effort and never awaited: the dispatch is already done.
+      void window.argmax.workspaces
+        .autoTitle({
+          workspaceId: launched.workspaceId,
+          provider,
+          modelId: PROVIDER_TITLE_MODEL[provider],
+          prompt
+        })
+        .catch(() => undefined);
       await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
     [refreshDashboardStatus, loadSessionEvents]

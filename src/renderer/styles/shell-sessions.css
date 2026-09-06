@@ -68,14 +68,15 @@
 /* Calm rows draw no glyph, but they keep the marker column so every title in
    the list starts at the same x. */
 .session-link-lead-spacer {
-  width: 18px;
+  width: 16px;
 }
 
 .session-link-text {
   display: grid;
   gap: 2px;
-  /* Same 18px as the marker box, so a start-aligned glyph lands on the title
-     line's box without a per-row offset. */
+  /* The title's line box, which the 16px marker sits inside: two pixels of
+     slack, so a start-aligned glyph lands on the line without a per-row
+     offset. */
   line-height: 18px;
 }
 

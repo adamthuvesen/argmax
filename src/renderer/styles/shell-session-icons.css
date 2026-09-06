@@ -48,14 +48,16 @@
   color: var(--session-row-icon-color);
 }
 
+/* Sized to the sidebar's marker column, so a row with a custom icon starts its
+   title at the same x as one with a status marker or the calm spacer. */
 .session-custom-icon {
   position: relative;
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   color: var(--session-icon-blue);
 }
 

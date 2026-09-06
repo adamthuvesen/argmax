@@ -100,6 +100,15 @@
   --working-nest-land-y: -2.8px;
 }
 
+/* A nest asked to hold still (WorkingNest's `still`) lands on exactly the state
+   reduced motion already defines: the live accent on a filled 2x2, no relay, no
+   entrance, no landing. Placed after the active and settling rules so equal
+   specificity resolves in its favour. */
+.working-nest[data-still="true"],
+.working-nest[data-still="true"] .working-nest-dot {
+  animation: none;
+}
+
 @keyframes working-nest-enter {
   from {
     opacity: 0;

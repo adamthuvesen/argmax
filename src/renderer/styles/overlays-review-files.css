@@ -263,6 +263,14 @@
     0 1px 2px rgba(31, 28, 24, 0.16);
 }
 
+/* The 12% of ink that lifts a tab off a dark panel lands as a heavy grey slab
+   against white, which is loud next to a subagent's own coloured mark. On paper
+   the hairline ring and the shadow already say "active", so the fill only has
+   to be a shade off the panel. */
+:root:not([data-theme="dark"]) .file-tab[data-active="true"] {
+  background: color-mix(in oklab, var(--panel) 92%, var(--text));
+}
+
 /* Padding math keeps the pill visually symmetric: 10px from the left edge to
    the icon, and the ✕ glyph (12px inside its 18px hit box, so 3px of inset)
    plus its 7px margin lands 10px from the right edge too. */

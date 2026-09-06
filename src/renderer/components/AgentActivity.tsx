@@ -70,7 +70,11 @@ function AgentHeader({
         aria-hidden="true"
       >
         {status === "running" ? (
-          <WorkingNest active size={13} phaseKey={phaseKey} />
+          // Held still: the masthead mark is this run's identity, sitting above
+          // a transcript that is already streaming. A relay here is one moving
+          // thing too many, so the nest keeps its live colour without the
+          // motion — and with it the phase, which only times the relay.
+          <WorkingNest active still size={13} />
         ) : (
           <AgentEmblem
             shape={emblem.shape}
@@ -239,6 +243,11 @@ export function AgentActivity({
     [parentSession?.provider, parentSession?.state, parentToolUseId, visibleEvents]
   );
   const finalOutput = activity.finalOutput;
+  // Per-agent state needs no reset when the run changes: the dock mounts one
+  // pane per tab, keyed by this id, so an instance only ever shows one agent.
+  // Resetting it in an effect instead cost the first click after the pane
+  // opened — the mount's passive effects can still be queued when it lands, and
+  // they then flush over the click's update.
   const [instructionsExpanded, setInstructionsExpanded] = useState(false);
   const agentKey = parentSessionId ? `${parentSessionId}:${parentToolUseId}` : null;
   const [loadedAgentKey, setLoadedAgentKey] = useState<string | null>(null);
@@ -442,11 +451,6 @@ export function AgentActivity({
     }, 1500);
     return () => window.clearInterval(interval);
   }, [activity.status, loadAgentEventsGuarded, onLoadAgentEvents, parentSession?.state, parentSessionId]);
-
-  useEffect(() => {
-    setInstructionsExpanded(false);
-    setActivityExpandOverride(null);
-  }, [parentToolUseId]);
 
   // The launch is when the run started, so the chip's clock counts from there
   // rather than from the subagent's first visible event.

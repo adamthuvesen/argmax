@@ -10,6 +10,10 @@ import { WorkingNest } from "./WorkingNest.js";
  *  can take ten to thirty seconds to say its first word. */
 const ELAPSED_VISIBLE_AFTER_MS = 3_000;
 
+// One word per silent beat, so the set has to be big enough that a long turn
+// never repeats itself into looking stuck. US spelling throughout, gerunds
+// only, and each one names work the agent actually does — nothing that
+// advertises guessing. Argmaxing is the signature and stays last.
 export const THINKING_WORDS = [
   "Brainstorming",
   "Disentangling",
@@ -21,6 +25,56 @@ export const THINKING_WORDS = [
   "Distilling",
   "Reconciling",
   "Refining",
+  "Calculating",
+  "Thinking",
+  "Computing",
+  "Analyzing",
+  "Philosophizing",
+  "Reasoning",
+  "Deducing",
+  "Inferring",
+  "Extrapolating",
+  "Hypothesizing",
+  "Deliberating",
+  "Contemplating",
+  "Dissecting",
+  "Unpacking",
+  "Parsing",
+  "Triangulating",
+  "Cross-referencing",
+  "Correlating",
+  "Diagnosing",
+  "Investigating",
+  "Excavating",
+  "Spelunking",
+  "Retracing",
+  "Surveying",
+  "Sleuthing",
+  "Formulating",
+  "Composing",
+  "Drafting",
+  "Assembling",
+  "Consolidating",
+  "Architecting",
+  "Scrutinizing",
+  "Second-guessing",
+  "Stress-testing",
+  "Interrogating",
+  "Falsifying",
+  "Auditing",
+  "Verifying",
+  "Optimizing",
+  "Converging",
+  "Approximating",
+  "Quantifying",
+  "Simulating",
+  "Enumerating",
+  "Backpropagating",
+  "Condensing",
+  "Sharpening",
+  "Tightening",
+  "Weighing",
+  "Prioritizing",
   "Argmaxing"
 ] as const;
 

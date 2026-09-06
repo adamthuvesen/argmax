@@ -5,7 +5,6 @@ mod opencode;
 
 pub use cursor::synthesize_message_completed_from_exit;
 
-#[cfg(test)]
 use std::collections::HashMap;
 
 use regex::Regex;
@@ -31,6 +30,7 @@ use self::{
     codex::{
         detect_permission_gate as detect_codex_permission_gate, event_type as codex_event_type,
         extract_usage as extract_codex_usage, normalize_error_item as normalize_codex_error_item,
+        normalize_native_agent_lifecycle_events as normalize_codex_native_agent_lifecycle_events,
         normalize_reasoning_item as normalize_codex_reasoning_item,
         normalize_tool_item as normalize_codex_tool_item,
         update_turn_context_model as update_codex_turn_context_model,
@@ -208,6 +208,10 @@ pub struct NormalizerSessionContext {
     /// whose appended bytes carry no `token_count` reuses this instead of
     /// losing the occupancy readout.
     pub codex_rollout_last_token_count: Option<(u64, Option<u64>)>,
+    /// Native Codex child id to the collab item id that opened its current run.
+    /// A fresh map per provider invocation keeps repeated waits from completing
+    /// an earlier run again after `codex exec resume`.
+    pub codex_active_agent_runs: HashMap<String, String>,
     /// After a tracing-format PTY line, following non-JSON lines are the rest
     /// of that record. Codex dumps apply_patch expected context that way.
     pub raw_tracing_continuation: RawTracingContinuation,
@@ -638,8 +642,16 @@ fn normalize_json_payload(
             item,
             item_type.as_deref(),
         ) {
+            let mut normalized_events = vec![tool_event];
+            normalized_events.extend(normalize_codex_native_agent_lifecycle_events(
+                event,
+                provider_type.as_deref(),
+                item,
+                item_type.as_deref(),
+                context,
+            ));
             return NormalizedProviderResult {
-                events: vec![tool_event],
+                events: normalized_events,
                 usages,
                 provider_conversation_id,
                 ..NormalizedProviderResult::default()

@@ -176,15 +176,18 @@ export function buildAgentActivity(params: {
         (!providerInvocationId || tool.providerInvocationId === providerInvocationId))
     : identityRuns.at(-1)) ?? null;
   const receiverThreadIds = receiverThreadIdsFromTool(parentTool);
+  // Native lifecycle and child rows carry both IDs. Legacy callers leave one
+  // or both null, so each supplied ID narrows the run independently.
+  const matchesRun = (value: Pick<ToolCall, "agentRunId" | "providerInvocationId">): boolean =>
+    (!agentRunId || value.agentRunId === agentRunId) &&
+    (!providerInvocationId || value.providerInvocationId === providerInvocationId);
   const childTools = tools.filter((tool) =>
     tool.parentToolUseId === parentToolUseId &&
     (!nativeIdentity || (
       tool.providerParentConversationId === nativeIdentity.providerParentConversationId &&
       tool.providerChildSessionId === nativeIdentity.providerChildSessionId
     )) &&
-    (providerInvocationId
-      ? tool.providerInvocationId === providerInvocationId
-      : !agentRunId || tool.agentRunId === agentRunId)
+    matchesRun(tool)
   );
   const childMessages = events
     .filter((event) => {
@@ -193,9 +196,7 @@ export function buildAgentActivity(params: {
       return (!nativeIdentity || (
         decoded.providerParentConversationId === nativeIdentity.providerParentConversationId &&
         decoded.providerChildSessionId === nativeIdentity.providerChildSessionId
-      )) && (providerInvocationId
-        ? decoded.providerInvocationId === providerInvocationId
-        : !agentRunId || decoded.agentRunId === agentRunId);
+      )) && matchesRun(decoded);
     })
     .slice()
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));

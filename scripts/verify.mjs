@@ -15,6 +15,8 @@ import { copyIfPresent, listEvidenceFiles, redact, redactEvidenceTextFiles, writ
 import {
   VERIFICATION_BARRIERS,
   VERIFICATION_CONVERSATION_ID,
+  VERIFICATION_CODEX_PROVIDER,
+  VERIFICATION_CODEX_SUBAGENT,
   VERIFICATION_PROVIDER,
   VERIFICATION_SCENARIOS,
   VERIFICATION_SUBAGENT,
@@ -22,6 +24,24 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const terminalStates = new Set(["complete", "failed", "cancelled"]);
+const persistentSubagentScenarios = new Set(["persistent-subagent", "persistent-codex-subagent"]);
+const scenarioDefinitionKeys = Object.freeze({
+  "chat-resume": "chatResumeFirst",
+  "persistent-subagent": "persistentSubagentFirst",
+  "persistent-codex-subagent": "persistentCodexSubagentFirst",
+  cancellation: "cancellation",
+  "provider-error": "providerError",
+});
+
+function providerForScenario(scenario) {
+  return scenario === "persistent-codex-subagent"
+    ? VERIFICATION_CODEX_PROVIDER
+    : VERIFICATION_PROVIDER;
+}
+
+function definitionForScenario(scenario) {
+  return VERIFICATION_SCENARIOS[scenarioDefinitionKeys[scenario]];
+}
 
 export function parseVerifyArgs(argv) {
   const options = {
@@ -47,8 +67,8 @@ export function parseVerifyArgs(argv) {
     else if (arg === "--timeout") options.timeoutMs = Number(valueAfter(index++, arg)) * 1000;
     else throw new Error(`unknown argument: ${arg}`);
   }
-  if (!['chat-resume', 'persistent-subagent', 'cancellation', 'provider-error'].includes(options.scenario)) {
-    throw new Error("--scenario must be chat-resume, persistent-subagent, cancellation, or provider-error");
+  if (!Object.hasOwn(scenarioDefinitionKeys, options.scenario)) {
+    throw new Error("--scenario must be chat-resume, persistent-subagent, persistent-codex-subagent, cancellation, or provider-error");
   }
   if (!['required', 'auto', 'off'].includes(options.native)) {
     throw new Error("--native must be required, auto, or off");
@@ -67,7 +87,7 @@ async function prepareEvidenceDirectory(outputDir) {
   await mkdir(outputDir, { recursive: true });
 }
 
-function isolatedEnvironment(home, fixturePath, controlDir, invocationLog) {
+function isolatedEnvironment(home, fixturePath, controlDir, invocationLog, provider) {
   const env = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (!/(TOKEN|SECRET|PASSWORD|API_?KEY|AUTHORIZATION|COOKIE|CREDENTIAL)/i.test(key)) env[key] = value;
@@ -84,9 +104,9 @@ function isolatedEnvironment(home, fixturePath, controlDir, invocationLog) {
     CURSOR_CONFIG_DIR: path.join(home, ".cursor"),
     GROK_HOME: path.join(home, ".grok"),
     ARGMAX_VERIFICATION: "1",
-    [VERIFICATION_PROVIDER.modeEnv]: "1",
-    [VERIFICATION_PROVIDER.binaryEnv]: fixturePath,
-    [VERIFICATION_PROVIDER.homeEnv]: home,
+    [provider.modeEnv]: "1",
+    [provider.binaryEnv]: fixturePath,
+    [provider.homeEnv]: home,
     ARGMAX_VERIFICATION_CONTROL_DIR: controlDir,
     ARGMAX_VERIFICATION_LOG: invocationLog
   };
@@ -106,7 +126,7 @@ function silenceDriverOutput() {
   };
 }
 
-function replayDetails({ report, repoRoot, home, profile, env, fixturePath }) {
+function replayDetails({ report, repoRoot, home, profile, env, fixturePath, provider }) {
   if (!report.build) return null;
   return {
     ownedProcessesStopped: true,
@@ -126,7 +146,7 @@ function replayDetails({ report, repoRoot, home, profile, env, fixturePath }) {
       ARGMAX_DATA_DIR: profile,
       ARGMAX_VERIFICATION: "1",
       ARGMAX_VERIFICATION_HOME: home,
-      [VERIFICATION_PROVIDER.binaryEnv]: fixturePath
+      [provider.binaryEnv]: fixturePath
     }
   };
 }
@@ -156,13 +176,13 @@ async function resolveProjectAndWorkspace(bridge, repoPath, taskLabel) {
   return { project, workspace };
 }
 
-async function launchFixture(bridge, workspaceId, prompt) {
+async function launchFixture(bridge, workspaceId, prompt, provider) {
   return bridge.call("providers:launch", {
     workspaceId,
-    provider: VERIFICATION_PROVIDER.provider,
+    provider: provider.provider,
     prompt,
-    modelLabel: VERIFICATION_PROVIDER.modelLabel,
-    modelId: VERIFICATION_PROVIDER.modelId,
+    modelLabel: provider.modelLabel,
+    modelId: provider.modelId,
     reasoningEffort: null,
     fastMode: false,
     agentMode: null,
@@ -228,16 +248,10 @@ function assertRecordIncludes(records, expected, label) {
   }
 }
 
-async function runScenario({ bridge, scenario, repoPath, controlDir, verifyUi, sendInput, terminate, restartBackend, timeoutMs, timeline }) {
-  const scenarioDefinition = {
-    "chat-resume": "chatResumeFirst",
-    "persistent-subagent": "persistentSubagentFirst",
-    cancellation: "cancellation",
-    "provider-error": "providerError",
-  };
-  const definition = VERIFICATION_SCENARIOS[scenarioDefinition[scenario]];
+async function runScenario({ bridge, scenario, provider, repoPath, controlDir, verifyUi, sendInput, terminate, restartBackend, timeoutMs, timeline }) {
+  const definition = definitionForScenario(scenario);
   const { workspace } = await resolveProjectAndWorkspace(bridge, repoPath, definition.prompt);
-  const launched = await launchFixture(bridge, workspace.id, definition.prompt);
+  const launched = await launchFixture(bridge, workspace.id, definition.prompt, provider);
   timeline.push({ at: new Date().toISOString(), type: "session-launched", sessionId: launched.id, workspaceId: workspace.id });
 
   if (scenario === "chat-resume") {
@@ -274,13 +288,27 @@ async function runScenario({ bridge, scenario, repoPath, controlDir, verifyUi, s
     return { session: second.session, workspace, records: combined, browser: [streamingUi, toolUi, ui] };
   }
 
-  if (scenario === "persistent-subagent") {
+  if (persistentSubagentScenarios.has(scenario)) {
+    const isCodex = provider.provider === "codex";
+    const subagent = isCodex ? VERIFICATION_CODEX_SUBAGENT : VERIFICATION_SUBAGENT;
+    const firstDefinition = isCodex
+      ? VERIFICATION_SCENARIOS.persistentCodexSubagentFirst
+      : VERIFICATION_SCENARIOS.persistentSubagentFirst;
+    const secondDefinition = isCodex
+      ? VERIFICATION_SCENARIOS.persistentCodexSubagentSecond
+      : VERIFICATION_SCENARIOS.persistentSubagentSecond;
     const first = await collectUntilTerminal(bridge, launched.id, timeoutMs);
     if (first.session.state !== "complete") throw new Error(`persistent child first turn ended in ${first.session.state}`);
     if (first.session.providerConversationId !== VERIFICATION_CONVERSATION_ID) throw new Error("persistent child parent conversation id was not persisted");
-    assertRecordIncludes(first.records, `\"task_id\":\"${VERIFICATION_SUBAGENT.id}\"`, "persistent child start");
-    assertRecordIncludes(first.records, `\"parent_tool_use_id\":\"${VERIFICATION_SUBAGENT.rootToolUseId}\"`, "persistent child parent linkage");
-    assertRecordIncludes(first.records, VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText, "persistent child first response");
+    if (isCodex) {
+      assertRecordIncludes(first.records, `\"tool\":\"spawn_agent\"`, "persistent Codex child spawn");
+      assertRecordIncludes(first.records, `\"receiver_thread_ids\":[\"${subagent.id}\"]`, "persistent Codex child identity");
+      assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent Codex child first response");
+    } else {
+      assertRecordIncludes(first.records, `\"task_id\":\"${subagent.id}\"`, "persistent child start");
+      assertRecordIncludes(first.records, `\"parent_tool_use_id\":\"${subagent.rootToolUseId}\"`, "persistent child parent linkage");
+      assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent child first response");
+    }
 
     const resumedBridge = await restartBackend();
     timeline.push({ at: new Date().toISOString(), type: "backend-restarted", sessionId: launched.id });
@@ -290,29 +318,38 @@ async function runScenario({ bridge, scenario, repoPath, controlDir, verifyUi, s
       rawOutputCursor: null,
       changeCursor: null,
     });
-    await sendInput(launched.id, VERIFICATION_SCENARIOS.persistentSubagentSecond.prompt);
+    await sendInput(launched.id, secondDefinition.prompt);
     const second = await collectUntilTerminal(resumedBridge, launched.id, timeoutMs, before);
     if (second.session.state !== "complete") throw new Error(`persistent child follow-up ended in ${second.session.state}`);
-    assertRecordIncludes(second.records, `\"resumedAgentId\":\"${VERIFICATION_SUBAGENT.id}\"`, "persistent child resume identity");
-    assertRecordIncludes(second.records, `\"tool_use_id\":\"${VERIFICATION_SUBAGENT.followUpToolUseId}\"`, "persistent child follow-up invocation");
-    assertRecordIncludes(second.records, VERIFICATION_SCENARIOS.persistentSubagentSecond.visibleText, "persistent child follow-up response");
+    if (isCodex) {
+      assertRecordIncludes(second.records, `\"tool\":\"resume_agent\"`, "persistent Codex child resume");
+      assertRecordIncludes(second.records, `\"tool\":\"send_input\"`, "persistent Codex child input");
+      assertRecordIncludes(second.records, `\"id\":\"${subagent.followUpToolUseId}\"`, "persistent Codex child follow-up invocation");
+      assertRecordIncludes(second.records, `\"receiver_thread_ids\":[\"${subagent.id}\"]`, "persistent Codex child stable identity");
+      assertRecordIncludes(second.records, `\"status\":\"pending_init\"`, "persistent Codex child restart state");
+      assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent Codex child follow-up response");
+    } else {
+      assertRecordIncludes(second.records, `\"resumedAgentId\":\"${subagent.id}\"`, "persistent child resume identity");
+      assertRecordIncludes(second.records, `\"tool_use_id\":\"${subagent.followUpToolUseId}\"`, "persistent child follow-up invocation");
+      assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent child follow-up response");
+    }
     const agentEvents = await resumedBridge.call("session:agent-events", {
       sessionId: launched.id,
-      parentToolUseId: VERIFICATION_SUBAGENT.rootToolUseId,
+      parentToolUseId: subagent.rootToolUseId,
     });
     const lifecycle = agentEvents.events.filter((event) => event.type === "agent.started" || event.type === "agent.completed");
     for (const event of lifecycle) {
       const payload = event.payload ?? {};
       if (
-        payload.providerChildSessionId !== VERIFICATION_SUBAGENT.id
+        payload.providerChildSessionId !== subagent.id
         || payload.providerParentConversationId !== VERIFICATION_CONVERSATION_ID
-        || payload.agentRootToolUseId !== VERIFICATION_SUBAGENT.rootToolUseId
+        || payload.agentRootToolUseId !== subagent.rootToolUseId
         || typeof payload.providerInvocationId !== "string"
       ) {
         throw new Error("persistent child lifecycle correlation fields were not persisted");
       }
     }
-    for (const runId of [VERIFICATION_SUBAGENT.rootToolUseId, VERIFICATION_SUBAGENT.followUpToolUseId]) {
+    for (const runId of [subagent.rootToolUseId, subagent.followUpToolUseId]) {
       if (!lifecycle.some((event) => event.payload?.agentRunId === runId && event.type === "agent.started")) {
         throw new Error(`persistent child start for ${runId} was not queryable after restart`);
       }
@@ -320,15 +357,24 @@ async function runScenario({ bridge, scenario, repoPath, controlDir, verifyUi, s
         throw new Error(`persistent child completion for ${runId} was not queryable after restart`);
       }
     }
-    timeline.push({ at: new Date().toISOString(), type: "persistent-agent-events", count: agentEvents.events.length });
+    const invocationIds = new Set(lifecycle.map((event) => event.payload?.providerInvocationId));
+    if (invocationIds.size < 2) {
+      throw new Error("persistent child runs did not retain distinct provider invocation identities");
+    }
+    timeline.push({
+      at: new Date().toISOString(),
+      type: "persistent-agent-events",
+      count: agentEvents.events.length,
+      source: "agent-events",
+    });
     const browser = [];
     for (const theme of ["light", "dark"]) {
       browser.push(await verifyUi({
         name: `persistent-agent-${theme}`,
         expectedTexts: [],
         agentExpectedTexts: [
-          VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText,
-          VERIFICATION_SCENARIOS.persistentSubagentSecond.visibleText,
+          firstDefinition.visibleText,
+          secondDefinition.visibleText,
         ],
         theme,
       }));
@@ -339,7 +385,7 @@ async function runScenario({ bridge, scenario, repoPath, controlDir, verifyUi, s
       records: [...first.records, ...second.records],
       browser,
       bridge: resumedBridge,
-      nativeChildId: VERIFICATION_SUBAGENT.id,
+      nativeChildId: subagent.id,
       agentEventCount: agentEvents.events.length,
     };
   }
@@ -380,6 +426,12 @@ function expectedPersistenceTexts(scenario) {
     return [
       VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText,
       VERIFICATION_SCENARIOS.persistentSubagentSecond.visibleText,
+    ];
+  }
+  if (scenario === "persistent-codex-subagent") {
+    return [
+      VERIFICATION_SCENARIOS.persistentCodexSubagentFirst.visibleText,
+      VERIFICATION_SCENARIOS.persistentCodexSubagentSecond.visibleText,
     ];
   }
   if (scenario === "cancellation") return [VERIFICATION_SCENARIOS.cancellation.visibleText];
@@ -428,7 +480,8 @@ export async function runVerification(options) {
   await initializeRepo(repoPath);
 
   const fixturePath = path.join(repoRoot, "scripts", "verification", "provider-fixture.mjs");
-  const env = isolatedEnvironment(home, fixturePath, controlDir, invocationLog);
+  const provider = providerForScenario(options.scenario);
+  const env = isolatedEnvironment(home, fixturePath, controlDir, invocationLog, provider);
   const report = {
     schemaVersion: 1,
     runId,
@@ -544,7 +597,7 @@ export async function runVerification(options) {
       await redactEvidenceTextFiles(outputDir);
       report.finishedAt = new Date().toISOString();
       report.keptRunRoot = options.keep ? runRoot : null;
-      if (options.keep) report.replay = replayDetails({ report, repoRoot, home, profile, env, fixturePath });
+      if (options.keep) report.replay = replayDetails({ report, repoRoot, home, profile, env, fixturePath, provider });
       if (!options.keep) await rm(runRoot, { recursive: true, force: true });
       report.evidenceFiles = [...await listEvidenceFiles(outputDir), "report.json"].sort();
       await writeJson(path.join(outputDir, "report.json"), report);
@@ -557,8 +610,8 @@ export async function runVerification(options) {
   process.once("SIGINT", onSigint);
   process.once("SIGTERM", onSigterm);
   try {
-    if (options.scenario === "persistent-subagent" && options.native !== "off") {
-      throw new Error("persistent-subagent requires --native off because it verifies a scratch backend restart");
+    if (persistentSubagentScenarios.has(options.scenario) && options.native !== "off") {
+      throw new Error(`${options.scenario} requires --native off because it verifies a scratch backend restart`);
     }
     report.source.beforeBuild = await checkoutFingerprint(repoRoot);
     const targetDir = path.join(repoRoot, "src-tauri", "target", "verification");
@@ -649,15 +702,7 @@ export async function runVerification(options) {
     bridge = await connectBridgeWhenReady({ port: remotePort, token: remoteToken }, options.timeoutMs);
     const health = await bridge.call("health:ping", {});
     report.assertions.push({ name: "backend-ready", ok: Boolean(health) });
-    const titleIncludes = VERIFICATION_SCENARIOS[
-      options.scenario === "chat-resume"
-        ? "chatResumeFirst"
-        : options.scenario === "persistent-subagent"
-          ? "persistentSubagentFirst"
-          : options.scenario === "provider-error"
-            ? "providerError"
-            : "cancellation"
-    ].prompt;
+    const titleIncludes = definitionForScenario(options.scenario).prompt;
     const verifyUi = desktopHandle
       ? async ({ name, expectedTexts, expectIdle }) => {
           const result = await desktopModule.verifyDesktopSession({
@@ -724,6 +769,7 @@ export async function runVerification(options) {
     scenarioResult = await runScenario({
       bridge,
       scenario: options.scenario,
+      provider,
       repoPath,
       controlDir,
       timeoutMs: options.timeoutMs,
@@ -736,7 +782,7 @@ export async function runVerification(options) {
     bridge = scenarioResult.bridge ?? bridge;
     report.session = { id: scenarioResult.session.id, workspaceId: scenarioResult.workspace.id, state: scenarioResult.session.state };
     report.assertions.push({ name: "scenario-state", ok: true, value: scenarioResult.session.state });
-    if (options.scenario === "persistent-subagent") {
+    if (persistentSubagentScenarios.has(options.scenario)) {
       report.assertions.push(
         { name: "persistent-child-stable-id", ok: true, value: scenarioResult.nativeChildId },
         { name: "persistent-child-queryable-after-restart", ok: true, value: scenarioResult.agentEventCount },
@@ -873,7 +919,7 @@ export async function runVerification(options) {
     await redactEvidenceTextFiles(outputDir);
     report.finishedAt = new Date().toISOString();
     report.keptRunRoot = options.keep ? runRoot : null;
-    if (options.keep) report.replay = replayDetails({ report, repoRoot, home, profile, env, fixturePath });
+    if (options.keep) report.replay = replayDetails({ report, repoRoot, home, profile, env, fixturePath, provider });
     if (!options.keep) await rm(runRoot, { recursive: true, force: true });
     report.evidenceFiles = [...await listEvidenceFiles(outputDir), "report.json"].sort();
     await writeJson(path.join(outputDir, "report.json"), report);

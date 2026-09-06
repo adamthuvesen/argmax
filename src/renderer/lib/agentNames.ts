@@ -88,10 +88,10 @@ export function assignAgentCodenames(tools: readonly ToolCall[]): Map<string, st
   return assignments;
 }
 
-/** References the parent can safely use when asking Claude to continue one of
- * its own native children. Unsupported providers never acquire these fields,
- * so this returns no speculative references for them. */
-export function claudeAgentReferences(
+/** References the parent can safely use when asking a native provider to
+ * continue one of its own children. Unsupported providers never acquire these
+ * fields, so this returns no speculative references for them. */
+export function nativeAgentReferences(
   tools: readonly ToolCall[],
   codenames: ReadonlyMap<string, string>,
   providerParentConversationId: string | null

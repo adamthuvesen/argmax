@@ -31,6 +31,10 @@ describe("verification script arguments", () => {
       scenario: "persistent-subagent",
       native: "off",
     });
+    expect(parseVerifyArgs(["--scenario", "persistent-codex-subagent", "--native", "off"])).toMatchObject({
+      scenario: "persistent-codex-subagent",
+      native: "off",
+    });
     expect(() => parseVerifyArgs(["--out"])).toThrow(/requires a value/);
     expect(() => parseScratchArgs(["--port", "70000"])).toThrow(/between 1 and 65535/);
     expect(() => parseScratchArgs(["--data-dir"])).toThrow(/requires a value/);

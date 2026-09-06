@@ -1170,6 +1170,107 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
+  it.each([
+    { prompt: "ask Curie to continue", hasReferences: true },
+    { prompt: "ask Curieville to continue", hasReferences: false }
+  ])("passes native child references for a Codex follow-up only for a whole-word alias ($prompt)", async ({
+    prompt,
+    hasReferences
+  }) => {
+    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    const nativeAgent = event("agent-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
+      type: "tool_use",
+      id: "task-root",
+      name: "Task",
+      input: { description: "investigate" },
+      providerChildSessionId: "child-native",
+      providerParentConversationId: "parent-native",
+      agentRootToolUseId: "task-root",
+      agentRunId: "task-root",
+      agentCodename: "Curie"
+    });
+    renderConversation(
+      baseSession({ provider: "codex", state: "complete", providerConversationId: "parent-native" }),
+      [nativeAgent],
+      { onSendSessionInput }
+    );
+
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: prompt } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+
+    const call = onSendSessionInput.mock.calls[0];
+    if (hasReferences) {
+      expect(call?.[5]).toEqual([{
+        name: "Curie",
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent-native"
+      }]);
+    } else {
+      expect(call).toHaveLength(5);
+    }
+  });
+
+  it.each([
+    {
+      currentProvider: "codex",
+      currentModel: { modelLabel: "GPT-5.6 Terra", modelId: "gpt-5.6-terra" },
+      switchedModel: "Sonnet 5",
+      switchedProvider: "claude",
+      dialogName: "Switch this chat to Claude"
+    },
+    {
+      currentProvider: "claude",
+      currentModel: { modelLabel: "Sonnet 5", modelId: "claude-sonnet-5" },
+      switchedModel: "GPT-5.6 Terra",
+      switchedProvider: "codex",
+      dialogName: "Switch this chat to Codex"
+    }
+  ] as const)("sends after a $currentProvider to $switchedProvider switch without stale native references", async ({
+    currentProvider,
+    currentModel,
+    switchedModel,
+    dialogName
+  }) => {
+    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    renderConversation(
+      baseSession({
+        provider: currentProvider,
+        modelLabel: currentModel.modelLabel,
+        modelId: currentModel.modelId,
+        providerConversationId: "parent-native"
+      }),
+      [event("agent-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
+        type: "tool_use",
+        id: "task-root",
+        name: "Task",
+        input: { description: "investigate" },
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent-native",
+        agentRootToolUseId: "task-root",
+        agentRunId: "task-root",
+        agentCodename: "Curie"
+      })],
+      { onSendSessionInput }
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", {
+        name: switchedModel
+      })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Switch" }));
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "ask Curie to continue" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+    expect(screen.queryByRole("dialog", { name: dialogName })).toBeNull();
+    expect(onSendSessionInput.mock.calls[0]).toHaveLength(5);
+  });
+
   it("renders a curated thinking word with the shared live-work mark", () => {
     const { container } = renderConversation(
       baseSession({ provider: "codex", state: "running" }),

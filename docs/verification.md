@@ -11,13 +11,14 @@ ladder as the definition of "verified".
 npm run doctor
 npm run verify -- --scenario chat-resume
 npm run verify -- --scenario persistent-subagent --native off
+npm run verify -- --scenario persistent-codex-subagent --native off
 npm run verify -- --scenario cancellation
 npm run verify -- --scenario provider-error
 ```
 
 The scenario runner builds a verification binary and renderer from the current
 checkout, creates a temporary project and app profile, and drives the real
-backend with a scripted Claude provider. Native UI verification is required by
+backend with a scripted provider. Native UI verification is required by
 default. The fixture exercises the production launcher and normalizer without
 calling a paid provider. Other providers remain unavailable in this profile.
 
@@ -33,6 +34,13 @@ dark browser renders. It uses the remote browser path because the scenario
 restarts the scratch backend. This fixture does not establish provider support.
 Also run a live Claude exchange through the scratch app, restart it, and verify
 that `SendMessage` continues the same native child with its earlier context.
+
+`persistent-codex-subagent --native off` exercises Codex's `spawn_agent`,
+`send_input`, and `wait` events through the same restart and dock checks. It
+requires persisted lifecycle rows for both assignments. A successful `wait`
+reporting `pending_init` must leave the child running. Verify provider support
+separately with a live Codex exchange through the scratch app, then restart and
+continue the same child with `send_input` and `resume_agent` when needed.
 
 Each run prints a JSON result with its evidence location. Failures retain the
 diagnostics needed to reproduce the assertion. `--out <dir>` selects the

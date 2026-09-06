@@ -13,6 +13,15 @@ export const VERIFICATION_PROVIDER = Object.freeze({
   homeEnv: "ARGMAX_VERIFICATION_HOME",
 });
 
+export const VERIFICATION_CODEX_PROVIDER = Object.freeze({
+  provider: "codex",
+  modelId: "gpt-5.6-luna",
+  modelLabel: "GPT-5.6 Luna",
+  modeEnv: "ARGMAX_VERIFICATION",
+  binaryEnv: "ARGMAX_VERIFICATION_CODEX_BINARY",
+  homeEnv: "ARGMAX_VERIFICATION_HOME",
+});
+
 export const VERIFICATION_CONVERSATION_ID =
   "argmax-verification-conversation";
 
@@ -22,6 +31,13 @@ export const VERIFICATION_SUBAGENT = Object.freeze({
   followUpToolUseId: "verification-send-message",
   description: "Verification persistent child",
   subagentType: "general-purpose",
+});
+
+export const VERIFICATION_CODEX_SUBAGENT = Object.freeze({
+  id: "019f2214-c736-7f60-bb78-75b6ecff57a3",
+  rootToolUseId: "verification-codex-spawn-agent",
+  followUpToolUseId: "verification-codex-send-input",
+  description: "Verification persistent Codex child",
 });
 
 export const VERIFICATION_BARRIERS = Object.freeze({
@@ -47,6 +63,15 @@ export const VERIFICATION_SCENARIOS = Object.freeze({
   persistentSubagentSecond: {
     prompt: "[argmax-verification:persistent-subagent:second]",
     visibleText: "Verification persistent child follow-up response.",
+    resumeConversationId: VERIFICATION_CONVERSATION_ID,
+  },
+  persistentCodexSubagentFirst: {
+    prompt: "[argmax-verification:persistent-codex-subagent:first]",
+    visibleText: "Verification persistent Codex child first response.",
+  },
+  persistentCodexSubagentSecond: {
+    prompt: "[argmax-verification:persistent-codex-subagent:second]",
+    visibleText: "Verification persistent Codex child follow-up response.",
     resumeConversationId: VERIFICATION_CONVERSATION_ID,
   },
   cancellation: {
@@ -99,9 +124,13 @@ function optionValue(args, option) {
   return index >= 0 ? args[index + 1] : undefined;
 }
 
-function promptFrom(args) {
+async function promptFrom(args) {
   const separator = args.lastIndexOf("--");
-  return separator >= 0 ? args[separator + 1] ?? "" : "";
+  if (separator >= 0) return args[separator + 1] ?? "";
+  if (args.at(-1) !== "-") return "";
+  let prompt = "";
+  for await (const chunk of process.stdin) prompt += chunk;
+  return prompt;
 }
 
 async function emitInit() {
@@ -321,6 +350,127 @@ async function runPersistentSubagentSecond(args) {
   await emitSuccess("Verification parent follow-up complete.");
 }
 
+async function emitCodexThreadStarted() {
+  await emit({ type: "thread.started", thread_id: VERIFICATION_CONVERSATION_ID });
+  await emit({ type: "turn.started" });
+}
+
+async function emitCodexAgentMessage(threadId, text, id) {
+  await emit({
+    type: "item.completed",
+    item: { id, type: "agent_message", thread_id: threadId, text },
+  });
+}
+
+async function emitCodexCollabItem({ id, tool, receiverThreadIds, prompt, states, status }) {
+  await emit({
+    type: "item.started",
+    item: {
+      id,
+      type: "collab_tool_call",
+      tool,
+      sender_thread_id: VERIFICATION_CONVERSATION_ID,
+      receiver_thread_ids: receiverThreadIds,
+      prompt,
+      agents_states: {},
+      status: "in_progress",
+    },
+  });
+  await emit({
+    type: "item.completed",
+    item: {
+      id,
+      type: "collab_tool_call",
+      tool,
+      sender_thread_id: VERIFICATION_CONVERSATION_ID,
+      receiver_thread_ids: receiverThreadIds,
+      prompt,
+      agents_states: states,
+      status,
+    },
+  });
+}
+
+async function emitCodexSuccess() {
+  await emit({
+    type: "turn.completed",
+    usage: { input_tokens: 24, cached_input_tokens: 8, output_tokens: 12 },
+  });
+}
+
+async function runPersistentCodexSubagentFirst(args) {
+  if (args.includes("resume")) {
+    throw new Error("fresh persistent-codex-subagent fixture unexpectedly received resume");
+  }
+  const childId = VERIFICATION_CODEX_SUBAGENT.id;
+  const visibleText = VERIFICATION_SCENARIOS.persistentCodexSubagentFirst.visibleText;
+  await emitCodexThreadStarted();
+  await emitCodexCollabItem({
+    id: VERIFICATION_CODEX_SUBAGENT.rootToolUseId,
+    tool: "spawn_agent",
+    receiverThreadIds: [childId],
+    prompt: "Reply with the first persistent Codex verification response.",
+    states: { [childId]: { status: "pending_init", message: null } },
+    status: "completed",
+  });
+  await emitCodexAgentMessage(childId, visibleText, "verification-codex-child-first");
+  await emitCodexCollabItem({
+    id: "verification-codex-wait-first",
+    tool: "wait",
+    receiverThreadIds: [childId],
+    prompt: null,
+    states: { [childId]: { status: "completed", message: visibleText } },
+    status: "completed",
+  });
+  await emitCodexAgentMessage(
+    VERIFICATION_CONVERSATION_ID,
+    "Verification Codex parent first turn complete.",
+    "verification-codex-parent-first",
+  );
+  await emitCodexSuccess();
+}
+
+async function runPersistentCodexSubagentSecond(args) {
+  if (!args.includes("resume") || !args.includes(VERIFICATION_CONVERSATION_ID)) {
+    throw new Error("persistent-codex-subagent fixture expected codex exec resume with its parent thread id");
+  }
+  const childId = VERIFICATION_CODEX_SUBAGENT.id;
+  const visibleText = VERIFICATION_SCENARIOS.persistentCodexSubagentSecond.visibleText;
+  const prompt = "Reply with the follow-up persistent Codex verification response.";
+  await emitCodexThreadStarted();
+  await emitCodexCollabItem({
+    id: "verification-codex-resume-agent",
+    tool: "resume_agent",
+    receiverThreadIds: [childId],
+    prompt: null,
+    states: { [childId]: { status: "pending_init", message: null } },
+    status: "completed",
+  });
+  await emitCodexCollabItem({
+    id: VERIFICATION_CODEX_SUBAGENT.followUpToolUseId,
+    tool: "send_input",
+    receiverThreadIds: [childId],
+    prompt,
+    states: { [childId]: { status: "pending_init", message: null } },
+    status: "completed",
+  });
+  await emitCodexAgentMessage(childId, visibleText, "verification-codex-child-follow-up");
+  await emitCodexCollabItem({
+    id: "verification-codex-wait-follow-up",
+    tool: "wait",
+    receiverThreadIds: [childId],
+    prompt: null,
+    states: { [childId]: { status: "completed", message: visibleText } },
+    status: "completed",
+  });
+  await emitCodexAgentMessage(
+    VERIFICATION_CONVERSATION_ID,
+    "Verification Codex parent follow-up complete.",
+    "verification-codex-parent-follow-up",
+  );
+  await emitCodexSuccess();
+}
+
 async function runFirstTurn(args) {
   if (args.includes("--resume")) {
     throw new Error("fresh chat-resume fixture unexpectedly received --resume");
@@ -401,15 +551,19 @@ async function runProviderError() {
 export async function runProviderFixture(args = process.argv.slice(2)) {
   await recordInvocation(args);
   if (args.length === 1 && args[0] === "--version") {
-    process.stdout.write("Claude Code verification fixture 1.0.0\n");
+    process.stdout.write("Provider verification fixture 1.0.0\n");
     return;
   }
   if (args[0] === "auth" && args[1] === "status") {
     process.stdout.write('{"authenticated":true,"fixture":true}\n');
     return;
   }
+  if (args[0] === "login" && args[1] === "status") {
+    process.stdout.write('{"logged_in":true,"fixture":true}\n');
+    return;
+  }
 
-  const prompt = promptFrom(args);
+  const prompt = await promptFrom(args);
   if (args.includes("text") && !prompt.includes("[argmax-verification:")) {
     process.stdout.write("Argmax Verification Chat\n");
     return;
@@ -428,6 +582,14 @@ export async function runProviderFixture(args = process.argv.slice(2)) {
   }
   if (prompt.includes(VERIFICATION_SCENARIOS.persistentSubagentSecond.prompt)) {
     await runPersistentSubagentSecond(args);
+    return;
+  }
+  if (prompt.includes(VERIFICATION_SCENARIOS.persistentCodexSubagentFirst.prompt)) {
+    await runPersistentCodexSubagentFirst(args);
+    return;
+  }
+  if (prompt.includes(VERIFICATION_SCENARIOS.persistentCodexSubagentSecond.prompt)) {
+    await runPersistentCodexSubagentSecond(args);
     return;
   }
   if (prompt.includes(VERIFICATION_SCENARIOS.cancellation.prompt)) {

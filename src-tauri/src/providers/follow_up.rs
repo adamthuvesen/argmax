@@ -2,7 +2,7 @@ use super::runtime::sqlite_error;
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
     ipc::inputs::AgentReference,
-    persistence::events::has_current_claude_agent_identity,
+    persistence::events::has_current_native_agent_identity,
 };
 use rusqlite::OptionalExtension;
 
@@ -22,7 +22,7 @@ pub(super) fn agent_reference_prompt(
     }
     let mut resolved = std::collections::BTreeMap::new();
     for reference in references {
-        if !has_current_claude_agent_identity(
+        if !has_current_native_agent_identity(
             connection,
             session_id,
             reference.provider_parent_conversation_id.as_str(),
@@ -50,8 +50,20 @@ pub(super) fn agent_reference_prompt(
     }
     let roster = serde_json::to_string(&resolved)
         .map_err(|error| ArgmaxError::service("AGENT_REFERENCES", error.to_string()))?;
+    let provider: String = connection
+        .query_row(
+            "SELECT provider FROM sessions WHERE id = ?",
+            (session_id,),
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    let guidance = match provider.as_str() {
+        "claude" => "Use SendMessage to continue a referenced agent when its existing context is relevant.",
+        "codex" => "Use send_input to continue the referenced native child with its existing context, using resume_agent first if the child is no longer active. Wait for the child's terminal status and answer. A successful delivery or pending_init status does not mean the child has completed.",
+        _ => return Err(ArgmaxError::service("AGENT_REFERENCE_UNAVAILABLE", "This provider does not support native agent references.")),
+    };
     Ok(format!(
-        "Argmax dock names for this Claude conversation (JSON name to native agent ID): {roster}\nUse SendMessage to continue a referenced agent when its existing context is relevant. If native continuation fails, report that failure before proposing a fresh agent.\n\n{prompt}"
+        "Argmax dock names for this {provider} conversation (JSON name to native agent ID): {roster}\n{guidance} If native continuation fails, report that failure before proposing a fresh agent.\n\n{prompt}"
     ))
 }
 
@@ -458,66 +470,88 @@ mod tests {
 
     #[test]
     fn dock_references_resolve_only_in_their_current_native_conversation() {
-        let database = Database::open_in_memory().expect("open db");
-        let connection = database.connection();
-        seed_session(&connection);
-        connection
+        for provider in ["claude", "codex"] {
+            let database = Database::open_in_memory().expect("open db");
+            let connection = database.connection();
+            seed_session(&connection);
+            connection
             .execute(
-                "UPDATE sessions SET provider_conversation_id = 'parent-1' WHERE id = 's1'",
-                [],
+                "UPDATE sessions SET provider = ?, provider_conversation_id = 'parent-1' WHERE id = 's1'",
+                (provider,),
             )
             .expect("native parent");
-        persist_timeline_event(
-            &connection,
-            &PersistTimelineEventInput {
-                id: "agent-start".to_string(),
-                session_id: "s1".to_string(),
-                r#type: "agent.started".to_string(),
-                message: "Research".to_string(),
-                payload: json!({
-                    "providerChildSessionId": "child-1",
-                    "providerParentConversationId": "parent-1",
-                    "agentRunId": "task-1"
-                }),
-                created_at: None,
-            },
-        )
-        .expect("agent identity");
-        let references: Vec<AgentReference> = serde_json::from_value(json!([{
-            "name": "Gauss",
-            "providerChildSessionId": "child-1",
-            "providerParentConversationId": "parent-1"
-        }]))
-        .expect("reference");
-        let prompt = agent_reference_prompt(&connection, "s1", "Ask Gauss again", &references)
-            .expect("mapped prompt");
-        assert!(prompt.contains(r#"{"Gauss":"child-1"}"#));
-        assert!(prompt.ends_with("Ask Gauss again"));
-        connection
-            .execute("UPDATE sessions SET resume_fork = 1 WHERE id = 's1'", [])
-            .expect("fork boundary");
-        assert!(agent_reference_prompt(&connection, "s1", "Ask Gauss again", &references).is_err());
-        connection
-            .execute("UPDATE sessions SET resume_fork = 0 WHERE id = 's1'", [])
-            .expect("restore parent");
-        persist_timeline_event(
-            &connection,
-            &PersistTimelineEventInput {
-                id: "clear-reference".to_string(),
-                session_id: "s1".to_string(),
-                r#type: "session.cleared".to_string(),
-                message: "Cleared".to_string(),
-                payload: json!({}),
-                created_at: None,
-            },
-        )
-        .expect("clear boundary");
-        assert!(agent_reference_prompt(&connection, "s1", "Ask Gauss again", &references).is_err());
-        assert_eq!(
-            agent_reference_prompt(&connection, "s1", "An unrelated question", &[])
-                .expect("no references"),
-            "An unrelated question"
-        );
+            persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: "agent-start".to_string(),
+                    session_id: "s1".to_string(),
+                    r#type: "agent.started".to_string(),
+                    message: "Research".to_string(),
+                    payload: json!({
+                        "providerChildSessionId": "child-1",
+                        "providerParentConversationId": "parent-1",
+                        "agentRunId": "task-1"
+                    }),
+                    created_at: None,
+                },
+            )
+            .expect("agent identity");
+            let references: Vec<AgentReference> = serde_json::from_value(json!([{
+                "name": "Gauss",
+                "providerChildSessionId": "child-1",
+                "providerParentConversationId": "parent-1"
+            }]))
+            .expect("reference");
+            let prompt = agent_reference_prompt(&connection, "s1", "Ask Gauss again", &references)
+                .expect("mapped prompt");
+            assert!(prompt.contains(r#"{"Gauss":"child-1"}"#));
+            assert!(prompt.ends_with("Ask Gauss again"));
+            assert!(prompt.contains(&format!("this {provider} conversation")));
+            connection
+                .execute(
+                    "UPDATE sessions SET provider = 'cursor' WHERE id = 's1'",
+                    [],
+                )
+                .expect("unsupported provider");
+            assert!(
+                agent_reference_prompt(&connection, "s1", "Ask Gauss again", &references).is_err()
+            );
+            connection
+                .execute(
+                    "UPDATE sessions SET provider = ? WHERE id = 's1'",
+                    (provider,),
+                )
+                .expect("restore provider");
+            connection
+                .execute("UPDATE sessions SET resume_fork = 1 WHERE id = 's1'", [])
+                .expect("fork boundary");
+            assert!(
+                agent_reference_prompt(&connection, "s1", "Ask Gauss again", &references).is_err()
+            );
+            connection
+                .execute("UPDATE sessions SET resume_fork = 0 WHERE id = 's1'", [])
+                .expect("restore parent");
+            persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: "clear-reference".to_string(),
+                    session_id: "s1".to_string(),
+                    r#type: "session.cleared".to_string(),
+                    message: "Cleared".to_string(),
+                    payload: json!({}),
+                    created_at: None,
+                },
+            )
+            .expect("clear boundary");
+            assert!(
+                agent_reference_prompt(&connection, "s1", "Ask Gauss again", &references).is_err()
+            );
+            assert_eq!(
+                agent_reference_prompt(&connection, "s1", "An unrelated question", &[])
+                    .expect("no references"),
+                "An unrelated question"
+            );
+        }
     }
 
     #[test]

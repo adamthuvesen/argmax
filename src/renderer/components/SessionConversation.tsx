@@ -54,7 +54,7 @@ import {
   outputsAfterClear,
   subAgentToolUseIds
 } from "../lib/sessionConversationModel.js";
-import { assignAgentCodenames, claudeAgentReferences } from "../lib/agentNames.js";
+import { assignAgentCodenames, nativeAgentReferences } from "../lib/agentNames.js";
 import { multitaskTabId } from "../lib/agentTabs.js";
 import { buildSubagentCluster } from "../lib/subagentSummary.js";
 import { isCompacting } from "../lib/compaction.js";
@@ -668,8 +668,11 @@ export function SessionConversation({
       });
       try {
         const mentionedNames = new Set(text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []);
-        const references = model.provider === "claude" && targetSessionId === session?.id
-          ? claudeAgentReferences(toolCalls, agentCodenames, session.providerConversationId)
+        const references =
+          (model.provider === "claude" || model.provider === "codex") &&
+          model.provider === session?.provider &&
+          targetSessionId === session?.id
+          ? nativeAgentReferences(toolCalls, agentCodenames, session.providerConversationId)
               .filter((reference) => mentionedNames.has(reference.name.toLowerCase()))
           : [];
         if (references.length > 0) {
@@ -682,7 +685,7 @@ export function SessionConversation({
         throw error;
       }
     },
-    [onSendSessionInput, session?.id, session?.providerConversationId, toolCalls, agentCodenames]
+    [onSendSessionInput, session?.id, session?.provider, session?.providerConversationId, toolCalls, agentCodenames]
   );
   const isTurnStarting = turnStartBaseline !== null;
   // Whether the session reached a live state after the send. A follow-up sent

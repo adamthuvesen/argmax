@@ -5,7 +5,7 @@ use super::approvals::{
 use super::checks::{persist_check, update_check, PersistCheckInput, UpdateCheckInput};
 use super::database::Database;
 use super::events::{
-    has_current_claude_agent_identity, latest_agent_message, list_session_agent_events,
+    has_current_native_agent_identity, latest_agent_message, list_session_agent_events,
     list_session_agent_events_for_identity, list_session_events_since, persist_raw_output,
     persist_timeline_event, PersistRawOutputInput, PersistTimelineEventInput,
     SESSION_AGENT_EVENT_SCAN_LIMIT,
@@ -775,13 +775,13 @@ fn native_claude_agent_history_links_continuations_without_hiding_them() {
     assert_eq!(continuation.payload["agentRootToolUseId"], "toolu_task");
     assert_eq!(continuation.payload["agentRunId"], "toolu_send");
     assert!(
-        has_current_claude_agent_identity(&connection, "s1", "parent-6b", "agent-a7")
+        has_current_native_agent_identity(&connection, "s1", "parent-6b", "agent-a7")
             .expect("validate identity")
     );
     update_session_provider_conversation_id(&connection, "s1", "parent-cleared")
         .expect("clear boundary");
     assert!(
-        !has_current_claude_agent_identity(&connection, "s1", "parent-6b", "agent-a7")
+        !has_current_native_agent_identity(&connection, "s1", "parent-6b", "agent-a7")
             .expect("reject stale identity")
     );
 }
@@ -828,6 +828,114 @@ fn native_claude_agent_codenames_probe_collisions_and_persist() {
         first.payload["agentCodename"]
     );
     assert_eq!(continued.payload["agentRootToolUseId"], "toolu_0");
+}
+
+#[test]
+fn native_codex_agent_identity_enriches_child_rows_and_rejects_other_providers() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+    update_session_provider_conversation_id(&connection, "s1", "parent-codex")
+        .expect("set parent conversation");
+
+    let lifecycle = persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "codex-agent-start".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "agent.started".to_owned(),
+            message: "Inspect persistence".to_owned(),
+            payload: serde_json::json!({
+                "providerChildSessionId": "child-codex",
+                "providerParentConversationId": "parent-codex",
+                "agentRunId": "spawn-codex",
+                "providerInvocationId": "invoke-codex",
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist lifecycle");
+    assert_eq!(lifecycle.payload["agentRootToolUseId"], "spawn-codex");
+    assert!(lifecycle.payload["agentCodename"].is_string());
+
+    let child = persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "codex-child-message".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "message.completed".to_owned(),
+            message: "Persistence mapped.".to_owned(),
+            payload: serde_json::json!({
+                "parent_tool_use_id": "spawn-codex",
+                "providerInvocationId": "invoke-codex",
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist child row");
+    assert_eq!(child.payload["providerChildSessionId"], "child-codex");
+    assert_eq!(
+        child.payload["providerParentConversationId"],
+        "parent-codex"
+    );
+    assert_eq!(child.payload["agentRunId"], "spawn-codex");
+    assert_eq!(child.payload["agentRootToolUseId"], "spawn-codex");
+
+    persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "codex-agent-start-2".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "agent.started".to_owned(),
+            message: "Continue persistence".to_owned(),
+            payload: serde_json::json!({
+                "providerChildSessionId": "child-codex",
+                "providerParentConversationId": "parent-codex",
+                "agentRunId": "send-codex",
+                "providerInvocationId": "invoke-codex",
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist second lifecycle");
+    let first_run_trace = persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "codex-first-run-trace".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "message.completed".to_owned(),
+            message: "First run".to_owned(),
+            payload: serde_json::json!({
+                "parent_tool_use_id": "spawn-codex",
+                "providerChildSessionId": "child-codex",
+                "providerParentConversationId": "parent-codex",
+                "agentRunId": "spawn-codex",
+                "agentRootToolUseId": "spawn-codex",
+                "providerInvocationId": "invoke-codex",
+                "traceImported": true,
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist first-run trace after second start");
+    assert_eq!(first_run_trace.payload["agentRunId"], "spawn-codex");
+    assert!(
+        has_current_native_agent_identity(&connection, "s1", "parent-codex", "child-codex")
+            .expect("validate Codex identity")
+    );
+
+    connection
+        .execute(
+            "UPDATE sessions SET provider = 'cursor' WHERE id = 's1'",
+            [],
+        )
+        .expect("switch to unsupported provider");
+    assert!(
+        !has_current_native_agent_identity(&connection, "s1", "parent-codex", "child-codex")
+            .expect("reject unsupported provider")
+    );
 }
 
 #[test]

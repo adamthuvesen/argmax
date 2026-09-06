@@ -175,7 +175,7 @@ pub fn list_session_agent_events_for_identity(
         .into_iter()
         .filter(|row| included_ids.contains(&row.id))
         .collect::<Vec<_>>();
-    append_native_claude_agent_events(
+    append_native_agent_events(
         connection,
         session_id,
         parent_tool_use_id,
@@ -242,28 +242,18 @@ pub fn list_session_agent_events_for_identity(
     })
 }
 
-/// Confirms that a native Claude child belongs to the session's current
+/// Confirms that a resumable native child belongs to the session's current
 /// provider conversation. Clearing, switching provider, and forking away from
 /// that conversation therefore invalidate old renderer references even though
 /// their timeline rows remain readable history.
-pub fn has_current_claude_agent_identity(
+pub fn has_current_native_agent_identity(
     connection: &Connection,
     session_id: &str,
     provider_parent_conversation_id: &str,
     provider_child_session_id: &str,
 ) -> ArgmaxResult<bool> {
-    let current: Option<(Option<String>, bool)> = connection
-        .query_row(
-            "SELECT provider_conversation_id, resume_fork FROM sessions WHERE id = ? AND provider = 'claude'",
-            (session_id,),
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()
-        .map_err(sqlite_error)?;
-    let Some((current_parent, resume_fork)) = current else {
-        return Ok(false);
-    };
-    if resume_fork || current_parent.as_deref() != Some(provider_parent_conversation_id) {
+    let current_parent = current_native_agent_parent_conversation_id(connection, session_id)?;
+    if current_parent.as_deref() != Some(provider_parent_conversation_id) {
         return Ok(false);
     }
     connection
@@ -293,7 +283,7 @@ pub fn has_current_claude_agent_identity(
         .map_err(sqlite_error)
 }
 
-fn append_native_claude_agent_events(
+fn append_native_agent_events(
     connection: &Connection,
     session_id: &str,
     root_tool_use_id: &str,
@@ -301,15 +291,7 @@ fn append_native_claude_agent_events(
     requested_child_id: Option<&str>,
     events: &mut Vec<TimelineEvent>,
 ) -> ArgmaxResult<()> {
-    let current_parent: Option<String> = connection
-        .query_row(
-            "SELECT provider_conversation_id FROM sessions WHERE id = ? AND provider = 'claude' AND resume_fork = 0",
-            (session_id,),
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(sqlite_error)?
-        .flatten();
+    let current_parent = current_native_agent_parent_conversation_id(connection, session_id)?;
     let Some(current_parent) = current_parent else {
         return Ok(());
     };
@@ -650,6 +632,12 @@ fn enrich_native_agent_event(
     else {
         return Ok(input.payload.clone());
     };
+    if current_native_agent_parent_conversation_id(connection, input.session_id.as_str())?
+        .as_deref()
+        != Some(parent_conversation_id)
+    {
+        return Ok(input.payload.clone());
+    }
     let current_run_id = payload
         .get("agentRunId")
         .and_then(Value::as_str)
@@ -717,6 +705,26 @@ fn enrich_native_agent_child_row(
     else {
         return Ok(input.payload.clone());
     };
+    let Some(current_parent_conversation_id) =
+        current_native_agent_parent_conversation_id(connection, input.session_id.as_str())?
+    else {
+        return Ok(input.payload.clone());
+    };
+    let has_explicit_native_identity = payload
+        .get("providerParentConversationId")
+        .and_then(Value::as_str)
+        == Some(current_parent_conversation_id.as_str())
+        && ["providerChildSessionId", "agentRunId", "agentRootToolUseId"]
+            .into_iter()
+            .all(|key| {
+                payload
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !value.is_empty())
+            });
+    if has_explicit_native_identity {
+        return Ok(input.payload.clone());
+    }
     let identity = connection
         .query_row(
             r#"
@@ -730,10 +738,7 @@ fn enrich_native_agent_child_row(
               AND type = 'agent.started'
               AND json_extract(payload_json, '$.providerInvocationId') = ?
               AND json_extract(payload_json, '$.agentRootToolUseId') = ?
-              AND json_extract(payload_json, '$.providerParentConversationId') = (
-                  SELECT provider_conversation_id FROM sessions
-                  WHERE id = ? AND provider = 'claude' AND resume_fork = 0
-              )
+              AND json_extract(payload_json, '$.providerParentConversationId') = ?
               AND rowid > COALESCE((
                   SELECT MAX(rowid) FROM events boundary
                   WHERE boundary.session_id = events.session_id
@@ -746,7 +751,7 @@ fn enrich_native_agent_child_row(
                 input.session_id.as_str(),
                 provider_invocation_id,
                 root_tool_use_id,
-                input.session_id.as_str(),
+                current_parent_conversation_id.as_str(),
             ),
             |row| {
                 Ok((
@@ -782,6 +787,27 @@ fn enrich_native_agent_child_row(
         enriched.insert("agentCodename".to_string(), Value::String(codename));
     }
     Ok(Value::Object(enriched))
+}
+
+fn current_native_agent_parent_conversation_id(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    let current: Option<(String, Option<String>, bool)> = connection
+        .query_row(
+            "SELECT provider, provider_conversation_id, resume_fork FROM sessions WHERE id = ?",
+            (session_id,),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some((provider, parent_conversation_id, resume_fork)) = current else {
+        return Ok(None);
+    };
+    if resume_fork || !matches!(provider.as_str(), "claude" | "codex") {
+        return Ok(None);
+    }
+    Ok(parent_conversation_id.filter(|id| !id.is_empty()))
 }
 
 fn assign_native_agent_codename(
@@ -998,6 +1024,37 @@ pub fn list_session_tool_events(
         SELECT rowid AS row_cursor, *
         FROM events
         WHERE session_id = ? AND type IN ('command.started', 'command.completed')
+        ORDER BY rowid ASC
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map((session_id,), event_row_to_timeline_event)
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+/// Native child lifecycle rows, oldest first. Trace reconciliation uses these
+/// persisted run boundaries to attach each appended Codex child turn to the
+/// parent invocation that dispatched it.
+pub fn list_session_native_agent_events(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        SELECT rowid AS row_cursor, *
+        FROM events
+        WHERE session_id = ?
+          AND type IN ('agent.started', 'agent.completed')
+          AND rowid > COALESCE((
+              SELECT MAX(rowid) FROM events boundary
+              WHERE boundary.session_id = events.session_id
+                AND boundary.type IN ('session.cleared', 'session.provider-changed')
+          ), 0)
         ORDER BY rowid ASC
         "#,
         )

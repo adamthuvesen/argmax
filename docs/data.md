@@ -54,4 +54,13 @@ Claude native subagent lifecycle rows use the existing `events` table and `paylo
 
 Native agent reads return at most 2,000 events, including original launch metadata. The dock reports when earlier activity is omitted. Older events remain stored, but this view does not yet offer pagination.
 
+Codex uses the same native identity and lifecycle fields. `spawn_agent` and
+`send_input` to an idle child open assignments, while a terminal child state closes them.
+Additional inputs delivered during an active assignment stay within that run.
+The enclosing tool's completion alone is a delivery acknowledgement. Each
+parent CLI invocation scopes Codex's reusable tool item IDs.
+Child trace turns are attached only when their correspondence to native
+assignments is unambiguous. Older trace history remains stored when it cannot
+be assigned safely, and the native completion summary remains available.
+
 Codex child traces also carry authoritative parent-thread lineage. If structured stdout omitted the matching `spawn_agent`, trace reconciliation stores a deterministic synthetic launch before importing the child. A later real launch reparents those child rows and supersedes the synthetic pair. Imported rows keep their `rowid` values. The synthetic rows are replaced by hidden tombstones with fresh `rowid` values so an incremental session read removes stale launch cards from an open renderer.

@@ -301,6 +301,41 @@ describe("buildAgentActivity", () => {
     expect(continued.status).toBe("done");
   });
 
+  it("does not mix child activity when invocation and run ids disagree", () => {
+    const events = [
+      event("leaked-tool", "command.started", "2026-05-12T15:00:02.500Z", "Read", {
+        id: "child-leaked", name: "Read", parent_tool_use_id: "task-root",
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-native", agentRunId: "send-2",
+        input: { file_path: "should-not-appear.ts" }
+      }),
+      event("leaked-text", "message.completed", "2026-05-12T15:00:02.000Z", "Wrong run", {
+        parent_tool_use_id: "task-root", providerInvocationId: "invocation-a",
+        providerParentConversationId: "parent-native", providerChildSessionId: "child-native",
+        agentRunId: "send-2"
+      }),
+      event("done", "agent.completed", "2026-05-12T15:00:03.000Z", "Run A result", {
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-root",
+        agentRunId: "task-root", status: "completed"
+      }),
+      event("start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-root",
+        agentRunId: "task-root"
+      })
+    ];
+
+    const activity = buildAgentActivity({
+      parentToolUseId: "task-root", agentRunId: "task-root", providerInvocationId: "invocation-a",
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-native" },
+      events, sessionRunning: false
+    });
+
+    expect(activity.items).toEqual([]);
+    expect(activity.finalOutput).toBe("Run A result");
+  });
+
   it("suppresses an exact lifecycle-summary duplicate of the visible child answer", () => {
     const events = [
       event("answer", "message.completed", "2026-05-12T15:00:02.000Z", "The tests pass.\n", {
@@ -351,7 +386,7 @@ describe("buildAgentActivity", () => {
       event("b-text", "message.completed", "2026-05-12T15:01:02.000Z", "Child B body", {
         parent_tool_use_id: "task-reused", providerInvocationId: "invocation-b",
         providerParentConversationId: "parent-native", providerChildSessionId: "child-b",
-        agentRunId: "child-tool-id"
+        agentRunId: "task-reused"
       }),
       event("b-done", "agent.completed", "2026-05-12T15:01:03.000Z", "Child B result", {
         providerInvocationId: "invocation-b", providerParentConversationId: "parent-native",
@@ -365,7 +400,7 @@ describe("buildAgentActivity", () => {
       event("a-text", "message.completed", "2026-05-12T15:00:02.000Z", "Child A body", {
         parent_tool_use_id: "task-reused", providerInvocationId: "invocation-a",
         providerParentConversationId: "parent-native", providerChildSessionId: "child-a",
-        agentRunId: "another-child-tool-id"
+        agentRunId: "task-reused"
       }),
       event("a-done", "agent.completed", "2026-05-12T15:00:03.000Z", "Child A result", {
         providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",

@@ -208,7 +208,7 @@ function isSupersededAgentLaunchAttempt(tool: ToolCall, allTools: readonly ToolC
 // still shows.
 function isCodexAgentControlTool(tool: ToolCall): boolean {
   const lower = tool.name.toLowerCase();
-  if (lower !== "wait" && lower !== "close_agent" && lower !== "send_message_to_thread") {
+  if (lower !== "wait" && lower !== "close_agent" && lower !== "send_message_to_thread" && lower !== "resume_agent" && lower !== "send_input") {
     return false;
   }
   return (
@@ -244,6 +244,7 @@ function matchingCodexSpawns(spawns: readonly ToolCall[], control: ToolCall): To
 }
 
 function mergeCodexWaitIntoSpawn(spawn: ToolCall, wait: ToolCall): ToolCall {
+  if (spawn.agentRunId && spawn.providerChildSessionId) return spawn;
   const waitIsAuthoritative = wait.status === "running" || wait.status === "error" || wait.completedAt !== null;
   if (!waitIsAuthoritative) return spawn;
   const status = wait.status;
@@ -442,15 +443,22 @@ export function buildSessionToolCalls(
   sessionInterrupted = false
 ): ToolCall[] {
   const nativeRunMetadata = new Map<string, Record<string, unknown>>();
-  const nativeRunLifecycle = new Map<string, { phase: "started" | "completed"; createdAt: string; status: string | null }>();
+  const nativeRunLifecycle = new Map<string, { phase: "started" | "completed"; createdAt: string; rowCursor?: number; status: string | null }>();
   for (const event of events) {
     const decoded = decodeTimelineEvent(event);
     if (decoded.kind !== "agent" || !decoded.agentRunId || !isPlainObject(event.payload)) continue;
     const key = `${decoded.providerInvocationId ?? ""}\u0000${decoded.agentRunId}`;
-    nativeRunMetadata.set(key, { ...(nativeRunMetadata.get(key) ?? {}), ...event.payload });
+    nativeRunMetadata.set(key, {
+      ...(nativeRunMetadata.get(key) ?? {}),
+      ...Object.fromEntries(Object.entries(event.payload).filter(([, value]) => value !== null && value !== undefined))
+    });
     const current = nativeRunLifecycle.get(key);
-    if (!current || event.createdAt > current.createdAt) {
-      nativeRunLifecycle.set(key, { phase: decoded.phase, createdAt: event.createdAt, status: decoded.status });
+    const isLater = current && event.rowCursor !== undefined && current.rowCursor !== undefined
+      ? event.rowCursor > current.rowCursor
+      : !current || event.createdAt > current.createdAt ||
+        (event.createdAt === current.createdAt && decoded.phase === "completed");
+    if (isLater) {
+      nativeRunLifecycle.set(key, { phase: decoded.phase, createdAt: event.createdAt, rowCursor: event.rowCursor, status: decoded.status });
     }
   }
   let latestProgressTimestamp = "";
@@ -496,7 +504,9 @@ export function buildSessionToolCalls(
       const nativeLifecycle = nativeRunLifecycle.get(
         `${canonicalStart.invocationId ?? ""}\u0000${canonicalStart.toolUseId ?? toolUseId}`
       );
-      const isNativeContinuation = canonicalStart.name.toLowerCase() === "sendmessage" && nativeMetadata !== undefined;
+      const isNativeContinuation =
+        (canonicalStart.name.toLowerCase() === "sendmessage" || canonicalStart.name.toLowerCase() === "send_input") &&
+        nativeMetadata !== undefined;
       const name = isNativeContinuation ? "Agent" : canonicalStart.name;
       const startInput = extractToolInput(event.payload);
       const metadataInput = nativeMetadata

@@ -1894,6 +1894,9 @@ export function App(): JSX.Element {
       )}
 
       <section className="workspace" ref={workspaceRef}>
+        {standalonePageOpen ? (
+          <div className="standalone-page-fade scroll-fade" aria-hidden="true" />
+        ) : null}
         <div className={
           standalonePageOpen
             ? "work-scroll settings-scroll"

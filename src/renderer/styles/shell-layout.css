@@ -132,9 +132,8 @@
   flex: 0 0 auto;
   display: grid;
   gap: 1px;
-  /* The cluster is its own block: whitespace, not a rule, separates it from
-     the session list. */
-  margin-bottom: var(--space-3);
+  /* Air under the nav is the list's edge-fade padding, not a margin here:
+     a second gap on top of that padding would read as two panels. */
 }
 
 .rail-nav-item {
@@ -288,12 +287,29 @@
   transform: rotate(22deg);
 }
 
+/* Fade wrapper around the session scroller. Same pattern as
+   `.conversation-scroll`: scrims sit outside the overflow box so sticky
+   `.rail-heading` chrome is not masked with the rows. */
+.project-list-scroll {
+  --scroll-edge-fade: var(--space-4);
+  --scroll-edge-fade-color: var(--sidebar);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  margin-right: -12px;
+}
+
 .project-list {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden auto;
-  padding-right: var(--space-3);
-  margin-right: -12px;
+  /* End padding matches the fade so at rest it lands on empty space.
+     Right padding is the row inset the negative margin on the wrapper
+     pulls back over the sidebar's trailing pad. Left stays 0: the
+     sidebar's own pad is the inline inset. */
+  padding: var(--scroll-edge-fade) var(--space-3) var(--scroll-edge-fade) 0;
 }
 
 /* Label-less fallback strip for the sidebar's … / + cluster. Both views
@@ -310,7 +326,7 @@
   justify-content: flex-end;
   gap: 2px;
   min-height: 30px;
-  margin: 22px 0 3px 12px;
+  margin: 0 0 3px 12px;
   /* Same right inset as the rows below so the header … / + sit in the same
      right-edge columns as each project row's … / chevron (which carry this
      inset via `.project-row` padding / the session-row action offset). */
@@ -355,14 +371,6 @@
 .rail-heading:focus-within .rail-actions .small-icon,
 .rail-actions .small-icon[aria-expanded="true"] {
   opacity: 1;
-}
-
-/* Without a title bar above it, the first group owns the breathing room under
-   the nav that the old header's top margin used to provide. One row-step of
-   air, no more: a wider gulf reads as two unrelated panels rather than one
-   rail. */
-.project-list > .project-group:first-child {
-  margin-top: 2px;
 }
 
 .project-group {

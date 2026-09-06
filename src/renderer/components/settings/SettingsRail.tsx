@@ -59,44 +59,48 @@ export function SettingsRail({
         />
       </div>
 
-      {hits ? (
-        hits.length === 0 ? (
-          <p className="settings-rail-empty">No settings match “{query.trim()}”.</p>
-        ) : (
-          <ul className="settings-rail-hits" aria-label="Matching settings">
-            {hits.map((hit) => (
-              <li key={`${hit.group}:${hit.sectionId}`}>
-                <button
-                  type="button"
-                  className="settings-rail-hit"
-                  onClick={() => {
-                    setQuery("");
-                    onOpenSection(hit.group, hit.sectionId);
-                  }}
-                >
-                  <span className="settings-rail-hit-label">{hit.sectionLabel}</span>
-                  <span className="settings-rail-hit-group">{hit.groupLabel}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )
-      ) : (
-        <ol className="settings-rail-list">
-          {SETTINGS_GROUPS.map((group) => (
-            <li key={group.id} data-divider-before={group.dividerBefore ? "true" : undefined}>
-              <button
-                type="button"
-                className="settings-rail-link"
-                aria-pressed={group.id === active}
-                onClick={() => onChange(group.id)}
-              >
-                {group.label}
-              </button>
-            </li>
-          ))}
-        </ol>
-      )}
+      <div className="settings-rail-scroll scroll-fade">
+        <div className="settings-rail-body">
+          {hits ? (
+            hits.length === 0 ? (
+              <p className="settings-rail-empty">No settings match “{query.trim()}”.</p>
+            ) : (
+              <ul className="settings-rail-hits" aria-label="Matching settings">
+                {hits.map((hit) => (
+                  <li key={`${hit.group}:${hit.sectionId}`}>
+                    <button
+                      type="button"
+                      className="settings-rail-hit"
+                      onClick={() => {
+                        setQuery("");
+                        onOpenSection(hit.group, hit.sectionId);
+                      }}
+                    >
+                      <span className="settings-rail-hit-label">{hit.sectionLabel}</span>
+                      <span className="settings-rail-hit-group">{hit.groupLabel}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : (
+            <ol className="settings-rail-list">
+              {SETTINGS_GROUPS.map((group) => (
+                <li key={group.id} data-divider-before={group.dividerBefore ? "true" : undefined}>
+                  <button
+                    type="button"
+                    className="settings-rail-link"
+                    aria-pressed={group.id === active}
+                    onClick={() => onChange(group.id)}
+                  >
+                    {group.label}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      </div>
     </aside>
   );
 }

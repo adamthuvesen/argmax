@@ -295,8 +295,9 @@
 .conversation-surface {
   /* Height of the fade at the scroll box's top and bottom edges. The list's
      own end padding matches it, so at rest the fade lands on empty space and
-     only bites once content is actually scrolling past the edge. */
-  --conversation-edge-fade: 32px;
+     only bites once content is actually scrolling past the edge. Compact
+     height zeroes this (and `--scroll-edge-fade` follows). */
+  --conversation-edge-fade: var(--scroll-edge-fade);
   /* Containing block for the pane's own overlays (the provider-switch
      confirmation), so they centre on this session rather than the window.
      `.conversation-scroll` positions its edge fades against itself, so this
@@ -752,12 +753,13 @@
   text-transform: uppercase;
 }
 
-/* Holds the scroll box in the surface's second row and carries the edge fades.
-   They have to sit outside the scroller: masking the list itself would take the
-   sticky scroll-to-latest button down with the content sliding under it. */
+/* Holds the scroll box in the surface's second row. `.scroll-fade` carries
+   the edge scrims; they have to sit outside the scroller so the sticky
+   scroll-to-latest button never fades with the content sliding under it. */
 .conversation-scroll {
+  --scroll-edge-fade: var(--conversation-edge-fade);
+  --scroll-edge-fade-color: var(--conversation-fade, var(--bg));
   position: relative;
-  isolation: isolate;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
@@ -774,33 +776,6 @@
   height: min(var(--turn-exhale-band, 132px), 100%);
   z-index: -1;
   pointer-events: none;
-}
-
-/* Content dissolves into the pane instead of being sliced mid-line at the
-   header and the composer. `--bg` is what the pane cell paints, so the fade
-   ends in the surface it sits on — and a chat docked in a panel overrides
-   `--conversation-fade` with that panel's colour, or the fade paints a band of
-   pane colour across it. */
-.conversation-scroll::before,
-.conversation-scroll::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: var(--conversation-edge-fade);
-  /* Below the scroll-to-latest button (z-index 2), above the transcript. */
-  z-index: 1;
-  pointer-events: none;
-}
-
-.conversation-scroll::before {
-  top: 0;
-  background: linear-gradient(to bottom, var(--conversation-fade, var(--bg)), transparent);
-}
-
-.conversation-scroll::after {
-  bottom: 0;
-  background: linear-gradient(to top, var(--conversation-fade, var(--bg)), transparent);
 }
 
 /* Reopening a session remounts the pane, so every restored bubble and tool row

@@ -1083,10 +1083,10 @@ export function SessionConversation({
           ) : null}
         </div>
       </div>
-      {/* Wrapper for the scroll edges: the fade scrims below sit on this
-          box, outside the scroller, so the sticky scroll-to-latest button
+      {/* Wrapper for the scroll edges: `.scroll-fade` sits on this box,
+          outside the scroller, so the sticky scroll-to-latest button
           inside the list never fades with the content passing under it. */}
-      <div className="conversation-scroll" ref={conversationScrollRef} data-restoring={restoringTranscript ? "true" : undefined}>
+      <div className="conversation-scroll scroll-fade" ref={conversationScrollRef} data-restoring={restoringTranscript ? "true" : undefined}>
         {prMilestone ? <TurnExhale key={prMilestone} weight={1} onDone={finishPrMilestone} /> : null}
         {showWorkspaceCard && workspace && workspace.kind === "git" ? (
           <WorkspaceCard

@@ -21,6 +21,21 @@
   scrollbar-gutter: stable;
 }
 
+/* Standalone pages (settings, usage, schedule) dissolve into `--bg` the
+   same way a chat dissolves into the pane. This is a sibling overlay,
+   not `.workspace` itself: `.workspace::before` is already a 52px
+   highlight strip, and a second `::before` on the same node would
+   collapse the two. The fade height matches the drag strip so at rest
+   it lands on that empty band, not on the title. */
+.standalone-page-fade {
+  --scroll-edge-fade: 46px;
+  --scroll-edge-fade-color: var(--bg);
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
 /* ---- Rail: sits in the app sidebar's grid column ---- */
 
 .settings-rail {
@@ -29,10 +44,29 @@
   gap: var(--space-2_5);
   min-width: 0;
   min-height: 0;
-  overflow: hidden auto;
+  overflow: hidden;
   padding: 0 var(--space-3) var(--space-4);
   border-right: 1px solid var(--line);
   background: var(--sidebar);
+}
+
+.settings-rail-scroll {
+  --scroll-edge-fade: var(--space-4);
+  --scroll-edge-fade-color: var(--sidebar);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  /* Eat the rail's flex gap so the fade padding is the only air under
+     the search field, not a gap stacked on a gap. */
+  margin-top: calc(-1 * var(--space-2_5));
+}
+
+.settings-rail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden auto;
+  padding: var(--scroll-edge-fade) 0;
 }
 
 .settings-rail-back {
@@ -201,15 +235,15 @@
   min-width: 0;
 }
 
-/* A slim opaque bar pinned to the top of the scroll area, so groups scroll
-   underneath it instead of clipping raw against the window titlebar. It holds
-   nothing: it is the drag region, and the mask. */
+/* A slim strip pinned to the top of the scroll area. It is the drag
+   region; the workspace edge fade is the mask, so this no longer paints
+   an opaque lid over scrolling groups. */
 .settings-topbar {
   position: sticky;
   top: 0;
   z-index: 6;
   height: 46px;
-  background: var(--bg);
+  background: transparent;
 }
 
 .settings-page-title {

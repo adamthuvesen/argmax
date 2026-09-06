@@ -84,4 +84,29 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       );
     }
   });
+
+  it("dissolves scroller edges with the shared fade rather than a hard clip", () => {
+    const tokens = cssRuleBody(readSource("src/renderer/styles/tokens.css"), ":root");
+    expect(tokens).toContain("--scroll-edge-fade: 32px;");
+    expect(tokens).toContain("--scroll-edge-fade-color: var(--bg);");
+
+    const fade = readSource("src/renderer/styles/scroll-fade.css");
+    expect(fade).toContain(
+      "background: linear-gradient(to bottom, var(--scroll-edge-fade-color), transparent);"
+    );
+    expect(fade).toContain(
+      "background: linear-gradient(to top, var(--scroll-edge-fade-color), transparent);"
+    );
+
+    const sidebar = cssRuleBody(readSource("src/renderer/styles/shell-layout.css"), ".project-list-scroll");
+    expect(sidebar).toContain("--scroll-edge-fade-color: var(--sidebar);");
+
+    const conversation = cssRuleBody(readSource("src/renderer/styles/chat-conversation.css"), ".conversation-scroll");
+    expect(conversation).toContain("--scroll-edge-fade: var(--conversation-edge-fade);");
+    expect(conversation).toContain("--scroll-edge-fade-color: var(--conversation-fade, var(--bg));");
+
+    const settings = cssRuleBody(readSource("src/renderer/styles/settings-layout.css"), ".standalone-page-fade");
+    expect(settings).toContain("--scroll-edge-fade-color: var(--bg);");
+    expect(settings).toContain("pointer-events: none;");
+  });
 });

@@ -256,9 +256,9 @@ export function SettingsPanel({
 
   return (
     <div className="settings-page" ref={surfaceRef}>
-      {/* An empty opaque strip: it is the window drag region, and it masks the
-          content scrolling underneath. The page title belongs to the column,
-          so it scrolls away like any other heading. */}
+      {/* Empty drag strip. Content dissolves through the workspace edge fade
+          rather than clipping against an opaque mask. The page title belongs
+          to the column, so it scrolls away like any other heading. */}
       <div className="settings-topbar" data-window-drag />
 
       <div className="settings-main">

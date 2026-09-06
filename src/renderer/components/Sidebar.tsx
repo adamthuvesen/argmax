@@ -1119,7 +1119,8 @@ export function Sidebar({
         </button>
       </nav>
 
-      <div className="project-list">
+      <div className="project-list-scroll scroll-fade">
+        <div className="project-list">
         {viewMode === "sessions" && leadDateGroupKey === null ? (
           <div className="rail-heading">{sidebarActions}</div>
         ) : null}
@@ -1486,6 +1487,7 @@ export function Sidebar({
           );
         })}
         {sideChatsSection}
+        </div>
       </div>
 
       {projectMenuState && projectMenuPos

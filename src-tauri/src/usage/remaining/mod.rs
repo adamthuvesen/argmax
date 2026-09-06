@@ -14,6 +14,7 @@ use specta::Type;
 
 use crate::ipc::validation::ProviderId;
 use crate::sync::home_dir;
+use crate::util::login_shell;
 
 mod claude;
 mod codex;
@@ -170,7 +171,22 @@ impl RemainingSource for LiveRemainingSource {
     }
 
     fn env(&self, key: &str) -> Option<String> {
-        std::env::var(key).ok().filter(|value| !value.is_empty())
+        if let Some(value) = std::env::var(key).ok().filter(|value| !value.is_empty()) {
+            return Some(value);
+        }
+        // Launched from Finder, Argmax inherits launchd's minimal environment,
+        // so `CLAUDE_CONFIG_DIR` and its kin live only in the login shell —
+        // the same environment provider launches already hydrate. Without
+        // this, the sessions Argmax starts and the card that reports on them
+        // read two different credential stores. Verification stays fenced off
+        // from the real one, as it is for provider launches.
+        if crate::providers::verification::requested() {
+            return None;
+        }
+        login_shell::environment()
+            .into_iter()
+            .find_map(|(candidate, value)| (candidate == key).then_some(value))
+            .filter(|value| !value.is_empty())
     }
 
     fn http_get(&self, url: &str, headers: &[(&str, &str)]) -> HttpAnswer {

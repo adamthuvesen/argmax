@@ -57,11 +57,23 @@ Remaining usage is a second, live read. It does not go through `usage_hourly`.
 
 | Provider | Remaining source | Notes |
 |---|---|---|
-| Claude | `GET https://api.anthropic.com/api/oauth/usage` with Claude Code OAuth (Keychain / `.credentials.json` / `CLAUDE_CODE_OAUTH_TOKEN`). Plan from `~/.claude.json` `oauthAccount`. | Undocumented; the same endpoint Claude Code uses for `/usage`. Rate-limited if polled hard. |
+| Claude | `GET https://api.anthropic.com/api/oauth/usage` with Claude Code OAuth (Keychain / `.credentials.json` / `CLAUDE_CODE_OAUTH_TOKEN`). Plan from `~/.claude.json` `oauthAccount`. | Undocumented; the same endpoint Claude Code uses for `/usage`. Rate-limited if polled hard. Keychain service is namespaced per config dir — see below. |
 | Codex | `codex app-server` `account/rateLimits/read`, else the newest `rate_limits` object in a local rollout. | Official JSON-RPC. Windows are labeled from duration — Pro may report weekly on `primary` with no 5-hour window. |
 | Grok | `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` with `~/.grok/auth.json`. | Same call Grok Build's `/usage` makes. |
 | OpenCode | `GET https://opencode.ai/zen/go/v1/usage` when an OpenCode Go key is present. | Zen / BYOK have no OpenCode subscription quota. |
 | Cursor | Local `cli-config.json` `authInfo` only. | Teams/Enterprise is a label. Remaining numbers need unofficial dashboard APIs; the card points at the Spending dashboard. |
+
+**Claude's keychain item is named after the config dir.** Claude Code stores
+credentials under `Claude Code-credentials-<first 8 hex of
+sha256(CLAUDE_CONFIG_DIR)>`, hashing the exported string verbatim — so a
+trailing slash renames the item on the CLI's side too. The bare `Claude
+Code-credentials` is what an older CLI wrote and what today's CLI writes when
+the variable is unset; it survives as a stale item nothing refreshes, so it is
+read only as a fallback. The config dir is resolved from the login-shell
+environment, the same one provider launches are hydrated with: a Finder-launched
+Argmax inherits launchd's minimal environment and would otherwise read a
+different credential store than the sessions it starts. A token that reads but
+gets a 401 says the login expired, never "sign in".
 
 Parsers live in [usage/claude.rs](../src-tauri/src/usage/claude.rs),
 [codex.rs](../src-tauri/src/usage/codex.rs), [grok.rs](../src-tauri/src/usage/grok.rs),

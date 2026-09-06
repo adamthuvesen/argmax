@@ -2,6 +2,7 @@
 //! OAuth usage endpoint Claude Code itself calls for `/usage`.
 
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::ipc::validation::ProviderId;
 
@@ -11,6 +12,10 @@ use super::{
 };
 
 pub const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
+/// What Claude Code writes when `CLAUDE_CONFIG_DIR` is unset, and what it used
+/// to write unconditionally. A machine that once ran an older CLI keeps this
+/// item forever, holding a token nothing refreshes, so it is only ever the
+/// fallback — never preferred over the namespaced one.
 const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 
 pub fn fetch(source: &dyn RemainingSource) -> UsageProviderRemaining {
@@ -50,9 +55,12 @@ pub fn fetch(source: &dyn RemainingSource) -> UsageProviderRemaining {
                 UsageProviderRemaining::subscription(ProviderId::Claude, None, windows)
             }
         }
+        // A token we could read but the endpoint rejects means the login is
+        // stale, not missing. Telling a signed-in user to sign in sends them
+        // looking for a problem that isn't there.
         Ok((401 | 403, _)) => UsageProviderRemaining::unavailable(
             ProviderId::Claude,
-            "Sign in with the Claude CLI to see remaining usage.",
+            "Claude’s saved login has expired; run `claude` once to refresh it.",
         ),
         Ok((429, _)) => UsageProviderRemaining::error(
             ProviderId::Claude,
@@ -168,8 +176,28 @@ fn claude_access_token(source: &dyn RemainingSource) -> Option<String> {
     if let Some(token) = token_from_credentials_file(source) {
         return Some(token);
     }
-    let raw = source.keychain_password(KEYCHAIN_SERVICE)?;
-    token_from_credentials_json(&raw)
+    keychain_services(source)
+        .iter()
+        .filter_map(|service| source.keychain_password(service))
+        .find_map(|raw| token_from_credentials_json(&raw))
+}
+
+/// Claude Code namespaces its keychain item per config directory: the service
+/// name carries the first eight hex digits of `sha256(CLAUDE_CONFIG_DIR)`,
+/// hashing the exported string verbatim. Hash what the user exported, not a
+/// canonical form — a trailing slash changes the name on the CLI's side too.
+fn keychain_services(source: &dyn RemainingSource) -> Vec<String> {
+    let mut services = Vec::new();
+    if let Some(dir) = source.env("CLAUDE_CONFIG_DIR") {
+        let suffix: String = Sha256::digest(dir.as_bytes())
+            .iter()
+            .take(4)
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        services.push(format!("{KEYCHAIN_SERVICE}-{suffix}"));
+    }
+    services.push(KEYCHAIN_SERVICE.to_string());
+    services
 }
 
 fn token_from_credentials_file(source: &dyn RemainingSource) -> Option<String> {
@@ -281,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn expired_token_is_sign_in() {
+    fn expired_token_says_the_login_expired_not_that_you_are_signed_out() {
         let dir = tempfile::tempdir().expect("temp");
         write_account(dir.path(), "claude_pro", "default");
         let mut source = FakeSource::new(dir.path().to_path_buf());
@@ -291,7 +319,64 @@ mod tests {
         source = source.with_http(USAGE_URL, 401, json!({}));
         let row = fetch(&source);
         assert_eq!(row.kind, UsagePlanKind::Unavailable);
-        assert!(row.message.as_deref().unwrap_or("").contains("Sign in"));
+        let message = row.message.as_deref().unwrap_or("");
+        assert!(message.contains("expired"), "{message}");
+        assert!(!message.contains("Sign in"), "{message}");
+    }
+
+    #[test]
+    fn config_dir_names_the_keychain_item() {
+        let dir = tempfile::tempdir().expect("temp");
+        let mut source = FakeSource::new(dir.path().to_path_buf());
+        assert_eq!(
+            keychain_services(&source),
+            vec!["Claude Code-credentials".to_string()]
+        );
+        source
+            .env
+            .insert("CLAUDE_CONFIG_DIR".into(), "/Users/example/.claude".into());
+        // Pins the derivation against a real Claude Code 2.1.263 install,
+        // where `/Users/<name>/.claude` produced `-077ef043`.
+        assert_eq!(
+            keychain_services(&source),
+            vec![
+                "Claude Code-credentials-402b469b".to_string(),
+                "Claude Code-credentials".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn namespaced_keychain_item_wins_over_the_stale_bare_one() {
+        let dir = tempfile::tempdir().expect("temp");
+        write_account(dir.path(), "claude_max", "default_claude_max_20x");
+        let mut source = FakeSource::new(dir.path().to_path_buf());
+        source
+            .env
+            .insert("CLAUDE_CONFIG_DIR".into(), "/Users/example/.claude".into());
+        source.keychain.insert(
+            "Claude Code-credentials".into(),
+            r#"{"claudeAiOauth":{"accessToken":"stale"}}"#.into(),
+        );
+        source.keychain.insert(
+            "Claude Code-credentials-402b469b".into(),
+            r#"{"claudeAiOauth":{"accessToken":"live"}}"#.into(),
+        );
+        assert_eq!(claude_access_token(&source).as_deref(), Some("live"));
+    }
+
+    #[test]
+    fn bare_keychain_item_still_serves_an_older_cli() {
+        let dir = tempfile::tempdir().expect("temp");
+        let mut source = FakeSource::new(dir.path().to_path_buf());
+        source
+            .env
+            .insert("CLAUDE_CONFIG_DIR".into(), "/Users/example/.claude".into());
+        source.keychain.insert(
+            "Claude Code-credentials".into(),
+            r#"{"claudeAiOauth":{"accessToken":"legacy"}}"#.into(),
+        );
+        assert_eq!(claude_access_token(&source).as_deref(), Some("legacy"));
     }
 
     fn write_account(home: &std::path::Path, org: &str, tier: &str) {

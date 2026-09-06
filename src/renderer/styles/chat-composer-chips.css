@@ -687,6 +687,12 @@ button.composer-compact-context-row:hover,
   color: var(--rose);
 }
 
+/* Same quiet square as the cancel button beside it, but editing is not
+   destructive, so it warms to the text colour rather than the danger one. */
+.composer-queued-chip-edit:hover:not(:disabled) {
+  color: var(--text);
+}
+
 @container (max-width: 620px) {
   .composer-queued-chip-action span {
     display: none;

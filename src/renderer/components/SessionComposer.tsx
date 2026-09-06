@@ -11,6 +11,7 @@ import {
   Maximize2,
   MoreHorizontal,
   Paperclip,
+  Pencil,
   Play,
   Plus,
   Send,
@@ -390,6 +391,21 @@ export function SessionComposer({
     setWorkspaceDetailsOpen(false)
   );
 
+  // Where the caret goes once text is put into the prompt for the user to
+  // work on — set by the queued chip's Edit action. It has to wait for the
+  // render that carries the new text: seeking on the old value would land in
+  // the wrong place, or out of range.
+  const caretAfterInput = useRef<number | null>(null);
+  useEffect(() => {
+    const caret = caretAfterInput.current;
+    if (caret === null) return;
+    caretAfterInput.current = null;
+    const field = inputRef.current;
+    if (!field) return;
+    field.focus();
+    field.setSelectionRange(caret, caret);
+  }, [input, inputRef]);
+
   useEffect(() => {
     if (!shouldRefocusInput.current || isSending || !canSend) {
       return;
@@ -620,6 +636,35 @@ export function SessionComposer({
                 setSendingQueuedMessageId(null);
               }
             };
+            // Taking a queued follow-up back into the prompt to reword it. It
+            // leaves the queue first: a dequeue that failed after the text was
+            // restored would leave the same prompt in two places, and the
+            // queued copy would still be delivered as written.
+            const editQueued = async (id: string, content: string): Promise<void> => {
+              if (!session || !onCancelQueuedMessage || sendingQueuedMessageId) return;
+              setSendingQueuedMessageId(id);
+              setStatus(null);
+              try {
+                await onCancelQueuedMessage(session.id, id);
+              } catch (error) {
+                setStatus({
+                  kind: "error",
+                  message:
+                    error instanceof Error
+                      ? error.message
+                      : "Could not take the queued follow-up back."
+                });
+                return;
+              } finally {
+                setSendingQueuedMessageId(null);
+              }
+              // A half-written draft is not thrown away for this. The queued
+              // message would have been delivered before it, so it goes above
+              // it, and the caret lands at the end of the restored text — the
+              // part the user came here to change.
+              caretAfterInput.current = content.length;
+              setInput((draft) => (draft.trim() === "" ? content : `${content}\n\n${draft}`));
+            };
             return (
               <div
                 key={entry.id}
@@ -668,6 +713,16 @@ export function SessionComposer({
                     <span>Multitask</span>
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  className="composer-queued-chip-remove composer-queued-chip-edit"
+                  aria-label={`Edit queued follow-up: ${entry.content}`}
+                  title="Put it back in the prompt to reword"
+                  disabled={sendingQueuedMessageId !== null}
+                  onClick={() => void editQueued(entry.id, entry.content)}
+                >
+                  <Pencil size={13} aria-hidden="true" />
+                </button>
                 <button
                   type="button"
                   className="composer-queued-chip-remove"

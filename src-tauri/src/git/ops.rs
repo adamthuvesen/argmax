@@ -454,7 +454,12 @@ fn url_matches_pr(url: &str, pr_number: i64) -> bool {
 /// can't print a malicious URL that downstream code would open.
 pub fn extract_pr_url(stdout: &str) -> Option<String> {
     let re = Regex::new(r"https://github\.com/[^\s/]+/[^\s/]+/pull/\d+\S*").ok()?;
-    re.find(stdout).map(|m| m.as_str().trim().to_string())
+    re.find(stdout).map(|m| {
+        m.as_str()
+            .trim()
+            .trim_end_matches(['.', ')', '"', '\''])
+            .to_string()
+    })
 }
 
 /// Extracts the PR number from a GitHub PR URL (e.g. `https://github.com/o/r/pull/42`).
@@ -796,6 +801,55 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].0, repo.path().to_string_lossy());
         assert_eq!(calls[0].1, vec!["pr", "create", "--fill"]);
+    }
+
+    #[tokio::test]
+    async fn view_or_create_pr_handles_already_existing_pr_error_gracefully() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path()).await;
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let session_id = fixture_session(&database, &workspace_id);
+
+        let runner: GhRunner = Arc::new(|_cwd, _args| {
+            Box::pin(async {
+                Err(ArgmaxError::service(
+                    "GH_NON_ZERO_EXIT",
+                    "gh failed: a pull request for branch \"feat\" into branch \"main\" already exists:\nhttps://github.com/example/repo/pull/42\n".to_string(),
+                ))
+            })
+        });
+        let refresh: RefreshPrFn = Arc::new(|session_id| {
+            Box::pin(async move {
+                Ok(vec![GhPrRecord {
+                    session_id,
+                    pr_number: 42,
+                    head_sha: "abc123".to_string(),
+                    last_seen_check_state: "pending".to_string(),
+                    updated_at: "2026-05-24T12:00:00.000Z".to_string(),
+                    pr_state: Some("OPEN".to_string()),
+                    notified_at: None,
+                    pr_created_at: None,
+                    pr_merged_at: None,
+                    head_ref_name: None,
+                }])
+            })
+        });
+
+        let service = GitOpsService::with_runners(database, runner, Some(refresh));
+        let result = service
+            .view_or_create_pr(GitViewOrCreatePrInput { session_id })
+            .await
+            .expect("pr opened");
+
+        assert_eq!(
+            result,
+            GitViewOrCreatePrResult::Opened {
+                url: "https://github.com/example/repo/pull/42".to_string(),
+                pr_number: 42,
+            }
+        );
     }
 
     #[test]

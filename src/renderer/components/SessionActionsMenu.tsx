@@ -75,7 +75,7 @@ export function SessionActionsMenu({
   useDismissOnOutsideOrEscape(menu.anchorRef, actionsOpen, closeActions, menu.popoverRef);
 
   useEffect(() => {
-    if (!session?.id || !window.argmax) {
+    if (!session?.id || !window.argmax?.prs) {
       setPrs([]);
       return;
     }
@@ -93,6 +93,14 @@ export function SessionActionsMenu({
           message: error instanceof Error ? error.message : "Could not load pull requests."
         });
       });
+    if (window.argmax.prs.refresh) {
+      void window.argmax.prs
+        .refresh({ sessionId: session.id })
+        .then((rows) => {
+          if (!cancelled) setPrs(rows);
+        })
+        .catch(() => undefined);
+    }
     return () => {
       cancelled = true;
     };
@@ -107,12 +115,11 @@ export function SessionActionsMenu({
   const ideChoices = pinnedIde ? detectedIdes.filter((entry) => entry.id === pinnedIde) : guiIdes;
 
   const refreshPrs = useCallback((): void => {
-    if (!session?.id || !window.argmax) return;
-    void window.argmax.prs
-      .listForSession({ sessionId: session.id })
+    if (!session?.id || !window.argmax?.prs) return;
+    const fetcher = window.argmax.prs.refresh ?? window.argmax.prs.listForSession;
+    void fetcher({ sessionId: session.id })
       .then(setPrs)
       .catch((error) => {
-        setPrs([]);
         setStatus?.({
           kind: "error",
           message: error instanceof Error ? error.message : "Could not refresh pull requests."

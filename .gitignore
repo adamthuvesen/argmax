@@ -19,3 +19,6 @@ src-tauri/gen/
 tmp.txt
 *.tmp
 scratch/
+
+# Workspace worktrees, when a project points its worktree location inside the repo
+.argmax/

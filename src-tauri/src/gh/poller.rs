@@ -112,7 +112,7 @@ struct PollerInner {
     /// a no-op while recovered milestone timestamps still publish.
     last_state: Mutex<HashMap<(String, i64), PrState>>,
     /// Insertion-ordered ledger of failure events we've already fired, keyed
-    /// `session:pr:head_sha`. Bounded so a long-running app doesn't grow it.
+    /// `workspace:pr:head_sha`. Bounded so a long-running app doesn't grow it.
     failure_ledger: Mutex<VecDeque<String>>,
 }
 
@@ -260,7 +260,7 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
         let mut workspaces = Vec::new();
         {
             let conn = inner.database.connection();
-            for transition in &transitions {
+            for transition in transitions.iter().filter(|entry| entry.publish) {
                 // Inlined rather than `resolve_workspace_id` because that
                 // takes its own connection guard, which would deadlock here.
                 let workspace_id = match crate::persistence::sessions::find_session_by_id(
@@ -331,6 +331,10 @@ fn pollable_session_ids(database: &Arc<Database>) -> ArgmaxResult<Vec<String>> {
 
 #[derive(Debug, Clone)]
 struct Transition {
+    /// The renderer's view of this PR changed. Independent of `is_failure`: a
+    /// failure whose launch is deferred re-reads the same state every tick and
+    /// must not re-publish it.
+    publish: bool,
     is_failure: bool,
     context: CheckFailureContext,
 }
@@ -367,11 +371,16 @@ fn detect_transition(
         }
     };
 
-    if !changed {
+    // A still-failing PR is re-evaluated on every tick, not only on the tick
+    // its state changed: the launch below can decline for reasons that clear
+    // on their own — a running turn, a workspace lookup that failed — and a
+    // check that stays red never produces a second change to hang a retry on.
+    if !changed && next.check_state != "failure" {
         return None;
     }
 
     let mut transition = Transition {
+        publish: changed,
         is_failure: false,
         context: CheckFailureContext {
             session_id: session_id.to_string(),
@@ -382,31 +391,73 @@ fn detect_transition(
     };
 
     if next.check_state == "failure" {
-        let ledger_key = format!("{}:{}:{}", session_id, latest.pr_number, latest.head_sha);
-        if !inner.ledger_has(&ledger_key) && latest.notified_at.is_none() {
-            // Resolve workspace_id at fire time so the hook gets the live value
-            // rather than whatever was on disk at startup. Only record the
-            // ledger entry once resolution succeeds — otherwise a transient
-            // lookup failure would dedupe the failure forever and the hook
-            // would never fire on a later tick.
-            match resolve_workspace_id(&inner.database, session_id) {
-                Ok(workspace_id) => {
+        // Resolve workspace_id at fire time so the hook gets the live value
+        // rather than whatever was on disk at startup. Only record the
+        // ledger entry once resolution succeeds — otherwise a transient
+        // lookup failure would dedupe the failure forever and the hook
+        // would never fire on a later tick.
+        match resolve_workspace_id(&inner.database, session_id) {
+            Ok(workspace_id) => {
+                // Keyed by workspace, not session: every session in a checkout
+                // sees the same branch's PR, and the follow-up we launch joins
+                // them. A per-session key fires once per observer and doubles
+                // the observers each tick.
+                let ledger_key =
+                    format!("{}:{}:{}", workspace_id, latest.pr_number, latest.head_sha);
+                if !inner.ledger_has(&ledger_key)
+                    && !already_launched(inner, &workspace_id, latest)
+                    && !workspace_is_busy(inner, &workspace_id)
+                {
                     inner.ledger_add(ledger_key);
                     transition.context.workspace_id = workspace_id;
                     transition.is_failure = true;
                 }
-                Err(error) => {
-                    tracing::warn!(
-                        %session_id,
-                        ?error,
-                        "gh poller: could not resolve workspace for failed check; will retry next tick"
-                    );
-                }
+            }
+            Err(error) => {
+                tracing::warn!(
+                    %session_id,
+                    ?error,
+                    "gh poller: could not resolve workspace for failed check; will retry next tick"
+                );
             }
         }
     }
 
+    if !transition.publish && !transition.is_failure {
+        return None;
+    }
     Some(transition)
+}
+
+/// Persisted twin of the in-memory ledger, so a restart mid-failure does not
+/// launch the follow-up a second time. A lookup error is treated as
+/// "already launched": the poller retries every 60s, and a duplicate agent in
+/// a live checkout costs more than a missed follow-up.
+fn already_launched(inner: &Arc<PollerInner>, workspace_id: &str, latest: &GhPrRecord) -> bool {
+    let conn = inner.database.connection();
+    crate::persistence::gh::check_failure_launched_in_workspace(
+        &conn,
+        workspace_id,
+        latest.pr_number,
+        &latest.head_sha,
+    )
+    .unwrap_or_else(|error| {
+        tracing::warn!(%workspace_id, ?error, "gh poller: check-failure launch guard failed");
+        true
+    })
+}
+
+/// A turn is still live in the checkout. Skip *without* recording the ledger:
+/// the follow-up is still wanted, just not next to a running agent, so the
+/// next tick after that turn settles fires it.
+fn workspace_is_busy(inner: &Arc<PollerInner>, workspace_id: &str) -> bool {
+    let conn = inner.database.connection();
+    crate::persistence::sessions::workspace_has_running_session(&conn, workspace_id).unwrap_or_else(
+        |error| {
+            tracing::warn!(%workspace_id, ?error, "gh poller: running-session guard failed");
+            true
+        },
+    )
 }
 
 fn resolve_workspace_id(database: &Arc<Database>, session_id: &str) -> ArgmaxResult<String> {
@@ -522,6 +573,17 @@ mod tests {
         .expect("session");
     }
 
+    /// The check-failure follow-up waits for the checkout to be free, so a
+    /// test that expects it to fire has to settle the fixture's turn first.
+    fn settle_session(database: &Arc<Database>, session_id: &str) {
+        let conn = database.connection();
+        conn.execute(
+            "UPDATE sessions SET state = 'complete', completed_at = ? WHERE id = ?",
+            (now_iso(), session_id),
+        )
+        .expect("settle session");
+    }
+
     // A worktree that's gone can't be polled: `gh pr view` fails every tick
     // and `pr_state` stays OPEN, so without this exclusion an archived
     // workspace is retried forever.
@@ -598,6 +660,7 @@ mod tests {
     async fn poller_publishes_delta_on_state_change() {
         let (_dir, database) = open_db();
         fixture(&database);
+        settle_session(&database, "s1");
         // Seed a row in pending state so the first tick has a baseline.
         {
             let conn = database.connection();
@@ -745,6 +808,7 @@ mod tests {
     async fn poller_dedup_ledger_suppresses_repeat_failure_hook() {
         let (_dir, database) = open_db();
         fixture(&database);
+        settle_session(&database, "s1");
         let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
         let success_then_failure_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "success"}]}"#;
         let stub = StubRunner::new(vec![
@@ -776,6 +840,109 @@ mod tests {
             1,
             "failure hook must not refire for the same head_sha"
         );
+    }
+
+    // Every session in a checkout resolves the same branch's PR, and the
+    // follow-up the hook launches becomes one more of them. Keyed per session,
+    // one red commit fires once per observer and doubles the observers every
+    // tick — the shape that put sixteen agents in one worktree at once.
+    #[tokio::test]
+    async fn failure_hook_fires_once_per_workspace_not_once_per_session() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        settle_session(&database, "s1");
+        {
+            let conn = database.connection();
+            persist_session(
+                &conn,
+                &PersistSessionInput {
+                    id: "s2".to_string(),
+                    workspace_id: "w1".to_string(),
+                    provider: "claude".to_string(),
+                    model_label: "Haiku 4.5".to_string(),
+                    model_id: "claude-haiku-4.5".to_string(),
+                    reasoning_effort: None,
+                    permission_mode: Some("auto-approve".to_string()),
+                    agent_mode: Some("auto".to_string()),
+                    prompt: "Checks on PR #42 are failing".to_string(),
+                    state: SessionState::Complete,
+                },
+            )
+            .expect("second session in the same workspace");
+            for session_id in ["s1", "s2"] {
+                upsert_gh_pr(
+                    &conn,
+                    &GhPrRecord {
+                        session_id: session_id.to_string(),
+                        pr_number: 42,
+                        head_sha: "feedface".to_string(),
+                        last_seen_check_state: "pending".to_string(),
+                        updated_at: now_iso(),
+                        pr_state: Some("OPEN".to_string()),
+                        notified_at: None,
+                        pr_created_at: None,
+                        pr_merged_at: None,
+                        head_ref_name: None,
+                    },
+                )
+                .expect("seed gh_pr");
+            }
+        }
+        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
+        let stub = StubRunner::new(vec![
+            Ok(failure_payload.to_string()),
+            Ok(failure_payload.to_string()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let failure_hits = Arc::new(AtomicUsize::new(0));
+        let failure_count = Arc::clone(&failure_hits);
+        let hook: CheckFailureHook = Arc::new(move |ctx: CheckFailureContext| {
+            assert_eq!(ctx.workspace_id, "w1");
+            failure_count.fetch_add(1, Ordering::SeqCst);
+        });
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_check_failure_hook(hook),
+        );
+
+        poller.tick_for_test().await.expect("failure tick");
+        assert_eq!(
+            failure_hits.load(Ordering::SeqCst),
+            1,
+            "both sessions observed the same failing PR; only the workspace gets a follow-up"
+        );
+    }
+
+    // Deferred, not dropped: a second agent in a checkout someone is mid-turn
+    // in edits the same files, and the sidebar shows only one of them. The
+    // check stays red without changing, so the retry can't wait for a
+    // transition.
+    #[tokio::test]
+    async fn failure_hook_waits_for_the_running_turn_to_settle() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
+        let stub = StubRunner::new(vec![
+            Ok(failure_payload.to_string()),
+            Ok(failure_payload.to_string()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let failure_hits = Arc::new(AtomicUsize::new(0));
+        let failure_count = Arc::clone(&failure_hits);
+        let hook: CheckFailureHook = Arc::new(move |_| {
+            failure_count.fetch_add(1, Ordering::SeqCst);
+        });
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_check_failure_hook(hook),
+        );
+
+        poller.tick_for_test().await.expect("tick while running");
+        assert_eq!(failure_hits.load(Ordering::SeqCst), 0);
+
+        settle_session(&database, "s1");
+        poller.tick_for_test().await.expect("tick once settled");
+        assert_eq!(failure_hits.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

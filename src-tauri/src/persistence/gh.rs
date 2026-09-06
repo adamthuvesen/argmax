@@ -111,6 +111,39 @@ pub fn list_open_gh_pr_session_ids(connection: &Connection) -> ArgmaxResult<Vec<
     Ok(rows)
 }
 
+/// Whether any session in this workspace has already fired the check-failure
+/// follow-up for this PR at this commit.
+///
+/// The guard has to span the workspace, not the observing session: the
+/// follow-up is itself a session in the same checkout on the same branch, so
+/// it observes the same PR on the next tick. Keyed per session, every launch
+/// would add a new observer and the launches would double every tick — and
+/// each one runs an agent in the checkout the others are already editing.
+pub fn check_failure_launched_in_workspace(
+    connection: &Connection,
+    workspace_id: &str,
+    pr_number: i64,
+    head_sha: &str,
+) -> ArgmaxResult<bool> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        SELECT 1
+        FROM gh_pr
+        JOIN sessions ON sessions.id = gh_pr.session_id
+        WHERE sessions.workspace_id = ?1
+          AND gh_pr.pr_number = ?2
+          AND gh_pr.head_sha = ?3
+          AND gh_pr.notified_at IS NOT NULL
+        LIMIT 1
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    statement
+        .exists((workspace_id, pr_number, head_sha))
+        .map_err(sqlite_error)
+}
+
 /// The most-recent PR opened from `branch` in `project_id`, whichever session
 /// happened to observe it. A PR is a property of its head branch, so every
 /// workspace sitting on that branch resolves the same PR — including the ones

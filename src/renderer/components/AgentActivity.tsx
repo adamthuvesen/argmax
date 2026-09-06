@@ -31,7 +31,6 @@ import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 import { TurnChangesCard } from "./TurnChangesCard.js";
 import { TurnBlock } from "./TurnBlock.js";
-import { WorkingNest } from "./WorkingNest.js";
 
 
 /**
@@ -71,20 +70,16 @@ function AgentHeader({
         data-hue={emblem.hue}
         aria-hidden="true"
       >
-        {status === "running" ? (
-          // Held still: the masthead mark is this run's identity, sitting above
-          // a transcript that is already streaming. A relay here is one moving
-          // thing too many, so the nest keeps its live colour without the
-          // motion — and with it the phase, which only times the relay.
-          <WorkingNest active still size={13} />
-        ) : (
-          <AgentEmblem
-            shape={emblem.shape}
-            hue={emblem.hue}
-            size={18}
-            status={status === "error" ? "error" : "done"}
-          />
-        )}
+        {/* The emblem whatever the run is doing: this mark is the agent's
+            identity, sitting above a transcript that already streams and beside
+            a tab strip that already carries the status. Even a still nest here
+            reads as a second status ticker. */}
+        <AgentEmblem
+          shape={emblem.shape}
+          hue={emblem.hue}
+          size={18}
+          status={status === "error" ? "error" : "done"}
+        />
       </span>
       <div className="agent-activity-heading">
         <h2 className="agent-activity-title" title={title}>{title}</h2>

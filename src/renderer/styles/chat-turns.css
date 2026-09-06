@@ -903,10 +903,6 @@
   padding: 0 0 var(--space-1_5);
 }
 
-.tool-call-group-row {
-  animation: tool-row-in 220ms var(--ease);
-}
-
 .tool-call-group-body .tool-call-row-button {
   padding-left: 0;
 }

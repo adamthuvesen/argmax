@@ -242,11 +242,6 @@
   min-width: 0;
 }
 
-@keyframes tool-row-in {
-  from { opacity: 0; transform: translateY(-3px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
 .tool-call-item--nested {
   border-radius: var(--radius-md);
   border-color: transparent;

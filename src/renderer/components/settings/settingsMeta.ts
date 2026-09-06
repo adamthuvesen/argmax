@@ -24,6 +24,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     sections: [
       { id: "settings-startup", label: "Startup" },
       { id: "settings-notifications", label: "Notifications" },
+      { id: "settings-power", label: "Power" },
       { id: "settings-handoff", label: "Handoff" }
     ]
   },

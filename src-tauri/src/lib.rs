@@ -712,11 +712,14 @@ pub fn run() {
                             let ntfy_app = app.handle().clone();
                             let provider_delta_tx = delta_tx.clone();
                             let publish_delta = move |delta: providers::flush_queue::DashboardDelta| {
-                                let ntfy = tauri::Manager::state::<state::AppState>(&ntfy_app)
+                                let app_state =
+                                    tauri::Manager::state::<state::AppState>(&ntfy_app);
+                                let ntfy = app_state
                                     .ntfy
                                     .read()
                                     .ok()
                                     .and_then(|publisher| publisher.clone());
+                                let keep_awake = Arc::clone(&app_state.keep_awake);
                                 for session in &delta.sessions {
                                     if let Err(error) = notifications_for_delta.notify(session) {
                                         tracing::warn!(
@@ -728,6 +731,7 @@ pub fn run() {
                                     if let Some(ntfy) = ntfy.as_ref() {
                                         ntfy.observe(session);
                                     }
+                                    keep_awake.observe(&session.id, session.state.is_active());
                                 }
                                 tracing::trace!(
                                     sessions = delta.sessions.len(),

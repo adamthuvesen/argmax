@@ -520,6 +520,7 @@ export interface ArgmaxApi {
       reasoningEffort?: ReasoningEffort | null;
     }) => Promise<{ ok: true }>;
     setNotificationsEnabled: (enabled: boolean) => Promise<{ ok: true }>;
+    setKeepAwake: (enabled: boolean) => Promise<{ ok: true }>;
     testNotification: () => Promise<{ ok: true }>;
   };
   remote: {

@@ -390,6 +390,7 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         }),
       setNotificationsEnabled: (enabled) =>
         invokeCommand<{ ok: true }>("system:set-notifications-enabled", { enabled }),
+      setKeepAwake: (enabled) => invokeCommand<{ ok: true }>("system:set-keep-awake", { enabled }),
       testNotification: () => invokeCommand<{ ok: true }>("system:test-notification")
     },
     remote: {

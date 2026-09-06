@@ -58,6 +58,7 @@ export const IPC_CHANNELS = [
   "system:set-theme",
   "system:set-default-agent",
   "system:set-notifications-enabled",
+  "system:set-keep-awake",
   "system:test-notification",
   "session:cost-summary",
   "learnings:list",

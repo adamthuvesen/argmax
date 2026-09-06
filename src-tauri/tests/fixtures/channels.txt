@@ -54,6 +54,7 @@ system:vacuum-database
 system:set-theme
 system:set-default-agent
 system:set-notifications-enabled
+system:set-keep-awake
 system:test-notification
 session:cost-summary
 learnings:list

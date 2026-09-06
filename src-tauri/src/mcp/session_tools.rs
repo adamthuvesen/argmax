@@ -14,7 +14,7 @@ use rmcp::{
 use serde::Deserialize;
 
 use crate::session_control::{
-    InboxAction, LaunchAction, ListAction, MessageAction, MoveAction, ReadAction,
+    ArchiveAction, InboxAction, LaunchAction, ListAction, MessageAction, MoveAction, ReadAction,
     SessionControlAction, StatusAction, StopAction, WaitAction,
 };
 
@@ -107,6 +107,9 @@ pub struct SessionStopParams {
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct InboxReadParams {}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct WorkspaceArchiveParams {}
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct SessionWaitParams {
@@ -289,6 +292,24 @@ its answer."
             timeout_s: params.timeout_s,
         }))
         .await
+    }
+
+    #[tool(
+        name = "workspace_archive",
+        description = "Close this chat's workspace when the current turn ends: an isolated \
+worktree and its local branch are removed, and the chat leaves the sidebar. Like session_move it \
+is scheduled rather than immediate, because archiving stops every agent in the workspace — \
+including you — so call it as your last action and write your report after it. Use it once the \
+work has actually landed, typically after a pull request is merged and its branch is deleted; \
+that is what keeps merged worktrees from piling up on disk. A workspace with uncommitted changes \
+is kept instead of archived, so say the archive is requested rather than done. A shared checkout \
+is never deleted — archiving one only ends the chat."
+    )]
+    async fn workspace_archive(
+        &self,
+        Parameters(_params): Parameters<WorkspaceArchiveParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::Archive(ArchiveAction {})).await
     }
 
     #[tool(

@@ -77,7 +77,7 @@ use crate::{
         usage::session_usage_since_conversation_start,
         workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
     },
-    session_control::SessionLaunchRegistry,
+    session_control::{AfterTurn, SessionLaunchRegistry},
     workspaces::lifecycle::{WorkspaceAdmission, WorkspaceLifecycle},
 };
 
@@ -308,49 +308,67 @@ impl ProviderSessionService {
         }
     }
 
-    pub fn ensure_move_schedulable(&self, session_id: &str) -> ArgmaxResult<()> {
+    /// A queued follow-up and a scheduled disposal contradict each other: the
+    /// follow-up expects the chat to still be here after this turn.
+    pub fn ensure_after_turn_schedulable(
+        &self,
+        session_id: &str,
+        action: AfterTurn,
+    ) -> ArgmaxResult<()> {
         if self
             .queues
             .lock_or_recover("queues")
             .get(session_id)
             .is_some_and(|queue| !queue.is_empty())
         {
-            return Err(ArgmaxError::service(
-                "MOVE_HAS_QUEUED_MESSAGES",
-                "Send or cancel queued follow-ups before moving this chat.",
-            ));
+            return Err(match action {
+                AfterTurn::Move => ArgmaxError::service(
+                    "MOVE_HAS_QUEUED_MESSAGES",
+                    "Send or cancel queued follow-ups before moving this chat.",
+                ),
+                AfterTurn::Archive => ArgmaxError::service(
+                    "ARCHIVE_HAS_QUEUED_MESSAGES",
+                    "Send or cancel queued follow-ups before archiving this chat.",
+                ),
+            });
         }
         Ok(())
     }
 
-    fn ensure_move_not_pending(&self, session_id: &str) -> ArgmaxResult<()> {
-        if self
+    fn ensure_no_pending_after_turn(&self, session_id: &str) -> ArgmaxResult<()> {
+        let Some(pending) = self
             .session_control
             .get()
-            .is_some_and(|registry| registry.has_pending_move(session_id))
-        {
-            return Err(ArgmaxError::service(
+            .and_then(|registry| registry.pending_after_turn(session_id))
+        else {
+            return Ok(());
+        };
+        Err(match pending {
+            AfterTurn::Move => ArgmaxError::service(
                 "MOVE_ALREADY_PENDING",
                 "This chat is moving after the current turn. New follow-ups are disabled.",
-            ));
-        }
-        Ok(())
+            ),
+            AfterTurn::Archive => ArgmaxError::service(
+                "ARCHIVE_ALREADY_PENDING",
+                "This chat is archiving after the current turn. New follow-ups are disabled.",
+            ),
+        })
     }
 
-    fn settle_session_move(&self, session_id: &str) {
+    fn settle_session_after_turn(&self, session_id: &str) {
         if let Some(registry) = self.session_control.get() {
-            registry.settle_move(session_id);
+            registry.signal_turn_settled(session_id);
         }
     }
 
-    fn abort_session_move(&self, session_id: &str, message: &str) -> ArgmaxResult<()> {
+    fn abort_session_after_turn(&self, session_id: &str, message: &str) -> ArgmaxResult<()> {
         let Some(registry) = self.session_control.get() else {
             return Ok(());
         };
-        if !registry.has_pending_move(session_id) {
+        let Some(pending) = registry.pending_after_turn(session_id) else {
             return Ok(());
-        }
-        registry.cancel_move(session_id);
+        };
+        registry.cancel_after_turn(session_id);
         let (session, event) = {
             let connection = self.database.connection();
             let session = find_session_by_id(&connection, session_id)?;
@@ -361,7 +379,10 @@ impl ProviderSessionService {
                     session_id: session_id.to_string(),
                     r#type: "error".to_string(),
                     message: message.to_string(),
-                    payload: json!({ "operation": "session.move" }),
+                    payload: json!({ "operation": match pending {
+                        AfterTurn::Move => "session.move",
+                        AfterTurn::Archive => "workspace.archive",
+                    } }),
                     created_at: None,
                 },
             )?;
@@ -664,7 +685,7 @@ impl ProviderSessionService {
                 queued: false,
             });
         }
-        self.ensure_move_not_pending(&session_id)?;
+        self.ensure_no_pending_after_turn(&session_id)?;
 
         let (workspace_id, session_provider, session_permission_mode) = {
             let connection = self.database.connection();
@@ -1250,13 +1271,13 @@ impl ProviderSessionService {
             .lock_or_recover("terminating")
             .remove(session_id);
         if let Some(error) = first_error {
-            let _ = self.abort_session_move(
+            let _ = self.abort_session_after_turn(
                 session_id,
                 "Could not move this chat because the agent process did not stop safely.",
             );
             Err(error)
         } else {
-            self.settle_session_move(session_id);
+            self.settle_session_after_turn(session_id);
             Ok(())
         }
     }
@@ -1770,7 +1791,7 @@ impl ProviderSessionService {
             Some(approvals) => approvals.cancel_session_pending(&event.session_id),
             None => Ok(()),
         };
-        self.settle_session_move(&event.session_id);
+        self.settle_session_after_turn(&event.session_id);
         self.notify_launcher_of_turn_end(&event.session_id, state, &completed_at);
         if succeeded {
             self.drain_queue_after_complete(event.session_id);
@@ -2174,7 +2195,7 @@ impl ProviderSessionService {
             )
         };
         let mut queues = self.queues.lock_or_recover("queues");
-        self.ensure_move_not_pending(session_id)?;
+        self.ensure_no_pending_after_turn(session_id)?;
         let queue = queues.entry(session_id.to_string()).or_default();
         if queue.len() >= MAX_PENDING_QUEUE {
             return Err(ArgmaxError::service(
@@ -2464,14 +2485,14 @@ impl ProviderSessionService {
 
         if let Some(HandleEntry::Resolved(handle)) = entry {
             if let Err(error) = handle.terminate().await {
-                let _ = self.abort_session_move(
+                let _ = self.abort_session_after_turn(
                     session_id,
                     "Could not move this chat because the Cursor turn did not stop safely.",
                 );
                 return Err(error);
             }
         }
-        self.settle_session_move(session_id);
+        self.settle_session_after_turn(session_id);
         // Cursor ends a turn on `result/success` rather than on a process exit,
         // so this is that provider's only turn-end seam — and whoever launched
         // this session is told here, exactly as the exit path tells them. Left
@@ -2928,6 +2949,7 @@ mod tests {
                     current_branch: "main".to_string(),
                     default_branch: Some("main".to_string()),
                     settings: ProjectSettings {
+                        archive_on_merge: false,
                         worktree_location: "/tmp/worktrees".to_string(),
                         setup_command: String::new(),
                         check_commands: Vec::new(),
@@ -3063,6 +3085,7 @@ mod tests {
                     current_branch: "main".to_string(),
                     default_branch: Some("main".to_string()),
                     settings: ProjectSettings {
+                        archive_on_merge: false,
                         worktree_location: "/tmp/worktrees".to_string(),
                         setup_command: String::new(),
                         check_commands: Vec::new(),

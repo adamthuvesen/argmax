@@ -106,6 +106,15 @@ describe("decodeTimelineEvent", () => {
       destinationWorkspaceId: "workspace",
       checkoutMode: "shared"
     });
+    expect(decodeTimelineEvent(event("session.archive-requested", {
+      workspaceId: "workspace-1",
+      removesWorktree: true
+    }))).toMatchObject({
+      kind: "lifecycle",
+      name: "archive-requested",
+      workspaceId: "workspace-1",
+      removesWorktree: true
+    });
     expect(decodeTimelineEvent(event("multitask.finished", {
       childSessionId: "child",
       taskLabel: "Review",

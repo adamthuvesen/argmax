@@ -24,6 +24,7 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `inbox_read` | — | `{messages: [{fromSessionId?, fromLabel?, kind, body, createdAt}]}` |
 | `session_wait` | `sessions?`, `timeoutS?` | `{timedOut, sessions: [{sessionId, taskLabel, state}], messages: […]}` |
 | `session_move` | `project`, `prompt`, `worktree?`, `keepSource?` | `{scheduled, sourceSessionId, projectId, projectName}` |
+| `workspace_archive` | — | `{scheduled, sessionId, workspaceId, removesWorktree}` |
 
 ### Browser
 
@@ -164,6 +165,30 @@ live turn between them unattended; past the cap the chat lands in the
 destination and waits for a person, and says so in the timeline. A move whose
 continuation cannot start records that on the destination too, where the
 transcript now lives — the source is usually archived by then.
+
+`workspace_archive` closes the caller's own workspace on the same schedule, and
+for a sharper version of the same reason: archiving terminates every provider
+process in the workspace, and the agent asking is one of them. Run inline the
+call would kill its caller before it could report, so it is deferred and the
+tool answers `{scheduled: true}`. One slot serves both — a chat cannot be
+moving and archiving at once, and the refusal names whichever was scheduled
+first (`MOVE_ALREADY_PENDING` / `ARCHIVE_ALREADY_PENDING`). While either is
+pending, follow-ups into that chat are refused.
+
+It exists because merged work leaves its checkout behind. An agent that lands a
+pull request — `ship`'s babysit mode is the usual one — can now hand the
+disposal to Argmax instead of removing the directory it is standing in:
+`git worktree remove` on your own working directory succeeds and then every
+later command in the turn fails, and a worktree removed behind the app's back
+leaves a sidebar row pointing at nothing. The archive is the app's own path:
+worktree removed, local branch deleted, row archived.
+
+The archive is never forced. A workspace with uncommitted changes comes to rest
+as **kept** instead ([CONTEXT.md](../CONTEXT.md)), so an agent should report the
+archive as requested rather than done. `removesWorktree` says which kind of
+workspace it was: an isolated one loses its worktree and branch, a shared
+checkout only ends the chat, since that tree belongs to every other session
+pointing at it.
 
 ## Observing another session
 

@@ -166,6 +166,31 @@ export function hiddenMultitaskWorkspaceIds(
   return hidden;
 }
 
+/**
+ * The workspaces of chats that dispatched a multitask still mid-turn.
+ *
+ * A multitask has no row of its own, so the only place its work can show is
+ * the row of the chat that started it. Without this the sidebar goes calm the
+ * moment the parent's own turn ends, while a sibling agent is still writing to
+ * the same checkout — the row reads finished when it is not.
+ *
+ * An orphan is left out for the same reason it gets its row back: with its
+ * launcher gone from the snapshot it speaks for itself.
+ */
+export function workspacesWithRunningMultitask(
+  sessions: readonly SessionSummary[]
+): Set<string> {
+  const workspaceBySession = new Map(sessions.map((session) => [session.id, session.workspaceId]));
+  const working = new Set<string>();
+  for (const session of sessions) {
+    if (!isMultitaskSession(session) || session.state !== "running") continue;
+    const launcher = session.launchedBySessionId;
+    const workspaceId = launcher ? workspaceBySession.get(launcher) : undefined;
+    if (workspaceId) working.add(workspaceId);
+  }
+  return working;
+}
+
 /** A multitask of `sessionId`, paired with the workspace it runs in. */
 export interface MultitaskChild {
   session: SessionSummary;

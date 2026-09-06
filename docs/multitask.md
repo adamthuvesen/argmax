@@ -55,6 +55,8 @@ A multitask belongs to the chat that dispatched it, so it has no sidebar row: `h
 
 This is the only thing `sessions.launch_kind` reaches the renderer for: an agent-launched session is a chat in its own right and keeps its row, and only `multitask` loses one.
 
+Having no row, its turn shows on the row of the chat that dispatched it. A running multitask counts as work in progress on the parent's workspace ([priority.ts](../src/renderer/lib/priority.ts)), so that row keeps the working mark and its place at the top of Priority until the sibling settles — the alternative is a sidebar that goes still while an agent is still writing to the checkout. The parent's own state is unchanged: this is about what the row shows, not what the chat is doing.
+
 ## In the dock
 
 Clicking the row opens the multitask as a tab in the review panel's Agents view, beside this session's subagents ([AgentsView.tsx](../src/renderer/components/AgentsView.tsx)). A tab id is a provider tool-use id for a subagent and `multitask:<sessionId>` for a multitask ([agentTabs.ts](../src/renderer/lib/agentTabs.ts)); the view resolves each to either `AgentActivity` or [MultitaskPanel.tsx](../src/renderer/components/MultitaskPanel.tsx).

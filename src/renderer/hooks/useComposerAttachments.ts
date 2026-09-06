@@ -13,8 +13,10 @@ import {
   buildAttachmentReferences,
   collectDroppedFiles,
   downscaleImageBlob,
+  droppedFileHasUsablePath,
   imageMimeFromFileName,
   isAttachableDrag,
+  isImageDragType,
   isSupportedImageMime,
   listDragTypes,
   readBlobAsBase64
@@ -284,12 +286,14 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       const withPath: File[] = [];
       const imageBlobs: Blob[] = [];
       for (const file of files) {
-        const path = (file as { path?: string }).path;
-        if (typeof path === "string" && path.length > 0) {
+        // Screenshot-thumbnail files land under NSIRD_screencaptureui and are
+        // gone once the thumbnail dismisses. Persist bytes, do not @-mention.
+        if (droppedFileHasUsablePath(file)) {
           withPath.push(file);
           continue;
         }
-        const mime = isSupportedImageMime(file.type) ? file.type : imageMimeFromFileName(file.name);
+        const mime =
+          isSupportedImageMime(file.type) ? file.type : imageMimeFromFileName(file.name);
         if (!mime) continue;
         imageBlobs.push(file.type === mime ? file : new File([file], file.name || "image", { type: mime }));
       }
@@ -311,7 +315,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
         if (!isAttachableDrag(event.dataTransfer)) return;
         event.preventDefault();
         const types = listDragTypes(event.dataTransfer);
-        if (types.includes("Files") || types.some((type) => type.startsWith("image/"))) {
+        if (types.includes("Files") || types.some((type) => isImageDragType(type))) {
           setStatus("Could not read the dropped file.");
         }
         return;

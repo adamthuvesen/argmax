@@ -20,6 +20,24 @@ const IMAGE_EXTENSION_MIME: Readonly<Record<string, AttachmentMimeType>> = {
   webp: "image/webp"
 };
 
+/**
+ * MIME from a drag type advertised on `dataTransfer.types` / items.
+ * WKWebView often exposes Apple UTIs (`public.png`) rather than `image/png`
+ * for the screenshot thumbnail, Slack, and Mail.app image drags.
+ */
+const DRAG_TYPE_IMAGE_MIME: Readonly<Record<string, AttachmentMimeType>> = {
+  "image/png": "image/png",
+  "image/jpeg": "image/jpeg",
+  "image/jpg": "image/jpeg",
+  "image/gif": "image/gif",
+  "image/webp": "image/webp",
+  "public.png": "image/png",
+  "public.jpeg": "image/jpeg",
+  "public.jpeg-2000": "image/jpeg",
+  "com.compuserve.gif": "image/gif",
+  "org.webmproject.webp": "image/webp"
+};
+
 /** MIME from a filename when the File's own type is empty. Screenshot drops
  *  from the macOS thumbnail often arrive as `Screenshot …png` with no type. */
 export function imageMimeFromFileName(name: string): AttachmentMimeType | null {
@@ -27,6 +45,56 @@ export function imageMimeFromFileName(name: string): AttachmentMimeType | null {
   if (dot < 0 || dot === name.length - 1) return null;
   const ext = name.slice(dot + 1).toLowerCase();
   return IMAGE_EXTENSION_MIME[ext] ?? null;
+}
+
+/** MIME for a DataTransfer type, including Apple image UTIs. */
+export function imageMimeFromDragType(type: string): AttachmentMimeType | null {
+  if (type.startsWith("image/") && isSupportedImageMime(type)) return type;
+  return DRAG_TYPE_IMAGE_MIME[type] ?? null;
+}
+
+/** Whether a drag type should light up the composer. Broader than
+ *  `imageMimeFromDragType` because macOS advertises TIFF / `public.image`
+ *  during dragover even when the realized drop is a PNG. */
+export function isImageDragType(type: string): boolean {
+  if (imageMimeFromDragType(type) !== null) return true;
+  if (type.startsWith("image/")) return true;
+  return (
+    type === "public.tiff" ||
+    type === "public.image" ||
+    type === "public.heic" ||
+    type === "public.heif"
+  );
+}
+
+function isFilePromiseDragType(type: string): boolean {
+  return (
+    type.includes("promised-file") ||
+    type === "com.apple.NSPromiseContents" ||
+    type === "NSPromiseContentsPboardType"
+  );
+}
+
+/**
+ * The macOS screenshot thumbnail writes a file under
+ * `TemporaryItems/NSIRD_screencaptureui_*` that only the receiving app can
+ * read, and that disappears when the thumbnail is dismissed. @-mentioning
+ * that path would attach a file the agent cannot open.
+ */
+export function isTransientScreenshotPath(path: string): boolean {
+  const normalized = path.replaceAll("\\", "/").toLowerCase();
+  return (
+    normalized.includes("screencaptureui") ||
+    normalized.includes("/temporaryitems/nsird_")
+  );
+}
+
+/** Whether a dropped File should use the Finder @-mention path rather than
+ *  being persisted as image bytes. */
+export function droppedFileHasUsablePath(file: File): boolean {
+  const path = (file as { path?: unknown }).path;
+  if (typeof path !== "string" || path.length === 0) return false;
+  return !isTransientScreenshotPath(path);
 }
 
 /** Minimal drag payload so tests can feed a plain object instead of a live
@@ -60,32 +128,40 @@ export function listDragTypes(dataTransfer: ComposerDragPayload): string[] {
 
 /**
  * Whether the composer should take this drag (highlight + preventDefault so
- * drop can fire). Finder file drags advertise `"Files"`. In-memory images
- * (macOS screenshot thumbnail, Slack, browser) often advertise `image/png`
- * instead, and WKWebView promised-file drags can report no types until drop.
- * Pane rearranges use `WORKSPACE_DRAG_MIME` and must not look like a file drop.
+ * drop can fire). Finder file drags advertise `"Files"`. The macOS screenshot
+ * thumbnail often advertises Apple UTIs (`public.png`) or file-promise types
+ * instead of `image/png`, and Tauri's WKWebView with `dragDropEnabled: false`
+ * can leave `types` empty through dragover while still listing string items.
+ * Taking those drags lets drop fire; collectDroppedFiles then reads the
+ * realized files. Pane rearranges use `WORKSPACE_DRAG_MIME` and must not look
+ * like a file drop. Text drags that already advertise `text/plain` stay out.
  */
 export function isAttachableDrag(dataTransfer: ComposerDragPayload): boolean {
   const types = listDragTypes(dataTransfer);
   if (types.includes(WORKSPACE_DRAG_MIME)) return false;
-  if (types.includes("Files")) return true;
-  if (types.some((type) => type.startsWith("image/"))) return true;
+  if (types.includes("Files") || types.includes("public.file-url")) return true;
+  if (types.some((type) => isImageDragType(type) || isFilePromiseDragType(type))) {
+    return true;
+  }
   const items = dataTransfer.items;
   if (items) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.kind === "file") return true;
-      if (item.type.startsWith("image/")) return true;
+      if (isImageDragType(item.type)) return true;
     }
   }
-  // Promised files: types and items stay empty through dragover. Taking the
-  // drag lets drop fire; collectDroppedFiles then reads the realized files.
-  return types.length === 0 && (!items || items.length === 0);
+  // Promised / screenshot-thumbnail drags: WKWebView hides the real types
+  // until drop. String items here are not proof of a text drag. Those
+  // already list `text/plain` in `types`.
+  return types.length === 0;
 }
 
 function stampItemImageType(file: File, itemType: string): File {
-  if (file.type || !isSupportedImageMime(itemType)) return file;
-  const stamped = new File([file], file.name || "image", { type: itemType });
+  if (file.type) return file;
+  const mime = imageMimeFromDragType(itemType);
+  if (!mime) return file;
+  const stamped = new File([file], file.name || "image", { type: mime });
   const path = (file as { path?: unknown }).path;
   if (typeof path === "string" && path.length > 0) {
     Object.defineProperty(stamped, "path", { value: path });

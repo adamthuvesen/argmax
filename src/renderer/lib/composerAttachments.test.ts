@@ -5,10 +5,14 @@ import {
   buildAttachmentReferences,
   collectDroppedFiles,
   downscaleImageBlob,
+  droppedFileHasUsablePath,
   imageAttachmentReference,
+  imageMimeFromDragType,
   imageMimeFromFileName,
   isAttachableDrag,
+  isImageDragType,
   isSupportedImageMime,
+  isTransientScreenshotPath,
   listDragTypes,
   readBlobAsBase64
 } from "./composerAttachments.js";
@@ -87,6 +91,46 @@ describe("imageMimeFromFileName", () => {
   });
 });
 
+describe("imageMimeFromDragType", () => {
+  it("maps Apple image UTIs to supported MIME types", () => {
+    expect(imageMimeFromDragType("public.png")).toBe("image/png");
+    expect(imageMimeFromDragType("public.jpeg")).toBe("image/jpeg");
+    expect(imageMimeFromDragType("image/png")).toBe("image/png");
+  });
+
+  it("rejects TIFF and other unsaved image types", () => {
+    expect(imageMimeFromDragType("public.tiff")).toBeNull();
+    expect(imageMimeFromDragType("image/tiff")).toBeNull();
+    expect(imageMimeFromDragType("text/plain")).toBeNull();
+  });
+});
+
+describe("isImageDragType", () => {
+  it("accepts TIFF pasteboard types so a screenshot thumbnail highlights", () => {
+    expect(isImageDragType("public.tiff")).toBe(true);
+    expect(isImageDragType("image/tiff")).toBe(true);
+    expect(isImageDragType("public.png")).toBe(true);
+  });
+
+  it("rejects non-image types", () => {
+    expect(isImageDragType("text/plain")).toBe(false);
+  });
+});
+
+describe("isTransientScreenshotPath", () => {
+  it("recognizes the macOS screenshot-thumbnail temp file", () => {
+    expect(
+      isTransientScreenshotPath(
+        "/var/folders/09/w9q/T/TemporaryItems/NSIRD_screencaptureui_2MPBtJ/Screenshot 2026-09-06.png"
+      )
+    ).toBe(true);
+  });
+
+  it("leaves ordinary disk paths alone", () => {
+    expect(isTransientScreenshotPath("/Users/me/Desktop/Screenshot.png")).toBe(false);
+  });
+});
+
 describe("listDragTypes", () => {
   it("reads an array of types", () => {
     expect(listDragTypes({ types: ["Files", "text/plain"] })).toEqual(["Files", "text/plain"]);
@@ -114,13 +158,27 @@ describe("isAttachableDrag", () => {
     expect(isAttachableDrag({ types: [] })).toBe(true);
   });
 
-  it("rejects an empty-types drag that already lists only string items", () => {
+  it("accepts the macOS screenshot thumbnail's Apple UTI", () => {
+    expect(isAttachableDrag({ types: ["public.png"] })).toBe(true);
+    expect(isAttachableDrag({ types: ["public.tiff"] })).toBe(true);
+  });
+
+  it("accepts a file-promise drag", () => {
+    expect(
+      isAttachableDrag({ types: ["com.apple.pasteboard.promised-file-url"] })
+    ).toBe(true);
+  });
+
+  it("accepts empty types even when string items are listed", () => {
+    // Tauri WKWebView hides the real types until drop and may still expose
+    // string items. Rejecting those was how the screenshot thumbnail never
+    // highlighted and never fired drop.
     expect(
       isAttachableDrag({
         types: [],
         items: [{ kind: "string", type: "text/plain", getAsFile: () => null }]
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("rejects a text drag", () => {
@@ -156,6 +214,14 @@ describe("collectDroppedFiles", () => {
     expect(collected?.name).toBe("shot.png");
   });
 
+  it("stamps an Apple image UTI onto a typeless file", () => {
+    const file = new File([new Uint8Array([1])], "shot.png", { type: "" });
+    const [collected] = collectDroppedFiles({
+      items: [{ kind: "file", type: "public.png", getAsFile: () => file }]
+    });
+    expect(collected?.type).toBe("image/png");
+  });
+
   it("does not attach a second copy when files and items both hold the same typeless image", () => {
     const file = new File([new Uint8Array([1])], "shot.png", { type: "" });
     const collected = collectDroppedFiles({
@@ -183,6 +249,28 @@ describe("collectDroppedFiles", () => {
         items: [{ kind: "string", type: "text/html", getAsFile: () => null }]
       })
     ).toEqual([]);
+  });
+});
+
+describe("droppedFileHasUsablePath", () => {
+  it("keeps a Finder path", () => {
+    const file = new File([new Uint8Array([1])], "shot.png", { type: "" });
+    Object.defineProperty(file, "path", { value: "/tmp/shot.png" });
+    expect(droppedFileHasUsablePath(file)).toBe(true);
+  });
+
+  it("rejects the screenshot-thumbnail temp path so bytes are persisted instead", () => {
+    const file = new File([new Uint8Array([1])], "Screenshot.png", { type: "" });
+    Object.defineProperty(file, "path", {
+      value:
+        "/var/folders/xx/T/TemporaryItems/NSIRD_screencaptureui_abc/Screenshot.png"
+    });
+    expect(droppedFileHasUsablePath(file)).toBe(false);
+  });
+
+  it("rejects a path-less in-memory image", () => {
+    const file = new File([new Uint8Array([1])], "shot.png", { type: "image/png" });
+    expect(droppedFileHasUsablePath(file)).toBe(false);
   });
 });
 

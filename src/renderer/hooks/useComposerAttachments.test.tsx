@@ -274,6 +274,43 @@ describe("useComposerAttachments — screenshot drag", () => {
     expect(result.current.isDraggingFiles).toBe(true);
   });
 
+  it("highlights a macOS screenshot thumbnail that advertises public.png", () => {
+    const { result } = renderHook(() =>
+      useComposerAttachments({
+        draftKey: "launch-a",
+        workspacePath: null,
+        setInput: () => undefined,
+        setStatus: () => undefined
+      })
+    );
+    const event = dragEvent({ types: ["public.png"] });
+    act(() => {
+      result.current.onComposerDragOver(event as never);
+    });
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(result.current.isDraggingFiles).toBe(true);
+  });
+
+  it("highlights a drag whose types stay empty but string items are listed", () => {
+    const { result } = renderHook(() =>
+      useComposerAttachments({
+        draftKey: "launch-a",
+        workspacePath: null,
+        setInput: () => undefined,
+        setStatus: () => undefined
+      })
+    );
+    const event = dragEvent({
+      types: [],
+      items: [{ kind: "string", type: "text/plain", getAsFile: () => null }]
+    });
+    act(() => {
+      result.current.onComposerDragOver(event as never);
+    });
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(result.current.isDraggingFiles).toBe(true);
+  });
+
   it("does not highlight a text drag", () => {
     const { result } = renderHook(() =>
       useComposerAttachments({
@@ -414,6 +451,43 @@ describe("useComposerAttachments — screenshot drag", () => {
     const apply = setInput.mock.calls[0][0] as (prev: string) => string;
     expect(apply("")).toBe("@/tmp/shot.png");
     expect(result.current.pendingAttachments).toEqual([]);
+  });
+
+  it("persists a screenshot-thumbnail temp path as image bytes, not an @-mention", async () => {
+    const saveImage = vi.fn().mockResolvedValue({
+      filePath: "/attachments/launch-a/shot.png",
+      sizeBytes: 3
+    });
+    const setInput = vi.fn();
+    (window as unknown as { argmax: ArgmaxApi }).argmax = {
+      attachments: { saveImage } as unknown as ArgmaxApi["attachments"]
+    } as unknown as ArgmaxApi;
+
+    const { result } = renderHook(() =>
+      useComposerAttachments({
+        draftKey: "launch-a",
+        workspacePath: null,
+        setInput,
+        setStatus: () => undefined
+      })
+    );
+    const file = new File(
+      [new Uint8Array([1, 2, 3])],
+      "Screenshot 2026-09-06 at 10.30.00.png",
+      { type: "" }
+    );
+    Object.defineProperty(file, "path", {
+      value:
+        "/var/folders/xx/T/TemporaryItems/NSIRD_screencaptureui_abc/Screenshot 2026-09-06 at 10.30.00.png"
+    });
+    act(() => {
+      result.current.onComposerDrop(dragEvent({ types: ["Files"], files: [file] }) as never);
+    });
+    await waitFor(() => expect(saveImage).toHaveBeenCalledTimes(1));
+    expect(setInput).not.toHaveBeenCalled();
+    expect(result.current.pendingAttachments).toEqual([
+      { filePath: "/attachments/launch-a/shot.png", mimeType: "image/png", sizeBytes: 3 }
+    ]);
   });
 });
 

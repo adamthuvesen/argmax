@@ -13,6 +13,7 @@ import { isSupportedImageMime } from "../lib/composerAttachments.js";
 import {
   assistantGroupHasVisibleChat,
   buildTurnRenderState,
+  lastThinkingGroupId,
   liveThoughtOwnsProgress,
   preToolNarrationGroupIds
 } from "../lib/sessionTurnView.js";
@@ -136,12 +137,20 @@ function SessionConversationTurnInner({
   // explicit fold from the turn chip still wins, and the turn falls back to the
   // saved expanded-by-default setting for quiet, persistent "Thought" history
   // as soon as a newer turn starts.
+  //
+  // The beat belongs to the turn's newest reasoning burst, never to every burst
+  // in it: tool boundaries flush a fresh thinking group, so this flag read
+  // turn-wide expanded all of them at once. `holdOpen` is gated on the same
+  // group, because a block that opened while live holds itself open afterwards
+  // (`openedLive`) — held turn-wide, every superseded block stays expanded and
+  // narrowing `live` alone changes nothing.
   const thinkingLive = liveThoughtOwnsProgress({
     assistantEvents: item.assistantEvents,
     isLatestTurn,
     sessionRunning: sessionIsLive,
     isPausedOnUserInput
   });
+  const liveThoughtGroupId = lastThinkingGroupId(visibleAssistantGroups);
   // Tool groups expand by default for the current turn (you're watching it
   // work, and it stays open through completion so nothing collapses out from
   // under the answer) and collapse to headers for older turns. The turn chip
@@ -266,9 +275,10 @@ function SessionConversationTurnInner({
   );
   const assistantChildren: AnnotatedChild[] = visibleAssistantGroups
     .map((group): AnnotatedChild | null => {
+      const groupLive = thinkingLive && group.id === liveThoughtGroupId;
       // Single-line mode folds completed Thought blocks away entirely — only
-      // the live "Thinking" indicator (governed by thinkingLive) survives.
-      if (minimalActivity && group.thinking && !thinkingLive) return null;
+      // the live "Thinking" indicator (governed by groupLive) survives.
+      if (minimalActivity && group.thinking && !groupLive) return null;
       if (hiddenNarrationIds.has(group.id)) {
         return { kind: "assistant", id: group.id, node: null, createdAt: group.createdAt, sortAt: group.lastActivityAt };
       }
@@ -277,8 +287,10 @@ function SessionConversationTurnInner({
           <ThoughtBlock
             key={group.id}
             defaultExpanded={toolsExpandOverride ?? defaultThinkingExpanded}
-            live={thinkingLive}
-            holdOpen={isLatestTurn && toolsExpandOverride !== false}
+            live={groupLive}
+            holdOpen={
+              isLatestTurn && toolsExpandOverride !== false && group.id === liveThoughtGroupId
+            }
             durationMs={thoughtDurationMs(group.createdAt, group.lastActivityAt)}
           >
             {/* `streaming` while the thought is live is what splits the
@@ -289,7 +301,7 @@ function SessionConversationTurnInner({
                 would trail by seconds, then snap when the thought ends. */}
             <StreamingMarkdown
               text={group.text}
-              streaming={thinkingLive}
+              streaming={groupLive}
               paced={false}
               workspace={workspace}
               onOpenFile={onOpenFile}

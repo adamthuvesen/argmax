@@ -417,6 +417,26 @@ export function liveThoughtOwnsProgress(params: {
   return hasThinkingText;
 }
 
+/**
+ * Which Thought block carries the live beat, once `liveThoughtOwnsProgress` has
+ * said the turn's reasoning owns it at all.
+ *
+ * Reasoning is flushed into a fresh group at every tool boundary, so a turn that
+ * thinks between calls holds one group per burst — a model that never narrates
+ * accumulates hundreds of them. Read as a turn-wide flag, `live` opened every
+ * one of those at once: replaying one Gemini-through-Cursor session put 114k
+ * characters of reasoning on screen across 131 expanded blocks. Only the newest
+ * burst is what the reader is waiting on; the ones behind it are history and
+ * fold to their `Thought 12s` headers like any settled block.
+ */
+export function lastThinkingGroupId(groups: readonly AssistantGroup[]): string | null {
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    const group = groups[index];
+    if (group?.thinking) return group.id;
+  }
+  return null;
+}
+
 function toolStartTimes(toolItems: readonly TurnToolItem[]): string[] {
   return toolItems.map((item) => item.tool.createdAt).sort();
 }

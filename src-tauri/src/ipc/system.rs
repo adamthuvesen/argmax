@@ -229,6 +229,19 @@ pub fn system_set_notifications_enabled(
     system_set_notifications_enabled_impl(&state, input)
 }
 
+/// Mirrors the renderer's "keep computer awake" preference. The sleep
+/// assertion is held only while active sessions exist, so this alone never
+/// keeps the Mac awake.
+#[tauri::command(rename = "system:set-keep-awake")]
+#[specta::specta]
+pub fn system_set_keep_awake(
+    state: State<'_, AppState>,
+    input: SystemSetKeepAwakeInput,
+) -> ArgmaxResult<SystemOk> {
+    state.keep_awake.set_enabled(input.enabled);
+    Ok(SystemOk { ok: true })
+}
+
 pub(crate) fn system_set_notifications_enabled_impl(
     state: &AppState,
     input: SystemSetNotificationsEnabledInput,

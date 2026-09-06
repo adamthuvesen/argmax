@@ -85,6 +85,11 @@ pub struct AppState {
     /// Skill discovery, held here so its per-provider cache survives across
     /// calls: a fresh registry per `skills:list` re-walks every skill tree.
     pub skills: Arc<SkillRegistry>,
+    /// Optional keep-awake service: holds a macOS sleep assertion while the
+    /// renderer's "keep computer awake" setting is on and at least one chat
+    /// is in an active session state. Armed by `system:set-keep-awake` and
+    /// fed from the `dashboard:delta` publisher like the dock badge.
+    pub keep_awake: Arc<crate::util::keep_awake::KeepAwakeService>,
     /// Live browser tabs and who opened each one. The renderer used to own
     /// this list; an agent opening a page has no renderer to ask, so the app
     /// keeps it and pushes `browser:tabs` for the strip to mirror.
@@ -119,6 +124,7 @@ impl Default for AppState {
             sync_report: std::sync::Mutex::new(None),
             sync_sweep: Arc::new(std::sync::Mutex::new(())),
             skills: Arc::new(SkillRegistry::from_env()),
+            keep_awake: Arc::default(),
             browser_tabs: Arc::default(),
         }
     }

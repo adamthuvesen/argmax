@@ -14,6 +14,7 @@ export const COMPOSER_PIXEL_FIELD_KEY = "argmax.composer.pixelField.enabled";
 export const PR_MILESTONE_CELEBRATION_KEY = "argmax.prMilestones.celebrate";
 export const RANDOM_SESSION_ICON_KEY = "argmax.sessionIcon.random.enabled";
 export const DESKTOP_NOTIFICATIONS_KEY = "argmax.desktopNotifications.enabled";
+export const KEEP_AWAKE_KEY = "argmax.keepAwake.enabled";
 export const BROWSER_PAGE_OPEN_KEY = "argmax.browser.pageOpen";
 
 export const PrMilestoneCelebrationContext = createContext(false);

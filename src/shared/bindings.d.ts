@@ -443,6 +443,19 @@ async systemSetNotificationsEnabled(input: SystemSetNotificationsEnabledInput) :
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Mirrors the renderer's "keep computer awake" preference. The sleep
+ * assertion is held only while active sessions exist, so this alone never
+ * keeps the Mac awake.
+ */
+async systemSetKeepAwake(input: SystemSetKeepAwakeInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_set_keep_awake", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async systemTestNotification(input: SystemTestNotificationInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("system_test_notification", { input }) };
@@ -1359,6 +1372,11 @@ export type SystemSetDefaultAgentInput = { provider: ProviderId; modelLabel: Non
  * Absent for a fast model that has no effort control at all.
  */
 reasoningEffort: ReasoningEffort | null }
+/**
+ * The renderer's "keep computer awake" preference. Only arms or disarms the
+ * service; the assertion itself is driven by active session states.
+ */
+export type SystemSetKeepAwakeInput = { enabled: boolean }
 export type SystemSetNotificationsEnabledInput = { enabled: boolean }
 export type SystemSetThemeInput = { mode: ThemeMode }
 export type SystemTestNotificationInput = Record<string, never>

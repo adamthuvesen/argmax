@@ -81,6 +81,8 @@ export function SettingsPanel({
   onRandomSessionIconEnabledChange,
   desktopNotificationsEnabled,
   onDesktopNotificationsEnabledChange,
+  keepAwakeEnabled,
+  onKeepAwakeEnabledChange,
   projects,
   onProjectUpdated,
   navigationTarget,
@@ -133,6 +135,8 @@ export function SettingsPanel({
   onRandomSessionIconEnabledChange: (v: boolean) => void;
   desktopNotificationsEnabled: boolean;
   onDesktopNotificationsEnabledChange: (v: boolean) => void;
+  keepAwakeEnabled: boolean;
+  onKeepAwakeEnabledChange: (v: boolean) => void;
   projects: ProjectSummary[];
   onProjectUpdated: (updated: ProjectSummary) => void;
   navigationTarget?: SettingsNavigationTarget | null;
@@ -267,6 +271,8 @@ export function SettingsPanel({
             onRandomSessionIconEnabledChange={onRandomSessionIconEnabledChange}
             desktopNotificationsEnabled={desktopNotificationsEnabled}
             onDesktopNotificationsEnabledChange={onDesktopNotificationsEnabledChange}
+            keepAwakeEnabled={keepAwakeEnabled}
+            onKeepAwakeEnabledChange={onKeepAwakeEnabledChange}
             detectedIdes={detectedIdes}
             defaultIde={defaultIde}
             onDefaultIdeChange={onDefaultIdeChange}

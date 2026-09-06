@@ -5,6 +5,7 @@ pub mod data_dir;
 pub mod gh_runner;
 pub mod instance_lock;
 pub mod ipc_latency;
+pub mod keep_awake;
 pub mod log_buffer;
 pub mod login_shell;
 pub mod process_control;

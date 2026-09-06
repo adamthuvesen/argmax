@@ -128,6 +128,7 @@ import {
   COMPOSER_PIXEL_FIELD_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
+  KEEP_AWAKE_KEY,
   PR_MILESTONE_CELEBRATION_KEY,
   TURN_CHANGES_EXPANDED_KEY,
   RANDOM_SESSION_ICON_KEY,
@@ -205,12 +206,21 @@ export function App(): JSX.Element {
     DESKTOP_NOTIFICATIONS_KEY,
     true
   );
+  const [keepAwakeEnabled, setKeepAwakeEnabled] = useBooleanUiPreference(KEEP_AWAKE_KEY, false);
 
   useEffect(() => {
     if (window.argmax?.system?.setNotificationsEnabled) {
       void window.argmax.system.setNotificationsEnabled(desktopNotificationsEnabled);
     }
   }, [desktopNotificationsEnabled]);
+  // Mirror the keep-awake preference to the backend, which holds the actual
+  // sleep assertion while sessions are active. The remote bridge doesn't
+  // carry this channel, and a failed mirror only means sleep falls back to
+  // macOS defaults.
+  useEffect(() => {
+    if (!window.argmax?.system?.setKeepAwake) return;
+    void window.argmax.system.setKeepAwake(keepAwakeEnabled);
+  }, [keepAwakeEnabled]);
   // Mirror the app-wide default agent to the backend, which has no window to
   // ask: the chats Argmax starts on its own (the PR check-failure fix) launch
   // on the same model and effort the launcher shows.
@@ -1956,6 +1966,8 @@ export function App(): JSX.Element {
                 onRandomSessionIconEnabledChange={setRandomSessionIconEnabled}
                 desktopNotificationsEnabled={desktopNotificationsEnabled}
                 onDesktopNotificationsEnabledChange={setDesktopNotificationsEnabled}
+                keepAwakeEnabled={keepAwakeEnabled}
+                onKeepAwakeEnabledChange={setKeepAwakeEnabled}
                 projects={realProjects}
                 onProjectUpdated={handleProjectUpdated}
                 navigationTarget={settingsNavigation}

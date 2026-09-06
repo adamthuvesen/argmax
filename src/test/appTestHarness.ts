@@ -97,6 +97,7 @@ export type AppTestMocks = {
   diagnosticsStub: AppTestMockFn<ArgmaxApi["system"]["diagnostics"]>;
   vacuumDatabaseStub: AppTestMockFn<ArgmaxApi["system"]["vacuumDatabase"]>;
   setNotificationsEnabledStub: AppTestMockFn<ArgmaxApi["system"]["setNotificationsEnabled"]>;
+  setKeepAwakeStub: AppTestMockFn<ArgmaxApi["system"]["setKeepAwake"]>;
   multitaskStub: AppTestMockFn<ArgmaxApi["session"]["multitask"]>;
   testNotificationStub: AppTestMockFn<ArgmaxApi["system"]["testNotification"]>;
   workspaceStatus: AppTestMockFn<ArgmaxApi["workspaces"]["status"]>;
@@ -137,6 +138,7 @@ export let providersDiscover: AppTestMocks["providersDiscover"];
 let diagnosticsStub: AppTestMocks["diagnosticsStub"];
 let vacuumDatabaseStub: AppTestMocks["vacuumDatabaseStub"];
 export let setNotificationsEnabledStub: AppTestMocks["setNotificationsEnabledStub"];
+let setKeepAwakeStub: AppTestMocks["setKeepAwakeStub"];
 let multitaskStub: AppTestMocks["multitaskStub"];
 export let testNotificationStub: AppTestMocks["testNotificationStub"];
 export let workspaceStatus: AppTestMocks["workspaceStatus"];
@@ -312,6 +314,7 @@ export function setupAppTestMocks(): void {
   setNotificationsEnabledStub = vi
     .fn<ArgmaxApi["system"]["setNotificationsEnabled"]>()
     .mockResolvedValue({ ok: true });
+  setKeepAwakeStub = vi.fn<ArgmaxApi["system"]["setKeepAwake"]>().mockResolvedValue({ ok: true });
   testNotificationStub = vi.fn<ArgmaxApi["system"]["testNotification"]>().mockResolvedValue({ ok: true });
   multitaskStub = vi.fn<ArgmaxApi["session"]["multitask"]>().mockResolvedValue({
     sessionId: "multitask-session",
@@ -548,6 +551,7 @@ export function setupAppTestMocks(): void {
       setTheme: () => Promise.resolve({ ok: true }),
       setDefaultAgent: vi.fn(() => Promise.resolve({ ok: true }) as Promise<{ ok: true }>),
       setNotificationsEnabled: setNotificationsEnabledStub,
+      setKeepAwake: setKeepAwakeStub,
       testNotification: testNotificationStub
     },
     remote: {

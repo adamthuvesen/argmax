@@ -24,6 +24,8 @@ export function GeneralSettings({
   onRandomSessionIconEnabledChange,
   desktopNotificationsEnabled,
   onDesktopNotificationsEnabledChange,
+  keepAwakeEnabled,
+  onKeepAwakeEnabledChange,
   detectedIdes,
   defaultIde,
   onDefaultIdeChange,
@@ -35,6 +37,8 @@ export function GeneralSettings({
   onRandomSessionIconEnabledChange: (v: boolean) => void;
   desktopNotificationsEnabled: boolean;
   onDesktopNotificationsEnabledChange: (v: boolean) => void;
+  keepAwakeEnabled: boolean;
+  onKeepAwakeEnabledChange: (v: boolean) => void;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   onDefaultIdeChange: (ide: IdeId | null) => void;
@@ -135,6 +139,26 @@ export function GeneralSettings({
         {testNotificationStatus ? (
           <SettingNote role="status">{testNotificationStatus}</SettingNote>
         ) : null}
+      </SettingGroup>
+
+      <SettingGroup id="settings-power" label="Power">
+        <SettingRow
+          label="Keep computer awake"
+          description="While any chat has a working agent, stop the Mac from sleeping. Display sleep still applies."
+          htmlFor="settings-keep-awake"
+          control={
+            <SettingsListPicker
+              ariaLabel="Keep computer awake"
+              inputId="settings-keep-awake"
+              value={keepAwakeEnabled ? "yes" : "no"}
+              onChange={(next) => onKeepAwakeEnabledChange(next === "yes")}
+              options={[
+                { value: "no", label: "No" },
+                { value: "yes", label: "Yes" }
+              ]}
+            />
+          }
+        />
       </SettingGroup>
 
       <SettingGroup id="settings-handoff" label="Handoff">

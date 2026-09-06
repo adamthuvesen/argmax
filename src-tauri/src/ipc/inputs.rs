@@ -811,6 +811,14 @@ pub struct SystemSetNotificationsEnabledInput {
     pub enabled: bool,
 }
 
+/// The renderer's "keep computer awake" preference. Only arms or disarms the
+/// service; the assertion itself is driven by active session states.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemSetKeepAwakeInput {
+    pub enabled: bool,
+}
+
 /// The app-wide default agent (Settings → Agents). The renderer owns the
 /// preference and mirrors it here so the sessions Argmax starts on its own —
 /// the PR check-failure fix chat — launch on the same model the user picked.

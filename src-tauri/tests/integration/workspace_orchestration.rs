@@ -941,6 +941,89 @@ fn startup_keeps_archive_failed_when_git_still_registers_missing_worktree() {
     assert_eq!(recovered.state, "archive-failed");
 }
 
+#[test]
+fn startup_reconciles_archive_failed_workspace_when_worktree_is_gone() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let worktree_path = repo.path().join("worktrees").join("removed-failed");
+    std::fs::create_dir_all(worktree_path.parent().expect("worktree parent"))
+        .expect("create worktree parent");
+    let worktree_arg = worktree_path.to_str().expect("worktree path");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let workspace = {
+        let connection = database.connection();
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "w-archive-failed-removed".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+                task_label: "archive failed removed".to_owned(),
+                branch: "detached".to_owned(),
+                base_ref: "main".to_owned(),
+                path: worktree_arg.to_owned(),
+                state: "archive-failed".to_owned(),
+                shared_workspace: false,
+                kind: "git".to_string(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("persist workspace")
+    };
+    assert!(!worktree_path.exists());
+
+    let service = WorkspaceService::new(database.clone());
+    assert_eq!(service.recover_interrupted_archives().expect("recover"), 1);
+    let connection = database.connection();
+    let recovered = find_workspace_by_id(&connection, &workspace.id).expect("find workspace");
+    assert_eq!(recovered.state, "archived");
+}
+
+#[tokio::test]
+async fn archive_isolated_worktree_succeeds_when_worktree_is_already_removed_from_disk_and_git() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let worktree_location = repo.path().join("worktrees");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &worktree_location.display().to_string(),
+    );
+    let service = WorkspaceService::new(database.clone());
+    let workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("already removed".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("create isolated");
+
+    // Remove worktree externally (simulating cleanup after PR merge)
+    run_git(
+        repo.path(),
+        &["worktree", "remove", "--force", workspace.path.as_str()],
+    );
+    assert!(!std::path::Path::new(&workspace.path).exists());
+
+    // Archiving should succeed and mark the workspace as archived
+    let result = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("archive should succeed when worktree already removed");
+
+    assert_eq!(result.state, "archived");
+}
+
 #[tokio::test]
 async fn startup_restores_watchers_for_kept_workspaces() {
     let repo = seed_git_repo(&[("a.txt", "1")]);
@@ -1907,4 +1990,55 @@ async fn each_move_adds_an_arrival_the_copied_transcript_carries_on() {
         count_move_arrivals(&connection, &second.session.id).expect("second arrivals"),
         2
     );
+}
+
+#[tokio::test]
+async fn archive_failed_workspace_retries_with_force_and_succeeds() {
+    let repo = seed_git_repo(&[("README.md", "hello")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let service = WorkspaceService::new(Arc::clone(&database));
+    let workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Retry Archive".to_string()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_string()).expect("base ref")),
+        })
+        .await
+        .expect("isolated workspace");
+
+    // Put dirty files in worktree
+    std::fs::write(
+        std::path::Path::new(&workspace.path).join("uncommitted.txt"),
+        "changes",
+    )
+    .expect("write uncommitted");
+
+    // Manually mark it as archive-failed in DB
+    {
+        let conn = database.connection();
+        argmax_lib::persistence::workspaces::update_workspace_state(
+            &conn,
+            &workspace.id,
+            "archive-failed",
+        )
+        .expect("mark failed");
+    }
+
+    // Now call archive without explicit force: should force because state is archive-failed
+    let archived = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("archive retry succeeded");
+
+    assert_eq!(archived.state, "archived");
+    assert!(!std::path::Path::new(&workspace.path).exists());
 }

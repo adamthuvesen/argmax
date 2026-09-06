@@ -840,9 +840,8 @@ describe("MobileApp", () => {
 
   it("closes the row actions sheet on a back gesture instead of leaving the list", async () => {
     render(<MobileApp />);
-    await screen.findByRole("region", { name: "Chat list" });
-
-    const row = screen.getByRole("button", { name: /Build dashboard/ }).closest("li");
+    const item = await screen.findByRole("button", { name: /Build dashboard/ });
+    const row = item.closest("li");
     fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
     await screen.findByRole("dialog", { name: "Chat actions" });
 

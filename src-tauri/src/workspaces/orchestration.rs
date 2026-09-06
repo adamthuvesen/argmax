@@ -256,6 +256,37 @@ impl WorkspaceService {
                     | "archiving"
                     | "archive-failed"
             ) {
+                if !workspace.shared_workspace
+                    && workspace.kind == "git"
+                    && !Path::new(&workspace.path).exists()
+                {
+                    let registration = {
+                        let connection = self.database.connection();
+                        require_project(&connection, &workspace.project_id).and_then(|project| {
+                            isolated_worktree_is_registered(
+                                Path::new(&project.repo_path),
+                                Path::new(&workspace.path),
+                            )
+                        })
+                    };
+                    if matches!(registration, Ok(false)) {
+                        let connection = self.database.connection();
+                        if let Ok(archived) =
+                            update_workspace_state(&connection, &workspace.id, "archived")
+                        {
+                            self.publish(DashboardDelta {
+                                workspaces: vec![archived],
+                                ..DashboardDelta::default()
+                            });
+                            tracing::info!(
+                                workspace_id = %workspace.id,
+                                path = %workspace.path,
+                                "reconciled missing isolated worktree as archived"
+                            );
+                            continue;
+                        }
+                    }
+                }
                 match self.watch(&workspace.id) {
                     Ok(()) => started += 1,
                     Err(error) => {
@@ -293,7 +324,9 @@ impl WorkspaceService {
         };
         let mut recovered = 0;
         for workspace in workspaces {
-            if workspace.state == "archiving" {
+            if workspace.state == "archiving"
+                || (workspace.state == "archive-failed" && !Path::new(&workspace.path).exists())
+            {
                 // A shared-checkout archive has no destructive step, so an
                 // interrupted one can always complete: honor the archive.
                 let next_state = if workspace.shared_workspace {
@@ -323,21 +356,23 @@ impl WorkspaceService {
                         }
                     }
                 };
-                let recovered_workspace = {
-                    let connection = self.database.connection();
-                    update_workspace_state(&connection, &workspace.id, next_state)?
-                };
-                self.publish(DashboardDelta {
-                    workspaces: vec![recovered_workspace],
-                    ..DashboardDelta::default()
-                });
-                if let Some(approvals) = self.approvals.as_ref() {
-                    approvals.cancel_workspace_pending(&workspace.id)?;
+                if next_state != workspace.state {
+                    let recovered_workspace = {
+                        let connection = self.database.connection();
+                        update_workspace_state(&connection, &workspace.id, next_state)?
+                    };
+                    self.publish(DashboardDelta {
+                        workspaces: vec![recovered_workspace],
+                        ..DashboardDelta::default()
+                    });
+                    if let Some(approvals) = self.approvals.as_ref() {
+                        approvals.cancel_workspace_pending(&workspace.id)?;
+                    }
+                    if next_state == "archived" {
+                        self.close_watcher(&workspace.id);
+                    }
+                    recovered += 1;
                 }
-                if next_state == "archived" {
-                    self.close_watcher(&workspace.id);
-                }
-                recovered += 1;
             }
         }
         Ok(recovered)
@@ -1232,8 +1267,6 @@ impl WorkspaceService {
         input: WorkspacesArchiveInput,
     ) -> ArgmaxResult<WorkspaceSummary> {
         let workspace_id = input.workspace_id.as_str().to_string();
-        let force = input.force.unwrap_or(false);
-
         let prior = {
             let connection = self.database.connection();
             find_workspace_by_id(&connection, &workspace_id)?
@@ -1241,6 +1274,7 @@ impl WorkspaceService {
         if prior.state == "archived" {
             return Ok(prior);
         }
+        let force = input.force.unwrap_or(false) || prior.state == "archive-failed";
         let lease = self.lifecycle.begin_archive(&workspace_id)?;
         if prior.shared_workspace {
             return self.archive_shared(workspace_id, lease);
@@ -1285,6 +1319,11 @@ impl WorkspaceService {
                 return Err(error);
             }
         };
+
+        if workspace.state == "archived" {
+            lease.finish(ArchiveOutcome::Archived);
+            return Ok(workspace);
+        }
 
         let project = {
             let connection = self.database.connection();
@@ -1424,43 +1463,47 @@ impl WorkspaceService {
         self.evict_cursor_acp(&workspace.path).await;
 
         if !force && !workspace.shared_workspace {
-            let recheck = match run_git_text(
-                Path::new(&workspace.path),
-                &["status", "--porcelain"],
-                Duration::from_millis(GIT_TIMEOUT_MS),
-            )
-            .await
-            {
-                Ok(output) => output,
-                Err(error) => {
-                    if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                        tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+            let path = Path::new(&workspace.path);
+            if path.exists() {
+                let recheck = match run_git_text(
+                    path,
+                    &["status", "--porcelain"],
+                    Duration::from_millis(GIT_TIMEOUT_MS),
+                )
+                .await
+                {
+                    Ok(output) => output,
+                    Err(error) => {
+                        if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                            tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                        }
+                        lease.finish(ArchiveOutcome::Failed);
+                        return Err(ArgmaxError::service(
+                            "WORKSPACE_STATUS_FAILED",
+                            error.to_string(),
+                        ));
                     }
-                    lease.finish(ArchiveOutcome::Failed);
-                    return Err(ArgmaxError::service(
-                        "WORKSPACE_STATUS_FAILED",
-                        error.to_string(),
-                    ));
-                }
-            };
-            if !recheck.trim().is_empty() {
-                let kept = {
-                    let connection = self.database.connection();
-                    update_workspace_state(&connection, &workspace_id, "kept")?
                 };
-                self.publish(DashboardDelta {
-                    workspaces: vec![kept.clone()],
-                    ..DashboardDelta::default()
-                });
-                if let Err(error) = super::watcher::watch_during_archive(self, &workspace_id) {
-                    tracing::warn!(workspace_id = %workspace_id, ?error, "failed to restore watcher after dirty archive refusal");
+                if !recheck.trim().is_empty() {
+                    let kept = {
+                        let connection = self.database.connection();
+                        update_workspace_state(&connection, &workspace_id, "kept")?
+                    };
+                    self.publish(DashboardDelta {
+                        workspaces: vec![kept.clone()],
+                        ..DashboardDelta::default()
+                    });
+                    if let Err(error) = super::watcher::watch_during_archive(self, &workspace_id) {
+                        tracing::warn!(workspace_id = %workspace_id, ?error, "failed to restore watcher after dirty archive refusal");
+                    }
+                    lease.finish(ArchiveOutcome::Reopened);
+                    return Ok(kept);
                 }
-                lease.finish(ArchiveOutcome::Reopened);
-                return Ok(kept);
             }
         }
 
         if !workspace.shared_workspace {
+            let path_exists = Path::new(&workspace.path).exists();
             let remove_args: Vec<&str> = if force {
                 vec!["worktree", "remove", "--force", workspace.path.as_str()]
             } else {
@@ -1473,14 +1516,64 @@ impl WorkspaceService {
             )
             .await
             {
-                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                if !path_exists {
+                    let _ = run_git_text(
+                        Path::new(&project.repo_path),
+                        &["worktree", "prune"],
+                        Duration::from_millis(GIT_TIMEOUT_MS),
+                    )
+                    .await;
                 }
-                lease.finish(ArchiveOutcome::Failed);
-                return Err(invalid_workspace(
-                    format!("Could not archive worktree. {error}"),
-                    "Review the worktree and retry archive.",
-                ));
+                let is_unregistered = !isolated_worktree_is_registered(
+                    Path::new(&project.repo_path),
+                    Path::new(&workspace.path),
+                )
+                .unwrap_or(true);
+                let is_not_worktree = error.to_string().contains("is not a working tree");
+
+                if !path_exists && (is_unregistered || is_not_worktree) {
+                    tracing::info!(
+                        workspace_id = %workspace_id,
+                        "worktree was already removed from disk and git; archive succeeded"
+                    );
+                } else if force {
+                    let _ = tokio::fs::remove_dir_all(&workspace.path).await;
+                    let _ = run_git_text(
+                        Path::new(&project.repo_path),
+                        &["worktree", "prune"],
+                        Duration::from_millis(GIT_TIMEOUT_MS),
+                    )
+                    .await;
+                    let now_unregistered = !isolated_worktree_is_registered(
+                        Path::new(&project.repo_path),
+                        Path::new(&workspace.path),
+                    )
+                    .unwrap_or(true);
+                    if !Path::new(&workspace.path).exists() && now_unregistered {
+                        tracing::info!(
+                            workspace_id = %workspace_id,
+                            "worktree directory removed directly and pruned; archive succeeded"
+                        );
+                    } else {
+                        if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                            tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                        }
+                        lease.finish(ArchiveOutcome::Failed);
+                        return Err(invalid_workspace(
+                            format!("Could not archive worktree. {error}"),
+                            "Review the worktree and retry archive.",
+                        ));
+                    }
+                } else {
+                    if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                        tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                    }
+                    lease.finish(ArchiveOutcome::Failed);
+                    return Err(invalid_workspace(
+                        format!("Could not archive worktree. {error}"),
+                        "Review the worktree and retry archive.",
+                    ));
+                }
             }
         }
 
@@ -1695,6 +1788,30 @@ impl WorkspaceService {
             let connection = self.database.connection();
             find_workspace_by_id(&connection, workspace_id)?
         };
+        if workspace.state == "archived" {
+            return Ok(workspace);
+        }
+        if !workspace.shared_workspace && workspace.kind == "git" {
+            let path = Path::new(&workspace.path);
+            if !path.exists() {
+                let is_unregistered = {
+                    let connection = self.database.connection();
+                    require_project(&connection, &workspace.project_id).and_then(|project| {
+                        isolated_worktree_is_registered(Path::new(&project.repo_path), path)
+                    })
+                };
+                if matches!(is_unregistered, Ok(false)) {
+                    let connection = self.database.connection();
+                    let archived = update_workspace_state(&connection, workspace_id, "archived")?;
+                    self.publish(DashboardDelta {
+                        workspaces: vec![archived.clone()],
+                        ..DashboardDelta::default()
+                    });
+                    self.close_watcher(workspace_id);
+                    return Ok(archived);
+                }
+            }
+        }
         let status = read_checkout_status(Path::new(&workspace.path)).await;
         let unchanged = workspace.clone();
         match self.persist_checkout_status(workspace, status.as_ref())? {
@@ -1723,7 +1840,12 @@ impl WorkspaceService {
         path: &Path,
         workspace_ids: &[String],
     ) -> usize {
-        let status = read_checkout_status(path).await;
+        let path_exists = path.exists();
+        let status = if path_exists {
+            read_checkout_status(path).await
+        } else {
+            None
+        };
         let mut refreshed = 0;
         let mut changed = Vec::new();
         for workspace_id in workspace_ids {
@@ -1735,6 +1857,31 @@ impl WorkspaceService {
                 continue;
             };
             refreshed += 1;
+            if !path_exists
+                && !workspace.shared_workspace
+                && workspace.kind == "git"
+                && workspace.state != "archived"
+            {
+                let is_unregistered = {
+                    let connection = self.database.connection();
+                    require_project(&connection, &workspace.project_id).and_then(|project| {
+                        isolated_worktree_is_registered(
+                            Path::new(&project.repo_path),
+                            Path::new(&workspace.path),
+                        )
+                    })
+                };
+                if matches!(is_unregistered, Ok(false)) {
+                    let connection = self.database.connection();
+                    if let Ok(archived) =
+                        update_workspace_state(&connection, workspace_id, "archived")
+                    {
+                        self.close_watcher(workspace_id);
+                        changed.push(archived);
+                        continue;
+                    }
+                }
+            }
             match self.persist_checkout_status(workspace, status.as_ref()) {
                 Ok(Some(summary)) => changed.push(summary),
                 Ok(None) => {}
@@ -2024,6 +2171,9 @@ pub(super) struct CheckoutStatus {
 /// the process spawns. `None` means the read failed and callers should keep
 /// their cached values.
 async fn read_checkout_status(path: &Path) -> Option<CheckoutStatus> {
+    if !path.exists() {
+        return None;
+    }
     match run_git_text(
         path,
         &["status", "--porcelain", "--branch"],

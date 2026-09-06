@@ -637,7 +637,9 @@ export function App(): JSX.Element {
     // pass force only after confirmation.
     const workspace = workspacesById.get(workspaceId);
     let force = false;
-    if (workspace?.dirty && !workspace.sharedWorkspace) {
+    if (workspace?.state === "archive-failed") {
+      force = true;
+    } else if (workspace?.dirty && !workspace.sharedWorkspace) {
       const fileLabel = workspace.changedFiles === 1 ? "1 uncommitted change" : `${workspace.changedFiles} uncommitted changes`;
       const confirmed = window.confirm(
         `${workspace.taskLabel} has ${fileLabel}. Archiving will delete the worktree and discard these changes (the branch is preserved). Continue?`

@@ -14,8 +14,6 @@ function subagentCluster(overrides: Partial<SubagentCluster> = {}): SubagentClus
       { toolUseId: "spawn-2", codename: "Titan", title: "Sweep tests", status: "running", iconColor: "amber", emblem: emblemForCodename("Hopper"), multitask: false }
     ],
     running: 1,
-    done: 1,
-    failed: 0,
     hasMultitask: false,
     ...overrides
   };
@@ -253,13 +251,11 @@ describe("WorkspaceCard", () => {
     expect(onHide).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the subagent roster with a per-state count once the session spawns agents", () => {
+  it("shows the subagent roster once the session spawns agents", () => {
     renderCard({ subagents: subagentCluster() });
 
     const section = screen.getByRole("region", { name: "Subagents" });
-    expect(section.textContent).toContain("1 running");
-    expect(section.textContent).toContain("1 done");
-    // Codenames surface in the hover roster, one chip per launch.
+    // Codenames and statuses surface in the hover roster, one chip per launch.
     const roster = section.querySelector(".workspace-card-subagents");
     expect(roster?.getAttribute("title")).toContain("Io — Completed");
     expect(roster?.getAttribute("title")).toContain("Titan — Running");
@@ -277,7 +273,7 @@ describe("WorkspaceCard", () => {
     expect(onOpenAgents).toHaveBeenCalledTimes(1);
   });
 
-  it("folds the avatar stack into a +N chip beyond five launches and reports failures", () => {
+  it("folds the avatar stack into a +N chip beyond five launches", () => {
     const entries = Array.from({ length: 7 }, (_, index) => ({
       toolUseId: `spawn-${index}`,
       codename: `Scientist${index}`,
@@ -287,13 +283,11 @@ describe("WorkspaceCard", () => {
       emblem: emblemForCodename(`Scientist${index}`),
       multitask: false
     }));
-    renderCard({ subagents: { entries, running: 0, done: 6, failed: 1, hasMultitask: false } });
+    renderCard({ subagents: { entries, running: 0, hasMultitask: false } });
 
     const section = screen.getByRole("region", { name: "Subagents" });
     expect(section.querySelectorAll(".workspace-card-agent")).toHaveLength(6); // 5 chips + "+2"
     expect(section.textContent).toContain("+2");
-    expect(section.textContent).toContain("1 failed");
-    expect(section.textContent).toContain("6 done");
   });
 
   it("names the section for what is in it once a multitask joins", () => {

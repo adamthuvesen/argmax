@@ -306,7 +306,8 @@ function MobileAppearanceControls({
 }
 
 export function MobileApp(): JSX.Element {
-  useVisualViewportInsets();
+  const shellRef = useRef<HTMLDivElement>(null);
+  useVisualViewportInsets(shellRef);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   // Backgrounding the phone kills the socket on every app switch, so requests
   // caught mid-flight fail with the connection-lost message as a matter of
@@ -755,6 +756,7 @@ export function MobileApp(): JSX.Element {
   return (
     <SessionTimelineProvider store={timelines}>
     <div
+      ref={shellRef}
       className="mobile-shell"
       data-font-size={sessionOpen || newSessionOpen ? "8" : "6"}
       data-screen={newSessionOpen ? "new" : sessionOpen ? "session" : "list"}

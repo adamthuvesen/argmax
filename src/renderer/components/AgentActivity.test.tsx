@@ -153,6 +153,77 @@ describe("AgentActivity", () => {
     expect(screen.getByText(narration)).toBeInTheDocument();
   });
 
+  it("keeps every persistent run in restore mode until their shared backfill settles", async () => {
+    const taskStart = event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+      id: "task-1",
+      name: "Task",
+      input: { description: "Explore repo", prompt: "Map the repo." }
+    });
+    let settleLoad = (): void => {};
+    const agentEventsLoad = new Promise<void>((resolve) => {
+      settleLoad = resolve;
+    });
+    const onLoadAgentEvents = vi.fn(() => agentEventsLoad);
+    const runShells = [
+      taskStart,
+      event("first-done", "agent.completed", "2026-05-12T15:00:03.000Z", "First result", {
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-1",
+        agentRunId: "task-1", status: "completed"
+      }),
+      event("first-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-1", agentRunId: "task-1"
+      }),
+      event("second-done", "agent.completed", "2026-05-12T15:01:03.000Z", "Second result", {
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-1",
+        agentRunId: "send-2", status: "completed"
+      }),
+      event("second-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-1", agentRunId: "send-2"
+      })
+    ];
+    const pane = (events: TimelineEvent[]): JSX.Element => (
+      <AgentActivity
+        events={events}
+        parentSession={session}
+        parentToolUseId="task-1"
+        workspace={workspace}
+        onLoadAgentEvents={onLoadAgentEvents}
+      />
+    );
+
+    vi.useFakeTimers();
+    const { rerender } = render(pane(runShells));
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    await act(async () => {
+      settleLoad();
+      await agentEventsLoad;
+    });
+    rerender(pane([
+      ...runShells,
+      event("first-note", "message.completed", "2026-05-12T15:00:02.000Z", "First history", {
+        parent_tool_use_id: "task-1", agentRunId: "task-1"
+      }),
+      event("second-note", "message.completed", "2026-05-12T15:01:02.000Z", "Second history", {
+        parent_tool_use_id: "task-1", agentRunId: "send-2"
+      })
+    ]));
+
+    expect(onLoadAgentEvents).toHaveBeenCalledTimes(1);
+    const runRegions = screen.getAllByRole("region", { name: /Agent activity/ });
+    expect(runRegions).toHaveLength(2);
+    for (const region of runRegions) {
+      expect(region.querySelector('[data-restoring="true"]')).not.toBeNull();
+    }
+    act(() => {
+      vi.advanceTimersByTime(320);
+    });
+    for (const region of runRegions) {
+      expect(region.querySelector('[data-restoring="true"]')).toBeNull();
+    }
+  });
+
   it("folds a run into collapsed group headers, the same shape as the chat", () => {
     render(
       <AgentActivity

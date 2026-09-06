@@ -209,7 +209,8 @@ function AgentActivityRun({
   workspace,
   agentRunId = null,
   providerInvocationId = null,
-  nativeIdentity = null
+  nativeIdentity = null,
+  historyHydrated
 }: {
   events: TimelineEvent[];
   codename?: string;
@@ -237,6 +238,8 @@ function AgentActivityRun({
   agentRunId?: string | null;
   providerInvocationId?: string | null;
   nativeIdentity?: NativeAgentIdentity | null;
+  /** Shared readiness for a backfill that can populate every persistent run. */
+  historyHydrated?: boolean;
 }): JSX.Element {
   const parentSessionId = parentSession?.id ?? null;
   const visibleEvents = useMemo(
@@ -299,7 +302,7 @@ function AgentActivityRun({
   // the window runs from there, not from mount. Timed from mount it expired
   // first, and the whole run then animated and typed itself out as if it had
   // just happened.
-  const restoringTranscript = useRestoreWithoutMotion(!initialAgentEventsLoadPending);
+  const restoringTranscript = useRestoreWithoutMotion(historyHydrated ?? !initialAgentEventsLoadPending);
   const { activityChildren, toolItems, assistantTimestamps } = useMemo((): {
     activityChildren: TurnBodyChild[];
     toolItems: TurnToolItem[];
@@ -648,13 +651,30 @@ function AgentActivityRun({
 }
 
 export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JSX.Element {
+  const [historyHydrated, setHistoryHydrated] = useState(!props.onLoadAgentEvents);
+  const loadAgentEvents = useCallback<NonNullable<typeof props.onLoadAgentEvents>>(async (...args) => {
+    try {
+      return await props.onLoadAgentEvents?.(...args);
+    } finally {
+      setHistoryHydrated(true);
+    }
+  }, [props.onLoadAgentEvents]);
+  const onLoadAgentEvents = props.onLoadAgentEvents ? loadAgentEvents : undefined;
   const parentSessionId = props.parentSession?.id ?? null;
   const visibleEvents = parentSessionId
     ? props.events.filter((event) => event.sessionId === parentSessionId)
     : [];
   const runs = persistentAgentRuns(visibleEvents, props.parentToolUseId, props.nativeIdentity ?? null);
   if (runs.length <= 1) {
-    return <AgentActivityRun {...props} agentRunId={runs[0]?.agentRunId ?? null} providerInvocationId={runs[0]?.providerInvocationId ?? null} />;
+    return (
+      <AgentActivityRun
+        {...props}
+        agentRunId={runs[0]?.agentRunId ?? null}
+        providerInvocationId={runs[0]?.providerInvocationId ?? null}
+        onLoadAgentEvents={onLoadAgentEvents}
+        historyHydrated={historyHydrated}
+      />
+    );
   }
   return (
     <div className="agent-activity-history" aria-label={`Agent runs: ${props.codename ?? props.parentToolUseId}`}>
@@ -664,8 +684,9 @@ export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JS
           {...props}
           agentRunId={run.agentRunId}
           providerInvocationId={run.providerInvocationId}
-          onLoadAgentEvents={index === runs.length - 1 ? props.onLoadAgentEvents : undefined}
+          onLoadAgentEvents={index === runs.length - 1 ? onLoadAgentEvents : undefined}
           onLoadSessionEvents={index === runs.length - 1 ? props.onLoadSessionEvents : undefined}
+          historyHydrated={historyHydrated}
         />
       ))}
     </div>

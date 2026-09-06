@@ -506,6 +506,33 @@ describe("buildSessionToolCalls", () => {
     });
   });
 
+  it("keeps a Grok spawn_subagent row running after the launch ack", () => {
+    const tools = buildSessionToolCalls([
+      event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+        tool_use_id: "call-spawn",
+        content: JSON.stringify({
+          type: "Text",
+          text: "Subagent started in background.\nsubagent_id: child-1"
+        })
+      }),
+      event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_subagent", {
+        id: "call-spawn",
+        name: "spawn_subagent",
+        input: { description: "Review screenshot drop fix", subagent_type: "reviewer" }
+      })
+    ], true);
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({
+      toolUseId: "call-spawn",
+      name: "spawn_subagent",
+      status: "running",
+      completedAt: null
+    });
+    expect(tools[0]?.output).toContain("Subagent started in background");
+    expect(tools[0]?.output).not.toContain("\"type\"");
+  });
+
   it("keeps a Codex spawn_agent row running while the spawned thread is in progress", () => {
     const tools = buildSessionToolCalls([
       event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {

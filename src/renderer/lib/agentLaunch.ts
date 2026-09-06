@@ -1,5 +1,5 @@
 import { stringValue } from "../../shared/typeGuards.js";
-import type { ToolCall } from "./toolCalls.js";
+import { unwrapOutputEnvelope, type ToolCall } from "./toolCalls.js";
 
 function trimmedString(value: unknown): string | null {
   const raw = stringValue(value);
@@ -14,7 +14,7 @@ function trimmedString(value: unknown): string | null {
  * background rather than returning its final completed result.
  */
 export function isInternalAgentLaunchMetadata(output: string): boolean {
-  const normalized = output.toLowerCase();
+  const normalized = unwrapOutputEnvelope(output).toLowerCase();
   return (
     normalized.includes("this tool result is internal metadata") ||
     normalized.includes("async agent launched successfully") ||
@@ -27,6 +27,9 @@ export function isInternalAgentLaunchMetadata(output: string): boolean {
     normalized.includes("background agent launched") ||
     normalized.includes("background task launched") ||
     normalized.includes("subagent launched") ||
+    // Grok's spawn_subagent receipt. The child keeps running in its own
+    // session; this text is the dispatch ack, not the agent's answer.
+    normalized.includes("subagent started in background") ||
     normalized.includes("agent launched successfully")
   );
 }

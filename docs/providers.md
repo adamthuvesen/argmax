@@ -106,6 +106,7 @@ Subagent tool calls (`Task`, `spawn_agent`, `taskToolCall`) open an activity pan
 - **Codex:** Reads child JSONL traces from `~/.codex/sessions/YYYY/MM/DD` or `~/.codex/archived_sessions`. A child `session_meta.parent_thread_id` can recover a launch omitted from structured stdout.
 - **Cursor:** Reads transcripts from `~/.cursor/projects/*/agent-transcripts/<agentId>/`.
 - **OpenCode:** Emits the `task` launch through structured stdout. Argmax has no separate OpenCode child-trace source.
+- **Grok:** Does not stream child events on the parent PTY. `spawn_subagent` returns a launch receipt (`Subagent started in background` wrapped as `{"type":"Text","text":"..."}`); the child writes its own session under `~/.grok/sessions/<percent-encoded cwd>/<child-id>/chat_history.jsonl`, linked from the parent's `subagents/<id>/meta.json`. Argmax imports that transcript on demand the same way it imports Codex and Cursor traces. The receipt is launch metadata, not the agent's answer.
 
 `session:agent-events` fetches and parses trace files on demand. Parsed rows are saved with deterministic IDs (`trace:<provider>:<sessionId>:<parentToolUseId>:<childId>:<seq>:<kind>`) and hidden from the main chat view.
 

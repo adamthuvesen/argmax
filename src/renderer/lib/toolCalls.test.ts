@@ -7,8 +7,10 @@ import {
   extractOpenablePath,
   extractToolName,
   extractToolInputPreview,
+  extractToolOutput,
   extractToolUseId,
   formatToolOutput,
+  unwrapOutputEnvelope,
   getToolTypeBucket,
   isAgentToolName,
   isHiddenToolName,
@@ -180,6 +182,26 @@ describe("MCP tool names", () => {
     }
     expect(isHiddenToolName("mcpToolCall")).toBe(false);
     expect(isHiddenToolName("task")).toBe(false);
+  });
+});
+
+describe("unwrapOutputEnvelope", () => {
+  it("lifts Grok's Text envelope so the inner payload is the output", () => {
+    const envelope = JSON.stringify({
+      type: "Text",
+      text: "Subagent started in background.\nsubagent_id: child-1"
+    });
+    expect(unwrapOutputEnvelope(envelope)).toBe(
+      "Subagent started in background.\nsubagent_id: child-1"
+    );
+    expect(extractToolOutput({ content: envelope })).toBe(
+      "Subagent started in background.\nsubagent_id: child-1"
+    );
+  });
+
+  it("leaves JSON with extra data fields intact", () => {
+    const payload = JSON.stringify({ type: "Text", text: "hi", extra: 1 });
+    expect(unwrapOutputEnvelope(payload)).toBe(payload);
   });
 });
 

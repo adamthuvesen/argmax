@@ -440,6 +440,77 @@ describe("App sidebar", () => {
     expect(screen.getByTestId("thinking-label")).toBeInTheDocument();
   });
 
+  it("clears the thinking cue when a relaunched turn ends in the same terminal state it started from", async () => {
+    // A follow-up sent into a `cancelled` session relaunches; if that turn is
+    // cancelled again before the provider says anything, the terminal state
+    // matches the pre-send one and the cue used to strand forever.
+    const cancelledSession = { ...snapshot.sessions[0], state: "cancelled" as const };
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: [cancelledSession],
+      events: []
+    });
+    sessionEventsSince.mockResolvedValue({
+      events: [],
+      rawOutputs: [],
+      eventCursor: 0,
+      rawOutputCursor: 0
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+
+    const input = await screen.findByLabelText("Chat prompt");
+    fireEvent.change(input, { target: { value: "can you fix above?" } });
+    fireEvent.click(screen.getByTitle("Send follow-up"));
+    expect(await screen.findByLabelText("Thinking")).toBeInTheDocument();
+
+    const runningAt = new Date().toISOString();
+    await act(async () => {
+      dashboardDeltaListener?.({
+        sessions: [{ ...cancelledSession, state: "running" as const, completedAt: null }],
+        events: [
+          {
+            id: "event-follow-up",
+            sessionId: cancelledSession.id,
+            type: "user.message",
+            message: "can you fix above?",
+            payload: { source: "composer" },
+            createdAt: runningAt
+          }
+        ]
+      });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      dashboardDeltaListener?.({
+        sessions: [
+          {
+            ...cancelledSession,
+            state: "cancelled" as const,
+            completedAt: new Date().toISOString(),
+            lastActivityAt: new Date().toISOString()
+          }
+        ],
+        events: [
+          {
+            id: "event-cancelled",
+            sessionId: cancelledSession.id,
+            type: "session.cancelled",
+            message: "Provider chat cancelled.",
+            payload: {},
+            createdAt: new Date().toISOString()
+          }
+        ]
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument());
+  });
+
   it("sends follow-up prompts to the selected live session", async () => {
     const completeSessions = snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }));
     const completeSnapshot = {

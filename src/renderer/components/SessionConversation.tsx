@@ -637,6 +637,9 @@ export function SessionConversation({
   const [turnStartBaseline, setTurnStartBaseline] = useState<{
     agentResponseId: string | null;
     state: SessionSummary["state"] | null;
+    /** Wall-clock send time: the true start of the pre-first-event silent
+     *  stretch, which the Thinking label's elapsed clock anchors on. */
+    sentAtMs: number;
   } | null>(null);
   const sendSessionInput = useCallback(
     async (
@@ -646,9 +649,11 @@ export function SessionConversation({
       mode: AgentMode,
       attachments?: ComposerAttachment[]
     ): Promise<void> => {
+      turnSawLiveStateRef.current = false;
       setTurnStartBaseline({
         agentResponseId: lastAgentResponseIdRef.current,
-        state: sessionStateRef.current
+        state: sessionStateRef.current,
+        sentAtMs: Date.now()
       });
       try {
         await onSendSessionInput(targetSessionId, text, model, mode, attachments);
@@ -660,8 +665,17 @@ export function SessionConversation({
     [onSendSessionInput]
   );
   const isTurnStarting = turnStartBaseline !== null;
+  // Whether the session reached a live state after the send. A follow-up sent
+  // from a terminal state relaunches, and the relaunched turn can end in the
+  // SAME terminal state the send started from: cancelled → running → cancelled.
+  // Reading the terminal state against the pre-send state alone would then call
+  // it "no new terminal state" and strand the cue forever.
+  const turnSawLiveStateRef = useRef(false);
   useEffect(() => {
     if (turnStartBaseline === null) return;
+    if (session?.state === "running" || session?.state === "waiting" || session?.state === "blocked") {
+      turnSawLiveStateRef.current = true;
+    }
     const agentTookOver = lastAgentResponseId !== turnStartBaseline.agentResponseId;
     // A send that could not start a turn (stop, crash) must not leave the
     // pane pretending the agent is about to speak. Only a *new* terminal state
@@ -669,10 +683,15 @@ export function SessionConversation({
     // after a restart — or to a `cancelled` one is the ordinary relaunch path,
     // and reading its pre-send state as a dead turn dropped the cue half a
     // second after the send and left the pane blank until the provider spoke.
+    // "New" therefore means either a terminal state the send did not start
+    // from, or any terminal state after the session verifiably went live.
     const turnCannotStart =
-      (session?.state === "failed" || session?.state === "cancelled") &&
-      session.state !== turnStartBaseline.state;
+      (session?.state === "failed" ||
+        session?.state === "cancelled" ||
+        session?.state === "complete") &&
+      (session.state !== turnStartBaseline.state || turnSawLiveStateRef.current);
     if (agentTookOver || turnCannotStart) {
+      turnSawLiveStateRef.current = false;
       setTurnStartBaseline(null);
     }
   }, [lastAgentResponseId, session?.state, turnStartBaseline]);
@@ -803,6 +822,22 @@ export function SessionConversation({
   // to speak, which is the one stretch that most needs a sign of life.
   const isThinking =
     isTurnStarting || (agentWorkingSilently && !compacting && !isAnswerSettling);
+  // When this silent stretch began, as far as the transcript can pin it: the
+  // last significant event, but never earlier than the send that opened a
+  // turn-start beat (that stretch began when the composer fired, not with the
+  // previous turn's last word). The Thinking label's elapsed clock anchors on
+  // this, so reopening the chat mid-gap keeps counting the real wait instead
+  // of restarting from the remount.
+  const thinkingAnchorMs = useMemo(() => {
+    if (!isThinking) return undefined;
+    let anchor: number | null = null;
+    const eventMs = lastSignificantEvent ? Date.parse(lastSignificantEvent.createdAt) : NaN;
+    if (Number.isFinite(eventMs)) anchor = eventMs;
+    if (turnStartBaseline !== null && (anchor === null || turnStartBaseline.sentAtMs > anchor)) {
+      anchor = turnStartBaseline.sentAtMs;
+    }
+    return anchor ?? undefined;
+  }, [isThinking, lastSignificantEvent, turnStartBaseline]);
   // Beats that have already served their wait: a turn the user just started,
   // and a settled answer — reaching here with the answer still newest means
   // its window is spent, so re-showing must not queue a second delay behind it.
@@ -820,6 +855,7 @@ export function SessionConversation({
   useEffect(() => {
     setIsThinkingVisible(false);
     setTurnStartBaseline(null);
+    turnSawLiveStateRef.current = false;
     thinkingVisibleSinceRef.current = 0;
     if (thinkingShowTimerRef.current !== null) {
       window.clearTimeout(thinkingShowTimerRef.current);
@@ -1179,7 +1215,9 @@ export function SessionConversation({
               would shorten the transcript under a reader pinned to the bottom
               and pull the view up by its height. */}
           <div className="conversation-tail">
-            {isThinkingVisible ? <ThinkingLabel phaseKey={workspace?.id ?? session?.id} /> : null}
+            {isThinkingVisible ? (
+              <ThinkingLabel phaseKey={workspace?.id ?? session?.id} startedAtMs={thinkingAnchorMs} />
+            ) : null}
           </div>
           <div className="conversation-turn-spacer" data-conversation-spacer="" aria-hidden="true" />
         </div>

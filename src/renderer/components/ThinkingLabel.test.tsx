@@ -88,4 +88,51 @@ describe("<ThinkingLabel />", () => {
     __liveTimerTickForTest();
     expect(second.container.querySelector(".thinking-elapsed")?.textContent).toBe("4s");
   });
+
+  it("keeps counting the real wait when an anchored label remounts mid-gap", () => {
+    // Navigation unmounts the chat and remounts it on return. The anchor is the
+    // moment silence began, so the count survives the round trip instead of
+    // presenting a five-minute wait as a fresh one.
+    const startedAtMs = Date.parse("2026-09-06T07:00:00.000Z");
+    let now = startedAtMs + 20_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+
+    const first = render(<ThinkingLabel startedAtMs={startedAtMs} />);
+    expect(first.container.querySelector(".thinking-elapsed")?.textContent).toBe("20s");
+    first.unmount();
+
+    now = startedAtMs + 24_000;
+    const second = render(<ThinkingLabel startedAtMs={startedAtMs} />);
+    expect(second.container.querySelector(".thinking-elapsed")?.textContent).toBe("24s");
+  });
+
+  it("keeps the word stable across remounts of the same silent gap", () => {
+    const startedAtMs = Date.parse("2026-09-06T07:00:00.000Z");
+    const first = render(<ThinkingLabel phaseKey="session-1" startedAtMs={startedAtMs} />);
+    const word = first.container.querySelector(".thinking-label")?.textContent;
+    expect(THINKING_WORDS).toContain(word);
+    first.unmount();
+
+    const second = render(<ThinkingLabel phaseKey="session-1" startedAtMs={startedAtMs} />);
+    expect(second.container.querySelector(".thinking-label")?.textContent).toBe(word);
+  });
+
+  it("draws a fresh word for a new silent stretch", () => {
+    // Two different gap anchors on one session must not always land on the same
+    // word, or every beat of a long session would read the same.
+    const words = new Set(
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((minute) => {
+        const { container, unmount } = render(
+          <ThinkingLabel
+            phaseKey="session-1"
+            startedAtMs={Date.parse("2026-09-06T07:00:00.000Z") + minute * 60_000}
+          />
+        );
+        const word = container.querySelector(".thinking-label")?.textContent;
+        unmount();
+        return word;
+      })
+    );
+    expect(words.size).toBeGreaterThan(1);
+  });
 });

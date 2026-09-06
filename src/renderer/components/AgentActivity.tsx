@@ -539,7 +539,7 @@ export function AgentActivity({
 
         {showAgentActivityThinking ? (
           <div className="agent-activity-empty" role="status">
-            <ThinkingLabel phaseKey={parentToolUseId} />
+            <ThinkingLabel phaseKey={parentToolUseId} startedAtMs={launchedAtMs ?? undefined} />
           </div>
         ) : null}
 

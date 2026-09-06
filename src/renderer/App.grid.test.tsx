@@ -1114,7 +1114,11 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: /^Agent activity: / });
-    expect(THINKING_WORDS).toContain(within(pane).getByTestId("thinking-label").textContent);
+    // The elapsed clock (anchored on the run's launch time) shares the testid's
+    // textContent, so match on the leading word.
+    const startsWithThinkingWord = (text: string | null): boolean =>
+      THINKING_WORDS.some((word) => text?.startsWith(word) ?? false);
+    expect(startsWithThinkingWord(within(pane).getByTestId("thinking-label").textContent)).toBe(true);
     expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
 
     await act(async () => {
@@ -1123,7 +1127,7 @@ describe("App grid", () => {
     });
 
     await waitFor(() => {
-      expect(THINKING_WORDS).toContain(within(pane).getByTestId("thinking-label").textContent);
+      expect(startsWithThinkingWord(within(pane).getByTestId("thinking-label").textContent)).toBe(true);
     });
     expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
   });

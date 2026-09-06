@@ -42,6 +42,12 @@ export interface UseAppGridSelectionParams {
   setSelectedWorkspaceId: (value: string | null) => void;
   setSelectedProjectId: (value: string | null) => void;
   showErrorToast: (message: string) => void;
+  /**
+   * When false, the focused grid cell does not overwrite dashboard selection.
+   * Full-view new chat hides the grid without dropping it, and the launcher's
+   * project picker must keep the repo the user just chose.
+   */
+  mirrorFocusedSelection?: boolean;
 }
 
 export interface UseAppGridSelectionResult {
@@ -73,7 +79,8 @@ export function useAppGridSelection({
   setSelectedSessionId,
   setSelectedWorkspaceId,
   setSelectedProjectId,
-  showErrorToast
+  showErrorToast,
+  mirrorFocusedSelection = true
 }: UseAppGridSelectionParams): UseAppGridSelectionResult {
   const [grid, setGrid] = useState<GridState>(EMPTY_GRID);
   const [draggingWorkspaceId, setDraggingWorkspaceId] = useState<string | null>(null);
@@ -147,10 +154,13 @@ export function useAppGridSelection({
     });
   }, [pendingSelectionRef, projectsById, sessionsById, workspacesById]);
 
-  // Mirror grid.focused → hook selection state. Avoids racing on initial
-  // mount by skipping when the focused cell already matches what the hook
-  // last produced.
+  // Mirror grid.focused → hook selection state so palette/search/IDE-open
+  // paths that still read `selectedSession` stay aligned with the visible
+  // pane. A dashboard:delta rebuilds `workspacesById`, so this must not run
+  // while the full launcher is composing: the hidden focused session would
+  // steal the project chip back from an explicit picker choice.
   useEffect(() => {
+    if (!mirrorFocusedSelection) return;
     const cell = focusedCell(grid);
     if (cell && isSessionCell(cell)) {
       setSelectedSessionId(cell.sessionId);
@@ -167,7 +177,14 @@ export function useAppGridSelection({
     }
     setSelectedSessionId(null);
     setSelectedWorkspaceId(null);
-  }, [grid, setSelectedProjectId, setSelectedSessionId, setSelectedWorkspaceId, workspacesById]);
+  }, [
+    grid,
+    mirrorFocusedSelection,
+    setSelectedProjectId,
+    setSelectedSessionId,
+    setSelectedWorkspaceId,
+    workspacesById
+  ]);
 
   const openWorkspaceChat = useCallback(
     (workspaceId: string, modifiers: WorkspaceClickModifiers = { ctrlOrMeta: false, alt: false }): void => {

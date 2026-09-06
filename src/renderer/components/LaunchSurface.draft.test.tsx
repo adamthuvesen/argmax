@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "../App.js";
 import {
+  dashboardDeltaListener,
   mockDashboardSnapshot,
   primaryProject,
   secondProject,
@@ -60,6 +61,40 @@ describe("launcher prompt across context changes", () => {
 
     await pickProject("Argmax");
     expect(screen.getByLabelText("Task prompt")).toHaveValue("Refactor the auth guard");
+  });
+
+  it("keeps the picked repo after typing and a dashboard delta from a hidden session", async () => {
+    // Default new-chat mode is Full view: ⌘N hides the grid but leaves its
+    // focused session in selection state. A later dashboard:delta used to
+    // mirror that hidden cell back onto the launcher chip.
+    mockDashboardSnapshot({ ...snapshot, projects: [primaryProject(), secondProject()] });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+    fireEvent.keyDown(document, { key: "n", metaKey: true });
+
+    const prompt = await screen.findByLabelText("Task prompt");
+    fireEvent.change(prompt, { target: { value: "First sentence" } });
+    expect(screen.getByRole("button", { name: "Switch project" })).toHaveTextContent("Argmax");
+
+    await pickProject("Dotfiles");
+    expect(screen.getByRole("button", { name: "Switch project" })).toHaveTextContent("Dotfiles");
+
+    fireEvent.change(screen.getByLabelText("Task prompt"), {
+      target: { value: "First sentence. And more." }
+    });
+    act(() => {
+      dashboardDeltaListener?.({
+        workspaces: snapshot.workspaces.map((workspace) => ({
+          ...workspace,
+          lastActivityAt: "2026-05-08T16:00:00.000Z"
+        }))
+      });
+    });
+
+    expect(screen.getByRole("button", { name: "Switch project" })).toHaveTextContent("Dotfiles");
+    expect(screen.getByLabelText("Task prompt")).toHaveValue("First sentence. And more.");
   });
 
   it("carries the typed prompt over a stale draft stored on the target project", async () => {

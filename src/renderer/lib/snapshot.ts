@@ -4,7 +4,6 @@ import {
   advanceTurnBoundary,
   isSubAgentProseEcho,
   isSupersededAnswerDelta,
-  isThinkingDelta,
   type TurnBoundary
 } from "./turnBoundaries.js";
 
@@ -108,15 +107,6 @@ const EVENT_THINKING_LIMIT = 1000;
 const EVENT_TRACE_IMPORT_LIMIT = 1000;
 const EVENT_PROTECTED_LIMIT = 2000;
 
-function isEvictableDelta(event: TimelineEvent): boolean {
-  const canonical = decodeTimelineEvent(event);
-  return canonical.kind === "message" && canonical.phase === "delta" && canonical.content === "answer";
-}
-
-function isTraceImportedEvent(event: TimelineEvent): boolean {
-  return decodeTimelineEvent(event).traceImported;
-}
-
 /**
  * Head-splice for the shape a streamed delta almost always has: a handful of
  * brand-new rows landing on top of thousands of retained ones. Returns null
@@ -179,15 +169,16 @@ function mergeEventsBounded(
   let traceKept = 0;
   let protectedKept = 0;
   const capped = sorted.filter((event) => {
-    if (isTraceImportedEvent(event)) {
+    const canonical = decodeTimelineEvent(event);
+    if (canonical.traceImported) {
       traceKept += 1;
       return traceKept <= EVENT_TRACE_IMPORT_LIMIT;
     }
-    if (isThinkingDelta(event)) {
+    if (canonical.kind === "message" && canonical.phase === "delta" && canonical.content === "thinking") {
       thinkingKept += 1;
       return thinkingKept <= EVENT_THINKING_LIMIT;
     }
-    if (isEvictableDelta(event)) {
+    if (canonical.kind === "message" && canonical.phase === "delta" && canonical.content === "answer") {
       const kept = (deltaKeptBySession.get(event.sessionId) ?? 0) + 1;
       deltaKeptBySession.set(event.sessionId, kept);
       return kept <= EVENT_DELTA_LIMIT;

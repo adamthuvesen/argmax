@@ -33,6 +33,7 @@ function project(): ProjectSummary {
     currentBranch: "main",
     defaultBranch: "main",
     settings: {
+      archiveOnMerge: false,
       worktreeLocation: "/tmp/worktrees",
       setupCommand: "",
       checkCommands: []

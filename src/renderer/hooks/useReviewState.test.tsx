@@ -46,6 +46,7 @@ function makeProject(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
     currentBranch: "main",
     defaultBranch: "main",
     settings: {
+      archiveOnMerge: false,
       worktreeLocation: "/tmp/wt",
       setupCommand: "",
       checkCommands: []

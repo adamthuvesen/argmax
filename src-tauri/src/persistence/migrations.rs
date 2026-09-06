@@ -279,6 +279,17 @@ pub static PROJECT_DEFAULT_AGENT_REMOVED_COLUMNS: phf::Map<&'static str, &'stati
     ] as &'static [&'static str],
 };
 
+// Post-v31 `projects` shape: a project can ask for its workspaces to be
+// archived once the PR on their branch merges.
+pub static PROJECT_ARCHIVE_ON_MERGE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &[
+        "archive_on_merge", "check_commands_json", "created_at", "current_branch",
+        "default_branch", "id", "name", "repo_path", "repo_remote_name",
+        "repo_remote_owner", "setup_command", "ui_preferences_json", "updated_at",
+        "worktree_location",
+    ] as &'static [&'static str],
+};
+
 pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "projects" => &[
         "check_commands_json", "created_at", "current_branch", "default_branch",
@@ -600,7 +611,23 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &GH_PR_MILESTONE_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 31,
+        name: "project_archive_on_merge",
+        up: PROJECT_ARCHIVE_ON_MERGE,
+        affected_tables: &["projects"],
+        expected_columns: &PROJECT_ARCHIVE_ON_MERGE_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Opt-in per project: when the PR on a workspace's branch merges, the gh
+// poller archives that workspace, which is what removes the worktree and its
+// local branch. Off by default — archiving is destructive to a checkout.
+const PROJECT_ARCHIVE_ON_MERGE: &str = r#"
+ALTER TABLE projects ADD COLUMN archive_on_merge INTEGER NOT NULL DEFAULT 0
+  CHECK (archive_on_merge IN (0, 1));
+"#;
 
 const GH_PR_MILESTONE_TIMESTAMPS: &str = r#"
 ALTER TABLE gh_pr ADD COLUMN pr_created_at TEXT;
@@ -1583,12 +1610,8 @@ mod tests {
         // projects, sessions, and workspaces gained columns in later
         // migrations, so verify them against the head shapes rather than the
         // v1 EXPECTED_COLUMNS.
-        verify_table_columns(
-            &connection,
-            &PROJECT_DEFAULT_AGENT_REMOVED_COLUMNS,
-            "projects",
-        )
-        .expect("projects");
+        verify_table_columns(&connection, &PROJECT_ARCHIVE_ON_MERGE_COLUMNS, "projects")
+            .expect("projects");
         verify_table_columns(&connection, &SESSION_LAUNCH_KIND_COLUMNS, "sessions")
             .expect("sessions");
         verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
@@ -1671,6 +1694,7 @@ mod tests {
                 (28, compute_migration_checksum(SESSION_CHANGE_FEED)),
                 (29, compute_migration_checksum(SESSION_CHANGE_FEED_CLEANUP)),
                 (30, compute_migration_checksum(GH_PR_MILESTONE_TIMESTAMPS)),
+                (31, compute_migration_checksum(PROJECT_ARCHIVE_ON_MERGE)),
             ]
         );
 

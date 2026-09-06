@@ -34,6 +34,7 @@ fn seed_project_and_workspace(
                 current_branch: current_branch.to_owned(),
                 default_branch: default_branch.map(str::to_owned),
                 settings: ProjectSettings {
+                    archive_on_merge: false,
                     worktree_location: format!("{repo_path}/worktrees"),
                     setup_command: String::new(),
                     check_commands: vec![],

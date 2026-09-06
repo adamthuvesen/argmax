@@ -908,6 +908,26 @@ pub fn run() {
                                     }
                                 });
                             });
+                            // The workspace service is built further down, so
+                            // the hook resolves it from app state at fire time
+                            // rather than capturing it here.
+                            let merged_app = app.handle().clone();
+                            let merged_hook = Arc::new(move |context: gh::poller::MergedPrContext| {
+                                let app = merged_app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let workspaces = tauri::Manager::state::<state::AppState>(&app)
+                                        .workspaces
+                                        .get()
+                                        .cloned();
+                                    let Some(workspaces) = workspaces else {
+                                        tracing::warn!(
+                                            "workspace service unavailable; skipping archive on merge"
+                                        );
+                                        return;
+                                    };
+                                    archive_merged_workspace(workspaces, context).await;
+                                });
+                            });
                             let gh_delta_tx = delta_tx.clone();
                             let publish_delta = move |delta| {
                                 gh_delta_tx.send(delta);
@@ -918,7 +938,8 @@ pub fn run() {
                                     gh_service,
                                 )
                                 .with_delta_publisher(Arc::new(publish_delta))
-                                .with_check_failure_hook(failure_hook),
+                                .with_check_failure_hook(failure_hook)
+                                .with_pr_merged_hook(merged_hook),
                             );
                             // Defer start() onto the Tauri runtime — calling it
                             // synchronously here panics with "there is no
@@ -1192,6 +1213,47 @@ async fn handle_gh_check_failure(
         &context.head_sha,
         &persistence::time::now_iso(),
     )
+}
+
+/// Disposes of a workspace whose PR has merged, for projects that asked for
+/// it. Never forced: `archive` returns a dirty worktree to `kept` instead of
+/// deleting it, and uncommitted work outliving a merged PR is exactly the case
+/// worth keeping.
+async fn archive_merged_workspace(
+    workspaces: Arc<workspaces::WorkspaceService>,
+    context: gh::poller::MergedPrContext,
+) {
+    let workspace_id = match ipc::validation::WorkspaceId::try_from(context.workspace_id.clone()) {
+        Ok(workspace_id) => workspace_id,
+        Err(error) => {
+            tracing::warn!(workspace_id = %context.workspace_id, ?error, "archive on merge: invalid workspace id");
+            return;
+        }
+    };
+    let input = ipc::inputs::WorkspacesArchiveInput {
+        workspace_id,
+        force: Some(false),
+    };
+    match workspaces.archive(input).await {
+        Ok(workspace) if workspace.state == "kept" => tracing::info!(
+            workspace_id = %workspace.id,
+            pr_number = context.pr_number,
+            changed_files = workspace.changed_files,
+            "archive on merge: kept the workspace, its worktree has uncommitted changes",
+        ),
+        Ok(workspace) => tracing::info!(
+            workspace_id = %workspace.id,
+            pr_number = context.pr_number,
+            state = %workspace.state,
+            "archive on merge: archived the workspace, its PR merged",
+        ),
+        Err(error) => tracing::warn!(
+            workspace_id = %context.workspace_id,
+            pr_number = context.pr_number,
+            ?error,
+            "archive on merge: archive failed",
+        ),
+    }
 }
 
 fn build_check_failure_follow_up_input(

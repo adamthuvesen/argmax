@@ -466,6 +466,7 @@ mod tests {
                 default_branch: Some("main".to_string()),
                 current_branch: "main".to_string(),
                 settings: ProjectSettings {
+                    archive_on_merge: false,
                     worktree_location: repo_path.join(".worktrees").to_string_lossy().into_owned(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),

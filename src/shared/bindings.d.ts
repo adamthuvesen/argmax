@@ -1152,8 +1152,19 @@ export type PermissionMode = "auto-approve" | "ask-each-time"
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
 export type ProjectId = string
-export type ProjectSettings = { worktreeLocation: string; setupCommand: string; checkCommands: string[] }
-export type ProjectSettingsInput = { worktreeLocation: NonEmptyString; setupCommand: string; checkCommands: string[] }
+export type ProjectSettings = { worktreeLocation: string; setupCommand: string; checkCommands: string[];
+/**
+ * Archive a workspace once the PR on its branch merges, which removes its
+ * worktree and local branch. Off unless the project opts in.
+ */
+archiveOnMerge: boolean }
+export type ProjectSettingsInput = { worktreeLocation: NonEmptyString; setupCommand: string; checkCommands: string[];
+/**
+ * Archive a workspace when the PR on its branch merges. Required rather
+ * than defaulted: a caller that omitted it would silently turn the
+ * setting off on every other save.
+ */
+archiveOnMerge: boolean }
 export type ProjectSummary = { id: string; name: string; repoPath: string; currentBranch: string; defaultBranch: string | null; settings: ProjectSettings; counts: ProjectCounts; latestActivityAt: string | null }
 export type ProjectsListBranchesInput = { projectId: ProjectId }
 export type ProjectsListInput = Record<string, never>

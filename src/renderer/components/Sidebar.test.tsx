@@ -12,6 +12,7 @@ import {
 import { Sidebar } from "./Sidebar.js";
 
 const projectSettings = {
+  archiveOnMerge: false,
   worktreeLocation: "/tmp/worktrees",
   setupCommand: "",
   checkCommands: []

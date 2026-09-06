@@ -52,6 +52,7 @@ fn build_project(database: &Database, repo_path: &str) {
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),
             settings: ProjectSettings {
+                archive_on_merge: false,
                 worktree_location: String::new(),
                 setup_command: String::new(),
                 check_commands: vec![],

@@ -65,6 +65,10 @@ pub struct ProjectSettingsInput {
     pub worktree_location: NonEmptyString,
     pub setup_command: String,
     pub check_commands: Vec<String>,
+    /// Archive a workspace when the PR on its branch merges. Required rather
+    /// than defaulted: a caller that omitted it would silently turn the
+    /// setting off on every other save.
+    pub archive_on_merge: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

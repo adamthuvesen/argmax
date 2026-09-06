@@ -15,6 +15,7 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
 - **Archiving:**
   - Shared checkouts mark `archived` immediately and drain child processes in the background.
   - Isolated worktrees mark `archiving`, cancel child processes, expire pending approvals, evict warm Cursor ACP instances, remove the git worktree, and persist `archived`. Dirty worktrees return to `kept` unless `force: true` is passed.
+  - Archiving is also how a workspace is disposed of automatically. A project with `archive_on_merge` on (Settings → Projects) has each of its *isolated* workspaces archived by the gh poller once the PR on that workspace's branch merges, never forced — see [gh.md](gh.md).
   - An agent can ask for the same thing from inside: the `workspace_archive` MCP tool archives the caller's own workspace once its turn settles, which is how `ship`'s babysit mode disposes of a worktree it is standing in without pulling the floor out from under itself — see [agent-tools.md](agent-tools.md).
   - Stopping a chat within 10 seconds of launch is an undo of a mistaken start: the pane returns to the composer, and the workspace is force-archived so no cancelled row stays in the sidebar. Docked multitasks and details popups are excluded. See [earlyStop.ts](../src/renderer/lib/earlyStop.ts).
 

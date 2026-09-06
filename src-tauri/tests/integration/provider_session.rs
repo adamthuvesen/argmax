@@ -421,6 +421,7 @@ fn seed_project_and_workspace_at(db: &Database, workspace_path: &str) {
             current_branch: "main".to_owned(),
             default_branch: Some("main".to_owned()),
             settings: ProjectSettings {
+                archive_on_merge: false,
                 worktree_location: "/tmp/worktrees".to_owned(),
                 setup_command: String::new(),
                 check_commands: vec!["npm test".to_owned()],

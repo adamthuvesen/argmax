@@ -445,13 +445,31 @@ export function SessionPane({
     reviewTogglePanel
   ]);
 
+  // Until the backfill below lands, the transcript is whatever was left over
+  // from the last time this session was open — an unselected session is
+  // unsubscribed and receives no events at all. The conversation measures its
+  // restore window (entrance motion, typed reveal) from this rather than from
+  // mount, so a slow backfill can't arrive looking like new activity.
+  const [eventsBackfilled, setEventsBackfilled] = useState(false);
   // Backfill timeline events for this pane on mount and whenever the session
   // changes. Each pane backfills independently of the focused-pane selection,
   // so non-focused panes still stream live messages. `loadSessionEvents` is
   // sessionId-keyed and uses a cursor map, so concurrent callers are safe.
   useEffect(() => {
-    if (!sessionId || !onLoadSessionEvents) return;
-    void onLoadSessionEvents(sessionId);
+    if (!sessionId || !onLoadSessionEvents) {
+      setEventsBackfilled(true);
+      return;
+    }
+    setEventsBackfilled(false);
+    let cancelled = false;
+    // Settle on failure too: a pane stuck mid-restore would never animate or
+    // type again, which is a worse failure than the one being fixed.
+    void onLoadSessionEvents(sessionId).finally(() => {
+      if (!cancelled) setEventsBackfilled(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [sessionId, onLoadSessionEvents]);
 
   // Captures the listener-removal + body-style-reset for any drag currently
@@ -529,6 +547,7 @@ export function SessionPane({
           defaultThinkingExpanded={defaultThinkingExpanded}
           defaultTurnChangesExpanded={defaultTurnChangesExpanded}
           events={visibleEvents}
+          eventsBackfilled={eventsBackfilled}
           fastModeEnabled={fastModeEnabled}
           isLogOpen={isLogOpen}
           onClose={onClose}

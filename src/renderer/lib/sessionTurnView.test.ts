@@ -211,9 +211,37 @@ describe("coalesceAssistantGroups", () => {
 
     expect(groups).toHaveLength(3);
     expect(groups[0]).toMatchObject({ text: "x", thinking: true });
-    expect(groups[1]).toMatchObject({ text: "y", streaming: true, growing: true });
+    // "y" was closed by the thinking switch behind it, so it is settled — only
+    // the newest group of a live turn stays `streaming`.
+    expect(groups[1]).toMatchObject({ text: "y", streaming: false, growing: true });
     expect(groups[1]?.thinking).toBeFalsy();
     expect(groups[2]).toMatchObject({ text: "z", thinking: true });
+  });
+
+  it("leaves only the newest group of a live turn streaming", () => {
+    // Every group used to carry the turn's `streaming` flag, which made each
+    // one eligible for the typewriter. Reopening a running session mounts them
+    // all at once with no recorded reveal progress, so the whole turn retyped
+    // itself from nothing on the same tick.
+    const groups = coalesceAssistantGroups([
+      assistantEvent("a1", "message.completed", "Reading the files.", "2026-05-12T15:00:01.000Z"),
+      assistantEvent("a2", "message.completed", "Now the tests.", "2026-05-12T15:00:02.000Z"),
+      assistantEvent("a3", "message.completed", "Both green.", "2026-05-12T15:00:03.000Z")
+    ]);
+
+    expect(groups.map((group) => group.streaming)).toEqual([false, false, true]);
+  });
+
+  it("settles every group once the turn is no longer streaming", () => {
+    const groups = coalesceAssistantGroups(
+      [
+        assistantEvent("a1", "message.completed", "Reading the files.", "2026-05-12T15:00:01.000Z"),
+        assistantEvent("a2", "message.completed", "Both green.", "2026-05-12T15:00:02.000Z")
+      ],
+      { streaming: false }
+    );
+
+    expect(groups.map((group) => group.streaming)).toEqual([false, false]);
   });
 
   it("coalesces consecutive error events into one log group", () => {

@@ -134,6 +134,7 @@ export function SessionConversation({
   defaultThinkingExpanded,
   defaultTurnChangesExpanded,
   events,
+  eventsBackfilled = true,
   fastModeEnabled = false,
   isLogOpen,
   isTerminalOpen,
@@ -183,6 +184,10 @@ export function SessionConversation({
   defaultThinkingExpanded?: boolean;
   defaultTurnChangesExpanded?: boolean;
   events: TimelineEvent[];
+  /** The pane's backfill of this session's timeline has settled. Until it has,
+      the transcript is whatever was left over from the last time the session
+      was open, and restoring it must not read as new activity. */
+  eventsBackfilled?: boolean;
   fastModeEnabled?: boolean;
   isLogOpen: boolean;
   isTerminalOpen?: boolean;
@@ -972,7 +977,7 @@ export function SessionConversation({
   }, [cueReason, isThinkingVisible, isTurnStarting, session?.provider, sessionId, sessionRunning]);
 
   // Restored turns must not replay their entrance animation on every reopen.
-  const restoringTranscript = useRestoreWithoutMotion();
+  const restoringTranscript = useRestoreWithoutMotion(eventsBackfilled);
   // Opening or closing the docked side panel reflows the transcript without
   // changing its content. Preserve the viewport across that reflow instead of
   // letting the new bottom drift out of view (which reads as a jump up to an

@@ -129,6 +129,9 @@ type ConversationOptions = {
   onOpenDetails?: (seedPrompt: string) => Promise<void>;
   registerAnnotationSink?: ConversationProps["registerAnnotationSink"];
   review?: ReviewState;
+  /** Defaults to true (events already present). Pass false to reproduce a real
+      reopen, where the pane mounts empty and the backfill lands later. */
+  eventsBackfilled?: boolean;
 };
 
 function conversationElement(
@@ -139,6 +142,7 @@ function conversationElement(
   return (
     <SessionConversation
       events={events}
+      eventsBackfilled={options.eventsBackfilled ?? true}
       isLogOpen={false}
       onSendSessionInput={options.onSendSessionInput ?? vi.fn(() => Promise.resolve())}
       onTerminateSession={options.onTerminateSession ?? vi.fn(() => Promise.resolve())}

@@ -16,12 +16,27 @@ const RESTORE_MS = 320;
  * of the contract lives in chat-conversation.css. StreamingMarkdown takes the
  * same flag so completed bubbles in a still-running turn paint in full instead
  * of typing out from nothing together.
+ *
+ * `hydrated` is what the window is measured from. A pane mounts before its
+ * transcript exists: an unselected session is unsubscribed and receives no
+ * events at all, so reopening one backfills the whole backlog over as many
+ * `eventsSince` round trips as it takes (raw output pages hold 100 rows, and a
+ * live Claude turn writes a couple of hundred a minute). Timing the window from
+ * mount let that backfill land after the flag had already cleared, and every
+ * restored bubble then animated and typed itself out as if it had just arrived.
+ * Callers that have no backfill to wait for leave it at the default.
  */
-export function useRestoreWithoutMotion(): boolean {
+export function useRestoreWithoutMotion(hydrated = true): boolean {
   const [restoring, setRestoring] = useState(true);
   useEffect(() => {
+    if (!hydrated) {
+      // A later pane (or a session switch) restarts the wait rather than
+      // leaving a stale `false` over content that has not arrived yet.
+      setRestoring(true);
+      return;
+    }
     const id = window.setTimeout(() => setRestoring(false), RESTORE_MS);
     return () => window.clearTimeout(id);
-  }, []);
+  }, [hydrated]);
   return restoring;
 }

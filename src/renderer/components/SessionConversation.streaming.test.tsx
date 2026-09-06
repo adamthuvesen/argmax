@@ -85,9 +85,8 @@ describe("SessionConversation — streaming & composer", () => {
       ]
     }
   ])("does not retype already-arrived $label when a live turn is reopened", ({ provider, buildEvents }) => {
-    // A running turn keeps every narration group `streaming`. Switching
-    // sessions remounts the pane: without the restore flag those finished
-    // bubbles would all type out from nothing at once.
+    // Switching sessions remounts the pane: without the restore flag those
+    // finished bubbles would all type out from nothing at once.
     const first =
       "I'll start by reading the debug workflow and locating the composer drag-and-drop path, especially the new-chat composer.";
     const second =
@@ -97,6 +96,53 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText(first)).toBeInTheDocument();
     expect(screen.getByText(second)).toBeInTheDocument();
   });
+
+  it.each([
+    { label: "completed Grok narration", provider: "grok" as const },
+    { label: "Cursor cumulative deltas", provider: "cursor" as const }
+  ])(
+    "does not retype $label that backfills after the pane has mounted",
+    ({ provider }) => {
+      // The real reopen path, which the case above never exercised: an
+      // unselected session is unsubscribed and receives no events, so the pane
+      // mounts on a stale transcript and the whole backlog arrives from
+      // `loadSessionEvents` some round trips later. Timing the restore window
+      // from mount let it expire first, and every group then started its
+      // typewriter at zero characters on the same tick.
+      const first =
+        "I'll start by reading the debug workflow and locating the composer drag-and-drop path, especially the new-chat composer.";
+      const second =
+        "The drop path looks split between the composer and a workspace overlay. I'll read the debug localization notes and the composer/launch handlers next.";
+      const events = [
+        event("c2", "command.started", "Read", "2026-09-05T13:12:20.000Z", {
+          id: "c2",
+          name: "Read",
+          input: { file_path: "localize.md" }
+        }),
+        event("m2", "message.completed", second, "2026-09-05T13:12:20.000Z"),
+        event("c1-end", "command.completed", "Read", "2026-09-05T13:12:16.000Z", { id: "c1", content: "" }),
+        event("c1", "command.started", "Read", "2026-09-05T13:12:15.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "debug.md" }
+        }),
+        event("m1", "message.completed", first, "2026-09-05T13:12:15.000Z"),
+        event("u1", "user.message", "debug the drop", "2026-09-05T13:12:05.000Z")
+      ];
+      const session = baseSession({ provider, state: "running" });
+      vi.useFakeTimers();
+      const { rerender } = renderConversation(session, [], { eventsBackfilled: false });
+
+      // Longer than RESTORE_MS: a mount-anchored window is long gone by now.
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      rerenderConversation(rerender, session, events, { eventsBackfilled: true });
+
+      expect(screen.getByText(first)).toBeInTheDocument();
+      expect(screen.getByText(second)).toBeInTheDocument();
+    }
+  );
 
   it("does not reset the model picker when the session prop reference changes but id stays the same", () => {
     const v1 = baseSession({

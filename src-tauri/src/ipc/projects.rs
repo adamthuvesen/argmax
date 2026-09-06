@@ -298,9 +298,21 @@ pub(crate) async fn register_project_path(
         settings: default_settings(&metadata.repo_path),
     };
 
-    let database = live_database(state)?;
-    let connection = database.connection();
-    persist_project(&connection, &project)
+    let project = {
+        let database = live_database(state)?;
+        let connection = database.connection();
+        persist_project(&connection, &project)?
+    };
+    if let Some(remote) = crate::git::ops::resolve_project_remote(&canonical_path).await {
+        let database = live_database(state)?;
+        let connection = database.connection();
+        let _ = crate::persistence::projects::update_project_remote(
+            &connection,
+            &project.id,
+            Some(&remote),
+        );
+    }
+    Ok(project)
 }
 
 async fn canonicalize_repo_path(candidate_path: &Path) -> ArgmaxResult<PathBuf> {

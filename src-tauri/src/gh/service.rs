@@ -43,11 +43,11 @@ impl GhService {
     /// existing cached rows — historical rows are never deleted because the
     /// timeline still wants to render them.
     pub async fn refresh(&self, session_id: &str) -> ArgmaxResult<Vec<GhPrRecord>> {
-        let (workspace_path, branch) = {
+        let (workspace_project_id, workspace_path, branch) = {
             let conn = self.database.connection();
             let session = find_session_by_id(&conn, session_id)?;
             let workspace = find_workspace_by_id(&conn, &session.workspace_id)?;
-            (workspace.path, workspace.branch)
+            (workspace.project_id, workspace.path, workspace.branch)
         };
         if workspace_path.is_empty() {
             // A persisted workspace always has a path; an empty one signals
@@ -65,7 +65,7 @@ impl GhService {
         }
         args.extend([
             "--json".into(),
-            "number,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt".into(),
+            "number,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt,url".into(),
         ]);
 
         let stdout = match (self.runner)(workspace_path, args).await {
@@ -116,6 +116,15 @@ impl GhService {
         {
             let conn = self.database.connection();
             upsert_gh_pr(&conn, &record)?;
+            if let Some(url) = parsed.url.as_deref() {
+                if let Some(remote) = crate::git::ops::extract_github_remote_from_url(url) {
+                    let _ = crate::persistence::projects::update_project_remote(
+                        &conn,
+                        &workspace_project_id,
+                        Some(&remote),
+                    );
+                }
+            }
         }
         self.list_for_session(session_id)
     }
@@ -129,6 +138,8 @@ impl GhService {
 struct PrViewResponse {
     #[serde(default)]
     number: Option<i64>,
+    #[serde(default)]
+    url: Option<String>,
     #[serde(default, rename = "headRefOid")]
     head_ref_oid: Option<String>,
     #[serde(default, rename = "headRefName")]
@@ -462,7 +473,7 @@ mod tests {
                 "view",
                 "feature/x",
                 "--json",
-                "number,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt",
+                "number,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt,url",
             ]
         );
 
@@ -474,6 +485,33 @@ mod tests {
         assert_eq!(rows.len(), 1, "still one row — upsert keyed on pr_number");
         assert_eq!(rows[0].head_sha, "cafef00d");
         assert_eq!(rows[0].last_seen_check_state, "failure");
+    }
+
+    #[tokio::test]
+    async fn refresh_populates_project_remote_from_url() {
+        let (_dir, database) = open_db();
+        let (session_id, _) = fixture(&database, "/tmp/argmax-gh-remote");
+        let payload = r#"{
+            "number": 15,
+            "headRefOid": "abcd1234",
+            "headRefName": "feature/x",
+            "state": "OPEN",
+            "createdAt": "2026-05-24T10:00:00Z",
+            "url": "https://github.com/my-org/my-repo/pull/15"
+        }"#;
+        let stub = StubRunner::new(vec![Ok(payload.to_string())]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+        let rows = service.refresh(&session_id).await.expect("refresh");
+        assert_eq!(rows.len(), 1);
+        let conn = database.connection();
+        let remote = crate::persistence::projects::get_project_remote(&conn, "p1").unwrap();
+        assert_eq!(
+            remote,
+            Some(crate::persistence::projects::ProjectRemote {
+                owner: "my-org".to_string(),
+                name: "my-repo".to_string(),
+            })
+        );
     }
 
     #[tokio::test]

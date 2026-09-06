@@ -12,8 +12,10 @@ use tempfile::tempdir;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, run_git_text_with_options, GitExecOptions};
 use crate::persistence::database::Database;
-use crate::persistence::gh::{latest_pr_for_branch, list_gh_pr_for_session, GhPrRecord};
-use crate::persistence::projects::get_project_remote;
+use crate::persistence::gh::{
+    latest_pr_for_branch, latest_pr_for_workspace, list_gh_pr_for_session, GhPrRecord,
+};
+use crate::persistence::projects::{get_project_remote, update_project_remote, ProjectRemote};
 use crate::persistence::sessions::find_session_by_id;
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::util::gh_runner::{default_gh_runner, GhRunner};
@@ -256,9 +258,24 @@ impl GitOpsService {
         // moved, would open a stale PR from the branch it used to be on.
         let existing = {
             let conn = self.database.connection();
-            latest_pr_for_branch(&conn, &workspace.project_id, &workspace.branch)?
+            latest_pr_for_branch(&conn, &workspace.project_id, &workspace.branch)?.or_else(|| {
+                latest_pr_for_workspace(
+                    &conn,
+                    &workspace.id,
+                    &workspace.project_id,
+                    &workspace.branch,
+                )
+                .ok()
+                .flatten()
+            })
         };
-        if let Some(top) = existing {
+        let known_pr_number = existing
+            .as_ref()
+            .map(|top| top.pr_number)
+            .or(workspace.pr_number);
+
+        if let Some(pr_number) = known_pr_number {
+            // First check if the project already has its remote owner and name recorded.
             let remote = {
                 let conn = self.database.connection();
                 get_project_remote(&conn, &workspace.project_id)?
@@ -267,18 +284,84 @@ impl GitOpsService {
                 return Ok(GitViewOrCreatePrResult::Opened {
                     url: format!(
                         "https://github.com/{}/{}/pull/{}",
-                        remote.owner, remote.name, top.pr_number
+                        remote.owner, remote.name, pr_number
                     ),
-                    pr_number: top.pr_number,
+                    pr_number,
                 });
             }
+
+            // Discover the remote from the git workspace if not yet recorded in SQLite.
+            if let Some(remote) = resolve_project_remote(Path::new(&workspace.path)).await {
+                let conn = self.database.connection();
+                let _ = update_project_remote(&conn, &workspace.project_id, Some(&remote));
+                return Ok(GitViewOrCreatePrResult::Opened {
+                    url: format!(
+                        "https://github.com/{}/{}/pull/{}",
+                        remote.owner, remote.name, pr_number
+                    ),
+                    pr_number,
+                });
+            }
+
+            // If git remote inspection failed, query gh for the PR URL directly.
+            let view_output = (self.gh_runner)(
+                workspace.path.clone(),
+                vec![
+                    "pr".into(),
+                    "view".into(),
+                    pr_number.to_string(),
+                    "--json".into(),
+                    "url".into(),
+                ],
+            )
+            .await;
+            if let Ok(stdout) = view_output {
+                if let Some(url) = extract_pr_url(&stdout) {
+                    if let Some(remote) = extract_github_remote_from_url(&url) {
+                        let conn = self.database.connection();
+                        let _ = update_project_remote(&conn, &workspace.project_id, Some(&remote));
+                    }
+                    return Ok(GitViewOrCreatePrResult::Opened { url, pr_number });
+                }
+            }
+
+            // A PR is known to exist, so we must never fall through to `gh pr create`.
+            return Err(ArgmaxError::service(
+                "GH_PR_URL_FAILED",
+                format!("Pull request #{pr_number} exists, but could not resolve its GitHub URL."),
+            ));
         }
 
-        let stdout = (self.gh_runner)(
+        let create_result = (self.gh_runner)(
             workspace.path.clone(),
             vec!["pr".into(), "create".into(), "--fill".into()],
         )
-        .await?;
+        .await;
+
+        let stdout = match create_result {
+            Ok(stdout) => stdout,
+            Err(error) => {
+                let error_text = error.to_string();
+                if let Some(existing_url) = extract_pr_url(&error_text) {
+                    if let Some(pr_number) = extract_pr_number(&existing_url) {
+                        if let Some(remote) = extract_github_remote_from_url(&existing_url) {
+                            let conn = self.database.connection();
+                            let _ =
+                                update_project_remote(&conn, &workspace.project_id, Some(&remote));
+                        }
+                        if let Some(refresh) = self.refresh_pr.as_ref() {
+                            let _ = refresh(session.id.clone()).await;
+                        }
+                        return Ok(GitViewOrCreatePrResult::Opened {
+                            url: existing_url,
+                            pr_number,
+                        });
+                    }
+                }
+                return Err(error);
+            }
+        };
+
         let url = extract_pr_url(&stdout).ok_or_else(|| {
             ArgmaxError::service(
                 "GH_PR_URL_MISSING",
@@ -288,6 +371,11 @@ impl GitOpsService {
                 ),
             )
         })?;
+
+        if let Some(remote) = extract_github_remote_from_url(&url) {
+            let conn = self.database.connection();
+            let _ = update_project_remote(&conn, &workspace.project_id, Some(&remote));
+        }
 
         let refreshed = if let Some(refresh) = self.refresh_pr.as_ref() {
             refresh(session.id.clone()).await?
@@ -302,8 +390,10 @@ impl GitOpsService {
             .find(|row| url_matches_pr(&url, row.pr_number))
             .or_else(|| most_recent(&refreshed));
         Ok(GitViewOrCreatePrResult::Created {
-            url,
-            pr_number: created.map(|row| row.pr_number),
+            url: url.clone(),
+            pr_number: created
+                .map(|row| row.pr_number)
+                .or_else(|| extract_pr_number(&url)),
         })
     }
 }
@@ -362,9 +452,86 @@ fn url_matches_pr(url: &str, pr_number: i64) -> bool {
 /// gh prints the new PR URL on its own line as the last meaningful line
 /// of stdout. Anchor to `https://github.com/` so a hijacked gh binary
 /// can't print a malicious URL that downstream code would open.
-fn extract_pr_url(stdout: &str) -> Option<String> {
+pub fn extract_pr_url(stdout: &str) -> Option<String> {
     let re = Regex::new(r"https://github\.com/[^\s/]+/[^\s/]+/pull/\d+\S*").ok()?;
     re.find(stdout).map(|m| m.as_str().trim().to_string())
+}
+
+/// Extracts the PR number from a GitHub PR URL (e.g. `https://github.com/o/r/pull/42`).
+pub fn extract_pr_number(url: &str) -> Option<i64> {
+    let re = Regex::new(r"/pull/(\d+)(?:[/?#]|$)").ok()?;
+    let captures = re.captures(url)?;
+    captures.get(1)?.as_str().parse::<i64>().ok()
+}
+
+/// Parses owner and repository name from a GitHub remote URL.
+/// Supports SSH (`git@github.com:owner/repo.git`), HTTPS (`https://github.com/owner/repo.git`),
+/// and other git variants.
+pub fn parse_github_remote(url: &str) -> Option<ProjectRemote> {
+    let trimmed = url.trim();
+    let without_scheme = trimmed.strip_prefix("ssh://").unwrap_or(trimmed);
+    let after_host = without_scheme
+        .strip_prefix("git@github.com:")
+        .or_else(|| without_scheme.strip_prefix("git@github.com/"))
+        .or_else(|| without_scheme.strip_prefix("https://github.com/"))
+        .or_else(|| without_scheme.strip_prefix("http://github.com/"))
+        .or_else(|| without_scheme.strip_prefix("git://github.com/"))?;
+    let without_git = after_host.strip_suffix(".git").unwrap_or(after_host);
+    let mut parts = without_git.split('/');
+    let owner = parts.next()?.trim();
+    let name = parts.next()?.trim();
+    if owner.is_empty() || name.is_empty() || parts.next().is_some() {
+        return None;
+    }
+    Some(ProjectRemote {
+        owner: owner.to_string(),
+        name: name.to_string(),
+    })
+}
+
+/// Extracts owner and repo from a canonical GitHub URL (e.g. `https://github.com/owner/repo/pull/123`).
+pub fn extract_github_remote_from_url(url: &str) -> Option<ProjectRemote> {
+    let trimmed = url.trim();
+    let path = trimmed
+        .strip_prefix("https://github.com/")
+        .or_else(|| trimmed.strip_prefix("http://github.com/"))?;
+    let mut parts = path.split('/');
+    let owner = parts.next()?.trim();
+    let name = parts.next()?.trim();
+    if owner.is_empty() || name.is_empty() {
+        return None;
+    }
+    Some(ProjectRemote {
+        owner: owner.to_string(),
+        name: name.to_string(),
+    })
+}
+
+/// Discovers the project remote from the workspace's git origin configuration.
+pub async fn resolve_project_remote(workspace_path: &Path) -> Option<ProjectRemote> {
+    if let Ok(output) = run_git_text(
+        workspace_path,
+        ["config", "--get", "remote.origin.url"],
+        Duration::from_secs(5),
+    )
+    .await
+    {
+        if let Some(remote) = parse_github_remote(&output) {
+            return Some(remote);
+        }
+    }
+    if let Ok(output) = run_git_text(
+        workspace_path,
+        ["remote", "get-url", "origin"],
+        Duration::from_secs(5),
+    )
+    .await
+    {
+        if let Some(remote) = parse_github_remote(&output) {
+            return Some(remote);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -662,5 +829,245 @@ mod tests {
         assert!(is_missing_upstream_error(&err));
         let other = ArgmaxError::service("GIT_NON_ZERO_EXIT", "fatal: not a git repository");
         assert!(!is_missing_upstream_error(&other));
+    }
+
+    #[test]
+    fn parse_github_remote_handles_various_formats() {
+        let ssh = parse_github_remote("git@github.com:menti/argmax.git").unwrap();
+        assert_eq!(ssh.owner, "menti");
+        assert_eq!(ssh.name, "argmax");
+
+        let ssh_no_git = parse_github_remote("git@github.com:menti/argmax").unwrap();
+        assert_eq!(ssh_no_git.owner, "menti");
+        assert_eq!(ssh_no_git.name, "argmax");
+
+        let https = parse_github_remote("https://github.com/menti/argmax.git").unwrap();
+        assert_eq!(https.owner, "menti");
+        assert_eq!(https.name, "argmax");
+
+        let https_no_git = parse_github_remote("https://github.com/menti/argmax").unwrap();
+        assert_eq!(https_no_git.owner, "menti");
+        assert_eq!(https_no_git.name, "argmax");
+
+        let non_github = parse_github_remote("git@gitlab.com:menti/argmax.git");
+        assert!(non_github.is_none());
+    }
+
+    #[test]
+    fn extract_github_remote_from_pr_url() {
+        let remote =
+            extract_github_remote_from_url("https://github.com/menti/argmax/pull/42").unwrap();
+        assert_eq!(remote.owner, "menti");
+        assert_eq!(remote.name, "argmax");
+
+        let non_github = extract_github_remote_from_url("https://gitlab.com/menti/argmax/pull/42");
+        assert!(non_github.is_none());
+    }
+
+    #[test]
+    fn extract_pr_number_from_url() {
+        assert_eq!(
+            extract_pr_number("https://github.com/menti/argmax/pull/42"),
+            Some(42)
+        );
+        assert_eq!(
+            extract_pr_number("https://github.com/menti/argmax/pull/42/files"),
+            Some(42)
+        );
+        assert_eq!(extract_pr_number("https://github.com/menti/argmax"), None);
+    }
+
+    #[tokio::test]
+    async fn view_or_create_pr_opens_existing_pr_when_pr_already_recorded() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path()).await;
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let session_id = fixture_session(&database, &workspace_id);
+
+        {
+            let conn = database.connection();
+            crate::persistence::projects::update_project_remote(
+                &conn,
+                "p1",
+                Some(&crate::persistence::projects::ProjectRemote {
+                    owner: "example".to_string(),
+                    name: "repo".to_string(),
+                }),
+            )
+            .unwrap();
+            crate::persistence::gh::upsert_gh_pr(
+                &conn,
+                &crate::persistence::gh::GhPrRecord {
+                    session_id: session_id.clone(),
+                    pr_number: 99,
+                    head_sha: "head123".to_string(),
+                    last_seen_check_state: "success".to_string(),
+                    updated_at: "2026-05-24T12:00:00.000Z".to_string(),
+                    pr_state: Some("OPEN".to_string()),
+                    notified_at: None,
+                    pr_created_at: None,
+                    pr_merged_at: None,
+                    head_ref_name: Some("main".to_string()),
+                },
+            )
+            .unwrap();
+        }
+
+        let calls = Arc::new(Mutex::new(Vec::<(String, Vec<String>)>::new()));
+        let runner: GhRunner = Arc::new({
+            let calls = Arc::clone(&calls);
+            move |cwd, args| {
+                calls.lock().expect("calls").push((cwd, args));
+                Box::pin(async { Ok(String::new()) })
+            }
+        });
+
+        let service = GitOpsService::with_runners(database, runner, None);
+        let result = service
+            .view_or_create_pr(GitViewOrCreatePrInput { session_id })
+            .await
+            .expect("pr opened");
+
+        assert_eq!(
+            result,
+            GitViewOrCreatePrResult::Opened {
+                url: "https://github.com/example/repo/pull/99".to_string(),
+                pr_number: 99,
+            }
+        );
+        let calls = calls.lock().expect("calls");
+        assert_eq!(calls.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn view_or_create_pr_falls_back_to_opened_on_already_exists_error() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path()).await;
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let session_id = fixture_session(&database, &workspace_id);
+
+        let calls = Arc::new(Mutex::new(Vec::<(String, Vec<String>)>::new()));
+        let runner: GhRunner = Arc::new({
+            let calls = Arc::clone(&calls);
+            move |cwd, args| {
+                calls.lock().expect("calls").push((cwd, args));
+                Box::pin(async {
+                    Err(ArgmaxError::service(
+                        "GH_NON_ZERO_EXIT",
+                        "a pull request for branch \"main\" into branch \"main\" already exists:\nhttps://github.com/example/repo/pull/123\n",
+                    ))
+                })
+            }
+        });
+
+        let refresh_called = Arc::new(Mutex::new(false));
+        let refresh: RefreshPrFn = Arc::new({
+            let refresh_called = Arc::clone(&refresh_called);
+            move |_| {
+                let refresh_called = Arc::clone(&refresh_called);
+                Box::pin(async move {
+                    *refresh_called.lock().unwrap() = true;
+                    Ok(vec![])
+                })
+            }
+        });
+
+        let service = GitOpsService::with_runners(database.clone(), runner, Some(refresh));
+        let result = service
+            .view_or_create_pr(GitViewOrCreatePrInput { session_id })
+            .await
+            .expect("opened from error");
+
+        assert_eq!(
+            result,
+            GitViewOrCreatePrResult::Opened {
+                url: "https://github.com/example/repo/pull/123".to_string(),
+                pr_number: 123,
+            }
+        );
+        assert!(*refresh_called.lock().unwrap());
+        let conn = database.connection();
+        let remote = crate::persistence::projects::get_project_remote(&conn, "p1").unwrap();
+        assert_eq!(
+            remote,
+            Some(crate::persistence::projects::ProjectRemote {
+                owner: "example".to_string(),
+                name: "repo".to_string(),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn view_or_create_pr_resolves_remote_from_git_config_if_missing_in_db() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path()).await;
+        run_git(
+            repo.path(),
+            &["remote", "add", "origin", "git@github.com:menti/argmax.git"],
+        )
+        .await;
+
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let session_id = fixture_session(&database, &workspace_id);
+
+        {
+            let conn = database.connection();
+            crate::persistence::gh::upsert_gh_pr(
+                &conn,
+                &crate::persistence::gh::GhPrRecord {
+                    session_id: session_id.clone(),
+                    pr_number: 77,
+                    head_sha: "head456".to_string(),
+                    last_seen_check_state: "success".to_string(),
+                    updated_at: "2026-05-24T12:00:00.000Z".to_string(),
+                    pr_state: Some("OPEN".to_string()),
+                    notified_at: None,
+                    pr_created_at: None,
+                    pr_merged_at: None,
+                    head_ref_name: Some("main".to_string()),
+                },
+            )
+            .unwrap();
+        }
+
+        let calls = Arc::new(Mutex::new(Vec::<(String, Vec<String>)>::new()));
+        let runner: GhRunner = Arc::new({
+            let calls = Arc::clone(&calls);
+            move |cwd, args| {
+                calls.lock().expect("calls").push((cwd, args));
+                Box::pin(async { Ok(String::new()) })
+            }
+        });
+
+        let service = GitOpsService::with_runners(database.clone(), runner, None);
+        let result = service
+            .view_or_create_pr(GitViewOrCreatePrInput { session_id })
+            .await
+            .expect("pr opened");
+
+        assert_eq!(
+            result,
+            GitViewOrCreatePrResult::Opened {
+                url: "https://github.com/menti/argmax/pull/77".to_string(),
+                pr_number: 77,
+            }
+        );
+        let calls = calls.lock().expect("calls");
+        assert_eq!(calls.len(), 0);
+        let conn = database.connection();
+        let remote = crate::persistence::projects::get_project_remote(&conn, "p1").unwrap();
+        assert_eq!(
+            remote,
+            Some(crate::persistence::projects::ProjectRemote {
+                owner: "menti".to_string(),
+                name: "argmax".to_string(),
+            })
+        );
     }
 }

@@ -411,12 +411,11 @@ function SessionConversationTurnInner({
     });
   const coalescedChildren: AnnotatedChild[] = [];
   for (const child of sortedChildren) {
-    // Convert routine launches before coalescing, so an adjacent failed
-    // launch cannot pull successful agent activity out of a Compact summary.
-    if (compactActivity && child.agentTools?.every((tool) => tool.status !== "error")) {
-      coalescedChildren.push({ ...child, runTools: child.agentTools, agentTools: undefined });
-      continue;
-    }
+    // A launch keeps its own row at every verbosity, Compact included. Folding
+    // routine ones into the activity summary buried the single row that names
+    // the delegated work, carries the codename and emblem, and opens the
+    // subagent's pane — a whole child agent read as "started an agent" behind
+    // a collapsed line, indistinguishable from a file read.
     const last = coalescedChildren[coalescedChildren.length - 1];
     if (child.agentTools && last?.agentTools) {
       last.agentTools.push(...child.agentTools);

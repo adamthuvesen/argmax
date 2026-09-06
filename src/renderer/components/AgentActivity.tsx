@@ -374,8 +374,10 @@ function AgentActivityRun({
           createdAt: item.tool.createdAt,
           sortAt: item.tool.createdAt,
           hasErrors: item.tool.status === "error",
+          // A nested launch stays its own row at every verbosity, Compact
+          // included: it is the pane's only handle on the grandchild's work.
           runTools: isAgentToolName(item.tool.name)
-            ? compactActivity && item.tool.status !== "error" ? [item.tool] : undefined
+            ? undefined
             : [item.tool, ...(item.children ?? [])],
           node: (
             <ToolCallRow

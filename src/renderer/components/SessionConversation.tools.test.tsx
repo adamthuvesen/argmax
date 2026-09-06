@@ -284,7 +284,7 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByRole("button", { name: /Read a file, started an agent/ })).toBeNull();
   });
 
-  it("folds routine reads, agent launches, and commands into one Compact group", () => {
+  it("keeps a Compact agent launch out of the summaries the routine work folds into", () => {
     renderConversation(
       baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }),
       [
@@ -321,23 +321,22 @@ describe("SessionConversation — tools & chrome", () => {
       { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false }
     );
 
-    const group = screen.getByRole("button", {
-      name: "Read a file, ran a command, started an agent"
-    });
-    expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
-    expect(screen.queryByRole("button", { name: startedAgentName("Audit renderer tools") })).toBeNull();
-    expect(screen.queryByText("git status --short")).toBeNull();
-
-    fireEvent.click(group);
-
-    const read = screen.getByRole("button", { name: "Read README.md" });
+    // The launch is the row that opens the subagent's pane, so it stays
+    // readable at Compact while the reads and commands around it fold. It also
+    // ends the run: the work before and after it summarizes separately.
+    const readGroup = screen.getByRole("button", { name: "Read a file" });
     const agent = screen.getByRole("button", { name: startedAgentName("Audit renderer tools") });
-    const command = screen.getByText("git status --short");
-    expect(read.compareDocumentPosition(agent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(agent.compareDocumentPosition(command) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    const commandGroup = screen.getByRole("button", { name: "Ran a command" });
+    expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
+    expect(screen.queryByText("git status --short")).toBeNull();
+    expect(readGroup.compareDocumentPosition(agent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(agent.compareDocumentPosition(commandGroup) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+
+    fireEvent.click(readGroup);
+    expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
   });
 
-  it("keeps an adjacent failed agent separate from a successful Compact summary", () => {
+  it("shows both a successful and a failed Compact launch as rows", () => {
     renderConversation(
       baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }),
       [
@@ -366,16 +365,13 @@ describe("SessionConversation — tools & chrome", () => {
       { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false }
     );
 
-    const successfulGroup = screen.getByRole("button", { name: "Started an agent" });
-    expect(successfulGroup).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("button", { name: startedAgentName("Successful audit") })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Started an agent" })).toBeNull();
 
+    const successfulAgent = screen.getByRole("button", { name: startedAgentName("Successful audit") });
+    expect(successfulAgent).toHaveTextContent("Completed");
     const failedAgent = screen.getByRole("button", { name: startedAgentName("Failed audit") });
     expect(failedAgent).toHaveTextContent("Failed");
-    expect(successfulGroup.compareDocumentPosition(failedAgent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-
-    fireEvent.click(successfulGroup);
-    expect(screen.getByRole("button", { name: startedAgentName("Successful audit") })).toBeInTheDocument();
+    expect(successfulAgent.compareDocumentPosition(failedAgent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 
   it("keeps a completed launch to its title alone and marks only the failed one", () => {
@@ -415,7 +411,7 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByText(/\/Users\//)).not.toBeInTheDocument();
   });
 
-  it("keeps live agent activity in a collapsed Compact group", () => {
+  it("opens a live Compact launch straight from its row", () => {
     const onOpenAgent = vi.fn<(tool: ToolCall) => void>();
     renderConversation(
       baseSession({ provider: "claude", modelLabel: "Sonnet 5", state: "running" }),
@@ -441,13 +437,10 @@ describe("SessionConversation — tools & chrome", () => {
       { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false, onOpenAgent }
     );
 
-    const group = screen.getByRole("button", { name: "Started an agent" });
-    expect(group).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("button", { name: startedAgentName("Explore repo structure") })).toBeNull();
-
-    fireEvent.click(group);
+    expect(screen.queryByRole("button", { name: "Started an agent" })).toBeNull();
 
     const agentRow = screen.getByRole("button", { name: startedAgentName("Explore repo structure") });
+    expect(agentRow).toHaveTextContent("Running");
     fireEvent.click(agentRow);
     expect(onOpenAgent).toHaveBeenCalledTimes(1);
   });

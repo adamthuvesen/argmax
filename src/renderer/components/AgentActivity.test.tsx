@@ -2,7 +2,6 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
-import { startedAgentName } from "../../test/agentRowName.js";
 import { AgentActivity } from "./AgentActivity.js";
 
 function event(
@@ -374,7 +373,7 @@ describe("AgentActivity", () => {
       .toBeNull();
   });
 
-  it("folds routine reads, nested agents, and commands into one Compact group", () => {
+  it("keeps a Compact nested launch out of the summaries the routine work folds into", () => {
     render(
       <AgentActivity
         events={[
@@ -427,20 +426,16 @@ describe("AgentActivity", () => {
     );
 
     const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
-    const group = within(pane).getByRole("button", {
-      name: "Read a file, ran a command, started an agent"
-    });
+    const readGroup = within(pane).getByRole("button", { name: "Read a file" });
+    const agent = within(pane).getByRole("button", { name: "Started agent Nested audit" });
+    const commandGroup = within(pane).getByRole("button", { name: "Ran a command" });
     expect(within(pane).queryByRole("button", { name: "Read README.md" })).toBeNull();
-    expect(within(pane).queryByRole("button", { name: startedAgentName("Nested audit") })).toBeNull();
     expect(within(pane).queryByText("git status --short")).toBeNull();
+    expect(readGroup.compareDocumentPosition(agent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(agent.compareDocumentPosition(commandGroup) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
 
-    fireEvent.click(group);
-
-    const read = within(pane).getByRole("button", { name: "Read README.md" });
-    const agent = within(pane).getByRole("button", { name: startedAgentName("Nested audit") });
-    const command = within(pane).getByText("git status --short");
-    expect(read.compareDocumentPosition(agent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(agent.compareDocumentPosition(command) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    fireEvent.click(readGroup);
+    expect(within(pane).getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
   });
 
   it("keeps a finished run to one chip and its result at minimal verbosity", () => {

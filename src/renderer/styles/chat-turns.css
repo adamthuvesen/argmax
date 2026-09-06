@@ -880,10 +880,15 @@
   color: var(--accent);
 }
 
+/* Shares the trailing slot with `.tool-call-group-running` — only ever one of
+   them is mounted, so both can claim the `auto` margin. The nest holds the end
+   of the line while the group works and the total takes over when it stops, so
+   the number arrives rather than snapping into the spot the nest just left. */
 .tool-call-group-stat {
   margin-left: auto;
   flex: 0 0 auto;
   white-space: nowrap;
+  animation: activity-summary-tick 240ms var(--ease);
 }
 
 .tool-call-group-body {
@@ -920,7 +925,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .activity-summary-line .activity-summary-headline {
+  .activity-summary-line .activity-summary-headline,
+  .tool-call-group-stat {
     animation: none;
   }
 }

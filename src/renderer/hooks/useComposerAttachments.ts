@@ -60,6 +60,8 @@ export interface ComposerAttachmentsApi {
   openFilePicker: () => void;
   /** Drop all pending attachments. Call after a successful submit. */
   clearAttachments: () => void;
+  /** Put a failed submit's attachments back after this draft was retargeted. */
+  restoreAttachments: (attachments: ComposerAttachment[]) => void;
 }
 
 export interface ComposerAttachmentsDeps {
@@ -399,6 +401,10 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
     setPendingAttachments([]);
   }, [clearPreviewUrls]);
 
+  const restoreAttachments = useCallback((attachments: ComposerAttachment[]): void => {
+    setPendingAttachments(attachments);
+  }, []);
+
   return {
     pendingAttachments,
     pendingAttachmentPreviews,
@@ -412,6 +418,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
     onComposerPaste,
     onAttachmentInputChange,
     openFilePicker,
-    clearAttachments
+    clearAttachments,
+    restoreAttachments
   };
 }

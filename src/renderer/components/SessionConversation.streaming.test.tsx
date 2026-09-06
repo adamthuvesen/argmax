@@ -1781,7 +1781,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
-  it("shows Thinking immediately after a follow-up is sent, before the session flips to running", () => {
+  it("shows the follow-up and Thinking immediately, before delivery or persisted events land", async () => {
     vi.useFakeTimers();
     // The backend relaunches the agent for a follow-up, so the transcript gets
     // the new user bubble seconds before any provider event (and sometimes
@@ -1789,13 +1789,21 @@ describe("SessionConversation — streaming & composer", () => {
     // that whole spawn: no timer advance, Thinking is already up.
     const previousTurn = [
       event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
-      event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
+      // Repeat the same text to prove an older matching row cannot acknowledge
+      // the optimistic send that follows it.
+      event("u1", "user.message", "and now the tests", "2026-05-12T15:00:00.000Z")
     ];
-    render(
+    let resolveSend: (() => void) | undefined;
+    const send = vi.fn(
+      () => new Promise<void>((resolve) => {
+        resolveSend = resolve;
+      })
+    );
+    const { rerender } = render(
       <SessionConversation
         events={previousTurn}
         isLogOpen={false}
-        onSendSessionInput={vi.fn(() => new Promise<void>(() => {}))}
+        onSendSessionInput={send}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
         onClearSession={vi.fn().mockResolvedValue(undefined)}
         onToggleLog={vi.fn()}
@@ -1815,6 +1823,34 @@ describe("SessionConversation — streaming & composer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send follow-up" }));
 
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+    expect(screen.getByLabelText("Chat prompt")).toHaveValue("");
+    expect(screen.getAllByText("and now the tests")).toHaveLength(2);
+
+    await act(async () => {
+      resolveSend?.();
+      await Promise.resolve();
+    });
+    expect(screen.getAllByText("and now the tests")).toHaveLength(2);
+
+    rerender(
+      <SessionConversation
+        events={[
+          event("u2", "user.message", "and now the tests", "2026-05-12T15:00:03.000Z"),
+          ...previousTurn
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={send}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "codex", state: "running" })}
+        workspace={workspace}
+      />
+    );
+    expect(screen.getAllByText("and now the tests")).toHaveLength(2);
   });
 
   it("shows Thinking immediately for a follow-up queued mid-turn, skipping the post-answer grace period", () => {
@@ -1847,6 +1883,45 @@ describe("SessionConversation — streaming & composer", () => {
     fireEvent.keyDown(prompt, { key: "Enter" });
 
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("reconciles identical optimistic follow-ups with persisted rows one at a time", async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const session = baseSession({ provider: "codex", state: "complete" });
+    const previousTurn = [
+      event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
+      event("u1", "user.message", "start", "2026-05-12T15:00:00.000Z")
+    ];
+    const { rerender } = renderConversation(session, previousTurn, { onSendSessionInput: send });
+    const sendContinue = async (): Promise<void> => {
+      fireEvent.change(screen.getByLabelText("Chat prompt"), { target: { value: "continue" } });
+      fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Enter" });
+      await waitFor(() => expect(screen.getByLabelText("Chat prompt")).toBeEnabled());
+    };
+
+    await sendContinue();
+    await sendContinue();
+    expect(screen.getAllByText("continue")).toHaveLength(2);
+
+    rerenderConversation(
+      rerender,
+      baseSession({ provider: "codex", state: "running" }),
+      [event("u2", "user.message", "continue", "2026-05-12T15:00:02.000Z"), ...previousTurn],
+      { onSendSessionInput: send }
+    );
+    expect(screen.getAllByText("continue")).toHaveLength(2);
+
+    rerenderConversation(
+      rerender,
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("u3", "user.message", "continue", "2026-05-12T15:00:03.000Z"),
+        event("u2", "user.message", "continue", "2026-05-12T15:00:02.000Z"),
+        ...previousTurn
+      ],
+      { onSendSessionInput: send }
+    );
+    expect(screen.getAllByText("continue")).toHaveLength(2);
   });
 
   it("yields the post-send Thinking state to the first visible assistant text", () => {
@@ -1915,6 +1990,7 @@ describe("SessionConversation — streaming & composer", () => {
       target: { value: "and now the tests" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Send follow-up" }));
+    expect(screen.getByText("and now the tests")).toBeInTheDocument();
 
     // Send failures are errors now: the composer status line carries
     // role="alert" for them, not role="status".

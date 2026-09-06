@@ -66,7 +66,7 @@ import {
 } from "../lib/agentMode.js";
 import { isClearCommand, type ComposerCommand } from "../lib/composerCommands.js";
 import { multitaskCommandPrompt } from "../lib/multitask.js";
-import { clearDraft } from "../lib/composerDrafts.js";
+import { clearDraft, writeDraftAttachments, writeDraftText } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
@@ -191,10 +191,14 @@ export function SessionComposer({
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
-  const [isSending, setIsSending] = useState(false);
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
+  const [sendingSessionId, setSendingSessionId] = useState<string | null>(null);
+  const isSending = sendingSessionId !== null;
+  const persistCurrentDraft = sendingSessionId === null || sendingSessionId !== sessionId;
   // Unsent text belongs to the session, not to this component: it survives
   // switching to another session and comes back when this one does.
-  const [input, setInput] = useComposerDraft(sessionId, { persist: !isSending });
+  const [input, setInput] = useComposerDraft(sessionId, { persist: persistCurrentDraft });
   const [sendingQueuedMessageId, setSendingQueuedMessageId] = useState<string | null>(null);
   // Touch surfaces (the phone companion) have no Enter key sitting under the
   // hands, so the keyboard shortcuts this composer leans on need a button.
@@ -244,12 +248,13 @@ export function SessionComposer({
     onComposerPaste,
     onAttachmentInputChange,
     openFilePicker,
-    clearAttachments
+    clearAttachments,
+    restoreAttachments
   } = useComposerAttachments({
     draftKey: sessionId,
     workspacePath: workspace?.path ?? null,
     setInput,
-    persist: !isSending,
+    persist: persistCurrentDraft,
     // The attachments hook only ever reports failures (string status contract,
     // shared with LaunchSurface); lift them into the error kind here.
     setStatus: (message) => setStatus(message === null ? null : { kind: "error", message })
@@ -468,8 +473,8 @@ export function SessionComposer({
 
   /**
    * Build the prompt from the draft plus attachments and hand it to `deliver`.
-   * Storage is dropped as soon as send starts so a remount cannot restore it.
-   * The on-screen text stays until delivery resolves, so a failed send can retry.
+   * Storage and the on-screen text are cleared as soon as send starts. A failed
+   * delivery restores both so the user can retry.
    */
   const deliverDraft = async (
     deliver: (
@@ -478,13 +483,14 @@ export function SessionComposer({
       attachments: ComposerAttachment[] | undefined
     ) => Promise<void>
   ): Promise<void> => {
-    const trimmedInput = input.trim();
+    const draftInput = input;
+    const trimmedInput = draftInput.trim();
     if (!session || !hasSendableContent || isSending || sendingQueuedMessageId) {
       return;
     }
 
     if (isClearCommand(trimmedInput)) {
-      setIsSending(true);
+      setSendingSessionId(session.id);
       setStatus(null);
       shouldRefocusInput.current = true;
       clearDraft(session.id);
@@ -499,7 +505,7 @@ export function SessionComposer({
           message: error instanceof Error ? error.message : "Could not clear the conversation."
         });
       } finally {
-        setIsSending(false);
+        setSendingSessionId((current) => (current === session.id ? null : current));
       }
       return;
     }
@@ -508,7 +514,7 @@ export function SessionComposer({
     // sibling chat in this checkout, and this composer's turn is left alone.
     const multitaskPrompt = multitaskCommandPrompt(trimmedInput);
     if (multitaskPrompt && onMultitask) {
-      setIsSending(true);
+      setSendingSessionId(session.id);
       setStatus(null);
       shouldRefocusInput.current = true;
       try {
@@ -521,32 +527,41 @@ export function SessionComposer({
           message: error instanceof Error ? error.message : "Could not start the multitask."
         });
       } finally {
-        setIsSending(false);
+        setSendingSessionId((current) => (current === session.id ? null : current));
       }
       return;
     }
 
-    const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
+    const attachmentsToSend = pendingAttachments;
+    const refs = attachmentsToSend.map((a) => imageAttachmentReference(a.filePath));
     const withRefs = refs.length > 0 ? appendReferencesToPrompt(trimmedInput, refs) : trimmedInput;
     const withAnnotations = prependAnnotationsToPrompt(withRefs, pendingAnnotations);
     const prompt = openFilesAttached ? appendOpenFilesToPrompt(withAnnotations, openFilePaths) : withAnnotations;
 
-    setIsSending(true);
+    setSendingSessionId(session.id);
     setStatus(null);
     shouldRefocusInput.current = true;
     clearDraft(session.id);
+    setInput("");
     try {
-      await deliver(session.id, prompt, pendingAttachments.length > 0 ? pendingAttachments : undefined);
-      setInput("");
-      clearAttachments();
-      onClearAnnotations?.();
+      await deliver(session.id, prompt, attachmentsToSend.length > 0 ? attachmentsToSend : undefined);
+      if (sessionIdRef.current === session.id) {
+        clearAttachments();
+        onClearAnnotations?.();
+      }
     } catch (error) {
-      setStatus({
-        kind: "error",
-        message: error instanceof Error ? error.message : "Could not send input."
-      });
+      writeDraftText(session.id, draftInput);
+      writeDraftAttachments(session.id, attachmentsToSend);
+      if (sessionIdRef.current === session.id) {
+        setInput(draftInput);
+        restoreAttachments(attachmentsToSend);
+        setStatus({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not send input."
+        });
+      }
     } finally {
-      setIsSending(false);
+      setSendingSessionId((current) => (current === session.id ? null : current));
     }
   };
 

@@ -114,6 +114,12 @@ const THINKING_SHOW_DELAY_MS = 700;
 const THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS = 1800;
 const THINKING_MIN_VISIBLE_MS = 600;
 
+interface OptimisticUserMessage {
+  event: TimelineEvent;
+  eventIdsAtSend: ReadonlySet<string>;
+  acknowledgedByEventId: string | null;
+}
+
 /// How much of `fullMs` a beat that began at `startedAt` still has to serve.
 /// The cue's delays smooth transitions in a pane that watches them land. A
 /// pane that opens onto a gap already older than the delay — a session
@@ -303,6 +309,12 @@ export function SessionConversation({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const shouldRefocusInput = useRef(false);
   const sessionId = session?.id ?? null;
+  const eventsRef = useRef(events);
+  eventsRef.current = events;
+  const [optimisticUserMessages, setOptimisticUserMessages] = useState<OptimisticUserMessage[]>([]);
+  useEffect(() => {
+    setOptimisticUserMessages([]);
+  }, [sessionId]);
   // Excerpts attached from the transcript via the selection toolbar. Ephemeral
   // by design (unlike the localStorage-backed draft text): they quote messages
   // of the open transcript, so they don't outlive the pane or follow a session
@@ -345,7 +357,71 @@ export function SessionConversation({
   }, [registerAnnotationSink]);
   // `events` is sorted descending upstream (mergeDashboardDelta), so a reverse
   // gives ascending order for free without a per-tick string comparator pass.
-  const liveEvents = useMemo(() => eventsAfterLatestClear(events), [events]);
+  const reconciledOptimisticUserMessages = useMemo(
+    () => {
+      let changed = false;
+      const currentSessionMessages = optimisticUserMessages.filter((pending) => {
+        const belongsToCurrentSession = pending.event.sessionId === sessionId;
+        if (!belongsToCurrentSession) changed = true;
+        return belongsToCurrentSession;
+      });
+      const acknowledgedEventIds = new Set(
+        currentSessionMessages.flatMap(({ acknowledgedByEventId }) =>
+          acknowledgedByEventId ? [acknowledgedByEventId] : []
+        )
+      );
+      // Match oldest-first so one persisted row can acknowledge only the send
+      // that produced it when identical follow-ups are submitted in sequence.
+      const reconciledOldestFirst = [...currentSessionMessages].reverse().map((pending) => {
+        if (pending.acknowledgedByEventId) return pending;
+        const acknowledgement = [...events].reverse().find(
+          (event) =>
+            !acknowledgedEventIds.has(event.id) &&
+            !pending.eventIdsAtSend.has(event.id) &&
+            event.sessionId === pending.event.sessionId &&
+            event.type === "user.message" &&
+            event.message === pending.event.message
+        );
+        if (!acknowledgement) return pending;
+        changed = true;
+        acknowledgedEventIds.add(acknowledgement.id);
+        return { ...pending, acknowledgedByEventId: acknowledgement.id };
+      });
+      // Keep acknowledgements as tombstones while an identical send is still
+      // pending. Otherwise the same persisted row would be reused on the next
+      // render and briefly swallow the later bubble too.
+      const unacknowledgedMessages = new Set(
+        reconciledOldestFirst
+          .filter(({ acknowledgedByEventId }) => acknowledgedByEventId === null)
+          .map(({ event }) => event.message)
+      );
+      const retained = reconciledOldestFirst.filter(({ event, acknowledgedByEventId }) => {
+        const keep = acknowledgedByEventId === null || unacknowledgedMessages.has(event.message);
+        if (!keep) changed = true;
+        return keep;
+      });
+      return changed ? retained.reverse() : optimisticUserMessages;
+    },
+    [events, optimisticUserMessages, sessionId]
+  );
+  useEffect(() => {
+    if (reconciledOptimisticUserMessages === optimisticUserMessages) return;
+    setOptimisticUserMessages(reconciledOptimisticUserMessages);
+  }, [optimisticUserMessages, reconciledOptimisticUserMessages]);
+  const visibleOptimisticUserMessages = useMemo(
+    () =>
+      reconciledOptimisticUserMessages.filter(
+        ({ acknowledgedByEventId }) => acknowledgedByEventId === null
+      ),
+    [reconciledOptimisticUserMessages]
+  );
+  const liveEvents = useMemo(
+    () => [
+      ...visibleOptimisticUserMessages.map(({ event }) => event),
+      ...eventsAfterLatestClear(events)
+    ],
+    [events, visibleOptimisticUserMessages]
+  );
   const liveRawOutputs = useMemo(
     () => outputsAfterClear(rawOutputs, latestClearEvent(events)),
     [events, rawOutputs]
@@ -668,6 +744,24 @@ export function SessionConversation({
       mode: AgentMode,
       attachments?: ComposerAttachment[]
     ): Promise<void> => {
+      const optimisticId = `optimistic:${targetSessionId}:${crypto.randomUUID()}`;
+      if (sessionStateRef.current !== "running") {
+        setOptimisticUserMessages((current) => [
+          {
+            event: {
+              id: optimisticId,
+              sessionId: targetSessionId,
+              type: "user.message",
+              message: text,
+              payload: { source: "composer" },
+              createdAt: new Date().toISOString()
+            },
+            eventIdsAtSend: new Set(eventsRef.current.map((event) => event.id)),
+            acknowledgedByEventId: null
+          },
+          ...current
+        ]);
+      }
       turnSawLiveStateRef.current = false;
       setTurnStartBaseline({
         agentResponseId: lastAgentResponseIdRef.current,
@@ -692,6 +786,9 @@ export function SessionConversation({
           await onSendSessionInput(targetSessionId, text, model, mode, attachments);
         }
       } catch (error) {
+        setOptimisticUserMessages((current) =>
+          current.filter(({ event }) => event.id !== optimisticId)
+        );
         setTurnStartBaseline(null);
         throw error;
       }

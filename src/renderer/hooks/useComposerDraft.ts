@@ -8,8 +8,8 @@ import { clearDraft, readDraft, writeDraftText } from "../lib/composerDrafts.js"
  * composer or a project for the new-session launcher. It outlives the
  * composer: switching panes remounts the component, and the draft comes back
  * when the target does, across an app restart too. Sending drops the stored
- * entry immediately (see `persist`) and clears the on-screen text once
- * delivery finishes. Pasted screenshots ride along in the same entry.
+ * entry and on-screen text immediately (see `persist`). A failed delivery
+ * restores both. Pasted screenshots ride along in the same entry.
  * See `useComposerAttachments`.
  *
  * `carryTextOnRetarget` is for composers the user retargets mid-sentence — the
@@ -18,11 +18,9 @@ import { clearDraft, readDraft, writeDraftText } from "../lib/composerDrafts.js"
  * left behind — even over a stale draft stored on that target, which it
  * replaces.
  *
- * `persist` is the send lock. A submit keeps the text on screen (so a slow
- * worktree setup still shows what was sent) but must not keep it in storage:
- * launching unmounts the composer, and the next NEW CHAT remounts from the
- * stored entry. Flip this off as soon as send starts. A failed send turns it
- * back on and the write effect restores the entry from the still-held text.
+ * `persist` is the send lock. A submit must not keep the sent value in storage:
+ * launching can unmount the composer, and the next NEW CHAT would otherwise
+ * remount from the stored entry. Flip this off as soon as send starts.
  */
 export function useComposerDraft(
   key: string | null,

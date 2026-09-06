@@ -22,6 +22,12 @@ Content can also shrink automatically, such as when an older live Thought block 
 
 ## The Sent Prompt
 
+Sending an idle follow-up clears the composer text and shows its user bubble
+alongside Thinking immediately, before the send request returns. The local
+bubble stays until its persisted `user.message` arrives, then gives way to that
+row without a duplicate. A rejected send removes the local bubble and restores
+the draft for retry. Follow-ups sent mid-turn still use the pending-message queue.
+
 A user bubble shows the text that was typed, not markdown: `SessionConversationUserMessage` renders it into a `<p>` with `white-space: pre-wrap` so a pasted snippet keeps its own line breaks and a `**bold**` stays two asterisks. Two things are marked up on top of that plain text, both in `markUserMessage`.
 
 - **`/skill` invocations** keep the tint the composer gave them while they were typed ([slashHighlight.ts](../src/renderer/lib/slashHighlight.ts)). A leading invocation names the whole message and gets the icon chip; a token further in is only tinted. Shape is the whole guard — the transcript has no skills list to check against.

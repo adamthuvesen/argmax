@@ -344,7 +344,10 @@ export function App(): JSX.Element {
     openProjectLauncher,
     resolveApproval,
     pendingSelectionRef
-  } = useDashboardSession(loadDashboardSnapshot, { onErrorToast: showErrorToast });
+  } = useDashboardSession(loadDashboardSnapshot, {
+    onErrorToast: showErrorToast,
+    followWorkspaceProject: !isFullLauncherOpen
+  });
 
   const {
     grid,
@@ -373,7 +376,8 @@ export function App(): JSX.Element {
     setSelectedSessionId,
     setSelectedWorkspaceId,
     setSelectedProjectId,
-    showErrorToast
+    showErrorToast,
+    mirrorFocusedSelection: !isFullLauncherOpen
   });
   const followedSessionMoves = useRef(new Set<string>());
   useEffect(() => {

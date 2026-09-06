@@ -61,6 +61,11 @@ function withCarriedPending(current: ApprovalRequest[], fetched: ApprovalRequest
 
 export interface UseDashboardSessionOptions {
   onErrorToast?: (message: string) => void;
+  /**
+   * When false, a selected workspace does not overwrite `selectedProjectId`.
+   * The full-view launcher owns the project chip while it is open.
+   */
+  followWorkspaceProject?: boolean;
 }
 
 export interface UseDashboardSessionResult {
@@ -104,7 +109,7 @@ export function useDashboardSession(
   loadSnapshot: () => Promise<DashboardSnapshot>,
   options: UseDashboardSessionOptions = {}
 ): UseDashboardSessionResult {
-  const { onErrorToast } = options;
+  const { onErrorToast, followWorkspaceProject = true } = options;
   const onErrorToastRef = useRef(onErrorToast);
   useEffect(() => {
     onErrorToastRef.current = onErrorToast;
@@ -586,7 +591,7 @@ export function useDashboardSession(
   );
 
   useEffect(() => {
-    if (selectedWorkspace) {
+    if (followWorkspaceProject && selectedWorkspace) {
       const workspaceProjectId = selectedWorkspace.projectId;
       if (selectedProjectId !== workspaceProjectId) {
         setSelectedProjectIdState(workspaceProjectId);
@@ -601,7 +606,7 @@ export function useDashboardSession(
     setSelectedProjectIdState(
       snapshot.projects.find((project) => project.id !== SCRATCH_PROJECT_ID)?.id ?? null
     );
-  }, [snapshot.projects, selectedProjectId, selectedWorkspace]);
+  }, [followWorkspaceProject, snapshot.projects, selectedProjectId, selectedWorkspace]);
 
   // Live-streaming safety net (macOS/Tauri). The `dashboard:delta` push is the
   // primary live-update path and is now emitted on the main thread so the

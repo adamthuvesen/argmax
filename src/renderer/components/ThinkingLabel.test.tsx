@@ -95,8 +95,22 @@ describe("<ThinkingLabel />", () => {
       "Tightening",
       "Weighing",
       "Prioritizing",
-      "Argmaxing"
+      "Argmaxing",
+      "Yak-shaving",
+      "Tail-chasing",
+      "Overthinking",
+      "Gradient-descending"
     ]);
+  });
+
+  it("saves the jokes for their own rare band", () => {
+    // The other suites assert the label starts with a curated word, so an egg
+    // that is reachable but missing from THINKING_WORDS would flake them.
+    vi.spyOn(Math, "random").mockReturnValueOnce(0.07).mockReturnValue(0);
+    render(<ThinkingLabel />);
+    const word = screen.getByTestId("thinking-label").textContent;
+    expect(word).toContain("Yak-shaving");
+    expect(THINKING_WORDS).toContain("Yak-shaving");
   });
 
   it("shows the shared live-work mark", () => {

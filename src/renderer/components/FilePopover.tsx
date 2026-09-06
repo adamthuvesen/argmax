@@ -1,6 +1,7 @@
 import { FileText, Folder } from "lucide-react";
 import { useEffect, useRef, type JSX, type RefObject } from "react";
 import type { FileAutocompleteState } from "../hooks/useFileAutocomplete.js";
+import { scrollChildIntoNearest } from "../lib/scrollChildIntoNearest.js";
 
 export function FilePopover({
   state,
@@ -10,12 +11,15 @@ export function FilePopover({
   inputRef: RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
 }): JSX.Element | null {
   const selectedOptionRef = useRef<HTMLLIElement | null>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
 
   useEffect(() => {
     if (!state.popoverOpen) {
       return;
     }
-    selectedOptionRef.current?.scrollIntoView?.({ block: "nearest" });
+    const list = listRef.current;
+    const active = selectedOptionRef.current;
+    if (list && active) scrollChildIntoNearest(list, active);
   }, [state.popoverOpen, state.selectionIndex]);
 
   if (!state.popoverOpen) {
@@ -24,6 +28,7 @@ export function FilePopover({
   if (state.filteredEntries.length === 0) {
     return (
       <ul
+        ref={listRef}
         className="file-popover"
         id="file-popover"
         role="listbox"
@@ -36,6 +41,7 @@ export function FilePopover({
   }
   return (
     <ul
+      ref={listRef}
       className="file-popover"
       id="file-popover"
       role="listbox"

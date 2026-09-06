@@ -196,6 +196,11 @@ export function SessionComposer({
   // switching to another session and comes back when this one does.
   const [input, setInput] = useComposerDraft(sessionId, { persist: !isSending });
   const [sendingQueuedMessageId, setSendingQueuedMessageId] = useState<string | null>(null);
+  // Touch surfaces (the phone companion) have no Enter key sitting under the
+  // hands, so the keyboard shortcuts this composer leans on need a button.
+  const [isCoarsePointer] = useState(
+    () => window.matchMedia?.("(pointer: coarse)").matches ?? false
+  );
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   // A pick that changes provider is held here until the user confirms: the new
@@ -422,9 +427,9 @@ export function SessionComposer({
     // Touch devices (the phone companion) get no programmatic focus: it pops
     // the on-screen keyboard over half the viewport the moment a session
     // opens. Phones focus the composer only on an explicit tap.
-    if (window.matchMedia?.("(pointer: coarse)").matches) return;
+    if (isCoarsePointer) return;
     inputRef.current?.focus();
-  }, [reviewPanelOpen, canSend, inputRef, isSending]);
+  }, [reviewPanelOpen, canSend, inputRef, isCoarsePointer, isSending]);
 
   const onSessionInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     slashAutocomplete.onKeyDown(event);
@@ -1045,16 +1050,35 @@ export function SessionComposer({
           // One control while running: Stop. Enter queues the follow-up, and
           // interrupting is the queued chip's explicit "Send now" — a second
           // send button here made the running state read as a puzzle.
-          <button
-            className="session-send-button session-stop-button"
-            type="button"
-            title="Stop chat"
-            aria-label="Stop chat"
-            disabled={sendingQueuedMessageId !== null}
-            onClick={() => void onTerminateSession(session.id)}
-          >
-            <Square size={9} fill="currentColor" strokeWidth={0} />
-          </button>
+          //
+          // A thumb has no Enter key, so on touch the queue button is the only
+          // way to line a follow-up up — but it arrives with the text it would
+          // queue, so a running turn nobody is typing into still shows Stop
+          // alone. The slot wraps both: the compact toolbar is a grid, and two
+          // bare buttons would land on the same `send` cell.
+          <div className="session-send-slot">
+            <button
+              className="session-send-button session-stop-button"
+              type="button"
+              title="Stop chat"
+              aria-label="Stop chat"
+              disabled={sendingQueuedMessageId !== null}
+              onClick={() => void onTerminateSession(session.id)}
+            >
+              <Square size={9} fill="currentColor" strokeWidth={0} />
+            </button>
+            {isCoarsePointer && hasSendableContent ? (
+              <button
+                className="session-send-button"
+                type="submit"
+                title="Queue follow-up — sent when the current turn finishes"
+                aria-label="Queue follow-up"
+                disabled={!canSend || isSending || sendingQueuedMessageId !== null}
+              >
+                <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
         ) : (() => {
           const sendDisabled = !canSend || isSending || !hasSendableContent;
           const sendTitle = isQueueing

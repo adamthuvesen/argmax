@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { baseSession, renderConversation } from "../../test/sessionConversationTestHarness.js";
 
 function runningComposer() {
@@ -46,6 +46,40 @@ describe("SessionComposer — running turn controls", () => {
     // Interrupt-and-send lives on the queued chip's "Send now", not here — a
     // second send button beside Stop read as a puzzle.
     expect(screen.queryByRole("button", { name: "Send now" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Queue follow-up" })).toBeNull();
     expect(screen.getByRole("button", { name: "Stop chat" })).toBeEnabled();
+  });
+
+  describe("on a touch surface", () => {
+    beforeEach(() => {
+      vi.spyOn(window, "matchMedia").mockImplementation(
+        (query: string) => ({ matches: query.includes("coarse"), media: query }) as MediaQueryList
+      );
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("queues the draft from a button, since a thumb has no Enter key", async () => {
+      const { onSendSessionInput, onTerminateSession } = runningComposer();
+
+      // Nothing to queue yet: the running turn keeps its single control.
+      expect(screen.queryByRole("button", { name: "Queue follow-up" })).toBeNull();
+
+      fireEvent.change(screen.getByLabelText("Chat prompt"), { target: { value: "MCP" } });
+      fireEvent.click(screen.getByRole("button", { name: "Queue follow-up" }));
+
+      await waitFor(() =>
+        expect(onSendSessionInput).toHaveBeenCalledWith(
+          "session-a",
+          "MCP",
+          expect.anything(),
+          "auto",
+          undefined
+        )
+      );
+      expect(onTerminateSession).not.toHaveBeenCalled();
+    });
   });
 });

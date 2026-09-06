@@ -376,7 +376,8 @@ button.composer-compact-context-row:hover,
     display: none;
   }
 
-  .session-input-toolbar .session-send-button {
+  .session-input-toolbar .session-send-button,
+  .session-input-toolbar .session-send-slot {
     grid-area: send;
     justify-self: end;
   }
@@ -1052,6 +1053,14 @@ button.composer-compact-context-row:hover,
 .session-input input::placeholder,
 .session-input textarea::placeholder {
   color: var(--muted);
+}
+
+/* Holds the running turn's controls — Stop, and on touch the queue button —
+   so the pair reads as one slot at the toolbar's end. */
+.session-send-slot {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
 }
 
 .session-send-button {

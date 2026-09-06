@@ -1,0 +1,40 @@
+/* Scroll edge fades. Content dissolves into the surface instead of being
+   sliced mid-line at a header or footer.
+
+   The scrims sit on a wrapper *outside* the scroller. Masking the list
+   itself would take sticky chrome (scroll-to-latest, section headers)
+   down with the content sliding under it. Pair with padding on the inner
+   scroller that matches `--scroll-edge-fade` so at rest the fade lands
+   on empty space and only bites once content is actually scrolling past
+   the edge.
+
+   `--scroll-edge-fade-color` must be the surface the wrapper sits on, or
+   the fade paints a band of the wrong fill across it. */
+
+.scroll-fade {
+  position: relative;
+  isolation: isolate;
+}
+
+.scroll-fade::before,
+.scroll-fade::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--scroll-edge-fade);
+  /* Below sticky chrome that opts into z-index 2, above the scrolling
+     content. Same stacking the transcript uses for scroll-to-latest. */
+  z-index: 1;
+  pointer-events: none;
+}
+
+.scroll-fade::before {
+  top: 0;
+  background: linear-gradient(to bottom, var(--scroll-edge-fade-color), transparent);
+}
+
+.scroll-fade::after {
+  bottom: 0;
+  background: linear-gradient(to top, var(--scroll-edge-fade-color), transparent);
+}

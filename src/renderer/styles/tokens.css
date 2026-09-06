@@ -196,6 +196,12 @@
   --space-7: 28px;
   --space-8: 32px;
 
+  /* Height of the dissolve at a scroller's ends. The inner scroller's end
+     padding matches it, so at rest the fade lands on empty space. Surfaces
+     override the colour with the fill they sit on. */
+  --scroll-edge-fade: 32px;
+  --scroll-edge-fade-color: var(--bg);
+
   /* Focus ring. Single source for every focus-visible style. */
   --ring: 0 0 0 2px color-mix(in oklab, var(--accent) 50%, transparent);
 

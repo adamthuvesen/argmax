@@ -434,8 +434,12 @@
 /* The subagent transcript, rendered inside the review panel's Agents view.
    The tab strip above it lists every open run; the masthead here names the
    one in view and the body below scrolls under it. */
-.agent-activity {
+.agent-activity,
+.agent-activity-history-viewport {
   --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width)) / 2), 2000px);
+}
+
+.agent-activity {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -449,25 +453,38 @@
 /* A persistent native child keeps one tab while each invocation remains its
    own readable run. The history owns scrolling so adding a continuation does
    not replace or remount the earlier work. */
-.agent-activity-history {
+.agent-activity-history-viewport {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  overflow: auto;
 }
 
-.agent-activity-history > .agent-activity {
+.agent-activity-history {
+  min-height: 0;
+  overflow: auto;
+  overflow-anchor: none;
+  overscroll-behavior-y: contain;
+}
+
+.agent-activity-history-content {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.agent-activity-history-content > .agent-activity {
   flex: 0 0 auto;
   animation: none;
 }
 
-.agent-activity-history > .agent-activity + .agent-activity {
+.agent-activity-history-content > .agent-activity + .agent-activity {
   border-top: 1px solid var(--line);
 }
 
-.agent-activity-history > .agent-activity .agent-activity-scroll {
+.agent-activity-history-content > .agent-activity .agent-activity-scroll {
   overflow: visible;
 }
 
@@ -542,15 +559,31 @@
   color: var(--line-strong);
 }
 
-.agent-activity-scroll {
+.agent-activity-viewport {
   position: relative;
-  display: flex;
   min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-activity-scroll {
+  min-height: 0;
+  overflow: auto;
+  overflow-anchor: none;
+  overscroll-behavior-y: contain;
+}
+
+.agent-activity-content {
+  display: flex;
+  box-sizing: border-box;
   flex-direction: column;
   gap: var(--space-6);
-  --scroll-fab-gap: var(--space-6);
-  overflow: auto;
   padding: var(--space-6) var(--session-inline-padding) var(--space-8);
+}
+
+:is(.conversation-content, .agent-activity-content) > * {
+  flex-shrink: 0;
 }
 
 /* The brief sits behind a chip in the same row style as the run's "Worked
@@ -825,21 +858,23 @@
 
 .conversation-list {
   --conversation-list-gap: var(--space-8);
-  --scroll-fab-gap: var(--conversation-list-gap);
-  display: flex;
   min-height: 0;
-  flex-direction: column;
-  gap: var(--conversation-list-gap);
   /* Vertical only. The transcript is a column, so anything wide enough to make
      it scroll sideways (a markdown table before `.markdown-table-scroll` boxed
      it) doesn't widen the reading column — it just makes every message drift
      under the thumb. Wide blocks own their own sideways scroller instead. */
   overflow-y: auto;
   overflow-x: hidden;
-  /* JS owns follow and detached anchoring. Safari 27+ ships CSS scroll
-     anchoring; a leftover spacer as the last child is a bad anchor and
-     jumps a 1px-up gesture onto the previous message. */
+  /* One controller owns following and preserving the reading position. */
   overflow-anchor: none;
+  overscroll-behavior-y: contain;
+}
+
+.conversation-content {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  gap: var(--conversation-list-gap);
   /* A constant tail gap keeps the newest streamed line clear of the bottom
      edge. It stays the same in the idle and live states on purpose: a gap
      that only appeared while streaming would be reclaimed the instant the
@@ -869,17 +904,6 @@
 
 .conversation-tail:not(:first-child) {
   margin-top: -10px;
-}
-
-/* Leftover viewport under the latest user message. Pinning to the bottom then
-   sits that message at the top of the pane until the new turn fills the space.
-   Negative margin cancels the list gap so a 0-height spacer adds no extra
-   room, and the constant tail padding stays the same at both ends of a turn. */
-.conversation-turn-spacer {
-  flex: 0 0 auto;
-  pointer-events: none;
-  margin-top: calc(-1 * var(--conversation-list-gap));
-  overflow-anchor: none;
 }
 
 /* Base layout only. The fill is owned by the variants: .user paints the ink
@@ -1692,15 +1716,11 @@
   flex: 0 0 auto;
 }
 
-/* Floating "scroll to latest" button. Anchors to the conversation list (which
-   is `position: relative`'d below) so it doesn't drift over the composer. */
-.conversation-list {
-  position: relative;
-}
-
+/* The button is outside the scroller, so showing it cannot resize the transcript. */
 .scroll-to-bottom-fab {
-  position: sticky;
+  position: absolute;
   bottom: 12px;
+  right: calc(var(--session-inline-padding) + var(--space-1_5));
   /* Dock to the right edge instead of floating centered — a control on
      the gutter reads as UI; a centered control reads as orphan content. */
   align-self: flex-end;
@@ -1722,13 +1742,6 @@
   min-height: 28px;
   max-height: 28px;
   padding: 0;
-  /* Layout-neutral: the button sits at the viewport bottom, so it must not add
-     to the list's scroll height — arriving at the bottom would otherwise shrink
-     the content under the reader as the button leaves. Its own height is
-     cancelled here, and `--scroll-fab-gap` cancels the flex gap its presence
-     adds between it and the last message. */
-  margin-top: calc(-28px - var(--scroll-fab-gap, 0px));
-  margin-right: var(--space-1_5);
   appearance: none;
   -webkit-appearance: none;
   border: 1px solid color-mix(in oklab, var(--line) 88%, transparent);

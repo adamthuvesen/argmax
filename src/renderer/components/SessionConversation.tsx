@@ -31,7 +31,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
-import { SCROLL_INTENT_KEYS, useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
+import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { modelPickerSelectionFromSession, type ModelPickerSelection } from "../lib/models.js";
 import { orderedOpenFilePaths } from "../lib/openFileContext.js";
@@ -1109,38 +1109,17 @@ export function SessionConversation({
 
   // Restored turns must not replay their entrance animation on every reopen.
   const restoringTranscript = useRestoreWithoutMotion(eventsBackfilled);
-  // Opening or closing the docked side panel reflows the transcript without
-  // changing its content. Preserve the viewport across that reflow instead of
-  // letting the new bottom drift out of view (which reads as a jump up to an
-  // earlier message).
-  const preserveLayoutKey = `${review.isPanelOpen ? "panel" : "chat"}:${isLogOpen ? "log" : "nlog"}`;
   const {
-    conversationListRef,
+    scrollRef: conversationListRef,
+    contentRef: conversationContentRef,
     showScrollToBottom,
     newBelowCount,
     scrollToBottom: scrollConversationToBottom,
-    handleUserScrollIntent: handleConversationScrollIntent,
-    handleScroll: handleConversationScroll
-  } = useSmartFollowScroll(
-    sessionId,
-    conversationItems,
-    isThinkingVisible,
-    inputRef,
-    lastUserMessageId,
-    preserveLayoutKey
-  );
-  // Revealing earlier turns grows the list upward. The list is bottom-anchored,
-  // so holding the distance from the bottom leaves what the user is reading
-  // exactly where it was.
+    scrollToElement
+  } = useConversationScroll({ sessionId, items: conversationItems, resetKey: lastUserMessageId });
+  // The scroll controller preserves the reading anchor across this prepend.
   const showEarlierItems = (): void => {
-    const list = conversationListRef.current;
-    const anchorFromBottom = list ? list.scrollHeight - list.scrollTop : null;
     setVisibleCount((current) => current + CONVERSATION_WINDOW_STEP);
-    if (anchorFromBottom === null) return;
-    requestAnimationFrame(() => {
-      const node = conversationListRef.current;
-      if (node) node.scrollTop = node.scrollHeight - anchorFromBottom;
-    });
   };
   const repositoryName =
     headingLabel ?? project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
@@ -1244,119 +1223,102 @@ export function SessionConversation({
         <div
           className="conversation-list"
           ref={conversationListRef}
-          onScroll={handleConversationScroll}
-          onWheel={handleConversationScrollIntent}
-          onTouchMove={handleConversationScrollIntent}
-          onPointerDown={(event) => {
-            if (event.target === event.currentTarget) {
-              handleConversationScrollIntent();
-            }
-          }}
-          onPointerMove={(event) => {
-            if (event.buttons !== 0) {
-              handleConversationScrollIntent();
-            }
-          }}
-          onKeyDown={(event) => {
-            // Unlike pointerdown, a scroll key is intent wherever focus sits:
-            // the browser scrolls this list for any descendant control.
-            if (SCROLL_INTENT_KEYS.has(event.key)) {
-              handleConversationScrollIntent();
-            }
-          }}
+          aria-label="Conversation messages"
+          tabIndex={0}
         >
-          {windowStart > 0 ? (
-            <button type="button" className="conversation-show-earlier" onClick={showEarlierItems}>
-              Show earlier messages ({windowStart} hidden)
-            </button>
-          ) : null}
-          {transcriptRenderItems.length > 0 ? (
-            windowedItems.map((item, windowIndex) => {
-              const index = windowStart + windowIndex;
-              if (item.kind === "user-message") {
+          <div className="conversation-content" ref={conversationContentRef}>
+            {windowStart > 0 ? (
+              <button type="button" className="conversation-show-earlier" onClick={showEarlierItems}>
+                Show earlier messages ({windowStart} hidden)
+              </button>
+            ) : null}
+            {transcriptRenderItems.length > 0 ? (
+              windowedItems.map((item, windowIndex) => {
+                const index = windowStart + windowIndex;
+                if (item.kind === "user-message") {
+                  return (
+                    <SessionConversationUserMessage
+                      key={item.event.id}
+                      event={item.event}
+                      attachments={parseUserMessageAttachments(item)}
+                      isTurnAnchor={item.event.id === lastUserMessageId}
+                      onOpenSession={onOpenSession}
+                    />
+                  );
+                }
+                if (item.kind === "compaction") {
+                  return <CompactionNotice key={item.id} notice={item.notice} />;
+                }
+                if (item.kind === "project-move") {
+                  return <ProjectMoveNotice key={item.id} notice={item.notice} />;
+                }
+                if (item.kind === "provider-switch") {
+                  return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
+                }
                 return (
-                  <SessionConversationUserMessage
-                    key={item.event.id}
-                    event={item.event}
-                    attachments={parseUserMessageAttachments(item)}
-                    isTurnAnchor={item.event.id === lastUserMessageId}
-                    onOpenSession={onOpenSession}
+                  <SessionConversationTurn
+                    key={item.id}
+                    item={item}
+                    priorItem={index > 0 ? transcriptRenderItems[index - 1] ?? null : null}
+                    isLatestTurn={index === transcriptRenderItems.length - 1}
+                    session={session}
+                    selectedModel={selectedModel}
+                    workspace={workspace}
+                    agentCodenames={agentCodenames}
+                    onOpenFile={onOpenFile}
+                    onOpenAgent={onOpenAgent}
+                    onTerminateSession={onTerminateSession}
+                    onForkSession={onForkSession}
+                    onSendSessionInput={sendSessionInput}
+                    inputRef={inputRef}
+                    shouldRefocusInput={shouldRefocusInput}
+                    setStatus={setStatus}
+                    setAgentMode={setAgentMode}
+                    defaultToolCallsDisplay={defaultToolCallsDisplay}
+                    defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+                    defaultThinkingExpanded={defaultThinkingExpanded}
+                    defaultTurnChangesExpanded={defaultTurnChangesExpanded}
+                    restoringTranscript={restoringTranscript}
+                    onOpenDiff={review.openFile}
+                    onOpenReview={review.openChangesPanel}
                   />
                 );
-              }
-              if (item.kind === "compaction") {
-                return <CompactionNotice key={item.id} notice={item.notice} />;
-              }
-              if (item.kind === "project-move") {
-                return <ProjectMoveNotice key={item.id} notice={item.notice} />;
-              }
-              if (item.kind === "provider-switch") {
-                return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
-              }
-              return (
-                <SessionConversationTurn
-                  key={item.id}
-                  item={item}
-                  priorItem={index > 0 ? transcriptRenderItems[index - 1] ?? null : null}
-                  isLatestTurn={index === transcriptRenderItems.length - 1}
-                  session={session}
-                  selectedModel={selectedModel}
-                  workspace={workspace}
-                  agentCodenames={agentCodenames}
-                  onOpenFile={onOpenFile}
-                  onOpenAgent={onOpenAgent}
-                  onTerminateSession={onTerminateSession}
-                  onForkSession={onForkSession}
-                  onSendSessionInput={sendSessionInput}
-                  inputRef={inputRef}
-                  shouldRefocusInput={shouldRefocusInput}
-                  setStatus={setStatus}
-                  setAgentMode={setAgentMode}
-                  defaultToolCallsDisplay={defaultToolCallsDisplay}
-                  defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
-                  defaultThinkingExpanded={defaultThinkingExpanded}
-                  defaultTurnChangesExpanded={defaultTurnChangesExpanded}
-                  restoringTranscript={restoringTranscript}
-                  onOpenDiff={review.openFile}
-                  onOpenReview={review.openChangesPanel}
-                />
-              );
-            })
-          ) : terminalTranscript ? (
-            <article className="chat-bubble assistant terminal-transcript">
-              <pre>{terminalTranscript}</pre>
-            </article>
-          ) : isThinking ? null : (
-            <p className="conversation-empty">Agent replies will appear here.</p>
-          )}
-          {terminalTranscript && !hasRenderableContent && conversationItems.length > 0 ? (
-            <article className="chat-bubble assistant terminal-transcript">
-              <pre>{terminalTranscript}</pre>
-            </article>
-          ) : null}
-          {showScrollToBottom ? (
-            <button
-              type="button"
-              className="scroll-to-bottom-fab"
-              aria-label={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
-              title={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
-              onClick={scrollConversationToBottom}
-            >
-              <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
-            </button>
-          ) : null}
-          {/* The Thinking line's slot stays in the layout whether the line is
-              in it or not. It sits after the transcript, and it leaves at the
-              moment the first answer token lands. Unmounting the row there
-              would shorten the transcript under a reader pinned to the bottom
-              and pull the view up by its height. */}
-          <div className="conversation-tail">
-            {isThinkingVisible ? (
-              <ThinkingLabel phaseKey={workspace?.id ?? session?.id} startedAtMs={thinkingAnchorMs} />
+              })
+            ) : terminalTranscript ? (
+              <article className="chat-bubble assistant terminal-transcript">
+                <pre>{terminalTranscript}</pre>
+              </article>
+            ) : isThinking ? null : (
+              <p className="conversation-empty">Agent replies will appear here.</p>
+            )}
+            {terminalTranscript && !hasRenderableContent && conversationItems.length > 0 ? (
+              <article className="chat-bubble assistant terminal-transcript">
+                <pre>{terminalTranscript}</pre>
+              </article>
             ) : null}
+            {/* The Thinking line's slot stays in the layout whether the line is
+                in it or not. It sits after the transcript, and it leaves at the
+                moment the first answer token lands. Unmounting the row there
+                would shorten the transcript under a reader pinned to the bottom
+                and pull the view up by its height. */}
+            <div className="conversation-tail">
+              {isThinkingVisible ? (
+                <ThinkingLabel phaseKey={workspace?.id ?? session?.id} startedAtMs={thinkingAnchorMs} />
+              ) : null}
+            </div>
           </div>
-          <div className="conversation-turn-spacer" data-conversation-spacer="" aria-hidden="true" />
         </div>
+        {showScrollToBottom ? (
+          <button
+            type="button"
+            className="scroll-to-bottom-fab"
+            aria-label={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
+            title={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
+            onClick={scrollConversationToBottom}
+          >
+            <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
       <SelectionToolbar
         containerRef={conversationScrollRef}
@@ -1389,8 +1351,7 @@ export function SessionConversation({
               const root = conversationListRef.current;
               const el = root?.querySelector(".approval-surface");
               if (el instanceof HTMLElement) {
-                handleConversationScrollIntent();
-                el.scrollIntoView({ behavior: "smooth", block: "start" });
+                scrollToElement(el);
               }
             }}
           >

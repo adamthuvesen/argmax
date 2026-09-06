@@ -12,13 +12,36 @@ The chat surface renders assistant bubbles, tools, and interactive cards: **Plan
 
 ## Follow scroll
 
-The conversation list pins to the physical bottom while the reader is attached, and a leftover-viewport spacer after the latest user message makes that pin sit the prompt at the top of the pane until the turn fills it. Logic lives in [useSmartFollowScroll.ts](../src/renderer/hooks/useSmartFollowScroll.ts).
+[useConversationScroll.ts](../src/renderer/hooks/useConversationScroll.ts) owns
+scrolling in the chat, a single agent run, and persistent agent history. Each
+has one scroll viewport and one content wrapper. The scroll-to-latest button
+is an absolute overlay outside the viewport, so its visibility cannot change
+the transcript height.
 
-The macOS app is WKWebView. Safari 26 has no CSS `overflow-anchor`; Safari 27 adds it, so the list sets `overflow-anchor: none` and JS owns both follow pinning and detached anchoring. While attached, pinning hides layout shifts. After the reader scrolls up, the next insertion above the viewport would slide older transcript into view, so a detached pass keeps the in-view node still by its content coordinate. The node is probed at the middle of the reading column, 48px below the viewport top, with the child straddling that line as the fallback. The list's inline padding is the gutter around the column, so a probe near the list's left edge hits the scroller itself at ordinary desktop widths, and for a while that left the detached pass with no anchor at all. The leftover spacer keeps the height from the latest user message through the end of the list equal to the leftover viewport, including while detached. Freezing its pixel height let a folding thought (or any shrink in the live turn) clamp a reader who had nudged 1px off the bottom onto the previous message. Recomputing the spacer absorbs that shrink so `scrollHeight` does not drop; if the browser already clamped, scrollTop is restored. A user-scroll event while still attached only pins; it does not resize the spacer. Re-attach only when the reader moves toward the bottom (including trackpad momentum), taps scroll-to-latest, sends a new message, or changes session. Collapse that brings the bottom to them is not a request to follow.
+The controller follows the physical bottom until the reader moves upward.
+An upward wheel or touch gesture releases following before the browser moves
+the viewport. Scroll events record the reading position. Layout reconciliation
+owns programmatic scroll writes. Reaching the bottom by scrolling downward,
+sending a new message, switching session, or clicking scroll-to-latest resumes
+following. A content resize alone cannot resume it.
 
-An anchor inside a nested scroll area, such as an expanded file diff, uses that area's outer box. Scrolling the diff changes its descendants' coordinates without moving the surrounding transcript. Anchoring to a descendant would apply that inner movement to the conversation on the next streamed update. Ordinary text keeps its fine-grained anchor so insertions earlier in the same turn still preserve the reading position.
+The chat content has a minimum height that lets the latest user message sit
+at the top of the viewport. Output fills that space naturally as the turn
+grows. While detached, the content also retains a minimum height from before
+the gesture. A folding Thought block below the reader therefore cannot
+shorten the scroll range and clamp them upward. This may leave blank space
+below a collapsed turn until the reader resumes following.
 
-Content can also shrink automatically, such as when an older live Thought block folds as a new reasoning burst starts. WebKit may clamp the scroll position to the new bottom before delivering a scroll event. Detached anchoring applies the layout shift from the position before that clamp, so the same shrink is not counted twice. Pending user movement that has not been clamped remains part of the correction.
+Detached layout changes preserve the visible anchor. Nested scroll areas use
+their outer box so scrolling a diff cannot look like a transcript layout
+change. CSS `overflow-anchor: none` keeps browser anchoring from competing
+with the controller. ResizeObserver watches both the content and viewport,
+including composer, panel, and hidden-tab size changes.
+
+The design draws on [use-stick-to-bottom](https://github.com/stackblitz-labs/use-stick-to-bottom)'s
+immediate wheel cancellation. Its shrink-triggered reattachment near the
+bottom conflicts with the detached-reading contract here, so Argmax owns this
+controller rather than adapting a second follow state machine around it.
 
 ## The Sent Prompt
 
@@ -259,7 +282,7 @@ The turn chip controls disclosure across the turn. Per-group and per-row choices
 - **Streaming code blocks stay intact.** The committed/tail split tracks the opening fence's marker and length. Shorter fences, other markers, and fence-like lines with trailing text remain code content, following the [CommonMark fence rules](https://spec.commonmark.org/0.31.2/#fenced-code-blocks).
 - **LaTeX & Math Equations:** Mathematical expressions in assistant responses render via `remark-math` and `rehype-katex` with bundled KaTeX stylesheets. Delimiters are normalized via [normalizeMathDelimiters.ts](../src/renderer/lib/normalizeMathDelimiters.ts), supporting LaTeX display equations (`\[ ... \]`), inline math (`\( ... \)`), bare Greek letters (`\tau`), LaTeX environments (`\begin{align}`), and standard markdown `$$...$$` / `$...$`. Single dollar currency amounts (`$50`) are disambiguated and preserved without entering math mode.
 - **Mermaid diagrams:** Fenced `mermaid` / `mmd` blocks render as SVG via the `mermaid` package, loaded on first use so the cold-start graph stays lean. [MermaidDiagram.tsx](../src/renderer/components/MermaidDiagram.tsx) draws them as a hugging well on `--tool-block-surface`, themed from live CSS tokens (Light / Dark / accent). A wide flowchart scales to the column. Expand in the toolbar opens the diagram at native size in a window overlay. Escape or the backdrop closes it. Incomplete fences while streaming show a pending status. A finished fence that cannot be parsed falls back to the source and a short error. Copy and Source live in the same hover toolbar.
-- **Auto-follow scroll:** [useSmartFollowScroll.ts](../src/renderer/hooks/useSmartFollowScroll.ts) locks viewport to the physical bottom during output. A leftover-viewport spacer after the latest user message sits that message at the top of the pane while the new turn is shorter than the view, so a follow-up is not tucked under a long previous reply. Upward user gestures detach auto-follow and show the scroll-to-bottom button.
+- **Auto-follow scroll:** [useConversationScroll.ts](../src/renderer/hooks/useConversationScroll.ts) follows output until the reader scrolls upward. The content minimum height reserves space for the latest prompt and protects a detached reader from content collapse. See Follow scroll above.
 - **Images in answers:** [MarkdownImage.tsx](../src/renderer/components/MarkdownImage.tsx) renders web images, workspace images through `argmax-asset://`, and saved chat attachments through `argmax-attachment://`. Both protocols enforce their existing filesystem allowlists. A local path that neither handler accepts becomes a file chip after the image request fails, never a broken image box.
 - **File links in answers:** Absolute paths inside the active workspace are reduced to workspace-relative paths before opening. [openableFile.ts](../src/renderer/lib/openableFile.ts) also recognizes the same repo-relative suffix when an answer names a file from another checkout. A real absolute path outside the workspace opens through the system instead of sending the Files panel a path it is not allowed to preview.
 - **Tail reserve & resize:** `.conversation-list` maintains constant bottom padding (`--space-8`). A `ResizeObserver` monitors the viewport and composer textarea to adjust scroll offsets dynamically as drafts expand. A width-driven reflow (the side review/log panel opening or closing) keeps a reader who was already at the bottom at the bottom instead of leaving the new bottom out of view; height-only growth below a detached reader still leaves them alone.

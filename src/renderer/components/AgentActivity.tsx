@@ -2,7 +2,7 @@ import { ArrowDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import type { NativeAgentIdentity, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
-import { SCROLL_INTENT_KEYS, useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
+import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import { buildAgentActivity, persistentAgentRuns, type AgentActivity as AgentActivityModel, type AgentModel } from "../lib/agentActivity.js";
 import { emblemForCodename } from "../lib/agentEmblems.js";
 import { fallbackCodename } from "../lib/agentNames.js";
@@ -208,7 +208,8 @@ function AgentActivityRun({
   agentRunId = null,
   providerInvocationId = null,
   nativeIdentity = null,
-  historyHydrated
+  historyHydrated,
+  ownsScroll = true
 }: {
   events: TimelineEvent[];
   codename?: string;
@@ -238,6 +239,7 @@ function AgentActivityRun({
   nativeIdentity?: NativeAgentIdentity | null;
   /** Shared readiness for a backfill that can populate every persistent run. */
   historyHydrated?: boolean;
+  ownsScroll?: boolean;
 }): JSX.Element {
   const parentSessionId = parentSession?.id ?? null;
   const visibleEvents = useMemo(
@@ -432,17 +434,12 @@ function AgentActivityRun({
     workspace
   ]);
   const {
-    conversationListRef,
+    scrollRef,
+    contentRef,
     showScrollToBottom,
     newBelowCount,
-    scrollToBottom,
-    handleUserScrollIntent,
-    handleScroll
-  } = useSmartFollowScroll(
-    agentKey,
-    followItems,
-    false
-  );
+    scrollToBottom
+  } = useConversationScroll({ sessionId: agentKey, items: followItems, enabled: ownsScroll });
   const loadAgentEventsGuarded = useCallback(async (): Promise<void> => {
     const loadKey = agentKey;
     if (!parentSessionId || !onLoadAgentEvents || !loadKey || agentEventsInFlightKeysRef.current.has(loadKey)) {
@@ -524,125 +521,111 @@ function AgentActivityRun({
         model={activity.model}
         phaseKey={parentToolUseId}
       />
-      <div
-        className="agent-activity-scroll"
-        data-restoring={restoringTranscript ? "true" : undefined}
-        ref={conversationListRef}
-        onScroll={handleScroll}
-        onWheel={handleUserScrollIntent}
-        onTouchMove={handleUserScrollIntent}
-        onPointerDown={(event) => {
-          if (event.target === event.currentTarget) {
-            handleUserScrollIntent();
-          }
-        }}
-        onPointerMove={(event) => {
-          if (event.buttons !== 0) {
-            handleUserScrollIntent();
-          }
-        }}
-        onKeyDown={(event) => {
-          // Unlike pointerdown, a scroll key is intent wherever focus sits:
-          // the browser scrolls this list for any descendant control.
-          if (SCROLL_INTENT_KEYS.has(event.key)) {
-            handleUserScrollIntent();
-          }
-        }}
-      >
-        {activity.prompt ? (
-          // The brief folds behind the same chip the run's activity uses, so
-          // the pane opens on two quiet lines — Instructions, Worked for — and
-          // the header above already says what the agent was asked to do.
-          <section className="agent-activity-summary" aria-label="Agent instructions">
-            <div className="turn-block-header">
-              <button
-                type="button"
-                className="turn-block-chip"
-                aria-label={instructionsExpanded ? "Collapse instructions" : "Expand instructions"}
-                title={instructionsExpanded ? "Collapse instructions" : "Expand instructions"}
-                aria-expanded={instructionsExpanded}
-                onClick={() => setInstructionsExpanded((expanded) => !expanded)}
-              >
-                <span>Instructions</span>
-                <ChevronRight
-                  size={11}
-                  className={`turn-block-chevron${instructionsExpanded ? " expanded" : ""}`}
-                  aria-hidden="true"
-                />
-              </button>
-            </div>
-            {instructionsExpanded ? (
-              <div className="agent-activity-prompt">
-                <StreamingMarkdown
-                  text={activity.prompt}
-                  streaming={false}
-                  workspace={workspace}
-                  onOpenFile={onOpenFile}
-                />
+      <div className="agent-activity-viewport">
+        <div
+          className="agent-activity-scroll"
+          data-restoring={restoringTranscript ? "true" : undefined}
+          ref={scrollRef}
+          aria-label="Agent messages"
+          tabIndex={ownsScroll ? 0 : undefined}
+        >
+          <div className="agent-activity-content" ref={contentRef}>
+            {activity.prompt ? (
+              // The brief folds behind the same chip the run's activity uses, so
+              // the pane opens on two quiet lines — Instructions, Worked for — and
+              // the header above already says what the agent was asked to do.
+              <section className="agent-activity-summary" aria-label="Agent instructions">
+                <div className="turn-block-header">
+                  <button
+                    type="button"
+                    className="turn-block-chip"
+                    aria-label={instructionsExpanded ? "Collapse instructions" : "Expand instructions"}
+                    title={instructionsExpanded ? "Collapse instructions" : "Expand instructions"}
+                    aria-expanded={instructionsExpanded}
+                    onClick={() => setInstructionsExpanded((expanded) => !expanded)}
+                  >
+                    <span>Instructions</span>
+                    <ChevronRight
+                      size={11}
+                      className={`turn-block-chevron${instructionsExpanded ? " expanded" : ""}`}
+                      aria-hidden="true"
+                    />
+                  </button>
+                </div>
+                {instructionsExpanded ? (
+                  <div className="agent-activity-prompt">
+                    <StreamingMarkdown
+                      text={activity.prompt}
+                      streaming={false}
+                      workspace={workspace}
+                      onOpenFile={onOpenFile}
+                    />
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            {showAgentActivityThinking ? (
+              <div className="agent-activity-empty" role="status">
+                <ThinkingLabel phaseKey={parentToolUseId} startedAtMs={launchedAtMs ?? undefined} />
               </div>
             ) : null}
-          </section>
-        ) : null}
 
-        {showAgentActivityThinking ? (
-          <div className="agent-activity-empty" role="status">
-            <ThinkingLabel phaseKey={parentToolUseId} startedAtMs={launchedAtMs ?? undefined} />
-          </div>
-        ) : null}
+            {showLoadFailureNotice ? (
+              <div className="agent-activity-empty" role="alert">
+                Agent activity could not be loaded. Showing launch/result metadata.
+              </div>
+            ) : showLimitedNotice ? (
+              <div className="agent-activity-empty" role="status">
+                This provider reported the agent launch, but did not stream child activity.
+              </div>
+            ) : null}
 
-        {showLoadFailureNotice ? (
-          <div className="agent-activity-empty" role="alert">
-            Agent activity could not be loaded. Showing launch/result metadata.
-          </div>
-        ) : showLimitedNotice ? (
-          <div className="agent-activity-empty" role="status">
-            This provider reported the agent launch, but did not stream child activity.
-          </div>
-        ) : null}
+            {limitedHistoryKey === agentKey ? (
+              <div className="agent-activity-empty" role="status">
+                Earlier agent activity is not shown.
+              </div>
+            ) : null}
 
-        {limitedHistoryKey === agentKey ? (
-          <div className="agent-activity-empty" role="status">
-            Earlier agent activity is not shown.
-          </div>
-        ) : null}
+            {activityChildren.length > 0 || toolItems.length > 0 ? (
+              // The same block the transcript wraps a turn in, so the run carries
+              // the same "Worked for Xs" chip: one control over every tool group
+              // and Thought block below it.
+              <TurnBlock
+                toolItems={toolItems}
+                assistantTimestamps={assistantTimestamps}
+                {...(launchedAtMs !== null ? { turnStartedAtMs: launchedAtMs } : {})}
+                isTurnActive={streaming}
+                toolsExpanded={activityExpanded}
+                onToggleTools={() => setActivityExpandOverride(!activityExpanded)}
+                hideWorkingWhenCollapsed={minimalActivity}
+                body={activityChildren}
+              />
+            ) : !showLimitedNotice && !showAgentActivityThinking ? (
+              <div className="agent-activity-empty" role="status">
+                Waiting for agent activity.
+              </div>
+            ) : null}
 
-        {activityChildren.length > 0 || toolItems.length > 0 ? (
-          // The same block the transcript wraps a turn in, so the run carries
-          // the same "Worked for Xs" chip: one control over every tool group
-          // and Thought block below it.
-          <TurnBlock
-            toolItems={toolItems}
-            assistantTimestamps={assistantTimestamps}
-            {...(launchedAtMs !== null ? { turnStartedAtMs: launchedAtMs } : {})}
-            isTurnActive={streaming}
-            toolsExpanded={activityExpanded}
-            onToggleTools={() => setActivityExpandOverride(!activityExpanded)}
-            hideWorkingWhenCollapsed={minimalActivity}
-            body={activityChildren}
-          />
-        ) : !showLimitedNotice && !showAgentActivityThinking ? (
-          <div className="agent-activity-empty" role="status">
-            Waiting for agent activity.
+            {finalOutput !== null ? (
+              <AgentResult
+                finalOutput={finalOutput}
+                workspace={workspace}
+                onOpenFile={onOpenFile}
+              />
+            ) : null}
+            {!streaming && runChanges.length > 0 ? (
+              <TurnChangesCard
+                changes={runChanges}
+                workspaceCwd={workspace?.path ?? null}
+                {...(onOpenDiff ? { onOpenDiff } : {})}
+                {...(onOpenFile ? { onOpenFile } : {})}
+                {...(onOpenReview ? { onOpenReview } : {})}
+              />
+            ) : null}
           </div>
-        ) : null}
-
-        {finalOutput !== null ? (
-          <AgentResult
-            finalOutput={finalOutput}
-            workspace={workspace}
-            onOpenFile={onOpenFile}
-          />
-        ) : null}
-        {!streaming && runChanges.length > 0 ? (
-          <TurnChangesCard
-            changes={runChanges}
-            workspaceCwd={workspace?.path ?? null}
-            {...(onOpenDiff ? { onOpenDiff } : {})}
-            {...(onOpenFile ? { onOpenFile } : {})}
-            {...(onOpenReview ? { onOpenReview } : {})}
-          />
-        ) : null}
-        {showScrollToBottom ? (
+        </div>
+        {showScrollToBottom && ownsScroll ? (
           <button
             type="button"
             className="scroll-to-bottom-fab"
@@ -673,6 +656,11 @@ export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JS
     ? props.events.filter((event) => event.sessionId === parentSessionId)
     : [];
   const runs = persistentAgentRuns(visibleEvents, props.parentToolUseId, props.nativeIdentity ?? null);
+  const { scrollRef, contentRef, showScrollToBottom, newBelowCount, scrollToBottom } = useConversationScroll({
+    sessionId: `${parentSessionId}:${props.parentToolUseId}`,
+    items: visibleEvents,
+    enabled: runs.length > 1
+  });
   if (runs.length <= 1) {
     return (
       <AgentActivityRun
@@ -685,18 +673,34 @@ export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JS
     );
   }
   return (
-    <div className="agent-activity-history" aria-label={`Agent runs: ${props.codename ?? props.parentToolUseId}`}>
-      {runs.map((run, index) => (
-        <AgentActivityRun
-          key={run.key}
-          {...props}
-          agentRunId={run.agentRunId}
-          providerInvocationId={run.providerInvocationId}
-          onLoadAgentEvents={index === runs.length - 1 ? onLoadAgentEvents : undefined}
-          onLoadSessionEvents={index === runs.length - 1 ? props.onLoadSessionEvents : undefined}
-          historyHydrated={historyHydrated}
-        />
-      ))}
+    <div className="agent-activity-history-viewport">
+      <div className="agent-activity-history" ref={scrollRef} tabIndex={0} aria-label={`Agent runs: ${props.codename ?? props.parentToolUseId}`}>
+        <div className="agent-activity-history-content" ref={contentRef}>
+          {runs.map((run, index) => (
+            <AgentActivityRun
+              key={run.key}
+              {...props}
+              agentRunId={run.agentRunId}
+              providerInvocationId={run.providerInvocationId}
+              onLoadAgentEvents={index === runs.length - 1 ? onLoadAgentEvents : undefined}
+              onLoadSessionEvents={index === runs.length - 1 ? props.onLoadSessionEvents : undefined}
+              historyHydrated={historyHydrated}
+              ownsScroll={false}
+            />
+          ))}
+        </div>
+      </div>
+      {showScrollToBottom ? (
+        <button
+          type="button"
+          className="scroll-to-bottom-fab"
+          aria-label={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
+          title="Scroll to latest"
+          onClick={scrollToBottom}
+        >
+          <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -70,7 +70,11 @@ function AgentHeader({
         aria-hidden="true"
       >
         {status === "running" ? (
-          <WorkingNest active size={13} phaseKey={phaseKey} />
+          // Held still: the masthead mark is this run's identity, sitting above
+          // a transcript that is already streaming. A relay here is one moving
+          // thing too many, so the nest keeps its live colour without the
+          // motion — and with it the phase, which only times the relay.
+          <WorkingNest active still size={13} />
         ) : (
           <AgentEmblem
             shape={emblem.shape}

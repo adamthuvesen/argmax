@@ -48,6 +48,20 @@ describe("<WorkingNest />", () => {
     expect(animations.every((animation) => animation.startTime === 0)).toBe(true);
   });
 
+  it("keeps a still nest out of the relay", () => {
+    const getAnimations = vi.fn(() => []);
+    Object.defineProperty(Element.prototype, "getAnimations", {
+      configurable: true,
+      value: getAnimations
+    });
+
+    const { container } = render(<WorkingNest active still size={13} />);
+
+    expect(container.querySelector(".working-nest")).toHaveAttribute("data-still", "true");
+    // Nothing to anchor: the CSS pins the dots, so the timeline pass is skipped.
+    expect(getAnimations).not.toHaveBeenCalled();
+  });
+
   it("keeps the settle state through rerenders after active work completes", () => {
     Object.defineProperty(Element.prototype, "getAnimations", {
       configurable: true,

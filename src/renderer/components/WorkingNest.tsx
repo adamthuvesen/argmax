@@ -21,17 +21,23 @@ export const WORKING_NEST_SETTLE_MS = 220;
  * unmounted before it plays. The sequence lives in CSS (.working-nest-dot) so
  * prefers-reduced-motion can pin it to a still nest. `phaseKey` keeps the same
  * job synchronized across surfaces while separate jobs start on different beats.
+ *
+ * `still` asks for that pinned nest on purpose: the live accent, none of the
+ * motion. It is for a surface where the mark is a header identity rather than a
+ * status ticker, and a relay beside a title would only be noise.
  */
 export function WorkingNest({
   active,
   size = 14,
   className,
-  phaseKey
+  phaseKey,
+  still = false
 }: {
   active: boolean;
   size?: number;
   className?: string;
   phaseKey?: string | undefined;
+  still?: boolean;
 }): JSX.Element {
   const classes = ["working-nest", className].filter(Boolean).join(" ");
   const phase = phaseKey ? stableHash32(phaseKey) % 4 : 0;
@@ -47,7 +53,7 @@ export function WorkingNest({
   }, [active]);
 
   useLayoutEffect(() => {
-    if (!active) return;
+    if (!active || still) return;
 
     for (const dot of nestRef.current?.querySelectorAll(".working-nest-dot") ?? []) {
       for (const animation of dot.getAnimations?.() ?? []) {
@@ -56,7 +62,7 @@ export function WorkingNest({
         animation.startTime = 0;
       }
     }
-  }, [active]);
+  }, [active, still]);
 
   useEffect(() => {
     if (!isSettling) return;
@@ -70,6 +76,7 @@ export function WorkingNest({
       className={classes}
       data-active={active ? "true" : undefined}
       data-settling={isSettling ? "true" : undefined}
+      data-still={still ? "true" : undefined}
       data-working={active ? "true" : undefined}
       data-phase={phase}
       width={size}

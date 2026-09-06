@@ -2041,8 +2041,7 @@ async fn follow_up_send_input_returns_before_provider_spawn() {
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
                 prompt: "before".to_owned(),
-                state: "complete".to_owned(),
-                attention: "none".to_owned(),
+                state: SessionState::Complete,
             },
         )
         .expect("persist completed session")
@@ -2081,7 +2080,7 @@ async fn follow_up_send_input_returns_before_provider_spawn() {
         let connection = database.connection();
         find_session_by_id(&connection, &session_id).expect("find session")
     };
-    assert_eq!(persisted.state, "running");
+    assert_eq!(persisted.state, SessionState::Running);
     let tail = {
         let connection = database.connection();
         list_session_events_since(&connection, &session_id, None, None).expect("list events")

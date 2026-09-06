@@ -1173,11 +1173,14 @@ describe("SessionConversation — streaming & composer", () => {
   it.each([
     { provider: "codex" as const, prompt: "ask Curie to continue", hasReferences: true },
     { provider: "opencode" as const, prompt: "ask Curie to continue", hasReferences: true },
+    { provider: "cursor" as const, prompt: "ask Curie to continue", hasReferences: true },
+    { provider: "cursor" as const, prompt: "ask Curie to continue", hasReferences: false, modelId: "composer-2.5" },
     { provider: "opencode" as const, prompt: "ask Curieville to continue", hasReferences: false }
   ])("passes native child references for $provider follow-up only for a whole-word alias ($prompt)", async ({
     provider,
     prompt,
-    hasReferences
+    hasReferences,
+    modelId
   }) => {
     const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
     const nativeAgent = event("agent-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
@@ -1192,7 +1195,12 @@ describe("SessionConversation — streaming & composer", () => {
       agentCodename: "Curie"
     });
     renderConversation(
-      baseSession({ provider, state: "complete", providerConversationId: "parent-native" }),
+      baseSession({
+        provider,
+        state: "complete",
+        ...(modelId ? { modelId } : provider === "cursor" ? { modelId: "cursor-grok-4.6-medium" } : {}),
+        providerConversationId: "parent-native"
+      }),
       [nativeAgent],
       { onSendSessionInput }
     );

@@ -927,10 +927,7 @@ fn native_codex_agent_identity_enriches_child_rows_and_rejects_other_providers()
     );
 
     connection
-        .execute(
-            "UPDATE sessions SET provider = 'cursor' WHERE id = 's1'",
-            [],
-        )
+        .execute("UPDATE sessions SET provider = 'grok' WHERE id = 's1'", [])
         .expect("switch to unsupported provider");
     assert!(
         !has_current_native_agent_identity(&connection, "s1", "parent-codex", "child-codex")
@@ -999,6 +996,66 @@ fn native_opencode_agent_identity_keeps_the_first_task_as_the_root() {
         "child-opencode"
     )
     .expect("validate OpenCode identity"));
+}
+
+#[test]
+fn native_cursor_agent_identity_keeps_the_returned_child_as_the_root() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    let mut session = session_input();
+    session.provider = "cursor".to_owned();
+    persist_session(&connection, &session).expect("persist session");
+    update_session_provider_conversation_id(&connection, "s1", "parent-cursor")
+        .expect("set parent conversation");
+
+    let first = persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "cursor-task-first".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "agent.started".to_owned(),
+            message: "First task".to_owned(),
+            payload: serde_json::json!({
+                "providerChildSessionId": "returned-child",
+                "providerParentConversationId": "parent-cursor",
+                "agentRunId": "call-first",
+                "providerInvocationId": "invoke-first",
+                "requestAgentId": "different-request-id",
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist first task");
+    let continued = persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "cursor-task-resume".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "agent.started".to_owned(),
+            message: "Resumed task".to_owned(),
+            payload: serde_json::json!({
+                "providerChildSessionId": "returned-child",
+                "providerParentConversationId": "parent-cursor",
+                "agentRunId": "call-resume",
+                "providerInvocationId": "invoke-resume",
+            }),
+            created_at: None,
+        },
+    )
+    .expect("persist resumed task");
+
+    assert_eq!(first.payload["agentRootToolUseId"], "call-first");
+    assert_eq!(continued.payload["agentRootToolUseId"], "call-first");
+    assert_eq!(continued.payload["agentRunId"], "call-resume");
+    assert!(has_current_native_agent_identity(
+        &connection,
+        "s1",
+        "parent-cursor",
+        "returned-child"
+    )
+    .expect("validate Cursor identity"));
 }
 
 #[test]

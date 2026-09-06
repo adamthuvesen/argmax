@@ -39,6 +39,10 @@ describe("verification script arguments", () => {
       scenario: "persistent-opencode-subagent",
       native: "off",
     });
+    expect(parseVerifyArgs(["--scenario", "persistent-cursor-subagent", "--native", "off"])).toMatchObject({
+      scenario: "persistent-cursor-subagent",
+      native: "off",
+    });
     expect(() => parseVerifyArgs(["--out"])).toThrow(/requires a value/);
     expect(() => parseScratchArgs(["--port", "70000"])).toThrow(/between 1 and 65535/);
     expect(() => parseScratchArgs(["--data-dir"])).toThrow(/requires a value/);

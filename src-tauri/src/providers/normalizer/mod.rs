@@ -38,6 +38,7 @@ use self::{
     cursor::{
         event_type as cursor_event_type, extract_usage as extract_cursor_usage,
         is_lifecycle_event as is_cursor_lifecycle_event,
+        native_agent_lifecycle_events as normalize_cursor_native_agent_lifecycle_events,
         normalize_assistant_text as normalize_cursor_assistant_text,
         normalize_result_success as normalize_cursor_result_success,
         normalize_thinking_delta as normalize_cursor_thinking_delta,
@@ -692,8 +693,14 @@ fn normalize_json_payload(
         if let Some(tool_event) =
             normalize_cursor_tool_call(event, &payload, provider_type.as_deref())
         {
+            let mut events = vec![tool_event];
+            events.extend(normalize_cursor_native_agent_lifecycle_events(
+                event,
+                &payload,
+                provider_type.as_deref(),
+            ));
             return NormalizedProviderResult {
-                events: vec![tool_event],
+                events,
                 usages,
                 provider_conversation_id,
                 ..NormalizedProviderResult::default()

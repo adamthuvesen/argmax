@@ -31,6 +31,15 @@ export const VERIFICATION_OPENCODE_PROVIDER = Object.freeze({
   homeEnv: "ARGMAX_VERIFICATION_HOME",
 });
 
+export const VERIFICATION_CURSOR_PROVIDER = Object.freeze({
+  provider: "cursor",
+  modelId: "cursor-grok-4.6-medium",
+  modelLabel: "Grok 4.6 (Cursor)",
+  modeEnv: "ARGMAX_VERIFICATION",
+  binaryEnv: "ARGMAX_VERIFICATION_CURSOR_BINARY",
+  homeEnv: "ARGMAX_VERIFICATION_HOME",
+});
+
 export const VERIFICATION_CONVERSATION_ID =
   "argmax-verification-conversation";
 
@@ -54,6 +63,14 @@ export const VERIFICATION_OPENCODE_SUBAGENT = Object.freeze({
   rootToolUseId: "call_argmax_task_first",
   followUpToolUseId: "call_argmax_task_follow_up",
   description: "Verification persistent OpenCode child",
+});
+
+export const VERIFICATION_CURSOR_SUBAGENT = Object.freeze({
+  id: "077b8dfb-bb6b-4603-b718-b0ffa9808ef2",
+  initialAgentId: "f29e3566-30af-4903-b054-b382fa3754e4",
+  rootToolUseId: "tool_cursor_task_first",
+  followUpToolUseId: "tool_cursor_task_follow_up",
+  description: "Verification persistent Cursor child",
 });
 
 export const VERIFICATION_BARRIERS = Object.freeze({
@@ -97,6 +114,15 @@ export const VERIFICATION_SCENARIOS = Object.freeze({
   persistentOpencodeSubagentSecond: {
     prompt: "[argmax-verification:persistent-opencode-subagent:second]",
     visibleText: "Verification persistent OpenCode child follow-up response.",
+    resumeConversationId: VERIFICATION_CONVERSATION_ID,
+  },
+  persistentCursorSubagentFirst: {
+    prompt: "[argmax-verification:persistent-cursor-subagent:first]",
+    visibleText: "Verification persistent Cursor child first response.",
+  },
+  persistentCursorSubagentSecond: {
+    prompt: "[argmax-verification:persistent-cursor-subagent:second]",
+    visibleText: "Verification persistent Cursor child follow-up response.",
     resumeConversationId: VERIFICATION_CONVERSATION_ID,
   },
   cancellation: {
@@ -571,6 +597,84 @@ async function runPersistentOpencodeSubagentSecond(args) {
   await emitOpencodeSuccess();
 }
 
+async function emitCursorEvent(value) {
+  await emit({ ...value, session_id: VERIFICATION_CONVERSATION_ID });
+}
+
+async function emitCursorTask({ callId, visibleText, continuation = false }) {
+  const child = VERIFICATION_CURSOR_SUBAGENT;
+  const args = {
+    description: child.description,
+    prompt: continuation
+      ? "Reply with the follow-up persistent Cursor verification response."
+      : "Reply with the first persistent Cursor verification response.",
+    subagentType: { unspecified: {} },
+    model: VERIFICATION_CURSOR_PROVIDER.modelId,
+    ...(continuation
+      ? { resume: child.id, agentId: child.id }
+      : { agentId: child.initialAgentId }),
+    attachments: [],
+    mode: "TASK_MODE_UNSPECIFIED",
+    respondingToMessageIds: [],
+    environment: "SUBAGENT_EXECUTION_ENVIRONMENT_UNSPECIFIED",
+    machine: { sameMachine: {} },
+  };
+  const wrapper = {
+    taskToolCall: {
+      args,
+      hookAdditionalContexts: [],
+      toolCallId: callId,
+      startedAtMs: "1788681638528",
+      ...(continuation ? {} : {}),
+    },
+  };
+  await emitCursorEvent({
+    type: "tool_call",
+    subtype: "started",
+    call_id: callId,
+    tool_call: wrapper,
+  });
+  await emitCursorEvent({
+    type: "tool_call",
+    subtype: "completed",
+    call_id: callId,
+    tool_call: {
+      ...wrapper,
+      taskToolCall: {
+        ...wrapper.taskToolCall,
+        result: {
+          success: {
+            conversationSteps: [{ assistantMessage: { text: visibleText } }],
+            agentId: child.id,
+            isBackground: false,
+            durationMs: "2164",
+            backgroundReason: "SUBAGENT_BACKGROUND_REASON_UNSPECIFIED",
+          },
+        },
+        completedAtMs: "1788681641752",
+      },
+    },
+  });
+}
+
+async function runPersistentCursorSubagentFirst(args) {
+  if (args.includes("--resume")) throw new Error("fresh persistent-cursor-subagent fixture unexpectedly received --resume");
+  const definition = VERIFICATION_SCENARIOS.persistentCursorSubagentFirst;
+  await emitCursorEvent({ type: "system", subtype: "init", model: VERIFICATION_CURSOR_PROVIDER.modelId });
+  await emitCursorTask({ callId: VERIFICATION_CURSOR_SUBAGENT.rootToolUseId, visibleText: definition.visibleText });
+  await emitCursorEvent({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Verification Cursor parent first turn complete." }] } });
+  await emitCursorEvent({ type: "result", subtype: "success", is_error: false, result: "Verification Cursor parent first turn complete." });
+}
+
+async function runPersistentCursorSubagentSecond(args) {
+  if (!args.includes("--resume")) throw new Error("persistent-cursor-subagent fixture expected cursor --resume");
+  const definition = VERIFICATION_SCENARIOS.persistentCursorSubagentSecond;
+  await emitCursorEvent({ type: "system", subtype: "init", model: VERIFICATION_CURSOR_PROVIDER.modelId });
+  await emitCursorTask({ callId: VERIFICATION_CURSOR_SUBAGENT.followUpToolUseId, visibleText: definition.visibleText, continuation: true });
+  await emitCursorEvent({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Verification Cursor parent follow-up complete." }] } });
+  await emitCursorEvent({ type: "result", subtype: "success", is_error: false, result: "Verification Cursor parent follow-up complete." });
+}
+
 async function runFirstTurn(args) {
   if (args.includes("--resume")) {
     throw new Error("fresh chat-resume fixture unexpectedly received --resume");
@@ -698,6 +802,14 @@ export async function runProviderFixture(args = process.argv.slice(2)) {
   }
   if (prompt.includes(VERIFICATION_SCENARIOS.persistentOpencodeSubagentSecond.prompt)) {
     await runPersistentOpencodeSubagentSecond(args);
+    return;
+  }
+  if (prompt.includes(VERIFICATION_SCENARIOS.persistentCursorSubagentFirst.prompt)) {
+    await runPersistentCursorSubagentFirst(args);
+    return;
+  }
+  if (prompt.includes(VERIFICATION_SCENARIOS.persistentCursorSubagentSecond.prompt)) {
+    await runPersistentCursorSubagentSecond(args);
     return;
   }
   if (prompt.includes(VERIFICATION_SCENARIOS.cancellation.prompt)) {

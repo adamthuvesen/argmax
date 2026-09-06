@@ -2678,11 +2678,7 @@ fn receiver_thread_ids(payload: &Value) -> Vec<String> {
 
 fn cursor_child_agent_ids(payload: &Value) -> Vec<String> {
     let mut ids = Vec::new();
-    for path in [
-        ["result", "success", "agentId"].as_slice(),
-        ["input", "agentId"].as_slice(),
-        ["input", "agent_id"].as_slice(),
-    ] {
+    for path in [["result", "success", "agentId"].as_slice()] {
         if let Some(id) = value_at_path(payload, path)
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty())

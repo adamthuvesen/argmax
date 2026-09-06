@@ -669,7 +669,10 @@ export function SessionConversation({
       try {
         const mentionedNames = new Set(text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []);
         const references =
-          (model.provider === "claude" || model.provider === "codex" || model.provider === "opencode") &&
+          (model.provider === "claude" ||
+            model.provider === "codex" ||
+            model.provider === "opencode" ||
+            (model.provider === "cursor" && model.modelId !== "composer-2.5")) &&
           model.provider === session?.provider &&
           targetSessionId === session?.id
           ? nativeAgentReferences(toolCalls, agentCodenames, session.providerConversationId)

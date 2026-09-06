@@ -12,6 +12,7 @@ npm run doctor
 npm run verify -- --scenario chat-resume
 npm run verify -- --scenario persistent-subagent --native off
 npm run verify -- --scenario persistent-codex-subagent --native off
+npm run verify -- --scenario persistent-cursor-subagent --native off
 npm run verify -- --scenario cancellation
 npm run verify -- --scenario provider-error
 ```
@@ -48,6 +49,12 @@ rows across a scratch backend restart, and the Agents pane in light and dark
 browser renders. OpenCode emits the child result in the parent `tool_use`
 envelope, so this fixture verifies native identity and dock history rather than
 child transcript streaming.
+
+`persistent-cursor-subagent --native off` exercises Cursor's one-shot native
+`taskToolCall` through a backend restart. It checks the authoritative child id
+from the completed task result, a fresh invocation id on resume, two completed
+dock runs, and both light and dark browser renders. Composer 2.5 is excluded
+because it uses the ACP path.
 
 Each run prints a JSON result with its evidence location. Failures retain the
 diagnostics needed to reproduce the assertion. `--out <dir>` selects the

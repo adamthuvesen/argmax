@@ -3,11 +3,29 @@ use crate::{
     error::{ArgmaxError, ArgmaxResult},
     ipc::inputs::AgentReference,
     persistence::events::has_current_native_agent_identity,
+    providers::cursor_acp::is_acp_model_id,
 };
 use rusqlite::OptionalExtension;
 
 const FOLLOW_UP_CONTEXT_MAX_MESSAGES: usize = 12;
 const FOLLOW_UP_CONTEXT_MAX_CHARS: usize = 12_000;
+
+pub(super) fn ensure_agent_references_supported(
+    provider: &str,
+    model_id: &str,
+    references: &[AgentReference],
+) -> ArgmaxResult<()> {
+    if references.is_empty() {
+        return Ok(());
+    }
+    if provider == "cursor" && is_acp_model_id(model_id) {
+        return Err(ArgmaxError::service(
+            "AGENT_REFERENCE_UNAVAILABLE",
+            "Cursor Composer 2.5 does not support persistent native agent references.",
+        ));
+    }
+    Ok(())
+}
 
 /// Resolve dock names against the current native conversation at delivery time.
 /// The visible user message stays unchanged, including when it was queued.
@@ -50,17 +68,19 @@ pub(super) fn agent_reference_prompt(
     }
     let roster = serde_json::to_string(&resolved)
         .map_err(|error| ArgmaxError::service("AGENT_REFERENCES", error.to_string()))?;
-    let provider: String = connection
+    let (provider, model_id): (String, String) = connection
         .query_row(
-            "SELECT provider FROM sessions WHERE id = ?",
+            "SELECT provider, model_id FROM sessions WHERE id = ?",
             (session_id,),
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(sqlite_error)?;
+    ensure_agent_references_supported(&provider, &model_id, references)?;
     let guidance = match provider.as_str() {
         "claude" => "Use SendMessage to continue a referenced agent when its existing context is relevant.",
         "codex" => "Use send_input to continue the referenced native child with its existing context, using resume_agent first if the child is no longer active. Wait for the child's terminal status and answer. A successful delivery or pending_init status does not mean the child has completed.",
         "opencode" => "Use the task tool with the referenced native task_id to continue it with its existing context. Verify the returned task id matches the referenced id before treating it as a continuation. Wait for the task result and answer. Do not use direct dock input.",
+        "cursor" => "Use the Task tool with `resume` set to the referenced native agent ID. Wait for its task result and answer. Do not use direct dock input.",
         _ => return Err(ArgmaxError::service("AGENT_REFERENCE_UNAVAILABLE", "This provider does not support native agent references.")),
     };
     Ok(format!(
@@ -471,7 +491,7 @@ mod tests {
 
     #[test]
     fn dock_references_resolve_only_in_their_current_native_conversation() {
-        for provider in ["claude", "codex", "opencode"] {
+        for provider in ["claude", "codex", "cursor", "opencode"] {
             let database = Database::open_in_memory().expect("open db");
             let connection = database.connection();
             seed_session(&connection);
@@ -511,18 +531,21 @@ mod tests {
             if provider == "opencode" {
                 assert!(prompt.contains("task_id"));
             }
+            if provider == "cursor" {
+                assert!(prompt.contains("`resume`"));
+            }
             connection
-                .execute(
-                    "UPDATE sessions SET provider = 'cursor' WHERE id = 's1'",
-                    [],
-                )
-                .expect("unsupported provider");
+            .execute(
+                "UPDATE sessions SET provider = 'cursor', model_id = 'composer-2.5' WHERE id = 's1'",
+                [],
+            )
+            .expect("unsupported Cursor model");
             assert!(
                 agent_reference_prompt(&connection, "s1", "Ask Gauss again", &references).is_err()
             );
             connection
-                .execute(
-                    "UPDATE sessions SET provider = ? WHERE id = 's1'",
+            .execute(
+                "UPDATE sessions SET provider = ?, model_id = 'claude-sonnet-5' WHERE id = 's1'",
                     (provider,),
                 )
                 .expect("restore provider");

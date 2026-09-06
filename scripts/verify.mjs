@@ -17,6 +17,8 @@ import {
   VERIFICATION_CONVERSATION_ID,
   VERIFICATION_CODEX_PROVIDER,
   VERIFICATION_CODEX_SUBAGENT,
+  VERIFICATION_CURSOR_PROVIDER,
+  VERIFICATION_CURSOR_SUBAGENT,
   VERIFICATION_OPENCODE_PROVIDER,
   VERIFICATION_OPENCODE_SUBAGENT,
   VERIFICATION_PROVIDER,
@@ -26,12 +28,13 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const terminalStates = new Set(["complete", "failed", "cancelled"]);
-const persistentSubagentScenarios = new Set(["persistent-subagent", "persistent-codex-subagent", "persistent-opencode-subagent"]);
+const persistentSubagentScenarios = new Set(["persistent-subagent", "persistent-codex-subagent", "persistent-opencode-subagent", "persistent-cursor-subagent"]);
 const scenarioDefinitionKeys = Object.freeze({
   "chat-resume": "chatResumeFirst",
   "persistent-subagent": "persistentSubagentFirst",
   "persistent-codex-subagent": "persistentCodexSubagentFirst",
   "persistent-opencode-subagent": "persistentOpencodeSubagentFirst",
+  "persistent-cursor-subagent": "persistentCursorSubagentFirst",
   cancellation: "cancellation",
   "provider-error": "providerError",
 });
@@ -39,6 +42,7 @@ const scenarioDefinitionKeys = Object.freeze({
 function providerForScenario(scenario) {
   if (scenario === "persistent-codex-subagent") return VERIFICATION_CODEX_PROVIDER;
   if (scenario === "persistent-opencode-subagent") return VERIFICATION_OPENCODE_PROVIDER;
+  if (scenario === "persistent-cursor-subagent") return VERIFICATION_CURSOR_PROVIDER;
   return VERIFICATION_PROVIDER;
 }
 
@@ -71,7 +75,7 @@ export function parseVerifyArgs(argv) {
     else throw new Error(`unknown argument: ${arg}`);
   }
   if (!Object.hasOwn(scenarioDefinitionKeys, options.scenario)) {
-    throw new Error("--scenario must be chat-resume, persistent-subagent, persistent-codex-subagent, persistent-opencode-subagent, cancellation, or provider-error");
+    throw new Error("--scenario must be chat-resume, persistent-subagent, persistent-codex-subagent, persistent-opencode-subagent, persistent-cursor-subagent, cancellation, or provider-error");
   }
   if (!['required', 'auto', 'off'].includes(options.native)) {
     throw new Error("--native must be required, auto, or off");
@@ -294,21 +298,28 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
   if (persistentSubagentScenarios.has(scenario)) {
     const isCodex = provider.provider === "codex";
     const isOpencode = provider.provider === "opencode";
+    const isCursor = provider.provider === "cursor";
     const subagent = isCodex
       ? VERIFICATION_CODEX_SUBAGENT
       : isOpencode
         ? VERIFICATION_OPENCODE_SUBAGENT
-        : VERIFICATION_SUBAGENT;
+        : isCursor
+          ? VERIFICATION_CURSOR_SUBAGENT
+          : VERIFICATION_SUBAGENT;
     const firstDefinition = isCodex
       ? VERIFICATION_SCENARIOS.persistentCodexSubagentFirst
       : isOpencode
         ? VERIFICATION_SCENARIOS.persistentOpencodeSubagentFirst
-        : VERIFICATION_SCENARIOS.persistentSubagentFirst;
+        : isCursor
+          ? VERIFICATION_SCENARIOS.persistentCursorSubagentFirst
+          : VERIFICATION_SCENARIOS.persistentSubagentFirst;
     const secondDefinition = isCodex
       ? VERIFICATION_SCENARIOS.persistentCodexSubagentSecond
       : isOpencode
         ? VERIFICATION_SCENARIOS.persistentOpencodeSubagentSecond
-        : VERIFICATION_SCENARIOS.persistentSubagentSecond;
+        : isCursor
+          ? VERIFICATION_SCENARIOS.persistentCursorSubagentSecond
+          : VERIFICATION_SCENARIOS.persistentSubagentSecond;
     const first = await collectUntilTerminal(bridge, launched.id, timeoutMs);
     if (first.session.state !== "complete") throw new Error(`persistent child first turn ended in ${first.session.state}`);
     if (first.session.providerConversationId !== VERIFICATION_CONVERSATION_ID) throw new Error("persistent child parent conversation id was not persisted");
@@ -320,6 +331,10 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
       assertRecordIncludes(first.records, `\"tool\":\"task\"`, "persistent OpenCode child task");
       assertRecordIncludes(first.records, `\"sessionId\":\"${subagent.id}\"`, "persistent OpenCode child identity");
       assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent OpenCode child first response");
+    } else if (isCursor) {
+      assertRecordIncludes(first.records, `\"message\":\"taskToolCall\"`, "persistent Cursor child task");
+      assertRecordIncludes(first.records, `\"agentId\":\"${subagent.id}\"`, "persistent Cursor authoritative child identity");
+      assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent Cursor child first response");
     } else {
       assertRecordIncludes(first.records, `\"task_id\":\"${subagent.id}\"`, "persistent child start");
       assertRecordIncludes(first.records, `\"parent_tool_use_id\":\"${subagent.rootToolUseId}\"`, "persistent child parent linkage");
@@ -348,6 +363,10 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
       assertRecordIncludes(second.records, `\"task_id\":\"${subagent.id}\"`, "persistent OpenCode child continuation");
       assertRecordIncludes(second.records, `\"callID\":\"${subagent.followUpToolUseId}\"`, "persistent OpenCode child follow-up invocation");
       assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent OpenCode child follow-up response");
+    } else if (isCursor) {
+      assertRecordIncludes(second.records, `\"resume\":\"${subagent.id}\"`, "persistent Cursor child continuation");
+      assertRecordIncludes(second.records, `\"call_id\":\"${subagent.followUpToolUseId}\"`, "persistent Cursor child follow-up invocation");
+      assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent Cursor child follow-up response");
     } else {
       assertRecordIncludes(second.records, `\"resumedAgentId\":\"${subagent.id}\"`, "persistent child resume identity");
       assertRecordIncludes(second.records, `\"tool_use_id\":\"${subagent.followUpToolUseId}\"`, "persistent child follow-up invocation");
@@ -459,6 +478,12 @@ function expectedPersistenceTexts(scenario) {
     return [
       VERIFICATION_SCENARIOS.persistentOpencodeSubagentFirst.visibleText,
       VERIFICATION_SCENARIOS.persistentOpencodeSubagentSecond.visibleText,
+    ];
+  }
+  if (scenario === "persistent-cursor-subagent") {
+    return [
+      VERIFICATION_SCENARIOS.persistentCursorSubagentFirst.visibleText,
+      VERIFICATION_SCENARIOS.persistentCursorSubagentSecond.visibleText,
     ];
   }
   if (scenario === "cancellation") return [VERIFICATION_SCENARIOS.cancellation.visibleText];

@@ -27,6 +27,22 @@ pub struct ProviderLaunchDefinition {
         fn(&ProviderLaunchInput, &str, Option<&SessionLaunchProcessConfig>) -> Vec<String>,
     pub structured_stdin: fn(&ProviderLaunchInput) -> Option<String>,
     pub approval_support: ApprovalSupport,
+    /// Whether a session move may carry its conversation to the destination
+    /// checkout instead of starting cold there. Two provider facts have to
+    /// hold at once, and only Claude and Codex have both:
+    ///
+    /// - Resume has to follow the new working directory. Grok and OpenCode
+    ///   silently keep executing in the directory the conversation started in,
+    ///   ignoring `--cwd` / `--dir` on resume, so a carried conversation would
+    ///   edit the old checkout while the moved workspace shows the new one.
+    /// - Resume has to be able to fork. The move copies the transcript into a
+    ///   second session row, so without `--fork-session` (Cursor has no
+    ///   equivalent) both rows would resume one provider conversation and
+    ///   interleave into it.
+    ///
+    /// False means the destination starts a fresh provider conversation. The
+    /// transcript still travels, so the chat reads continuously either way.
+    pub move_carries_conversation: bool,
 }
 
 pub fn provider_definitions() -> &'static [ProviderLaunchDefinition] {
@@ -50,6 +66,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         structured_resume_args: claude_structured_resume_args,
         structured_stdin: |_| None,
         approval_support: ApprovalSupport::ObservableOnly,
+        move_carries_conversation: true,
     },
     ProviderLaunchDefinition {
         id: ProviderId::Codex,
@@ -60,6 +77,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         structured_resume_args: codex_structured_resume_args,
         structured_stdin: codex_structured_stdin,
         approval_support: ApprovalSupport::ObservableOnly,
+        move_carries_conversation: true,
     },
     ProviderLaunchDefinition {
         id: ProviderId::Cursor,
@@ -70,6 +88,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         structured_resume_args: cursor_structured_resume_args,
         structured_stdin: |_| None,
         approval_support: ApprovalSupport::Unsupported,
+        move_carries_conversation: false,
     },
     ProviderLaunchDefinition {
         id: ProviderId::Opencode,
@@ -80,6 +99,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         structured_resume_args: opencode_structured_resume_args,
         structured_stdin: |_| None,
         approval_support: ApprovalSupport::Unsupported,
+        move_carries_conversation: false,
     },
     ProviderLaunchDefinition {
         id: ProviderId::Grok,
@@ -92,6 +112,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         structured_resume_args: grok_structured_resume_args,
         structured_stdin: |_| None,
         approval_support: ApprovalSupport::ObservableOnly,
+        move_carries_conversation: false,
     },
 ];
 

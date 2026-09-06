@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import { Archive, FolderGit2, Laptop, Menu, MoreHorizontal, PenLine, Search, SquarePen } from "lucide-react";
 import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
 import { LinesSkeleton } from "../components/LinesSkeleton.js";
@@ -660,6 +660,21 @@ export function MobileApp(): JSX.Element {
   );
 
   const sessionOpen = selectedWorkspaceId !== null && (selectedSession !== null || selectedSessionId !== null);
+  // Park the list under a session or the new-chat screen instead of unmounting
+  // it: tearing the scroller down was sending every back-to-list gesture to
+  // the top. Its own type scale stays at 6 while the shell jumps to 8 for
+  // the chat, so the parked scroller does not reflow and lose its offset.
+  const listParked = sessionOpen || newSessionOpen;
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const listScrollTopRef = useRef(0);
+  // Remember the offset only while the list is the front screen. Parking can
+  // hide it under a keyboard-sized shell that clamps scrollTop to 0; writing
+  // that back would undo the restore.
+  useLayoutEffect(() => {
+    if (listParked) return;
+    const node = listScrollRef.current;
+    if (node) node.scrollTop = listScrollTopRef.current;
+  }, [listParked]);
   // Mirrors the render below: the review screen needs a workspace to draw, and
   // a workspace that drops out of the snapshot must take its history entry
   // with it, or one back press changes nothing on screen.
@@ -744,224 +759,241 @@ export function MobileApp(): JSX.Element {
       data-font-size={sessionOpen || newSessionOpen ? "8" : "6"}
       data-screen={newSessionOpen ? "new" : sessionOpen ? "session" : "list"}
     >
-      {newSessionOpen ? (
-        <NewSessionScreen
-          projects={snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID)}
-          workspaces={snapshot.workspaces}
-          initialWorkspaceId={newSessionWorkspaceId}
-          initialSeed={newSessionSeed}
-          backLabel={sessionOpen ? "Back to chat" : "Back to chats"}
-          onClose={closeNewSession}
-          onLaunched={handleLaunched}
-          onError={(message) => showToast({ kind: "error", message })}
-          openSheet={newSessionSheet}
-          onOpenSheetChange={setNewSessionSheet}
-        />
-      ) : reviewShown && selectedWorkspace ? (
-        <Suspense
-          fallback={<LinesSkeleton rows={10} label="Loading changes" className="review-diff-skeleton" />}
-        >
-          <MobileReviewScreen
-            workspace={selectedWorkspace}
-            initialFilePath={reviewFilePath}
-            filePreviewOpen={reviewFilePreviewOpen}
-            onFilePreviewOpenChange={setReviewFilePreviewOpen}
-            onClose={closeReview}
-          />
-        </Suspense>
-      ) : sessionOpen ? (
-        <div className="mobile-session-screen">
-          <MobileScreenHeader
-            onBack={closeSession}
-            backLabel="Back to chats"
-            title={selectedWorkspace?.taskLabel ?? ""}
-            actions={
-              selectedWorkspace ? (
-                <>
-                  <button
-                    type="button"
-                    className="mobile-icon-button"
-                    onClick={() => startNewChatFromWorkspace(selectedWorkspace)}
-                    aria-label="New chat"
-                  >
-                    <SquarePen size={18} aria-hidden />
-                  </button>
-                  <button
-                    type="button"
-                    className="mobile-icon-button"
-                    onClick={() => void archiveWorkspace(selectedWorkspace)}
-                    aria-label="Archive chat"
-                  >
-                    <Archive size={18} aria-hidden />
-                  </button>
-                  {/* A side chat runs in an app-owned scratch directory with
-                      one empty commit, so this button would open a permanently
-                      empty diff and an empty tree. Tapping a file the agent
-                      wrote there still opens the review screen from the
-                      transcript — only the standing entry point is dropped. */}
-                  {selectedWorkspace.kind === "git" ? (
-                    <button
-                      type="button"
-                      className="mobile-icon-button"
-                      onClick={() => {
-                        setReviewFilePath(null);
-                        setReviewOpen(true);
-                      }}
-                      aria-label={
-                        selectedWorkspace.changedFiles > 0
-                          ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
-                          : "Files and changes"
-                      }
-                    >
-                      <FolderGit2 size={18} aria-hidden />
-                      {selectedWorkspace.changedFiles > 0 ? (
-                        <span className="mobile-header-badge" aria-hidden>
-                          {selectedWorkspace.changedFiles}
-                        </span>
-                      ) : null}
-                    </button>
-                  ) : null}
-                </>
-              ) : undefined
-            }
-          />
-          {connectionBanner}
-          <SessionPane
-            approvals={snapshot.approvals}
-            checks={snapshot.checks}
-            pendingMessages={snapshot.pendingMessages}
-            session={selectedSession}
-            workspace={selectedWorkspace}
-            project={selectedProject}
-            onLoadSessionEvents={loadSessionEvents}
-            onResolveApproval={resolveApproval}
-            onSendSessionInput={commands.sendSessionInput}
-            onCancelQueuedMessage={commands.cancelQueuedMessage}
-            onSendQueuedMessageNow={commands.sendQueuedMessageNow}
-            onTerminateSession={commands.terminateSession}
-            onMultitask={commands.multitask}
-            onOpenSession={openSessionById}
-            onClearSession={commands.clearSession}
-            onForkSession={forkSession}
-            onNewSession={
-              selectedWorkspace
-                ? (seed) => startNewChatFromWorkspace(selectedWorkspace, seed)
-                : undefined
-            }
-            onOpenFile={(path) => {
-              setReviewFilePath(path);
-              setReviewOpen(true);
-            }}
-            workspaceCardVisible={false}
-          />
-        </div>
-      ) : (
-        <div className="mobile-list-screen">
-          <header className="mobile-list-header">
+      <div
+        className="mobile-list-screen"
+        data-font-size="6"
+        data-parked={listParked || undefined}
+        aria-hidden={listParked}
+        inert={listParked || undefined}
+      >
+        <header className="mobile-list-header">
+          <button
+            type="button"
+            className="mobile-icon-button"
+            aria-label="Open navigation"
+            aria-haspopup="dialog"
+            aria-expanded={listMenuOpen}
+            onClick={() => setListMenuOpen(true)}
+          >
+            <Menu size={21} aria-hidden />
+          </button>
+          <div className="mobile-list-identity">
+            <h1>Remote</h1>
+            <span className="mobile-list-device">
+              <span className="mobile-list-device-dot" aria-hidden="true" />
+              <Laptop size={14} aria-hidden="true" />
+              <span>Mac</span>
+            </span>
+          </div>
+          <div className="mobile-list-header-actions">
             <button
               type="button"
               className="mobile-icon-button"
-              aria-label="Open navigation"
+              aria-label="Remote options"
               aria-haspopup="dialog"
               aria-expanded={listMenuOpen}
               onClick={() => setListMenuOpen(true)}
             >
-              <Menu size={21} aria-hidden />
+              <MoreHorizontal size={21} aria-hidden />
             </button>
-            <div className="mobile-list-identity">
-              <h1>Remote</h1>
-              <span className="mobile-list-device">
-                <span className="mobile-list-device-dot" aria-hidden="true" />
-                <Laptop size={14} aria-hidden="true" />
-                <span>Mac</span>
-              </span>
-            </div>
-            <div className="mobile-list-header-actions">
-              <button
-                type="button"
-                className="mobile-icon-button"
-                aria-label="Remote options"
-                aria-haspopup="dialog"
-                aria-expanded={listMenuOpen}
-                onClick={() => setListMenuOpen(true)}
-              >
-                <MoreHorizontal size={21} aria-hidden />
+          </div>
+        </header>
+        {connectionBanner}
+        {/* The scroller is the list landmark: sections come and go with
+            triage, so this is the one stable handle on "the sessions". */}
+        <div
+          ref={listScrollRef}
+          className="mobile-list-scroll"
+          role="region"
+          aria-label="Chat list"
+          onScroll={(event) => {
+            if (!listParked) listScrollTopRef.current = event.currentTarget.scrollTop;
+          }}
+        >
+          {loadState === "error" ? (
+            <div className="mobile-empty" role="alert">
+              <p>Could not reach Argmax.</p>
+              {loadError ? <p className="mobile-empty-detail">{loadError}</p> : null}
+              <button type="button" className="mobile-retry" onClick={() => void refresh()}>
+                Retry
               </button>
             </div>
-          </header>
-          {connectionBanner}
-          {/* The scroller is the list landmark: sections come and go with
-              triage, so this is the one stable handle on "the sessions". */}
-          <div className="mobile-list-scroll" role="region" aria-label="Chat list">
-            {loadState === "error" ? (
-              <div className="mobile-empty" role="alert">
-                <p>Could not reach Argmax.</p>
-                {loadError ? <p className="mobile-empty-detail">{loadError}</p> : null}
-                <button type="button" className="mobile-retry" onClick={() => void refresh()}>
-                  Retry
-                </button>
-              </div>
-            ) : empty ? (
-              <div className="mobile-empty">
-                <p>
-                  {loadState === "loading"
-                    ? "Connecting…"
-                    : searchQuery.trim()
-                      ? `No chats match “${searchQuery.trim()}”.`
-                      : "No active chats."}
-                </p>
-              </div>
-            ) : (
-              <>
-                <SessionSection
-                  label="Pinned"
-                  rows={filteredRows.pinnedRows}
-                  projectNamesById={projectNamesById}
-                  nowMs={nowMs}
-                  onOpen={openWorkspaceChat}
-                  onOpenActions={setActionsRow}
-                />
-                <SessionSection
-                  label="Priority"
-                  rows={filteredRows.priorityRows}
-                  projectNamesById={projectNamesById}
-                  nowMs={nowMs}
-                  onOpen={openWorkspaceChat}
-                  onOpenActions={setActionsRow}
-                />
-                <SessionSection
-                  label={filteredRows.pinnedRows.length > 0 || filteredRows.priorityRows.length > 0 ? "Chats" : "All chats"}
-                  rows={filteredRows.activityRows}
-                  projectNamesById={projectNamesById}
-                  nowMs={nowMs}
-                  onOpen={openWorkspaceChat}
-                  onOpenActions={setActionsRow}
-                />
-              </>
-            )}
-          </div>
-          <div className="mobile-list-dock">
-            <label className="mobile-list-search">
-              <Search size={19} aria-hidden="true" />
-              <input
-                type="search"
-                aria-label="Search chats"
-                placeholder="Search chats"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
+          ) : empty ? (
+            <div className="mobile-empty">
+              <p>
+                {loadState === "loading"
+                  ? "Connecting…"
+                  : searchQuery.trim()
+                    ? `No chats match “${searchQuery.trim()}”.`
+                    : "No active chats."}
+              </p>
+            </div>
+          ) : (
+            <>
+              <SessionSection
+                label="Pinned"
+                rows={filteredRows.pinnedRows}
+                projectNamesById={projectNamesById}
+                nowMs={nowMs}
+                onOpen={openWorkspaceChat}
+                onOpenActions={setActionsRow}
               />
-            </label>
-            <button
-              type="button"
-              className="mobile-list-compose"
-              aria-label="New chat"
-              onClick={startNewChat}
-            >
-              <PenLine size={23} aria-hidden="true" />
-            </button>
-          </div>
+              <SessionSection
+                label="Priority"
+                rows={filteredRows.priorityRows}
+                projectNamesById={projectNamesById}
+                nowMs={nowMs}
+                onOpen={openWorkspaceChat}
+                onOpenActions={setActionsRow}
+              />
+              <SessionSection
+                label={filteredRows.pinnedRows.length > 0 || filteredRows.priorityRows.length > 0 ? "Chats" : "All chats"}
+                rows={filteredRows.activityRows}
+                projectNamesById={projectNamesById}
+                nowMs={nowMs}
+                onOpen={openWorkspaceChat}
+                onOpenActions={setActionsRow}
+              />
+            </>
+          )}
         </div>
-      )}
+        <div className="mobile-list-dock">
+          <label className="mobile-list-search">
+            <Search size={19} aria-hidden="true" />
+            <input
+              type="search"
+              aria-label="Search chats"
+              placeholder="Search chats"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="mobile-list-compose"
+            aria-label="New chat"
+            onClick={startNewChat}
+          >
+            <PenLine size={23} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      {listParked ? (
+        <div className="mobile-screen-overlay">
+          {newSessionOpen ? (
+            <NewSessionScreen
+              projects={snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID)}
+              workspaces={snapshot.workspaces}
+              initialWorkspaceId={newSessionWorkspaceId}
+              initialSeed={newSessionSeed}
+              backLabel={sessionOpen ? "Back to chat" : "Back to chats"}
+              onClose={closeNewSession}
+              onLaunched={handleLaunched}
+              onError={(message) => showToast({ kind: "error", message })}
+              openSheet={newSessionSheet}
+              onOpenSheetChange={setNewSessionSheet}
+            />
+          ) : reviewShown && selectedWorkspace ? (
+            <Suspense
+              fallback={<LinesSkeleton rows={10} label="Loading changes" className="review-diff-skeleton" />}
+            >
+              <MobileReviewScreen
+                workspace={selectedWorkspace}
+                initialFilePath={reviewFilePath}
+                filePreviewOpen={reviewFilePreviewOpen}
+                onFilePreviewOpenChange={setReviewFilePreviewOpen}
+                onClose={closeReview}
+              />
+            </Suspense>
+          ) : sessionOpen ? (
+            <div className="mobile-session-screen">
+              <MobileScreenHeader
+                onBack={closeSession}
+                backLabel="Back to chats"
+                title={selectedWorkspace?.taskLabel ?? ""}
+                actions={
+                  selectedWorkspace ? (
+                    <>
+                      <button
+                        type="button"
+                        className="mobile-icon-button"
+                        onClick={() => startNewChatFromWorkspace(selectedWorkspace)}
+                        aria-label="New chat"
+                      >
+                        <SquarePen size={18} aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        className="mobile-icon-button"
+                        onClick={() => void archiveWorkspace(selectedWorkspace)}
+                        aria-label="Archive chat"
+                      >
+                        <Archive size={18} aria-hidden />
+                      </button>
+                      {/* A side chat runs in an app-owned scratch directory with
+                          one empty commit, so this button would open a permanently
+                          empty diff and an empty tree. Tapping a file the agent
+                          wrote there still opens the review screen from the
+                          transcript — only the standing entry point is dropped. */}
+                      {selectedWorkspace.kind === "git" ? (
+                        <button
+                          type="button"
+                          className="mobile-icon-button"
+                          onClick={() => {
+                            setReviewFilePath(null);
+                            setReviewOpen(true);
+                          }}
+                          aria-label={
+                            selectedWorkspace.changedFiles > 0
+                              ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
+                              : "Files and changes"
+                          }
+                        >
+                          <FolderGit2 size={18} aria-hidden />
+                          {selectedWorkspace.changedFiles > 0 ? (
+                            <span className="mobile-header-badge" aria-hidden>
+                              {selectedWorkspace.changedFiles}
+                            </span>
+                          ) : null}
+                        </button>
+                      ) : null}
+                    </>
+                  ) : undefined
+                }
+              />
+              {connectionBanner}
+              <SessionPane
+                approvals={snapshot.approvals}
+                checks={snapshot.checks}
+                pendingMessages={snapshot.pendingMessages}
+                session={selectedSession}
+                workspace={selectedWorkspace}
+                project={selectedProject}
+                onLoadSessionEvents={loadSessionEvents}
+                onResolveApproval={resolveApproval}
+                onSendSessionInput={commands.sendSessionInput}
+                onCancelQueuedMessage={commands.cancelQueuedMessage}
+                onSendQueuedMessageNow={commands.sendQueuedMessageNow}
+                onTerminateSession={commands.terminateSession}
+                onMultitask={commands.multitask}
+                onOpenSession={openSessionById}
+                onClearSession={commands.clearSession}
+                onForkSession={forkSession}
+                onNewSession={
+                  selectedWorkspace
+                    ? (seed) => startNewChatFromWorkspace(selectedWorkspace, seed)
+                    : undefined
+                }
+                onOpenFile={(path) => {
+                  setReviewFilePath(path);
+                  setReviewOpen(true);
+                }}
+                workspaceCardVisible={false}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {listMenuOpen ? (
         <BottomSheet label="Remote menu" onClose={() => setListMenuOpen(false)}>
           <p className="mobile-sheet-group-label">Remote</p>

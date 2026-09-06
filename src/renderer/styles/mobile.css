@@ -6,7 +6,9 @@
    element scrolls per screen — .mobile-list-scroll on the list, the
    conversation scroller inside SessionPane on a session — with overscroll
    contained so momentum never chains to the document and rubber-bands the
-   whole app.
+   whole app. The list stays mounted under a session or new-chat overlay so
+   going back keeps its scroll offset; iOS Safari zeros overflow scrollTop
+   on display:none, so parking uses visibility rather than unmounting.
 
    Viewport: `100dvh` measures the layout viewport, which no phone shrinks for
    the on-screen keyboard — iOS pans instead, hiding the composer under it.
@@ -144,6 +146,23 @@ html:has(.mobile-shell) body {
   flex-direction: column;
   min-height: 0;
   flex: 1;
+}
+
+/* Parked, not unmounted: the scroller keeps its size and scrollTop. The
+   overlay is taken out of flow so it does not share the column with the list,
+   and it owns the fill so a Suspense fallback is covered too. */
+.mobile-list-screen[data-parked] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.mobile-screen-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
 }
 
 .mobile-list-scroll {

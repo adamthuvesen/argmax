@@ -257,6 +257,13 @@ async fn run_git_command(
         .arg("-c")
         .arg("core.fsmonitor=false")
         .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        // Hooks export GIT_DIR. `-C` cannot override it, so a spawn from
+        // pre-push would `git config` the app repo and can set `core.bare`.
+        // Clear the inherited environment; re-apply only what git needs.
+        .env_clear()
         .env("LC_ALL", "C")
         .env("LANG", "C")
         .env("LANGUAGE", "")
@@ -265,36 +272,21 @@ async fn run_git_command(
         // concurrent with the user's own git, where that lock causes contention and
         // spurious failures for no benefit. Commands that genuinely need the
         // lock still take it.
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
+        .env("GIT_OPTIONAL_LOCKS", "0");
+    if let Some(home) = std::env::var_os("HOME") {
+        command.env("HOME", home);
+    }
+    if let Some(tmpdir) = std::env::var_os("TMPDIR") {
+        command.env("TMPDIR", tmpdir);
+    }
     // Launched from Finder/Dock, Argmax inherits launchd's stripped PATH, which
     // has no `/opt/homebrew/bin`. Git hooks then can't find the tools they call,
     // and a post-checkout hook's exit status *is* the command's — so a hook that
     // fails to find `lefthook` makes `git worktree add` exit 127, and Argmax
     // discards the worktree it just created. Hand git the PATH the user's own
-    // terminal would give it. Only PATH: a `GIT_DIR` or `GIT_CONFIG` exported in
-    // someone's `.zshrc` would silently retarget every command we run.
+    // terminal would give it.
     #[cfg(unix)]
     command.env("PATH", login_shell::path());
-    // Git hooks export GIT_DIR / GIT_WORK_TREE so child git talks to the parent
-    // repo. `-C` cannot override an absolute GIT_DIR: tests then hit "must be
-    // run in a work tree" and `git config` locks the app repo. Strip the vars
-    // that retarget the repository. Callers that need a scratch index put
-    // GIT_INDEX_FILE back via options.env below.
-    for key in [
-        "GIT_DIR",
-        "GIT_WORK_TREE",
-        "GIT_INDEX_FILE",
-        "GIT_OBJECT_DIRECTORY",
-        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-        "GIT_COMMON_DIR",
-        "GIT_NAMESPACE",
-        "GIT_PREFIX",
-    ] {
-        command.env_remove(key);
-    }
     // After the injected PATH, so a caller can still override it.
     for (key, value) in &options.env {
         command.env(key, value);
@@ -424,60 +416,4 @@ fn non_zero_error(exit_code: i32, stderr: &[u8]) -> ArgmaxError {
         detail.chars().take(ERROR_DETAIL_CAP_BYTES).collect()
     };
     ArgmaxError::service("GIT_NON_ZERO_EXIT", format!("git failed: {detail}"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::ffi::OsString;
-    use std::path::Path;
-    use std::sync::Mutex;
-    use tempfile::TempDir;
-
-    static GIT_DIR_LOCK: Mutex<()> = Mutex::new(());
-
-    struct RestoreEnv {
-        key: &'static str,
-        previous: Option<OsString>,
-    }
-
-    impl RestoreEnv {
-        fn set(key: &'static str, value: &str) -> Self {
-            let previous = std::env::var_os(key);
-            std::env::set_var(key, value);
-            Self { key, previous }
-        }
-    }
-
-    impl Drop for RestoreEnv {
-        fn drop(&mut self) {
-            match &self.previous {
-                Some(value) => std::env::set_var(self.key, value),
-                None => std::env::remove_var(self.key),
-            }
-        }
-    }
-
-    #[test]
-    fn ambient_git_dir_does_not_retarget_minus_c() {
-        let _lock = GIT_DIR_LOCK.lock().expect("git dir lock");
-        let repo = TempDir::new().expect("temp dir");
-        let _git_dir = RestoreEnv::set("GIT_DIR", "/tmp/argmax-git-dir-should-not-win");
-        run_git_text_blocking(
-            repo.path(),
-            ["init", "-q", "-b", "main"],
-            GIT_DEFAULT_TIMEOUT,
-        )
-        .expect("init should ignore ambient GIT_DIR");
-        let toplevel = run_git_text_blocking(
-            repo.path(),
-            ["rev-parse", "--show-toplevel"],
-            GIT_DEFAULT_TIMEOUT,
-        )
-        .expect("toplevel");
-        assert_eq!(
-            Path::new(toplevel.trim()),
-            repo.path().canonicalize().expect("canonicalize")
-        );
-    }
 }

@@ -128,7 +128,13 @@ pub async fn serve_workspace_asset(roots: &[PathBuf], url: &str) -> AssetRespons
     let Ok(decoded) = percent_decode(&path_component) else {
         return AssetResponse::bad_request();
     };
+    serve_workspace_asset_path(roots, &decoded).await
+}
 
+/// Serve a raw absolute file path decoded from a workspace asset URL or remote
+/// HTTP request. The path is percent-decoded, checked against the image
+/// whitelist, realpath'd, and confirmed to live strictly inside one of `roots`.
+pub async fn serve_workspace_asset_path(roots: &[PathBuf], decoded: &str) -> AssetResponse {
     let candidate = PathBuf::from(decoded);
     if !candidate.is_absolute() {
         return AssetResponse::forbidden();
@@ -260,6 +266,19 @@ mod tests {
         let roots = vec![root.path().to_path_buf()];
         let response = serve_workspace_asset(&roots, &url_for(&traversal)).await;
         assert_eq!(response.status, AssetStatus::Forbidden);
+    }
+
+    #[tokio::test]
+    async fn serve_workspace_asset_path_direct_decoding() {
+        let root = TempDir::new().unwrap();
+        let file = root.path().join("direct.webp");
+        std::fs::write(&file, b"WEBP").unwrap();
+        let canonical = std::fs::canonicalize(&file).unwrap();
+        let roots = vec![root.path().to_path_buf()];
+        let response = serve_workspace_asset_path(&roots, &canonical.to_string_lossy()).await;
+        assert_eq!(response.status, AssetStatus::Ok);
+        assert_eq!(response.content_type, Some("image/webp"));
+        assert_eq!(response.bytes, b"WEBP");
     }
 
     #[tokio::test]

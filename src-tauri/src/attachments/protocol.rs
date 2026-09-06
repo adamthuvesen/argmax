@@ -72,7 +72,13 @@ pub async fn serve_attachment(base_dir: &Path, url: &str) -> AttachmentResponse 
     let Ok(decoded) = percent_decode(&path_component) else {
         return AttachmentResponse::bad_request();
     };
+    serve_attachment_path(base_dir, &decoded).await
+}
 
+/// Serve a raw absolute attachment file path decoded from an attachment URL
+/// or remote HTTP request. The path is resolved against `base_dir` after
+/// realpath; any escape returns 403.
+pub async fn serve_attachment_path(base_dir: &Path, decoded: &str) -> AttachmentResponse {
     let Ok(base_real) = fs::canonicalize(base_dir).await else {
         return AttachmentResponse::forbidden();
     };
@@ -220,6 +226,18 @@ mod tests {
         let base = TempDir::new().unwrap();
         let response = serve_attachment(base.path(), "https://example.com/foo").await;
         assert_eq!(response.status, AttachmentStatus::BadRequest);
+    }
+
+    #[tokio::test]
+    async fn serve_attachment_path_direct_decoding() {
+        let base = TempDir::new().unwrap();
+        let file = base.path().join("direct.png");
+        std::fs::write(&file, b"DIRECT").unwrap();
+        let canonical_file = std::fs::canonicalize(&file).unwrap();
+        let response = serve_attachment_path(base.path(), &canonical_file.to_string_lossy()).await;
+        assert_eq!(response.status, AttachmentStatus::Ok);
+        assert_eq!(response.content_type, Some("image/png"));
+        assert_eq!(response.bytes, b"DIRECT");
     }
 
     #[test]

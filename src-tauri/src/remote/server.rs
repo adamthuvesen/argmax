@@ -99,6 +99,12 @@ async fn serve_asset(
     headers: HeaderMap,
     uri: Uri,
 ) -> Response {
+    if uri.path().starts_with("/api/attachments") {
+        return serve_remote_attachment(&bridge, &headers, &uri).await;
+    }
+    if uri.path().starts_with("/api/workspace-assets") {
+        return serve_remote_workspace_asset(&bridge, &headers, &uri).await;
+    }
     let Ok(path) = crate::attachments::protocol::percent_decode(uri.path()) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
@@ -108,6 +114,104 @@ async fn serve_asset(
     match &bridge.assets {
         AssetSource::Directory(root) => serve_from_directory(root, &path, if_none_match).await,
         AssetSource::Embedded => serve_embedded(&bridge.app, &path, if_none_match),
+    }
+}
+
+fn authenticate_token(expected_token: &str, headers: &HeaderMap, uri: &Uri) -> bool {
+    if let Some(auth_header) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    {
+        if let Some(token) = auth_header.strip_prefix("Bearer ") {
+            if super::ws::tokens_match(token.trim(), expected_token) {
+                return true;
+            }
+        }
+    }
+    if let Some(query) = uri.query() {
+        for pair in query.split('&') {
+            if let Some(token) = pair.strip_prefix("token=") {
+                let decoded = crate::attachments::protocol::percent_decode(token)
+                    .unwrap_or_else(|_| token.to_string());
+                if super::ws::tokens_match(&decoded, expected_token) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+async fn serve_remote_attachment(
+    bridge: &RemoteBridge,
+    headers: &HeaderMap,
+    uri: &Uri,
+) -> Response {
+    if !authenticate_token(&bridge.token, headers, uri) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Some(raw_path) = uri.path().strip_prefix("/api/attachments") else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    if raw_path.is_empty() || !raw_path.starts_with('/') {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let Ok(decoded_path) = crate::attachments::protocol::percent_decode(raw_path) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let app_data = match crate::util::data_dir::app_data_dir(&bridge.app) {
+        Ok(dir) => dir,
+        Err(error) => {
+            tracing::warn!(?error, "remote attachment: app_data_dir unavailable");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    let base_dir = app_data.join("local-state").join("attachments");
+    let response =
+        crate::attachments::protocol::serve_attachment_path(&base_dir, &decoded_path).await;
+    let mut builder = Response::builder().status(response.http_status());
+    if let Some(content_type) = response.content_type {
+        builder = builder.header(header::CONTENT_TYPE, content_type);
+    }
+    if response.http_status() == 200 {
+        builder = builder.header(header::CACHE_CONTROL, "private, max-age=3600");
+    }
+    match builder.body(Body::from(response.bytes)) {
+        Ok(resp) => resp,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+async fn serve_remote_workspace_asset(
+    bridge: &RemoteBridge,
+    headers: &HeaderMap,
+    uri: &Uri,
+) -> Response {
+    if !authenticate_token(&bridge.token, headers, uri) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Some(raw_path) = uri.path().strip_prefix("/api/workspace-assets") else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    if raw_path.is_empty() || !raw_path.starts_with('/') {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let Ok(decoded_path) = crate::attachments::protocol::percent_decode(raw_path) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let roots = crate::workspace_assets::protocol::known_roots(&bridge.app);
+    let response =
+        crate::workspace_assets::protocol::serve_workspace_asset_path(&roots, &decoded_path).await;
+    let mut builder = Response::builder().status(response.http_status());
+    if let Some(content_type) = response.content_type {
+        builder = builder.header(header::CONTENT_TYPE, content_type);
+    }
+    if response.http_status() == 200 {
+        builder = builder.header(header::CACHE_CONTROL, "private, max-age=3600");
+    }
+    match builder.body(Body::from(response.bytes)) {
+        Ok(resp) => resp,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
 
@@ -603,5 +707,52 @@ mod tests {
         let tag = entity_tag(b"payload");
         assert!(tag.starts_with('"') && tag.ends_with('"'), "{tag}");
         assert!(HeaderValue::try_from(tag).is_ok());
+    }
+
+    #[test]
+    fn authenticate_token_accepts_bearer_and_query_param() {
+        let expected_token = "0123456789abcdef0123456789abcdef";
+
+        // 1. Missing token
+        let headers = HeaderMap::new();
+        let uri = "/api/attachments/some/file.png".parse::<Uri>().unwrap();
+        assert!(!authenticate_token(expected_token, &headers, &uri));
+
+        // 2. Bearer header with right token
+        let mut bearer_headers = HeaderMap::new();
+        bearer_headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer 0123456789abcdef0123456789abcdef"),
+        );
+        assert!(authenticate_token(expected_token, &bearer_headers, &uri));
+
+        // 3. Bearer header with wrong token
+        let mut wrong_bearer = HeaderMap::new();
+        wrong_bearer.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer wrong_token_000000000000000000"),
+        );
+        assert!(!authenticate_token(expected_token, &wrong_bearer, &uri));
+
+        // 4. Query param with right token
+        let uri_with_token =
+            "/api/attachments/some/file.png?token=0123456789abcdef0123456789abcdef"
+                .parse::<Uri>()
+                .unwrap();
+        assert!(authenticate_token(
+            expected_token,
+            &headers,
+            &uri_with_token
+        ));
+
+        // 5. Query param with wrong token
+        let uri_with_wrong = "/api/attachments/some/file.png?token=wrong_token_000000000000000000"
+            .parse::<Uri>()
+            .unwrap();
+        assert!(!authenticate_token(
+            expected_token,
+            &headers,
+            &uri_with_wrong
+        ));
     }
 }

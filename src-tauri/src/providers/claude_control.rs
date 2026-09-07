@@ -152,15 +152,10 @@ pub async fn launch_turn(
                             let task = requests.spawn(async move {
                                 let tool_input = message.pointer("/request/input").cloned().unwrap_or(json!({}));
                                 let command = tool_input.get("command").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| format!("{}\n{}", message.pointer("/request/tool_name").and_then(Value::as_str).unwrap_or("Tool request"), tool_input));
-                                // Full access answers itself, the way both ACP
-                                // providers do. Claude still prompts under
-                                // `--dangerously-skip-permissions` when a settings
-                                // `ask` rule forces it, and routing that to the
-                                // broker parks a session the user was told would
-                                // never stop. Plan mode keeps its gate.
-                                if request_input.permission_mode == PermissionMode::AutoApprove
-                                    && request_input.agent_mode == super::AgentMode::Auto
-                                {
+                                if answers_itself(
+                                    &request_input,
+                                    message.pointer("/request/tool_name").and_then(Value::as_str),
+                                ) {
                                     let _ = writer.send(permission_response(&request_id, true, tool_input));
                                     return;
                                 }
@@ -203,6 +198,23 @@ pub async fn launch_turn(
         let _ = done_tx.send(true);
     });
     Ok(handle)
+}
+
+/// Whether the runtime answers this request itself instead of asking the user.
+///
+/// Two reasons to. A call the chat draws as an interactive card is already in
+/// front of the user with its own button, and the tool result is thrown away
+/// when they press it, so gating it asks permission to show a question they
+/// are looking at. And Full access promised no gates: Claude still raises one
+/// under `--dangerously-skip-permissions` when a settings `ask` rule forces
+/// it, and sending that to the broker parks a chat nobody is watching. Plan
+/// mode keeps its gate.
+fn answers_itself(input: &ProviderLaunchInput, tool_name: Option<&str>) -> bool {
+    if tool_name.is_some_and(super::renders_as_interactive_card) {
+        return true;
+    }
+    input.permission_mode == PermissionMode::AutoApprove
+        && input.agent_mode == super::AgentMode::Auto
 }
 
 fn permission_response(id: &str, allowed: bool, input: Value) -> Value {
@@ -268,6 +280,46 @@ impl Drop for ControlHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn launch_input(
+        permission_mode: PermissionMode,
+        agent_mode: super::super::AgentMode,
+    ) -> ProviderLaunchInput {
+        ProviderLaunchInput {
+            provider: ProviderId::Claude,
+            session_id: "s".into(),
+            workspace_path: "/tmp".into(),
+            prompt: "p".into(),
+            model_label: "Opus 5".into(),
+            model_id: "claude-opus-5".into(),
+            reasoning_effort: None,
+            fast_mode: false,
+            resume_conversation_id: None,
+            resume_fork: false,
+            permission_mode,
+            agent_mode,
+            cols: 80,
+            rows: 24,
+        }
+    }
+
+    #[test]
+    fn card_tools_and_full_access_answer_themselves_but_plan_mode_still_asks() {
+        use super::super::AgentMode;
+        let ask = launch_input(PermissionMode::AskEachTime, AgentMode::Auto);
+        assert!(answers_itself(&ask, Some("AskUserQuestion")));
+        assert!(answers_itself(&ask, Some("ExitPlanMode")));
+        assert!(!answers_itself(&ask, Some("Bash")));
+        assert!(!answers_itself(&ask, None));
+
+        let full = launch_input(PermissionMode::AutoApprove, AgentMode::Auto);
+        assert!(answers_itself(&full, Some("Bash")));
+
+        // A plan-mode chat is gated on purpose, but its own card is not.
+        let plan = launch_input(PermissionMode::AutoApprove, AgentMode::Plan);
+        assert!(!answers_itself(&plan, Some("Bash")));
+        assert!(answers_itself(&plan, Some("AskUserQuestion")));
+    }
+
     #[test]
     fn native_decisions_preserve_request_and_input() {
         let input = json!({"command":"printf hello"});

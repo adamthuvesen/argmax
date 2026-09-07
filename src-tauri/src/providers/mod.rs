@@ -96,3 +96,50 @@ impl AgentMode {
         }
     }
 }
+
+/// Whether a tool call reaches the user as chat content rather than a tool row:
+/// an interactive card they answer, or — for `SendUserMessage` — prose the
+/// normalizer rewrites into a plain message. A card is drawn from the call
+/// itself and answered with its own button, which terminates the turn and sends
+/// the answer as a new message, so the tool result is discarded either way.
+/// Gating one asks permission to show the user a question already in front of
+/// them, and gating a message asks permission to say something, so neither is
+/// ever sent to the approval broker.
+///
+/// Kept in step with `isAskUserQuestionToolName` / `isExitPlanModeToolName` in
+/// [src/renderer/lib/turnInteractiveCards.ts]; the normalization is the same
+/// lowercase-alphanumeric fold, so `ExitPlanMode` and `exit_plan_mode` are one
+/// name.
+pub fn renders_as_interactive_card(tool_name: &str) -> bool {
+    let normalized: String = tool_name
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|character| character.to_ascii_lowercase())
+        .collect();
+    matches!(
+        normalized.as_str(),
+        "askuserquestion" | "askquestiontoolcall" | "sendusermessage" | "exitplanmode"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::renders_as_interactive_card;
+
+    #[test]
+    fn card_tool_names_match_the_renderers_fold() {
+        for name in [
+            "AskUserQuestion",
+            "ask_user_question",
+            "askQuestionToolCall",
+            "SendUserMessage",
+            "ExitPlanMode",
+            "exit_plan_mode",
+        ] {
+            assert!(renders_as_interactive_card(name), "{name}");
+        }
+        for name in ["Bash", "Edit", "Write", "askQuestion", "plan"] {
+            assert!(!renders_as_interactive_card(name), "{name}");
+        }
+    }
+}

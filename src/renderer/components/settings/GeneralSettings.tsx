@@ -66,7 +66,7 @@ export function GeneralSettings({
     try {
       await window.argmax.system.testNotification();
       setTestNotificationStatus(
-        "Test notification sent. macOS holds the banner while Argmax is frontmost, so look in Notification Center. Nothing there? Check System Settings > Notifications > Argmax."
+        "Test notification sent. No banner? Check System Settings > Notifications > Argmax."
       );
     } catch (error) {
       setTestNotificationStatus(

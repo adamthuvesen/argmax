@@ -133,14 +133,30 @@ rmcp = { version = "3.2", default-features = false, features = [
 # WKWebView through `Webview::with_webview` and calls
 # `takeSnapshotWithConfiguration:completionHandler:` itself. All of these are
 # already in the tree via wry at the same versions; nothing new is downloaded.
+#
+# `objc2-user-notifications` is the desktop notification path: the Tauri
+# plugin sends through the deprecated `NSUserNotificationCenter`, which macOS
+# never shows as a banner while Argmax is frontmost and whose permission
+# check is hardcoded to granted. See notifications/macos.rs.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = [
+    "NSBundle",
     "NSData",
     "NSDictionary",
     "NSError",
     "NSProcessInfo",
     "NSString",
+] }
+objc2-user-notifications = { version = "0.3", default-features = false, features = [
+    "block2",
+    "UNNotification",
+    "UNNotificationContent",
+    "UNNotificationRequest",
+    "UNNotificationResponse",
+    "UNNotificationSettings",
+    "UNNotificationTrigger",
+    "UNUserNotificationCenter",
 ] }
 objc2-app-kit = { version = "0.3", default-features = false, features = [
     "std",

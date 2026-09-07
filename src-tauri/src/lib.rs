@@ -608,7 +608,7 @@ pub fn run() {
                             });
                             let notifications = Arc::new(notifications::NotificationService::new(
                                 notifications::main_window_focus_probe(app.handle().clone()),
-                                notifications::TauriNotificationSink::new(app.handle().clone()),
+                                notifications::desktop_sink(app.handle().clone()),
                             ));
                             if state.notifications.set(Arc::clone(&notifications)).is_err() {
                                 tracing::warn!("notifications state was already initialized");
@@ -1181,9 +1181,7 @@ async fn sync_sweep_loop(app: tauri::AppHandle) {
 async fn handle_gh_check_failure(
     database: Arc<persistence::Database>,
     providers: Arc<providers::session_service::ProviderSessionService>,
-    notifications: Arc<
-        notifications::NotificationService<notifications::TauriNotificationSink<tauri::Wry>>,
-    >,
+    notifications: Arc<state::LiveNotificationService>,
     app_data_dir: std::path::PathBuf,
     context: gh::poller::CheckFailureContext,
 ) -> error::ArgmaxResult<()> {

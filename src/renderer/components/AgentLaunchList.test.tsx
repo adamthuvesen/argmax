@@ -23,7 +23,9 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
 
 describe("AgentLaunchList", () => {
   it("keeps the animated nest while running and names the state in words too", () => {
-    const { container } = render(<AgentLaunchList tools={[tool({ status: "running", completedAt: null })]} />);
+    const { container } = render(
+      <AgentLaunchList tools={[tool({ status: "running", completedAt: null })]} onOpenAgent={vi.fn()} />
+    );
     expect(
       screen.getByRole("button", { name: startedAgentName("Map the renderer") })
     ).toBeInTheDocument();
@@ -81,6 +83,7 @@ describe("AgentLaunchList", () => {
           inputPreview: prompt.slice(0, 72),
           inputFull: { prompt }
         })]}
+        onOpenAgent={vi.fn()}
       />
     );
     expect(
@@ -106,8 +109,18 @@ describe("AgentLaunchList", () => {
   });
 
   it("keeps the details toggle when the launch produced output", () => {
-    render(<AgentLaunchList tools={[tool({ output: "done" })]} />);
+    render(<AgentLaunchList tools={[tool({ output: "done" })]} onOpenAgent={vi.fn()} />);
     expect(screen.getByRole("button", { name: toggleAgentDetailsName("Map the renderer") })).toBeInTheDocument();
+  });
+
+  it("stays a record, not a control, where there is no dock to open it in", () => {
+    // The phone hands the row no handler: it names the delegated work and the
+    // state it reached, and nothing on it can be pressed — there is no Agents
+    // view on that surface for a press to land in.
+    render(<AgentLaunchList tools={[tool({ output: "done" })]} />);
+    expect(screen.getByText("Map the renderer")).toBeInTheDocument();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 
   it("marks a failed launch with the bullet and the word Failed", () => {

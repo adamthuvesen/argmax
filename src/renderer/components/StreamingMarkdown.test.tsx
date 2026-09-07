@@ -41,6 +41,40 @@ describe("<StreamingMarkdown />", () => {
     path: "/Users/me/repo"
   } as Parameters<typeof StreamingMarkdown>[0]["workspace"];
 
+  it("preserves code scroll elements across workspace and callback updates", () => {
+    const text = "```\nlong output\n```";
+    const { rerender } = render(
+      <StreamingMarkdown text={text} streaming={false} workspace={workspace} />
+    );
+    const code = screen.getByText("long output");
+    const pre = code.closest("pre")!;
+    pre.scrollLeft = 120;
+
+    rerender(
+      <StreamingMarkdown text={text} streaming={false} workspace={{ ...workspace! }} onOpenFile={vi.fn()} />
+    );
+
+    expect(screen.getByText("long output").closest("pre")).toBe(pre);
+    expect(pre.scrollLeft).toBe(120);
+  });
+
+  it("uses the latest file callback without replacing the link", () => {
+    const text = "Open [the app](src/renderer/App.tsx).";
+    const previous = vi.fn();
+    const current = vi.fn();
+    const { rerender } = render(
+      <StreamingMarkdown text={text} streaming={false} workspace={workspace} onOpenFile={previous} />
+    );
+    const link = screen.getByRole("button", { name: "Open src/renderer/App.tsx" });
+    rerender(
+      <StreamingMarkdown text={text} streaming={false} workspace={workspace} onOpenFile={current} />
+    );
+    expect(screen.getByRole("button", { name: "Open src/renderer/App.tsx" })).toBe(link);
+    fireEvent.click(link);
+    expect(previous).not.toHaveBeenCalled();
+    expect(current).toHaveBeenCalledWith("src/renderer/App.tsx", { line: null, preferIde: false });
+  });
+
   it("renders workspace and managed attachment images through guarded protocols", () => {
     const { container } = render(
       <StreamingMarkdown

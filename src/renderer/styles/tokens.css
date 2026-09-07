@@ -602,9 +602,9 @@
 }
 
 :root[data-accent="neutral"] {
-  --accent: #4f4d47;
+  --accent: #6c6960;
   --accent-soft: #ecebea;
-  --accent-deep: #2f2d29;
+  --accent-deep: #4a473e;
 }
 
 :root[data-accent="orange"] {
@@ -637,12 +637,20 @@
 }
 
 :root[data-theme="dark"][data-accent="neutral"] {
-  --accent: #d6d2c7;
-  --accent-soft: rgba(214, 210, 199, 0.14);
-  --accent-deep: #f1ede3;
-  /* Lifted beige --accent stays on chrome; the bubble drops to the same
-     mid-deep warm gray as light-mode neutral so it reads as a slab, not
-     a paper card on charcoal. */
+  --accent: #a8a49b;
+  --accent-soft: rgba(168, 164, 155, 0.14);
+  --accent-deep: #c2beb4;
+  /* Neutral is the one dark accent that skips the L 0.80 floor the mono ink
+     tokens above impose. That floor is there so a mid-lightness *warm hue*
+     does not land as brown on a thin stem; at chroma 0.0145 there is no hue
+     left to muddy, and pinning it would only push inline code back above the
+     accent it is meant to match. On the accent itself it reads 7.4:1 on --bg,
+     and paths sit a step under at 6.4:1. */
+  --code-ink: var(--accent);
+  --path-ink: #9b9890;
+  /* The bubble keeps its own mid-deep warm gray rather than following the
+     accent: every other dark bubble sits at L 0.44-0.47, and a neutral one
+     lifted to the accent would be the only bright slab on the charcoal. */
   --user-message-bg: #4f4d47;
   --user-message-fg: #ffffff;
 }

@@ -5,6 +5,7 @@ import { AppErrorBoundary } from "./components/AppErrorBoundary.js";
 import "./lib/tauriBridge.js";
 import "./lib/windowChrome.js";
 import { initActivityMark } from "./lib/activityMark.js";
+import { installDragBreadcrumbs } from "./lib/dragLog.js";
 import { installVerificationDiagnostics } from "./lib/verificationDiagnostics.js";
 // Non-default font CSS bundles download only when the user picks them in
 // Settings → Appearance.
@@ -17,6 +18,11 @@ initActivityMark();
 if (import.meta.env.VITE_ARGMAX_VERIFICATION === "1") {
   installVerificationDiagnostics();
 }
+
+// Drag and drop stops working window-wide after hours of use, and the page
+// keeps no record of whether the events still arrive. Debug → Logs, scope
+// `renderer::drag`.
+installDragBreadcrumbs();
 
 // Counterpart of the delta-burst warning in tauriBridge.ts: when streaming
 // visibly freezes and then floods in, a long task logged here pins the stall

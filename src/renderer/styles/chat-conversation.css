@@ -270,6 +270,7 @@
 }
 
 .session-main-column {
+  container-type: inline-size;
   --session-inline-padding: clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width)) / 2), 2000px);
   display: grid;
   min-width: 0;
@@ -293,6 +294,7 @@
 }
 
 .conversation-surface {
+  container-type: inline-size;
   /* Height of the fade at the scroll box's top and bottom edges. The list's
      own end padding matches it, so at rest the fade lands on empty space and
      only bites once content is actually scrolling past the edge. Compact

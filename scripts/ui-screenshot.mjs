@@ -9,12 +9,15 @@
 // Usage:
 //   node scripts/ui-screenshot.mjs [--out shot.png] [--theme dark|light|system]
 //        [--width 1400] [--height 900] [--mobile] [--touch] [--url http://…]
-//        [--eval '<js>'] [--settle 900]
+//        [--eval '<js>'] [--settle 900] [--scale 2]
 //
 // --touch emulates a phone: the viewport is overridden rather than sized by the
 // window (headless Chrome refuses to go much under 500px wide), and touch
 // emulation makes `(pointer: coarse)` match — the gate the composer's queue
 // button and the selection toolbar read.
+//
+// --scale captures at that device pixel ratio (a 1400x900 page at --scale 2
+// is a 2800x1800 PNG); the README hero is built this way.
 //
 // With no --url a vite dev server is started on a spare port and stopped
 // afterwards. --eval runs after load and before the capture — use it to click
@@ -51,7 +54,8 @@ function parseArgs(argv) {
     touch: false,
     url: null,
     evaluate: null,
-    settle: 900
+    settle: 900,
+    scale: 1
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -64,9 +68,11 @@ function parseArgs(argv) {
     else if (arg === "--url") options.url = argv[++i];
     else if (arg === "--eval") options.evaluate = argv[++i];
     else if (arg === "--settle") options.settle = Number(argv[++i]);
+    else if (arg === "--scale") options.scale = Number(argv[++i]);
     else fail(`unknown argument: ${arg}`);
   }
   if (!["dark", "light", "system"].includes(options.theme)) fail("--theme must be dark, light, or system");
+  if (!Number.isFinite(options.scale) || options.scale <= 0) fail("--scale must be a positive number");
   return options;
 }
 
@@ -204,6 +210,12 @@ if (options.touch) {
   await cdp.send(
     "Emulation.setTouchEmulationEnabled",
     { enabled: true, maxTouchPoints: 5 },
+    sessionId
+  );
+} else if (options.scale !== 1) {
+  await cdp.send(
+    "Emulation.setDeviceMetricsOverride",
+    { width: options.width, height: options.height, deviceScaleFactor: options.scale, mobile: false },
     sessionId
   );
 }

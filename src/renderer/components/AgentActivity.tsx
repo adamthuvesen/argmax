@@ -291,6 +291,11 @@ function AgentActivityRun({
     !minimalActivity && (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded");
   const [activityExpandOverride, setActivityExpandOverride] = useState<boolean | null>(null);
   const activityExpanded = activityExpandOverride ?? activityExpandedDefault;
+  // Individual rows open one level above the groups: Detailed and up. A nested
+  // launch row follows that rather than the group level, because what its
+  // chevron reveals is the raw launch receipt, not the grandchild's work.
+  const toolRowsExpanded =
+    !minimalActivity && (activityExpandOverride ?? defaultToolCallsDisplay === "expanded");
   // `loadedAgentKey` is set in the load's `finally`, so this clears whether the
   // read succeeded or failed — a pane that never settled would keep motion
   // suppressed for good.
@@ -386,7 +391,7 @@ function AgentActivityRun({
               key={item.tool.id}
               tool={item.tool}
               childTools={item.children}
-              defaultExpanded={activityExpanded}
+              defaultExpanded={toolRowsExpanded}
               workspaceCwd={workspace?.path ?? null}
               onOpenFile={onOpenFile}
               onOpenAgent={onOpenAgent}
@@ -404,7 +409,7 @@ function AgentActivityRun({
         group={buildToolCallGroup(runTools)}
         compact={compactActivity}
         defaultExpanded={!minimalActivity && activityExpanded}
-        defaultToolsExpanded={!minimalActivity && (activityExpandOverride ?? defaultToolCallsDisplay === "expanded")}
+        defaultToolsExpanded={toolRowsExpanded}
         workspaceCwd={workspace?.path ?? null}
         onOpenFile={onOpenFile}
         onOpenAgent={onOpenAgent}
@@ -422,7 +427,6 @@ function AgentActivityRun({
     activityExpandOverride,
     activityExpanded,
     compactActivity,
-    defaultToolCallsDisplay,
     agentKey,
     defaultThinkingExpanded,
     finalOutput,
@@ -431,6 +435,7 @@ function AgentActivityRun({
     onOpenFile,
     restoringTranscript,
     streaming,
+    toolRowsExpanded,
     workspace
   ]);
   const {

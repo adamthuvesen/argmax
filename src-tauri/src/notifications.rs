@@ -5,6 +5,9 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
+#[cfg(target_os = "macos")]
+mod macos;
+
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::gh::GhPrRecord;
 use crate::persistence::sessions::SessionSummary;
@@ -52,18 +55,12 @@ impl<S: NotificationSink> NotificationService<S> {
     }
 
     pub fn fire_test(&self) -> ArgmaxResult<()> {
-        // Success here means the send was queued, not that the OS showed a
-        // banner. The desktop `show()` below hands the notify-rust send to a
-        // background task and always returns `Ok`, so a failure inside the
-        // send never reaches the caller. On macOS the send goes through
-        // `NSUserNotificationCenter`, whose delegate does not implement
-        // `shouldPresentNotification:`, so a banner fired while Argmax is
-        // frontmost (the state Settings is always in when the test button is
-        // clicked) lands in Notification Center history with no popup.
-        // Showing a banner while frontmost needs macOS delivery on
-        // `UNUserNotificationCenter` with a foreground presentation delegate,
-        // plus a real permission check: `permission_state()` is hardcoded to
-        // Granted on desktop.
+        // Success means the send was queued, not that the OS showed a
+        // banner: every sink hands the send to the platform asynchronously.
+        // On a bundled macOS build the sink presents the banner even while
+        // Argmax is frontmost; the plugin fallback (unbundled dev binary,
+        // other platforms) cannot, and macOS files it into Notification
+        // Center history instead.
         if !self.sink.is_supported() {
             return Err(ArgmaxError::service(
                 "NOTIFICATIONS_UNSUPPORTED",
@@ -79,7 +76,14 @@ impl<S: NotificationSink> NotificationService<S> {
 
     pub fn notify(&self, session: &SessionSummary) -> ArgmaxResult<bool> {
         let notifiable = matches!(session.state, SessionState::Complete | SessionState::Failed);
-        if !self.is_enabled() || !notifiable {
+        if !notifiable {
+            // A follow-up turn leaves the terminal state; drop the stamp so
+            // the next completion notifies again instead of being deduped
+            // against the first one forever.
+            self.forget(&session.id);
+            return Ok(false);
+        }
+        if !self.is_enabled() {
             return Ok(false);
         }
 
@@ -154,6 +158,39 @@ impl<S: NotificationSink> NotificationService<S> {
     pub fn is_enabled(&self) -> bool {
         *self.enabled.lock_or_recover("notification enabled")
     }
+}
+
+impl NotificationSink for Box<dyn NotificationSink> {
+    fn is_supported(&self) -> bool {
+        self.as_ref().is_supported()
+    }
+
+    fn fire(&self, options: NotificationOptions) -> ArgmaxResult<()> {
+        self.as_ref().fire(options)
+    }
+}
+
+/// The sink for this build: `UNUserNotificationCenter` on a bundled macOS
+/// app, the Tauri plugin everywhere else. Call from the main thread during
+/// setup so the macOS delegate is installed before the first notification.
+pub fn desktop_sink<R: Runtime>(app: AppHandle<R>) -> Box<dyn NotificationSink> {
+    native_sink(&app).unwrap_or_else(|| Box::new(TauriNotificationSink::new(app)))
+}
+
+#[cfg(target_os = "macos")]
+fn native_sink<R: Runtime>(app: &AppHandle<R>) -> Option<Box<dyn NotificationSink>> {
+    if !macos::has_bundle_identifier() {
+        tracing::info!("no bundle identifier; desktop notifications use the Tauri plugin");
+        return None;
+    }
+    Some(Box::new(macos::UserNotificationCenterSink::new(
+        app.clone(),
+    )))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn native_sink<R: Runtime>(_app: &AppHandle<R>) -> Option<Box<dyn NotificationSink>> {
+    None
 }
 
 pub struct TauriNotificationSink<R: Runtime> {
@@ -417,6 +454,23 @@ mod tests {
         service.notify(&session).expect("notify ok");
 
         assert_eq!(sink.fired().len(), 1);
+    }
+
+    #[test]
+    fn renotifies_after_session_runs_again() {
+        let sink = Arc::new(StubSink::supported());
+        let service = service_with_focus(false, Arc::clone(&sink));
+        let session = session(SessionState::Complete);
+        assert!(service.notify(&session).expect("first completion"));
+        assert!(!service.notify(&session).expect("same completion deduped"));
+
+        let running = SessionSummary {
+            state: SessionState::Running,
+            ..session.clone()
+        };
+        assert!(!service.notify(&running).expect("running never notifies"));
+        assert!(service.notify(&session).expect("next completion notifies"));
+        assert_eq!(sink.fired().len(), 2);
     }
 
     #[test]

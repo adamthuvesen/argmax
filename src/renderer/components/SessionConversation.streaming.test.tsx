@@ -5,7 +5,7 @@ import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { SessionConversation } from "./SessionConversation.js";
 import { THINKING_WORDS } from "./ThinkingLabel.js";
-import { chatCueLogSnapshot, clearChatCueLog } from "../lib/chatCueLog.js";
+import { clearRendererLog, rendererLogSnapshot } from "../lib/rendererLogRing.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import {
   baseSession,
@@ -1125,7 +1125,7 @@ describe("SessionConversation — streaming & composer", () => {
     ]);
 
     await waitFor(() => expect(screen.queryByLabelText("Thinking")).toBeTruthy());
-    expect(chatCueLogSnapshot().at(-1)?.fields.reason).toBe("shown");
+    expect(rendererLogSnapshot().at(-1)?.fields.reason).toBe("shown");
   });
 
   it("records why the progress cue is off screen, for the next time it should not be", async () => {
@@ -1133,7 +1133,7 @@ describe("SessionConversation — streaming & composer", () => {
     // trace: when it wrongly stays down, the pane is blank and the state that
     // decided it is already gone. One breadcrumb per transition, in Debug →
     // Logs under `renderer::chat`, turns that into a lookup.
-    clearChatCueLog();
+    clearRendererLog();
     renderConversation(baseSession({ provider: "claude", state: "running" }), [
       event("t1", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
         id: "tu_live",
@@ -1143,8 +1143,8 @@ describe("SessionConversation — streaming & composer", () => {
       event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
     ]);
 
-    await waitFor(() => expect(chatCueLogSnapshot().length).toBeGreaterThan(0));
-    const latest = chatCueLogSnapshot().at(-1);
+    await waitFor(() => expect(rendererLogSnapshot().length).toBeGreaterThan(0));
+    const latest = rendererLogSnapshot().at(-1);
     expect(latest?.scope).toBe("renderer::chat");
     expect(latest?.message).toBe("progress cue hidden");
     expect(latest?.fields.reason).toBe("tool-running");
@@ -1152,13 +1152,13 @@ describe("SessionConversation — streaming & composer", () => {
   });
 
   it("records the cue coming up, so a shown/hidden pair brackets every wait", async () => {
-    clearChatCueLog();
+    clearRendererLog();
     renderConversation(baseSession({ provider: "claude", state: "running" }), [
       event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
     ]);
 
     await waitFor(() => expect(screen.queryByLabelText("Thinking")).toBeTruthy());
-    const latest = chatCueLogSnapshot().at(-1);
+    const latest = rendererLogSnapshot().at(-1);
     expect(latest?.message).toBe("progress cue shown");
     expect(latest?.fields.reason).toBe("shown");
   });

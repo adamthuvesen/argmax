@@ -130,6 +130,34 @@ describe("TurnBlock", () => {
     expect(screen.getByTestId("assistant")).toBeInTheDocument();
   });
 
+  it("times a finished turn from its last event when a background launch row never closed", () => {
+    // A subagent that hands off to a background agent and then ends its own
+    // turn leaves that launch row open for good. The turn still ran from the
+    // launch to its final message, not for 0s.
+    const items: TurnToolItem[] = [
+      {
+        kind: "tool",
+        tool: tool({
+          name: "Agent",
+          status: "running",
+          completedAt: null,
+          createdAt: "2026-09-07T05:45:08.653Z"
+        })
+      }
+    ];
+    render(
+      <TurnBlock
+        toolItems={items}
+        assistantTimestamps={[Date.parse("2026-09-07T05:45:11.607Z")]}
+        turnStartedAtMs={Date.parse("2026-09-07T05:44:46.972Z")}
+        isTurnActive={false}
+        body={body(toolChild("tools"), assistantChild("assistant", "handed off"))}
+        toolsExpanded={false}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Worked for 24s" })).toBeInTheDocument();
+  });
+
   it("hides working rows on a finished turn when hideWorkingWhenCollapsed is set", () => {
     const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
     render(

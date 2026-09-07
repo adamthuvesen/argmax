@@ -2,15 +2,28 @@
 // against a session's workspace and persists the result so the renderer can
 // render PR status without re-running `gh` on every read.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
+use serde_json::Value;
+
 use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::git::ops::{extract_pr_number, extract_pr_url};
 use crate::persistence::database::Database;
 use crate::persistence::gh::{list_gh_pr_for_session, upsert_gh_pr, GhPrRecord};
 use crate::persistence::sessions::find_session_by_id;
 use crate::persistence::time::now_iso;
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::util::gh_runner::{default_gh_runner, GhRunner};
+
+const PR_VIEW_JSON_FIELDS: &str =
+    "number,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt,url";
+/// Bound on extra `gh pr view <number>` calls per refresh, after the branch
+/// view. A session that accumulated many OPEN rows still finishes a tick.
+const MAX_OPEN_PR_NUMBER_VIEWS: usize = 8;
+/// PR URLs sit at the end of `gh pr create` stdout. Scanning a huge tool
+/// payload for one would be wasted work.
+const COMMAND_EVENT_SCAN_TAIL: usize = 8 * 1024;
 
 /// `GhService` keeps the renderer's PR rows fresh. Cheap reads (`list_for_session`)
 /// hit SQLite; `refresh` calls out to `gh` and upserts.
@@ -42,12 +55,29 @@ impl GhService {
     /// the result. On `gh` failure (no PR / auth / transport) returns the
     /// existing cached rows — historical rows are never deleted because the
     /// timeline still wants to render them.
+    ///
+    /// After the branch view, re-views this session's already-cached OPEN rows
+    /// by number. `gh pr view <branch>` cannot see a PR whose head the
+    /// checkout has left, so without the number pass those rows stay OPEN
+    /// forever and a PR the agent opened on another branch is never refreshed.
     pub async fn refresh(&self, session_id: &str) -> ArgmaxResult<Vec<GhPrRecord>> {
-        let (workspace_project_id, workspace_path, branch) = {
+        let (workspace_project_id, workspace_path, branch, open_numbers, mentioned_numbers) = {
             let conn = self.database.connection();
             let session = find_session_by_id(&conn, session_id)?;
             let workspace = find_workspace_by_id(&conn, &session.workspace_id)?;
-            (workspace.project_id, workspace.path, workspace.branch)
+            let open_numbers = list_gh_pr_for_session(&conn, session_id)?
+                .into_iter()
+                .filter(|row| !matches!(row.pr_state.as_deref(), Some("MERGED") | Some("CLOSED")))
+                .map(|row| row.pr_number)
+                .collect::<Vec<_>>();
+            let mentioned_numbers = command_pr_numbers_from_db(&conn, session_id)?;
+            (
+                workspace.project_id,
+                workspace.path,
+                workspace.branch,
+                open_numbers,
+                mentioned_numbers,
+            )
         };
         if workspace_path.is_empty() {
             // A persisted workspace always has a path; an empty one signals
@@ -56,19 +86,79 @@ impl GhService {
             return self.list_for_session(session_id);
         }
 
+        let mut viewed = HashSet::new();
         // Pass the workspace's own branch so a shared checkout that has since
         // moved still resolves the PR this session is sitting on — `gh pr view`
         // with no ref uses whatever HEAD the directory currently has.
-        let mut args = vec!["pr".into(), "view".into()];
-        if !branch.is_empty() {
-            args.push(branch);
+        if let Some(parsed) = self
+            .view_pr(&workspace_path, Some(branch.as_str()), session_id)
+            .await
+        {
+            if let Some(pr_number) = parsed.number {
+                viewed.insert(pr_number);
+            }
+            self.upsert_view(session_id, &workspace_project_id, parsed)?;
         }
-        args.extend([
-            "--json".into(),
-            "number,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt,url".into(),
-        ]);
 
-        let stdout = match (self.runner)(workspace_path, args).await {
+        for pr_number in open_numbers
+            .into_iter()
+            .chain(mentioned_numbers)
+            .take(MAX_OPEN_PR_NUMBER_VIEWS)
+        {
+            if !viewed.insert(pr_number) {
+                continue;
+            }
+            if let Some(parsed) = self
+                .view_pr(&workspace_path, Some(&pr_number.to_string()), session_id)
+                .await
+            {
+                self.upsert_view(session_id, &workspace_project_id, parsed)?;
+            }
+        }
+
+        self.list_for_session(session_id)
+    }
+
+    /// `gh pr view <number>` against the session's workspace. The number is
+    /// enough — `gh` talks to the GitHub remote, so this finds a PR opened
+    /// from another worktree of the same repo.
+    pub async fn refresh_pr_number(
+        &self,
+        session_id: &str,
+        pr_number: i64,
+    ) -> ArgmaxResult<Vec<GhPrRecord>> {
+        let (workspace_project_id, workspace_path) = {
+            let conn = self.database.connection();
+            let session = find_session_by_id(&conn, session_id)?;
+            let workspace = find_workspace_by_id(&conn, &session.workspace_id)?;
+            (workspace.project_id, workspace.path)
+        };
+        if workspace_path.is_empty() {
+            tracing::warn!(%session_id, "gh.refresh_pr_number: workspace path is empty; returning cached PR rows");
+            return self.list_for_session(session_id);
+        }
+        if let Some(parsed) = self
+            .view_pr(&workspace_path, Some(&pr_number.to_string()), session_id)
+            .await
+        {
+            self.upsert_view(session_id, &workspace_project_id, parsed)?;
+        }
+        self.list_for_session(session_id)
+    }
+
+    async fn view_pr(
+        &self,
+        workspace_path: &str,
+        reference: Option<&str>,
+        session_id: &str,
+    ) -> Option<PrViewResponse> {
+        let mut args = vec!["pr".into(), "view".into()];
+        if let Some(reference) = reference.filter(|name| !name.is_empty()) {
+            args.push(reference.to_string());
+        }
+        args.extend(["--json".into(), PR_VIEW_JSON_FIELDS.into()]);
+
+        let stdout = match (self.runner)(workspace_path.to_string(), args).await {
             Ok(text) => text,
             Err(error) => {
                 let category = gh_error_category(&error);
@@ -86,19 +176,23 @@ impl GhService {
                         "gh.refresh: gh failed"
                     );
                 }
-                return self.list_for_session(session_id);
+                return None;
             }
         };
+        serde_json::from_str(stdout.trim()).ok()
+    }
 
-        let parsed: Option<PrViewResponse> = serde_json::from_str(stdout.trim()).ok();
-        let Some(parsed) = parsed else {
-            return self.list_for_session(session_id);
-        };
+    fn upsert_view(
+        &self,
+        session_id: &str,
+        workspace_project_id: &str,
+        parsed: PrViewResponse,
+    ) -> ArgmaxResult<()> {
         let Some(pr_number) = parsed.number else {
-            return self.list_for_session(session_id);
+            return Ok(());
         };
         let Some(head_sha) = parsed.head_ref_oid.filter(|sha| !sha.is_empty()) else {
-            return self.list_for_session(session_id);
+            return Ok(());
         };
 
         let record = GhPrRecord {
@@ -113,20 +207,113 @@ impl GhService {
             pr_merged_at: parsed.merged_at.filter(|timestamp| !timestamp.is_empty()),
             head_ref_name: parsed.head_ref_name.filter(|name| !name.is_empty()),
         };
-        {
-            let conn = self.database.connection();
-            upsert_gh_pr(&conn, &record)?;
-            if let Some(url) = parsed.url.as_deref() {
-                if let Some(remote) = crate::git::ops::extract_github_remote_from_url(url) {
-                    let _ = crate::persistence::projects::update_project_remote(
-                        &conn,
-                        &workspace_project_id,
-                        Some(&remote),
-                    );
-                }
+        let conn = self.database.connection();
+        upsert_gh_pr(&conn, &record)?;
+        if let Some(url) = parsed.url.as_deref() {
+            if let Some(remote) = crate::git::ops::extract_github_remote_from_url(url) {
+                let _ = crate::persistence::projects::update_project_remote(
+                    &conn,
+                    workspace_project_id,
+                    Some(&remote),
+                );
             }
         }
-        self.list_for_session(session_id)
+        Ok(())
+    }
+}
+
+/// GitHub PR numbers mentioned in a completed tool event's stdout. Used to
+/// notice `gh pr create` (and similar) without waiting for the poller, which
+/// only views `workspace.branch`.
+pub fn pr_numbers_from_command_event(event_type: &str, message: &str, payload: &Value) -> Vec<i64> {
+    if event_type != "command.completed" {
+        return Vec::new();
+    }
+    let mut text = String::new();
+    push_scan_text(&mut text, message);
+    if let Some(content) = payload.get("content").and_then(Value::as_str) {
+        push_scan_text(&mut text, content);
+    }
+    if let Some(output) = payload.get("aggregated_output").and_then(Value::as_str) {
+        push_scan_text(&mut text, output);
+    }
+    let scan = tail_str(&text, COMMAND_EVENT_SCAN_TAIL);
+    let mut numbers = Vec::new();
+    let mut rest = scan;
+    while let Some(url) = extract_pr_url(rest) {
+        if let Some(number) = extract_pr_number(&url) {
+            if !numbers.contains(&number) {
+                numbers.push(number);
+            }
+        }
+        let Some(next) = rest.find(&url).map(|at| at + url.len()) else {
+            break;
+        };
+        rest = &rest[next..];
+    }
+    numbers
+}
+
+fn push_scan_text(into: &mut String, chunk: &str) {
+    if chunk.is_empty() {
+        return;
+    }
+    if !into.is_empty() {
+        into.push('\n');
+    }
+    into.push_str(chunk);
+}
+
+fn command_pr_numbers_from_db(
+    connection: &rusqlite::Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<i64>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT message, payload_json
+            FROM events
+            WHERE session_id = ?1
+              AND type = 'command.completed'
+              AND (message LIKE '%/pull/%' OR payload_json LIKE '%/pull/%')
+            ORDER BY created_at DESC
+            LIMIT 20
+            "#,
+        )
+        .map_err(crate::persistence::sqlite_error)?;
+    let mut rows = statement
+        .query([session_id])
+        .map_err(crate::persistence::sqlite_error)?;
+    let mut numbers = Vec::new();
+    while let Some(row) = rows.next().map_err(crate::persistence::sqlite_error)? {
+        let message: String = row.get(0).map_err(crate::persistence::sqlite_error)?;
+        let payload_json: String = row.get(1).map_err(crate::persistence::sqlite_error)?;
+        let payload: Value = serde_json::from_str(&payload_json).unwrap_or(Value::Null);
+        for number in pr_numbers_from_command_event("command.completed", &message, &payload) {
+            if !numbers.contains(&number) {
+                numbers.push(number);
+            }
+        }
+    }
+    Ok(numbers)
+}
+
+fn tail_str(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let start = text.len() - max_bytes;
+    match text.get(start..) {
+        Some(tail) => tail,
+        None => {
+            let start = text
+                .char_indices()
+                .rev()
+                .find(|(idx, _)| *idx <= start)
+                .map(|(idx, _)| idx)
+                .unwrap_or(0);
+            &text[start..]
+        }
     }
 }
 
@@ -280,6 +467,7 @@ fn normalize_pr_state(raw: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
     use crate::persistence::sessions::{persist_session, PersistSessionInput};
     use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
@@ -551,7 +739,168 @@ mod tests {
         assert_eq!(rows.len(), 1, "row preserved on gh failure");
         assert_eq!(rows[0].pr_number, 99);
         assert_eq!(rows[0].last_seen_check_state, "pending");
-        assert_eq!(stub.call_count(), 1);
+        // Branch view failed, then the cached OPEN row is retried by number.
+        assert_eq!(stub.call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn refresh_updates_cached_open_pr_by_number_when_branch_has_none() {
+        let (_dir, database) = open_db();
+        let (session_id, _) = fixture(&database, "/tmp/argmax-gh-number");
+        {
+            let conn = database.connection();
+            upsert_gh_pr(
+                &conn,
+                &GhPrRecord {
+                    session_id: session_id.clone(),
+                    pr_number: 568,
+                    head_sha: "oldsha".to_string(),
+                    last_seen_check_state: "pending".to_string(),
+                    updated_at: now_iso(),
+                    pr_state: Some("OPEN".to_string()),
+                    notified_at: None,
+                    pr_created_at: None,
+                    pr_merged_at: None,
+                    head_ref_name: Some("fix/other-worktree".to_string()),
+                },
+            )
+            .expect("seed gh_pr");
+        }
+
+        let stub = StubRunner::new(vec![
+            Err(ArgmaxError::service(
+                "GH_NON_ZERO_EXIT",
+                "no pull requests found for branch feature/x",
+            )),
+            Ok(r#"{
+                "number": 568,
+                "headRefOid": "newsha",
+                "headRefName": "fix/other-worktree",
+                "state": "MERGED",
+                "mergedAt": "2026-09-07T04:00:00Z",
+                "statusCheckRollup": [{"conclusion": "success"}]
+            }"#
+            .to_string()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+        let rows = service.refresh(&session_id).await.expect("refresh");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pr_number, 568);
+        assert_eq!(rows[0].head_sha, "newsha");
+        assert_eq!(rows[0].pr_state.as_deref(), Some("MERGED"));
+        assert_eq!(stub.call_count(), 2);
+        assert_eq!(
+            stub.last_args(),
+            vec![
+                "pr",
+                "view",
+                "568",
+                "--json",
+                "number,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt,url",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_pr_number_views_that_pr_in_the_workspace() {
+        let (_dir, database) = open_db();
+        let (session_id, _) = fixture(&database, "/tmp/argmax-gh-by-number");
+        let stub = StubRunner::new(vec![Ok(r#"{
+            "number": 566,
+            "headRefOid": "abc123",
+            "headRefName": "refactor/drop-profound",
+            "state": "OPEN",
+            "createdAt": "2026-09-07T03:14:11Z",
+            "statusCheckRollup": [{"conclusion": "pending"}]
+        }"#
+        .to_string())]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+        let rows = service
+            .refresh_pr_number(&session_id, 566)
+            .await
+            .expect("refresh number");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pr_number, 566);
+        assert_eq!(
+            rows[0].head_ref_name.as_deref(),
+            Some("refactor/drop-profound")
+        );
+        assert_eq!(
+            stub.last_args(),
+            vec![
+                "pr",
+                "view",
+                "566",
+                "--json",
+                "number,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt,url",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_discovers_pr_url_from_recent_command_output() {
+        let (_dir, database) = open_db();
+        let (session_id, _) = fixture(&database, "/tmp/argmax-gh-from-command");
+        {
+            let conn = database.connection();
+            persist_timeline_event(
+                &conn,
+                &PersistTimelineEventInput {
+                    id: "e-create".to_string(),
+                    session_id: session_id.clone(),
+                    r#type: "command.completed".to_string(),
+                    message: "tool_result".to_string(),
+                    payload: serde_json::json!({
+                        "content": "https://github.com/mentimeter/revops-backoffice/pull/568"
+                    }),
+                    created_at: None,
+                },
+            )
+            .expect("command event");
+        }
+        let stub = StubRunner::new(vec![
+            Err(ArgmaxError::service(
+                "GH_NON_ZERO_EXIT",
+                "no pull requests found for branch feature/x",
+            )),
+            Ok(r#"{
+                "number": 568,
+                "headRefOid": "head568",
+                "headRefName": "fix/ai-discoverability-headline-metric",
+                "state": "OPEN",
+                "statusCheckRollup": [{"conclusion": "pending"}]
+            }"#
+            .to_string()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+        let rows = service.refresh(&session_id).await.expect("refresh");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pr_number, 568);
+        assert_eq!(
+            rows[0].head_ref_name.as_deref(),
+            Some("fix/ai-discoverability-headline-metric")
+        );
+        assert_eq!(rows[0].pr_state.as_deref(), Some("OPEN"));
+        assert_eq!(stub.call_count(), 2);
+    }
+
+    #[test]
+    fn pr_numbers_from_command_event_reads_create_stdout() {
+        let payload = serde_json::json!({
+            "content": "https://github.com/mentimeter/revops-backoffice/pull/568",
+            "name": "Bash",
+        });
+        assert_eq!(
+            pr_numbers_from_command_event("command.completed", "tool_result", &payload),
+            vec![568]
+        );
+        assert!(pr_numbers_from_command_event("command.started", "Bash", &payload).is_empty());
+        assert!(pr_numbers_from_command_event(
+            "command.completed",
+            "tool_result",
+            &serde_json::json!({"content": "no pr here"})
+        )
+        .is_empty());
     }
 
     #[tokio::test]

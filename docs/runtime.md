@@ -37,6 +37,13 @@ Live updates reach the renderer through `dashboard:delta` events:
 
 Transcript pushes and history reads enter [SessionTimelines](../src/renderer/lib/sessionTimelines.ts), with independent event and raw-output caps per session. The store uses `mergeEventsBounded` ([snapshot.ts](../src/renderer/lib/snapshot.ts)) to cap replaceable answer deltas while retaining separate budgets for tool rows, user messages, thinking, and trace imports. Approvals remain in dashboard metadata.
 
+## Desktop Notifications
+
+[notifications.rs](../src-tauri/src/notifications.rs) fires "Chat complete" / "Chat failed" from the dashboard delta stream when a session reaches a terminal state while the main window is not focused, and dedupes per session until that session runs again. The sink is chosen once at setup by `desktop_sink`:
+
+- **Bundled macOS app:** [notifications/macos.rs](../src-tauri/src/notifications/macos.rs) sends through `UNUserNotificationCenter`. It asks for permission on first launch, reports the real authorization state (a denied app fails "Send test notification" with a message instead of silently succeeding), presents banners even while Argmax is frontmost, and focuses the window when a banner is clicked. `UNUserNotificationCenter` refuses bundles that only carry the linker's signature (`UNErrorDomain 1`), so `tauri.conf.json` ad-hoc signs local builds (`signingIdentity: "-"`; `APPLE_SIGNING_IDENTITY` still wins for releases) A refused request turns notifications off for that install (usernoted denies legacy sends from a process that has used the modern API, so there is no runtime fallback); the log says why and the test button reports it. Answer the first-launch permission prompt before quitting: if the app quits while the prompt is open, macOS refuses later requests for that install (seen on macOS 26) and the only recovery is System Settings > Notifications.
+- **Unbundled binary or other platforms:** the Tauri notification plugin. On macOS that is the deprecated `NSUserNotificationCenter`, which never shows a banner while the app is frontmost and files the notification into Notification Center history instead. `tauri dev` runs unbundled, so use a bundled build to check banner behavior.
+
 ## Pending Follow-up Recovery
 
 The composer queue is SQLite-backed. Enqueue, removal, editing, reordering,

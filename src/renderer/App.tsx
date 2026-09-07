@@ -92,7 +92,8 @@ import {
 import { setSidebarPeek, toggleSidebarCollapsed, useSidebarChrome } from "./state/sidebarChrome.js";
 import { dismissToast, showErrorToast, showInfoToast, showToast, useToast } from "./state/toast.js";
 import { isBrowserPreview } from "./lib/env.js";
-import { animateThemeChange } from "./lib/theme.js";
+import { animateThemeChange, type ThemeMode } from "./lib/theme.js";
+import type { AccentId } from "./lib/accent.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import type { WorkspaceMode } from "./lib/workspaceMode.js";
 import {
@@ -101,6 +102,7 @@ import {
   readStoredDefaultEffort,
   readStoredLaunchModel
 } from "./lib/launchModelPreference.js";
+import { launchProjectIdFrom, persistLaunchProjectId } from "./lib/launchProjectPreference.js";
 import { factoryLaunchModel, modelPickerSelectionFromSession, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
@@ -275,6 +277,22 @@ export function App(): JSX.Element {
     setDefaultIde,
     detectedIdes
   } = useLauncherAppearance();
+  // Theme and accent swaps crossfade for one frame; the Settings panel and the
+  // command palette both go through these so neither path forgets the fade.
+  const handleThemeModeChange = useCallback(
+    (mode: ThemeMode): void => {
+      animateThemeChange();
+      setThemeMode(mode);
+    },
+    [setThemeMode]
+  );
+  const handleAccentChange = useCallback(
+    (id: AccentId): void => {
+      animateThemeChange();
+      setAccentId(id);
+    },
+    [setAccentId]
+  );
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
   const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
   const [chatWidth, setChatWidth] = useState<ChatWidth>(() => readStoredChatWidth());
@@ -728,6 +746,7 @@ export function App(): JSX.Element {
       // workspace's project, silently undoing the new pick.
       setSelectedSessionId(null);
       setSelectedWorkspaceId(null);
+      persistLaunchProjectId(result.project.id);
       setSelectedProjectId(result.project.id);
       clearPaneGrid();
       setSnapshot((current) => mergeDashboardDelta(current, { projects: [result.project] }));
@@ -997,6 +1016,7 @@ export function App(): JSX.Element {
   // the launcher would ignore the repo the user just picked.
   const openRepoProjectLauncher = useCallback(
     (projectId: string): void => {
+      persistLaunchProjectId(projectId);
       setLauncherSideChatMode(false);
       openProjectLauncher(projectId);
     },
@@ -1136,13 +1156,14 @@ export function App(): JSX.Element {
     () => snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
     [snapshot.projects]
   );
-  const launcherProject = useMemo(
-    () =>
-      selectedProject && selectedProject.id !== SCRATCH_PROJECT_ID
-        ? selectedProject
-        : realProjects[0] ?? null,
-    [realProjects, selectedProject]
-  );
+  const storedLaunchProjectId = launchProjectIdFrom(realProjects);
+  const launcherProject =
+    (storedLaunchProjectId
+      ? realProjects.find((project) => project.id === storedLaunchProjectId)
+      : undefined) ??
+    (selectedProject && selectedProject.id !== SCRATCH_PROJECT_ID ? selectedProject : null) ??
+    realProjects[0] ??
+    null;
 
   // "New session here" from a pane menu skips openLauncherSurface, so it
   // resets chat mode itself before opening the in-grid launcher cell.
@@ -1164,7 +1185,7 @@ export function App(): JSX.Element {
       }
       // A side chat has no repo, so its replacement is another side chat.
       setLauncherSideChatMode(sideChat);
-      openLauncherPaneInGrid();
+      openLauncherPaneInGrid({ seedFromFocusedSession: true });
     },
     [handleLaunchModelChange, launcherProject, openLauncherPaneInGrid, selectedProject]
   );
@@ -1569,9 +1590,22 @@ export function App(): JSX.Element {
         onOpenUsage: showUsagePage,
         onOpenSettingsSection: (group, sectionId) => showSettings(group, sectionId),
         onOpenSearch: openMessagePalette,
+        preferences: {
+          themeMode,
+          onThemeModeChange: handleThemeModeChange,
+          accentId,
+          onAccentChange: handleAccentChange,
+          fontSize,
+          onFontSizeChange: setFontSize,
+          chatFontSize,
+          onChatFontSizeChange: setChatFontSize,
+          chatVerbosity,
+          onChatVerbosityChange: setChatVerbosity
+        },
         onStopSession: (sessionId) => void terminateSession(sessionId),
         onOpenWorkspace: openWorkspaceChat,
         onSelectProject: (projectId) => {
+          persistLaunchProjectId(projectId);
           setLauncherSideChatMode(false);
           setSelectedProjectId(projectId);
         },
@@ -1589,7 +1623,17 @@ export function App(): JSX.Element {
       openWorkspaceChat,
       openMessagePalette,
       onOpenBrowserRow,
-      setSelectedProjectId
+      setSelectedProjectId,
+      themeMode,
+      handleThemeModeChange,
+      accentId,
+      handleAccentChange,
+      fontSize,
+      setFontSize,
+      chatFontSize,
+      setChatFontSize,
+      chatVerbosity,
+      setChatVerbosity
     ]
   );
 
@@ -1698,7 +1742,14 @@ export function App(): JSX.Element {
           launchSideChat(prompt, { model, agentMode, attachments })}
         model={launchModel}
         onModelChange={handleLaunchModelChange}
-        onSelectProject={options.embedded ? setLauncherPaneProject : openRepoProjectLauncher}
+        onSelectProject={
+          options.embedded
+            ? (projectId) => {
+                persistLaunchProjectId(projectId);
+                setLauncherPaneProject(projectId);
+              }
+            : openRepoProjectLauncher
+        }
         onSideChatModeChange={setLauncherSideChatMode}
         project={project ?? launcherProject}
         projects={realProjects}
@@ -1954,15 +2005,9 @@ export function App(): JSX.Element {
                 chatFontSize={chatFontSize}
                 onChatFontSizeChange={setChatFontSize}
                 themeMode={themeMode}
-                onThemeModeChange={(mode) => {
-                  animateThemeChange();
-                  setThemeMode(mode);
-                }}
+                onThemeModeChange={handleThemeModeChange}
                 accentId={accentId}
-                onAccentChange={(id) => {
-                  animateThemeChange();
-                  setAccentId(id);
-                }}
+                onAccentChange={handleAccentChange}
                 userBubbleTint={userBubbleTint}
                 onUserBubbleTintChange={(tint) => {
                   animateThemeChange();

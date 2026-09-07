@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_EFFORT_KEY,
   LAUNCH_MODEL_KEY,
+  LAUNCH_MODEL_RECENCY_KEY,
   persistDefaultEffort,
   persistLaunchModel,
+  readLaunchModelRecency,
   readStoredDefaultEffort,
   readStoredLaunchModel
 } from "./launchModelPreference.js";
@@ -89,5 +91,18 @@ describe("launch model preference", () => {
     // Picking High on that same model is an explicit choice and moves the default.
     persistLaunchModel({ provider: "grok", label: "Grok 4.6", modelId: "grok-4.6", reasoningEffort: "high" });
     expect(readStoredDefaultEffort()).toBe("high");
+  });
+
+  it("records model recency so the picker can sort by last use", () => {
+    persistLaunchModel({ provider: "claude", label: "Opus 5", modelId: "claude-opus-5", reasoningEffort: "medium" });
+    persistLaunchModel({
+      provider: "codex",
+      label: "GPT-5.6 Sol",
+      modelId: "gpt-5.6-sol",
+      reasoningEffort: "medium"
+    });
+
+    expect(readLaunchModelRecency()).toEqual(["codex:gpt-5.6-sol", "claude:claude-opus-5"]);
+    expect(window.localStorage.getItem(LAUNCH_MODEL_RECENCY_KEY)).toContain("codex:gpt-5.6-sol");
   });
 });

@@ -129,11 +129,20 @@ pub(super) fn store_path() -> Option<PathBuf> {
 /// `$GROK_HOME/trusted_folders.toml`, else `~/.grok/trusted_folders.toml`.
 #[cfg(not(test))]
 fn store_path() -> Option<PathBuf> {
-    let home = match std::env::var_os("GROK_HOME") {
-        Some(value) if !value.is_empty() => PathBuf::from(value),
-        _ => PathBuf::from(std::env::var_os("HOME")?).join(".grok"),
-    };
-    Some(home.join("trusted_folders.toml"))
+    let home = PathBuf::from(std::env::var_os("HOME")?);
+    Some(grok_home(&home).join("trusted_folders.toml"))
+}
+
+/// Where Grok lives: `$GROK_HOME`, else `<home>/.grok`. One resolution for the
+/// trust store and the session store, so the two never disagree. Under test
+/// the environment is ignored, so an injected `home` is the whole answer and no
+/// test can read a developer's own `$GROK_HOME`.
+pub(crate) fn grok_home(home: &Path) -> PathBuf {
+    #[cfg(not(test))]
+    if let Some(value) = std::env::var_os("GROK_HOME").filter(|value| !value.is_empty()) {
+        return PathBuf::from(value);
+    }
+    home.join(".grok")
 }
 
 /// Grok refuses to record "an over-broad root (home, filesystem root, or

@@ -38,7 +38,7 @@ use argmax_lib::providers::runtime::{
 use argmax_lib::providers::session_service::ProviderSessionService;
 use argmax_lib::providers::ProviderLaunchInput;
 use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
-use argmax_lib::workspaces::orchestration::MoveDestination;
+use argmax_lib::workspaces::orchestration::{MoveDestination, WorkspacesCreateAlongsideInput};
 use argmax_lib::workspaces::WorkspaceService;
 
 use crate::support::git_repo::{run_git, run_git_stdout, seed_git_repo, SeededGitRepo};
@@ -1292,6 +1292,161 @@ async fn archive_isolated_worktree_kept_when_dirty_and_not_forced() {
         "dirty isolated worktree should be kept"
     );
     assert!(std::path::Path::new(&workspace.path).exists());
+}
+
+/// An isolated worktree plus the workspace row a multitask dispatched from it
+/// would get: same checkout, shared row, one session in `state`.
+async fn isolated_worktree_with_colocated_chat(
+    database: &Arc<Database>,
+    service: &Arc<WorkspaceService>,
+    state: SessionState,
+) -> (WorkspaceSummary, WorkspaceSummary) {
+    let owner = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("owning chat".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("create isolated");
+    let colocated = service
+        .create_alongside(WorkspacesCreateAlongsideInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("multitask chat".to_owned()).expect("task label"),
+            path: owner.path.clone(),
+            branch: owner.branch.clone(),
+            base_ref: owner.base_ref.clone(),
+        })
+        .expect("create alongside");
+    let connection = database.connection();
+    persist_session(
+        &connection,
+        &PersistSessionInput {
+            id: format!("session-{}", colocated.id),
+            workspace_id: colocated.id.clone(),
+            provider: "claude".to_string(),
+            model_label: "Sonnet".to_string(),
+            model_id: "claude-sonnet-5".to_string(),
+            reasoning_effort: None,
+            permission_mode: None,
+            agent_mode: None,
+            prompt: "fix the heading".to_string(),
+            state,
+        },
+    )
+    .expect("colocated session");
+    (owner, colocated)
+}
+
+#[tokio::test]
+async fn archive_isolated_worktree_takes_a_settled_colocated_chat_with_it() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+    let (owner, colocated) =
+        isolated_worktree_with_colocated_chat(&database, &service, SessionState::Complete).await;
+
+    let result = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(owner.id.clone()).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("archive");
+
+    assert_eq!(result.state, "archived");
+    assert!(
+        !std::path::Path::new(&owner.path).exists(),
+        "the worktree should have moved into recovery storage"
+    );
+    let connection = database.connection();
+    let colocated_row = find_workspace_by_id(&connection, &colocated.id).expect("colocated row");
+    assert_eq!(
+        colocated_row.state, "archived",
+        "a row sharing the moved worktree must not be left pointing at nothing"
+    );
+}
+
+#[tokio::test]
+async fn archive_isolated_worktree_refuses_while_a_colocated_chat_is_working() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+    let (owner, colocated) =
+        isolated_worktree_with_colocated_chat(&database, &service, SessionState::Running).await;
+
+    let error = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(owner.id.clone()).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect_err("a running co-located chat must block the archive");
+
+    assert!(
+        matches!(&error, ArgmaxError::ServiceError { sub_code, message }
+            if sub_code == "WORKSPACE_COLOCATED_ACTIVE" && message.contains("multitask chat")),
+        "the refusal should name the workspace still working, got {error:?}"
+    );
+    assert!(std::path::Path::new(&owner.path).exists());
+    let connection = database.connection();
+    assert_eq!(
+        find_workspace_by_id(&connection, &owner.id)
+            .expect("owner row")
+            .state,
+        owner.state,
+        "the refused owner stays open"
+    );
+    assert_ne!(
+        find_workspace_by_id(&connection, &colocated.id)
+            .expect("colocated row")
+            .state,
+        "archived"
+    );
+}
+
+#[tokio::test]
+async fn forced_archive_takes_a_working_colocated_chat_with_it() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+    let (owner, colocated) =
+        isolated_worktree_with_colocated_chat(&database, &service, SessionState::Running).await;
+
+    let result = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(owner.id.clone()).expect("workspace id"),
+            force: Some(true),
+        })
+        .await
+        .expect("forced archive");
+
+    assert_eq!(result.state, "archived");
+    let connection = database.connection();
+    assert_eq!(
+        find_workspace_by_id(&connection, &colocated.id)
+            .expect("colocated row")
+            .state,
+        "archived"
+    );
 }
 
 #[tokio::test]

@@ -23,6 +23,11 @@ import {
 } from "../lib/composerAttachments.js";
 import { clearDraft, launcherDraftKey } from "../lib/composerDrafts.js";
 import { persistLaunchModel, readStoredLaunchModel } from "../lib/launchModelPreference.js";
+import {
+  launchProjectIdFrom,
+  persistLaunchProjectId,
+  sortProjectsByLaunchRecency
+} from "../lib/launchProjectPreference.js";
 import { factoryLaunchModel, type ModelPickerSelection } from "../lib/models.js";
 import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import { titleFromPrompt } from "../lib/projects.js";
@@ -151,7 +156,11 @@ export function NewSessionScreen({
   );
 
   const [projectId, setProjectId] = useState(
-    () => initialWorkspace?.projectId ?? projects[0]?.id ?? ""
+    () =>
+      initialWorkspace?.projectId ??
+      launchProjectIdFrom(projects) ??
+      projects[0]?.id ??
+      ""
   );
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
     if (initialWorkspace && initialWorkspace.kind === "git" && !initialWorkspace.sharedWorkspace) {
@@ -494,12 +503,13 @@ export function NewSessionScreen({
       {openSheet === "project" ? (
         <BottomSheet label="Choose project" onClose={() => onOpenSheetChange(null)}>
           <div className="mobile-sheet-group">
-            {projects.map((candidate) => (
+            {sortProjectsByLaunchRecency(projects).map((candidate) => (
               <SheetOption
                 key={candidate.id}
                 label={candidate.name}
                 selected={candidate.id === project?.id}
                 onSelect={() => {
+                  persistLaunchProjectId(candidate.id);
                   setProjectId(candidate.id);
                   setChosenBaseRef(null);
                   onOpenSheetChange(null);

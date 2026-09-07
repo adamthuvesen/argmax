@@ -54,7 +54,7 @@ async function captureDesktopState(browser) {
       documentHiddenAttribute: document.documentElement.getAttribute("data-document-hidden"),
       activeElement: document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName,
       bodyText: document.body.innerText.slice(0, 10_000),
-      diagnostics: diagnostic ?? { entries: [], chatCues: [] }
+      diagnostics: diagnostic ?? { entries: [], breadcrumbs: [] }
     };
   });
 }

@@ -198,6 +198,9 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna", supportsReasoningEffort: true, contextWindow: 258_400 }
   ],
   cursor: [
+    { label: "Auto Cost (Cursor)", modelId: "auto-smart[optimize_for=cost]" },
+    { label: "Auto Balance (Cursor)", modelId: "auto-smart[optimize_for=balanced]" },
+    { label: "Auto Intelligence (Cursor)", modelId: "auto-smart[optimize_for=intelligence]" },
     { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5", contextWindow: 1_000_000 },
     {
       label: "Grok 4.6 (Cursor)",
@@ -346,10 +349,12 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.6-terra":       { input: 2,    output: 12,  cacheRead: 0.2,   cacheWrite: 2.5 },
   "gpt-5.6-luna":        { input: 0.2,  output: 1.2, cacheRead: 0.02,  cacheWrite: 0.25 },
 
-  // Cursor's bundled models are subscription-billed via Cursor's plan, not
-  // per-token through the underlying API. All Cursor-routed ids report $0 so
-  // cost telemetry doesn't claim charges that aren't incurred at the API
-  // layer.
+  // Cursor billing is not estimated here. Zero is the existing telemetry
+  // placeholder, not a claim that Cursor usage is free. Auto's routed model
+  // can change per request, so it has no fixed token rate.
+  "auto-smart[optimize_for=cost]":         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "auto-smart[optimize_for=balanced]":     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "auto-smart[optimize_for=intelligence]": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "composer-2.5":                     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "cursor-grok-4.6-medium":           { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-3.8-flash-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

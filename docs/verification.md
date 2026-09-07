@@ -129,7 +129,8 @@ node scripts/ui-screenshot.mjs --eval 'document.querySelector("[aria-label=\"Set
 
 The script serves the renderer with vite, opens it in headless Chrome over
 CDP, and captures a PNG. `--theme` seeds `localStorage["argmax.theme.mode"]`
-before boot; `--eval` runs arbitrary JS after load, so the UI can be clicked
+before boot; `--scale 2` captures at that device pixel ratio; `--eval` runs
+arbitrary JS after load, so the UI can be clicked
 into the state under test, and the expression's value comes back as `eval` in
 the ready line — an async expression can click a row, wait, and return a
 measurement (a scroll gap, a row count, a text probe) alongside the PNG. An
@@ -203,10 +204,16 @@ node scripts/ui-screenshot.mjs --url "http://127.0.0.1:<port>/?remote#token=$TOK
 ```
 
 where `open-session.js` is an async IIFE that clicks the sidebar row (rows are
-`button[title]` elements titled by task label and state; collapsed project
-groups open via the `Show <project> sessions` button), then returns whatever it
-measured. Start the provider session with `bridge.mjs chat` in the background
-first and time the capture into the stream.
+`.session-link` buttons titled by task label and state; every group starts
+collapsed, so open them via the `Show <group> chats` buttons first), then
+returns whatever it measured. Start the provider session with `bridge.mjs chat`
+in the background first and time the capture into the stream.
+
+The README hero is made this way: a scratch instance on a plain-path clone,
+a few `bridge.mjs chat --worktree` runs given short titles with
+`workspaces:set-label`, two `--scale 2` captures (one with the review pane
+open, one with the sidebar hidden), and `node scripts/readme-hero.mjs --main
+<png> --side <png>` to draw the window chrome and backdrop around them.
 
 The demo snapshot carries one subagent run with its own thinking, narration,
 and tool calls, so the Agents pane renders on rung 2 as well: click the last

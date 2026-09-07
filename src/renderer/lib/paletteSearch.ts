@@ -27,6 +27,11 @@ export interface PaletteItem {
    * so a row's type stays legible once results interleave and headers scroll off.
    */
   icon?: LucideIcon;
+  /**
+   * Leave the palette open after `run` — for stepwise commands (larger /
+   * smaller text) the user repeats while watching the app behind the dialog.
+   */
+  keepOpen?: boolean;
   run: () => void;
 }
 

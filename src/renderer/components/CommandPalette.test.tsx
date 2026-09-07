@@ -64,6 +64,21 @@ describe("CommandPalette", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("a keepOpen command runs on every Enter without closing the palette", () => {
+    const onClose = vi.fn();
+    const run = vi.fn();
+    const stepper: PaletteCommand[] = [
+      { id: "larger", label: "App font size: larger", group: "Settings", keepOpen: true, run }
+    ];
+    render(<CommandPalette open={true} commands={stepper} onClose={onClose} />);
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
+  });
+
   it("Escape closes the palette", () => {
     const onClose = vi.fn();
     render(<CommandPalette open={true} commands={COMMANDS} onClose={onClose} />);

@@ -27,6 +27,18 @@ const base: SessionSummary = {
 afterEach(cleanup);
 
 describe("ContextRing", () => {
+  it.each(["gemini-3.8-flash-medium", "composer-2.5", "gpt-5.6-sol"])(
+    "hides Cursor context usage for %s even with persisted token counts",
+    (modelId) => {
+      render(
+        <ContextRing
+          session={{ ...base, provider: "cursor", modelId, contextTokens: 9_000_000, contextWindow: 1_000_000 }}
+        />
+      );
+      expect(screen.queryByRole("button", { name: /Context window/ })).not.toBeInTheDocument();
+    }
+  );
+
   it("renders nothing when the window is unknown", () => {
     const { container } = render(
       <ContextRing session={{ ...base, modelId: "mystery-model", contextTokens: 100, contextWindow: null }} />

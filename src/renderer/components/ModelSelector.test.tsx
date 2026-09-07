@@ -1,10 +1,14 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
+import { LAUNCH_MODEL_RECENCY_KEY } from "../lib/launchModelPreference.js";
 import { LaunchModelSelector, ModelSelector, type ProviderAvailability } from "./ModelSelector.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.removeItem(LAUNCH_MODEL_RECENCY_KEY);
+});
 
 const HAIKU: ProviderModelSelection = { label: "Haiku 4.5", modelId: "claude-haiku-4-5" };
 const OPUS_MEDIUM: ProviderModelSelection = {
@@ -64,6 +68,84 @@ describe("ModelSelector — one row per model", () => {
     const onChange = openClaudePicker({ label: "Opus 5", modelId: "claude-opus-5", reasoningEffort: "high" });
     fireEvent.click(screen.getByText("Haiku 4.5"));
     expect(onChange).toHaveBeenCalledWith({ label: "Haiku 4.5", modelId: "claude-haiku-4-5" });
+  });
+
+  it("sorts recently picked models to the top of the list", () => {
+    const onChange = openClaudePicker(OPUS_MEDIUM);
+    fireEvent.click(screen.getByText("Haiku 4.5"));
+    expect(onChange).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
+    const labels = within(screen.getByRole("listbox", { name: "Chat model" }))
+      .getAllByRole("option")
+      .map((option) => option.textContent?.trim());
+    expect(labels[0]).toBe("Haiku 4.5");
+    expect(labels.slice(1)).toEqual(["Fable 5.1", "Opus 5", "Sonnet 5"]);
+  });
+
+  it("shows at most three recent models before the catalog order resumes", () => {
+    window.localStorage.setItem(
+      LAUNCH_MODEL_RECENCY_KEY,
+      JSON.stringify([
+        "opencode:opencode-go/deepseek-v4-flash",
+        "opencode:opencode-go/deepseek-v4-pro",
+        "grok:grok-4.5",
+        "grok:grok-4.6",
+        "cursor:claude-opus-5-thinking-medium",
+        "codex:gpt-5.6-luna"
+      ])
+    );
+    render(
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        value={{ provider: "claude", ...OPUS_MEDIUM }}
+        onChange={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+
+    const labels = within(screen.getByRole("listbox", { name: "Launch model" }))
+      .getAllByRole("option")
+      .map((option) => option.textContent?.trim());
+    expect(labels.slice(0, 4)).toEqual([
+      "DeepSeek V4 Flash",
+      "DeepSeek V4 Pro",
+      "Grok 4.5",
+      "Fable 5.1"
+    ]);
+  });
+});
+
+describe("Cursor Auto models", () => {
+  const autoModels = [
+    { label: "Auto Cost (Cursor)", modelId: "auto-smart[optimize_for=cost]" },
+    { label: "Auto Balance (Cursor)", modelId: "auto-smart[optimize_for=balanced]" },
+    { label: "Auto Intelligence (Cursor)", modelId: "auto-smart[optimize_for=intelligence]" }
+  ];
+
+  it("places Auto modes before the other Cursor models in the launch catalog", () => {
+    render(<LaunchModelSelector ariaLabel="Launch model" value={{ provider: "claude", ...OPUS_MEDIUM }} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+    const cursorLabels = within(screen.getByRole("listbox", { name: "Launch model" }))
+      .getAllByRole("option")
+      .map((option) => option.textContent?.trim())
+      .filter((label) => label?.includes("(Cursor)"));
+    expect(cursorLabels.slice(0, 4)).toEqual([...autoModels.map((model) => model.label), "Composer 2.5 (Cursor)"]);
+  });
+
+  it.each(autoModels)("selects $label without effort or speed overrides", (model) => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <ModelSelector ariaLabel="Chat model" provider="cursor" value={{ label: "Grok 4.6 (Cursor)", modelId: "cursor-grok-4.6-medium", reasoningEffort: "high" }} onChange={onChange} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
+    fireEvent.click(within(screen.getByRole("option", { name: model.label })).getByText(model.label));
+    expect(onChange).toHaveBeenCalledWith(model);
+
+    rerender(<ModelSelector ariaLabel="Chat model" provider="cursor" value={model} onChange={onChange} withEffortSlider fastModeEnabled onFastModeEnabledChange={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Chat model effort" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
+    expect(screen.queryByRole("button", { name: /Speed/ })).toBeNull();
   });
 });
 

@@ -99,6 +99,17 @@ impl std::ops::Deref for WorkspaceArchiveResult {
     }
 }
 
+/// Another live workspace row pointing at the checkout an isolated workspace
+/// owns. A multitask dispatched from a chat in a worktree is exactly this: it
+/// shares the parent's checkout by design (ADR 0006) while keeping a row, a
+/// session, and a watcher subscription of its own.
+struct ColocatedWorkspace {
+    id: String,
+    task_label: String,
+    /// A turn is still in flight in it.
+    has_active_session: bool,
+}
+
 /// Where a moved session lands.
 ///
 /// A workspace's `path` is write-once, so a session that needs to work in a
@@ -312,7 +323,7 @@ impl WorkspaceService {
                     let registration = {
                         let connection = self.database.connection();
                         require_project(&connection, &workspace.project_id).and_then(|project| {
-                            worktree_is_registered(
+                            worktree_is_registered_blocking(
                                 Path::new(&project.repo_path),
                                 Path::new(&workspace.path),
                             )
@@ -404,7 +415,7 @@ impl WorkspaceService {
                     let registration = {
                         let connection = self.database.connection();
                         require_project(&connection, &workspace.project_id).and_then(|project| {
-                            worktree_is_registered(
+                            worktree_is_registered_blocking(
                                 Path::new(&project.repo_path),
                                 Path::new(&workspace.path),
                             )
@@ -1770,6 +1781,64 @@ impl WorkspaceService {
             }
         }
 
+        // A chat dispatched from this worktree keeps a workspace row of its own
+        // on this very path — a multitask shares the checkout it was launched
+        // from (ADR 0006). `move_session` refuses to add a second row to a
+        // worktree Argmax owns for the reason that bites here: only the owning
+        // row is licensed to move the tree, and a row left behind would point
+        // at nothing, never reclassify (both reconcile branches are gated on
+        // `!shared_workspace`), and keep its watcher and its agent alive over
+        // the archive location. So the co-located rows go down with this one,
+        // or the archive is refused while one of them is still working.
+        let colocated = match self.colocated_workspaces(&workspace_id, &workspace.path) {
+            Ok(rows) => rows,
+            Err(error) => {
+                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                }
+                lease.finish(ArchiveOutcome::Failed);
+                return Err(error);
+            }
+        };
+        if !force {
+            if let Some(busy) = colocated.iter().find(|row| row.has_active_session) {
+                self.restore_archive_state(&prior)?;
+                lease.finish(if prior.state == "archive-failed" {
+                    ArchiveOutcome::Failed
+                } else {
+                    ArchiveOutcome::Reopened
+                });
+                return Err(ArgmaxError::service(
+                    "WORKSPACE_COLOCATED_ACTIVE",
+                    format!(
+                        "{} is still working in this checkout; archiving would move the worktree out from under it.",
+                        busy.task_label
+                    ),
+                ));
+            }
+        }
+        for row in colocated {
+            let colocated_lease = match self.lifecycle.begin_archive(&row.id) {
+                Ok(lease) => lease,
+                // Its own archive is already under way, so it is not being left
+                // behind and a second lease would only fight it.
+                Err(error) => {
+                    tracing::warn!(?error, workspace_id = %row.id, "co-located workspace is already archiving");
+                    continue;
+                }
+            };
+            if let Err(error) = self.archive_shared(row.id.clone(), colocated_lease) {
+                // Moving the tree with this row still open is the stranding
+                // this branch exists to prevent, so the owner's archive fails
+                // instead.
+                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                }
+                lease.finish(ArchiveOutcome::Failed);
+                return Err(error);
+            }
+        }
+
         let active_path = Path::new(&workspace.path);
         if active_path.exists() {
             if recovery_path.exists() {
@@ -1820,18 +1889,24 @@ impl WorkspaceService {
                 ));
             }
         } else if !recovery_path.exists() {
-            let is_unregistered =
-                !worktree_is_registered(Path::new(&project.repo_path), active_path)
-                    .unwrap_or(false);
-            if !is_unregistered {
+            // Only Git's own word that the worktree is gone completes an
+            // archive whose directory has already vanished. A failed
+            // `git worktree list` proves nothing either way, so it fails the
+            // archive rather than passing as "removed" — the same rule startup
+            // recovery follows when it cannot prove a removal completed.
+            let registration =
+                worktree_is_registered(project.repo_path.clone(), active_path.to_path_buf()).await;
+            if !matches!(registration, Ok(false)) {
                 if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
                     tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
                 }
                 lease.finish(ArchiveOutcome::Failed);
-                return Err(ArgmaxError::service(
-                    "WORKSPACE_ARCHIVE_INCOMPLETE",
-                    "The worktree path is missing but Git still registers it; the archive was not completed.",
-                ));
+                return Err(registration.err().unwrap_or_else(|| {
+                    ArgmaxError::service(
+                        "WORKSPACE_ARCHIVE_INCOMPLETE",
+                        "The worktree path is missing but Git still registers it; the archive was not completed.",
+                    )
+                }));
             }
         }
 
@@ -1875,6 +1950,65 @@ impl WorkspaceService {
         self.archive_recovery_path(&workspace.id)
             .filter(|path| path.exists())
             .map(|path| path.display().to_string())
+    }
+
+    /// The live workspace rows other than `workspace_id` whose checkout is
+    /// `path`, with whether each still has a turn in flight. Paths are compared
+    /// the way `git worktree list` output is, so a symlinked or non-canonical
+    /// spelling still matches.
+    fn colocated_workspaces(
+        &self,
+        workspace_id: &str,
+        path: &str,
+    ) -> ArgmaxResult<Vec<ColocatedWorkspace>> {
+        let sqlite = |error: rusqlite::Error| ArgmaxError::service("SQLITE", error.to_string());
+        let target = comparable_worktree_path(Path::new(path));
+        let connection = self.database.connection();
+        let mut statement = connection
+            .prepare_cached(
+                "SELECT id, task_label, path FROM workspaces \
+                 WHERE id != ? AND state != 'archived'",
+            )
+            .map_err(sqlite)?;
+        let rows = statement
+            .query_map([workspace_id], |row| {
+                Ok((
+                    row.get::<_, String>("id")?,
+                    row.get::<_, String>("task_label")?,
+                    row.get::<_, String>("path")?,
+                ))
+            })
+            .map_err(sqlite)?;
+        let mut matched = Vec::new();
+        for row in rows {
+            let (id, task_label, workspace_path) = row.map_err(sqlite)?;
+            if comparable_worktree_path(Path::new(&workspace_path)) == target {
+                matched.push((id, task_label));
+            }
+        }
+        let mut sessions = connection
+            .prepare_cached("SELECT state FROM sessions WHERE workspace_id = ?")
+            .map_err(sqlite)?;
+        let mut colocated = Vec::new();
+        for (id, task_label) in matched {
+            let states = sessions
+                .query_map([&id], |row| row.get::<_, String>("state"))
+                .map_err(sqlite)?;
+            let mut has_active_session = false;
+            for state in states {
+                let state = state.map_err(sqlite)?;
+                if SessionState::from_wire(&state).is_some_and(SessionState::is_active) {
+                    has_active_session = true;
+                    break;
+                }
+            }
+            colocated.push(ColocatedWorkspace {
+                id,
+                task_label,
+                has_active_session,
+            });
+        }
+        Ok(colocated)
     }
 
     /// Archive a shared-checkout workspace. Nothing destructive follows the
@@ -2075,13 +2209,17 @@ impl WorkspaceService {
         if !workspace.shared_workspace && workspace.kind == "git" {
             let path = Path::new(&workspace.path);
             if !path.exists() {
-                let is_unregistered = {
+                let project = {
                     let connection = self.database.connection();
-                    require_project(&connection, &workspace.project_id).and_then(|project| {
-                        worktree_is_registered(Path::new(&project.repo_path), path)
-                    })
+                    require_project(&connection, &workspace.project_id)
                 };
-                if matches!(is_unregistered, Ok(false)) {
+                let registration = match project {
+                    Ok(project) => {
+                        worktree_is_registered(project.repo_path, path.to_path_buf()).await
+                    }
+                    Err(error) => Err(error),
+                };
+                if matches!(registration, Ok(false)) {
                     let connection = self.database.connection();
                     let archived = update_workspace_state(&connection, workspace_id, "archived")?;
                     self.publish(DashboardDelta {
@@ -2134,8 +2272,19 @@ impl WorkspaceService {
                 let connection = self.database.connection();
                 find_workspace_by_id(&connection, workspace_id)
             };
-            let Ok(workspace) = workspace else {
-                continue;
+            let workspace = match workspace {
+                Ok(workspace) => workspace,
+                // The row is gone (project removal, a sync prune). Its
+                // subscription has no subject left, so retire it here rather
+                // than waking this loop for a workspace nobody can see.
+                Err(ArgmaxError::RecordNotFound { .. }) => {
+                    self.close_watcher(workspace_id);
+                    continue;
+                }
+                Err(error) => {
+                    tracing::debug!(%workspace_id, ?error, "watcher: workspace lookup failed");
+                    continue;
+                }
             };
             refreshed += 1;
             if !path_exists
@@ -2143,16 +2292,18 @@ impl WorkspaceService {
                 && workspace.kind == "git"
                 && workspace.state != "archived"
             {
-                let is_unregistered = {
+                let project = {
                     let connection = self.database.connection();
-                    require_project(&connection, &workspace.project_id).and_then(|project| {
-                        worktree_is_registered(
-                            Path::new(&project.repo_path),
-                            Path::new(&workspace.path),
-                        )
-                    })
+                    require_project(&connection, &workspace.project_id)
                 };
-                if matches!(is_unregistered, Ok(false)) {
+                let registration = match project {
+                    Ok(project) => {
+                        worktree_is_registered(project.repo_path, PathBuf::from(&workspace.path))
+                            .await
+                    }
+                    Err(error) => Err(error),
+                };
+                if matches!(registration, Ok(false)) {
                     let connection = self.database.connection();
                     if let Ok(archived) =
                         update_workspace_state(&connection, workspace_id, "archived")
@@ -2624,7 +2775,7 @@ async fn attached_checkout(
             "Name a different worktree, or skip the move.",
         ));
     }
-    if !worktree_is_registered(Path::new(repo_path), &path)? {
+    if !worktree_is_registered(repo_path.to_string(), path.clone()).await? {
         return Err(invalid_workspace(
             format!("{} is not a worktree of this project.", path.display()),
             "Run `git worktree list` in the project to see the checkouts a chat can move into.",
@@ -2654,8 +2805,10 @@ async fn attached_checkout(
     Ok((path.to_string_lossy().into_owned(), branch.to_string()))
 }
 
-/// Whether `git worktree list` in `repo_path` reports `worktree_path`. True for
-/// the repository's main checkout as well as its added worktrees.
+/// Re-register a retained worktree with its repository before an archive is
+/// retried: it must be a linked worktree of `repo_path`, still on `branch`, and
+/// `git worktree repair` must leave it listed. Anything else is refused with
+/// the files left intact.
 fn repair_archived_worktree(
     repo_path: &Path,
     recovery_path: &Path,
@@ -2691,7 +2844,7 @@ fn repair_archived_worktree(
         ["worktree", "repair", &recovery_path.to_string_lossy()],
         GIT_DEFAULT_TIMEOUT,
     )?;
-    if !worktree_is_registered(repo_path, recovery_path)? {
+    if !worktree_is_registered_blocking(repo_path, recovery_path)? {
         return Err(ArgmaxError::service(
             "ARCHIVE_RECOVERY_INVALID",
             "Git could not register the retained worktree. Its files were left intact.",
@@ -2700,7 +2853,20 @@ fn repair_archived_worktree(
     Ok(())
 }
 
-fn worktree_is_registered(repo_path: &Path, worktree_path: &Path) -> ArgmaxResult<bool> {
+/// `worktree_is_registered_blocking` off the caller's thread, for the async
+/// bodies: `git worktree list` can hold the thread for as long as
+/// `GIT_DEFAULT_TIMEOUT`, which is far too long to park a runtime worker.
+async fn worktree_is_registered(repo_path: String, worktree_path: PathBuf) -> ArgmaxResult<bool> {
+    tokio::task::spawn_blocking(move || {
+        worktree_is_registered_blocking(Path::new(&repo_path), &worktree_path)
+    })
+    .await
+    .map_err(|error| ArgmaxError::service("WORKTREE_LIST_JOIN", error.to_string()))?
+}
+
+/// Whether `git worktree list` in `repo_path` reports `worktree_path`. True for
+/// the repository's main checkout as well as its added worktrees.
+fn worktree_is_registered_blocking(repo_path: &Path, worktree_path: &Path) -> ArgmaxResult<bool> {
     // Startup recovery runs before any runtime is available to await on.
     let stdout = run_git_text_blocking(
         repo_path,

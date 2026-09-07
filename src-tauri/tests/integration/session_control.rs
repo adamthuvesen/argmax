@@ -1046,13 +1046,14 @@ async fn ask_raw(socket: String, token: String, action: serde_json::Value) -> St
     .expect("client task")
 }
 
-/// The client refuses a reply over 64 KB, and the rows in a refused reply have
-/// already been marked delivered — so a hand-over that ignored the ceiling
-/// would destroy exactly the messages it was carrying. Big messages must come
-/// back across several reads instead, losing none of them.
+/// The client refuses a reply over the ceiling it read with, and the rows in a
+/// refused reply have already been marked delivered — so a hand-over that
+/// ignored the ceiling would destroy exactly the messages it was carrying. Big
+/// messages must come back across several reads instead, losing none of them.
 #[tokio::test]
 async fn a_large_inbox_drains_across_reads_within_the_reply_ceiling() {
-    const MAX_RESPONSE_BYTES: usize = 64 * 1024;
+    // Mirrors `session_control::MAX_INBOX_RESPONSE_BYTES`.
+    const MAX_INBOX_RESPONSE_BYTES: usize = 512 * 1024;
     let repo = tempfile::tempdir().expect("repo dir");
     let database = Arc::new(Database::open_in_memory().expect("database"));
     seed_sessions(
@@ -1101,7 +1102,7 @@ async fn a_large_inbox_drains_across_reads_within_the_reply_ceiling() {
     loop {
         let raw = ask_raw(socket.clone(), child_token.clone(), json!({ "inbox": {} })).await;
         assert!(
-            raw.len() <= MAX_RESPONSE_BYTES,
+            raw.len() <= MAX_INBOX_RESPONSE_BYTES,
             "an inbox reply of {} bytes is over the client's ceiling and would be refused",
             raw.len()
         );
@@ -1126,6 +1127,90 @@ async fn a_large_inbox_drains_across_reads_within_the_reply_ceiling() {
     }
     assert_eq!(reads, 2, "three oversized messages take two reads");
     assert_eq!(collected, vec!["alpha", "beta", "gamma"]);
+}
+
+/// A body is capped in characters, not bytes, so 16K four-byte scalars is
+/// 64 KiB on the wire — past the ceiling every ordinary reply is read under.
+/// The hand-over takes its first row whatever it costs and marks it delivered,
+/// so a client that refused that reply would lose the message outright. The
+/// inbox reads under its own ceiling instead and the body comes back whole.
+#[tokio::test]
+async fn an_inbox_reply_carries_a_full_width_body_whole() {
+    // Mirrors `session_control::MAX_RESPONSE_BYTES` and
+    // `session_control::MAX_INBOX_RESPONSE_BYTES`.
+    const MAX_RESPONSE_BYTES: usize = 64 * 1024;
+    const MAX_INBOX_RESPONSE_BYTES: usize = 512 * 1024;
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[
+            ("session-parent", "Parent", SessionState::Running),
+            ("session-child", "Count to ten", SessionState::Running),
+        ],
+    );
+    let body = "\u{1f642}".repeat(MAX_MESSAGE_BODY_CHARS);
+    assert_eq!(
+        body.len(),
+        MAX_MESSAGE_BODY_CHARS * 4,
+        "the widest body the character cap allows"
+    );
+    {
+        let connection = database.connection();
+        insert_session_message(
+            &connection,
+            &NewSessionMessage {
+                id: "message-wide".to_string(),
+                from_session_id: Some("session-parent".to_string()),
+                to_session_id: "session-child".to_string(),
+                body: body.clone(),
+                kind: MESSAGE_KIND.to_string(),
+            },
+        )
+        .expect("inbox row");
+    }
+
+    let launcher = Arc::new(RecordingLauncher::default());
+    let providers =
+        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    providers.set_session_control(Arc::clone(&registry));
+    let (socket, child_token) = credential(&registry, repo.path(), "session-child");
+    let _server = server
+        .start(
+            None,
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            Arc::clone(&providers),
+        )
+        .expect("start control socket");
+
+    let raw = ask_raw(socket.clone(), child_token.clone(), json!({ "inbox": {} })).await;
+    assert!(
+        raw.len() > MAX_RESPONSE_BYTES,
+        "this reply is only readable because the inbox has its own ceiling"
+    );
+    assert!(
+        raw.len() <= MAX_INBOX_RESPONSE_BYTES,
+        "an inbox reply of {} bytes is over the client's ceiling and would be refused",
+        raw.len()
+    );
+    let response: serde_json::Value = serde_json::from_str(&raw).expect("response json");
+    let messages = response["inbox"]["messages"].as_array().expect("messages");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0]["body"].as_str().expect("body"), body);
+
+    let raw = ask_raw(socket, child_token, json!({ "inbox": {} })).await;
+    let response: serde_json::Value = serde_json::from_str(&raw).expect("response json");
+    assert!(
+        response["inbox"]["messages"]
+            .as_array()
+            .expect("messages")
+            .is_empty(),
+        "the delivered row is not handed over twice"
+    );
 }
 
 /// A read with no cursor answers with the start of the transcript, the way the

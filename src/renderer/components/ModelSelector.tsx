@@ -15,6 +15,11 @@ import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { EffortPixelField } from "./EffortPixelField.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import {
+  LAUNCH_MODEL_RECENCY_KEY,
+  readLaunchModelRecency
+} from "../lib/launchModelPreference.js";
+import { touchIdRecency } from "../lib/recencyList.js";
+import {
   allModelOptions,
   effortLabel,
   factoryLaunchModel,
@@ -63,6 +68,8 @@ function availabilityAnnotation(
 
 type ChipModelOption<T> = {
   key: string;
+  /** Recency list key (`provider:modelId`). Defaults to `key`. */
+  recencyKey?: string;
   /** Base model label, without any effort suffix. */
   label: string;
   value: T;
@@ -73,6 +80,35 @@ type ChipModelOption<T> = {
   /** Small advisory suffix ("not installed" / "needs login"). */
   annotation?: string;
 };
+
+const MAX_RECENT_MODELS = 3;
+
+function optionRecencyKey<T>(option: ChipModelOption<T>): string {
+  return option.recencyKey ?? option.key;
+}
+
+/** Recently used models first, then the catalog in its original order. */
+function orderOptionsByRecency<T>(options: Array<ChipModelOption<T>>): Array<ChipModelOption<T>> {
+  const recency = readLaunchModelRecency();
+  if (recency.length === 0) return options;
+  const optionKeys = new Set(options.map(optionRecencyKey));
+  const recentKeys = [...new Set(recency.filter((id) => optionKeys.has(id)))].slice(0, MAX_RECENT_MODELS);
+  const rank = new Map(recentKeys.map((id, index) => [id, index]));
+  const recent: Array<ChipModelOption<T>> = [];
+  const rest: Array<ChipModelOption<T>> = [];
+  for (const option of options) {
+    if (rank.has(optionRecencyKey(option))) recent.push(option);
+    else rest.push(option);
+  }
+  if (recent.length === 0) return options;
+  recent.sort(
+    (left, right) => (rank.get(optionRecencyKey(left)) ?? 0) - (rank.get(optionRecencyKey(right)) ?? 0)
+  );
+  // Drop groups on the recent prefix so mixed providers don't draw a divider
+  // between every row. The first catalog row still has its group, so one
+  // divider separates recent from the rest.
+  return [...recent.map((option) => ({ ...option, group: undefined })), ...rest];
+}
 
 export function ModelSelector({
   ariaLabel,
@@ -93,6 +129,7 @@ export function ModelSelector({
 }): JSX.Element {
   const options: Array<ChipModelOption<ProviderModelSelection>> = PROVIDER_MODELS[provider].map((model) => ({
     key: modelKey(model),
+    recencyKey: providerModelKey({ provider, modelId: model.modelId }),
     label: model.label,
     supportsReasoningEffort: Boolean(model.supportsReasoningEffort),
     value: {
@@ -494,6 +531,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   const selectedShowsEffort =
     value.reasoningEffort != null && (selectedOption ? selectedOption.supportsReasoningEffort : true);
   const showEffortSlider = withEffortSlider && selectedShowsEffort && value.reasoningEffort != null;
+  const orderedOptions = orderOptionsByRecency(options);
 
   const selectionForOption = (option: ChipModelOption<T>): T => {
     // Fast/no-effort models carry no effort. Otherwise the current effort is
@@ -505,12 +543,12 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     return { ...option.value, reasoningEffort: carried ?? DEFAULT_REASONING_EFFORT };
   };
 
-  const selectedIndex = options.findIndex((option) => isSelected(option.value));
+  const selectedIndex = orderedOptions.findIndex((option) => isSelected(option.value));
 
   // Typing into the open picker filters the model list through useTypeToFilter.
   const modelFilter = useTypeToFilter({
     open,
-    items: options,
+    items: orderedOptions,
     toLabel: (option: ChipModelOption<T>) => option.label,
     listRef: primaryListRef,
     initialIndex: selectedIndex >= 0 ? selectedIndex : 0,
@@ -522,6 +560,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     // is also disabled, this is just belt-and-suspenders.
     if (option.disabled) return;
     const nextValue = selectionForOption(option);
+    touchIdRecency(LAUNCH_MODEL_RECENCY_KEY, optionRecencyKey(option));
     onChange(nextValue);
     setOpen(false);
   };
@@ -585,7 +624,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
             <PickerFilterRow
               query={modelFilter.query}
               matchCount={modelFilter.matches.length}
-              totalCount={options.length}
+              totalCount={orderedOptions.length}
             />
             {modelFilter.matches.map((option, index) => {
               const selected = isSelected(option.value);

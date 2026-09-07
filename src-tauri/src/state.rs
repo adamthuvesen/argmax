@@ -14,7 +14,7 @@ use crate::browser::registry::BrowserTabRegistry;
 use crate::checks::service::CheckService;
 use crate::dock::{DockBadgeService, TauriDockBadgeSink};
 use crate::gh::poller::GhPoller;
-use crate::notifications::{NotificationService, TauriNotificationSink};
+use crate::notifications::{NotificationService, NotificationSink};
 use crate::persistence::Database;
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::discovery::ProviderDiscovery;
@@ -26,7 +26,7 @@ use crate::terminal::service::TerminalService;
 use crate::util::startup_timer::StartupTimer;
 use crate::workspaces::WorkspaceService;
 
-pub type LiveNotificationService = NotificationService<TauriNotificationSink<tauri::Wry>>;
+pub type LiveNotificationService = NotificationService<Box<dyn NotificationSink>>;
 pub type LiveDockBadgeService = DockBadgeService<TauriDockBadgeSink<tauri::Wry>>;
 
 pub struct AppState {

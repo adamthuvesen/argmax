@@ -38,16 +38,30 @@ Filter by minimum level, by scope, or by text. The backend emits at `info` with
 never filtered out.
 
 Renderer breadcrumbs join the same list, merged by timestamp so the two sides
-read as one chronology. Today that is scope `renderer::chat`
-([lib/chatCueLog.ts](../src/renderer/lib/chatCueLog.ts)): one line each time the
-chat's progress cue appears or disappears, carrying which of the suppression
-rules is holding it down — `tool-running`, `card-ask`, `live-thought`,
-`streaming-text`, `answer-settling`, `compacting`, or `show-delay`. That cue is
-the only thing on screen while a relaunched provider spends ten to thirty
-seconds before its first word, and it is derived from state that is gone by the
-time anyone reads the transcript, so a pane that goes quiet leaves no other
-evidence. They live in the renderer rather than crossing IPC: a round trip per
-transition to record that nothing happened is not worth its cost.
+read as one chronology. They share one ring
+([lib/rendererLogRing.ts](../src/renderer/lib/rendererLogRing.ts)) and live in
+the renderer rather than crossing IPC: a round trip per transition to record
+that nothing happened is not worth its cost. Two scopes write to it.
+
+`renderer::chat` ([lib/chatCueLog.ts](../src/renderer/lib/chatCueLog.ts)): one
+line each time the chat's progress cue appears or disappears, carrying which of
+the suppression rules is holding it down — `tool-running`, `card-ask`,
+`live-thought`, `streaming-text`, `answer-settling`, `compacting`, or
+`show-delay`. That cue is the only thing on screen while a relaunched provider
+spends ten to thirty seconds before its first word, and it is derived from
+state that is gone by the time anyone reads the transcript, so a pane that goes
+quiet leaves no other evidence.
+
+`renderer::drag` ([lib/dragLog.ts](../src/renderer/lib/dragLog.ts)): the
+lifecycle of every drag that crosses the window — start, entry, a sampled
+`dragover` line carrying whether any target accepted it, drop, end. Drag and
+drop stops working window-wide after hours of use (a screenshot no longer
+attaches, a sidebar row no longer splits a pane) and comes back only on
+relaunch. The breadcrumbs separate the three candidates: no lines at all means
+the event never reached the page, `accepted=false` throughout means it arrived
+and no target took it, and a `warn` line — a drag that dropped without a
+`dragend`, or that stopped mid-flight — means the page left a drag session
+open, which is what a subsequent window-wide failure would follow.
 
 **IPC** lists every channel called since launch with p50/p99 over the last 100
 invocations, sorted by p99. Rows go amber past one frame (16 ms) and red past

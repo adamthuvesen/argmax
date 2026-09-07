@@ -50,6 +50,10 @@ import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
+import {
+  persistLaunchProjectId,
+  sortProjectsByLaunchRecency
+} from "../lib/launchProjectPreference.js";
 import { preferredLaunchModel, type ModelPickerSelection } from "../lib/models.js";
 import {
   LAUNCHER_MODE_LABELS,
@@ -425,6 +429,7 @@ export function LaunchSurface({
   const branchListRef = useRef<HTMLUListElement | null>(null);
   const pickProject = useCallback(
     (candidate: ProjectSummary): void => {
+      persistLaunchProjectId(candidate.id);
       onSideChatModeChange?.(false);
       onSelectProject(candidate.id);
       setProjectPickerOpen(false);
@@ -432,10 +437,11 @@ export function LaunchSurface({
     },
     [onSelectProject, onSideChatModeChange]
   );
-  const selectedProjectIndex = projects.findIndex((candidate) => candidate.id === project?.id);
+  const orderedProjects = sortProjectsByLaunchRecency(projects);
+  const selectedProjectIndex = orderedProjects.findIndex((candidate) => candidate.id === project?.id);
   const projectFilter = useTypeToFilter({
     open: projectPickerOpen,
-    items: projects,
+    items: orderedProjects,
     toLabel: (candidate: ProjectSummary) => candidate.name,
     listRef: projectListRef,
     initialIndex: selectedProjectIndex >= 0 ? selectedProjectIndex : 0,
@@ -936,7 +942,7 @@ export function LaunchSurface({
                 <PickerFilterRow
                   query={projectFilter.query}
                   matchCount={projectFilter.matches.length}
-                  totalCount={projects.length}
+                  totalCount={orderedProjects.length}
                 />
                 {projectFilter.matches.map((p, index) => (
                   <li

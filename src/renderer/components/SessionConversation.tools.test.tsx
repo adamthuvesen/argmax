@@ -489,6 +489,46 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.getByText(/receiver-thread/)).toBeInTheDocument();
   });
 
+  // The chevron on a launch row reveals the raw launch receipt — for a
+  // backgrounded agent, a wall of internal instructions addressed to the
+  // parent. So it follows the individual-row level rather than the group
+  // level: Balanced names the delegated work and stops there.
+  it.each([
+    { label: "Balanced", display: "collapsed" as const, open: false },
+    { label: "Detailed", display: "expanded" as const, open: true }
+  ])("opens a launch row's receipt from Detailed up, not at Balanced ($label)", ({ display, open }) => {
+    const task = "Explore repo quickly and report key files.";
+    renderConversation(
+      baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "complete" }),
+      [
+        event("u1", "user.message", "spawn an agent", "2026-05-12T15:00:00.000Z"),
+        event("agent-start", "command.started", "spawn_agent", "2026-05-12T15:00:01.000Z", {
+          id: "item_2",
+          name: "spawn_agent",
+          input: { prompt: task, receiver_thread_ids: [], sender_thread_id: "sender-thread" }
+        }),
+        event("agent-end", "command.completed", "spawn_agent", "2026-05-12T15:00:02.000Z", {
+          id: "item_2",
+          name: "spawn_agent",
+          input: {
+            prompt: task,
+            receiver_thread_ids: ["receiver-thread"],
+            sender_thread_id: "sender-thread"
+          }
+        })
+      ],
+      {
+        defaultToolCallsDisplay: display,
+        defaultToolCallGroupsExpanded: true,
+        onOpenAgent: vi.fn<(tool: ToolCall) => void>()
+      }
+    );
+
+    expect(screen.getByRole("button", { name: toggleAgentDetailsName(task) }))
+      .toHaveAttribute("aria-expanded", String(open));
+    expect(screen.getByRole("button", { name: startedAgentName(task) })).toBeInTheDocument();
+  });
+
   it("hides linked Codex wait rows while the spawned-agent row stays visible", () => {
     renderConversation(
       baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "running" }),

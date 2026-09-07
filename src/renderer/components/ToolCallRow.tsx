@@ -2,6 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { memo, useMemo, useState, type JSX } from "react";
 import { interpretFileChange, summarizeFileChanges, type FileChange } from "../lib/fileChange.js";
 import { shortenPathsInText } from "../lib/pathDisplay.js";
+import { commandIconServer } from "../lib/commandIcons.js";
 import {
   describeToolAction,
   getToolTypeBucket,
@@ -115,7 +116,7 @@ function ToolCallRowInner({
     ) : null;
   const rowContent = (
     <>
-      <ServerIcon server={mcpServer} web={isWebToolName(tool.name)} />
+      <ServerIcon server={mcpServer ?? commandIconServer(tool)} web={isWebToolName(tool.name)} />
       <span className="tool-call-row-verb">{verb}</span>
       {target ? (
         <span className="tool-call-row-target">{shortenPathsInText(target)}</span>
@@ -196,6 +197,8 @@ function sameChildTools(a: ToolCall[] | undefined, b: ToolCall[] | undefined): b
     if (
       !left ||
       !right ||
+      left.name !== right.name ||
+      left.inputFull !== right.inputFull ||
       left.id !== right.id ||
       left.status !== right.status ||
       left.error !== right.error ||
@@ -220,6 +223,8 @@ export const ToolCallRow = memo(ToolCallRowInner, (prev, next) => {
   if (!sameChildTools(prev.childTools, next.childTools)) return false;
   if (prev.tool === next.tool) return true;
   return (
+    prev.tool.name === next.tool.name &&
+    prev.tool.inputFull === next.tool.inputFull &&
     prev.tool.id === next.tool.id &&
     prev.tool.status === next.tool.status &&
     prev.tool.error === next.tool.error &&

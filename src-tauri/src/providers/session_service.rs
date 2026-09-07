@@ -48,6 +48,7 @@ use crate::sessions::state::SessionState;
 use crate::{
     approvals::service::ApprovalService,
     error::{ArgmaxError, ArgmaxResult},
+    gh::service::{pr_numbers_from_command_event, GhService},
     ipc::inputs::{
         ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
         ProvidersResizeInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
@@ -789,14 +790,18 @@ impl ProviderSessionService {
             });
         }
 
-        // The handle is still spawning (Pending): the process isn't up yet, so
-        // we can't route directly — and we must NOT fall through to the relaunch
-        // path below, which would double-spawn. Queue the message; it drains
-        // after the in-flight turn completes, exactly like a follow-up sent
-        // while the agent is working.
+        // The session still owns an entry we cannot route through: the process
+        // is either not up yet (Pending) or already gone — the runtime marks a
+        // handle disposed before it emits Exit, so the whole exit teardown runs
+        // with a Resolved-but-dead handle in the map. Either way we must NOT
+        // fall through to the relaunch path below: it would double-spawn, and
+        // in the exit window the teardown then removes that fresh entry and its
+        // flush queue, dropping every event of the new turn. Queue the message;
+        // it drains after the in-flight turn completes, exactly like a follow-up
+        // sent while the agent is working.
         if matches!(
             self.handles.lock_or_recover("handles").get(&session_id),
-            Some(HandleEntry::Pending(_))
+            Some(HandleEntry::Pending(_)) | Some(HandleEntry::Resolved(_))
         ) {
             self.enqueue_pending_message(
                 &session_id,
@@ -1040,9 +1045,27 @@ impl ProviderSessionService {
                 },
             );
         self.mark_turn_start(&session_id, workspace_path);
-        self.handles
-            .lock_or_recover("handles")
-            .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
+        // Stop can have landed since the check above, while this relaunch was
+        // reading the database: `start_termination` has then already taken the
+        // old handle away, so nothing here would stop a fresh process coming up
+        // under the row cancellation is about to write. Claim the entry while
+        // holding the termination markers, in the same order `start_termination`
+        // takes them, so exactly one of the two wins: either terminate finds
+        // this Pending entry and the spawn disposes the child, or the relaunch
+        // is refused here.
+        {
+            let jobs = self.termination_jobs.lock_or_recover("termination jobs");
+            let terminating = self.terminating.lock_or_recover("terminating");
+            if jobs.contains_key(&session_id) || terminating.contains(&session_id) {
+                return Err(ArgmaxError::service(
+                    "PROVIDER_TERMINATING",
+                    "Provider chat is being terminated; wait for cancellation to finish.",
+                ));
+            }
+            self.handles
+                .lock_or_recover("handles")
+                .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
+        }
         // Same background spawn as `launch`: the user.message and running
         // state are already persisted and broadcast, so the composer can
         // clear as soon as this returns. Waiting on the PTY/CLI here is
@@ -1417,6 +1440,18 @@ impl ProviderSessionService {
             .lock_or_recover("queue promotions")
             .contains(&session_id)
         {
+            // Stop took the promotion away while this send waited for the
+            // provider to stop. The row is still marked `launching`, which the
+            // composer hides, so put it back like every other failure here.
+            // Stop discards the queue as it goes, so the row may already be
+            // gone — that is not a failure worth reporting over the cancel.
+            if let Err(error) = restore(self, message) {
+                tracing::debug!(
+                    session_id,
+                    error = %error,
+                    "queued follow-up was already discarded by Stop"
+                );
+            }
             return Err(ArgmaxError::service(
                 "QUEUED_SEND_CANCELLED",
                 "Queued follow-up was cancelled by Stop.",
@@ -1708,6 +1743,7 @@ impl ProviderSessionService {
         });
         if let Some(delta) = result.delta {
             self.schedule_measured_diffs(&event.session_id, &delta);
+            self.schedule_observed_prs(&event.session_id, &delta);
             self.publish(delta);
         }
         if reconcile_subagents {
@@ -2648,13 +2684,22 @@ impl ProviderSessionService {
             ..DashboardDelta::default()
         });
 
+        // The turn is over here, so its approvals are stale — the exit path
+        // clears them at this same point. Like there, a failure must not return
+        // early: the queue drain below is what sends a follow-up the user typed
+        // during the turn.
+        let approvals_cancelled = match self.approvals.as_ref() {
+            Some(approvals) => approvals.cancel_session_pending(session_id),
+            None => Ok(()),
+        };
+        let mut first_error = approvals_cancelled.err();
         if let Some(HandleEntry::Resolved(handle)) = entry {
             if let Err(error) = handle.terminate().await {
                 let _ = self.abort_session_after_turn(
                     session_id,
                     "Could not move this chat because the Cursor turn did not stop safely.",
                 );
-                return Err(error);
+                first_error.get_or_insert(error);
             }
         }
         self.settle_session_after_turn(session_id);
@@ -2666,7 +2711,10 @@ impl ProviderSessionService {
         // row could only say that it had stopped, never what it found.
         self.notify_launcher_of_turn_end(session_id, SessionState::Complete, &completed_at);
         self.drain_queue_after_complete(session_id.to_string());
-        Ok(())
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 
     fn cancel_idle_flush(&self, session_id: &str) {
@@ -2760,6 +2808,66 @@ impl ProviderSessionService {
     fn mark_turn_start(&self, session_id: &str, workspace_path: PathBuf) {
         let mark = self.measured_diffs.open_turn(session_id, workspace_path);
         tauri::async_runtime::spawn(capture_opening_mark(mark));
+    }
+
+    /// When a tool's stdout contains a GitHub PR URL (typically `gh pr create`),
+    /// cache that PR immediately. The poller only views `workspace.branch` in
+    /// `workspace.path`, so a PR opened from another worktree would otherwise
+    /// never appear on the sidebar.
+    fn schedule_observed_prs(self: &Arc<Self>, session_id: &str, delta: &DashboardDelta) {
+        let mut numbers = Vec::new();
+        for event in &delta.events {
+            for number in
+                pr_numbers_from_command_event(&event.r#type, &event.message, &event.payload)
+            {
+                if !numbers.contains(&number) {
+                    numbers.push(number);
+                }
+            }
+        }
+        if numbers.is_empty() {
+            return;
+        }
+        let service = Arc::clone(self);
+        let session_id = session_id.to_string();
+        tauri::async_runtime::spawn(async move {
+            let gh = GhService::new(Arc::clone(&service.database));
+            let known = gh.list_for_session(&session_id).unwrap_or_default();
+            let mut observed = false;
+            for number in numbers {
+                if known.iter().any(|row| row.pr_number == number) {
+                    continue;
+                }
+                match gh.refresh_pr_number(&session_id, number).await {
+                    Ok(_) => observed = true,
+                    Err(error) => tracing::warn!(
+                        %error,
+                        session_id,
+                        pr_number = number,
+                        "could not cache PR from command output"
+                    ),
+                }
+            }
+            if !observed {
+                return;
+            }
+            let workspace = {
+                let connection = service.database.connection();
+                find_session_by_id(&connection, &session_id)
+                    .and_then(|session| find_workspace_by_id(&connection, &session.workspace_id))
+            };
+            match workspace {
+                Ok(workspace) => service.publish(DashboardDelta {
+                    workspaces: vec![workspace],
+                    ..DashboardDelta::default()
+                }),
+                Err(error) => tracing::warn!(
+                    %error,
+                    session_id,
+                    "could not publish workspace after observing a PR"
+                ),
+            }
+        });
     }
 
     /// Measure the diffs a provider left out, then rewrite the tool's own
@@ -3468,6 +3576,144 @@ mod tests {
             .join()
             .expect("cancel thread")
             .expect("cancel queue");
+    }
+
+    /// Stop can take the promotion away while "send now" waits for the current
+    /// turn to stop. The send is cancelled, but the follow-up has already left
+    /// the queue with its row marked `launching` — which the composer hides —
+    /// so it has to come back like it does from every other failure here.
+    #[tokio::test]
+    async fn send_now_restores_the_follow_up_when_stop_cancels_the_promotion() {
+        use crate::persistence::{
+            projects::{persist_project, PersistProjectInput, ProjectSettings},
+            workspaces::{persist_workspace, PersistWorkspaceInput},
+        };
+
+        let database = Arc::new(Database::open_in_memory().expect("open db"));
+        {
+            let connection = database.connection();
+            persist_project(
+                &connection,
+                &PersistProjectInput {
+                    id: "project-1".to_string(),
+                    name: "argmax-test".to_string(),
+                    repo_path: "/tmp/repo".to_string(),
+                    current_branch: "main".to_string(),
+                    default_branch: Some("main".to_string()),
+                    settings: ProjectSettings {
+                        archive_on_merge: false,
+                        worktree_location: "/tmp/worktrees".to_string(),
+                        setup_command: String::new(),
+                        check_commands: Vec::new(),
+                    },
+                },
+            )
+            .expect("persist project");
+            persist_workspace(
+                &connection,
+                &PersistWorkspaceInput {
+                    id: "workspace-1".to_string(),
+                    project_id: "project-1".to_string(),
+                    task_label: "test workspace".to_string(),
+                    branch: "feature/test".to_string(),
+                    base_ref: "main".to_string(),
+                    path: "/tmp/repo".to_string(),
+                    state: "running".to_string(),
+                    shared_workspace: false,
+                    kind: "git".to_string(),
+                    dirty: false,
+                    changed_files: 0,
+                },
+            )
+            .expect("persist workspace");
+            persist_session(
+                &connection,
+                &PersistSessionInput {
+                    id: "session-1".to_string(),
+                    workspace_id: "workspace-1".to_string(),
+                    provider: "claude".to_string(),
+                    model_label: "Sonnet 5".to_string(),
+                    model_id: "claude-sonnet-5".to_string(),
+                    reasoning_effort: None,
+                    permission_mode: Some("auto-approve".to_string()),
+                    agent_mode: Some("auto".to_string()),
+                    prompt: "hello".to_string(),
+                    state: SessionState::Running,
+                },
+            )
+            .expect("persist session");
+        }
+
+        let service = ProviderSessionService::new(database);
+        let message_id = Uuid::new_v4().to_string();
+        let queued = VecDeque::from([PendingMessage {
+            id: message_id.clone(),
+            session_id: "session-1".to_string(),
+            content: "stopped mid-promotion".to_string(),
+            agent_mode: AgentMode::Auto.as_str().to_string(),
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            attachments: Vec::new(),
+            agent_references: Vec::new(),
+            origin: None,
+            recovery_status: None,
+            queued_at: now_iso(),
+        }]);
+        {
+            let mut connection = service.database.connection();
+            replace_session_queue(&mut connection, "session-1", &queued).expect("persist queue");
+        }
+        service
+            .queues
+            .lock_or_recover("queues")
+            .insert("session-1".to_string(), queued);
+
+        // Stand in for Stop: drop the promotion once the send has claimed it,
+        // while the send is parked on the termination it started.
+        let promotions = Arc::clone(&service.queue_promotions);
+        let stop = tokio::spawn(async move {
+            for _ in 0..1000 {
+                if promotions
+                    .lock_or_recover("queue promotions")
+                    .remove("session-1")
+                {
+                    return true;
+                }
+                tokio::task::yield_now().await;
+            }
+            false
+        });
+
+        let cancelled = service
+            .send_queued_message_now(ProvidersSendQueuedMessageNowInput {
+                session_id: SessionId::try_from("session-1".to_string()).expect("session id"),
+                message_id: NonEmptyString::try_from(message_id.clone()).expect("message id"),
+            })
+            .await
+            .expect_err("a promotion dropped by Stop cancels the send");
+        assert!(matches!(
+            cancelled,
+            ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == "QUEUED_SEND_CANCELLED"
+        ));
+        assert!(
+            stop.await.expect("stop task"),
+            "the promotion must have been claimed and then dropped"
+        );
+
+        assert_eq!(
+            service.pending_messages_snapshot()["session-1"][0].id,
+            message_id
+        );
+        let connection = service.database.connection();
+        let durable = crate::persistence::pending_messages::list_session_pending_messages(
+            &connection,
+            "session-1",
+        )
+        .expect("durable queue");
+        assert_eq!(durable.len(), 1, "the row is visible to the composer again");
+        assert_eq!(durable[0].content, "stopped mid-promotion");
     }
 
     #[test]

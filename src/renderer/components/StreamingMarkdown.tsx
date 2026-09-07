@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
+import { createContext, useContext, lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceSummary } from "../../shared/types.js";
@@ -266,131 +266,135 @@ function MermaidDiagramFallback(): JSX.Element {
   );
 }
 
-// One markdown render root. Memoized on its props so stable text skips
-// re-parsing entirely — `workspace` and `onOpenFile` are stable from the
-// session pane.
-//
-// The eager path renders without math plugins. Text that may contain math
-// delegates to the lazy `ChatMathMarkdown` (KaTeX chunk) with the plain render
-// as its Suspense fallback, so math pops in once the chunk lands instead of
-// blocking first paint.
+type MarkdownContextValue = {
+  workspace?: WorkspaceSummary | null;
+  onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
+};
+
+const MarkdownContext = createContext<MarkdownContextValue>({});
+
+// React Markdown treats these functions as component types. Keep them stable
+// across dashboard updates so code scrollers and image state survive.
+const markdownComponents: Components = {
+  code: function MarkdownCode({ className, children, ...rest }) {
+    const { workspace, onOpenFile } = useContext(MarkdownContext);
+    const hasLanguage = typeof className === "string" && className.includes("language-");
+    const codeText = Array.isArray(children)
+      ? children.map((c) => (typeof c === "string" ? c : "")).join("")
+      : typeof children === "string"
+        ? children
+        : "";
+    if (isMermaidFenceClass(className)) {
+      return (
+        <Suspense fallback={<MermaidDiagramFallback />}>
+          <MermaidDiagram source={codeText.replace(/\n$/, "")} />
+        </Suspense>
+      );
+    }
+    if (hasLanguage || codeText.includes("\n")) {
+      return <CodeBlock className={className}>{children}</CodeBlock>;
+    }
+    const match = matchFileChip(codeText);
+    if (match) {
+      const path = normalizeFileChipPath(match.path, workspace?.path);
+      return (
+        <FileChip
+          path={path}
+          line={match.line}
+          workspaceId={workspace?.id ?? null}
+          workspaceCwd={workspace?.path ?? null}
+          onOpen={onOpenFile}
+        />
+      );
+    }
+    return (
+      <code className={className} {...rest}>
+        {children}
+      </code>
+    );
+  },
+  a: function MarkdownAnchor({ href, children, ...rest }) {
+    const { workspace, onOpenFile } = useContext(MarkdownContext);
+    if (!href || href.startsWith("#")) {
+      return (
+        <a href={href} {...rest}>
+          {children}
+        </a>
+      );
+    }
+    if (/^https?:/.test(href)) {
+      return (
+        <WebLink href={href} {...rest}>
+          {children}
+        </WebLink>
+      );
+    }
+    if (/^mailto:/.test(href)) {
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+          {children}
+        </a>
+      );
+    }
+    const normalizedHref = normalizeFileChipPath(href, workspace?.path);
+    const match = matchFileChip(normalizedHref);
+    if (!match) {
+      return (
+        <a href={href} {...rest}>
+          {children}
+        </a>
+      );
+    }
+    return (
+      <FileChip
+        path={match.path}
+        line={match.line}
+        workspaceId={workspace?.id ?? null}
+        workspaceCwd={workspace?.path ?? null}
+        onOpen={onOpenFile}
+      />
+    );
+  },
+  img: function MarkdownImg({ src, alt }) {
+    const { workspace, onOpenFile } = useContext(MarkdownContext);
+    return (
+      <MarkdownImage
+        src={src}
+        alt={alt}
+        workspace={workspace}
+        onOpenFile={onOpenFile}
+      />
+    );
+  },
+  table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
+  pre: ({ children }) => <>{children}</>
+};
+
+// Keep the plain render visible while the optional math chunk loads.
 const MarkdownBody = memo(function MarkdownBody({
   text,
   workspace,
   onOpenFile
-}: {
-  text: string;
-  workspace?: WorkspaceSummary | null;
-  onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
-}): JSX.Element {
-  const components: Components = useMemo(
-    () => ({
-        code: ({ className, children, ...rest }) => {
-          const hasLanguage = typeof className === "string" && className.includes("language-");
-          const codeText = Array.isArray(children)
-            ? children.map((c) => (typeof c === "string" ? c : "")).join("")
-            : typeof children === "string"
-              ? children
-              : "";
-          if (isMermaidFenceClass(className)) {
-            return (
-              <Suspense fallback={<MermaidDiagramFallback />}>
-                <MermaidDiagram source={codeText.replace(/\n$/, "")} />
-              </Suspense>
-            );
-          }
-          if (hasLanguage || codeText.includes("\n")) {
-            return <CodeBlock className={className}>{children}</CodeBlock>;
-          }
-          const match = matchFileChip(codeText);
-          if (match) {
-            const path = normalizeFileChipPath(match.path, workspace?.path);
-            return (
-              <FileChip
-                path={path}
-                line={match.line}
-                workspaceId={workspace?.id ?? null}
-                workspaceCwd={workspace?.path ?? null}
-                onOpen={onOpenFile}
-              />
-            );
-          }
-          return (
-            <code className={className} {...rest}>
-              {children}
-            </code>
-          );
-        },
-        a: ({ href, children, ...rest }) => {
-          if (!href || href.startsWith("#")) {
-            return (
-              <a href={href} {...rest}>
-                {children}
-              </a>
-            );
-          }
-          if (/^https?:/.test(href)) {
-            return (
-              <WebLink href={href} {...rest}>
-                {children}
-              </WebLink>
-            );
-          }
-          if (/^mailto:/.test(href)) {
-            return (
-              <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
-                {children}
-              </a>
-            );
-          }
-          const normalizedHref = normalizeFileChipPath(href, workspace?.path);
-          const match = matchFileChip(normalizedHref);
-          if (!match) {
-            return (
-              <a href={href} {...rest}>
-                {children}
-              </a>
-            );
-          }
-          return (
-            <FileChip
-              path={match.path}
-              line={match.line}
-              workspaceId={workspace?.id ?? null}
-              workspaceCwd={workspace?.path ?? null}
-              onOpen={onOpenFile}
-            />
-          );
-        },
-        img: ({ src, alt }) => (
-          <MarkdownImage
-            src={src}
-            alt={alt}
-            workspace={workspace}
-            onOpenFile={onOpenFile}
-          />
-        ),
-        table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
-        pre: ({ children }) => <>{children}</>
-    }),
-    [workspace, onOpenFile]
-  );
-
+}: MarkdownContextValue & { text: string }): JSX.Element {
+  const context = useMemo(() => ({ workspace, onOpenFile }), [workspace, onOpenFile]);
   const withMath = needsMath(text);
   const plain = (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       urlTransform={chatUrlTransform}
-      components={components}
+      components={markdownComponents}
     >
       {text}
     </ReactMarkdown>
   );
-  if (!withMath) return plain;
   return (
-    <Suspense fallback={plain}>
-      <ChatMathMarkdown text={text} components={components} urlTransform={chatUrlTransform} />
-    </Suspense>
+    <MarkdownContext.Provider value={context}>
+      {withMath ? (
+        <Suspense fallback={plain}>
+          <ChatMathMarkdown text={text} components={markdownComponents} urlTransform={chatUrlTransform} />
+        </Suspense>
+      ) : plain}
+    </MarkdownContext.Provider>
   );
 });
 

@@ -65,9 +65,23 @@ const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 /// A screenshot's base64 PNG rides in the reply, so the browser action gets
 /// its own ceiling. `mcp::browser_bridge` caps the image well below this.
 const MAX_BROWSER_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
+/// Inbox and wait replies carry message bodies, and a body is marked delivered
+/// as it is handed over — a reply refused for its size is a message nobody ever
+/// reads. So they get a ceiling the worst case cannot reach:
+/// `take_undelivered_messages` always takes its first row, capped at
+/// `MAX_MESSAGE_BODY_CHARS` (16K characters, up to 64 KiB), and fills the rest
+/// to `INBOX_READ_BYTE_BUDGET`, so at most 64K characters reach one reply. JSON
+/// escaping spends at most six bytes on a character (a control character
+/// becomes a six-byte unicode escape), which is 384 KiB, and the per-message
+/// envelope is a few hundred bytes across at most `INBOX_READ_LIMIT` rows.
+const MAX_INBOX_RESPONSE_BYTES: usize = 512 * 1024;
 const SERVER_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_IO_TIMEOUT: Duration = Duration::from_secs(75);
 const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(25);
+/// Back-off after an accept failure the listener survives, longer than the
+/// poll interval so a condition that persists — running out of file
+/// descriptors — neither spins the thread nor floods the log.
+const ACCEPT_RETRY_INTERVAL: Duration = Duration::from_millis(250);
 const SESSION_LIST_LIMIT: usize = 40;
 /// A session the user started is depth 0, so two levels of agent-launched
 /// sessions exist below it and the third is refused.
@@ -86,10 +100,13 @@ const SESSION_READ_MAX_CHARS: usize = 40 * 1024;
 /// a status call rather than a transcript read.
 const STATUS_ANSWER_CHARS: usize = 2 * 1024;
 const INBOX_READ_LIMIT: usize = 50;
-/// How many bytes of message body one inbox hand-over may carry. A row is
-/// marked delivered only when it is actually in the reply, so this has to stay
-/// under `MAX_RESPONSE_BYTES` with room for the envelope and JSON escaping;
-/// what does not fit stays collectable for the next read.
+/// How many bytes of message body one inbox hand-over may carry, so a big
+/// backlog drains across several reads rather than one enormous reply. It is
+/// not what keeps a hand-over readable: `take_undelivered_messages` takes its
+/// first row whatever it costs, and a 16K-character body of four-byte scalars
+/// is 64 KiB on its own — over `MAX_RESPONSE_BYTES`. Since a row is marked
+/// delivered as it is handed over, the reply the caller reads has to be the
+/// one that always fits, which is `MAX_INBOX_RESPONSE_BYTES`.
 const INBOX_READ_BYTE_BUDGET: usize = 48 * 1024;
 const WAIT_DEFAULT_SECONDS: u64 = 120;
 const WAIT_MAX_SECONDS: u64 = 600;
@@ -475,6 +492,18 @@ impl SessionLaunchServer {
                     Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                         std::thread::sleep(ACCEPT_POLL_INTERVAL);
                     }
+                    // Keep accepting. This listener is the only way any session
+                    // reaches its tools, so leaving the loop on a failure that
+                    // says nothing about the listener would fail every later
+                    // `session_*` and `browser_*` call with CONNECT_FAILED
+                    // until the app restarts.
+                    Err(error) if is_transient_accept_error(&error) => {
+                        tracing::warn!(
+                            ?error,
+                            "Argmax session launch socket could not accept a connection"
+                        );
+                        std::thread::sleep(ACCEPT_RETRY_INTERVAL);
+                    }
                     Err(error) => {
                         tracing::warn!(?error, "Argmax session launch socket stopped accepting");
                         break;
@@ -495,6 +524,24 @@ impl SessionLaunchServer {
     ) -> Result<Self, SessionLaunchError> {
         Err(SessionLaunchError::Unsupported)
     }
+}
+
+/// Accept failures the listener outlives: a peer that hung up between connect
+/// and accept, an interrupted syscall, and the two out-of-descriptor errors,
+/// which clear as soon as other work closes its files.
+#[cfg(unix)]
+fn is_transient_accept_error(error: &io::Error) -> bool {
+    if matches!(
+        error.kind(),
+        io::ErrorKind::ConnectionAborted | io::ErrorKind::Interrupted
+    ) {
+        return true;
+    }
+    // EMFILE and ENFILE have no `io::ErrorKind` of their own; the numbers are
+    // the same on macOS and Linux.
+    const ENFILE: i32 = 23;
+    const EMFILE: i32 = 24;
+    matches!(error.raw_os_error(), Some(ENFILE) | Some(EMFILE))
 }
 
 impl Drop for SessionLaunchServer {
@@ -703,9 +750,9 @@ pub struct ScheduledArchive {
     pub scheduled: bool,
     pub session_id: String,
     pub workspace_id: String,
-    /// What the archive will actually do, so the agent's report can say it
-    /// without guessing: an isolated workspace loses its worktree and branch,
-    /// a shared checkout only drains and flips state.
+    /// Always false, and kept for older tool clients. Archiving retains an
+    /// isolated checkout and its branch in the archive location and leaves a
+    /// shared checkout where it is, so nothing it does removes a worktree.
     pub removes_worktree: bool,
 }
 
@@ -871,7 +918,11 @@ fn handle_connection(
     }
     let _ = stream.set_read_timeout(Some(SERVER_IO_TIMEOUT));
     let _ = stream.set_write_timeout(Some(SERVER_IO_TIMEOUT));
-    let request = match read_json_line::<SessionControlRequest>(&mut stream, MAX_REQUEST_BYTES) {
+    let request = match read_json_line::<SessionControlRequest>(
+        &mut stream,
+        MAX_REQUEST_BYTES,
+        Frame::Request,
+    ) {
         Ok(request) => request,
         Err(error) => {
             let response = SessionControlResponse::failure(error.code, error.message);
@@ -898,13 +949,39 @@ fn handle_connection(
 }
 
 struct ProtocolFailure {
-    code: &'static str,
+    code: String,
     message: String,
+}
+
+/// Which side of the round trip a frame is. Both ends share
+/// [`read_json_line`], and an agent told `REQUEST_TOO_LARGE` when it was the
+/// reply that overflowed would go looking at its own call for the fault.
+#[derive(Clone, Copy)]
+enum Frame {
+    Request,
+    Response,
+}
+
+impl Frame {
+    fn noun(self) -> &'static str {
+        match self {
+            Frame::Request => "Request",
+            Frame::Response => "Response",
+        }
+    }
+
+    fn code(self, suffix: &str) -> String {
+        match self {
+            Frame::Request => format!("REQUEST_{suffix}"),
+            Frame::Response => format!("RESPONSE_{suffix}"),
+        }
+    }
 }
 
 fn read_json_line<T: for<'de> Deserialize<'de>>(
     reader: &mut impl Read,
     max_bytes: usize,
+    frame: Frame,
 ) -> Result<T, ProtocolFailure> {
     let mut reader = io::BufReader::new(reader);
     let mut bytes = Vec::new();
@@ -913,19 +990,19 @@ fn read_json_line<T: for<'de> Deserialize<'de>>(
         .take((max_bytes + 1) as u64)
         .read_until(b'\n', &mut bytes)
         .map_err(|error| ProtocolFailure {
-            code: "REQUEST_READ_FAILED",
-            message: format!("Could not read request: {error}"),
+            code: frame.code("READ_FAILED"),
+            message: format!("{} could not be read: {error}", frame.noun()),
         })?;
     if bytes.len() > max_bytes {
         return Err(ProtocolFailure {
-            code: "REQUEST_TOO_LARGE",
-            message: format!("Request exceeds the {max_bytes}-byte limit."),
+            code: frame.code("TOO_LARGE"),
+            message: format!("{} exceeds the {max_bytes}-byte limit.", frame.noun()),
         });
     }
     if !bytes.ends_with(b"\n") {
         return Err(ProtocolFailure {
-            code: "REQUEST_NOT_TERMINATED",
-            message: "Request must end with a newline.".to_string(),
+            code: frame.code("NOT_TERMINATED"),
+            message: format!("{} must end with a newline.", frame.noun()),
         });
     }
     bytes.pop();
@@ -933,8 +1010,8 @@ fn read_json_line<T: for<'de> Deserialize<'de>>(
         bytes.pop();
     }
     serde_json::from_slice(&bytes).map_err(|error| ProtocolFailure {
-        code: "REQUEST_INVALID",
-        message: format!("Request is not valid protocol JSON: {error}"),
+        code: frame.code("INVALID"),
+        message: format!("{} is not valid protocol JSON: {error}", frame.noun()),
     })
 }
 
@@ -1254,10 +1331,23 @@ async fn handle_session_control(
     }?;
     // Counted after the action, so an inbox read or a wait reports what its own
     // hand-over left behind rather than what it just collected: a batch the
-    // reply ceiling cut short says so instead of looking complete.
-    let unread =
-        count_undelivered_messages(&counting_database.read_connection(), &caller_session_id)
-            .map_err(argmax_protocol_error)?;
+    // reply ceiling cut short says so instead of looking complete. A failed
+    // count only costs the stamp — the action already happened, and answering
+    // an error would have the agent retry a launch that really did launch.
+    let unread = match count_undelivered_messages(
+        &counting_database.read_connection(),
+        &caller_session_id,
+    ) {
+        Ok(unread) => unread,
+        Err(error) => {
+            tracing::warn!(
+                ?error,
+                session_id = %caller_session_id,
+                "could not count undelivered messages for the reply stamp"
+            );
+            0
+        }
+    };
     if unread > 0 {
         response.unread_inbox = Some(unread);
     }
@@ -2859,10 +2949,12 @@ pub fn send_session_control(
         .map_err(|error| protocol_error("REQUEST_WRITE_FAILED", error.to_string()))?;
     let response_cap = match request.action {
         SessionControlAction::Browser(_) => MAX_BROWSER_RESPONSE_BYTES,
+        SessionControlAction::Inbox(_) | SessionControlAction::Wait(_) => MAX_INBOX_RESPONSE_BYTES,
         _ => MAX_RESPONSE_BYTES,
     };
-    let response = read_json_line::<SessionControlResponse>(&mut stream, response_cap)
-        .map_err(|error| protocol_error(error.code, error.message))?;
+    let response =
+        read_json_line::<SessionControlResponse>(&mut stream, response_cap, Frame::Response)
+            .map_err(|error| protocol_error(error.code, error.message))?;
     if response.version != PROTOCOL_VERSION {
         return Err(protocol_error(
             "VERSION_UNSUPPORTED",
@@ -3213,7 +3305,8 @@ mod tests {
         assert_eq!(
             read_json_line::<SessionControlRequest>(
                 &mut with_unknown.as_slice(),
-                MAX_REQUEST_BYTES
+                MAX_REQUEST_BYTES,
+                Frame::Request
             )
             .unwrap_err()
             .code,
@@ -3225,7 +3318,8 @@ mod tests {
         assert_eq!(
             read_json_line::<SessionControlRequest>(
                 &mut wrong_action.as_slice(),
-                MAX_REQUEST_BYTES
+                MAX_REQUEST_BYTES,
+                Frame::Request
             )
             .unwrap_err()
             .code,
@@ -3233,9 +3327,13 @@ mod tests {
         );
         let no_newline = br#"{"version":1,"token":"x","action":{"list":{"all":false}}}"#;
         assert_eq!(
-            read_json_line::<SessionControlRequest>(&mut no_newline.as_slice(), MAX_REQUEST_BYTES)
-                .unwrap_err()
-                .code,
+            read_json_line::<SessionControlRequest>(
+                &mut no_newline.as_slice(),
+                MAX_REQUEST_BYTES,
+                Frame::Request
+            )
+            .unwrap_err()
+            .code,
             "REQUEST_NOT_TERMINATED"
         );
     }

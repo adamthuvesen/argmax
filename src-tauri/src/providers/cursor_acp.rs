@@ -40,9 +40,7 @@ use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-use super::{
-    mcp_injection, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort,
-};
+use super::{mcp_injection, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
@@ -383,9 +381,13 @@ fn remember_available_models(workspace: &AcpWorkspace, response: &Value) {
         .lock_or_recover("acp available models") = models.clone();
 }
 
-/// Select exactly the model configuration the user requested. Cursor's ACP
-/// ids contain live configuration in brackets, so matching only the family
-/// would silently change effort or serving speed.
+/// Select the advertised configuration of the family the user asked for.
+/// Cursor's ACP ids carry configuration in brackets
+/// (`grok-4.6[effort=high,fast=true]`), but it advertises exactly one variant
+/// per family, that variant does not follow the parameters saved in
+/// `cli-config.json`, and `session/set_model` rejects any id it did not list.
+/// The bracketed values are therefore Cursor's to pick, not ours to require:
+/// insisting on them rejected most of the catalog, the default model included.
 async fn ensure_cursor_model(
     client: &AcpClient,
     session_id: &str,
@@ -400,7 +402,7 @@ async fn ensure_cursor_model(
             ArgmaxError::service(
                 "ACP_MODEL_UNAVAILABLE",
                 format!(
-                    "cursor ACP does not advertise the exact requested model configuration for {}",
+                    "cursor ACP does not advertise the {} model family",
                     input.model_id
                 ),
             )
@@ -415,43 +417,13 @@ async fn ensure_cursor_model(
 }
 
 fn cursor_model_matches(advertised: &str, input: &ProviderLaunchInput) -> bool {
-    if input.model_id.starts_with("auto-smart[") {
-        return advertised == input.model_id;
-    }
-    let (family, parameters) = split_model_id(advertised);
-    let Some(expected_family) = cursor_acp_family(&input.model_id) else {
-        return false;
-    };
-    if family != expected_family {
-        return false;
-    }
-
-    let expected_effort = input
-        .reasoning_effort
-        .map(cursor_effort)
-        .or_else(|| input.model_id.ends_with("-medium").then_some("medium"));
-    let actual_effort = parameters
-        .get("reasoning")
-        .or_else(|| parameters.get("reasoning_effort"))
-        .or_else(|| parameters.get("effort"))
-        .copied();
-    if expected_effort.is_some() && actual_effort != expected_effort {
-        return false;
-    }
-    let actual_fast = parameters
-        .get("fast")
-        .and_then(|value| value.parse::<bool>().ok());
-    if cursor_supports_fast(&input.model_id) && actual_fast != Some(input.fast_mode) {
-        return false;
-    }
-    if input.model_id.starts_with("claude-opus-5-thinking-")
-        && parameters.get("thinking") != Some(&"true")
-    {
-        return false;
-    }
-    true
+    cursor_acp_family(&input.model_id) == Some(model_family(advertised))
 }
 
+/// The catalog id a chat launches with, mapped to the family Cursor's ACP
+/// advertises. `auto-smart` keeps its bracket: the whole id is the family
+/// there, and Cursor advertises one `optimize_for` value regardless of which
+/// one the catalog entry names.
 fn cursor_acp_family(model_id: &str) -> Option<&str> {
     match model_id {
         "composer-2.5" => Some("composer-2.5"),
@@ -462,35 +434,15 @@ fn cursor_acp_family(model_id: &str) -> Option<&str> {
         "gpt-5.6-terra-medium" => Some("gpt-5.6-terra"),
         "gpt-5.6-luna-medium" => Some("gpt-5.6-luna"),
         "claude-opus-5-thinking-medium" => Some("claude-opus-5"),
+        _ if model_id.starts_with("auto-smart[") => Some("auto-smart"),
         _ => None,
     }
 }
 
-fn cursor_supports_fast(model_id: &str) -> bool {
-    model_id != "gemini-3.8-flash-medium"
-}
-
-fn cursor_effort(effort: ReasoningEffort) -> &'static str {
-    match effort {
-        ReasoningEffort::Low => "low",
-        ReasoningEffort::Medium => "medium",
-        ReasoningEffort::High => "high",
-        ReasoningEffort::Xhigh => "xhigh",
-        ReasoningEffort::Max | ReasoningEffort::Ultra => "max",
-    }
-}
-
-fn split_model_id(model_id: &str) -> (&str, HashMap<&str, &str>) {
-    let Some((family, suffix)) = model_id.split_once('[') else {
-        return (model_id, HashMap::new());
-    };
-    let parameters = suffix
-        .strip_suffix(']')
-        .unwrap_or(suffix)
-        .split(',')
-        .filter_map(|entry| entry.split_once('='))
-        .collect();
-    (family, parameters)
+fn model_family(model_id: &str) -> &str {
+    model_id
+        .split_once('[')
+        .map_or(model_id, |(family, _)| family)
 }
 
 fn cursor_permission_handler(contexts: PermissionContexts) -> AcpPermissionHandler {
@@ -1235,7 +1187,7 @@ mod tests {
     }
 
     #[test]
-    fn model_matching_requires_exact_effort_and_fast_state() {
+    fn model_matching_ignores_the_configuration_cursor_advertises() {
         let mut input = ProviderLaunchInput {
             provider: ProviderId::Cursor,
             session_id: "s".into(),
@@ -1243,7 +1195,7 @@ mod tests {
             prompt: "p".into(),
             model_label: "GPT-5.6 Sol (Cursor)".into(),
             model_id: "gpt-5.6-sol-medium".into(),
-            reasoning_effort: Some(ReasoningEffort::High),
+            reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: None,
             resume_fork: false,
@@ -1252,36 +1204,34 @@ mod tests {
             cols: 80,
             rows: 24,
         };
-        assert!(cursor_model_matches(
+        // Whatever effort and serving speed Cursor names for the family, that
+        // is the only variant it will accept, so all of these have to match.
+        for advertised in [
             "gpt-5.6-sol[context=272k,reasoning=high,fast=false]",
-            &input
-        ));
+            "gpt-5.6-sol[context=272k,reasoning=medium,fast=true]",
+            "gpt-5.6-sol",
+        ] {
+            assert!(cursor_model_matches(advertised, &input), "{advertised}");
+        }
         assert!(!cursor_model_matches(
-            "gpt-5.6-sol[context=272k,reasoning=medium,fast=false]",
+            "gpt-5.6-luna[context=272k,reasoning=medium,fast=false]",
             &input
         ));
-        input.fast_mode = true;
-        assert!(!cursor_model_matches(
-            "gpt-5.6-sol[context=272k,reasoning=high,fast=false]",
-            &input
-        ));
-        assert!(cursor_model_matches(
-            "gpt-5.6-sol[context=272k,reasoning=high,fast=true]",
-            &input
-        ));
+        input.model_id = "not-a-cursor-model".into();
+        assert!(!cursor_model_matches("gpt-5.6-sol", &input));
     }
 
     #[test]
     fn model_matching_maps_cursor_aliases_to_advertised_families() {
-        let input = ProviderLaunchInput {
+        let mut input = ProviderLaunchInput {
             provider: ProviderId::Cursor,
             session_id: "s".into(),
             workspace_path: "/tmp".into(),
             prompt: "p".into(),
             model_label: "Grok 4.6 (Cursor)".into(),
             model_id: "cursor-grok-4.6-medium".into(),
-            reasoning_effort: Some(ReasoningEffort::High),
-            fast_mode: true,
+            reasoning_effort: None,
+            fast_mode: false,
             resume_conversation_id: None,
             resume_fork: false,
             permission_mode: PermissionMode::ProviderDefaults,
@@ -1291,6 +1241,13 @@ mod tests {
         };
         assert!(cursor_model_matches(
             "grok-4.6[effort=high,fast=true]",
+            &input
+        ));
+        // Every `auto-smart` entry maps onto the one variant Cursor lists,
+        // whichever `optimize_for` the catalog entry names.
+        input.model_id = "auto-smart[optimize_for=cost]".into();
+        assert!(cursor_model_matches(
+            "auto-smart[optimize_for=balanced]",
             &input
         ));
     }

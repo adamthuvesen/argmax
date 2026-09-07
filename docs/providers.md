@@ -124,7 +124,7 @@ for all Cursor models, including sessions with previously saved context values.
 ACP provides no token usage or context occupancy.
 
 Chat launches run over Agent Client Protocol (ACP) against a pooled `cursor-agent acp` process ([cursor_acp.rs](../src-tauri/src/providers/cursor_acp.rs)).
-- **Scope:** All Cursor models use ACP. Model selection must match the native advertised catalog, including reasoning and Fast variants. An unsupported selection returns an error instead of silently changing models.
+- **Scope:** All Cursor models use ACP. A launch takes the configuration Cursor advertises for the requested model's family, whatever effort and Fast state that carries. Cursor lists exactly one variant per family, it does not follow the parameters saved in `cli-config.json`, and `session/set_model` rejects any id it did not list — so requiring an exact match rejected most of the catalog, the default model included. A family Cursor does not advertise at all still returns an error rather than silently changing models.
 - **Turn lifecycle:** ACP notifications translate into standard Cursor stream events. Tool rows are named from `rawInput._toolName` to prevent sub-agents from collapsing into generic `other` tools.
 - **Permissions:** Provider defaults preserves native permission rules. Full access launches a separate forced ACP pool and allows requests. Ask for approval forwards native requests to the chat, but Cursor actions already allowed by its rules may still run without prompting. Pools are isolated by permission mode.
 - **Agent tools:** The `argmax` MCP server rides in `session/new` and `session/load` as an `mcpServers` entry, so the warm shared process still hands each session its own credential ([agent-tools.md](agent-tools.md)).

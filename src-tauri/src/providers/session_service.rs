@@ -3670,20 +3670,34 @@ mod tests {
             .lock_or_recover("queues")
             .insert("session-1".to_string(), queued);
 
-        // Stand in for Stop: drop the promotion once the send has claimed it,
-        // while the send is parked on the termination it started.
+        // Stand in for Stop, in a fixed order. `start_termination` joins a
+        // termination job that is already in flight instead of starting one,
+        // so the test owns that job: the send parks on it, the promotion is
+        // taken away while it waits, and only then does the job finish. Racing
+        // a spawned task against a real termination let the send win under
+        // CI load and return `ok` instead of the cancellation.
+        let (done_tx, done_rx) = watch::channel::<Option<ArgmaxResult<()>>>(None);
+        service
+            .termination_jobs
+            .lock_or_recover("termination jobs")
+            .insert("session-1".to_string(), done_rx);
         let promotions = Arc::clone(&service.queue_promotions);
+        let jobs = Arc::clone(&service.termination_jobs);
         let stop = tokio::spawn(async move {
+            let mut claimed = false;
             for _ in 0..1000 {
                 if promotions
                     .lock_or_recover("queue promotions")
                     .remove("session-1")
                 {
-                    return true;
+                    claimed = true;
+                    break;
                 }
                 tokio::task::yield_now().await;
             }
-            false
+            jobs.lock_or_recover("termination jobs").remove("session-1");
+            let _ = done_tx.send(Some(Ok(())));
+            claimed
         });
 
         let cancelled = service

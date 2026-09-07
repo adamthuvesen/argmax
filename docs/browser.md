@@ -87,6 +87,7 @@ Both are async commands with a deadline. WebKit answers on the main queue and th
 ## Shortcuts
 
 - `⌘L`: Focus address bar.
+- Enter in the address bar: go to the URL. Reloads when it's already the current page — WKWebView does not navigate to the URL it is already showing.
 - `⌘T`: New tab.
 - `⌘⇧T`: Reopen last closed tab.
 - `⌘R`: Reload (when focused in the browser chrome).

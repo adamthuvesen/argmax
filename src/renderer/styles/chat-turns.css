@@ -226,7 +226,7 @@
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
-  color: var(--muted);
+  color: var(--chip-ink);
   transition: color var(--duration-fast) var(--ease);
 }
 
@@ -887,7 +887,7 @@
 .tool-call-group-eyebrow-detail {
   font-family: var(--font-ui);
   font-size: var(--text-sm);
-  color: var(--muted);
+  color: var(--chip-ink);
 }
 
 .tool-call-group-preview {

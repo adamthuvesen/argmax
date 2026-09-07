@@ -563,6 +563,9 @@
   padding: 6px 15px;
   border-radius: var(--radius-xl);
   background: var(--composer-surface);
+  /* Same hairline as the composer below, and inset for the same reason: the
+     lane scrolls, and an inset ring stays pinned to the padding box. */
+  box-shadow: inset 0 0 0 1px var(--composer-edge);
   overflow-y: auto;
   overscroll-behavior-y: contain;
 }
@@ -616,16 +619,19 @@
      read as the same component. */
   border-radius: var(--radius-2xl);
   background: var(--composer-surface);
-  /* No outline: the composer fill and this quiet, single-layer lift seat the
-     field on the surface. Focus draws its own ring below. */
-  box-shadow: 0 1px 2px rgba(31, 28, 24, 0.04), 0 8px 24px rgba(31, 28, 24, 0.05);
+  /* The composer fill and this quiet, single-layer lift seat the field on the
+     surface; --composer-edge draws the hairline paper needs, as an inset ring
+     so it costs no layout. Focus deepens the lift below. */
+  box-shadow: inset 0 0 0 1px var(--composer-edge),
+    0 1px 2px rgba(31, 28, 24, 0.04), 0 8px 24px rgba(31, 28, 24, 0.05);
   transition: box-shadow var(--duration-base) var(--ease);
 }
 
-/* Focus lifts the card instead of ringing it — an accent ring here reads as
-   the border this surface deliberately doesn't have. */
+/* Focus lifts the card instead of ringing it — an accent ring on top of the
+   hairline reads as a second border. */
 .session-input:focus-within {
-  box-shadow: 0 1px 2px rgba(31, 28, 24, 0.05), 0 10px 28px rgba(31, 28, 24, 0.07);
+  box-shadow: inset 0 0 0 1px var(--composer-edge),
+    0 1px 2px rgba(31, 28, 24, 0.05), 0 10px 28px rgba(31, 28, 24, 0.07);
 }
 
 /* One surface, like the launcher's .composer-context — the controls sit on the

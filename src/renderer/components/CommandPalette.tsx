@@ -472,9 +472,14 @@ export function CommandPalette({
 
   // Every row commits the same way, whichever list it came from. Content rows
   // open their file: the file header and its match rows both land on the path,
-  // matching what ⌘P file-open does.
+  // matching what ⌘P file-open does. A `keepOpen` command is the one
+  // exception: it runs and the palette stays up for the next step.
   const activateRow = useCallback(
     (row: PaletteRow): void => {
+      if (row.kind === "hit" && row.hit.item.keepOpen) {
+        row.hit.item.run();
+        return;
+      }
       onClose();
       switch (row.kind) {
         case "hit":

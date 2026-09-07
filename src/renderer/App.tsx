@@ -92,7 +92,8 @@ import {
 import { setSidebarPeek, toggleSidebarCollapsed, useSidebarChrome } from "./state/sidebarChrome.js";
 import { dismissToast, showErrorToast, showInfoToast, showToast, useToast } from "./state/toast.js";
 import { isBrowserPreview } from "./lib/env.js";
-import { animateThemeChange } from "./lib/theme.js";
+import { animateThemeChange, type ThemeMode } from "./lib/theme.js";
+import type { AccentId } from "./lib/accent.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import type { WorkspaceMode } from "./lib/workspaceMode.js";
 import {
@@ -275,6 +276,22 @@ export function App(): JSX.Element {
     setDefaultIde,
     detectedIdes
   } = useLauncherAppearance();
+  // Theme and accent swaps crossfade for one frame; the Settings panel and the
+  // command palette both go through these so neither path forgets the fade.
+  const handleThemeModeChange = useCallback(
+    (mode: ThemeMode): void => {
+      animateThemeChange();
+      setThemeMode(mode);
+    },
+    [setThemeMode]
+  );
+  const handleAccentChange = useCallback(
+    (id: AccentId): void => {
+      animateThemeChange();
+      setAccentId(id);
+    },
+    [setAccentId]
+  );
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
   const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
   const [chatWidth, setChatWidth] = useState<ChatWidth>(() => readStoredChatWidth());
@@ -1569,6 +1586,18 @@ export function App(): JSX.Element {
         onOpenUsage: showUsagePage,
         onOpenSettingsSection: (group, sectionId) => showSettings(group, sectionId),
         onOpenSearch: openMessagePalette,
+        preferences: {
+          themeMode,
+          onThemeModeChange: handleThemeModeChange,
+          accentId,
+          onAccentChange: handleAccentChange,
+          fontSize,
+          onFontSizeChange: setFontSize,
+          chatFontSize,
+          onChatFontSizeChange: setChatFontSize,
+          chatVerbosity,
+          onChatVerbosityChange: setChatVerbosity
+        },
         onStopSession: (sessionId) => void terminateSession(sessionId),
         onOpenWorkspace: openWorkspaceChat,
         onSelectProject: (projectId) => {
@@ -1589,7 +1618,17 @@ export function App(): JSX.Element {
       openWorkspaceChat,
       openMessagePalette,
       onOpenBrowserRow,
-      setSelectedProjectId
+      setSelectedProjectId,
+      themeMode,
+      handleThemeModeChange,
+      accentId,
+      handleAccentChange,
+      fontSize,
+      setFontSize,
+      chatFontSize,
+      setChatFontSize,
+      chatVerbosity,
+      setChatVerbosity
     ]
   );
 
@@ -1954,15 +1993,9 @@ export function App(): JSX.Element {
                 chatFontSize={chatFontSize}
                 onChatFontSizeChange={setChatFontSize}
                 themeMode={themeMode}
-                onThemeModeChange={(mode) => {
-                  animateThemeChange();
-                  setThemeMode(mode);
-                }}
+                onThemeModeChange={handleThemeModeChange}
                 accentId={accentId}
-                onAccentChange={(id) => {
-                  animateThemeChange();
-                  setAccentId(id);
-                }}
+                onAccentChange={handleAccentChange}
                 userBubbleTint={userBubbleTint}
                 onUserBubbleTintChange={(tint) => {
                   animateThemeChange();

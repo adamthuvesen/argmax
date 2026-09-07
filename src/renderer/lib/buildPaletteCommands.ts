@@ -13,6 +13,7 @@ import {
 import type { PaletteCommand } from "../components/CommandPalette.js";
 import { SCRATCH_PROJECT_ID, type DashboardSnapshot, type SessionSummary } from "../../shared/types.js";
 import { SETTINGS_GROUPS, type SettingsGroupId } from "../components/settings/settingsMeta.js";
+import { buildSettingCommands, type SettingCommandsInput } from "./settingCommands.js";
 import { titleFromPrompt } from "./projects.js";
 import { collapseHome } from "./pathDisplay.js";
 
@@ -28,6 +29,8 @@ export type BuildPaletteCommandsInput = {
   onOpenSettingsSection: (group: SettingsGroupId, sectionId: string) => void;
   /** Reopens the palette on its Messages tab — the mouse path to ⌘F. */
   onOpenSearch: () => void;
+  /** Current values and setters for the settings that get one-shot palette rows. */
+  preferences: SettingCommandsInput;
   onStopSession: (sessionId: string) => void;
   onOpenWorkspace: (workspaceId: string) => void;
   onSelectProject: (projectId: string) => void;
@@ -46,6 +49,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     onOpenUsage,
     onOpenSettingsSection,
     onOpenSearch,
+    preferences,
     onStopSession,
     onOpenWorkspace,
     onSelectProject,
@@ -150,7 +154,9 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
   });
 
   // The Settings scope reuses the panel's own section registry, so the palette
-  // can never list a page the panel doesn't have.
+  // can never list a page the panel doesn't have. Section jumps lead; the
+  // value rows from `buildSettingCommands` follow so an empty query still
+  // opens with the panel's table of contents.
   const settings: PaletteCommand[] = SETTINGS_GROUPS.flatMap((group) =>
     group.sections.map((section) => ({
       id: `settings:${section.id}`,
@@ -183,7 +189,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     }
   }));
 
-  return [...actions, ...sessions, ...projects, ...settings];
+  return [...actions, ...sessions, ...projects, ...settings, ...buildSettingCommands(preferences)];
 }
 
 export function buildSessionLabelById(snapshot: DashboardSnapshot): Map<string, string> {

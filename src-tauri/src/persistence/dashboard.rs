@@ -508,7 +508,7 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_workspace_falls_back_to_its_own_open_pr_when_current_branch_has_none() {
+    fn dashboard_workspace_requires_explicit_evidence_for_an_off_branch_pr() {
         let database = Database::open_in_memory().expect("open db");
         let connection = database.connection();
         seed_project(&connection);
@@ -528,6 +528,18 @@ mod tests {
             "2026-05-24T10:02:00.000Z",
             "fix/other-worktree",
         );
+
+        let snapshot = list_dashboard(&connection).expect("dashboard before attribution");
+        assert_eq!(snapshot.workspaces[0].pr_number, None);
+        let record = super::super::gh::list_gh_pr_for_session(&connection, "s1")
+            .expect("cached PR")
+            .remove(0);
+        super::super::gh::record_gh_pr_observation(
+            &connection,
+            &record,
+            super::super::gh::PrAttribution::Explicit,
+        )
+        .expect("explicit PR reference");
 
         let snapshot = list_dashboard(&connection).expect("dashboard");
         let workspace = snapshot

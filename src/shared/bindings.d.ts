@@ -1053,8 +1053,7 @@ export type FollowUpSuggestion = { suggestion: string | null }
 export type FoundElement = { ref: string; role: string; name: string; value: string }
 export type GhPrRecord = {
 /**
- * The session that observed this PR. Provenance only — sidebar markers
- * resolve by `head_ref_name`, not by this id.
+ * The session that observed this PR.
  */
 sessionId: string; prNumber: number; headSha: string; lastSeenCheckState: string; updatedAt: string; prState: string | null; notifiedAt: string | null;
 /**
@@ -1067,8 +1066,7 @@ prCreatedAt: string | null;
 prMergedAt: string | null;
 /**
  * Branch the PR was opened from, per `gh pr view --json headRefName`.
- * Null on rows written before the branch was recorded; those still attach
- * to the observing workspace so a merged PR does not lose its marker.
+ * Legacy rows without a branch retain a fallback on isolated workspaces.
  */
 headRefName: string | null }
 export type GitCommitInput = { workspaceId: WorkspaceId; message: GitCommitMessage; selectedFiles: RelativePath[] | null }
@@ -1609,8 +1607,8 @@ priorityDismissedAt: string | null;
  */
 priorityAddedAt: string | null;
 /**
- * State of the most-recent PR on this workspace's current branch (same
- * project), filled in from `gh_pr` on every read path. The renderer merges
+ * State of the most-recent PR attributed to this workspace, filled in
+ * from `gh_pr` on every read path. The renderer merges
  * workspace deltas by whole-object replacement, so a summary published
  * with `None` here would erase the sidebar PR marker.
  */

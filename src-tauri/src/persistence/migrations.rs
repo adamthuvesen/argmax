@@ -682,7 +682,45 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &ROUTINE_RUN_TARGET_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 37,
+        name: "session_pr_attribution",
+        up: SESSION_PR_ATTRIBUTION,
+        affected_tables: &["sessions", "gh_pr"],
+        expected_columns: &SESSION_PR_ATTRIBUTION_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Post-v37 shapes: launched sessions retain the branch they started on and
+// the last branch observed while their turn was active. PR observations carry
+// whether the association came from an explicit PR reference or a branch
+// inference. Existing rows remain `legacy`; a shared checkout's current HEAD
+// is not trustworthy evidence for retroactively assigning them.
+static SESSION_PR_ATTRIBUTION_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "imported", "input_tokens", "last_activity_at",
+        "last_model_id", "launch_depth", "launch_kind", "launched_by_session_id",
+        "model_id", "model_label", "output_tokens", "permission_mode",
+        "pr_branch_at_start", "pr_branch_last_active", "prompt", "provider",
+        "provider_conversation_id", "reasoning_effort", "resume_fork", "started_at",
+        "state", "wait_reported_at", "workspace_id",
+    ] as &'static [&'static str],
+    "gh_pr" => &[
+        "attribution", "head_ref_name", "head_sha", "last_seen_check_state",
+        "notified_at", "pr_created_at", "pr_merged_at", "pr_number", "pr_state",
+        "session_id", "updated_at",
+    ] as &'static [&'static str],
+};
+
+const SESSION_PR_ATTRIBUTION: &str = r#"
+ALTER TABLE sessions ADD COLUMN pr_branch_at_start TEXT;
+ALTER TABLE sessions ADD COLUMN pr_branch_last_active TEXT;
+ALTER TABLE gh_pr ADD COLUMN attribution TEXT NOT NULL DEFAULT 'legacy'
+  CHECK (attribution IN ('legacy', 'inferred', 'explicit'));
+"#;
 
 static SESSION_AFTER_TURN_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "session_after_turn" => &["session_id", "action", "payload_json", "requested_at"],
@@ -1774,7 +1812,7 @@ mod tests {
         // v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PROJECT_ARCHIVE_ON_MERGE_COLUMNS, "projects")
             .expect("projects");
-        verify_table_columns(&connection, &SESSION_WAIT_REPORTED_COLUMNS, "sessions")
+        verify_table_columns(&connection, &SESSION_PR_ATTRIBUTION_COLUMNS, "sessions")
             .expect("sessions");
         verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
             .expect("workspaces");
@@ -1862,6 +1900,7 @@ mod tests {
                 (34, compute_migration_checksum(SESSION_AFTER_TURN)),
                 (35, compute_migration_checksum(SESSION_WAIT_REPORTED)),
                 (36, compute_migration_checksum(ROUTINE_RUN_TARGET)),
+                (37, compute_migration_checksum(SESSION_PR_ATTRIBUTION)),
             ]
         );
 

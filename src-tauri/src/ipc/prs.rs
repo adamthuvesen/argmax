@@ -37,7 +37,7 @@ pub(crate) async fn prs_refresh_impl(
     let session_id = input.session_id.as_str();
     let service = GhService::new(live_database(state)?);
     let rows = service.refresh(session_id).await?;
-    if let Err(error) = super::publish_workspace_for_session(state, session_id) {
+    if let Err(error) = super::publish_pr_workspaces_for_session(state, session_id) {
         tracing::warn!(
             %session_id,
             ?error,

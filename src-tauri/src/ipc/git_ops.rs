@@ -101,9 +101,13 @@ pub(crate) async fn git_view_or_create_pr_impl(
 ) -> ArgmaxResult<GitViewOrCreatePrResult> {
     let database = live_database(state)?;
     let refresh_database = Arc::clone(&database);
-    let refresh_pr: RefreshPrFn = Arc::new(move |session_id| {
+    let refresh_pr: RefreshPrFn = Arc::new(move |session_id, pr_number| {
         let database = Arc::clone(&refresh_database);
-        Box::pin(async move { GhService::new(database).refresh(&session_id).await })
+        Box::pin(async move {
+            GhService::new(database)
+                .refresh_pr_number(&session_id, pr_number)
+                .await
+        })
     });
     let session_id = input.session_id.into_string();
     let service = GitOpsService::with_runners(database, default_gh_runner(), Some(refresh_pr));
@@ -112,7 +116,7 @@ pub(crate) async fn git_view_or_create_pr_impl(
             session_id: session_id.clone(),
         })
         .await?;
-    if let Err(error) = super::publish_workspace_for_session(state, &session_id) {
+    if let Err(error) = super::publish_pr_workspaces_for_session(state, &session_id) {
         tracing::warn!(
             %session_id,
             ?error,

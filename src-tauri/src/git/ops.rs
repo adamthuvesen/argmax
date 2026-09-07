@@ -106,11 +106,11 @@ pub enum GitViewOrCreatePrResult {
     },
 }
 
-/// Refresh hook: after `gh pr create` succeeds, the gh poller / service
-/// re-reads PR rows for the session so the next dropdown press hits the
-/// cache. Returns the refreshed rows so we can pick the matching PR.
+/// Refresh hook: after a user-facing PR action resolves a PR number, the gh
+/// service re-reads that exact PR for the session. Returns the refreshed rows
+/// so we can pick the matching PR.
 pub type RefreshPrFn = Arc<
-    dyn Fn(String) -> Pin<Box<dyn Future<Output = ArgmaxResult<Vec<GhPrRecord>>> + Send>>
+    dyn Fn(String, i64) -> Pin<Box<dyn Future<Output = ArgmaxResult<Vec<GhPrRecord>>> + Send>>
         + Send
         + Sync,
 >;
@@ -336,6 +336,9 @@ impl GitOpsService {
             .or(workspace.pr_number);
 
         if let Some(pr_number) = known_pr_number {
+            if let Some(refresh) = self.refresh_pr.as_ref() {
+                refresh(session.id.clone(), pr_number).await?;
+            }
             // First check if the project already has its remote owner and name recorded.
             let remote = {
                 let conn = self.database.connection();
@@ -411,7 +414,7 @@ impl GitOpsService {
                                 update_project_remote(&conn, &workspace.project_id, Some(&remote));
                         }
                         if let Some(refresh) = self.refresh_pr.as_ref() {
-                            let _ = refresh(session.id.clone()).await;
+                            let _ = refresh(session.id.clone(), pr_number).await;
                         }
                         return Ok(GitViewOrCreatePrResult::Opened {
                             url: existing_url,
@@ -438,23 +441,23 @@ impl GitOpsService {
             let _ = update_project_remote(&conn, &workspace.project_id, Some(&remote));
         }
 
-        let refreshed = if let Some(refresh) = self.refresh_pr.as_ref() {
-            refresh(session.id.clone()).await?
-        } else {
-            // No refresh hook wired yet — fall back to whatever is in the
-            // DB (will likely be empty until 8.1 lands).
-            let conn = self.database.connection();
-            list_gh_pr_for_session(&conn, &session.id)?
-        };
+        let pr_number = extract_pr_number(&url);
+        let refreshed =
+            if let (Some(refresh), Some(pr_number)) = (self.refresh_pr.as_ref(), pr_number) {
+                refresh(session.id.clone(), pr_number).await?
+            } else {
+                // No refresh hook wired yet — fall back to whatever is in the
+                // DB (will likely be empty until 8.1 lands).
+                let conn = self.database.connection();
+                list_gh_pr_for_session(&conn, &session.id)?
+            };
         let created = refreshed
             .iter()
             .find(|row| url_matches_pr(&url, row.pr_number))
             .or_else(|| most_recent(&refreshed));
         Ok(GitViewOrCreatePrResult::Created {
             url: url.clone(),
-            pr_number: created
-                .map(|row| row.pr_number)
-                .or_else(|| extract_pr_number(&url)),
+            pr_number: created.map(|row| row.pr_number).or(pr_number),
         })
     }
 }
@@ -931,8 +934,9 @@ mod tests {
                 Box::pin(async { Ok("https://github.com/example/repo/pull/42\n".to_string()) })
             }
         });
-        let refresh: RefreshPrFn = Arc::new(|session_id| {
+        let refresh: RefreshPrFn = Arc::new(|session_id, pr_number| {
             Box::pin(async move {
+                assert_eq!(pr_number, 42);
                 Ok(vec![GhPrRecord {
                     session_id,
                     pr_number: 42,
@@ -984,8 +988,9 @@ mod tests {
                 ))
             })
         });
-        let refresh: RefreshPrFn = Arc::new(|session_id| {
+        let refresh: RefreshPrFn = Arc::new(|session_id, pr_number| {
             Box::pin(async move {
+                assert_eq!(pr_number, 42);
                 Ok(vec![GhPrRecord {
                     session_id,
                     pr_number: 42,
@@ -1124,7 +1129,7 @@ mod tests {
                 }),
             )
             .unwrap();
-            crate::persistence::gh::upsert_gh_pr(
+            crate::persistence::gh::record_gh_pr_observation(
                 &conn,
                 &crate::persistence::gh::GhPrRecord {
                     session_id: session_id.clone(),
@@ -1138,6 +1143,7 @@ mod tests {
                     pr_merged_at: None,
                     head_ref_name: Some("main".to_string()),
                 },
+                crate::persistence::gh::PrAttribution::Explicit,
             )
             .unwrap();
         }
@@ -1151,7 +1157,18 @@ mod tests {
             }
         });
 
-        let service = GitOpsService::with_runners(database, runner, None);
+        let refreshed_pr = Arc::new(Mutex::new(None));
+        let refresh: RefreshPrFn = Arc::new({
+            let refreshed_pr = Arc::clone(&refreshed_pr);
+            move |_, pr_number| {
+                let refreshed_pr = Arc::clone(&refreshed_pr);
+                Box::pin(async move {
+                    *refreshed_pr.lock().expect("refreshed pr") = Some(pr_number);
+                    Ok(Vec::new())
+                })
+            }
+        });
+        let service = GitOpsService::with_runners(database, runner, Some(refresh));
         let result = service
             .view_or_create_pr(GitViewOrCreatePrInput { session_id })
             .await
@@ -1164,6 +1181,7 @@ mod tests {
                 pr_number: 99,
             }
         );
+        assert_eq!(*refreshed_pr.lock().expect("refreshed pr"), Some(99));
         let calls = calls.lock().expect("calls");
         assert_eq!(calls.len(), 0);
     }
@@ -1191,13 +1209,13 @@ mod tests {
             }
         });
 
-        let refresh_called = Arc::new(Mutex::new(false));
+        let refreshed_pr = Arc::new(Mutex::new(None));
         let refresh: RefreshPrFn = Arc::new({
-            let refresh_called = Arc::clone(&refresh_called);
-            move |_| {
-                let refresh_called = Arc::clone(&refresh_called);
+            let refreshed_pr = Arc::clone(&refreshed_pr);
+            move |_, pr_number| {
+                let refreshed_pr = Arc::clone(&refreshed_pr);
                 Box::pin(async move {
-                    *refresh_called.lock().unwrap() = true;
+                    *refreshed_pr.lock().unwrap() = Some(pr_number);
                     Ok(vec![])
                 })
             }
@@ -1216,7 +1234,7 @@ mod tests {
                 pr_number: 123,
             }
         );
-        assert!(*refresh_called.lock().unwrap());
+        assert_eq!(*refreshed_pr.lock().unwrap(), Some(123));
         let conn = database.connection();
         let remote = crate::persistence::projects::get_project_remote(&conn, "p1").unwrap();
         assert_eq!(
@@ -1245,7 +1263,7 @@ mod tests {
 
         {
             let conn = database.connection();
-            crate::persistence::gh::upsert_gh_pr(
+            crate::persistence::gh::record_gh_pr_observation(
                 &conn,
                 &crate::persistence::gh::GhPrRecord {
                     session_id: session_id.clone(),
@@ -1259,6 +1277,7 @@ mod tests {
                     pr_merged_at: None,
                     head_ref_name: Some("main".to_string()),
                 },
+                crate::persistence::gh::PrAttribution::Explicit,
             )
             .unwrap();
         }

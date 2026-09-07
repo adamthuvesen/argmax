@@ -231,7 +231,7 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
 
     // Bounded-concurrency fanout — one stuck `gh` no longer holds the
     // remaining sessions hostage.
-    let mut transitions: Vec<Transition> = Vec::new();
+    let mut refreshed_sessions = Vec::new();
     for chunk in session_ids.chunks(TICK_CONCURRENCY) {
         let mut join_set = tokio::task::JoinSet::new();
         for session_id in chunk.iter().cloned() {
@@ -249,8 +249,8 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
             }
         }
         for (session_id, refresh_result) in results {
-            let rows = match refresh_result {
-                Ok(rows) => rows,
+            match refresh_result {
+                Ok(_) => refreshed_sessions.push(session_id),
                 Err(error) => {
                     tracing::debug!(
                         session_id = %session_id,
@@ -259,12 +259,18 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
                     );
                     continue;
                 }
-            };
-            // Latest PR is at the tail (sorted ASC by pr_number).
-            let Some(latest) = rows.last() else { continue };
-            if let Some(transition) = detect_transition(&inner, &session_id, latest) {
-                transitions.push(transition);
             }
+        }
+    }
+
+    // A later refresh can synchronize an earlier session's rows. Read after
+    // the full fanout so hooks never act on a superseded OPEN response.
+    let mut transitions: Vec<Transition> = Vec::new();
+    for session_id in refreshed_sessions {
+        let rows = inner.service.list_for_session(&session_id)?;
+        let Some(latest) = rows.last() else { continue };
+        if let Some(transition) = detect_transition(&inner, &session_id, latest) {
+            transitions.push(transition);
         }
     }
 
@@ -282,13 +288,11 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
         {
             let conn = inner.database.connection();
             for transition in transitions.iter().filter(|entry| entry.publish) {
-                // Inlined rather than `resolve_workspace_id` because that
-                // takes its own connection guard, which would deadlock here.
-                let workspace_id = match crate::persistence::sessions::find_session_by_id(
+                let affected = match crate::gh::workspaces_for_pr_refresh(
                     &conn,
                     &transition.context.session_id,
                 ) {
-                    Ok(session) => session.workspace_id,
+                    Ok(workspaces) => workspaces,
                     Err(error) => {
                         tracing::warn!(
                             session_id = %transition.context.session_id,
@@ -298,16 +302,10 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
                         continue;
                     }
                 };
-                if !seen.insert(workspace_id.clone()) {
-                    continue;
-                }
-                match crate::persistence::workspaces::find_workspace_by_id(&conn, &workspace_id) {
-                    Ok(workspace) => workspaces.push(workspace),
-                    Err(error) => tracing::warn!(
-                        %workspace_id,
-                        ?error,
-                        "gh.poller: could not load workspace for PR transition",
-                    ),
+                for workspace in affected {
+                    if seen.insert(workspace.id.clone()) {
+                        workspaces.push(workspace);
+                    }
                 }
             }
         }
@@ -777,8 +775,8 @@ mod tests {
         // First gh call: state stays "pending" (no change vs the seed in DB,
         // but the poller's in-memory ledger is empty so this counts as the
         // initial recording — emits a delta).
-        let pending_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
-        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
+        let pending_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
+        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
         let stub = StubRunner::new(vec![
             Ok(pending_payload.to_string()),
             Ok(pending_payload.to_string()),
@@ -829,8 +827,30 @@ mod tests {
     async fn poller_publishes_merge_transition_when_head_and_checks_are_unchanged() {
         let (_dir, database) = open_db();
         fixture(&database);
-        let open_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "createdAt": "2026-05-24T10:00:00Z", "mergedAt": null, "statusCheckRollup": [{"conclusion": "pending"}]}"#;
-        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "MERGED", "createdAt": "2026-05-24T10:00:00Z", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
+        {
+            let conn = database.connection();
+            for (id, shared_workspace) in [("w2", false), ("w3", true)] {
+                persist_workspace(
+                    &conn,
+                    &PersistWorkspaceInput {
+                        id: id.into(),
+                        project_id: "p1".into(),
+                        task_label: "idle on same branch".into(),
+                        branch: "feature/x".into(),
+                        base_ref: "main".into(),
+                        path: format!("/tmp/argmax-gh-poller/{id}"),
+                        state: "ready".into(),
+                        shared_workspace,
+                        kind: "git".into(),
+                        dirty: false,
+                        changed_files: 0,
+                    },
+                )
+                .expect("idle workspace");
+            }
+        }
+        let open_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "createdAt": "2026-05-24T10:00:00Z", "mergedAt": null, "statusCheckRollup": [{"conclusion": "pending"}]}"#;
+        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "MERGED", "createdAt": "2026-05-24T10:00:00Z", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
         let stub = StubRunner::new(vec![
             Ok(open_payload.to_string()),
             Ok(merged_payload.to_string()),
@@ -854,6 +874,23 @@ mod tests {
 
         let deltas = published.lock().expect("published deltas poisoned");
         assert_eq!(deltas.len(), 2);
+        for delta in deltas.iter() {
+            assert_eq!(delta.workspaces.len(), 2);
+            assert!(delta
+                .workspaces
+                .iter()
+                .any(|workspace| workspace.id == "w2"));
+            assert!(!delta
+                .workspaces
+                .iter()
+                .any(|workspace| workspace.id == "w3"));
+        }
+        assert!(deltas
+            .last()
+            .unwrap()
+            .workspaces
+            .iter()
+            .all(|workspace| { workspace.pr_state.as_deref() == Some("MERGED") }));
         let workspace = deltas
             .last()
             .and_then(|delta| delta.workspaces.first())
@@ -874,8 +911,8 @@ mod tests {
     async fn poller_publishes_when_a_milestone_timestamp_is_backfilled() {
         let (_dir, database) = open_db();
         fixture(&database);
-        let without_timestamp = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
-        let with_timestamp = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "createdAt": "2026-05-24T10:00:00Z", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
+        let without_timestamp = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
+        let with_timestamp = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "createdAt": "2026-05-24T10:00:00Z", "statusCheckRollup": [{"conclusion": "pending"}]}"#;
         let stub = StubRunner::new(vec![
             Ok(without_timestamp.to_string()),
             Ok(with_timestamp.to_string()),
@@ -902,8 +939,8 @@ mod tests {
         let (_dir, database) = open_db();
         fixture(&database);
         settle_session(&database, "s1");
-        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
-        let success_then_failure_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "success"}]}"#;
+        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
+        let success_then_failure_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "success"}]}"#;
         let stub = StubRunner::new(vec![
             Ok(failure_payload.to_string()),
             Ok(success_then_failure_payload.to_string()),
@@ -981,7 +1018,7 @@ mod tests {
                 .expect("seed gh_pr");
             }
         }
-        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
+        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
         let stub = StubRunner::new(vec![
             Ok(failure_payload.to_string()),
             Ok(failure_payload.to_string()),
@@ -1014,7 +1051,7 @@ mod tests {
     async fn failure_hook_waits_for_the_running_turn_to_settle() {
         let (_dir, database) = open_db();
         fixture(&database);
-        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
+        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
         let stub = StubRunner::new(vec![
             Ok(failure_payload.to_string()),
             Ok(failure_payload.to_string()),
@@ -1046,7 +1083,7 @@ mod tests {
         let (_dir, database) = open_db();
         fixture(&database);
         settle_session(&database, "s1");
-        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "MERGED", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "success"}]}"#;
+        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "MERGED", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "success"}]}"#;
         let stub = StubRunner::new(vec![
             Ok(merged_payload.to_string()),
             Ok(merged_payload.to_string()),
@@ -1105,7 +1142,7 @@ mod tests {
                 )
                 .expect("share the checkout");
         }
-        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "MERGED", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "success"}]}"#;
+        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "MERGED", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "success"}]}"#;
         let stub = StubRunner::new(vec![Ok(merged_payload.to_string())]);
         let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
 
@@ -1135,7 +1172,7 @@ mod tests {
         let (_dir, database) = open_db();
         fixture(&database);
         enable_archive_on_merge(&database);
-        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "MERGED", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "success"}]}"#;
+        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "MERGED", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "success"}]}"#;
         let stub = StubRunner::new(vec![
             Ok(merged_payload.to_string()),
             Ok(merged_payload.to_string()),

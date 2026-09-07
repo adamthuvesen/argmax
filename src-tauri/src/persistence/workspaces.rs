@@ -60,8 +60,8 @@ pub struct WorkspaceSummary {
     /// Manual entries need no attention and never age out; cleared by an
     /// explicit remove or a dismissal.
     pub priority_added_at: Option<String>,
-    /// State of the most-recent PR on this workspace's current branch (same
-    /// project), filled in from `gh_pr` on every read path. The renderer merges
+    /// State of the most-recent PR attributed to this workspace, filled in
+    /// from `gh_pr` on every read path. The renderer merges
     /// workspace deltas by whole-object replacement, so a summary published
     /// with `None` here would erase the sidebar PR marker.
     pub pr_state: Option<String>,
@@ -259,6 +259,21 @@ pub fn update_workspace_status(
     if changes == 0 {
         return Err(ArgmaxError::record_not_found("workspace", workspace_id));
     }
+    // A shared checkout's live branch is only trustworthy while a turn is in
+    // flight. Freeze that observation when the session settles so a later
+    // branch switch cannot retroactively assign another session's PR.
+    connection
+        .prepare_cached(
+            r#"
+            UPDATE sessions
+            SET pr_branch_last_active = NULLIF(?1, '')
+            WHERE workspace_id = ?2
+              AND state IN ('running', 'waiting', 'blocked')
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((status.branch.as_str(), workspace_id))
+        .map_err(sqlite_error)?;
     find_workspace_by_id(connection, workspace_id)
 }
 

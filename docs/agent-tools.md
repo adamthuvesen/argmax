@@ -242,11 +242,18 @@ yet, and no provider CLI surfaces a server push into a running model. The row
 is what closes that gap: `inbox_read` hands over what is not yet delivered and
 marks it collected, and `session_wait` wakes on the insert.
 
-Two caps keep a hand-over inside the reply ceiling, since a row is marked
-collected by the same call that carries it and a reply the client refuses would
-take the messages with it: a stored body is capped at 16 KB with a
-`(truncated)` marker, and one read hands over at most 50 messages and 48 KB of
-body. What does not fit stays undelivered and comes back on the next read.
+Two caps keep a hand-over bounded, since a row is marked collected by the same
+call that carries it and a reply the client refuses would take the messages
+with it: a stored body is capped at 16K characters with a `(truncated)` marker,
+and one read hands over at most 50 messages and 48 KB of body. What does not fit
+stays undelivered and comes back on the next read.
+
+Neither cap is what keeps the reply readable. They count characters and rows
+while the ceiling counts bytes — 16K four-byte scalars are 64 KB on their own —
+and the hand-over always takes its first row whatever it costs, so no byte
+budget can hold it under the 64 KB every other reply is read with. An inbox or
+wait reply is therefore read under a 512 KB ceiling of its own, which is above
+anything those caps can produce.
 
 ### The flag every tool result carries
 
@@ -512,8 +519,8 @@ request the tool builds, and the app-side handler that resolves the caller's
 session from its token, checks tab ownership, and calls
 `browser::automation` with the real handle. A screenshot's PNG rides beside the
 JSON rather than inside it, so the base64 becomes an MCP image block without
-also landing in the text the model reads; the browser reply gets a 4 MB ceiling
-where every other action gets 64 KB.
+also landing in the text the model reads; the browser reply gets a 4 MB
+ceiling, an inbox or wait reply 512 KB, and every other action 64 KB.
 
 Creating, navigating and destroying a webview are AppKit calls, so the handler
 hops them to the main thread with `run_on_main_thread`. Reads do not need it:

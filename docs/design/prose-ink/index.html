@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Argmax — dark-mode prose ink mockups</title>
+
+    <!-- The real thing: app tokens, the real chat prose rules, the real font
+         faces. Nothing here re-implements the agent view; it only overrides
+         --prose-ink / --prose-ink-strong per block. -->
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-700.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/chat-conversation.css" />
+
+    <style>
+      /* Geist Semibold under its own name. The app bundle ships 400/500/700
+         only, so registering 600 as "Geist Sans" would silently re-resolve
+         every heading in sections A-C and stop them showing what ships. */
+      @font-face {
+        font-family: "Geist Sans Semibold Probe";
+        font-style: normal;
+        font-weight: 600;
+        src: url(/node_modules/@fontsource/geist-sans/files/geist-sans-latin-600-normal.woff2) format("woff2");
+      }
+
+      html { background: var(--bg); }
+      body {
+        margin: 0;
+        background: var(--bg);
+        font-family: var(--font-ui);
+        font-weight: var(--weight-ui);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* Page chrome — deliberately dim, so it never competes with the samples. */
+      .page-head {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-4);
+        flex-wrap: wrap;
+        padding: 14px 28px;
+        background: color-mix(in oklab, var(--bg) 92%, transparent);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
+      }
+      .page-head h1 { font-size: var(--text-sm); font-weight: 500; margin: 0; color: var(--text-soft); }
+      .page-head .note { font-size: var(--text-xs); color: var(--muted); }
+      .page-head label { font-size: var(--text-xs); color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+      select {
+        font: inherit; font-size: var(--text-xs);
+        background: var(--panel); color: var(--text);
+        border: 1px solid var(--line); border-radius: var(--radius-sm);
+        padding: 3px 6px;
+      }
+
+      section { padding: 40px 28px 8px; }
+      section > h2 {
+        font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em;
+        font-weight: 500; color: var(--muted); margin: 0 0 4px;
+      }
+      section > .lede { font-size: var(--text-xs); color: var(--muted); margin: 0 0 22px; max-width: 62ch; line-height: 1.6; }
+
+      /* Variant label: mono, muted, always the same so the eye ignores it. */
+      .tag {
+        font-family: var(--font-mono); font-size: var(--text-2xs);
+        color: var(--muted); letter-spacing: 0.02em;
+        display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+      }
+      .tag .name { color: var(--text-soft); }
+      .tag .swatch { width: 9px; height: 9px; border-radius: 2px; display: inline-block; vertical-align: -1px; }
+
+      /* A — grid */
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 30px 34px; }
+      .cell { display: flex; flex-direction: column; gap: 10px; }
+      .cell .markdown { font-size: var(--text-base); }
+
+      /* B — flicker compare */
+      .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+      .chip {
+        font: inherit; font-family: var(--font-mono); font-size: var(--text-2xs);
+        background: var(--panel); color: var(--muted);
+        border: 1px solid var(--line); border-radius: 999px;
+        padding: 4px 10px; cursor: pointer;
+      }
+      .chip[aria-pressed="true"] { color: var(--text); border-color: var(--line-strong); background: var(--panel-soft); }
+      .stage { min-height: 460px; }
+
+      /* C — stacked full-width */
+      .stack { display: flex; flex-direction: column; gap: 46px; }
+      .stack .row { display: flex; flex-direction: column; gap: 12px; padding-top: 18px; border-top: 1px solid var(--line-soft); }
+
+      .measure { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--muted); padding: 0 28px 40px; }
+    </style>
+  </head>
+
+  <body>
+    <header class="page-head">
+      <h1>Dark-mode prose ink — agent view</h1>
+      <span class="note">Real tokens.css + chat-conversation.css. Only <code>--prose-ink</code> and <code>--prose-ink-strong</code> change.</span>
+      <label>Type size
+        <select id="size">
+          <option value="0">13px (default)</option>
+          <option value="2" selected>15px</option>
+          <option value="3">16px</option>
+        </select>
+      </label>
+      <label>Background
+        <select id="bg">
+          <option value="#141414" selected>#141414 (--bg)</option>
+          <option value="#1a1a1a">#1a1a1a (--panel)</option>
+        </select>
+      </label>
+    </header>
+
+    <section>
+      <h2>Shipped</h2>
+      <p class="lede">
+        No override at all — this block reads <code>--prose-ink</code> and <code>--prose-ink-strong</code> straight out of
+        <code>tokens.css</code>, so it always shows what the app renders today. Its hexes are read back from the cascade.
+      </p>
+      <div id="shipped"></div>
+    </section>
+
+    <section>
+      <h2>A · Side by side</h2>
+      <p class="lede">Same block, every level. Compare the bold lead-ins first — that's the complaint. Scan across, not down.</p>
+      <div class="grid" id="grid"></div>
+    </section>
+
+    <section>
+      <h2>B · Flicker compare</h2>
+      <p class="lede">Pick two candidates and toggle between them with ← / → . Switching in place is the only reliable way to judge a two-percent lightness move.</p>
+      <div class="chips" id="chips"></div>
+      <div class="stage" id="stage"></div>
+    </section>
+
+    <section>
+      <h2>C · At length</h2>
+      <p class="lede">Full column, real leading, real measure. A level that looks fine in a card can read grey over a long answer.</p>
+      <div class="stack" id="stack"></div>
+    </section>
+
+    <section>
+      <h2>D · Weight, not ink</h2>
+      <p class="lede">
+        <code>.markdown strong</code> asks for 520, but Geist Sans ships 400/500/700 statics in the app bundle, and CSS
+        resolves a 520 request upward — so today's bold prose renders <strong>Geist 700</strong>. Some of "too white" is
+        "too heavy". These four hold the ink still and move the weight instead.
+      </p>
+      <div class="stack" id="weights"></div>
+    </section>
+
+    <p class="measure" id="measure"></p>
+
+    <script type="module">
+      // Ink levels. Every pair keeps strong above body — the ladder has to stay
+      // monotonic or bold prose reads dimmer than the body it emphasises.
+      // L values are OKLCH lightness at C 0.008 / H 90 (the warm cast the dark
+      // theme already carries), except where noted.
+      const VARIANTS = [
+        { id: "00", name: "Pure white",   body: "#ffffff", strong: "#ffffff", note: "L100 / L100 · the ceiling" },
+        { id: "01", name: "Current",      body: "#f1efe9", strong: "#fbf9f5", note: "L95.2 / L98.3 · what ships today" },
+        { id: "02", name: "Bold eased",   body: "#f1efe9", strong: "#f5f3ed", note: "L95.2 / L96.5 · body untouched, bold only" },
+        { id: "03", name: "Half step",    body: "#ebe9e4", strong: "#f5f3ed", note: "L93.5 / L96.5" },
+        { id: "04", name: "One step",     body: "#e6e4df", strong: "#f0eee9", note: "L92.0 / L95.0" },
+        { id: "05", name: "Two steps",    body: "#e0ded8", strong: "#eae8e2", note: "L90.0 / L93.0" },
+        { id: "06", name: "Three steps",  body: "#d9d7d2", strong: "#e3e1db", note: "L88.0 / L91.0" },
+        { id: "07", name: "Four steps",   body: "#d1cfca", strong: "#dbd9d3", note: "L85.5 / L88.5" },
+        { id: "08", name: "Grey",         body: "#c9c7c2", strong: "#d3d1cb", note: "L83.0 / L86.0 · as low as prose can go" },
+        { id: "09", name: "Neutral mid",  body: "#dededd", strong: "#e8e8e7", note: "L90.0 / L93.0 at C 0.001 · warmth removed" },
+        { id: "10", name: "Neutral low",  body: "#cfcfce", strong: "#d9d9d8", note: "L85.5 / L88.5 at C 0.001" },
+        { id: "11", name: "Flat ladder",  body: "#e6e4df", strong: "#e9e7e2", note: "L92.0 / L92.8 · bold barely lifts, weight carries it" }
+      ];
+
+      // WCAG contrast, so each label carries a number and not just a feeling.
+      const un = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      const lum = (hex) => {
+        const [r, g, b] = [1, 3, 5].map((i) => un(parseInt(hex.slice(i, i + 2), 16) / 255));
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const contrast = (a, b) => {
+        const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+      };
+
+      const BODY_HTML = `
+        <h2>Open questions</h2>
+        <p>The deck answers what gets built. It does not answer who decides, or what the thing is accountable to in March.</p>
+        <ul>
+          <li><strong>Which bet are we placing?</strong> One agentic interface (slide 12) or five role apps (slides 19 to 23)? If agents win, Q4 builds tool contracts, not UIs. If apps are the durable surface, Claude is a secondary door. The deck says both.</li>
+          <li><strong>Who is the customer's voice?</strong> Slide 8 names seven groups and quotes none. What changes for an AE on Monday, and why leave the spreadsheet?</li>
+          <li><strong>What is the scoreboard?</strong> Slide 35 counts surfaces. What outcomes is this accountable to: forecast accuracy, routing time to owner, admin hours per rep, metric disputes per month?</li>
+          <li><strong>Is there capacity?</strong> Four roles build, consolidate, migrate, learn Next.js and restructure a repo in one quarter, with day jobs. What do we not do?</li>
+        </ul>
+        <h3>Suggested improvements</h3>
+        <ul>
+          <li><strong>Lead with the moat.</strong> A governed metric surface that Hex, Vercel and agents all query safely is the headline. It's buried on slide 15 under an "aspirational" caveat.</li>
+          <li><strong>Say the fact-versus-metric split out loud.</strong> It's what makes "one definition" survive change without backfills.</li>
+          <li><strong>Make tools over MCP the leverage story.</strong> Build once, reachable from any app or agent. That compounds more than the shared repo does.</li>
+        </ul>
+        <p>Hex reads Snowflake only, and <code>write_back</code> goes to the system of record with history in the mart. Nothing switches off before its replacement works.</p>`;
+
+      const SHORT_HTML = `
+        <h3>Open questions</h3>
+        <ul>
+          <li><strong>Which bet are we placing?</strong> One agentic interface or five role apps? If agents win, Q4 builds tool contracts, not UIs.</li>
+          <li><strong>What is the scoreboard?</strong> Slide 35 counts surfaces. What outcomes is this accountable to in March?</li>
+        </ul>
+        <p>Nothing switched off before its replacement works.</p>`;
+
+      const tag = (v) =>
+        `<div class="tag">
+           <span class="swatch" style="background:${v.strong}"></span><span class="name">${v.id} ${v.name}</span>
+           <span>body ${v.body} · ${contrast(v.body, "#141414").toFixed(1)}:1</span>
+           <span>bold ${v.strong} · ${contrast(v.strong, "#141414").toFixed(1)}:1</span>
+           <span>${v.note}</span>
+         </div>`;
+
+      const inks = (v) => `--prose-ink:${v.body};--prose-ink-strong:${v.strong}`;
+
+      // The shipped block takes no inline override, so its ink comes from
+      // tokens.css. The label reads the *painted* colour back off the body
+      // paragraph and a bold run, which proves the cascade and not just the
+      // variable.
+      const shipped = document.getElementById("shipped");
+      shipped.innerHTML = `<div class="markdown">${BODY_HTML}</div>`;
+      const rgbToHex = (value) =>
+        "#" + (value.match(/\d+/g) ?? []).slice(0, 3).map((n) => Number(n).toString(16).padStart(2, "0")).join("");
+      const strongEl = shipped.querySelector("strong");
+      shipped.insertAdjacentHTML(
+        "afterbegin",
+        tag({
+          id: "--",
+          name: "tokens.css",
+          body: rgbToHex(getComputedStyle(shipped.querySelector("p")).color),
+          strong: rgbToHex(getComputedStyle(strongEl).color),
+          note: `strong renders at font-weight ${getComputedStyle(strongEl).fontWeight}`
+        })
+      );
+
+      document.getElementById("grid").innerHTML = VARIANTS.map(
+        (v) => `<div class="cell">${tag(v)}<div class="markdown" style="${inks(v)}">${SHORT_HTML}</div></div>`
+      ).join("");
+
+      document.getElementById("stack").innerHTML = VARIANTS.map(
+        (v) => `<div class="row">${tag(v)}<div class="markdown" style="${inks(v)}">${BODY_HTML}</div></div>`
+      ).join("");
+
+      // Flicker compare.
+      const chips = document.getElementById("chips");
+      const stage = document.getElementById("stage");
+      let current = 1;
+      const render = () => {
+        const v = VARIANTS[current];
+        stage.innerHTML = `${tag(v)}<div class="markdown" style="${inks(v)};margin-top:12px">${BODY_HTML}</div>`;
+        [...chips.children].forEach((c, i) => c.setAttribute("aria-pressed", String(i === current)));
+      };
+      chips.innerHTML = VARIANTS.map((v) => `<button class="chip" type="button">${v.id} ${v.name}</button>`).join("");
+      [...chips.children].forEach((c, i) => c.addEventListener("click", () => { current = i; render(); }));
+      addEventListener("keydown", (e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        e.preventDefault();
+        current = (current + (e.key === "ArrowRight" ? 1 : VARIANTS.length - 1)) % VARIANTS.length;
+        render();
+      });
+      render();
+
+      // Controls.
+      const apply = () => {
+        document.documentElement.style.setProperty("--type-step", document.getElementById("size").value + "px");
+        const bg = document.getElementById("bg").value;
+        document.documentElement.style.background = bg;
+        document.body.style.background = bg;
+      };
+      document.getElementById("size").addEventListener("change", apply);
+      document.getElementById("bg").addEventListener("change", apply);
+      apply();
+
+      // D — weight variants. Ink held at the shipped values unless the row
+      // says otherwise, so each row isolates one move.
+      const PROBE = '"Geist Sans Semibold Probe", var(--font-ui)';
+      const WEIGHTS = [
+        { name: "Today", ink: VARIANTS[1], strong: 700, heading: 700, note: "520/570-600 requested, Geist 700 everywhere" },
+        { name: "Semibold throughout", ink: VARIANTS[1], strong: 600, heading: 600, note: "same ink, one step lighter face" },
+        { name: "Medium bold, semibold headings", ink: VARIANTS[1], strong: 500, heading: 600, note: "restores the ladder the CSS comment describes" },
+        { name: "Medium bold + one ink step down", ink: VARIANTS[4], strong: 500, heading: 600, note: "both moves together" }
+      ];
+      const weightRows = WEIGHTS.map((w, i) => {
+        const cls = `wrow-${i}`;
+        const famFor = (weight) => (weight === 600 ? `font-family:${PROBE};` : "");
+        return {
+          css:
+            `.${cls} strong { font-weight:${w.strong}; ${famFor(w.strong)} }\n` +
+            `.${cls} h1, .${cls} h2, .${cls} h3 { font-weight:${w.heading}; ${famFor(w.heading)} }`,
+          html: `<div class="row">
+              <div class="tag"><span class="name">D · ${w.name}</span><span>bold ${w.strong}</span><span>headings ${w.heading}</span><span>ink ${w.ink.id} ${w.ink.name}</span><span>${w.note}</span></div>
+              <div class="markdown ${cls}" style="${inks(w.ink)}">${BODY_HTML}</div>
+            </div>`
+        };
+      });
+      document.head.insertAdjacentHTML("beforeend", `<style>${weightRows.map((r) => r.css).join("\n")}</style>`);
+      document.getElementById("weights").innerHTML = weightRows.map((r) => r.html).join("");
+
+      // Which face does `.markdown strong` (font-weight 520) actually resolve
+      // to? Geist Sans ships 400/500/700 statics, so the answer is not obvious
+      // and it changes how much of "too white" is really "too heavy".
+      await Promise.all([400, 500, 700].map((w) => document.fonts.load(`${w} 40px "Geist Sans"`)));
+      await document.fonts.ready;
+      // Two frames: the faces are loaded but the first measurement still
+      // came back with the fallback metrics without letting layout settle.
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const width = (w) => {
+        const s = document.createElement("span");
+        s.style.cssText = `position:absolute;left:-9999px;white-space:nowrap;font-family:"Geist Sans";font-size:40px;font-weight:${w}`;
+        s.textContent = "Which bet are we placing?";
+        document.body.appendChild(s);
+        const px = s.getBoundingClientRect().width;
+        s.remove();
+        return px;
+      };
+      const [w400, w500, w520, w600, w700] = [400, 500, 520, 600, 700].map(width);
+      const match = Math.abs(w520 - w700) < 0.3 ? "700" : Math.abs(w520 - w500) < 0.3 ? "500" : "?";
+      document.getElementById("measure").textContent =
+        `strong{font-weight:520} resolves to Geist Sans ${match}  ·  widths @40px — 400:${w400.toFixed(1)} 500:${w500.toFixed(1)} 520:${w520.toFixed(1)} 600:${w600.toFixed(1)} 700:${w700.toFixed(1)}`;
+    </script>
+  </body>
+</html>

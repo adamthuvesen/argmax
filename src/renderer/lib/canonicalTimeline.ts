@@ -117,7 +117,6 @@ type ArchiveRequestedLifecycleEvent = CanonicalCommon & {
   kind: "lifecycle";
   name: "archive-requested";
   workspaceId: string | null;
-  removesWorktree: boolean | null;
 };
 
 type MovedLifecycleEvent = CanonicalCommon & {
@@ -340,8 +339,7 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
       ...shared,
       kind: "lifecycle",
       name,
-      workspaceId: stringValue(payload.workspaceId),
-      removesWorktree: typeof payload.removesWorktree === "boolean" ? payload.removesWorktree : null
+      workspaceId: stringValue(payload.workspaceId)
     };
   }
   if (name === "moved") {

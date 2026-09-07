@@ -82,9 +82,6 @@ pub(super) async fn schedule_workspace_archive(
         return Err(argmax_protocol_error(error));
     }
 
-    // Retained for older tool clients. Archive relocates isolated checkouts
-    // with their branch and files intact, and never removes shared checkouts.
-    let removes_worktree = false;
     let requested_event = {
         let connection = database.connection();
         persist_timeline_event(
@@ -101,7 +98,6 @@ pub(super) async fn schedule_workspace_archive(
                 },
                 payload: serde_json::json!({
                     "workspaceId": workspace.id,
-                    "removesWorktree": removes_worktree,
                     "retainsWorktree": true,
                 }),
                 created_at: None,
@@ -138,7 +134,6 @@ pub(super) async fn schedule_workspace_archive(
             scheduled: true,
             session_id: parent.session_id,
             workspace_id,
-            removes_worktree,
         }),
     ))
 }

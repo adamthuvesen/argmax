@@ -419,6 +419,7 @@ describe("AgentActivity", () => {
         ]}
         defaultToolCallsDisplay="collapsed"
         defaultToolCallGroupsExpanded={false}
+        onOpenAgent={vi.fn()}
         parentSession={{ ...session, state: "complete" }}
         parentToolUseId="task-1"
         workspace={workspace}
@@ -466,6 +467,7 @@ describe("AgentActivity", () => {
           })
         ]}
         defaultToolCallsDisplay="single-line"
+        onOpenAgent={vi.fn()}
         parentSession={{ ...session, state: "complete" }}
         parentToolUseId="task-1"
         workspace={workspace}
@@ -513,6 +515,7 @@ describe("AgentActivity", () => {
         ]}
         defaultToolCallsDisplay={defaultToolCallsDisplay}
         defaultToolCallGroupsExpanded={false}
+        onOpenAgent={vi.fn()}
         parentSession={{ ...session, state: "complete" }}
         parentToolUseId="task-1"
         workspace={workspace}
@@ -521,9 +524,13 @@ describe("AgentActivity", () => {
 
     const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
     const nestedAgent = within(pane).getByRole("button", { name: "Started agent Nested audit" });
-    expect(nestedAgent.parentElement).toHaveAttribute("data-status", "error");
+    expect(nestedAgent.closest("[data-status]")).toHaveAttribute("data-status", "error");
     expect(within(pane).queryByText("The nested agent could not start.")).toBeNull();
-    fireEvent.click(nestedAgent);
+    // The row itself opens the nested run in its own tab, so the failure text
+    // is behind the disclosure beside it.
+    fireEvent.click(
+      within(pane).getByRole("button", { name: "Toggle details for Started agent Nested audit" })
+    );
     expect(within(pane).getByText("The nested agent could not start.")).toBeInTheDocument();
     expect(
       within(screen.getByRole("region", { name: "Agent result" })).getByText("The nested audit failed.")

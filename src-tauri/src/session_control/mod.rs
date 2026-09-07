@@ -11,6 +11,7 @@ mod protocol;
 mod registry;
 mod server;
 
+pub use actions::resume_after_turn_actions;
 pub(crate) use actions::{launch_with_spec, task_label, AlongsideCheckout, LaunchSpec};
 pub use cli::{try_run_session_control_cli, CliPrompt, SessionControlCliInput};
 #[cfg(unix)]

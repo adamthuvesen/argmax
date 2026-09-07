@@ -11,6 +11,7 @@ use argmax_lib::sessions::state::SessionState;
 use argmax_lib::{
     error::ArgmaxResult,
     persistence::{
+        after_turn::{insert_after_turn, list_after_turn, AfterTurnAction, ArchiveRequest},
         database::Database,
         events::{persist_timeline_event, PersistTimelineEventInput, SESSION_EVENT_PAGE_LIMIT},
         projects::{persist_project, PersistProjectInput, ProjectSettings},
@@ -174,7 +175,8 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
             .push(delta);
     });
 
-    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
     let process_config = registry.issue(&ProviderLaunchInput {
         provider: ProviderId::Codex,
         session_id: "session-parent".to_string(),
@@ -469,7 +471,8 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
     let providers =
         ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
-    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
     let process_config = registry.issue(&ProviderLaunchInput {
         provider: ProviderId::Codex,
         session_id: "session-parent".to_string(),
@@ -723,7 +726,8 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
     let providers =
         ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
-    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
     providers.set_session_control(Arc::clone(&registry));
     let credential = |session_id: &str| {
         let config = registry.issue(&ProviderLaunchInput {
@@ -1085,7 +1089,8 @@ async fn a_large_inbox_drains_across_reads_within_the_reply_ceiling() {
     let providers =
         ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
-    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
     providers.set_session_control(Arc::clone(&registry));
     let (socket, child_token) = credential(&registry, repo.path(), "session-child");
     let _server = server
@@ -1175,7 +1180,8 @@ async fn an_inbox_reply_carries_a_full_width_body_whole() {
     let providers =
         ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
-    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
     providers.set_session_control(Arc::clone(&registry));
     let (socket, child_token) = credential(&registry, repo.path(), "session-child");
     let _server = server
@@ -1251,7 +1257,8 @@ async fn a_cursorless_read_starts_at_the_beginning_and_reports_more_to_come() {
     let providers =
         ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
-    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
     providers.set_session_control(Arc::clone(&registry));
     let (socket, parent_token) = credential(&registry, repo.path(), "session-parent");
     let _server = server
@@ -1353,7 +1360,8 @@ async fn a_completion_notice_queued_behind_a_running_turn_stays_collectable() {
         },
     );
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
-    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
     providers.set_session_control(Arc::clone(&registry));
     let (socket, parent_token) = credential(&registry, repo.path(), "session-parent");
     let (_, child_token) = credential(&registry, repo.path(), "session-child");
@@ -1469,7 +1477,8 @@ async fn archiving_a_workspace_is_scheduled_rather_than_immediate() {
     let providers =
         ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
-    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
     providers.set_session_control(Arc::clone(&registry));
     let (socket, token) = credential(&registry, repo.path(), "session-agent");
     let _server = server
@@ -1506,4 +1515,294 @@ async fn archiving_a_workspace_is_scheduled_rather_than_immediate() {
     let refused = ask_raw(socket, token, json!({ "archive": {} })).await;
     let refused: serde_json::Value = serde_json::from_str(&refused).expect("response json");
     assert_eq!(refused["error"]["code"], "ARCHIVE_ALREADY_PENDING");
+}
+
+/// The session ids with a disposal still promised on disk.
+fn scheduled_sessions(database: &Database) -> Vec<String> {
+    let connection = database.read_connection();
+    list_after_turn(&connection)
+        .expect("list scheduled after-turn actions")
+        .into_iter()
+        .map(|request| request.session_id)
+        .collect()
+}
+
+/// The chat's own timeline, oldest first.
+fn timeline_messages(database: &Database, session_id: &str) -> Vec<String> {
+    let connection = database.read_connection();
+    let mut statement = connection
+        .prepare("SELECT message FROM events WHERE session_id = ? ORDER BY id")
+        .expect("prepare timeline");
+    let messages = statement
+        .query_map([session_id], |row| row.get::<_, String>(0))
+        .expect("query timeline")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("timeline rows");
+    messages
+}
+
+/// The boot sequence after a quit, with the session-control socket rebuilt
+/// from scratch over the store the last run left behind.
+fn relaunch(
+    database: &Arc<Database>,
+) -> (
+    SessionLaunchServer,
+    Arc<SessionLaunchRegistry>,
+    Arc<ProviderSessionService>,
+    Arc<RecordingLauncher>,
+) {
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(database)).expect("rebind control socket");
+    let launcher = Arc::new(RecordingLauncher::default());
+    let providers =
+        ProviderSessionService::with_launcher(Arc::clone(database), launcher.clone(), |_| {});
+    providers.set_session_control(Arc::clone(&registry));
+    providers
+        .recover_orphaned_sessions()
+        .expect("recover orphaned sessions");
+    (server, registry, providers, launcher)
+}
+
+/// `workspace_archive` answers `{scheduled: true}` while the calling turn is
+/// still running, and the agent reports the workspace closed on that answer.
+/// Quitting before the turn settles used to end the promise there: the
+/// workspace stayed live and the timeline said "scheduled" forever. The
+/// promise is a row, so the next launch keeps it.
+#[tokio::test]
+async fn a_scheduled_archive_outlives_the_run_that_promised_it() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Land the PR", SessionState::Running)],
+    );
+
+    let launcher = Arc::new(RecordingLauncher::default());
+    let providers =
+        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
+    providers.set_session_control(Arc::clone(&registry));
+    let (socket, token) = credential(&registry, repo.path(), "session-agent");
+    let server = server
+        .start(
+            None,
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            Arc::clone(&providers),
+        )
+        .expect("start control socket");
+
+    let response = ask_raw(socket, token, json!({ "archive": {} })).await;
+    let response: serde_json::Value = serde_json::from_str(&response).expect("response json");
+    assert_eq!(response["archiving"]["scheduled"], true);
+    assert_eq!(scheduled_sessions(&database), vec!["session-agent"]);
+
+    // The app quits with the turn still open. Nothing signals the turn's end,
+    // so the archive never runs in this process.
+    drop(server);
+    drop(providers);
+    drop(registry);
+    {
+        let connection = database.connection();
+        let workspace =
+            find_workspace_by_id(&connection, "workspace-session-agent").expect("workspace");
+        assert_ne!(workspace.state, "archived");
+    }
+
+    let (_next_server, next_registry, next_providers, _next_launcher) = relaunch(&database);
+    argmax_lib::session_control::resume_after_turn_actions(
+        Arc::clone(&database),
+        Arc::clone(&workspaces),
+        next_providers,
+        next_registry,
+    )
+    .await;
+
+    {
+        let connection = database.connection();
+        let workspace =
+            find_workspace_by_id(&connection, "workspace-session-agent").expect("workspace");
+        assert_eq!(
+            workspace.state, "archived",
+            "the promise made in the last run is kept in this one"
+        );
+    }
+    assert!(
+        scheduled_sessions(&database).is_empty(),
+        "a kept promise leaves no row for the launch after this one"
+    );
+    assert!(
+        timeline_messages(&database, "session-agent")
+            .iter()
+            .any(|message| message == "Resuming the archive scheduled before Argmax last quit."),
+        "the chat says why it closed a day after it was asked to"
+    );
+}
+
+/// A move is the other half of the same promise, and it has more to keep: the
+/// destination has to exist and open with the turn the mover wrote.
+#[tokio::test]
+async fn a_scheduled_move_outlives_the_run_and_still_starts_the_destination() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let destination_repo = tempfile::tempdir().expect("destination repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Port the fix", SessionState::Running)],
+    );
+    {
+        let connection = database.connection();
+        persist_project(
+            &connection,
+            &PersistProjectInput {
+                id: "project-2".to_string(),
+                name: "Destination".to_string(),
+                repo_path: destination_repo.path().display().to_string(),
+                current_branch: "main".to_string(),
+                default_branch: Some("main".to_string()),
+                settings: ProjectSettings {
+                    archive_on_merge: false,
+                    worktree_location: destination_repo
+                        .path()
+                        .join("worktrees")
+                        .display()
+                        .to_string(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                },
+            },
+        )
+        .expect("destination project");
+    }
+
+    let launcher = Arc::new(RecordingLauncher::default());
+    let providers =
+        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
+    providers.set_session_control(Arc::clone(&registry));
+    let (socket, token) = credential(&registry, repo.path(), "session-agent");
+    let server = server
+        .start(
+            None,
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            Arc::clone(&providers),
+        )
+        .expect("start control socket");
+
+    let response = ask_raw(
+        socket,
+        token,
+        json!({ "move": { "project": "Destination", "prompt": "Port the fix to this repo" } }),
+    )
+    .await;
+    let response: serde_json::Value = serde_json::from_str(&response).expect("response json");
+    assert_eq!(response["scheduled"]["scheduled"], true);
+    assert_eq!(scheduled_sessions(&database), vec!["session-agent"]);
+
+    drop(server);
+    drop(providers);
+    drop(registry);
+
+    let (_next_server, next_registry, next_providers, next_launcher) = relaunch(&database);
+    argmax_lib::session_control::resume_after_turn_actions(
+        Arc::clone(&database),
+        Arc::clone(&workspaces),
+        Arc::clone(&next_providers),
+        next_registry,
+    )
+    .await;
+
+    {
+        let connection = database.connection();
+        let moved: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sessions s JOIN workspaces w ON w.id = s.workspace_id WHERE w.project_id = 'project-2'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("moved session count");
+        assert_eq!(moved, 1, "the chat landed in the destination project");
+    }
+    assert!(scheduled_sessions(&database).is_empty());
+
+    // The move is only half the point: the destination has to pick the work
+    // up, which is a launch there with the prompt the mover wrote. The launch
+    // itself is backgrounded, so wait for it rather than for `send_input`.
+    for _ in 0..100 {
+        if !next_launcher
+            .launches
+            .lock()
+            .expect("launches poisoned")
+            .is_empty()
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let launches = next_launcher.launches.lock().expect("launches poisoned");
+    assert_eq!(launches.len(), 1, "the moved chat launched once");
+    let continuation = launches.last().expect("destination launch");
+    assert_eq!(
+        continuation.workspace_path,
+        destination_repo.path().to_path_buf()
+    );
+    assert!(
+        continuation.prompt.contains("Port the fix to this repo"),
+        "the destination turn carries the mover's prompt: {}",
+        continuation.prompt
+    );
+}
+
+/// The archive may have already happened — through the sidebar, or through the
+/// archive-on-merge poller — while the promise was still on disk. Running it
+/// again is at best noise, so recovery drops the row instead.
+#[tokio::test]
+async fn a_promise_whose_workspace_is_already_archived_is_dropped() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Land the PR", SessionState::Complete)],
+    );
+    {
+        let connection = database.connection();
+        insert_after_turn(
+            &connection,
+            "session-agent",
+            &AfterTurnAction::Archive(ArchiveRequest {
+                workspace_id: "workspace-session-agent".to_string(),
+            }),
+        )
+        .expect("promise an archive");
+        connection
+            .execute(
+                "UPDATE workspaces SET state = 'archived' WHERE id = 'workspace-session-agent'",
+                [],
+            )
+            .expect("archive the workspace some other way");
+    }
+
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let (_server, registry, providers, _launcher) = relaunch(&database);
+    argmax_lib::session_control::resume_after_turn_actions(
+        Arc::clone(&database),
+        Arc::clone(&workspaces),
+        providers,
+        registry,
+    )
+    .await;
+
+    assert!(scheduled_sessions(&database).is_empty());
+    assert!(
+        timeline_messages(&database, "session-agent").is_empty(),
+        "nothing was left to do, so the chat is not told anything"
+    );
 }

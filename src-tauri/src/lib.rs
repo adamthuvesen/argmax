@@ -753,7 +753,9 @@ pub fn run() {
                                 tracing::warn!("approval service state was already initialized");
                             }
                             let (session_launch_server, session_launch_registry) =
-                                match session_control::SessionLaunchServer::bind() {
+                                match session_control::SessionLaunchServer::bind(Arc::clone(
+                                    &database,
+                                )) {
                                     Ok((server, registry)) => (Some(server), Some(registry)),
                                     Err(error) => {
                                         tracing::warn!(?error, "session launch control unavailable");
@@ -782,6 +784,9 @@ pub fn run() {
                                 Arc::clone(&lifecycle),
                                 Some(Arc::clone(&approvals)),
                             );
+                            // Kept for the boot-recovery pass below, which needs
+                            // the same registry the socket hands out.
+                            let after_turn_registry = session_launch_registry.clone();
                             if let Some(registry) = session_launch_registry {
                                 providers.set_session_control(registry);
                             }
@@ -999,6 +1004,8 @@ pub fn run() {
                             // during the synchronous macOS launch callback, so
                             // defer restoration until Tauri's runtime is alive.
                             let archive_timer = timer.clone();
+                            let after_turn_database = Arc::clone(&database);
+                            let after_turn_providers = Arc::clone(&providers);
                             tauri::async_runtime::spawn(async move {
                                 // Archive recovery runs up to five blocking git
                                 // calls per interrupted row, each with a 30s
@@ -1017,6 +1024,20 @@ pub fn run() {
                                     Err(error) => tracing::warn!(?error, "archive recovery task failed to join"),
                                 }
                                 archive_timer.mark("archives.recover");
+                                // A move or archive an agent scheduled for the
+                                // end of its turn, in a run that ended first.
+                                // After archive recovery, so a half-finished
+                                // archive is whole again before this decides
+                                // whether another one still has work to do.
+                                if let Some(registry) = after_turn_registry {
+                                    session_control::resume_after_turn_actions(
+                                        after_turn_database,
+                                        Arc::clone(&workspaces_for_watchers),
+                                        after_turn_providers,
+                                        registry,
+                                    )
+                                    .await;
+                                }
                                 match workspaces_for_watchers.start_open_watchers() {
                                     // Workspaces sharing a checkout share its
                                     // watch, so the two counts diverge sharply

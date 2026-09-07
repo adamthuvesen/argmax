@@ -644,7 +644,34 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &REMOTE_OPERATION_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 34,
+        name: "session_after_turn",
+        up: SESSION_AFTER_TURN,
+        affected_tables: &["session_after_turn"],
+        expected_columns: &SESSION_AFTER_TURN_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+static SESSION_AFTER_TURN_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "session_after_turn" => &["session_id", "action", "payload_json", "requested_at"],
+};
+
+// The disposal an agent asked for while its own turn was still running.
+// `session_move` and `workspace_archive` answer `{scheduled: true}` before
+// they run, so the promise has to outlive the process that made it: without
+// this row, a quit before the turn settled left the workspace live and the
+// timeline saying "scheduled" forever. One row per session — both disposals
+// end the chat, so a session can only be promised one.
+const SESSION_AFTER_TURN: &str = r#"
+CREATE TABLE session_after_turn (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  action TEXT NOT NULL CHECK (action IN ('move', 'archive')),
+  payload_json TEXT NOT NULL,
+  requested_at TEXT NOT NULL
+);
+"#;
 
 static REMOTE_OPERATION_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "remote_operations" => &["client_id", "operation_id", "request_digest", "run_id", "outcome_json", "created_at"],
@@ -1767,6 +1794,7 @@ mod tests {
                 (31, compute_migration_checksum(PROJECT_ARCHIVE_ON_MERGE)),
                 (32, compute_migration_checksum(PENDING_MESSAGES)),
                 (33, compute_migration_checksum(REMOTE_OPERATION_OUTCOMES)),
+                (34, compute_migration_checksum(SESSION_AFTER_TURN)),
             ]
         );
 

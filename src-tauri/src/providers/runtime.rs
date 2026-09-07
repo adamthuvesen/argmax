@@ -233,7 +233,10 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                 input.prompt = config.prepend_instruction(&input.prompt);
             }
 
-            if input.provider == ProviderId::Grok {
+            // A fork is the one Grok launch ACP cannot serve: `session/load`
+            // would continue the source conversation under a second session id,
+            // so a fork falls through to the CLI's `--fork-session`.
+            if super::grok_acp::is_acp_eligible(&input) {
                 return self
                     .grok_acp
                     .launch_turn(

@@ -584,7 +584,6 @@ export function SessionPane({
           workspaceCardEnabled={workspaceCardVisible}
           onHideWorkspaceCard={handleHideWorkspaceCard}
           onToggleWorkspaceCard={handleToggleWorkspaceCard}
-          pendingApprovalCount={visibleApprovals.filter((a) => a.status === "pending").length}
           project={project}
           rawOutputs={visibleRawOutputs}
           review={reviewState}

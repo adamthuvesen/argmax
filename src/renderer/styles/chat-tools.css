@@ -574,7 +574,7 @@
   margin-top: var(--space-2_5);
 }
 
-.session-meta-cards + .composer-approvals-banner + .multitask-composer-lane {
+.session-meta-cards + .multitask-composer-lane {
   margin-top: 0;
 }
 
@@ -596,7 +596,7 @@
 }
 
 .session-meta-cards + .session-composer-stack,
-.session-meta-cards + .composer-approvals-banner + .session-composer-stack {
+.session-meta-cards + .session-composer-stack {
   margin-top: var(--space-2_5);
 }
 

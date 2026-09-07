@@ -533,15 +533,13 @@ html:has(.mobile-shell) body {
 }
 
 /* Desktop affordances the phone loop does not need: header actions, the
-   in-pane repo heading, the checks/changed-files cards, the approvals jump
-   banner (approvals are always pinned on screen here), and the inline
+   in-pane repo heading, the checks/changed-files cards, and the inline
    workspace chips — changed files live behind the header button and the rest
    is desktop-only. The "…" trigger stays: on a phone it is the only way to
    attach a file, since there is nothing to drag. */
 .mobile-shell .conversation-header-actions,
 .mobile-shell .conversation-surface > .section-heading,
 .mobile-shell .session-meta-cards,
-.mobile-shell .composer-approvals-banner,
 .mobile-shell .composer-chips-context {
   display: none !important;
 }

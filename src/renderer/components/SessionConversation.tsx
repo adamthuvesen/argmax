@@ -180,7 +180,6 @@ export function SessionConversation({
   onOpenMultitask,
   multitasks,
   onExpandToFullChat,
-  pendingApprovalCount = 0,
   project,
   rawOutputs,
   review,
@@ -274,7 +273,6 @@ export function SessionConversation({
   multitasks?: MultitaskChild[];
   /** Docked chats only: promote this chat to the pane beside the panel. */
   onExpandToFullChat?: () => void;
-  pendingApprovalCount?: number;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   review: ReviewState;
@@ -1117,8 +1115,7 @@ export function SessionConversation({
     contentRef: conversationContentRef,
     showScrollToBottom,
     newBelowCount,
-    scrollToBottom: scrollConversationToBottom,
-    scrollToElement
+    scrollToBottom: scrollConversationToBottom
   } = useConversationScroll({ sessionId, items: conversationItems, resetKey: lastUserMessageId });
   // The scroll controller preserves the reading anchor across this prepend.
   const showEarlierItems = (): void => {
@@ -1340,31 +1337,6 @@ export function SessionConversation({
           onRunCheck={onRunCheck}
         />
       </div>
-      {pendingApprovalCount > 0 ? (
-        <div className="composer-approvals-banner" role="status" aria-live="polite">
-          <span className="composer-approvals-banner-count" aria-hidden="true">{pendingApprovalCount}</span>
-          <span>
-            {pendingApprovalCount === 1 ? "approval needs review" : "approvals need review"}
-          </span>
-          <button
-            type="button"
-            className="composer-approvals-banner-cta"
-            aria-label="Scroll to approvals"
-            onClick={() => {
-              // Scope the query to *this* conversation's list — otherwise a
-              // multi-grid view with several panes scrolls to whichever
-              // approval-surface document.querySelector returns first.
-              const root = conversationListRef.current;
-              const el = root?.querySelector(".approval-surface");
-              if (el instanceof HTMLElement) {
-                scrollToElement(el);
-              }
-            }}
-          >
-            Review
-          </button>
-        </div>
-      ) : null}
       {composerMultitaskNotices.length > 0 ? (
         <section className="multitask-composer-lane" aria-label="Multitasks">
           {composerMultitaskNotices.map((notice) => {

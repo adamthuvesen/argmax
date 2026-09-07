@@ -110,50 +110,6 @@
 
 /* Approvals banner — soft amber row above the composer that surfaces pending
    approvals when the user is scrolled away from the approval surface below. */
-.composer-approvals-banner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2_5);
-  margin: 0 var(--session-inline-padding) 8px;
-  padding: 8px 14px;
-  border: 1px solid var(--amber);
-  border-radius: var(--radius-md);
-  background: var(--amber-soft);
-  color: var(--text);
-  font-size: var(--text-sm-plus);
-}
-
-.composer-approvals-banner-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--radius-sm);
-  background: var(--amber);
-  color: var(--bubble-on-ink);
-  font-size: var(--text-xs);
-  font-weight: 600;
-}
-
-.composer-approvals-banner-cta {
-  margin-left: auto;
-  padding: var(--space-1) var(--space-2_5);
-  border: 1px solid var(--amber);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease);
-}
-
-.composer-approvals-banner-cta:hover {
-  background: rgba(176, 128, 57, 0.16);
-}
-
 /* Inline file chip — replaces a plain `<code>` pill when the text matches a
    file-path pattern. Click opens the file in the workspace's IDE. */
 .file-chip {

@@ -931,8 +931,11 @@ fn codex_child_outcome(lines: &[TraceLine]) -> Option<CodexChildOutcome> {
 fn find_codex_child_traces(home: &Path, plan: &ReconciliationPlan) -> Vec<CodexChildTrace> {
     let mut children = Vec::new();
     let mut seen = HashSet::new();
-    let mut roots = codex_trace_roots(home, &plan.session_started_at);
-    roots.extend(codex_trace_roots(home, &plan.session_last_activity_at));
+    let roots = codex_trace_roots(
+        home,
+        &plan.session_started_at,
+        &plan.session_last_activity_at,
+    );
     let mut seen_roots = HashSet::new();
     for (root, max_depth) in roots {
         if !seen_roots.insert(root.clone()) {
@@ -1187,6 +1190,15 @@ fn codex_child_events(
         }
         let event_sequence = sequence;
         sequence += 1;
+        // A rollout row that carried no call id still needs one, and the
+        // renderer keys its tool-call map session-wide, so the fallback carries
+        // the child id and this event's sequence — the rule `cursor_tool_id`
+        // documents. One constant collided across every fallback in a session.
+        if matches!(kind, "command.started" | "command.completed") && !payload.contains_key("id") {
+            let id = Value::String(format!("trace-codex-tool-{child_id}-{event_sequence}"));
+            payload.insert("call_id".to_string(), id.clone());
+            payload.insert("id".to_string(), id);
+        }
         stamp_trace_payload(&mut payload, context, child_id, &source, event_sequence);
         if let Some(run) = native_run {
             stamp_codex_native_run(&mut payload, run);
@@ -1546,6 +1558,18 @@ fn grok_child_events(
         for (kind, message, mut payload) in grok_history_events(object) {
             let event_sequence = sequence;
             sequence += 1;
+            // Same fallback rule as the Codex loop: a history row with no tool
+            // id still needs one, and it has to carry the child and sequence to
+            // stay unique across the session's tool-call map.
+            if matches!(kind, "command.started" | "command.completed")
+                && !payload.contains_key("id")
+            {
+                let id = Value::String(format!("trace-grok-tool-{child_id}-{event_sequence}"));
+                if kind == "command.completed" {
+                    payload.insert("tool_use_id".to_string(), id.clone());
+                }
+                payload.insert("id".to_string(), id);
+            }
             stamp_trace_payload(&mut payload, context, child_id, &source, event_sequence);
             run_model.stamp(&mut payload);
             events.push(trace_event(
@@ -1649,9 +1673,7 @@ fn grok_history_events(
                     let tool_id = call
                         .get("id")
                         .and_then(Value::as_str)
-                        .filter(|id| !id.is_empty())
-                        .unwrap_or("trace-grok-tool")
-                        .to_string();
+                        .filter(|id| !id.is_empty());
                     let tool_name = call
                         .get("name")
                         .and_then(Value::as_str)
@@ -1659,7 +1681,9 @@ fn grok_history_events(
                         .unwrap_or("tool")
                         .to_string();
                     let mut payload = Map::new();
-                    payload.insert("id".to_string(), Value::String(tool_id));
+                    if let Some(tool_id) = tool_id {
+                        payload.insert("id".to_string(), Value::String(tool_id.to_string()));
+                    }
                     payload.insert("name".to_string(), Value::String(tool_name.clone()));
                     payload.insert("type".to_string(), Value::String(tool_name.clone()));
                     payload.insert(
@@ -1675,13 +1699,16 @@ fn grok_history_events(
             let tool_id = object
                 .get("tool_call_id")
                 .and_then(Value::as_str)
-                .filter(|id| !id.is_empty())
-                .unwrap_or("trace-grok-tool")
-                .to_string();
+                .filter(|id| !id.is_empty());
             let content = grok_tool_result_content(object);
             let mut payload = Map::new();
-            payload.insert("id".to_string(), Value::String(tool_id.clone()));
-            payload.insert("tool_use_id".to_string(), Value::String(tool_id));
+            if let Some(tool_id) = tool_id {
+                payload.insert("id".to_string(), Value::String(tool_id.to_string()));
+                payload.insert(
+                    "tool_use_id".to_string(),
+                    Value::String(tool_id.to_string()),
+                );
+            }
             if let Some(content) = content {
                 payload.insert("content".to_string(), Value::String(content));
             }
@@ -1776,15 +1803,38 @@ fn grok_child_history_path(
     context: &AgentTraceContext,
     child_id: &str,
 ) -> Option<PathBuf> {
+    if !is_path_safe_agent_id(child_id) {
+        tracing::warn!(
+            child_id,
+            "rejected grok child id with unsafe path characters"
+        );
+        return None;
+    }
     let cwd = context.workspace_path.as_deref()?;
     let path = grok_session_dir(home, cwd, child_id).join("chat_history.jsonl");
     path.is_file().then_some(path)
 }
 
+/// Callers must have run `session_id` past [`is_path_safe_agent_id`]: it is
+/// joined straight into the session store's path.
 fn grok_session_dir(home: &Path, cwd: &str, session_id: &str) -> PathBuf {
-    home.join(".grok/sessions")
+    grok_home(home)
+        .join("sessions")
         .join(grok_percent_encode(cwd))
         .join(session_id)
+}
+
+/// `$GROK_HOME`, else `<home>/.grok` — the same resolution `grok_trust` uses
+/// for the trust store, so the two never disagree about where Grok lives.
+/// Under test the environment is ignored, exactly as it is there, so an
+/// injected `home` is the whole answer and no test can read a developer's own
+/// `$GROK_HOME`.
+fn grok_home(home: &Path) -> PathBuf {
+    #[cfg(not(test))]
+    if let Some(value) = std::env::var_os("GROK_HOME").filter(|value| !value.is_empty()) {
+        return PathBuf::from(value);
+    }
+    home.join(".grok")
 }
 
 fn list_grok_subagent_ids(home: &Path, context: &AgentTraceContext) -> Vec<String> {
@@ -1794,6 +1844,13 @@ fn list_grok_subagent_ids(home: &Path, context: &AgentTraceContext) -> Vec<Strin
     let Some(parent_id) = context.provider_conversation_id.as_deref() else {
         return Vec::new();
     };
+    if !is_path_safe_agent_id(parent_id) {
+        tracing::warn!(
+            parent_id,
+            "rejected grok parent session id with unsafe path characters"
+        );
+        return Vec::new();
+    }
     let dir = grok_session_dir(home, cwd, parent_id).join("subagents");
     let Ok(entries) = fs::read_dir(&dir) else {
         return Vec::new();
@@ -1880,6 +1937,23 @@ fn grok_collect_subagent_ids(text: &str, ids: &mut Vec<String>) {
     }
 }
 
+/// Copy the rollout row's call id onto the timeline payload, leaving both keys
+/// unset when the row carried none — [`codex_child_events`] owns the fallback,
+/// because only it knows the child and sequence the fallback has to be unique
+/// against.
+fn insert_codex_call_id(out: &mut Map<String, Value>, payload: &Map<String, Value>) {
+    let Some(call_id) = payload
+        .get("call_id")
+        .or_else(|| payload.get("id"))
+        .and_then(Value::as_str)
+        .filter(|call_id| !call_id.is_empty())
+    else {
+        return;
+    };
+    out.insert("id".to_string(), Value::String(call_id.to_string()));
+    out.insert("call_id".to_string(), Value::String(call_id.to_string()));
+}
+
 fn codex_trace_event_payload(
     object: &Map<String, Value>,
 ) -> Option<(&'static str, String, Map<String, Value>)> {
@@ -1928,15 +2002,8 @@ fn codex_trace_event_payload(
                     .and_then(Value::as_str)
                     .unwrap_or("tool")
                     .to_string();
-                let call_id = payload
-                    .get("call_id")
-                    .or_else(|| payload.get("id"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("trace-tool")
-                    .to_string();
                 let mut out = Map::new();
-                out.insert("id".to_string(), Value::String(call_id.clone()));
-                out.insert("call_id".to_string(), Value::String(call_id));
+                insert_codex_call_id(&mut out, payload);
                 out.insert("name".to_string(), Value::String(tool_name.clone()));
                 out.insert("type".to_string(), Value::String(tool_name.clone()));
                 out.insert(
@@ -1946,15 +2013,8 @@ fn codex_trace_event_payload(
                 Some(("command.started", tool_name, out))
             }
             Some("function_call_output") => {
-                let call_id = payload
-                    .get("call_id")
-                    .or_else(|| payload.get("id"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("trace-tool")
-                    .to_string();
                 let mut out = Map::new();
-                out.insert("id".to_string(), Value::String(call_id.clone()));
-                out.insert("call_id".to_string(), Value::String(call_id));
+                insert_codex_call_id(&mut out, payload);
                 if let Some(output) = payload.get("output") {
                     out.insert("output".to_string(), value_as_output(output));
                 }
@@ -2045,7 +2105,7 @@ fn find_codex_trace_file(
     parent_thread_id: Option<&str>,
     parent_created_at: &str,
 ) -> Option<PathBuf> {
-    for (root, max_depth) in codex_trace_roots(home, parent_created_at) {
+    for (root, max_depth) in codex_trace_roots(home, parent_created_at, parent_created_at) {
         if !root.exists() {
             continue;
         }
@@ -2071,19 +2131,32 @@ fn find_codex_trace_file(
     None
 }
 
-fn codex_trace_roots(home: &Path, parent_created_at: &str) -> Vec<(PathBuf, usize)> {
+/// A session open for months would otherwise walk hundreds of day directories
+/// on every poll. Past this span, fall back to the two ends — the days a
+/// long-lived session most likely started and last ran a child on.
+const MAX_CODEX_TRACE_SPAN_DAYS: i64 = 60;
+
+/// The day directories a child rollout of this session could sit in: every day
+/// from `from` to `to` inclusive, padded a day either side for clock skew
+/// between the session row and the rollout's own directory name. Pass the same
+/// timestamp twice when only one is known.
+fn codex_trace_roots(home: &Path, from: &str, to: &str) -> Vec<(PathBuf, usize)> {
     let sessions = home.join(".codex/sessions");
     let archived = home.join(".codex/archived_sessions");
-    let Some(parent_time) = DateTime::parse_from_rfc3339(parent_created_at)
-        .ok()
-        .map(|time| time.with_timezone(&Utc))
-    else {
+    let (Some(from), Some(to)) = (parse_trace_time(from), parse_trace_time(to)) else {
         return vec![(sessions, usize::MAX), (archived, 1)];
     };
+    let (first, last) = if from <= to { (from, to) } else { (to, from) };
+    let span = (last.date_naive() - first.date_naive()).num_days();
 
+    let offsets = if span <= MAX_CODEX_TRACE_SPAN_DAYS {
+        (-1..=span + 1).collect::<Vec<_>>()
+    } else {
+        vec![-1, 0, 1, span - 1, span, span + 1]
+    };
     let mut roots = Vec::new();
-    for day_offset in [-1, 0, 1] {
-        let day = parent_time + Duration::days(day_offset);
+    for offset in offsets {
+        let day = first + Duration::days(offset);
         roots.push((
             sessions
                 .join(format!("{:04}", day.year()))
@@ -2094,6 +2167,12 @@ fn codex_trace_roots(home: &Path, parent_created_at: &str) -> Vec<(PathBuf, usiz
     }
     roots.push((archived, 1));
     roots
+}
+
+fn parse_trace_time(timestamp: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(timestamp)
+        .ok()
+        .map(|time| time.with_timezone(&Utc))
 }
 
 fn codex_trace_file_matches(
@@ -2166,12 +2245,7 @@ fn codex_trace_file_meta(path: &Path) -> Option<CodexTraceMeta> {
 }
 
 fn read_codex_trace_file_meta(path: &Path) -> Option<CodexTraceMeta> {
-    let file = fs::File::open(path).ok()?;
-    for line in BufReader::new(file)
-        .lines()
-        .map_while(Result::ok)
-        .take(CODEX_TRACE_HEADER_LINES)
-    {
+    for line in TraceFileLines::open(path)?.take(CODEX_TRACE_HEADER_LINES) {
         let line = line.trim();
         if line.is_empty() || line.len() > JSON_PARSE_LINE_CAP {
             continue;
@@ -2272,12 +2346,7 @@ fn find_cursor_trace_files_by_id(
     workspace_path: Option<&str>,
     child_agent_id: &str,
 ) -> Vec<PathBuf> {
-    // Agent ids come from provider JSON payloads and are joined into paths
-    // under ~/.cursor/projects — never let one carry a path separator or `..`.
-    if !child_agent_id
-        .chars()
-        .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_')
-    {
+    if !is_path_safe_agent_id(child_agent_id) {
         tracing::warn!(
             child_agent_id,
             "rejected cursor child agent id with unsafe path characters"
@@ -2418,8 +2487,7 @@ fn cursor_trace_file_prompt_matches(path: &Path, prompt: &str) -> bool {
 /// and reading whole multi-MB files to look at their first few lines was the
 /// bulk of that walk.
 fn cursor_first_user_text(path: &Path) -> Option<String> {
-    let file = fs::File::open(path).ok()?;
-    for line in BufReader::new(file).lines().map_while(Result::ok) {
+    for line in TraceFileLines::open(path)? {
         let line = line.trim();
         if line.is_empty() || line.len() > JSON_PARSE_LINE_CAP {
             continue;
@@ -2487,13 +2555,63 @@ fn cursor_file_modified_utc(path: &Path) -> Option<DateTime<Utc>> {
         .map(DateTime::<Utc>::from)
 }
 
+/// The lines of a trace file, with unreadable ones skipped instead of
+/// truncating the file. `BufRead::lines` yields an error for a line that is not
+/// valid UTF-8, and stopping at the first one silently drops every later line —
+/// one mangled byte would hide the rest of a child's transcript. Only
+/// `InvalidData` is skipped, because that is the invalid-UTF-8 case and the
+/// reader has already moved past the line; any other IO error may not advance,
+/// so it ends the read. Skipped lines are counted and reported once, on drop.
+struct TraceFileLines {
+    lines: std::io::Lines<BufReader<fs::File>>,
+    path: PathBuf,
+    skipped: usize,
+}
+
+impl TraceFileLines {
+    fn open(path: &Path) -> Option<Self> {
+        let file = fs::File::open(path).ok()?;
+        Some(Self {
+            lines: BufReader::new(file).lines(),
+            path: path.to_path_buf(),
+            skipped: 0,
+        })
+    }
+}
+
+impl Iterator for TraceFileLines {
+    type Item = String;
+
+    fn next(&mut self) -> Option<String> {
+        loop {
+            match self.lines.next()? {
+                Ok(line) => return Some(line),
+                Err(error) if error.kind() == std::io::ErrorKind::InvalidData => {
+                    self.skipped += 1;
+                }
+                Err(_) => return None,
+            }
+        }
+    }
+}
+
+impl Drop for TraceFileLines {
+    fn drop(&mut self) {
+        if self.skipped > 0 {
+            tracing::warn!(
+                path = %self.path.display(),
+                skipped = self.skipped,
+                "skipped unreadable lines in a subagent trace file"
+            );
+        }
+    }
+}
+
 fn read_trace_lines(path: &Path) -> Vec<TraceLine> {
-    let Ok(file) = fs::File::open(path) else {
+    let Some(lines) = TraceFileLines::open(path) else {
         return Vec::new();
     };
-    BufReader::new(file)
-        .lines()
-        .map_while(Result::ok)
+    lines
         .map(|line| line.trim().to_string())
         .filter(|line| !line.is_empty() && line.len() <= JSON_PARSE_LINE_CAP)
         .filter_map(|line| {
@@ -2714,6 +2832,17 @@ fn value_at_path<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
         current = current.as_object()?.get(*key)?;
     }
     Some(current)
+}
+
+/// Agent and session ids come from provider JSON payloads — and, for Grok,
+/// from free text scraped out of a launch receipt — and are joined into paths
+/// under the provider's own session store. Never let one carry a path
+/// separator or `..`.
+fn is_path_safe_agent_id(agent_id: &str) -> bool {
+    !agent_id.is_empty()
+        && agent_id.chars().all(|character| {
+            character.is_ascii_alphanumeric() || character == '-' || character == '_'
+        })
 }
 
 fn push_unique(values: &mut Vec<String>, value: String) {
@@ -3920,6 +4049,106 @@ mod tests {
         assert!(events
             .iter()
             .any(|event| event.message == "Recovered from disk."));
+    }
+
+    #[test]
+    fn grok_child_ids_that_walk_out_of_the_session_store_are_rejected() {
+        let home = TempDir::new().expect("home");
+        // A transcript above the session store, and the store itself, so the
+        // traversal below is a real escape rather than a missing directory.
+        let escaped = home.path().join("escaped");
+        fs::create_dir_all(&escaped).expect("escaped dir");
+        fs::write(
+            escaped.join("chat_history.jsonl"),
+            r#"{"type":"assistant","content":"Should never be read."}"#,
+        )
+        .expect("history");
+        fs::create_dir_all(
+            home.path()
+                .join(".grok/sessions")
+                .join(grok_percent_encode("/tmp/repo")),
+        )
+        .expect("session store");
+
+        let context = AgentTraceContext {
+            provider: TraceProvider::Grok,
+            session_id: "s1".to_string(),
+            parent_tool_use_id: "call-spawn".to_string(),
+            parent_created_at: "2026-09-06T06:50:53.000Z".to_string(),
+            provider_conversation_id: Some("parent-session".to_string()),
+            workspace_path: Some("/tmp/repo".to_string()),
+            cursor_prompt: None,
+            child_ids: Vec::new(),
+            codex_runs: Vec::new(),
+        };
+
+        let escape_id = "../../../escaped";
+        assert!(
+            grok_session_dir(home.path(), "/tmp/repo", escape_id)
+                .join("chat_history.jsonl")
+                .is_file(),
+            "the traversal target must exist for this test to prove anything"
+        );
+        for id in [escape_id, "..", "child/nested"] {
+            assert!(
+                grok_child_history_path(home.path(), &context, id).is_none(),
+                "{id} was joined into a session path"
+            );
+        }
+        assert!(is_path_safe_agent_id("child-agent_1"));
+    }
+
+    #[test]
+    fn codex_trace_roots_span_every_day_between_the_two_timestamps() {
+        let home = TempDir::new().expect("home");
+        let sessions = home.path().join(".codex/sessions");
+        let days = |roots: &[(PathBuf, usize)]| {
+            roots
+                .iter()
+                .filter_map(|(root, _)| root.strip_prefix(&sessions).ok())
+                .map(|day| day.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        };
+
+        let roots = codex_trace_roots(
+            home.path(),
+            "2026-09-01T09:00:00.000Z",
+            "2026-09-05T09:00:00.000Z",
+        );
+        assert_eq!(
+            days(&roots),
+            vec![
+                "2026/08/31",
+                "2026/09/01",
+                "2026/09/02",
+                "2026/09/03",
+                "2026/09/04",
+                "2026/09/05",
+                "2026/09/06",
+            ]
+        );
+        assert!(roots
+            .iter()
+            .any(|(root, _)| root.ends_with(".codex/archived_sessions")));
+
+        // Past the cap a months-long session takes the two ends instead of a
+        // hundred day directories.
+        let wide = codex_trace_roots(
+            home.path(),
+            "2026-01-01T09:00:00.000Z",
+            "2026-09-05T09:00:00.000Z",
+        );
+        assert_eq!(
+            days(&wide),
+            vec![
+                "2025/12/31",
+                "2026/01/01",
+                "2026/01/02",
+                "2026/09/04",
+                "2026/09/05",
+                "2026/09/06",
+            ]
+        );
     }
 
     fn seed_session(connection: &Connection, provider: &str, session_id: &str) {

@@ -341,6 +341,41 @@ describe("App grid", () => {
     expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(2);
   });
 
+  it("keeps the chat composer focused when a neighboring launcher's project refreshes", async () => {
+    window.localStorage.setItem("argmax.newSessionMode", "embedded");
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const sessionPane = await screen.findByRole("region", { name: "Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+
+    const launcher = await screen.findByRole("region", { name: "New chat for Argmax" });
+    const chatPrompt = within(sessionPane).getByLabelText<HTMLTextAreaElement>("Chat prompt");
+    const launcherPrompt = within(launcher).getByLabelText("Task prompt");
+    fireEvent.change(chatPrompt, { target: { value: "Keep this draft intact" } });
+    chatPrompt.focus();
+    chatPrompt.setSelectionRange(9, 9);
+    expect(document.activeElement).toBe(chatPrompt);
+
+    await act(async () => {
+      dashboardDeltaListener?.({
+        projects: [
+          {
+            ...snapshot.projects[0],
+            currentBranch: "argmax/refreshed-branch"
+          }
+        ]
+      });
+      await Promise.resolve();
+    });
+
+    expect(document.activeElement).toBe(chatPrompt);
+    expect(document.activeElement).not.toBe(launcherPrompt);
+    expect(chatPrompt).toHaveValue("Keep this draft intact");
+    expect(chatPrompt.selectionStart).toBe(9);
+    expect(chatPrompt.selectionEnd).toBe(9);
+  });
+
   it("opens a launcher beside the session from the session actions menu, whatever the new-session mode", async () => {
     // Default mode is "full", which swaps the whole grid out. Launching from
     // *inside* a session must not take the session off screen.

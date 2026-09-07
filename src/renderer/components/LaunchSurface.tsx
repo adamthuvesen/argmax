@@ -473,14 +473,14 @@ export function LaunchSurface({
   // first visit, on project switch, and again whenever the right-side
   // review panel closes, so the user can keep typing without clicking.
   useEffect(() => {
-    if ((!activeProject && !chatMode) || reviewIsPanelOpen || isSubmitting) return;
+    if ((!projectId && !chatMode) || reviewIsPanelOpen || isSubmitting) return;
     // An open picker holds focus to filter keystrokes; a re-render behind it
     // (a dashboard delta re-identifying the project) must not yank that away.
     if (contextPickerOpenRef.current) return;
     promptInputRef.current?.focus();
-    // `activeProject` (a fresh object per switch) keeps the "refocus on
-    // project switch" behavior; a collapsed boolean would only fire once.
-  }, [activeProject, chatMode, reviewIsPanelOpen, isSubmitting]);
+    // Metadata refreshes replace the project object even in background cells.
+    // Only a different project should refocus and interrupt another composer.
+  }, [projectId, chatMode, reviewIsPanelOpen, isSubmitting]);
 
   // The hero fox reacts to the user and to real work, never to a clock alone:
   // it thinks while this project has an agent running, and dozes off only once

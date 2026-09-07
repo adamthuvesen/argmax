@@ -72,6 +72,22 @@ describe("WorkspaceCard", () => {
     expect(card.textContent).toContain("from main");
   });
 
+  it("copies the full branch name when its ellipsized label is clicked", async () => {
+    const branch = "adam/this-is-a-long-branch-name-that-does-not-fit-in-the-workspace-card";
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    renderCard({ workspace: { ...workspace, branch } });
+
+    const copyButton = screen.getByRole("button", { name: `Copy branch name ${branch}` });
+    fireEvent.click(copyButton);
+
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(branch);
+    await waitFor(() => expect(copyButton).toHaveAttribute("title", "Copied branch name"));
+  });
+
   it("routes each row to the surface that owns it", () => {
     const onOpenChanges = vi.fn();
     const onBrowseFiles = vi.fn();

@@ -371,6 +371,29 @@ describe("actions.js", () => {
     expect(seen).toEqual(["mouseover", "mousedown", "mouseup", "click"]);
   });
 
+  it("does not take document focus when clicking in a background tab", () => {
+    document.body.innerHTML = `
+      <input id="previous" aria-label="Previous field" />
+      <button id="target">Go</button>
+    `;
+    install();
+    const ref = api().find("Go").matches[0]?.ref;
+    const previous = document.getElementById("previous") as HTMLInputElement;
+    const target = document.getElementById("target") as HTMLButtonElement;
+    const clicked = vi.fn();
+    target.addEventListener("click", clicked);
+    previous.focus();
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+    try {
+      expect(api().click(ref).ok).toBe(true);
+      expect(clicked).toHaveBeenCalledOnce();
+      expect(document.activeElement).toBe(previous);
+    } finally {
+      hasFocus.mockRestore();
+    }
+  });
+
   it("names a stale ref and says a fresh snapshot is needed", () => {
     document.body.innerHTML = `<button>Go</button>`;
     install();
@@ -400,6 +423,85 @@ describe("actions.js", () => {
     expect(api().type(ref, "tauri wry").ok).toBe(true);
     expect(input.value).toBe("tauri wry");
     expect(events).toEqual(["input", "change"]);
+  });
+
+  it("does not take document focus when typing into a background tab", () => {
+    document.body.innerHTML = `
+      <input id="previous" aria-label="Previous field" />
+      <input id="target" aria-label="Target field" />
+    `;
+    install();
+    const ref = api().find("Target field").matches[0]?.ref;
+    const previous = document.getElementById("previous") as HTMLInputElement;
+    const target = document.getElementById("target") as HTMLInputElement;
+    previous.focus();
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+    try {
+      expect(api().type(ref, "background text").ok).toBe(true);
+      expect(target.value).toBe("background text");
+      expect(document.activeElement).toBe(previous);
+    } finally {
+      hasFocus.mockRestore();
+    }
+  });
+
+  it("sends a later key press to the field typed in a background tab", () => {
+    document.body.innerHTML = `
+      <form id="previous-form"><input id="previous" aria-label="Previous field" /></form>
+      <form id="target-form"><input id="target" aria-label="Target field" /></form>
+    `;
+    install();
+    const ref = api().find("Target field").matches[0]?.ref;
+    const previous = document.getElementById("previous") as HTMLInputElement;
+    const target = document.getElementById("target") as HTMLInputElement;
+    const previousForm = document.getElementById("previous-form") as HTMLFormElement;
+    const targetForm = document.getElementById("target-form") as HTMLFormElement;
+    const previousSubmit = vi.fn();
+    const targetSubmit = vi.fn();
+    previousForm.requestSubmit = previousSubmit;
+    targetForm.requestSubmit = targetSubmit;
+    const previousKeys: string[] = [];
+    const targetKeys: string[] = [];
+    previous.addEventListener("keyup", (event) => previousKeys.push(event.key));
+    target.addEventListener("keyup", (event) => targetKeys.push(event.key));
+    previous.focus();
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+    try {
+      expect(api().type(ref, "background text").ok).toBe(true);
+      expect(document.activeElement).toBe(previous);
+      expect(api().pressKey("Enter").ok).toBe(true);
+      expect(targetKeys).toEqual(["Enter"]);
+      expect(previousKeys).toEqual([]);
+      expect(targetSubmit).toHaveBeenCalledOnce();
+      expect(previousSubmit).not.toHaveBeenCalled();
+    } finally {
+      hasFocus.mockRestore();
+    }
+  });
+
+  it("reports when a background keyboard target was removed", () => {
+    document.body.innerHTML = `
+      <input id="previous" aria-label="Previous field" />
+      <input id="target" aria-label="Target field" />
+    `;
+    install();
+    const ref = api().find("Target field").matches[0]?.ref;
+    const previous = document.getElementById("previous") as HTMLInputElement;
+    const target = document.getElementById("target") as HTMLInputElement;
+    previous.focus();
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+    try {
+      expect(api().type(ref, "background text").ok).toBe(true);
+      target.remove();
+      expect(api().pressKey("Enter").error).toBe(
+        "the previous keyboard target was removed. Click or type into a field again"
+      );
+    } finally {
+      hasFocus.mockRestore();
+    }
   });
 
   it("submitting presses Enter and falls back to the field's form", () => {
@@ -469,6 +571,39 @@ describe("actions.js", () => {
     expect(api().pressKey("Escape").ok).toBe(true);
     expect(keys).toEqual(["Escape"]);
     expect(api().pressKey("").error).toContain("needs a key name");
+  });
+
+  it("keeps normal focus behavior and follows user focus in a visible tab", () => {
+    document.body.innerHTML = `
+      <button id="button">Go</button>
+      <input id="automated" aria-label="Automated field" />
+      <input id="user" aria-label="User field" />
+    `;
+    install();
+    const buttonRef = api().find("Go").matches[0]?.ref;
+    const automatedRef = api().find("Automated field").matches[0]?.ref;
+    const button = document.getElementById("button") as HTMLButtonElement;
+    const automated = document.getElementById("automated") as HTMLInputElement;
+    const user = document.getElementById("user") as HTMLInputElement;
+    const automatedKeys: string[] = [];
+    const userKeys: string[] = [];
+    automated.addEventListener("keyup", (event) => automatedKeys.push(event.key));
+    user.addEventListener("keyup", (event) => userKeys.push(event.key));
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+
+    try {
+      expect(api().click(buttonRef).ok).toBe(true);
+      expect(document.activeElement).toBe(button);
+      expect(api().type(automatedRef, "visible text").ok).toBe(true);
+      expect(document.activeElement).toBe(automated);
+
+      user.focus();
+      expect(api().pressKey("Escape").ok).toBe(true);
+      expect(userKeys).toEqual(["Escape"]);
+      expect(automatedKeys).toEqual([]);
+    } finally {
+      hasFocus.mockRestore();
+    }
   });
 
   it("drags between refs with stepped pointer and HTML drag events", () => {

@@ -13,6 +13,14 @@
 (function () {
   var api = window.__argmax;
   var WAIT_TTL_MS = 120000;
+  var keyboardTarget = null;
+
+  function rememberKeyboardTarget(element) {
+    keyboardTarget = element;
+    // DOM focus in a hidden WKWebView steals native keyboard input from the
+    // composer. Only move focus within a page that already owns it.
+    if (document.hasFocus() && typeof element.focus === "function") element.focus();
+  }
 
   function resolve(ref) {
     var element = api.byRef(ref);
@@ -83,7 +91,7 @@
     pointerEvent("mouseover", element, point);
     pointerEvent("pointerdown", element, point);
     pointerEvent("mousedown", element, point);
-    if (typeof element.focus === "function") element.focus();
+    rememberKeyboardTarget(element);
     pointerEvent("pointerup", element, point);
     pointerEvent("mouseup", element, point);
     // `.click()` rather than a dispatched click: it runs the default action
@@ -138,7 +146,7 @@
     var element = found.element;
     var value = String(text == null ? "" : text);
     element.scrollIntoView({ block: "center", inline: "center" });
-    if (typeof element.focus === "function") element.focus();
+    rememberKeyboardTarget(element);
 
     if (element.isContentEditable) {
       element.textContent = value;
@@ -389,6 +397,12 @@
   function pressKey(key, modifiers) {
     if (typeof key !== "string" || !key) return { error: "pressKey needs a key name" };
     var element = document.activeElement || document.body;
+    if (!document.hasFocus() && keyboardTarget) {
+      if (!keyboardTarget.isConnected) {
+        return { error: "the previous keyboard target was removed. Click or type into a field again" };
+      }
+      element = keyboardTarget;
+    }
     if (!element) return { error: "the page has no focused element to type into" };
     var prevented = pressOn(element, key, modifiers);
     if (key === "Enter" && !prevented) submitFrom(element);

@@ -509,7 +509,7 @@
     // install. Letting it drift low reinstalls both scripts on every call and
     // silently wipes anything they hold between calls — a drag's gesture
     // state, for one. A Rust test pins the two together.
-    v: 2,
+    v: 3,
     refAttr: REF_ATTR,
     byRef: byRef,
     refFor: refFor,

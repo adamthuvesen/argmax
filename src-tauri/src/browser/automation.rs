@@ -25,7 +25,7 @@ use super::{eval, snapshot_image, CaptureRect};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
 
-const AGENT_API_VERSION: u32 = 2;
+const AGENT_API_VERSION: u32 = 3;
 const SNAPSHOT_JS: &str = include_str!("snapshot.js");
 const ACTIONS_JS: &str = include_str!("actions.js");
 
@@ -943,7 +943,7 @@ mod tests {
     #[test]
     fn a_call_installs_the_api_and_returns_an_envelope() {
         let script = call_script("window.__argmax.snapshot({})");
-        assert!(script.contains("window.__argmax.v !== 2"));
+        assert!(script.contains(&format!("window.__argmax.v !== {AGENT_API_VERSION}")));
         assert!(script.contains("data-argmax-ref"), "snapshot.js is inlined");
         assert!(
             script.contains("api.click = click"),

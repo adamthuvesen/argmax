@@ -161,11 +161,33 @@
 }
 
 .workspace-card-branch-name {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
   overflow: hidden;
+  color: inherit;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
   font-family: var(--font-code);
+  font-size: inherit;
   font-weight: 500;
+  line-height: inherit;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+
+.workspace-card-branch-name:hover {
+  color: var(--accent);
+}
+
+.workspace-card-branch-name:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
 }
 
 /* The dismiss control keeps its slot at rest so revealing it never reflows the

@@ -29,36 +29,41 @@
 /* The card lives in the gutter beside the transcript, never on top of it, so
    it only appears once that gutter can hold it. The transcript is centered, so
    both gutters grow together: the pane has to be the measure plus a card
-   column on each side (224px card + 20px inset + 14px clearance ≈ 260px). One
+   column on each side (224px card + 20px inset + 14px clearance = 258px). One
    threshold per chat width, because the measure is what moves. The container
    is `.session-main-column` / `.conversation-surface`. Docking a right-hand panel
    (review or log) narrows the available space, and the card remains visible
-   whenever that remaining space can hold it beside the transcript. */
-@container (min-width: 1000px) {
+   whenever that remaining space can hold it beside the transcript.
+
+   Every rule names its chat width outright. A bare `.app-shell` here would
+   read as "the default width", but it matches every shell, so widths 4 and 5
+   would also take width 3's lower threshold and the card would land on the
+   transcript. */
+@container (min-width: 1036px) {
   .app-shell[data-chat-width="1"] .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1120px) {
+@container (min-width: 1156px) {
   .app-shell[data-chat-width="2"] .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1260px) {
-  :is(.app-shell, .app-shell[data-chat-width="3"]) .workspace-card {
+@container (min-width: 1296px) {
+  .app-shell[data-chat-width="3"] .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1420px) {
+@container (min-width: 1456px) {
   .app-shell[data-chat-width="4"] .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1580px) {
+@container (min-width: 1616px) {
   .app-shell[data-chat-width="5"] .workspace-card {
     display: flex;
   }
@@ -66,31 +71,31 @@
 
 /* Docked: one side panel open (review or log). The transcript measure is 40px narrower
    (--chat-content-width-docked), so the gutter can hold the card 40px earlier. */
-@container (min-width: 960px) {
+@container (min-width: 996px) {
   .app-shell[data-chat-width="1"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1080px) {
+@container (min-width: 1116px) {
   .app-shell[data-chat-width="2"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1220px) {
-  :is(.app-shell, .app-shell[data-chat-width="3"]) :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
+@container (min-width: 1256px) {
+  .app-shell[data-chat-width="3"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1380px) {
+@container (min-width: 1416px) {
   .app-shell[data-chat-width="4"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1540px) {
+@container (min-width: 1576px) {
   .app-shell[data-chat-width="5"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
@@ -98,31 +103,31 @@
 
 /* Tight: both review and log panels open. The transcript measure is 80px narrower
    (--chat-content-width-tight), so the gutter can hold the card 80px earlier. */
-@container (min-width: 920px) {
+@container (min-width: 956px) {
   .app-shell[data-chat-width="1"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1040px) {
+@container (min-width: 1076px) {
   .app-shell[data-chat-width="2"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1180px) {
-  :is(.app-shell, .app-shell[data-chat-width="3"]) .session-grid.review-open.log-open .workspace-card {
+@container (min-width: 1196px) {
+  .app-shell[data-chat-width="3"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1340px) {
+@container (min-width: 1356px) {
   .app-shell[data-chat-width="4"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }
 }
 
-@container (min-width: 1500px) {
+@container (min-width: 1516px) {
   .app-shell[data-chat-width="5"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }

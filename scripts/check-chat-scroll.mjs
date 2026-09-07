@@ -70,6 +70,11 @@ const h = React.createElement;
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 let mountedRoot = null;
 let active = null;
+const browserErrors = [];
+
+window.addEventListener("error", (event) => {
+  browserErrors.push(event.message || String(event.error || "unknown window error"));
+});
 
 function block(id, height, extra = {}) {
   return h("section", {
@@ -229,6 +234,41 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
         target.style.height = Math.max(20, target.getBoundingClientRect().height + pixels) + "px";
         await nextFrame();
         return measure();
+      },
+      resizeBelowWithoutRenderAndSettle: async (pixels) => {
+        const target = api.contentRef.current.querySelector('[data-block="live-output"]');
+        const before = measure();
+        const errorStart = browserErrors.length;
+        target.style.height = Math.max(20, target.getBoundingClientRect().height + pixels) + "px";
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const firstSettled = measure();
+        await nextFrame();
+        const after = measure();
+        return {
+          before,
+          after,
+          errors: browserErrors.slice(errorStart),
+          settled:
+            Math.abs(after.scrollTop - firstSettled.scrollTop) <= 1 &&
+            Math.abs(after.scrollHeight - firstSettled.scrollHeight) <= 1 &&
+            Math.abs(after.contentHeight - firstSettled.contentHeight) <= 1
+        };
+      },
+      collapseThenRegrowBeforeReconcile: async (collapsePixels, regrowthPixels) => {
+        const scroller = api.scrollRef.current;
+        const target = api.contentRef.current.querySelector('[data-block="live-output"]');
+        const before = measure();
+        target.style.height = Math.max(20, target.getBoundingClientRect().height - collapsePixels) + "px";
+        // Reading scrollTop forces Chromium to apply the transient range clamp
+        // before React replaces the collapsed child in the same task.
+        const forcedScrollTop = scroller.scrollTop;
+        const collapsed = { ...measure(), forcedScrollTop };
+        flushSync(() => {
+          setLiveHeight((height) => height + regrowthPixels);
+          setItemVersion((version) => version + 1);
+        });
+        await nextFrame();
+        return { before, collapsed, regrown: measure() };
       },
       nestedScrollThenGrow: async (nestedPixels, growth) => {
         const nested = api.contentRef.current.querySelector(".nested-scroll");
@@ -397,6 +437,67 @@ async function runChecks() {
       tolerance: 1
     });
 
+    await mount(surface, { initialLiveHeight: 720 });
+    const followingCollapseBefore = active.measure();
+    await active.collapseBelow(400);
+    const followingCollapseAfter = active.measure();
+    results.push({
+      name: surface + ": permanent child collapse keeps following without a stale floor",
+      surface,
+      before: followingCollapseBefore,
+      after: followingCollapseAfter,
+      movement: Math.round(followingCollapseAfter.distanceFromBottom * 100) / 100,
+      extraOk:
+        followingCollapseAfter.distanceFromBottom <= 1 &&
+        !followingCollapseAfter.showFab &&
+        followingCollapseAfter.contentHeight <= followingCollapseBefore.contentHeight - 399 &&
+        followingCollapseAfter.contentMinHeight !== followingCollapseBefore.contentHeight + "px",
+      tolerance: 1
+    });
+
+    await mount(surface, { initialLiveHeight: 720 });
+    const observerCollapse = await active.resizeBelowWithoutRenderAndSettle(-400);
+    results.push({
+      name: surface + ": observed child collapse keeps following and settles cleanly",
+      surface,
+      before: observerCollapse.before,
+      after: observerCollapse.after,
+      errors: observerCollapse.errors,
+      settled: observerCollapse.settled,
+      movement: Math.round(observerCollapse.after.distanceFromBottom * 100) / 100,
+      extraOk:
+        observerCollapse.after.distanceFromBottom <= 1 &&
+        !observerCollapse.after.showFab &&
+        observerCollapse.after.contentHeight <= observerCollapse.before.contentHeight - 399 &&
+        observerCollapse.after.contentMinHeight !== observerCollapse.before.contentHeight + "px" &&
+        observerCollapse.settled &&
+        observerCollapse.errors.length === 0,
+      tolerance: 1
+    });
+
+    await mount(surface, { initialLiveHeight: 720 });
+    const transientClamp = await active.collapseThenRegrowBeforeReconcile(400, 40);
+    await active.growBelow(240);
+    const transientClampFollow = active.measure();
+    results.push({
+      name: surface + ": transient child collapse and same-commit regrowth keeps following",
+      surface,
+      before: transientClamp.before,
+      collapsed: transientClamp.collapsed,
+      regrown: transientClamp.regrown,
+      after: transientClampFollow,
+      movement: Math.round(Math.max(
+        transientClamp.regrown.distanceFromBottom,
+        transientClampFollow.distanceFromBottom
+      ) * 100) / 100,
+      extraOk:
+        transientClamp.regrown.distanceFromBottom <= 1 &&
+        transientClampFollow.distanceFromBottom <= 1 &&
+        !transientClamp.regrown.showFab &&
+        !transientClampFollow.showFab,
+      tolerance: 1
+    });
+
     await mount(surface);
     await active.scrollUp(160);
     const detachedResizeProbe = active.measure();
@@ -531,6 +632,16 @@ async function runChecks() {
     after: longTurnAfter,
     movement: movement(longTurnBefore, longTurnAfter),
     tolerance: 2
+  });
+  results.push({
+    name: "browser: no window error events",
+    surface: "browser",
+    before: null,
+    after: null,
+    errors: [...browserErrors],
+    movement: 0,
+    extraOk: browserErrors.length === 0,
+    tolerance: 0
   });
   return results.map((result) => ({
     ...result,

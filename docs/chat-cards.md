@@ -30,6 +30,15 @@ the position, even if the native scroll event is still queued. If output
 grows in that interval, the controller uses the bottom the reader reached
 before growth. This keeps a render from swallowing the return to live output.
 
+While following, the controller retains the measured content height between
+reconciliations. Replacing streamed rows can briefly shrink the scroll range
+and then grow it again before a callback runs. Reserving the height prevents
+that temporary clamp from looking like an upward reader scroll. Each
+reconciliation releases the reservation before measuring, so a permanent
+collapse still removes excess space.
+ResizeObserver schedules that work for the next animation frame, keeping
+wrapper height changes outside the observer's delivery cycle.
+
 The chat content has a minimum height that lets the latest user message sit
 at the top of the viewport. Output fills that space naturally as the turn
 grows. While detached, the content also retains a minimum height from before

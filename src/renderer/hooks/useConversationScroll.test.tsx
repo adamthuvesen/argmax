@@ -48,6 +48,11 @@ class ResizeObserverMock {
   }
 }
 
+function flushResize(): void {
+  ResizeObserverMock.instances[0]?.fire();
+  vi.advanceTimersToNextFrame();
+}
+
 function Harness({
   sessionId = "session-a",
   resetKey = "prompt-a",
@@ -173,11 +178,13 @@ function touch(target: Element, type: string, clientY: number): void {
 
 describe("useConversationScroll", () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
     ResizeObserverMock.instances = [];
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -251,14 +258,48 @@ describe("useConversationScroll", () => {
       geometry.naturalHeight = 1600;
       act(() => {
         if (firstCallback === "commit") view.rerender(<Harness {...props} />);
-        else if (firstCallback === "observer") ResizeObserverMock.instances[0]?.fire();
+        else if (firstCallback === "observer") flushResize();
         else scroll.dispatchEvent(new Event("scroll"));
       });
       act(() => { scroll.dispatchEvent(new Event("scroll")); });
       geometry.naturalHeight = 1800;
-      act(() => ResizeObserverMock.instances[0]?.fire());
+      act(() => flushResize());
 
       expect(geometry.top).toBe(1300);
+      expect(controller.showScrollToBottom).toBe(false);
+    }
+  );
+
+  it.each(["commit", "observer", "scroll"])(
+    "keeps following when content shrinks and regrows before the %s callback",
+    (firstCallback) => {
+      const props: HarnessProps = { items: ["one"] };
+      const view = render(<Harness {...props} />);
+      const geometry: Geometry = {
+        viewportHeight: 500,
+        naturalHeight: 1500,
+        top: 0,
+        promptTop: 600,
+        blockTop: 650,
+        turnTop: 0
+      };
+      const { scroll } = installGeometry(geometry);
+      act(() => view.rerender(<Harness {...props} />));
+      expect(geometry.top).toBe(1000);
+
+      geometry.naturalHeight = 1100;
+      // Model the browser clamping to the intermediate layout's scroll range.
+      scroll.scrollTop = 1000;
+      geometry.naturalHeight = 1700;
+      act(() => {
+        if (firstCallback === "commit") view.rerender(<Harness {...props} />);
+        else if (firstCallback === "observer") flushResize();
+        else scroll.dispatchEvent(new Event("scroll"));
+      });
+      geometry.naturalHeight = 1900;
+      act(() => flushResize());
+
+      expect(geometry.top).toBe(1400);
       expect(controller.showScrollToBottom).toBe(false);
     }
   );
@@ -280,7 +321,7 @@ describe("useConversationScroll", () => {
 
     geometry.viewportHeight = 340;
     geometry.top = 851;
-    act(() => ResizeObserverMock.instances[0]?.fire());
+    act(() => flushResize());
 
     expect(geometry.top).toBe(851);
     expect(controller.showScrollToBottom).toBe(false);
@@ -309,7 +350,7 @@ describe("useConversationScroll", () => {
       geometry.viewportHeight = 340;
       geometry.top = 851;
       if (order === "scroll first") scroll.dispatchEvent(new Event("scroll"));
-      act(() => ResizeObserverMock.instances[0]?.fire());
+      act(() => flushResize());
 
       expect(content.style.minHeight).toBe("1291px");
       expect(geometry.top).toBe(939);
@@ -338,7 +379,7 @@ describe("useConversationScroll", () => {
     geometry.top = 788;
     scroll.dispatchEvent(new Event("scroll"));
     geometry.naturalHeight = 950;
-    act(() => ResizeObserverMock.instances[0]?.fire());
+    act(() => flushResize());
 
     expect(scroll.scrollHeight).toBe(1300);
     expect(geometry.top).toBe(788);
@@ -365,7 +406,7 @@ describe("useConversationScroll", () => {
 
     geometry.blockTop += 240;
     geometry.naturalHeight += 240;
-    act(() => ResizeObserverMock.instances[0]?.fire());
+    act(() => flushResize());
 
     expect(geometry.blockTop - geometry.top).toBe(blockViewportTop);
     expect(geometry.top).toBe(1028);
@@ -494,7 +535,12 @@ describe("useConversationScroll", () => {
     expect(ResizeObserverMock.instances).toHaveLength(1);
     expect(ResizeObserverMock.instances[0]?.targets).toEqual(new Set([scroll, content, turn]));
 
+    ResizeObserverMock.instances[0]?.fire();
+    ResizeObserverMock.instances[0]?.fire();
+    expect(vi.getTimerCount()).toBe(1);
+
     view.unmount();
     expect(ResizeObserverMock.instances[0]?.disconnected).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

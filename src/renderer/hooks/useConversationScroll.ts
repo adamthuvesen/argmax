@@ -258,6 +258,14 @@ export function useConversationScroll({
     }
 
     if (modeRef.current === "following") {
+      if (content) {
+        // Retain the settled height until the next reconciliation. Replacing
+        // streamed rows can briefly shrink and then regrow the content before
+        // any callback runs. Prevent that intermediate layout from clamping
+        // scrollTop upward and looking like reader input. The min-height write
+        // above releases this floor first so permanent folds still shrink.
+        content.style.minHeight = `${content.getBoundingClientRect().height}px`;
+      }
       const bottom = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
       if (Math.abs(scroll.scrollTop - bottom) > BOTTOM_EPSILON_PX) scroll.scrollTop = bottom;
       viewportAnchorRef.current = null;
@@ -422,7 +430,16 @@ export function useConversationScroll({
     scroll.addEventListener("touchcancel", clearTouch, { passive: true });
     scroll.addEventListener("scroll", onScroll, { passive: true });
 
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reconcile);
+    let resizeFrame: number | null = null;
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
+      // Releasing the height floor can resize an observed ancestor. Write in
+      // the next frame, outside ResizeObserver's current delivery cycle.
+      if (resizeFrame !== null) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = null;
+        reconcile();
+      });
+    });
     resizeObserverRef.current = observer;
     const observed = new Set<Element>([scroll]);
     if (content) {
@@ -441,6 +458,7 @@ export function useConversationScroll({
       scroll.removeEventListener("touchcancel", clearTouch);
       scroll.removeEventListener("scroll", onScroll);
       observer?.disconnect();
+      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
       resizeObserverRef.current = null;
       observedElementsRef.current = new Set();
       clearTouch();

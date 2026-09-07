@@ -4,6 +4,7 @@ import {
   applyFontSizeToDocument,
   applyFontToDocument,
   CHAT_FONT_SIZE_STORAGE_KEY,
+  DEFAULT_CHAT_FONT_SIZE,
   DEFAULT_FONT_ID,
   DEFAULT_FONT_SIZE,
   FONT_SIZE_STORAGE_KEY,
@@ -102,8 +103,10 @@ describe("fonts", () => {
     expect(readStoredFontSize()).toBe(DEFAULT_FONT_SIZE);
   });
 
-  it("starts the agent-window size equal to the app size", () => {
-    expect(readStoredChatFontSize()).toBe(DEFAULT_FONT_SIZE);
+  it("defaults the app to 15px and the agent window to 17px on first run", () => {
+    expect(fontSizeBasePx(DEFAULT_FONT_SIZE)).toBe(15);
+    expect(readStoredChatFontSize()).toBe(DEFAULT_CHAT_FONT_SIZE);
+    expect(fontSizeBasePx(DEFAULT_CHAT_FONT_SIZE)).toBe(17);
 
     window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "8");
     expect(readStoredChatFontSize()).toBe(8);

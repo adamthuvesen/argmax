@@ -170,6 +170,12 @@ function SessionConversationTurnInner({
       : false;
   const [toolsExpandOverride, setToolsExpandOverride] = useState<boolean | null>(null);
   const toolsExpanded = toolsExpandOverride ?? toolsExpandedDefault;
+  // Individual rows open one level above the groups: Detailed and up. An agent
+  // launch row follows that rather than the group level, because what its
+  // chevron reveals is the raw launch receipt — at Balanced the row names the
+  // delegated work and the subagent's pane holds the rest.
+  const toolRowsExpanded =
+    !minimalActivity && (toolsExpandOverride ?? (isLatestTurn && defaultToolCallsDisplay === "expanded"));
   const reportSendError = (message: string): void => setStatus({ kind: "error", message });
   const handlePlanAccept = (): Promise<boolean> => {
     if (!session) return Promise.resolve(false);
@@ -430,7 +436,7 @@ function SessionConversationTurnInner({
       group={buildToolCallGroup(tools)}
       compact={compactActivity}
       defaultExpanded={!minimalActivity && toolsExpanded}
-      defaultToolsExpanded={!minimalActivity && (toolsExpandOverride ?? (isLatestTurn && defaultToolCallsDisplay === "expanded"))}
+      defaultToolsExpanded={toolRowsExpanded}
       workspaceCwd={workspace?.path ?? null}
       agentCodenames={agentCodenames}
       onOpenFile={onOpenFile}
@@ -449,7 +455,7 @@ function SessionConversationTurnInner({
           <AgentLaunchList
             key={id}
             tools={child.agentTools}
-            defaultExpanded={!minimalActivity && toolsExpanded}
+            defaultExpanded={toolRowsExpanded}
             workspaceCwd={workspace?.path ?? null}
             agentCodenames={agentCodenames}
             onOpenFile={onOpenFile}

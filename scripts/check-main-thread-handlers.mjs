@@ -52,6 +52,7 @@ const MAIN_THREAD_ALLOWLIST = new Map([
   ["routines:list", "small table, bounded by the number of scheduled tasks"],
   ["routines:delete", "single-row write"],
   ["routines:set-enabled", "single-row write"],
+  ["routines:reset-session", "single-row write on last_session_id"],
   ["workspaces:create-current", "single-row write plus a delta publish"],
   ["workspaces:keep", "single-row write"],
   ["workspaces:set-pinned", "single-row write"],

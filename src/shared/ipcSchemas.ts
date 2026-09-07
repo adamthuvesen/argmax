@@ -105,6 +105,7 @@ export const IPC_CHANNELS = [
   "routines:delete",
   "routines:set-enabled",
   "routines:run-now",
+  "routines:reset-session",
   "usage:summary",
   "usage:remaining",
 ] as const;

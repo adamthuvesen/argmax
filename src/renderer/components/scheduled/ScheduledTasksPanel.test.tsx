@@ -13,6 +13,8 @@ function routine(overrides: Partial<Routine> = {}): Routine {
     modelLabel: "Opus 5",
     modelId: "claude-opus-5",
     worktree: true,
+    runTarget: "worktree",
+    lastSessionId: null,
     cronExpr: "0 0 9 * * *",
     runOnceAt: null,
     enabled: true,
@@ -48,7 +50,8 @@ const routinesStub = {
   upsert: vi.fn<ArgmaxApi["routines"]["upsert"]>(),
   delete: vi.fn<ArgmaxApi["routines"]["delete"]>(),
   setEnabled: vi.fn<ArgmaxApi["routines"]["setEnabled"]>(),
-  runNow: vi.fn<ArgmaxApi["routines"]["runNow"]>()
+  runNow: vi.fn<ArgmaxApi["routines"]["runNow"]>(),
+  resetSession: vi.fn<ArgmaxApi["routines"]["resetSession"]>()
 };
 
 beforeEach(() => {
@@ -58,13 +61,23 @@ beforeEach(() => {
   routinesStub.delete.mockReset();
   routinesStub.setEnabled.mockReset();
   routinesStub.runNow.mockReset();
+  routinesStub.resetSession.mockReset();
   routinesStub.list.mockResolvedValue([routine()]);
   routinesStub.delete.mockResolvedValue(null);
   routinesStub.upsert.mockImplementation((input) =>
-    Promise.resolve(routine({ ...input, enabled: input.enabled ?? true }))
+    Promise.resolve(
+      routine({
+        ...input,
+        enabled: input.enabled ?? true,
+        runTarget: input.runTarget ?? (input.worktree ? "worktree" : "new_session")
+      })
+    )
   );
   routinesStub.setEnabled.mockImplementation((id, enabled) => Promise.resolve(routine({ id, enabled })));
   routinesStub.runNow.mockImplementation((id) => Promise.resolve(routine({ id, enabled: false })));
+  routinesStub.resetSession.mockImplementation((id) =>
+    Promise.resolve(routine({ id, runTarget: "same_session", lastSessionId: null }))
+  );
   window.argmax = { routines: routinesStub } as unknown as ArgmaxApi;
 });
 
@@ -138,10 +151,25 @@ describe("ScheduledTasksPanel", () => {
           provider: "claude",
           cronExpr: "0 0 9 * * *",
           runOnceAt: null,
-          worktree: true
+          worktree: true,
+          runTarget: "worktree"
         })
       )
     );
+  });
+
+  it("offers open chat and reset for same-session tasks", async () => {
+    const onOpenSession = vi.fn();
+    routinesStub.list.mockResolvedValue([
+      routine({ runTarget: "same_session", lastSessionId: "s-shared", worktree: false })
+    ]);
+    render(<ScheduledTasksPanel projects={[project()]} onOpenSession={onOpenSession} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open chat" }));
+    expect(onOpenSession).toHaveBeenCalledWith("s-shared");
+
+    fireEvent.click(screen.getByRole("button", { name: "Fresh chat next run" }));
+    await waitFor(() => expect(routinesStub.resetSession).toHaveBeenCalledWith("r1"));
   });
 
   it("reports a failed action as an alert, not as a success status", async () => {

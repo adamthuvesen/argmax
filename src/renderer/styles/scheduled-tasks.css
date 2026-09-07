@@ -239,6 +239,26 @@
   transition: opacity var(--motion-fast) var(--ease-out);
 }
 
+.sched-text-button {
+  border: none;
+  background: none;
+  padding: 0 var(--space-1);
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sched-text-button:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.sched-text-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .sched-row:hover .sched-row-actions,
 .sched-row:focus-within .sched-row-actions {
   opacity: 1;

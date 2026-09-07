@@ -239,6 +239,20 @@ pub static ROUTINES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = p
     ] as &'static [&'static str],
 };
 
+// Post-v36 `routines` shape: each task names where a run lands — a fresh
+// chat in the shared checkout (`new_session`), a follow-up in the same
+// chat every time (`same_session`, tracked by `last_session_id`), or a
+// fresh isolated worktree (`worktree`). `worktree` stays as a derived copy of
+// the target so older readers keep working.
+pub static ROUTINE_RUN_TARGET_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "routines" => &[
+        "cron_expr", "created_at", "enabled", "id", "last_error",
+        "last_run_at", "last_session_id", "model_id", "model_label", "name",
+        "next_run_at", "project_id", "prompt", "provider", "run_once_at",
+        "run_target", "updated_at", "worktree",
+    ] as &'static [&'static str],
+};
+
 // Post-v9 `approvals` shape: provider-native requests retain the opaque
 // correlation id required to make replay idempotent across terminal states.
 pub static APPROVAL_PROVIDER_REQUEST_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -660,6 +674,14 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SESSION_WAIT_REPORTED_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 36,
+        name: "routine_run_target",
+        up: ROUTINE_RUN_TARGET,
+        affected_tables: &["routines"],
+        expected_columns: &ROUTINE_RUN_TARGET_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 static SESSION_AFTER_TURN_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -687,6 +709,18 @@ static SESSION_WAIT_REPORTED_COLUMNS: phf::Map<&'static str, &'static [&'static 
 // moment it asked about the second, forever.
 const SESSION_WAIT_REPORTED: &str = r#"
 ALTER TABLE sessions ADD COLUMN wait_reported_at TEXT;
+"#;
+
+// Scheduled runs choose where each firing lands: a fresh chat in the shared
+// checkout (`new_session`), a follow-up in the same chat every time
+// (`same_session`, tracked by `last_session_id`), or a fresh isolated
+// worktree (`worktree`). Existing rows backfill from the old `worktree`
+// boolean; `worktree` stays as a derived copy so older readers keep working.
+const ROUTINE_RUN_TARGET: &str = r#"
+ALTER TABLE routines ADD COLUMN run_target TEXT NOT NULL DEFAULT 'worktree'
+  CHECK (run_target IN ('new_session', 'same_session', 'worktree'));
+ALTER TABLE routines ADD COLUMN last_session_id TEXT;
+UPDATE routines SET run_target = CASE WHEN worktree = 0 THEN 'new_session' ELSE 'worktree' END;
 "#;
 
 // The disposal an agent asked for while its own turn was still running.
@@ -1827,6 +1861,7 @@ mod tests {
                 (33, compute_migration_checksum(REMOTE_OPERATION_OUTCOMES)),
                 (34, compute_migration_checksum(SESSION_AFTER_TURN)),
                 (35, compute_migration_checksum(SESSION_WAIT_REPORTED)),
+                (36, compute_migration_checksum(ROUTINE_RUN_TARGET)),
             ]
         );
 
@@ -2021,7 +2056,8 @@ mod tests {
                    created_at TEXT NOT NULL,
                    updated_at TEXT NOT NULL
                  );
-                 DELETE FROM schema_migrations WHERE version = 20;",
+                 DELETE FROM schema_migrations WHERE version = 20;
+                 DELETE FROM schema_migrations WHERE version = 36;",
             )
             .expect("install draft routines table");
         connection
@@ -2041,7 +2077,7 @@ mod tests {
             .collect::<Result<_, _>>()
             .expect("rows");
         columns.sort();
-        let mut expected = ROUTINES_COLUMNS["routines"].to_vec();
+        let mut expected = ROUTINE_RUN_TARGET_COLUMNS["routines"].to_vec();
         expected.sort_unstable();
         assert_eq!(columns, expected);
     }

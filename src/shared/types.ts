@@ -552,6 +552,7 @@ export interface ArgmaxApi {
     delete: (id: string) => Promise<null>;
     setEnabled: (id: string, enabled: boolean) => Promise<Routine>;
     runNow: (id: string) => Promise<Routine>;
+    resetSession: (id: string) => Promise<Routine>;
   };
   usage: {
     summary: (input: UsageSummaryInput) => Promise<UsageSummary>;

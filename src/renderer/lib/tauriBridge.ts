@@ -410,7 +410,8 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       delete: (id: string) => invokeCommand<null>("routines:delete", { id }),
       setEnabled: (id: string, enabled: boolean) =>
         invokeCommand<Routine>("routines:set-enabled", { id, enabled }),
-      runNow: (id: string) => invokeCommand<Routine>("routines:run-now", { id })
+      runNow: (id: string) => invokeCommand<Routine>("routines:run-now", { id }),
+      resetSession: (id: string) => invokeCommand<Routine>("routines:reset-session", { id })
     },
     usage: {
       summary: (input: UsageSummaryInput) => invokeCommand<UsageSummary>("usage:summary", input),

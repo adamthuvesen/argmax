@@ -136,6 +136,7 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "routines:delete",
     "routines:set-enabled",
     "routines:run-now",
+    "routines:reset-session",
     "usage:summary",
     "usage:remaining",
 ];
@@ -299,6 +300,7 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         routines::routines_delete,
         routines::routines_set_enabled,
         routines::routines_run_now,
+        routines::routines_reset_session,
         usage::usage_summary,
         usage::usage_remaining
     ])

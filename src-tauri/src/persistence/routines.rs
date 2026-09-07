@@ -1,10 +1,42 @@
 use rusqlite::{Connection, Row};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use super::time::now_iso;
 use super::{bool_to_i64, sqlite_error};
 use crate::error::{ArgmaxError, ArgmaxResult};
+
+/// Where one firing of a scheduled task lands. `NewSession` starts a fresh
+/// chat in the shared checkout, `SameSession` sends the prompt as a
+/// follow-up into the same chat every time (tracked by `last_session_id`),
+/// and `Worktree` starts a fresh chat in its own isolated worktree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RoutineRunTarget {
+    NewSession,
+    SameSession,
+    #[default]
+    Worktree,
+}
+
+impl RoutineRunTarget {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NewSession => "new_session",
+            Self::SameSession => "same_session",
+            Self::Worktree => "worktree",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "new_session" | "new_thread" => Some(Self::NewSession),
+            "same_session" | "existing_thread" => Some(Self::SameSession),
+            "worktree" => Some(Self::Worktree),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UpsertRoutineInput {
@@ -15,7 +47,7 @@ pub struct UpsertRoutineInput {
     pub provider: String,
     pub model_label: String,
     pub model_id: String,
-    pub worktree: bool,
+    pub run_target: RoutineRunTarget,
     pub cron_expr: Option<String>,
     pub run_once_at: Option<String>,
     pub enabled: bool,
@@ -33,7 +65,10 @@ pub struct RoutineLaunchFields {
     pub provider: String,
     pub model_label: String,
     pub model_id: String,
-    pub worktree: bool,
+    pub run_target: RoutineRunTarget,
+    /// The chat a `same_session` routine reuses. `None` until the first run
+    /// launches it; a missing session falls back to a fresh launch.
+    pub last_session_id: Option<String>,
     pub cron_expr: Option<String>,
     pub run_once_at: Option<String>,
     /// The row's enabled state before the attempt. `routines:run-now` fires
@@ -52,6 +87,8 @@ pub struct Routine {
     pub model_label: String,
     pub model_id: String,
     pub worktree: bool,
+    pub run_target: RoutineRunTarget,
+    pub last_session_id: Option<String>,
     pub cron_expr: Option<String>,
     pub run_once_at: Option<String>,
     pub enabled: bool,
@@ -85,15 +122,19 @@ pub fn upsert_routine(
     next_run_at: Option<String>,
 ) -> ArgmaxResult<Routine> {
     let now = now_iso();
+    // `worktree` is a derived copy of the target: only the isolated-worktree
+    // target runs outside the shared checkout. Readers still on the boolean
+    // keep working; `run_target` is the source of truth.
+    let worktree = matches!(input.run_target, RoutineRunTarget::Worktree);
     let mut statement = connection
         .prepare_cached(
             r#"
         INSERT INTO routines (
             id, name, project_id, prompt, provider, model_label, model_id,
-            worktree, cron_expr, run_once_at,
+            worktree, run_target, cron_expr, run_once_at,
             enabled, next_run_at, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             project_id = excluded.project_id,
@@ -102,6 +143,7 @@ pub fn upsert_routine(
             model_label = excluded.model_label,
             model_id = excluded.model_id,
             worktree = excluded.worktree,
+            run_target = excluded.run_target,
             cron_expr = excluded.cron_expr,
             run_once_at = excluded.run_once_at,
             enabled = excluded.enabled,
@@ -120,7 +162,8 @@ pub fn upsert_routine(
             input.provider.as_str(),
             input.model_label.as_str(),
             input.model_id.as_str(),
-            bool_to_i64(input.worktree),
+            bool_to_i64(worktree),
+            input.run_target.as_str(),
             input.cron_expr.as_deref(),
             input.run_once_at.as_deref(),
             bool_to_i64(input.enabled),
@@ -129,6 +172,11 @@ pub fn upsert_routine(
             now.as_str(),
         ))
         .map_err(sqlite_error)?;
+    // Leaving `same_session` for another target orphans the reused chat, so the
+    // switch drops the pointer and the next run starts fresh.
+    if !matches!(input.run_target, RoutineRunTarget::SameSession) {
+        set_routine_last_session(connection, &input.id, None)?;
+    }
     find_routine_by_id(connection, &input.id)
 }
 
@@ -234,6 +282,9 @@ pub fn mark_routine_run(
 }
 
 fn row_to_routine(row: &Row<'_>) -> rusqlite::Result<Routine> {
+    let run_target: String = row
+        .get("run_target")
+        .unwrap_or_else(|_| "worktree".to_string());
     Ok(Routine {
         id: row.get("id")?,
         name: row.get("name")?,
@@ -243,6 +294,8 @@ fn row_to_routine(row: &Row<'_>) -> rusqlite::Result<Routine> {
         model_label: row.get("model_label")?,
         model_id: row.get("model_id")?,
         worktree: row.get::<_, i64>("worktree")? == 1,
+        run_target: RoutineRunTarget::parse(&run_target).unwrap_or_default(),
+        last_session_id: row.get("last_session_id")?,
         cron_expr: row.get("cron_expr")?,
         run_once_at: row.get("run_once_at")?,
         enabled: row.get::<_, i64>("enabled")? == 1,
@@ -255,6 +308,9 @@ fn row_to_routine(row: &Row<'_>) -> rusqlite::Result<Routine> {
 }
 
 fn row_to_launch_fields(row: &Row<'_>) -> rusqlite::Result<RoutineLaunchFields> {
+    let run_target: String = row
+        .get("run_target")
+        .unwrap_or_else(|_| "worktree".to_string());
     Ok(RoutineLaunchFields {
         id: row.get("id")?,
         name: row.get("name")?,
@@ -263,11 +319,31 @@ fn row_to_launch_fields(row: &Row<'_>) -> rusqlite::Result<RoutineLaunchFields> 
         provider: row.get("provider")?,
         model_label: row.get("model_label")?,
         model_id: row.get("model_id")?,
-        worktree: row.get::<_, i64>("worktree")? == 1,
+        run_target: RoutineRunTarget::parse(&run_target).unwrap_or_default(),
+        last_session_id: row.get("last_session_id")?,
         cron_expr: row.get("cron_expr")?,
         run_once_at: row.get("run_once_at")?,
         enabled: row.get::<_, i64>("enabled")? == 1,
     })
+}
+
+/// Points a `same_session` routine at the chat its runs share. `None` drops
+/// the pointer so the next run starts a fresh chat.
+pub fn set_routine_last_session(
+    connection: &Connection,
+    id: &str,
+    session_id: Option<&str>,
+) -> ArgmaxResult<()> {
+    let mut statement = connection
+        .prepare_cached("UPDATE routines SET last_session_id = ?, updated_at = ? WHERE id = ?")
+        .map_err(sqlite_error)?;
+    let changes = statement
+        .execute((session_id, now_iso().as_str(), id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("routine", id));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -307,7 +383,7 @@ mod tests {
             provider: "claude".to_string(),
             model_label: "Opus 5".to_string(),
             model_id: "claude-opus-5".to_string(),
-            worktree: true,
+            run_target: RoutineRunTarget::Worktree,
             cron_expr: Some("0 0 9 * * *".to_string()),
             run_once_at: None,
             enabled: true,
@@ -328,6 +404,7 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id, "r1");
         assert!(rows[0].worktree);
+        assert_eq!(rows[0].run_target, RoutineRunTarget::Worktree);
         assert_eq!(rows[0].cron_expr.as_deref(), Some("0 0 9 * * *"));
     }
 
@@ -418,5 +495,54 @@ mod tests {
         let connection = database.connection();
         let error = delete_routine(&connection, "missing").unwrap_err();
         assert_eq!(error.to_string(), "routine not found: missing");
+    }
+
+    #[test]
+    fn run_target_round_trips_and_derives_the_worktree_copy() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let mut new_session = input("r1");
+        new_session.run_target = RoutineRunTarget::NewSession;
+        upsert_routine(&connection, &new_session, None).unwrap();
+        let routine = find_routine_by_id(&connection, "r1").unwrap();
+        assert_eq!(routine.run_target, RoutineRunTarget::NewSession);
+        assert!(!routine.worktree);
+        assert_eq!(routine.last_session_id, None);
+    }
+
+    /// Switching away from the shared chat drops the pointer, so the next run
+    /// starts fresh instead of following a chat the task no longer owns.
+    /// Re-saving the same target keeps it.
+    #[test]
+    fn leaving_same_session_clears_the_shared_session() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let mut shared = input("r1");
+        shared.run_target = RoutineRunTarget::SameSession;
+        upsert_routine(&connection, &shared, None).unwrap();
+        set_routine_last_session(&connection, "r1", Some("s1")).unwrap();
+        assert_eq!(
+            find_routine_by_id(&connection, "r1")
+                .unwrap()
+                .last_session_id
+                .as_deref(),
+            Some("s1")
+        );
+
+        upsert_routine(&connection, &shared, None).unwrap();
+        assert_eq!(
+            find_routine_by_id(&connection, "r1")
+                .unwrap()
+                .last_session_id
+                .as_deref(),
+            Some("s1")
+        );
+
+        let mut worktree = input("r1");
+        worktree.run_target = RoutineRunTarget::Worktree;
+        upsert_routine(&connection, &worktree, None).unwrap();
+        let routine = find_routine_by_id(&connection, "r1").unwrap();
+        assert_eq!(routine.last_session_id, None);
+        assert!(routine.worktree);
     }
 }

@@ -1377,6 +1377,38 @@ describe("lastAgentResponseEvent", () => {
 });
 
 describe("persistent native subagent runs", () => {
+  it("does not let historical agent lifecycle rows override a Bash failure", () => {
+    const events = [
+      event("bash-start", "command.started", "2026-05-12T15:00:01.000Z", "Bash", {
+        id: "toolu_bash",
+        name: "Bash",
+        providerInvocationId: "invocation-1",
+        input: { command: "cargo test" }
+      }),
+      event("bash-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+        tool_use_id: "toolu_bash",
+        providerInvocationId: "invocation-1",
+        is_error: true,
+        content: "test failed"
+      }),
+      event("bogus-agent-end", "agent.completed", "2026-05-12T15:00:03.000Z", "cargo test", {
+        agentRunId: "toolu_bash",
+        providerInvocationId: "invocation-1",
+        providerChildSessionId: "b8c01gzk0",
+        status: "completed"
+      })
+    ];
+
+    expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
+      name: "Bash",
+      status: "error",
+      completedAt: "2026-05-12T15:00:02.000Z",
+      error: "test failed",
+      agentRunId: null,
+      providerChildSessionId: null
+    });
+  });
+
   it.each(["SendMessage", "send_input"])("turns %s into an agent row linked to the original launch", (name) => {
     const events = [
       event("agent-start", "agent.started", "2026-05-12T15:00:02.100Z", "Agent started", {

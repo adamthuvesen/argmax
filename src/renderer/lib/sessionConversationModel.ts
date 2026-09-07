@@ -498,14 +498,21 @@ export function buildSessionToolCalls(
         throw new Error("correlated tool start decoded as a non-tool event");
       }
       const providerName = canonicalStart.providerName;
-      const nativeMetadata = nativeRunMetadata.get(
-        `${canonicalStart.invocationId ?? ""}\u0000${canonicalStart.toolUseId ?? toolUseId}`
-      );
-      const nativeLifecycle = nativeRunLifecycle.get(
-        `${canonicalStart.invocationId ?? ""}\u0000${canonicalStart.toolUseId ?? toolUseId}`
-      );
+      const lowerName = canonicalStart.name.toLowerCase();
+      const acceptsNativeAgentLifecycle =
+        getToolTypeBucket(canonicalStart.name) === "agent" ||
+        lowerName === "sendmessage" ||
+        lowerName === "send_input";
+      const nativeRunKey =
+        `${canonicalStart.invocationId ?? ""}\u0000${canonicalStart.toolUseId ?? toolUseId}`;
+      const nativeMetadata = acceptsNativeAgentLifecycle
+        ? nativeRunMetadata.get(nativeRunKey)
+        : undefined;
+      const nativeLifecycle = acceptsNativeAgentLifecycle
+        ? nativeRunLifecycle.get(nativeRunKey)
+        : undefined;
       const isNativeContinuation =
-        (canonicalStart.name.toLowerCase() === "sendmessage" || canonicalStart.name.toLowerCase() === "send_input") &&
+        (lowerName === "sendmessage" || lowerName === "send_input") &&
         nativeMetadata !== undefined;
       const name = isNativeContinuation ? "Agent" : canonicalStart.name;
       const startInput = extractToolInput(event.payload);

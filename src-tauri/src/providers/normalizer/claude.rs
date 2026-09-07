@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use phf::phf_map;
 use serde_json::{json, Map, Value};
 
@@ -70,17 +72,28 @@ pub fn detect_permission_gate(payload: &Map<String, Value>) -> Option<Permission
 pub fn native_agent_lifecycle_event(
     event: &ProviderOutputEvent,
     payload: &Map<String, Value>,
+    non_agent_task_ids: &mut HashSet<String>,
 ) -> Option<PersistTimelineEventInput> {
     if string_value(payload.get("type")) != Some("system") {
         return None;
     }
     let subtype = string_value(payload.get("subtype"))?;
+    let child_id = string_value(payload.get("task_id"))?;
     let (event_type, default_message) = match subtype {
-        "task_started" => ("agent.started", "Agent started"),
-        "task_notification" => ("agent.completed", "Agent completed"),
+        "task_started" => match string_value(payload.get("task_type")) {
+            Some("local_agent") | None => ("agent.started", "Agent started"),
+            Some(_) => {
+                non_agent_task_ids.insert(child_id.to_string());
+                return None;
+            }
+        },
+        // Claude omits `task_type` from notifications, so use the explicit
+        // start classification rather than guessing from its opaque task id.
+        "task_notification" if !non_agent_task_ids.contains(child_id) => {
+            ("agent.completed", "Agent completed")
+        }
         _ => return None,
     };
-    let child_id = string_value(payload.get("task_id"))?;
     let run_id = string_value(payload.get("tool_use_id"))?;
     let parent_conversation_id = string_value(payload.get("session_id"))?;
     let message = string_value(payload.get("summary"))
@@ -1061,7 +1074,7 @@ mod tests {
         let started = normalize_provider_event(
             ProviderId::Claude,
             &output_event(
-                r#"{"type":"system","subtype":"task_started","task_id":"agent-a7","tool_use_id":"toolu_task","session_id":"parent-6b","subagent_type":"general-purpose","description":"Inspect persistence"}"#,
+                r#"{"type":"system","subtype":"task_started","task_id":"agent-a7","tool_use_id":"toolu_task","task_type":"local_agent","session_id":"parent-6b","subagent_type":"general-purpose","description":"Inspect persistence"}"#,
             ),
             &mut context,
         );
@@ -1088,6 +1101,19 @@ mod tests {
         assert_eq!(completed.events[0].r#type, "agent.completed");
         assert_eq!(completed.events[0].payload["agentRunId"], "toolu_message");
         assert_eq!(completed.events[0].message, "Follow-up finished");
+    }
+
+    #[test]
+    fn claude_background_bash_lifecycle_is_not_an_agent() {
+        let mut context = NormalizerSessionContext::default();
+        for payload in [
+            r#"{"type":"system","subtype":"task_started","task_id":"b8c01gzk0","tool_use_id":"toolu_bash","task_type":"local_bash","session_id":"parent-6b","description":"cargo check lib"}"#,
+            r#"{"type":"system","subtype":"task_notification","task_id":"b8c01gzk0","tool_use_id":"toolu_bash","session_id":"parent-6b","status":"completed","summary":"cargo check lib"}"#,
+        ] {
+            let normalized =
+                normalize_provider_event(ProviderId::Claude, &output_event(payload), &mut context);
+            assert!(normalized.events.is_empty());
+        }
     }
 
     #[test]

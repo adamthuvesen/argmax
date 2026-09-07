@@ -5,7 +5,7 @@ mod opencode;
 
 pub use cursor::synthesize_message_completed_from_exit;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -193,6 +193,10 @@ pub struct NormalizerSessionContext {
     /// Set when Claude emits a `message.completed` for the current turn so a
     /// trailing `result` line does not synthesize a duplicate bubble.
     pub claude_turn_answer_emitted: bool,
+    /// Claude uses the same task lifecycle envelopes for background Bash jobs
+    /// and native agents. Notifications omit the start's `task_type`, so keep
+    /// the ids explicitly classified as non-agents for this invocation.
+    pub claude_non_agent_task_ids: HashSet<String>,
     /// Codex's running cumulative token usage across the thread as last seen on
     /// a `turn.completed`.
     pub codex_cumulative_usage: Option<CodexCumulativeUsage>,
@@ -740,7 +744,11 @@ fn normalize_json_payload(
             }
         }
         if provider == ProviderId::Claude {
-            if let Some(agent_event) = claude_native_agent_lifecycle_event(event, &payload) {
+            if let Some(agent_event) = claude_native_agent_lifecycle_event(
+                event,
+                &payload,
+                &mut context.claude_non_agent_task_ids,
+            ) {
                 return NormalizedProviderResult {
                     events: vec![agent_event],
                     usages,

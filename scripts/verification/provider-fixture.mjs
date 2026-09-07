@@ -160,7 +160,7 @@ async function recordInvocation(args) {
   if (!path) return;
   await appendFile(
     path,
-    `${JSON.stringify({ args, cwd: process.cwd(), home: process.env.HOME })}\n`,
+    `${JSON.stringify({ args, cwd: process.cwd(), home: process.env.HOME, backgroundWaitCeiling: process.env.CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS })}\n`,
     "utf8",
   );
 }

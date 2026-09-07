@@ -302,6 +302,14 @@ fn launch_structured_via_pty(
         ("NO_COLOR".to_string(), "1".to_string()),
         ("TERM".to_string(), "xterm-256color".to_string()),
     ];
+    if input.provider == ProviderId::Claude {
+        // Print mode otherwise kills active background agents after ten minutes,
+        // even while they are making progress. The user can still stop the turn.
+        environment_overrides.push((
+            "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS".to_string(),
+            "0".to_string(),
+        ));
+    }
     if let Some(config) = session_launch {
         environment_overrides.extend(config.env_pairs());
     }
@@ -772,6 +780,7 @@ mod verification_tests {
             .env(CHILD_ENV, "1")
             .env(super::super::verification::MODE_ENV, "1")
             .env(super::super::verification::HOME_ENV, &profile)
+            .env("ARGMAX_VERIFICATION_LOG", profile.join("invocations.jsonl"))
             .env("ARGMAX_VERIFICATION_CLAUDE_BINARY", fixture)
             .output()
             .expect("run isolated verification child");
@@ -803,6 +812,24 @@ mod verification_tests {
             )
             .await;
             assert!(resumed.contains("Verification resumed turn complete."));
+            let log = std::fs::read_to_string(
+                std::env::var("ARGMAX_VERIFICATION_LOG").expect("fixture invocation log"),
+            )
+            .expect("read fixture invocations");
+            let launches: Vec<serde_json::Value> = log
+                .lines()
+                .map(|line| serde_json::from_str(line).expect("fixture invocation JSON"))
+                .filter(|row: &serde_json::Value| {
+                    row["args"].as_array().is_some_and(|args| {
+                        args.iter()
+                            .any(|arg| arg.as_str() == Some("--output-format"))
+                    })
+                })
+                .collect();
+            assert_eq!(launches.len(), 2, "initial launch and resume reach the CLI");
+            for launch in launches {
+                assert_eq!(launch["backgroundWaitCeiling"], "0");
+            }
         });
     }
 

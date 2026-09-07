@@ -13,7 +13,7 @@ import {
 } from "react";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
-import type { ReviewCommentInput } from "../lib/composerAnnotations.js";
+import type { DiffNoteInput } from "../lib/composerAnnotations.js";
 import type { MultitaskChild } from "../lib/multitask.js";
 import type {
   AgentMode,
@@ -296,17 +296,17 @@ export function SessionPane({
 
   const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
   const handleCloseCommitDialog = useCallback(() => setIsCommitDialogOpen(false), []);
-  // Review-panel line comments land on the conversation's composer as
-  // annotations. The conversation owns that state; it registers a sink here
-  // so its sibling ReviewPanel can feed it without lifting the state up.
-  const annotationSinkRef = useRef<((input: ReviewCommentInput) => void) | null>(null);
+  // Review-panel line comments land on the conversation's composer as diff
+  // notes. The conversation owns that state; it registers a sink here so its
+  // sibling ReviewPanel can feed it without lifting the state up.
+  const annotationSinkRef = useRef<((input: DiffNoteInput) => void) | null>(null);
   const registerAnnotationSink = useCallback(
-    (sink: ((input: ReviewCommentInput) => void) | null): void => {
+    (sink: ((input: DiffNoteInput) => void) | null): void => {
       annotationSinkRef.current = sink;
     },
     []
   );
-  const handleAddReviewComment = useCallback((input: ReviewCommentInput): void => {
+  const handleAddDiffNote = useCallback((input: DiffNoteInput): void => {
     annotationSinkRef.current?.(input);
   }, []);
   const workspaceId = workspace?.id ?? null;
@@ -663,7 +663,7 @@ export function SessionPane({
             }}
             review={reviewState}
             isFocused={isFocused}
-            onAddReviewComment={session ? handleAddReviewComment : undefined}
+            onAddDiffNote={session ? handleAddDiffNote : undefined}
             onResizePanelMouseDown={onReviewPanelResizeMouseDown}
           />
         </Suspense>

@@ -133,6 +133,7 @@ describe("DiffBlocks", () => {
     expect(onAddComment).toHaveBeenCalledWith({
       filePath: "src/x.ts",
       line: 1,
+      side: "addition",
       lineText: "const x = 42;",
       comment: "use a named constant"
     });

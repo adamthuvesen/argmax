@@ -2,11 +2,21 @@ import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { baseSession, event, renderConversation } from "../../test/sessionConversationTestHarness.js";
 import type { ArgmaxApi } from "../../shared/types.js";
+import type { DiffNoteInput } from "../lib/composerAnnotations.js";
 
 const EVENTS = [
   event("u1", "user.message", "compare the score distributions", "2026-05-12T15:00:00.000Z"),
   event("m1", "message.completed", "Day two looks reassuringly boring.", "2026-05-12T15:00:01.000Z")
 ];
+
+const DIFF_NOTE: DiffNoteInput = {
+  filePath: "src/x.ts",
+  line: 9,
+  side: "addition",
+  lineText: "let y = 0;",
+  comment: "why mutable?",
+  base: "working tree vs HEAD"
+};
 
 function selectAssistantText(): void {
   const bubbleText = screen.getByText("Day two looks reassuringly boring.");
@@ -130,14 +140,9 @@ describe("SessionConversation selection annotations", () => {
     expect(screen.queryByRole("button", { name: "Explain selection in more detail" })).toBeNull();
   });
 
-  it("turns a registered review comment into a chip and serializes it on send", async () => {
+  it("turns a registered diff note into a chip and serializes it on send", async () => {
     const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
-    let sink: ((input: {
-      filePath: string;
-      line: number | null;
-      lineText: string;
-      comment: string;
-    }) => void) | null = null;
+    let sink: ((input: DiffNoteInput) => void) | null = null;
     renderConversation(baseSession(), EVENTS, {
       onSendSessionInput,
       registerAnnotationSink: (next) => {
@@ -147,31 +152,28 @@ describe("SessionConversation selection annotations", () => {
 
     expect(sink).not.toBeNull();
     act(() => {
-      sink?.({ filePath: "src/x.ts", line: 9, lineText: "let y = 0;", comment: "why mutable?" });
+      sink?.(DIFF_NOTE);
     });
 
-    expect(screen.getByLabelText("Annotation: src/x.ts:9 — why mutable?")).toBeTruthy();
+    expect(screen.getByLabelText("Annotation: Diff note · src/x.ts:9 — why mutable?")).toBeTruthy();
 
     const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "fix it" } });
     fireEvent.keyDown(prompt, { key: "Enter" });
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
-    expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(
-      "Please address this review comment on the changes:\n\n" +
-        "`src/x.ts:9`\n> let y = 0;\nwhy mutable?\n\n" +
-        "fix it"
+    const sent = onSendSessionInput.mock.calls[0]?.[1] as string;
+    expect(sent).toContain("not a comment on a GitHub pull request");
+    expect(sent).toContain(
+      '<argmax-diff-note file="src/x.ts" line="9" side="added" base="working tree vs HEAD">\n' +
+        "> let y = 0;\nwhy mutable?\n</argmax-diff-note>"
     );
+    expect(sent.endsWith("\n\nfix it")).toBe(true);
   });
 
-  it("sends a review comment with no typed message", async () => {
+  it("sends a diff note with no typed message", async () => {
     const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
-    let sink: ((input: {
-      filePath: string;
-      line: number | null;
-      lineText: string;
-      comment: string;
-    }) => void) | null = null;
+    let sink: ((input: DiffNoteInput) => void) | null = null;
     renderConversation(baseSession(), EVENTS, {
       onSendSessionInput,
       registerAnnotationSink: (next) => {
@@ -183,17 +185,16 @@ describe("SessionConversation selection annotations", () => {
     expect(send.hasAttribute("disabled")).toBe(true);
 
     act(() => {
-      sink?.({ filePath: "src/x.ts", line: 9, lineText: "let y = 0;", comment: "why mutable?" });
+      sink?.(DIFF_NOTE);
     });
 
     expect(send.hasAttribute("disabled")).toBe(false);
     fireEvent.click(send);
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
-    expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(
-      "Please address this review comment on the changes:\n\n" +
-        "`src/x.ts:9`\n> let y = 0;\nwhy mutable?"
-    );
+    const sent = onSendSessionInput.mock.calls[0]?.[1] as string;
+    expect(sent.startsWith("A note the user left on a diff line")).toBe(true);
+    expect(sent.endsWith("</argmax-diff-note>")).toBe(true);
   });
 
   it("ignores selections outside the transcript", () => {

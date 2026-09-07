@@ -77,9 +77,9 @@ import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import {
   createAnnotation,
-  createReviewCommentAnnotation,
+  createDiffNoteAnnotation,
   type ComposerAnnotation,
-  type ReviewCommentInput
+  type DiffNoteInput
 } from "../lib/composerAnnotations.js";
 import { buildDetailsSeed, buildSideChatSeed } from "../lib/sideChat.js";
 import { SelectionToolbar, type ChatSelection } from "./SelectionToolbar.js";
@@ -235,7 +235,7 @@ export function SessionConversation({
   floating?: boolean;
   /** Lets the parent pane feed review-panel line comments into this
       conversation's annotation lane. Registered on mount, cleared on unmount. */
-  registerAnnotationSink?: (sink: ((input: ReviewCommentInput) => void) | null) => void;
+  registerAnnotationSink?: (sink: ((input: DiffNoteInput) => void) | null) => void;
   defaultIde?: IdeId | null;
   detectedIdes?: DetectedIde[];
   /** Opens this pane's workspace in the given IDE (session actions menu). */
@@ -351,7 +351,7 @@ export function SessionConversation({
   useEffect(() => {
     if (!registerAnnotationSink) return undefined;
     registerAnnotationSink((input) => {
-      setPendingAnnotations((prev) => [...prev, createReviewCommentAnnotation(input)]);
+      setPendingAnnotations((prev) => [...prev, createDiffNoteAnnotation(input)]);
       inputRef.current?.focus();
     });
     return () => registerAnnotationSink(null);

@@ -99,6 +99,33 @@ describe("ReviewPanel changes layout", () => {
     expect(openFile).toHaveBeenCalledWith("src/deep/b.ts");
   });
 
+  it("stamps a diff note with the comparison its line number came from", () => {
+    const review = reviewStub();
+    const onAddDiffNote = vi.fn();
+
+    render(<ReviewPanel review={review} onAddDiffNote={onAddDiffNote} />);
+
+    // Both diff lines are numbered 1: the deletion carries the pre-change one.
+    fireEvent.click(screen.getAllByRole("button", { name: "Comment on line 1 of src/a.ts" })[0]);
+    fireEvent.change(screen.getByLabelText("Comment text"), { target: { value: "why drop this?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+
+    expect(onAddDiffNote).toHaveBeenCalledWith({
+      filePath: "src/a.ts",
+      line: 1,
+      side: "deletion",
+      lineText: "old",
+      comment: "why drop this?",
+      base: "the whole branch vs main"
+    });
+  });
+
+  it("offers no diff-note affordance on a panel with no session behind it", () => {
+    render(<ReviewPanel review={reviewStub()} />);
+
+    expect(screen.queryByRole("button", { name: /Comment on line/ })).toBeNull();
+  });
+
   it("picks the changes scope from a chip that defaults to the whole branch", () => {
     const review = reviewStub();
     const setChangesScope = vi.fn();

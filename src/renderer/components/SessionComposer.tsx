@@ -466,7 +466,7 @@ export function SessionComposer({
     }
   };
 
-  // An annotation is a message on its own: "Add to chat" and review comments
+  // An annotation is a message on its own: "Add to chat" and diff notes
   // already name what the agent should look at, so send stays available with
   // an empty draft once a chip is attached.
   const hasSendableContent = input.trim().length > 0 || pendingAnnotations.length > 0;

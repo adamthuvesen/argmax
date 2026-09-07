@@ -522,6 +522,8 @@ describe("AgentActivity", () => {
     const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
     const nestedAgent = within(pane).getByRole("button", { name: "Started agent Nested audit" });
     expect(nestedAgent.parentElement).toHaveAttribute("data-status", "error");
+    expect(within(pane).queryByText("The nested agent could not start.")).toBeNull();
+    fireEvent.click(nestedAgent);
     expect(within(pane).getByText("The nested agent could not start.")).toBeInTheDocument();
     expect(
       within(screen.getByRole("region", { name: "Agent result" })).getByText("The nested audit failed.")

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getBrowserRequest, openInBrowserPanel, resetBrowserSurfaceForTests, subscribeBrowserRequest } from "../lib/browserPanel.js";
+import { getBrowserRequest, openInBrowserPanel, resetBrowserSurfaceForTests } from "../lib/browserPanel.js";
 import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
 import { useStandaloneBrowserLinks } from "./useStandaloneBrowserLinks.js";
 

@@ -88,6 +88,19 @@ describe("MCP tool names", () => {
     expect(parseMcpToolName("WebFetch")).toBeNull();
   });
 
+  it("parses OpenCode's <server>_<tool> shape for known MCP servers", () => {
+    expect(parseMcpToolName("engram_memory_stats")).toEqual({ server: "engram", tool: "memory stats" });
+    expect(parseMcpToolName("engram_remember")).toEqual({ server: "engram", tool: "remember" });
+    expect(parseMcpToolName("trace_get_document")).toEqual({ server: "trace", tool: "get document" });
+    expect(parseMcpToolName("trace-hq_search")).toEqual({ server: "trace hq", tool: "search" });
+    expect(parseMcpToolName("linear_list_issues")).toEqual({ server: "linear", tool: "list issues" });
+    expect(parseMcpToolName("shunt_shunt_read")).toEqual({ server: "shunt", tool: "read" });
+    expect(mcpToolLabel("engram_memory_stats")).toBe("Engram memory stats");
+    // Unknown prefixes stay plain tools so ordinary snake_case never gains a server.
+    expect(parseMcpToolName("send_message_to_thread")).toBeNull();
+    expect(parseMcpToolName("custom_mcp_tool")).toBeNull();
+  });
+
   it("parses Codex app names and Cursor plugin identifiers", () => {
     expect(parseMcpToolName("linear.list_issues")).toEqual({
       server: "linear",
@@ -122,6 +135,7 @@ describe("MCP tool names", () => {
   it("keeps MCP tools out of the web and agent buckets", () => {
     expect(getToolTypeBucket("mcp__claude_ai_Notion__notion-fetch")).toBe("other");
     expect(getToolTypeBucket("mcp__linear__save_agent")).toBe("other");
+    expect(getToolTypeBucket("engram_memory_stats")).toBe("other");
     expect(getToolTypeBucket("WebFetch")).toBe("web");
   });
 
@@ -164,9 +178,13 @@ describe("MCP tool names", () => {
   });
 
   it("humanizes direct provider aliases instead of leaking raw identifiers", () => {
+    // OpenCode's <server>_<tool> shape now parses, so these label via the MCP
+    // path; the humanized wording is unchanged.
     expect(describeToolAction(tool({ name: "engram_remember" }))).toBe("Engram remember");
     expect(describeToolAction(tool({ name: "trace_get_document" }))).toBe("Trace get document");
     expect(describeToolAction(tool({ name: "linear.list_issues" }))).toBe("Linear list issues");
+    expect(mcpToolLabel("engram_remember")).toBe("Engram remember");
+    expect(mcpToolLabel("trace_get_document")).toBe("Trace get document");
   });
 
   it("marks discovery and task bookkeeping as hidden transport", () => {

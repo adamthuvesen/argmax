@@ -152,6 +152,18 @@ pub async fn launch_turn(
                             let task = requests.spawn(async move {
                                 let tool_input = message.pointer("/request/input").cloned().unwrap_or(json!({}));
                                 let command = tool_input.get("command").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| format!("{}\n{}", message.pointer("/request/tool_name").and_then(Value::as_str).unwrap_or("Tool request"), tool_input));
+                                // Full access answers itself, the way both ACP
+                                // providers do. Claude still prompts under
+                                // `--dangerously-skip-permissions` when a settings
+                                // `ask` rule forces it, and routing that to the
+                                // broker parks a session the user was told would
+                                // never stop. Plan mode keeps its gate.
+                                if request_input.permission_mode == PermissionMode::AutoApprove
+                                    && request_input.agent_mode == super::AgentMode::Auto
+                                {
+                                    let _ = writer.send(permission_response(&request_id, true, tool_input));
+                                    return;
+                                }
                                 let allowed = broker.request_native(&request_input.session_id,&invocation,&request_id,&command,&request_input.workspace_path.to_string_lossy(),"claude").await;
                                 let response = match allowed {
                                     Ok(allowed) => permission_response(&request_id, allowed, tool_input),

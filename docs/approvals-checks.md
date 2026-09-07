@@ -20,6 +20,8 @@ A native request is persisted with its live invocation and request identifiers b
 
 A tool call the chat draws as an **interactive card** is never gated. The card is already in front of the user with its own button, and pressing it terminates the turn and sends the answer as a new message, so the tool result is discarded either way — an Approve/Reject row beside it asks permission to show a question the user is looking at. `renders_as_interactive_card` in [providers/mod.rs](../src-tauri/src/providers/mod.rs) holds the names, in step with [turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts).
 
+Cursor's question tool arrives on the same channel as its permissions. When a client does not implement `cursor/ask_question` — this one does not — the CLI falls back to `session/request_permission` with every answer as an `allow_once` option and a `__ask_question_skip__` reject. Two buttons cannot carry a multiple-choice question, and "Approve" would pick the first answer and report it to the model as the user's, so a request carrying more than one `allow_once` is declined rather than shown ([acp.rs](../src-tauri/src/providers/acp.rs)). The model asks again in prose, which the composer answers. Codex and OpenCode need none of this: Codex's MCP tool calls arrive as notifications and structurally cannot reach the approval broker, and OpenCode's ask tool is named `question`, which draws no card.
+
 A response failure stays visible in the card. Approval is never implemented by replaying a command or silently changing the chat to Full access. A CLI that cannot complete the required protocol handshake fails its launch instead of falling back to an output-only approval flow.
 
 IPC channels:

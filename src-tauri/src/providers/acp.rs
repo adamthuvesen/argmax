@@ -247,7 +247,20 @@ impl AcpClient {
         let structurally_valid = params.get("sessionId").and_then(Value::as_str).is_some()
             && params.get("toolCall").is_some_and(Value::is_object)
             && !options.is_empty();
-        let decision = if structurally_valid {
+        // Cursor delivers its question tool down this method when the client
+        // does not implement `cursor/ask_question`, which this one does not:
+        // every answer arrives as an `allow_once` option beside a
+        // `__ask_question_skip__` reject. Two buttons cannot carry a
+        // multiple-choice question — "Approve" would select the first answer
+        // and report it to the model as the user's, which is the one thing an
+        // approval must never do. Decline it instead; the model asks again in
+        // prose, which the composer can answer.
+        let answers_a_question = options
+            .iter()
+            .filter(|option| option.get("kind").and_then(Value::as_str) == Some("allow_once"))
+            .count()
+            > 1;
+        let decision = if structurally_valid && !answers_a_question {
             match self.permission_handler.as_ref() {
                 Some(handler) => {
                     handler(AcpPermissionRequest {
@@ -535,6 +548,29 @@ mod tests {
         );
         let malformed: Value = serde_json::from_str(&writer_rx.recv().await.unwrap()).unwrap();
         assert_eq!(malformed["result"]["outcome"]["outcome"], "cancelled");
+    }
+
+    /// Cursor's ACP fallback for its question tool tags every answer
+    /// `allow_once`, so an Approve/Reject row would answer the model's
+    /// multiple-choice question with option one.
+    #[tokio::test]
+    async fn a_permission_request_carrying_answers_is_declined_not_approved() {
+        let handler: AcpPermissionHandler = Arc::new(|_| {
+            panic!("a question must never reach the approval broker");
+        });
+        let (client, mut writer_rx) = test_client_with_permission_handler(Some(handler));
+        client.handle_line(
+            &json!({"jsonrpc": "2.0", "id": "ask-1", "method": "session/request_permission",
+            "params": {"sessionId": "s1", "toolCall": {"toolCallId": "ask_1_q0", "title": "Which path?"}, "options": [
+                {"optionId": "fast", "name": "Fast fix", "kind": "allow_once"},
+                {"optionId": "deep", "name": "Deeper cleanup", "kind": "allow_once"},
+                {"optionId": "__ask_question_skip__", "name": "Skip", "kind": "reject_once"}
+            ]}})
+            .to_string(),
+        );
+        let sent: Value = serde_json::from_str(&writer_rx.recv().await.unwrap()).unwrap();
+        assert_eq!(sent["id"], "ask-1");
+        assert_eq!(sent["result"]["outcome"]["outcome"], "cancelled");
     }
 
     #[tokio::test]

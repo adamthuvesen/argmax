@@ -227,17 +227,9 @@ function QuestionCardInner({ questions, onAnswer }: QuestionCardProps): JSX.Elem
             onClick={submit}
             disabled={!canSubmit || submitted}
             aria-label={submitted ? "Answer sent" : "Submit answer"}
+            title="Enter"
           >
-            {submitted ? (
-              "Sent"
-            ) : (
-              <>
-                Send
-                <kbd className="question-ask-key" aria-hidden="true">
-                  ↵
-                </kbd>
-              </>
-            )}
+            {submitted ? "Sent" : "Send"}
           </button>
           {submitted ? (
             <button

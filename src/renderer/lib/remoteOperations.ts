@@ -1,4 +1,5 @@
 import readChannels from "../../shared/remoteReadChannels.json";
+import { uuidV4 } from "./uuid.js";
 
 const CLIENT_KEY = "argmax.remote.clientId";
 const OPERATIONS_KEY = "argmax.remote.unresolvedOperations";
@@ -16,15 +17,6 @@ interface UnresolvedOperation {
   owner: string;
   uncertain?: boolean;
   hostInterrupted?: boolean;
-}
-
-function uuid(): string {
-  // Pairing over a private HTTP origin does not expose crypto.randomUUID.
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function readUnresolved(): UnresolvedOperation[] {
@@ -61,9 +53,9 @@ export function prepareRemoteOperation(channel: string, input: unknown, owner: s
       return existing.identity;
     }
   }
-  const clientId = localStorage.getItem(CLIENT_KEY) ?? uuid();
+  const clientId = localStorage.getItem(CLIENT_KEY) ?? uuidV4();
   localStorage.setItem(CLIENT_KEY, clientId);
-  const identity = { clientId, operationId: uuid() };
+  const identity = { clientId, operationId: uuidV4() };
   // Persist before any socket send. A storage failure must not dispatch an
   // action whose identity would disappear when the phone reloads.
   unresolved.push({ request, identity, owner });
@@ -97,4 +89,4 @@ export function markRemoteOperationUncertain(operation: RemoteOperation, hostInt
   sessionStorage.setItem(OPERATIONS_KEY, JSON.stringify(unresolved));
 }
 
-export const createRemoteOperationOwner = uuid;
+export const createRemoteOperationOwner = uuidV4;

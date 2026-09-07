@@ -607,6 +607,60 @@ export function BrowserPanel({
 
   return (
     <div className="browser-panel" role="group" aria-label="Browser" ref={panelRef}>
+      <div className="browser-tab-strip" role="tablist" aria-label="Browser tabs">
+        {tabs.map((tab) => (
+          <div
+            key={tab.id}
+            className="browser-tab"
+            role="tab"
+            aria-selected={tab.id === activeTabId}
+            title={tab.url}
+          >
+            <button
+              type="button"
+              className="browser-tab-label"
+              onClick={() => switchToTab(tab.id)}
+            >
+              {tab.loading ? (
+                <WorkingNest active size={14} />
+              ) : (
+                <TabFavicon url={tab.url} />
+              )}
+              <span className="browser-tab-text">{tabLabel(tab)}</span>
+            </button>
+            {tab.ownerSessionId ? (
+              // Only an agent's tab can carry a group, so the label stands in
+              // for the badge rather than crowding beside it — the chip
+              // already says the tab is not the user's.
+              <span
+                className="browser-tab-agent"
+                role="img"
+                aria-label={tab.group ? `Opened by the agent, in ${tab.group}` : "Opened by the agent"}
+                title={tab.group ? `Agent tab in ${tab.group}` : "Opened by the agent"}
+              >
+                {tab.group ?? "agent"}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              className="browser-tab-close"
+              aria-label={`Close tab ${tabLabel(tab)}`}
+              onClick={() => closeTab(tab.id)}
+            >
+              <X size={12} strokeWidth={1.75} />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="browser-tab-add"
+          title="New tab"
+          aria-label="New tab"
+          onClick={addTab}
+        >
+          <Plus size={13} strokeWidth={1.75} />
+        </button>
+      </div>
       <div className="browser-panel-toolbar">
         <button
           type="button"
@@ -725,60 +779,6 @@ export function BrowserPanel({
         </button>
         <button type="button" title="Close browser" aria-label="Close browser" onClick={onClose}>
           <X size={14} strokeWidth={1.75} />
-        </button>
-      </div>
-      <div className="browser-tab-strip" role="tablist" aria-label="Browser tabs">
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            className="browser-tab"
-            role="tab"
-            aria-selected={tab.id === activeTabId}
-            title={tab.url}
-          >
-            <button
-              type="button"
-              className="browser-tab-label"
-              onClick={() => switchToTab(tab.id)}
-            >
-              {tab.loading ? (
-                <WorkingNest active size={11} />
-              ) : (
-                <TabFavicon url={tab.url} />
-              )}
-              <span className="browser-tab-text">{tabLabel(tab)}</span>
-            </button>
-            {tab.ownerSessionId ? (
-              // Only an agent's tab can carry a group, so the label stands in
-              // for the badge rather than crowding beside it — the chip
-              // already says the tab is not the user's.
-              <span
-                className="browser-tab-agent"
-                role="img"
-                aria-label={tab.group ? `Opened by the agent, in ${tab.group}` : "Opened by the agent"}
-                title={tab.group ? `Agent tab in ${tab.group}` : "Opened by the agent"}
-              >
-                {tab.group ?? "agent"}
-              </span>
-            ) : null}
-            <button
-              type="button"
-              className="browser-tab-close"
-              aria-label={`Close tab ${tabLabel(tab)}`}
-              onClick={() => closeTab(tab.id)}
-            >
-              <X size={11} strokeWidth={1.75} />
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          className="browser-tab-add"
-          title="New tab"
-          aria-label="New tab"
-          onClick={addTab}
-        >
-          <Plus size={13} strokeWidth={1.75} />
         </button>
       </div>
       {notice ? (

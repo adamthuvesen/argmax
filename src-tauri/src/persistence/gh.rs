@@ -177,7 +177,10 @@ pub fn latest_pr_for_branch(
 
 /// Sidebar marker for one workspace: the latest PR on this workspace's current
 /// branch in the same project, or — for rows recorded before the branch was
-/// stored — a PR this workspace's own sessions observed.
+/// stored — a PR this workspace's own sessions observed. When the current
+/// branch has no PR, fall back to the latest OPEN PR this workspace's own
+/// sessions observed, so an agent that opened a PR from another checkout of
+/// the same repo (via `cd` / EnterWorktree) still lights the marker.
 pub fn latest_pr_for_workspace(
     connection: &Connection,
     workspace_id: &str,
@@ -195,8 +198,12 @@ pub fn latest_pr_for_workspace(
           AND (
             (?2 != '' AND gh_pr.head_ref_name = ?2)
             OR (gh_pr.head_ref_name IS NULL AND sessions.workspace_id = ?3)
+            OR (sessions.workspace_id = ?3 AND gh_pr.pr_state = 'OPEN')
           )
-        ORDER BY gh_pr.updated_at DESC, gh_pr.pr_number DESC
+        ORDER BY
+          CASE WHEN ?2 != '' AND gh_pr.head_ref_name = ?2 THEN 0 ELSE 1 END,
+          gh_pr.updated_at DESC,
+          gh_pr.pr_number DESC
         LIMIT 1
         "#,
         (project_id, branch, workspace_id),

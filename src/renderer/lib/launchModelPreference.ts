@@ -4,7 +4,8 @@ import {
   REASONING_EFFORTS,
   type ReasoningEffort
 } from "../../shared/providerModels.js";
-import { allModelOptions, type ModelPickerSelection } from "./models.js";
+import { allModelOptions, providerModelKey, type ModelPickerSelection } from "./models.js";
+import { readIdRecency, touchIdRecency } from "./recencyList.js";
 
 /**
  * Persisted launcher default model (Settings → Agents → "Default model" and
@@ -16,6 +17,9 @@ import { allModelOptions, type ModelPickerSelection } from "./models.js";
  * Reads tolerate missing/corrupt values by returning null.
  */
 export const LAUNCH_MODEL_KEY = "argmax.launch.model";
+
+/** Recently picked models, most recent first. Keys are `provider:modelId`. */
+export const LAUNCH_MODEL_RECENCY_KEY = "argmax.launch.modelRecency";
 
 /**
  * Persisted app-global default reasoning effort (Settings → Agents → "Default
@@ -71,6 +75,7 @@ export function persistLaunchModel(model: ModelPickerSelection): void {
     LAUNCH_MODEL_KEY,
     JSON.stringify({ provider: model.provider, modelId: model.modelId })
   );
+  persistLaunchModelRecency(model);
   // An effort that isn't what this model resolves to under the current default
   // is an explicit choice, so it becomes the new app-wide default. An effort
   // that only differs because the model can't offer the stored one is a
@@ -81,4 +86,12 @@ export function persistLaunchModel(model: ModelPickerSelection): void {
   ) {
     persistDefaultEffort(model.reasoningEffort);
   }
+}
+
+export function persistLaunchModelRecency(model: Pick<ModelPickerSelection, "provider" | "modelId">): void {
+  touchIdRecency(LAUNCH_MODEL_RECENCY_KEY, providerModelKey(model));
+}
+
+export function readLaunchModelRecency(): string[] {
+  return readIdRecency(LAUNCH_MODEL_RECENCY_KEY);
 }

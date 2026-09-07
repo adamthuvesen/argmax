@@ -14,6 +14,7 @@ import {
   type GridState,
   type SplitPosition
 } from "../lib/gridState.js";
+import { launchProjectIdFrom } from "../lib/launchProjectPreference.js";
 import {
   closePane,
   dropWorkspacePane,
@@ -55,7 +56,7 @@ export interface UseAppGridSelectionResult {
   openWorkspaceChat: (workspaceId: string, modifiers?: WorkspaceClickModifiers) => void;
   closeFocusedPane: () => boolean;
   handleDropWorkspace: (workspaceId: string, target: GridCoord & { position: SplitPosition }) => void;
-  openLauncherPaneInGrid: () => void;
+  openLauncherPaneInGrid: (options?: { seedFromFocusedSession?: boolean }) => void;
 }
 
 /**
@@ -184,35 +185,40 @@ export function useAppGridSelection({
     [maxColumnsPerRow, snapshot.sessions, workspacesById, setSelectedProjectId, showErrorToast]
   );
 
-  const openLauncherPaneInGrid = useCallback((): void => {
-    // Never seed a launcher cell with the hidden scratch project — it owns
-    // repo-less side chats, and a launcher targeting it would offer branch
-    // and worktree chrome against the app-owned scratch root.
-    const repoProjectId = (id: string | null | undefined): string | null =>
-      id && id !== SCRATCH_PROJECT_ID ? id : null;
-    const focused = focusedCell(paneGridSnapshot());
-    let projectId =
-      repoProjectId(selectedProject?.id) ??
-      repoProjectId(selectedWorkspace?.projectId) ??
-      snapshot.projects.find((project) => project.id !== SCRATCH_PROJECT_ID)?.id ??
-      null;
-    if (focused && isSessionCell(focused)) {
-      projectId = repoProjectId(workspacesById.get(focused.workspaceId)?.projectId) ?? projectId;
-    } else if (focused?.kind === "launcher") {
-      projectId = focused.projectId;
-    }
-    if (!projectId) return;
-    if (openLauncherPane({ kind: "launcher", projectId }, { maxColumns: maxColumnsPerRow }) === "grid-full") {
-      showErrorToast("The grid is full. Close a pane to start a new chat here.");
-    }
-  }, [
-    maxColumnsPerRow,
-    selectedProject?.id,
-    selectedWorkspace?.projectId,
-    showErrorToast,
-    snapshot.projects,
-    workspacesById
-  ]);
+  const openLauncherPaneInGrid = useCallback(
+    (options?: { seedFromFocusedSession?: boolean }): void => {
+      // Never seed a launcher cell with the hidden scratch project — it owns
+      // repo-less side chats, and a launcher targeting it would offer branch
+      // and worktree chrome against the app-owned scratch root.
+      const repoProjectId = (id: string | null | undefined): string | null =>
+        id && id !== SCRATCH_PROJECT_ID ? id : null;
+      const focused = focusedCell(paneGridSnapshot());
+      const storedId = repoProjectId(launchProjectIdFrom(snapshot.projects));
+      let projectId =
+        storedId ??
+        repoProjectId(selectedProject?.id) ??
+        repoProjectId(selectedWorkspace?.projectId) ??
+        snapshot.projects.find((project) => project.id !== SCRATCH_PROJECT_ID)?.id ??
+        null;
+      if (options?.seedFromFocusedSession && focused && isSessionCell(focused)) {
+        projectId = repoProjectId(workspacesById.get(focused.workspaceId)?.projectId) ?? projectId;
+      } else if (focused?.kind === "launcher") {
+        projectId = focused.projectId;
+      }
+      if (!projectId) return;
+      if (openLauncherPane({ kind: "launcher", projectId }, { maxColumns: maxColumnsPerRow }) === "grid-full") {
+        showErrorToast("The grid is full. Close a pane to start a new chat here.");
+      }
+    },
+    [
+      maxColumnsPerRow,
+      selectedProject?.id,
+      selectedWorkspace?.projectId,
+      showErrorToast,
+      snapshot.projects,
+      workspacesById
+    ]
+  );
 
   return {
     grid,

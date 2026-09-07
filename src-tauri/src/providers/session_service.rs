@@ -48,6 +48,7 @@ use crate::sessions::state::SessionState;
 use crate::{
     approvals::service::ApprovalService,
     error::{ArgmaxError, ArgmaxResult},
+    gh::service::{pr_numbers_from_command_event, GhService},
     ipc::inputs::{
         ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
         ProvidersResizeInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
@@ -1708,6 +1709,7 @@ impl ProviderSessionService {
         });
         if let Some(delta) = result.delta {
             self.schedule_measured_diffs(&event.session_id, &delta);
+            self.schedule_observed_prs(&event.session_id, &delta);
             self.publish(delta);
         }
         if reconcile_subagents {
@@ -2760,6 +2762,66 @@ impl ProviderSessionService {
     fn mark_turn_start(&self, session_id: &str, workspace_path: PathBuf) {
         let mark = self.measured_diffs.open_turn(session_id, workspace_path);
         tauri::async_runtime::spawn(capture_opening_mark(mark));
+    }
+
+    /// When a tool's stdout contains a GitHub PR URL (typically `gh pr create`),
+    /// cache that PR immediately. The poller only views `workspace.branch` in
+    /// `workspace.path`, so a PR opened from another worktree would otherwise
+    /// never appear on the sidebar.
+    fn schedule_observed_prs(self: &Arc<Self>, session_id: &str, delta: &DashboardDelta) {
+        let mut numbers = Vec::new();
+        for event in &delta.events {
+            for number in
+                pr_numbers_from_command_event(&event.r#type, &event.message, &event.payload)
+            {
+                if !numbers.contains(&number) {
+                    numbers.push(number);
+                }
+            }
+        }
+        if numbers.is_empty() {
+            return;
+        }
+        let service = Arc::clone(self);
+        let session_id = session_id.to_string();
+        tauri::async_runtime::spawn(async move {
+            let gh = GhService::new(Arc::clone(&service.database));
+            let known = gh.list_for_session(&session_id).unwrap_or_default();
+            let mut observed = false;
+            for number in numbers {
+                if known.iter().any(|row| row.pr_number == number) {
+                    continue;
+                }
+                match gh.refresh_pr_number(&session_id, number).await {
+                    Ok(_) => observed = true,
+                    Err(error) => tracing::warn!(
+                        %error,
+                        session_id,
+                        pr_number = number,
+                        "could not cache PR from command output"
+                    ),
+                }
+            }
+            if !observed {
+                return;
+            }
+            let workspace = {
+                let connection = service.database.connection();
+                find_session_by_id(&connection, &session_id)
+                    .and_then(|session| find_workspace_by_id(&connection, &session.workspace_id))
+            };
+            match workspace {
+                Ok(workspace) => service.publish(DashboardDelta {
+                    workspaces: vec![workspace],
+                    ..DashboardDelta::default()
+                }),
+                Err(error) => tracing::warn!(
+                    %error,
+                    session_id,
+                    "could not publish workspace after observing a PR"
+                ),
+            }
+        });
     }
 
     /// Measure the diffs a provider left out, then rewrite the tool's own

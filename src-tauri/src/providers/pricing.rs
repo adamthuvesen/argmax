@@ -37,6 +37,11 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "gpt-5.6-sol" => ModelPricing { input: 5.0, output: 30.0, cache_read: 0.5, cache_write: 6.25 },
     "gpt-5.6-terra" => ModelPricing { input: 2.0, output: 12.0, cache_read: 0.2, cache_write: 2.5 },
     "gpt-5.6-luna" => ModelPricing { input: 0.2, output: 1.2, cache_read: 0.02, cache_write: 0.25 },
+    // Cursor billing is not estimated here. Auto uses the existing Cursor
+    // zero placeholder, not a free rate: its routed model varies per request.
+    "auto-smart[optimize_for=cost]" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "auto-smart[optimize_for=balanced]" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "auto-smart[optimize_for=intelligence]" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "composer-2.5" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "cursor-grok-4.6-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gemini-3.8-flash-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },

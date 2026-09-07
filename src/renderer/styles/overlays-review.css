@@ -856,8 +856,11 @@
   background: var(--panel);
 }
 
-.app-shell[data-sidebar-collapsed="true"] .browser-page .browser-panel-toolbar {
-  padding-top: 52px;
+/* Sidebar hidden: the tab strip doubles as the macOS titlebar, the way a
+   browser's tabs share the band with its traffic lights. Park the 28px tabs
+   on --titlebar-center and clear the fixed sidebar toggle. */
+.app-shell[data-sidebar-collapsed="true"] .browser-page .browser-tab-strip {
+  padding-top: calc(var(--titlebar-center) - 14px);
   padding-left: var(--titlebar-leading-inset);
 }
 
@@ -947,11 +950,198 @@
   border-color: var(--line-strong);
 }
 
-.browser-panel-toolbar {
+/* Browser chrome: one --sidebar band holding the tab strip on top and the
+   address row under it, closed by a single hairline above the page. Tabs and
+   controls follow the Files strip's vocabulary — quiet labels, and only the
+   active tab lifts to a rounded, hairline-ringed pill — so the panel's modes
+   read as one family. */
+.browser-tab-strip {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  padding: var(--space-1_5) var(--space-2);
+  padding: var(--space-2) var(--space-2) 0;
+  background: var(--sidebar);
+  overflow: hidden;
+}
+
+/* Tabs share the row evenly up to a cap and ellipsize past it, Chrome-style:
+   the strip never wraps or scrolls the panel sideways. */
+.browser-tab {
+  container-type: inline-size;
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 180px;
+  height: 28px;
+  border-radius: var(--radius-lg);
+  color: var(--muted);
+  transition:
+    background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.browser-tab:hover {
+  color: var(--text-soft);
+  background: color-mix(in oklab, var(--panel) 60%, var(--panel-sunken));
+}
+
+.browser-tab[aria-selected="true"] {
+  color: var(--text);
+  background: var(--panel);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 1px 2px rgba(31, 28, 24, 0.12);
+}
+
+/* In dark --panel and --sidebar are the same #1a1a1a, so the ring alone has
+   to say "active"; a touch of ink lifts the pill the way the Files strip does. */
+:root[data-theme="dark"] .browser-tab[aria-selected="true"] {
+  background: color-mix(in oklab, var(--panel) 90%, var(--text));
+}
+
+/* 10px from the pill's edge to the favicon, and the ✕ (12px glyph in a 20px
+   hit box) plus its 4px margin lands 8px from the right edge. */
+.browser-tab-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  padding: 0 2px 0 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.browser-tab-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.browser-tab-favicon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-xs);
+}
+
+.browser-tab-favicon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-sunken);
+  color: var(--muted-strong);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-ui);
+  line-height: 1;
+}
+
+/* Marks a tab a session's agent opened, so the user can tell it apart from
+   the ones they opened themselves. Tinted with the accent, the colour the
+   chrome already gives the agent's nests and rings. Carries the tab's group
+   label instead of "agent" once a session has grouped it, so it has to
+   ellipsize: a label is the agent's prose. inline-block, not inline-flex:
+   text-overflow needs a block box to clip in, and a flex container's
+   anonymous text item never ellipsizes. */
+.browser-tab-agent {
+  display: inline-block;
+  flex: none;
+  max-width: 88px;
+  height: 16px;
+  margin-left: var(--space-1);
+  padding: 0 var(--space-1_5);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-ui);
+  line-height: 16px;
+  letter-spacing: 0.02em;
+}
+
+/* The ✕ stays in flow but invisible until the tab is active, hovered or
+   focused, so nothing shifts when it appears. */
+/* A squeezed tab (a 320px panel holding five) keeps what is left of its title
+   and drops the chip and, unless active, the ✕ — both would otherwise eat
+   the whole label. Activating the tab brings its ✕ back. */
+@container (max-width: 110px) {
+  .browser-tab-agent,
+  .browser-tab:not([aria-selected="true"]) .browser-tab-close {
+    display: none;
+  }
+}
+
+.browser-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.browser-tab:hover .browser-tab-close,
+.browser-tab:focus-within .browser-tab-close,
+.browser-tab[aria-selected="true"] .browser-tab-close {
+  opacity: 1;
+}
+
+.browser-tab-close:hover {
+  background: var(--panel-sunken);
+  color: var(--text);
+}
+
+.browser-tab-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-left: 2px;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.browser-tab-add:hover {
+  color: var(--text);
+  background: color-mix(in oklab, var(--panel) 60%, var(--panel-sunken));
+}
+
+/* Back/forward/reload sit as one tight cluster to the address bar's left and
+   the 1Password, external-link and close actions as another to its right; the
+   field's own margin holds the clusters off it. */
+.browser-panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-2) var(--space-2_5);
   border-bottom: 1px solid var(--line);
   background: var(--sidebar);
 }
@@ -960,18 +1150,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   flex: none;
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--muted-strong);
   cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
 }
 
 .browser-panel-toolbar > button:hover {
-  background: var(--panel-sunken);
+  background: color-mix(in oklab, var(--panel) 60%, var(--panel-sunken));
   color: var(--text);
 }
 
@@ -979,6 +1172,7 @@
   position: relative;
   flex: 1;
   min-width: 0;
+  margin: 0 var(--space-1_5);
 }
 
 /* History suggestions under the address bar. Carries role="dialog", so the
@@ -986,7 +1180,7 @@
    over the popover otherwise. */
 .browser-address-suggestions {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 6px);
   left: 0;
   right: 0;
   z-index: 20;
@@ -1004,7 +1198,7 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
-  padding: 5px 8px;
+  padding: 6px 10px;
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
@@ -1038,162 +1232,33 @@
   color: var(--muted);
 }
 
+/* The field sits a shade below the band and only draws its ring on focus, so
+   the URL reads as text rather than as another boxed control. */
 .browser-panel-address input {
   width: 100%;
-  height: 24px;
-  padding: 0 var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--panel);
+  height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  background: var(--panel-sunken);
   color: var(--text-soft);
   font: var(--text-sm) / 1 var(--font-ui);
+  text-overflow: ellipsis;
+  transition:
+    background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
+}
+
+.browser-panel-address input:hover {
+  background: color-mix(in oklab, var(--panel-sunken) 85%, var(--line-strong));
 }
 
 .browser-panel-address input:focus {
   outline: none;
   border-color: var(--line-strong);
-  color: var(--text);
-}
-
-/* One row of tabs under the toolbar. Tabs shrink evenly and ellipsize; the
-   strip itself never wraps or scrolls the panel sideways. */
-.browser-tab-strip {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px 6px;
-  border-bottom: 1px solid var(--line);
-  background: var(--sidebar);
-  overflow: hidden;
-}
-
-.browser-tab {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  max-width: 160px;
-  flex: 0 1 auto;
-  border-radius: var(--radius-md);
-  color: var(--muted-strong);
-}
-
-.browser-tab[aria-selected="true"] {
   background: var(--panel);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--line);
-}
-
-.browser-tab-label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  flex: 1;
-  padding: 3px 2px 3px 7px;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font-size: var(--text-xs);
-  cursor: pointer;
-  text-align: left;
-}
-
-.browser-tab-text {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.browser-tab-favicon {
-  flex: none;
-  width: 12px;
-  height: 12px;
-  border-radius: var(--radius-xs);
-}
-
-.browser-tab-favicon-fallback {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--panel-sunken);
-  color: var(--muted-strong);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-ui);
-  line-height: 1;
-}
-
-/* Marks a tab a session's agent opened, so the user can tell it apart from
-   the ones they opened themselves. Carries the tab's group label instead of
-   "agent" once a session has grouped it, so it has to ellipsize: a label is
-   the agent's prose, and the strip is 160px wide. inline-block, not
-   inline-flex: text-overflow needs a block box to clip in, and a flex
-   container's anonymous text item never ellipsizes. */
-.browser-tab-agent {
-  display: inline-block;
-  flex: none;
-  max-width: 72px;
-  height: 13px;
-  padding: 0 var(--space-1);
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  border-radius: var(--radius-xs);
-  background: var(--panel-sunken);
-  color: var(--muted-strong);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-ui);
-  line-height: 13px;
-  letter-spacing: 0.02em;
-}
-
-.browser-tab[aria-selected="true"] .browser-tab-agent {
-  color: var(--text);
-}
-
-.browser-tab-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 18px;
-  height: 18px;
-  margin-right: 3px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  opacity: 0;
-}
-
-.browser-tab:hover .browser-tab-close,
-.browser-tab[aria-selected="true"] .browser-tab-close {
-  opacity: 1;
-}
-
-.browser-tab-close:hover {
-  background: var(--panel-sunken);
-  color: var(--text);
-}
-
-.browser-tab-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--muted-strong);
-  cursor: pointer;
-}
-
-.browser-tab-add:hover {
-  background: var(--panel-sunken);
+  box-shadow: var(--ring);
   color: var(--text);
 }
 

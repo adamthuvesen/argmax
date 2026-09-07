@@ -54,6 +54,20 @@ export default tseslint.config(
     }
   },
   {
+    files: ["src/renderer/**/*.ts", "src/renderer/**/*.tsx"],
+    ignores: ["src/renderer/lib/uuid.ts"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "crypto",
+          property: "randomUUID",
+          message: "The mobile remote bridge serves an insecure origin where crypto.randomUUID is undefined. Use uuidV4() from lib/uuid.js."
+        }
+      ]
+    }
+  },
+  {
     files: [
       "src/renderer/components/DetailsPopup.tsx",
       "src/renderer/components/SessionConversation.tsx",

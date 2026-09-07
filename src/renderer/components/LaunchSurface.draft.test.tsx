@@ -97,6 +97,34 @@ describe("launcher prompt across context changes", () => {
     expect(screen.getByLabelText("Task prompt")).toHaveValue("First sentence. And more.");
   });
 
+  it("keeps the last picked project when returning to new chat after opening a session", async () => {
+    mockDashboardSnapshot({ ...snapshot, projects: [primaryProject(), secondProject()] });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+    fireEvent.keyDown(document, { key: "n", metaKey: true });
+
+    expect(await screen.findByRole("button", { name: "Switch project" })).toHaveTextContent("Argmax");
+    await pickProject("Dotfiles");
+    expect(screen.getByRole("button", { name: "Switch project" })).toHaveTextContent("Dotfiles");
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch project" }));
+    const picker = screen.getByRole("listbox", { name: "Select project" });
+    const names = within(picker)
+      .getAllByRole("option")
+      .map((option) => option.textContent?.trim())
+      .filter((name) => name && name !== "Browse folder…");
+    expect(names[0]).toBe("Dotfiles");
+    fireEvent.mouseDown(document.querySelector(".picker-dismiss-layer") as Element);
+
+    fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+    fireEvent.keyDown(document, { key: "n", metaKey: true });
+
+    expect(await screen.findByRole("button", { name: "Switch project" })).toHaveTextContent("Dotfiles");
+  });
+
   it("carries the typed prompt over a stale draft stored on the target project", async () => {
     window.localStorage.setItem(
       "argmax.composer.drafts",

@@ -28,6 +28,7 @@ import {
   type ScheduleKind
 } from "../../lib/schedule.js";
 import { SettingsListPicker } from "../settings/settingsPrimitives.js";
+import { uuidV4 } from "../../lib/uuid.js";
 
 /** Matches `SCHEDULER_TICK` in routines/scheduler.rs. The panel waits out one
  *  full tick past a due time before re-reading, so the refresh lands after the
@@ -224,7 +225,7 @@ export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }
     setSaveError(null);
     try {
       await window.argmax.routines.upsert({
-        id: draft.routineId ?? crypto.randomUUID(),
+        id: draft.routineId ?? uuidV4(),
         name: draft.name.trim(),
         projectId: draft.projectId,
         prompt: draft.prompt,

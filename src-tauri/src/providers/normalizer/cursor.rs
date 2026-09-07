@@ -304,10 +304,11 @@ pub fn extract_usage(
     Some(NormalizedUsage {
         cost_usd: cost_of(tokens.clone().into(), &model_id),
         model_id,
-        context_tokens: Some(tokens.input + tokens.cache_read + tokens.cache_write),
+        // Result usage totals span model calls, not the current context.
+        context_tokens: None,
         tokens,
         event_id: None,
-        // Cursor doesn't report the window; the renderer uses a per-model table.
+        // Cursor exposes neither current occupancy nor the context window.
         context_window: None,
     })
 }
@@ -630,7 +631,10 @@ mod tests {
             &mut context,
         );
         assert_eq!(result.usages[0].model_id, "composer-2.5");
-        assert_eq!(result.usages[0].context_tokens, Some(10));
+        assert_eq!(result.usages[0].tokens.input, 10);
+        assert_eq!(result.usages[0].tokens.output, 20);
+        assert_eq!(result.usages[0].context_tokens, None);
+        assert_eq!(result.usages[0].context_window, None);
     }
 
     #[test]

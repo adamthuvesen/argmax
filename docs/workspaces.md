@@ -61,7 +61,7 @@ Workspaces with active attention (`approval-needed`, `blocked`, `failed`, or `re
 
 Right-click → "Edit Icon" saves `workspaces.icon` and `workspaces.icon_color` via `workspaces:set-icon`. When a custom icon is active, status indicators move to a corner badge.
 
-An open or merged pull request on the workspace's current branch replaces the default status marker with a GitHub PR glyph (green while open, violet once merged). The marker is keyed by branch, not by which session first observed the PR — see [gh.md](gh.md).
+An open or merged pull request on the workspace's current branch replaces the default status marker with a GitHub PR glyph (green while open, violet once merged). The marker is keyed by branch, not by which session first observed the PR — see [gh.md](gh.md). When the current branch has no PR, the glyph falls back to the latest OPEN PR this workspace's own sessions observed.
 
 ## Review
 

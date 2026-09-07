@@ -43,6 +43,10 @@ export function ContextRing({ session }: { session: SessionSummary }): JSX.Eleme
   const flyout = useAnchoredPopover({ open, placement: "bottom-start", strategy: "absolute" });
   useDismissOnOutsideOrEscape(flyout.anchorRef, open, () => setOpen(false));
 
+  // Cursor reports billing totals, not current context occupancy. Also hide
+  // values persisted before the normalizer stopped treating those as context.
+  if (session.provider === "cursor") return null;
+
   const used = session.contextTokens ?? 0;
   // Every provider falls back to the model table when the session row carries
   // no window. Codex used to be carved out of this on the grounds that it

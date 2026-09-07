@@ -508,6 +508,39 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_workspace_falls_back_to_its_own_open_pr_when_current_branch_has_none() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_project(&connection);
+        seed_workspace_on_branch(
+            &connection,
+            "w1",
+            "running",
+            "2026-05-24T10:00:00.000Z",
+            "main",
+        );
+        seed_session(&connection, "s1", "w1", "2026-05-24T10:00:00.000Z");
+        seed_gh_pr_on_branch(
+            &connection,
+            "s1",
+            568,
+            "OPEN",
+            "2026-05-24T10:02:00.000Z",
+            "fix/other-worktree",
+        );
+
+        let snapshot = list_dashboard(&connection).expect("dashboard");
+        let workspace = snapshot
+            .workspaces
+            .iter()
+            .find(|w| w.id == "w1")
+            .expect("workspace present");
+
+        assert_eq!(workspace.pr_state.as_deref(), Some("OPEN"));
+        assert_eq!(workspace.pr_number, Some(568));
+    }
+
+    #[test]
     fn dashboard_workspace_keeps_a_legacy_pr_row_on_the_observing_workspace() {
         let database = Database::open_in_memory().expect("open db");
         let connection = database.connection();

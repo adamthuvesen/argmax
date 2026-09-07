@@ -108,6 +108,21 @@ reads continuously whichever side of the table a provider is on.
 
 ## Cursor Warm ACP Runtime
 
+The Cursor catalog starts with **Auto Cost (Cursor)**, **Auto Balance (Cursor)**,
+and **Auto Intelligence (Cursor)**, below the picker's shared recent-model prefix.
+They use the one-shot CLI with `auto-smart[optimize_for=cost]`,
+`auto-smart[optimize_for=balanced]`, and `auto-smart[optimize_for=intelligence]`.
+These bracket parameters were verified with live CLI requests on 2026-09-07,
+even though `--list-models` only listed plain Auto. Auto has no manual reasoning
+effort or Fast control. Billing retains the existing Cursor telemetry placeholder,
+not an estimate of the routed model's actual cost.
+
+Cursor's one-shot result usage contains billing totals across model calls, not
+current context occupancy. Argmax keeps those totals for usage accounting but
+does not derive context tokens from them. The composer hides the context ring
+for all Cursor models, including sessions with previously saved context values.
+ACP provides no token usage or context occupancy.
+
 To avoid startup overhead, `composer-2.5` launches run over Agent Client Protocol (ACP) against a pooled `cursor-agent acp` process ([cursor_acp.rs](../src-tauri/src/providers/cursor_acp.rs)).
 - **Scope:** Restricted to `composer-2.5`. Other models with reasoning variants fall back to one-shot PTY execution.
 - **Turn lifecycle:** ACP notifications translate into standard Cursor stream events. Tool rows are named from `rawInput._toolName` to prevent sub-agents from collapsing into generic `other` tools.

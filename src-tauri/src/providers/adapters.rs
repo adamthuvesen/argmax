@@ -240,8 +240,9 @@ fn cursor_structured_args(
 // Luna/Terra/Sol and Opus 5 Thinking are parameterized up to Max; Grok 4.6 and
 // Gemini 3.8 Flash stop at High. Composer has no effort variant and passes
 // through. Fast: append "-fast" after the effort suffix for every model that
-// has a fast variant — all but Gemini 3.8 Flash. The renderer only enables the
-// Speed toggle for those, so this mirrors it.
+// has a fast variant — all but Gemini 3.8 Flash and the Auto routing modes. The
+// renderer only enables the Speed toggle for those, so this mirrors it. The
+// adapter guard also protects resumed sessions carrying a stale fast setting.
 //
 // Match the picker's exact base ids (see PROVIDER_MODELS in providerModels.ts,
 // and the spellings from `cursor-agent --list-models`) rather than a prefix, so
@@ -272,7 +273,14 @@ fn cursor_model_for(
         }
         _ => model_id.to_string(),
     };
-    if fast_mode && !model_id.starts_with("gemini-3.8-flash") {
+    let supports_fast_mode = !model_id.starts_with("gemini-3.8-flash")
+        && !matches!(
+            model_id,
+            "auto-smart[optimize_for=cost]"
+                | "auto-smart[optimize_for=balanced]"
+                | "auto-smart[optimize_for=intelligence]"
+        );
+    if fast_mode && supports_fast_mode {
         format!("{with_effort}-fast")
     } else {
         with_effort
@@ -1186,6 +1194,34 @@ mod tests {
             .position(|a| a == "--model")
             .expect("model flag");
         assert_eq!(args[i + 1], "claude-opus-5-thinking-max-fast");
+    }
+
+    #[test]
+    fn cursor_auto_models_ignore_stale_effort_and_fast_mode() {
+        let definition = get_provider_definition(ProviderId::Cursor);
+        for model_id in [
+            "auto-smart[optimize_for=cost]",
+            "auto-smart[optimize_for=balanced]",
+            "auto-smart[optimize_for=intelligence]",
+        ] {
+            let input = ProviderLaunchInput {
+                model_id: model_id.to_string(),
+                reasoning_effort: Some(ReasoningEffort::Ultra),
+                fast_mode: true,
+                ..launch_input(ProviderId::Cursor)
+            };
+
+            for args in [
+                (definition.structured_args)(&input, None),
+                (definition.structured_resume_args)(&input, "conv-1", None),
+            ] {
+                let i = args
+                    .iter()
+                    .position(|arg| arg == "--model")
+                    .expect("model flag");
+                assert_eq!(args[i + 1], model_id);
+            }
+        }
     }
 
     #[test]

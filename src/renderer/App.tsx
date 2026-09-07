@@ -102,6 +102,7 @@ import {
   readStoredDefaultEffort,
   readStoredLaunchModel
 } from "./lib/launchModelPreference.js";
+import { launchProjectIdFrom, persistLaunchProjectId } from "./lib/launchProjectPreference.js";
 import { factoryLaunchModel, modelPickerSelectionFromSession, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
@@ -745,6 +746,7 @@ export function App(): JSX.Element {
       // workspace's project, silently undoing the new pick.
       setSelectedSessionId(null);
       setSelectedWorkspaceId(null);
+      persistLaunchProjectId(result.project.id);
       setSelectedProjectId(result.project.id);
       clearPaneGrid();
       setSnapshot((current) => mergeDashboardDelta(current, { projects: [result.project] }));
@@ -1014,6 +1016,7 @@ export function App(): JSX.Element {
   // the launcher would ignore the repo the user just picked.
   const openRepoProjectLauncher = useCallback(
     (projectId: string): void => {
+      persistLaunchProjectId(projectId);
       setLauncherSideChatMode(false);
       openProjectLauncher(projectId);
     },
@@ -1153,13 +1156,14 @@ export function App(): JSX.Element {
     () => snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
     [snapshot.projects]
   );
-  const launcherProject = useMemo(
-    () =>
-      selectedProject && selectedProject.id !== SCRATCH_PROJECT_ID
-        ? selectedProject
-        : realProjects[0] ?? null,
-    [realProjects, selectedProject]
-  );
+  const storedLaunchProjectId = launchProjectIdFrom(realProjects);
+  const launcherProject =
+    (storedLaunchProjectId
+      ? realProjects.find((project) => project.id === storedLaunchProjectId)
+      : undefined) ??
+    (selectedProject && selectedProject.id !== SCRATCH_PROJECT_ID ? selectedProject : null) ??
+    realProjects[0] ??
+    null;
 
   // "New session here" from a pane menu skips openLauncherSurface, so it
   // resets chat mode itself before opening the in-grid launcher cell.
@@ -1181,7 +1185,7 @@ export function App(): JSX.Element {
       }
       // A side chat has no repo, so its replacement is another side chat.
       setLauncherSideChatMode(sideChat);
-      openLauncherPaneInGrid();
+      openLauncherPaneInGrid({ seedFromFocusedSession: true });
     },
     [handleLaunchModelChange, launcherProject, openLauncherPaneInGrid, selectedProject]
   );
@@ -1601,6 +1605,7 @@ export function App(): JSX.Element {
         onStopSession: (sessionId) => void terminateSession(sessionId),
         onOpenWorkspace: openWorkspaceChat,
         onSelectProject: (projectId) => {
+          persistLaunchProjectId(projectId);
           setLauncherSideChatMode(false);
           setSelectedProjectId(projectId);
         },
@@ -1737,7 +1742,14 @@ export function App(): JSX.Element {
           launchSideChat(prompt, { model, agentMode, attachments })}
         model={launchModel}
         onModelChange={handleLaunchModelChange}
-        onSelectProject={options.embedded ? setLauncherPaneProject : openRepoProjectLauncher}
+        onSelectProject={
+          options.embedded
+            ? (projectId) => {
+                persistLaunchProjectId(projectId);
+                setLauncherPaneProject(projectId);
+              }
+            : openRepoProjectLauncher
+        }
         onSideChatModeChange={setLauncherSideChatMode}
         project={project ?? launcherProject}
         projects={realProjects}

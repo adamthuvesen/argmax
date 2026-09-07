@@ -315,6 +315,7 @@ impl ProviderProcessLauncher for GatedLauncher {
 struct ManualExitLauncher {
     launches: Mutex<Vec<ProviderLaunchInput>>,
     callbacks: Mutex<HashMap<String, EventCallback>>,
+    handles: Mutex<HashMap<String, Arc<FakeHandle>>>,
 }
 
 impl ManualExitLauncher {
@@ -324,6 +325,15 @@ impl ManualExitLauncher {
 
     fn launches(&self) -> Vec<ProviderLaunchInput> {
         self.launches.lock().expect("launches poisoned").clone()
+    }
+
+    fn handle(&self, session_id: &str) -> Arc<FakeHandle> {
+        self.handles
+            .lock()
+            .expect("handles poisoned")
+            .get(session_id)
+            .cloned()
+            .expect("session handle registered")
     }
 
     fn emit_exit(&self, session_id: &str, exit_code: i32) {
@@ -380,8 +390,13 @@ impl ProviderProcessLauncher for ManualExitLauncher {
         self.callbacks
             .lock()
             .expect("callbacks poisoned")
-            .insert(session_id, on_event);
-        let handle = FakeHandle::new(false) as Arc<dyn ProviderRuntimeHandle>;
+            .insert(session_id.clone(), on_event);
+        let handle = FakeHandle::new(false);
+        self.handles
+            .lock()
+            .expect("handles poisoned")
+            .insert(session_id, Arc::clone(&handle));
+        let handle = handle as Arc<dyn ProviderRuntimeHandle>;
         Box::pin(async move { Ok(handle) })
     }
 }
@@ -1864,6 +1879,67 @@ async fn send_input_during_spawn_queues_instead_of_relaunching() {
     // Let the spawn resolve; the handle wires up cleanly afterwards.
     release.notify_one();
     wait_for_resolved(&service, &session.id).await;
+}
+
+// The runtime marks a handle disposed before it emits Exit, so a follow-up sent
+// during that teardown window meets a Resolved-but-dead handle still in the map.
+// Relaunching there spawns a process the exit teardown then throws away — it
+// removes the fresh handle and its flush queue — and the whole turn goes silent.
+#[tokio::test]
+async fn send_input_during_exit_teardown_queues_instead_of_relaunching() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let launcher = Arc::new(ManualExitLauncher::default());
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
+
+    // Exactly what the wait thread does before it reports the exit.
+    launcher
+        .handle(&session.id)
+        .disposed
+        .store(true, Ordering::SeqCst);
+
+    let result = service
+        .send_input(ProvidersSendInput {
+            agent_references: None,
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+            input: Prompt::try_from("typed during teardown".to_owned()).expect("prompt valid"),
+            provider: None,
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            agent_mode: None,
+            attachments: None,
+        })
+        .await
+        .expect("send_input ok");
+    assert!(
+        result.queued,
+        "a follow-up sent during exit teardown must queue"
+    );
+    assert_eq!(
+        launcher.launch_count(),
+        1,
+        "the exit window must not spawn a second provider"
+    );
+
+    // Once the exit lands, the queued message drains into a real turn.
+    launcher.emit_exit(&session.id, 0);
+    wait_for_manual_launch_count(&launcher, 2).await;
+    assert_eq!(launcher.launches()[1].prompt, "typed during teardown");
+    wait_for_event(
+        &database,
+        &session.id,
+        "user.message",
+        "typed during teardown",
+    )
+    .await;
 }
 
 // Terminating while the provider is still spawning must dispose the handle once

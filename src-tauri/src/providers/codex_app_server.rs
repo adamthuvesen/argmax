@@ -299,10 +299,6 @@ fn thread_params(
     let mut params = Map::new();
     params.insert("cwd".to_string(), json!(input.workspace_path));
     params.insert("model".to_string(), json!(input.model_id));
-    params.insert(
-        "runtimeWorkspaceRoots".to_string(),
-        json!([input.workspace_path]),
-    );
     if let Some(resume_id) = &input.resume_conversation_id {
         params.insert("threadId".to_string(), json!(resume_id));
     }

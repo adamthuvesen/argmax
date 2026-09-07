@@ -790,8 +790,12 @@ impl EventTranslation {
     }
 }
 
+/// `ThreadTokenUsage.last` is one model request; `total` is every request the
+/// app-server has made. Argmax runs one app-server per turn, so `total` at
+/// `turn/completed` is exactly this turn's usage — reading `last` billed only
+/// the final request of a multi-step turn.
 fn app_server_usage(usage: &Value) -> Option<Value> {
-    let usage = usage.get("last")?;
+    let usage = usage.get("total")?;
     Some(json!({
         "input_tokens": usage.get("inputTokens")?.as_u64()?,
         "cached_input_tokens": usage.get("cachedInputTokens")?.as_u64()?,
@@ -1093,6 +1097,26 @@ mod tests {
             cols: 80,
             rows: 24,
         }
+    }
+
+    /// `last` is the final model request of the turn; a turn that ran three of
+    /// them reported a third of what it spent, and the resumed turn after it
+    /// almost nothing.
+    #[test]
+    fn turn_usage_comes_from_the_threads_total_not_its_last_request() {
+        let usage = json!({
+            "last": { "inputTokens": 22662, "cachedInputTokens": 22016, "outputTokens": 5 },
+            "total": { "inputTokens": 67329, "cachedInputTokens": 44288, "outputTokens": 319 },
+        });
+        assert_eq!(
+            app_server_usage(&usage).expect("usage"),
+            json!({
+                "input_tokens": 67329,
+                "cached_input_tokens": 44288,
+                "output_tokens": 319,
+            })
+        );
+        assert!(app_server_usage(&json!({ "last": { "inputTokens": 1 } })).is_none());
     }
 
     #[test]

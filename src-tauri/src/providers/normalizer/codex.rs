@@ -1269,10 +1269,10 @@ mod tests {
         assert_eq!(result.usages[0].context_window, Some(272_000));
     }
 
-    /// `codex exec --json` stopped emitting `token_count`, so `turn.completed`
-    /// is the only usage row a live session sees. Its `input_tokens` is the
-    /// thread's running total — both occupancy and billing delta are calculated
-    /// from the difference between cumulative totals.
+    /// A `turn.completed` carries a thread-cumulative total, so occupancy and
+    /// billing both come from the step between two of them. A live app-server
+    /// session only ever sends one per context — it is replayed `codex exec`
+    /// transcripts that walk a thread through several.
     #[test]
     fn codex_turn_usage_reports_the_step_between_cumulative_totals() {
         let mut context =
@@ -1334,29 +1334,29 @@ mod tests {
         assert_eq!(second.usages[0].tokens.output, 10);
     }
 
+    /// Every app-server turn, resumed or not, gets its own process counting
+    /// from zero, so the resume baseline is zero and the turn bills its whole
+    /// total. Seeding the conversation's spend here instead billed a follow-up
+    /// as nothing until it passed everything the thread had already spent.
     #[test]
-    fn codex_resumed_launch_with_seeded_usage_computes_delta_immediately() {
+    fn codex_resumed_launch_bills_the_whole_turn_from_a_zero_baseline() {
         let mut context =
             NormalizerSessionContext::for_provider(ProviderId::Codex, "gpt-5.6-terra")
                 .resuming_codex(
                     Some("thread-xyz".to_string()),
-                    Some(CodexCumulativeUsage {
-                        input_tokens: 501468,
-                        cached_input_tokens: 437504,
-                        output_tokens: 1234,
-                    }),
+                    Some(CodexCumulativeUsage::default()),
                 );
         let first = normalize_provider_event(
             ProviderId::Codex,
             &output_event(
-                r#"{"type":"turn.completed","usage":{"input_tokens":531468,"cached_input_tokens":437504,"output_tokens":1244}}"#,
+                r#"{"type":"turn.completed","usage":{"input_tokens":22941,"cached_input_tokens":22528,"output_tokens":18}}"#,
             ),
             &mut context,
         );
-        assert_eq!(first.usages[0].context_tokens, Some(30_000));
-        assert_eq!(first.usages[0].tokens.input, 30_000);
-        assert_eq!(first.usages[0].tokens.cache_read, 0);
-        assert_eq!(first.usages[0].tokens.output, 10);
+        assert_eq!(first.usages[0].context_tokens, Some(22_941));
+        assert_eq!(first.usages[0].tokens.input, 413);
+        assert_eq!(first.usages[0].tokens.cache_read, 22_528);
+        assert_eq!(first.usages[0].tokens.output, 18);
     }
 
     #[test]

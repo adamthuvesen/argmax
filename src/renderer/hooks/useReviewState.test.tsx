@@ -66,6 +66,25 @@ describe("useReviewState — IPC fan-out resistance", () => {
   let readProjectFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["readFile"]>>;
   let writeProjectFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["writeFile"]>>;
 
+  it("remembers each session's panel visibility after leaving and returning", () => {
+    const source = workspaceSource(makeWorkspace());
+    const first = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
+    act(() => first.result.current.openChangesPanel());
+    first.unmount();
+
+    const other = renderHook(() => useReviewState(source, null, { sessionId: "session-2" }));
+    expect(other.result.current.isPanelOpen).toBe(false);
+    other.unmount();
+
+    const restored = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
+    expect(restored.result.current.isPanelOpen).toBe(true);
+    act(() => restored.result.current.closePanel());
+    restored.unmount();
+
+    const closed = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
+    expect(closed.result.current.isPanelOpen).toBe(false);
+  });
+
   beforeEach(() => {
     // The Local/Branch toggle persists to localStorage; clear it so each test
     // starts from the "local" default regardless of run order.

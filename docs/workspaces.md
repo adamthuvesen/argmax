@@ -66,6 +66,8 @@ An open or merged pull request on the workspace's current branch replaces the de
 
 ## Review
 
+The session review panel remembers its open/closed state per session in localStorage. Returning to a chat or restarting the app restores that visibility. Full-screen review surfaces keep their explicit initial visibility.
+
 [src-tauri/src/review/git_review.rs](../src-tauri/src/review/git_review.rs) provides diff calculations and file lists.
 
 ### Comparison Scopes

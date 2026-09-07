@@ -252,13 +252,32 @@ export function useReviewState(
   );
 
   const terminalWorkspaceId = source?.kind === "workspace" ? source.workspace.id : null;
+  const panelOpenKey = options?.sessionId && options.initiallyOpen === undefined
+    ? `argmax.reviewPanel.open.${options.sessionId}`
+    : null;
   // A pane dies on every session switch, so the panel's mode cannot remember
   // that the reader had the terminal up. The workspace-keyed store can, and
   // seeding from it here is what brings them back to the shell they left
   // running rather than to the Changes default.
-  const [isPanelOpen, setIsPanelOpen] = useState(
-    () => options?.initiallyOpen ?? getWorkspaceTerminalState(terminalWorkspaceId).showing
-  );
+  const [isPanelOpen, setIsPanelOpen] = useState(() => {
+    if (panelOpenKey) {
+      try {
+        const stored = window.localStorage.getItem(panelOpenKey);
+        if (stored !== null) return stored === "true";
+      } catch {
+        // Appearance preferences are optional when storage is unavailable.
+      }
+    }
+    return options?.initiallyOpen ?? getWorkspaceTerminalState(terminalWorkspaceId).showing;
+  });
+  useEffect(() => {
+    if (!panelOpenKey) return;
+    try {
+      window.localStorage.setItem(panelOpenKey, String(isPanelOpen));
+    } catch {
+      // Quota or private-mode failures are non-fatal for appearance prefs.
+    }
+  }, [panelOpenKey, isPanelOpen]);
   const [mode, setMode] = useState<ReviewPanelMode>(() =>
     getWorkspaceTerminalState(terminalWorkspaceId).showing ? "terminal" : "changes"
   );

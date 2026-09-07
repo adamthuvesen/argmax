@@ -139,6 +139,11 @@ describe("decodeTimelineEvent", () => {
       workspaceId: "workspace-1",
       removesWorktree: false
     }))).not.toHaveProperty("removesWorktree");
+    expect(decodeTimelineEvent(event("session.note", { operation: "workspace.archive" }))).toMatchObject({
+      kind: "lifecycle",
+      name: "note",
+      operation: "workspace.archive"
+    });
     expect(decodeTimelineEvent(event("multitask.finished", {
       childSessionId: "child",
       taskLabel: "Review",

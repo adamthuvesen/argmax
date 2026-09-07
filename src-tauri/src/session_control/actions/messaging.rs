@@ -424,6 +424,11 @@ fn read_entry(event: &TimelineEvent) -> Option<ReadEntry> {
             format!("{} -> {}", tool_name(event), tool_outcome(event)),
         ),
         "error" if !event.message.trim().is_empty() => ("error", event.message.clone()),
+        // Argmax speaking about the chat itself — the move or archive it
+        // resumed or dropped. It read as an `error` line until these rows got
+        // their own kind, and a reader that misses it cannot tell why the
+        // disposal it was promised never happened.
+        "session.note" if !event.message.trim().is_empty() => ("note", event.message.clone()),
         "session.completed" => ("state", "session finished".to_string()),
         "session.cancelled" => ("state", "session cancelled".to_string()),
         _ => return None,

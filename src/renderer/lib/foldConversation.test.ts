@@ -188,6 +188,36 @@ describe("foldRenderItems", () => {
       sourceArchiveState: null
     });
   });
+  // Unlike a move or a handoff, a note says what Argmax did to the chat, not
+  // that the agent changed hands — so it follows the turn it landed in instead
+  // of cutting one answer into two blocks.
+  it("puts a session note after the turn it lands in without ending it", () => {
+    const items: ConversationItem[] = [
+      { kind: "message", event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Move it") },
+      { kind: "message", event: event("answer-1", "message.completed", "2026-05-12T15:00:01.000Z", "Working") },
+      {
+        kind: "message",
+        event: event("note", "session.note", "2026-05-12T15:00:02.000Z", "The scheduled move was cancelled.", {
+          operation: "session.move"
+        })
+      },
+      { kind: "message", event: event("answer-2", "message.completed", "2026-05-12T15:00:03.000Z", "Still here") }
+    ];
+
+    const out = foldRenderItems(items, null);
+
+    expect(out.map((item) => item.kind)).toEqual(["user-message", "turn", "session-note"]);
+    const turn = out.find((item) => item.kind === "turn");
+    expect(turn?.kind === "turn" ? turn.assistantEvents.map((e) => e.id) : null).toEqual([
+      "answer-1",
+      "answer-2"
+    ]);
+    const note = out.find((item) => item.kind === "session-note");
+    expect(note?.kind === "session-note" ? note.message : null).toBe(
+      "The scheduled move was cancelled."
+    );
+  });
+
   it("leaves a background subagent's later rows out of the next turn", () => {
     // The launch lands in turn 1; the child keeps working after the user has
     // already sent a follow-up, so its rows arrive inside turn 2.

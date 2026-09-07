@@ -1626,18 +1626,20 @@ fn scheduled_sessions(database: &Database) -> Vec<String> {
         .collect()
 }
 
-/// The chat's own timeline, oldest first.
-fn timeline_messages(database: &Database, session_id: &str) -> Vec<String> {
+/// The chat's own timeline as `(type, message)`, oldest first.
+fn timeline_rows(database: &Database, session_id: &str) -> Vec<(String, String)> {
     let connection = database.read_connection();
     let mut statement = connection
-        .prepare("SELECT message FROM events WHERE session_id = ? ORDER BY id")
+        .prepare("SELECT type, message FROM events WHERE session_id = ? ORDER BY id")
         .expect("prepare timeline");
-    let messages = statement
-        .query_map([session_id], |row| row.get::<_, String>(0))
+    let rows = statement
+        .query_map([session_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
         .expect("query timeline")
         .collect::<Result<Vec<_>, _>>()
         .expect("timeline rows");
-    messages
+    rows
 }
 
 /// The boot sequence after a quit, with the session-control socket rebuilt
@@ -1734,10 +1736,13 @@ async fn a_scheduled_archive_outlives_the_run_that_promised_it() {
         "a kept promise leaves no row for the launch after this one"
     );
     assert!(
-        timeline_messages(&database, "session-agent")
+        timeline_rows(&database, "session-agent")
             .iter()
-            .any(|message| message == "Resuming the archive scheduled before Argmax last quit."),
-        "the chat says why it closed a day after it was asked to"
+            .any(|(kind, message)| {
+                kind == "session.note"
+                    && message == "Resuming the archive scheduled before Argmax last quit."
+            }),
+        "the chat says why it closed a day after it was asked to, as a notice rather than an error"
     );
 }
 
@@ -1901,7 +1906,7 @@ async fn a_promise_whose_workspace_is_already_archived_is_dropped() {
 
     assert!(scheduled_sessions(&database).is_empty());
     assert!(
-        timeline_messages(&database, "session-agent").is_empty(),
+        timeline_rows(&database, "session-agent").is_empty(),
         "nothing was left to do, so the chat is not told anything"
     );
 }

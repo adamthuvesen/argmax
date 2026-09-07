@@ -524,23 +524,43 @@ fn record_move_continuation_note(
     session_id: &str,
     message: String,
 ) {
-    record_after_turn_note(
+    // The destination's first turn never started, so this one really is a
+    // failure and keeps the `error` kind.
+    record_after_turn_event(
         database,
         workspaces,
         session_id,
+        "error",
         "session.move-continuation",
         message,
     );
 }
 
-/// One line in a chat's own timeline about the disposal it is carrying. The
-/// `error` kind is what the transcript already renders as a system line for
-/// this family of notes, so a disposal never speaks in a shape the chat
-/// surface would drop.
+/// One line in a chat's own timeline about the disposal it is carrying: a
+/// notice, not a failure, so the chat shows it as a quiet system line rather
+/// than as an error nobody has to act on.
 pub(super) fn record_after_turn_note(
     database: &Database,
     workspaces: &Arc<WorkspaceService>,
     session_id: &str,
+    operation: &str,
+    message: String,
+) {
+    record_after_turn_event(
+        database,
+        workspaces,
+        session_id,
+        "session.note",
+        operation,
+        message,
+    );
+}
+
+fn record_after_turn_event(
+    database: &Database,
+    workspaces: &Arc<WorkspaceService>,
+    session_id: &str,
+    event_type: &str,
     operation: &str,
     message: String,
 ) {
@@ -552,7 +572,7 @@ pub(super) fn record_after_turn_note(
             &PersistTimelineEventInput {
                 id: Uuid::new_v4().to_string(),
                 session_id: session_id.to_string(),
-                r#type: "error".to_string(),
+                r#type: event_type.to_string(),
                 message,
                 payload: serde_json::json!({ "operation": operation }),
                 created_at: None,

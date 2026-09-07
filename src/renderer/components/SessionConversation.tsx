@@ -66,6 +66,7 @@ import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
 import { dismissMultitask, readDismissedMultitasks } from "../lib/multitaskDismissals.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
+import { SessionNote } from "./SessionNote.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
 import {
   hasOutstandingCardAsk as sessionHasOutstandingCardAsk,
@@ -1256,6 +1257,9 @@ export function SessionConversation({
                 }
                 if (item.kind === "provider-switch") {
                   return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
+                }
+                if (item.kind === "session-note") {
+                  return <SessionNote key={item.id} message={item.message} />;
                 }
                 return (
                   <SessionConversationTurn

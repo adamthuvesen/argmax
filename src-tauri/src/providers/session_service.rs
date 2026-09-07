@@ -370,6 +370,9 @@ impl ProviderSessionService {
         }
     }
 
+    /// Says on the chat that the disposal it was promised is off. The turn's
+    /// own failure is already an error row, so this line is a notice about the
+    /// promise rather than a second failure to act on.
     fn abort_session_after_turn(&self, session_id: &str, message: &str) -> ArgmaxResult<()> {
         let Some(registry) = self.session_control.get() else {
             return Ok(());
@@ -386,7 +389,7 @@ impl ProviderSessionService {
                 &PersistTimelineEventInput {
                     id: Uuid::new_v4().to_string(),
                     session_id: session_id.to_string(),
-                    r#type: "error".to_string(),
+                    r#type: "session.note".to_string(),
                     message: message.to_string(),
                     payload: json!({ "operation": match pending {
                         AfterTurn::Move => "session.move",

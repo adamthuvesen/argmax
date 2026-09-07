@@ -132,6 +132,10 @@ _Avoid_: Message, log line, output
 The provider's unnormalized stdout, stderr, or PTY bytes, kept as a human-readable fallback. Protocol output is not chat and must never be rendered as it.
 _Avoid_: Transcript, log, stream
 
+**Session note**:
+A line Argmax wrote into a chat about the chat itself: the move or archive it resumed after a quit, or the one it dropped because the turn never finished. A `session.note` timeline event, rendered as a quiet notice. It reports; a row that says something failed is an error instead.
+_Avoid_: System message, error, warning
+
 **Interactive card**:
 A chat element the user can answer rather than just read — currently a plan card and a question card, mapped from provider tool calls.
 _Avoid_: Widget, prompt, dialog

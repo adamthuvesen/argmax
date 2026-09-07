@@ -94,6 +94,8 @@ function canonicalDiagnostic(event: CanonicalTimelineEvent): Record<string, unkn
         lifecycle.destinationSessionId = event.destinationSessionId;
         lifecycle.destinationWorkspaceId = event.destinationWorkspaceId;
         lifecycle.checkoutMode = event.checkoutMode;
+      } else if (event.name === "note") {
+        lifecycle.operation = event.operation;
       }
       return lifecycle;
     }

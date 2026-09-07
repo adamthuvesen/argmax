@@ -26,6 +26,7 @@ export type RenderItem =
   | { kind: "compaction"; id: string; notice: CompactionNotice }
   | { kind: "project-move"; id: string; notice: ProjectMoveNotice }
   | { kind: "provider-switch"; id: string; notice: ProviderSwitchNotice }
+  | { kind: "session-note"; id: string; message: string }
   | {
       kind: "turn";
       id: string;
@@ -161,26 +162,40 @@ export function foldRenderItems(
     }
     pending.multitasks.push(notice);
   };
+  // A note about the session itself is not a seam: it says what Argmax did to
+  // the chat, not that the agent changed hands. Ending the turn on it would
+  // split one answer across two blocks, so a note that lands inside a turn
+  // waits for that turn to close and then follows it.
+  let deferredNotes: RenderItem[] = [];
+  const pushSessionNote = (event: TimelineEvent): void => {
+    const item: RenderItem = {
+      kind: "session-note",
+      id: `session-note-${event.id}`,
+      message: event.message
+    };
+    if (pending) deferredNotes.push(item);
+    else out.push(item);
+  };
   const flush = (): void => {
     turnLaunchIds = new Set();
     if (!pending) return;
     if (
-      pending.assistantEvents.length === 0 &&
-      pending.toolItems.length === 0 &&
-      pending.multitasks.length === 0
+      pending.assistantEvents.length > 0 ||
+      pending.toolItems.length > 0 ||
+      pending.multitasks.length > 0
     ) {
-      pending = null;
-      return;
+      out.push({
+        kind: "turn",
+        id: pending.firstId ?? `turn-${out.length}`,
+        assistantEvents: pending.assistantEvents,
+        toolItems: foldTurnToolItems(pending.toolItems),
+        assistantTimestamps: pending.assistantEvents.map((e) => Date.parse(e.createdAt)),
+        multitasks: pending.multitasks
+      });
     }
-    out.push({
-      kind: "turn",
-      id: pending.firstId ?? `turn-${out.length}`,
-      assistantEvents: pending.assistantEvents,
-      toolItems: foldTurnToolItems(pending.toolItems),
-      assistantTimestamps: pending.assistantEvents.map((e) => Date.parse(e.createdAt)),
-      multitasks: pending.multitasks
-    });
     pending = null;
+    out.push(...deferredNotes);
+    deferredNotes = [];
   };
   // Compaction is a seam in the conversation, so it ends the turn it lands in
   // and the work that follows opens a fresh one. The provider emits a start and
@@ -207,6 +222,14 @@ export function foldRenderItems(
     const canonical = item.kind === "message" ? decodeTimelineEvent(item.event) : null;
     if (item.kind === "message" && canonical?.kind === "multitask") {
       pushMultitask(item.event);
+      continue;
+    }
+    if (
+      item.kind === "message" &&
+      canonical?.kind === "lifecycle" &&
+      canonical.name === "note"
+    ) {
+      pushSessionNote(item.event);
       continue;
     }
     if (

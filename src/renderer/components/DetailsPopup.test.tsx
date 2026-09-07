@@ -27,11 +27,15 @@ const EVENTS: TimelineEvent[] = [
 type DetailsPopupProps = Parameters<typeof DetailsPopup>[0];
 
 function renderPopup(overrides: {
+  approvals?: DetailsPopupProps["approvals"];
+  onResolveApproval?: DetailsPopupProps["onResolveApproval"];
   onClose?: DetailsPopupProps["onClose"];
   onLoadSessionEvents?: DetailsPopupProps["onLoadSessionEvents"];
 } = {}) {
   return render(
     <DetailsPopup
+      approvals={overrides.approvals}
+      onResolveApproval={overrides.onResolveApproval}
       events={EVENTS}
       onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
       onClose={overrides.onClose ?? vi.fn(() => {})}
@@ -91,6 +95,20 @@ describe("DetailsPopup", () => {
     renderPopup({ onLoadSessionEvents });
 
     await waitFor(() => expect(onLoadSessionEvents).toHaveBeenCalledWith("session-a"));
+  });
+
+  it("shows and resolves only its own pending approvals", async () => {
+    const onResolveApproval = vi.fn().mockResolvedValue(undefined);
+    const approval = {
+      id: "approval-popup", sessionId: "session-a", command: "Read local file", cwd: "/tmp",
+      provider: "claude" as const, providerInvocationId: "turn-1", providerRequestId: "request-1",
+      riskLevel: "low" as const, status: "pending" as const,
+      createdAt: "2026-09-07T10:00:00.000Z", resolvedAt: null
+    };
+    renderPopup({ approvals: [approval, { ...approval, id: "other", sessionId: "other", command: "Unrelated action" }], onResolveApproval });
+    expect(screen.queryByText("Unrelated action")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Approve action: Read local file" }));
+    await waitFor(() => expect(onResolveApproval).toHaveBeenCalledWith("approval-popup", "approved"));
   });
 
   it("closes from the header close button", () => {

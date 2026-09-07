@@ -473,14 +473,6 @@
   .app-shell {
     grid-template-columns: 232px minmax(0, 1fr);
   }
-
-  .approval-row {
-    grid-template-columns: 1fr;
-  }
-
-  .approval-actions {
-    justify-content: flex-start;
-  }
 }
 
 @media (max-width: 760px) {

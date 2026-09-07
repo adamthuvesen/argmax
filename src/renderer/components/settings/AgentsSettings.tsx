@@ -9,7 +9,6 @@ import { CHAT_VERBOSITY_HINTS, CHAT_VERBOSITY_LABELS, type ChatVerbosity } from 
 import { CombinedModelSelector, type ProviderAvailability } from "../ModelSelector.js";
 import { WorkingNest } from "../WorkingNest.js";
 import {
-  SegmentedControl,
   SettingGroup,
   SettingNote,
   SettingRow,
@@ -29,6 +28,9 @@ export function AgentsSettings({
   onFastModeEnabledChange,
   turnChangesExpanded,
   onTurnChangesExpandedChange,
+  defaultAgentSaveError,
+  isSavingDefaultAgent,
+  onRetryDefaultAgentSave,
   permissionMode,
   onPermissionModeChange,
   providers,
@@ -47,6 +49,9 @@ export function AgentsSettings({
   onFastModeEnabledChange: (v: boolean) => void;
   turnChangesExpanded: boolean;
   onTurnChangesExpandedChange: (v: boolean) => void;
+  defaultAgentSaveError?: string | null;
+  isSavingDefaultAgent?: boolean;
+  onRetryDefaultAgentSave?: () => void;
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
   providers: DiscoveredProvider[] | null;
@@ -114,21 +119,31 @@ export function AgentsSettings({
       </SettingGroup>
 
       <SettingGroup id="settings-permissions" label="Permissions">
+        {defaultAgentSaveError ? (
+          <div role="alert">
+            <SettingNote tone="warn">{defaultAgentSaveError}</SettingNote>
+            <button type="button" className="settings-button" onClick={onRetryDefaultAgentSave}>Retry saving defaults</button>
+          </div>
+        ) : isSavingDefaultAgent ? (
+          <div role="status"><SettingNote>Saving default settings…</SettingNote></div>
+        ) : null}
         <SettingRow
-          label="When the agent wants to run a command"
+          label="Tool permissions"
+          htmlFor="settings-permission-mode"
           control={
-            <SegmentedControl
-              ariaLabel="When the agent wants to run a command"
-              name="permission-mode"
+            <SettingsListPicker
+              ariaLabel="Tool permissions"
+              inputId="settings-permission-mode"
               value={permissionMode}
-              onChange={(v) => onPermissionModeChange(v as PermissionMode)}
+              onChange={(v) => onPermissionModeChange(v)}
               options={[
-                { value: "auto-approve", label: "Auto-approve" },
+                { value: "provider-defaults", label: "Provider defaults" },
+                { value: "auto-approve", label: "Full access" },
                 {
                   value: "ask-each-time",
-                  label: "Ask each time",
+                  label: "Ask for approval",
                   disabled: !askEachTimeAvailable,
-                  caption: askEachTimeAvailable
+                  title: askEachTimeAvailable
                     ? undefined
                     : "Unavailable until a provider supports live replies"
                 }
@@ -137,21 +152,26 @@ export function AgentsSettings({
           }
         />
         {!askEachTimeAvailable ? (
+          <SettingNote tone="warn">
+            Install or update a provider to enable approval requests in the chat.
+          </SettingNote>
+        ) : null}
+        {permissionMode === "provider-defaults" ? (
           <SettingNote>
-            No detected provider can answer a live approval request yet. Choose Auto-approve to start a
-            chat; Argmax will not pretend that an observable-only gate can be approved in-app.
+            Argmax adds no permission bypass. Claude Code, Codex, Cursor, OpenCode, and Grok follow
+            their native CLI configuration in <code>~/.claude</code>, <code>~/.codex</code>,{" "}
+            <code>~/.cursor</code>, <code>~/.config/opencode</code>, and <code>~/.grok</code>.
           </SettingNote>
         ) : permissionMode === "auto-approve" ? (
           <SettingNote>
-            Argmax launches each provider with broad permissions (<code>bypassPermissions</code> /{" "}
-            <code>--dangerously-bypass-approvals-and-sandbox</code> / <code>--force --trust</code>).
-            Right for a trusted single-user desktop — switch to “Ask each time” for an explicit gate
-            per tool call.
+            Let agents work with broad permissions without routine confirmation. Plan mode keeps its
+            restrictions. This applies to new chats.
           </SettingNote>
         ) : (
           <SettingNote>
-            The bypass flags are dropped. Each tool invocation goes through a provider's native
-            approval gate only when that provider supports live replies.
+            Show native approval requests in the chat and send your decision back to the provider.
+            Actions already allowed by the provider may still run without prompting. This applies to
+            new chats.
           </SettingNote>
         )}
       </SettingGroup>

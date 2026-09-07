@@ -202,9 +202,13 @@ pub fn native_agent_lifecycle_events(
     {
         return Vec::new();
     }
-    let Some(task) = object_value(
-        object_value(payload.get("tool_call")).and_then(|tool_call| tool_call.get("taskToolCall")),
-    ) else {
+    let task = object_value(payload.get("tool_call")).and_then(|tool_call| {
+        tool_call
+            .get("taskToolCall")
+            .or_else(|| tool_call.get("task"))
+            .and_then(|task| object_value(Some(task)))
+    });
+    let Some(task) = task else {
         return Vec::new();
     };
     let Some(child_id) = task
@@ -515,6 +519,43 @@ mod tests {
             "child-1"
         );
         assert_eq!(second.events[1].payload["agentRunId"], "call-second");
+    }
+
+    #[test]
+    fn cursor_acp_task_lifecycle_uses_the_completed_result_agent_id() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(
+                &json!({
+                    "type": "tool_call",
+                    "subtype": "completed",
+                    "session_id": "parent-acp",
+                    "call_id": "call-acp",
+                    "tool_call": {
+                        "task": {
+                            "args": { "description": "Review ACP" },
+                            "result": { "success": {
+                                "agentId": "child-acp",
+                                "conversationSteps": [{ "assistantMessage": { "text": "ACP result" } }]
+                            }}
+                        }
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+
+        assert_eq!(result.events.len(), 3);
+        assert_eq!(result.events[0].message, "task");
+        assert_eq!(result.events[1].r#type, "agent.started");
+        assert_eq!(
+            result.events[1].payload["providerChildSessionId"],
+            "child-acp"
+        );
+        assert_eq!(result.events[2].r#type, "agent.completed");
+        assert_eq!(result.events[2].message, "ACP result");
     }
 
     #[test]

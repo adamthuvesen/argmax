@@ -122,6 +122,8 @@ pub struct RealProviderProcessLauncher {
     discovery: ProviderDiscovery,
     session_launch_registry: Option<Arc<SessionLaunchRegistry>>,
     cursor_acp: Arc<super::cursor_acp::CursorAcpSessions>,
+    approvals: Option<Arc<crate::approvals::service::ApprovalService>>,
+    grok_acp: Arc<super::grok_acp::GrokAcpSessions>,
 }
 
 impl RealProviderProcessLauncher {
@@ -130,7 +132,22 @@ impl RealProviderProcessLauncher {
             discovery: ProviderDiscovery::new(),
             session_launch_registry: None,
             cursor_acp: Arc::new(super::cursor_acp::CursorAcpSessions::new()),
+            approvals: None,
+            grok_acp: Arc::new(super::grok_acp::GrokAcpSessions::new()),
         }
+    }
+
+    pub fn with_grok_acp(mut self, pool: Arc<super::grok_acp::GrokAcpSessions>) -> Self {
+        self.grok_acp = pool;
+        self
+    }
+
+    pub fn with_approvals(
+        mut self,
+        approvals: Arc<crate::approvals::service::ApprovalService>,
+    ) -> Self {
+        self.approvals = Some(approvals);
+        self
     }
 
     /// Share the boot-warmed discovery cache (`AppState.provider_discovery`).
@@ -147,6 +164,8 @@ impl RealProviderProcessLauncher {
             discovery,
             session_launch_registry,
             cursor_acp,
+            approvals: None,
+            grok_acp: Arc::new(super::grok_acp::GrokAcpSessions::new()),
         }
     }
 }
@@ -185,36 +204,97 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
             // paying the ~5.5 s one-shot client boot per turn. The warm process
             // is shared per workspace, so the per-session credential rides in
             // the `mcpServers` entry of `session/new` / `session/load` rather
-            // than in the process environment. Any ACP failure falls through to
-            // the proven one-shot path below.
+            // than in the process environment. A failed handshake is surfaced
+            // instead of silently losing native approval handling.
             if super::cursor_acp::is_acp_eligible(&input) {
-                // The prefix goes on a copy: an ACP launch that fails falls
-                // through to the one-shot path below, which prepends its own.
+                // ACP receives the same launch instructions as the other
+                // native transports. Handshake failures return to the caller.
                 let mut acp_input = input.clone();
                 if let Some(config) = session_launch.as_ref() {
                     acp_input.prompt = config.prepend_instruction(&input.prompt);
                 }
                 match self
                     .cursor_acp
-                    .launch_turn(
+                    .launch_turn_with_approvals(
                         binary_path.as_str(),
                         &acp_input,
                         session_launch.as_ref(),
+                        self.approvals.clone(),
                         Arc::clone(&on_event),
                     )
                     .await
                 {
                     Ok(handle) => return Ok(handle),
-                    Err(error) => tracing::warn!(
-                        ?error,
-                        session_id = %input.session_id,
-                        "cursor ACP launch failed; falling back to one-shot"
-                    ),
+                    Err(error) => return Err(error),
                 }
             }
 
             if let Some(config) = session_launch.as_ref() {
                 input.prompt = config.prepend_instruction(&input.prompt);
+            }
+
+            if input.provider == ProviderId::Grok {
+                return self
+                    .grok_acp
+                    .launch_turn(
+                        &binary_path,
+                        &input,
+                        session_launch.as_ref(),
+                        self.approvals.clone(),
+                        on_event,
+                    )
+                    .await;
+            }
+
+            if input.provider == ProviderId::Opencode {
+                let approvals = self.approvals.clone().ok_or_else(|| {
+                    ArgmaxError::service(
+                        "APPROVAL_SERVICE_NOT_READY",
+                        "Approval service is not initialized",
+                    )
+                })?;
+                return super::opencode_server::launch_turn(
+                    &binary_path,
+                    &input,
+                    session_launch.as_ref(),
+                    approvals,
+                    on_event,
+                )
+                .await;
+            }
+
+            if input.provider == ProviderId::Codex {
+                let approvals = self.approvals.clone().ok_or_else(|| {
+                    ArgmaxError::service(
+                        "APPROVAL_SERVICE_NOT_READY",
+                        "Approval service is not initialized",
+                    )
+                })?;
+                return super::codex_app_server::launch_turn(
+                    &binary_path,
+                    &input,
+                    session_launch.as_ref(),
+                    approvals,
+                    on_event,
+                )
+                .await;
+            }
+
+            if input.provider == ProviderId::Claude {
+                let approvals = self.approvals.clone().ok_or_else(|| {
+                    ArgmaxError::service(
+                        "APPROVAL_SERVICE_NOT_READY",
+                        "Approval service is not initialized",
+                    )
+                })?;
+                return super::claude_control::launch_turn(
+                    &binary_path,
+                    &input,
+                    session_launch.as_ref(),
+                    approvals,
+                    on_event,
+                )
+                .await;
             }
 
             let args = match input.resume_conversation_id.as_deref() {
@@ -662,6 +742,7 @@ pub(super) fn parse_permission_mode(value: &str) -> ArgmaxResult<PermissionMode>
     match value {
         "auto-approve" => Ok(PermissionMode::AutoApprove),
         "ask-each-time" => Ok(PermissionMode::AskEachTime),
+        "provider-defaults" => Ok(PermissionMode::ProviderDefaults),
         _ => Err(ArgmaxError::service(
             "PERMISSION_MODE_UNKNOWN",
             format!("unknown permission mode {value}"),
@@ -743,6 +824,7 @@ impl PermissionMode {
         match self {
             PermissionMode::AutoApprove => "auto-approve",
             PermissionMode::AskEachTime => "ask-each-time",
+            PermissionMode::ProviderDefaults => "provider-defaults",
         }
     }
 }

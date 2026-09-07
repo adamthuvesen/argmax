@@ -990,6 +990,7 @@ export function MobileApp(): JSX.Element {
                   setReviewFilePath(path);
                   setReviewOpen(true);
                 }}
+                agentsViewAvailable={false}
                 workspaceCardVisible={false}
               />
             </div>

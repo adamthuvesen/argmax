@@ -3,7 +3,6 @@ use crate::{
     error::{ArgmaxError, ArgmaxResult},
     ipc::inputs::AgentReference,
     persistence::events::has_current_native_agent_identity,
-    providers::cursor_acp::is_acp_model_id,
 };
 use rusqlite::OptionalExtension;
 
@@ -18,7 +17,7 @@ pub(super) fn ensure_agent_references_supported(
     if references.is_empty() {
         return Ok(());
     }
-    if provider == "cursor" && is_acp_model_id(model_id) {
+    if provider == "cursor" && model_id == "composer-2.5" {
         return Err(ArgmaxError::service(
             "AGENT_REFERENCE_UNAVAILABLE",
             "Cursor Composer 2.5 does not support persistent native agent references.",

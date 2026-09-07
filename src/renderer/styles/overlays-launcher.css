@@ -75,149 +75,142 @@
   }
 }
 
+/* One pending action, the reason it stopped, and two buttons. Everything else
+   a request carries — the cwd it runs in, the provider that asked, a risk word,
+   a "waiting for you" status, a section heading — repeats what the session
+   around it already says, so the row does not print it. */
 .approval-surface {
-  padding: 18px var(--session-inline-padding, 64px) 22px;
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) clamp(12px, 3vw, var(--session-inline-padding, 20px));
   border-top: 1px solid var(--line);
   background: var(--panel-soft);
-  background-image: linear-gradient(180deg, var(--paper-highlight-strong), transparent);
-}
-
-.approval-surface .section-heading h2 {
-  font-size: var(--text-lg);
-  font-weight: 500;
-  letter-spacing: -0.005em;
-}
-
-.approval-surface .section-heading svg {
-  color: var(--rose);
 }
 
 .approval-row {
-  display: grid;
-  grid-template-columns: 104px minmax(0, 1fr) auto;
-  gap: var(--space-4);
-  align-items: center;
-  padding: 14px 12px;
-  margin: 0 -12px;
-  border-radius: var(--radius-xl);
-  border-top: 1px solid var(--line);
-  transition: background var(--duration-fast) var(--ease);
-}
-
-.approval-row:first-of-type {
-  border-top: 0;
-}
-
-.approval-row:hover {
-  background: var(--row-hover);
-}
-
-.approval-risk {
-  position: relative;
-  display: grid;
-  gap: var(--space-1);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+  /* Risk is a colour on the edge, not a "Low Risk" headline. */
   padding-left: var(--space-3);
-  text-transform: capitalize;
+  border-left: 2px solid var(--line-strong);
 }
 
-.approval-risk::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 2px;
-  border-radius: 999px;
-  background: var(--line-strong);
+.approval-row[data-risk="high"] {
+  border-left-color: var(--rose);
 }
 
-.approval-risk strong {
-  font-size: var(--text-base);
-  font-weight: 600;
-  color: var(--text);
+.approval-row[data-risk="medium"] {
+  border-left-color: var(--amber);
 }
 
-.approval-risk span,
-.approval-command span {
-  color: var(--muted-strong);
-  font-size: var(--text-sm);
+.approval-row[data-risk="low"] {
+  border-left-color: var(--sage);
 }
 
-.approval-row[data-risk="high"] .approval-risk::before {
-  background: var(--rose);
-}
-
-.approval-row[data-risk="high"] .approval-risk strong {
-  color: var(--rose);
-}
-
-.approval-row[data-risk="medium"] .approval-risk::before {
-  background: var(--amber);
-}
-
-.approval-row[data-risk="medium"] .approval-risk strong {
-  color: var(--amber);
-}
-
-.approval-row[data-risk="low"] .approval-risk::before {
-  background: var(--sage);
-}
-
-.approval-command {
+.approval-details {
   display: grid;
   min-width: 0;
   gap: var(--space-1);
 }
 
-.approval-row code {
-  padding: 2px 6px;
-  background: var(--panel-sunken);
-  border-radius: var(--radius-md);
+.approval-command {
+  white-space: pre-wrap;
   font-family: var(--font-mono);
-  font-size: var(--text-sm-plus);
+  font-size: var(--text-sm);
+  line-height: 1.45;
   color: var(--text);
   overflow-wrap: anywhere;
+  /* A long pipeline stays readable at the top; the rest is one scroll away
+     rather than a wall the buttons fall off the bottom of. */
+  max-height: 7em;
+  overflow: auto;
+}
+
+/* Only the scalar arguments reach here (approvalAction), and each one is a
+   line: the full value is one hover away. */
+.approval-args {
+  gap: 0 var(--space-2_5);
+}
+
+.approval-args dd {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.approval-reason,
+.approval-error {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.approval-reason {
+  color: var(--muted-strong);
+}
+
+.approval-error {
+  padding: var(--space-1_5) var(--space-2);
+  border-left: 2px solid var(--rose);
+  border-radius: var(--radius-xs);
+  background: var(--rose-soft);
+  color: var(--rose);
 }
 
 .approval-actions {
-  display: inline-flex;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.approval-status {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.approval-status:empty {
+  display: none;
 }
 
 .approval-actions button {
-  min-height: 32px;
-  padding: 0 14px;
+  min-height: 24px;
+  padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  color: var(--text);
-  background: var(--panel);
-  font-size: var(--text-sm-plus);
+  color: var(--muted-strong);
+  background: transparent;
+  font-size: var(--text-xs);
   font-weight: 500;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease),
     border-color var(--duration-fast) var(--ease);
 }
 
-.approval-actions button:first-child:hover:not(:disabled) {
-  background: var(--rose-soft);
+.approval-actions .approval-reject:hover:not(:disabled) {
   border-color: var(--rose);
   color: var(--rose);
 }
 
-.approval-actions button:last-child {
+.approval-actions .approval-approve {
   color: var(--bubble-on-ink);
   border-color: var(--sage-deep);
   background: var(--sage-deep);
 }
 
-.approval-actions button:last-child:hover:not(:disabled) {
+.approval-actions .approval-approve:hover:not(:disabled) {
   background: #335c47;
   border-color: #335c47;
-  transform: translateY(-1px);
 }
 
 .approval-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.42;
 }
+
 

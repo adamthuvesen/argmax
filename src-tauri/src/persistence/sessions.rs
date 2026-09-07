@@ -374,7 +374,10 @@ pub fn persist_session(
             input.model_label.as_str(),
             input.model_id.as_str(),
             input.reasoning_effort.as_deref(),
-            input.permission_mode.as_deref().unwrap_or("auto-approve"),
+            input
+                .permission_mode
+                .as_deref()
+                .unwrap_or("provider-defaults"),
             input.agent_mode.as_deref().unwrap_or("auto"),
             input.prompt.as_str(),
             input.state.as_str(),

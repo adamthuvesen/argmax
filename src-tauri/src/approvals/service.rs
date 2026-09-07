@@ -8,12 +8,17 @@
 //     SELECT-then-INSERT inside the transaction.
 //   - resolve_approval flips the approval to approved/rejected and, when
 //     the session is still `waiting`, transitions it to running/blocked.
-//     Native provider continuation is deliberately not claimed until a
-//     responder is wired for that provider capability.
+//     Native requests resume only their live, correlated provider responder.
+//     A stopped or disconnected request cannot be approved.
 //     The transaction wrapper keeps the renderer's `loadDashboard` reads
 //     from seeing inconsistent state.
 
-use std::sync::Arc;
+use crate::util::sync::LockOrRecover;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+use tokio::sync::oneshot;
 
 use serde_json::json;
 use uuid::Uuid;
@@ -71,6 +76,7 @@ impl ResolveStatus {
 pub struct ApprovalService {
     database: Arc<Database>,
     publish_delta: DeltaPublisher,
+    native_requests: Mutex<HashMap<String, (String, oneshot::Sender<bool>)>>,
 }
 
 impl ApprovalService {
@@ -85,7 +91,169 @@ impl ApprovalService {
         Arc::new(Self {
             database,
             publish_delta: Arc::new(publisher),
+            native_requests: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Wait for a decision on an exact live provider request. The native provider
+    /// owns policy evaluation. Every request it sends here requires a decision.
+    pub async fn request_native(
+        &self,
+        session_id: &str,
+        invocation_id: &str,
+        request_id: &str,
+        command: &str,
+        cwd: &str,
+        provider: &str,
+    ) -> ArgmaxResult<bool> {
+        let receiver = self.register_native(
+            session_id,
+            invocation_id,
+            request_id,
+            command,
+            cwd,
+            provider,
+        )?;
+        receiver.await.map_err(|_| {
+            ArgmaxError::service(
+                "APPROVAL_CANCELLED",
+                "This approval is no longer connected to a running provider",
+            )
+        })
+    }
+
+    fn register_native(
+        &self,
+        session_id: &str,
+        invocation_id: &str,
+        request_id: &str,
+        command: &str,
+        cwd: &str,
+        provider: &str,
+    ) -> ArgmaxResult<oneshot::Receiver<bool>> {
+        let mut requests = self.native_requests.lock_or_recover("native approvals");
+        let conn = self.database.connection();
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        let session = find_session_by_id(&tx, session_id)?;
+        if !matches!(session.state, SessionState::Running | SessionState::Waiting) {
+            return Err(ArgmaxError::service(
+                "APPROVAL_CANCELLED",
+                "The provider turn has ended",
+            ));
+        }
+        if crate::persistence::approvals::find_approval_by_provider_request(
+            &tx,
+            session_id,
+            provider,
+            invocation_id,
+            request_id,
+        )?
+        .is_some()
+        {
+            return Err(ArgmaxError::service(
+                "APPROVAL_DUPLICATE",
+                "This provider request was already received",
+            ));
+        }
+        let approval = persist_approval(
+            &tx,
+            &PersistApprovalInput {
+                id: Uuid::new_v4().to_string(),
+                session_id: session_id.to_string(),
+                command: command.to_string(),
+                cwd: cwd.to_string(),
+                provider: provider.to_string(),
+                provider_invocation_id: Some(invocation_id.to_string()),
+                provider_request_id: Some(request_id.to_string()),
+                risk_level: risk_level_str(classify_command_risk(command).risk_level).to_string(),
+                status: "pending".to_string(),
+                created_at: None,
+            },
+        )?;
+        if requests.contains_key(&approval.id) {
+            return Err(ArgmaxError::service(
+                "APPROVAL_DUPLICATE",
+                "This provider request is already waiting for a decision",
+            ));
+        }
+        let session = update_session_state(
+            &tx,
+            session_id,
+            &SessionStateInput::transition(SessionState::Waiting).with_pending_approval(),
+        )?;
+        let event = persist_timeline_event(
+            &tx,
+            &PersistTimelineEventInput {
+                id: Uuid::new_v4().to_string(),
+                session_id: session_id.to_string(),
+                r#type: "approval.requested".to_string(),
+                message: "The provider needs your approval to continue".to_string(),
+                payload: json!({"approvalId": approval.id, "command": command, "cwd": cwd, "provider": provider}),
+                created_at: None,
+            },
+        )?;
+        tx.commit()
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        let (sender, receiver) = oneshot::channel();
+        requests.insert(approval.id.clone(), (session_id.to_string(), sender));
+        drop(conn);
+        drop(requests);
+        self.publish(DashboardDelta {
+            sessions: vec![session],
+            events: vec![event],
+            approvals: vec![approval],
+            ..DashboardDelta::default()
+        });
+        Ok(receiver)
+    }
+
+    pub fn cancel_native_request(
+        &self,
+        session_id: &str,
+        invocation_id: &str,
+        request_id: &str,
+    ) -> ArgmaxResult<()> {
+        let mut native = self.native_requests.lock_or_recover("native approvals");
+        let conn = self.database.connection();
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        let pending = list_approvals_for_session(&tx, session_id, "pending")?;
+        let mut cancelled = Vec::new();
+        for approval in pending.into_iter().filter(|approval| {
+            approval.provider_invocation_id.as_deref() == Some(invocation_id)
+                && approval.provider_request_id.as_deref() == Some(request_id)
+        }) {
+            native.remove(&approval.id);
+            tx.execute("UPDATE approvals SET status = 'cancelled', resolved_at = ? WHERE id = ? AND status = 'pending'", (now_iso(), &approval.id))
+                .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+            cancelled.push(find_approval_by_id(&tx, &approval.id)?);
+        }
+        let session = find_session_by_id(&tx, session_id)?;
+        let updated_session = if !cancelled.is_empty()
+            && session.state == SessionState::Waiting
+            && list_approvals_for_session(&tx, session_id, "pending")?.is_empty()
+        {
+            Some(update_session_state(
+                &tx,
+                session_id,
+                &SessionStateInput::transition(SessionState::Running),
+            )?)
+        } else {
+            None
+        };
+        tx.commit()
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        drop(conn);
+        drop(native);
+        self.publish(DashboardDelta {
+            approvals: cancelled,
+            sessions: updated_session.into_iter().collect(),
+            ..DashboardDelta::default()
+        });
+        Ok(())
     }
 
     /// All pending approvals, newest first. The IPC channel
@@ -183,10 +351,23 @@ impl ApprovalService {
         approval_id: &str,
         status: ResolveStatus,
     ) -> ArgmaxResult<ApprovalRequest> {
+        let mut native = self.native_requests.lock_or_recover("native approvals");
         let conn = self.database.connection();
         let tx = conn
             .unchecked_transaction()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        let current = find_approval_by_id(&tx, approval_id)?;
+        let is_native = current.provider_request_id.is_some();
+        if is_native
+            && native
+                .get(approval_id)
+                .is_none_or(|(_, sender)| sender.is_closed())
+        {
+            return Err(ArgmaxError::service(
+                "APPROVAL_CANCELLED",
+                "This approval is no longer connected to a running provider",
+            ));
+        }
         let approval = resolve_approval(&tx, approval_id, status.as_str())?;
         let session = find_session_by_id(&tx, &approval.session_id)?;
         // Provider-emitted permission gates can be persisted after the
@@ -194,14 +375,27 @@ impl ApprovalService {
         // update the audit trail but must not revive a completed /
         // failed / cancelled session.
         let updated_session = if session.state == SessionState::Waiting {
-            let next_state = match status {
-                ResolveStatus::Approved => SessionState::Running,
-                ResolveStatus::Rejected => SessionState::Blocked,
+            let still_pending =
+                !list_approvals_for_session(&tx, &approval.session_id, "pending")?.is_empty();
+            let next_state = if still_pending {
+                SessionState::Waiting
+            } else if is_native {
+                // A denied native tool returns control to the provider too.
+                SessionState::Running
+            } else {
+                match status {
+                    ResolveStatus::Approved => SessionState::Running,
+                    ResolveStatus::Rejected => SessionState::Blocked,
+                }
             };
             Some(update_session_state(
                 &tx,
                 &approval.session_id,
-                &SessionStateInput::transition(next_state),
+                &if next_state == SessionState::Waiting {
+                    SessionStateInput::transition(next_state).with_pending_approval()
+                } else {
+                    SessionStateInput::transition(next_state)
+                },
             )?)
         } else {
             None
@@ -227,6 +421,11 @@ impl ApprovalService {
         )?;
         tx.commit()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        if let Some((_, sender)) = native.remove(approval_id) {
+            let _ = sender.send(status == ResolveStatus::Approved);
+        }
+        drop(conn);
+        drop(native);
         self.publish(DashboardDelta {
             sessions: updated_session.into_iter().collect(),
             events: vec![event],
@@ -241,6 +440,7 @@ impl ApprovalService {
     /// lifecycle action, not an approval decision, and must never leave rows
     /// that appear actionable after their provider/session is gone.
     pub fn cancel_workspace_pending(&self, workspace_id: &str) -> ArgmaxResult<()> {
+        let mut native = self.native_requests.lock_or_recover("native approvals");
         let conn = self.database.connection();
         let pending = list_approvals_for_workspace(&conn, workspace_id, "pending")?;
         if pending.is_empty() {
@@ -260,6 +460,7 @@ impl ApprovalService {
         drop(statement);
         tx.commit()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        native.retain(|id, _| !pending.iter().any(|approval| &approval.id == id));
         let cancelled = pending
             .iter()
             .map(|approval| find_approval_by_id(&conn, &approval.id))
@@ -277,6 +478,8 @@ impl ApprovalService {
     /// terminated. A request that no longer has a live invocation must never
     /// remain actionable after restart.
     pub fn cancel_session_pending(&self, session_id: &str) -> ArgmaxResult<()> {
+        let mut native = self.native_requests.lock_or_recover("native approvals");
+        native.retain(|_, (id, _)| id != session_id);
         let conn = self.database.connection();
         let pending = list_approvals_for_session(&conn, session_id, "pending")?;
         if pending.is_empty() {
@@ -292,6 +495,7 @@ impl ApprovalService {
         .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
         tx.commit()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        native.retain(|id, _| !pending.iter().any(|approval| &approval.id == id));
         let cancelled = pending
             .iter()
             .map(|approval| find_approval_by_id(&conn, &approval.id))
@@ -387,6 +591,163 @@ mod tests {
             .unwrap();
         }
         (database, "s1".to_string(), dir)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn claude_control_round_trip_waits_for_real_resolution() {
+        use crate::providers::{AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
+        use std::os::unix::fs::PermissionsExt;
+        let (database, session_id, dir) = setup();
+        let svc = ApprovalService::new(database);
+        let binary = dir.path().join("fake-claude");
+        let response_file = dir.path().join("reply.json");
+        std::fs::write(&binary, r#"#!/bin/sh
+read -r initialize
+printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"argmax-initialize","response":{}}}'
+read -r prompt
+printf '%s\n' '{"type":"control_request","request_id":"exact-request","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}'
+read -r response
+printf '%s' "$response" > reply.json
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"done"}'
+"#).unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let input = ProviderLaunchInput {
+            provider: ProviderId::Claude,
+            session_id,
+            workspace_path: dir.path().to_path_buf(),
+            prompt: "test".into(),
+            model_label: "test".into(),
+            model_id: "test".into(),
+            reasoning_effort: None,
+            fast_mode: false,
+            resume_conversation_id: None,
+            resume_fork: false,
+            permission_mode: PermissionMode::ProviderDefaults,
+            agent_mode: AgentMode::Auto,
+            cols: 80,
+            rows: 24,
+        };
+        let handle = crate::providers::claude_control::launch_turn(
+            binary.to_str().unwrap(),
+            &input,
+            None,
+            svc.clone(),
+            Arc::new(|_| {}),
+        )
+        .await
+        .unwrap();
+        let approval = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if let Some(row) = svc.pending().unwrap().first().cloned() {
+                    break row;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(
+            !response_file.exists(),
+            "provider must remain waiting before the user decides"
+        );
+        svc.resolve(&approval.id, ResolveStatus::Rejected).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while !handle.disposed() {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let response: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(response_file).unwrap()).unwrap();
+        assert_eq!(response["response"]["request_id"], "exact-request");
+        assert_eq!(response["response"]["response"]["behavior"], "deny");
+    }
+
+    #[tokio::test]
+    async fn native_requests_wait_and_resolve_exact_request_once() {
+        let (database, session_id, _dir) = setup();
+        let svc = ApprovalService::new(database.clone());
+        let first = svc
+            .register_native(&session_id, "turn-1", "r1", "ls", "/tmp", "claude")
+            .unwrap();
+        let second = svc
+            .register_native(&session_id, "turn-1", "r2", "pwd", "/tmp", "claude")
+            .unwrap();
+        let rows = svc.pending().unwrap();
+        let first_row = rows
+            .iter()
+            .find(|row| row.provider_request_id.as_deref() == Some("r1"))
+            .unwrap();
+        let second_row = rows
+            .iter()
+            .find(|row| row.provider_request_id.as_deref() == Some("r2"))
+            .unwrap();
+        assert!(svc
+            .register_native(&session_id, "turn-1", "r1", "ls", "/tmp", "claude")
+            .is_err());
+        svc.resolve(&second_row.id, ResolveStatus::Rejected)
+            .unwrap();
+        assert!(!second.await.unwrap());
+        assert_eq!(
+            find_session_by_id(&database.connection(), &session_id)
+                .unwrap()
+                .state,
+            SessionState::Waiting
+        );
+        svc.resolve(&first_row.id, ResolveStatus::Approved).unwrap();
+        assert!(first.await.unwrap());
+        assert_eq!(
+            find_session_by_id(&database.connection(), &session_id)
+                .unwrap()
+                .state,
+            SessionState::Running
+        );
+        assert!(svc.resolve(&first_row.id, ResolveStatus::Approved).is_err());
+        assert!(svc
+            .register_native(&session_id, "turn-1", "r1", "ls", "/tmp", "claude")
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn native_request_cancellation_invalidates_the_live_response() {
+        let (database, session_id, _dir) = setup();
+        let svc = ApprovalService::new(Arc::clone(&database));
+        let receiver = svc
+            .register_native(&session_id, "turn-1", "r1", "ls", "/tmp", "codex")
+            .unwrap();
+        let row = svc.pending().unwrap().remove(0);
+        svc.cancel_native_request(&session_id, "turn-1", "r1")
+            .unwrap();
+        assert!(receiver.await.is_err());
+        assert!(svc.resolve(&row.id, ResolveStatus::Approved).is_err());
+        assert!(svc.pending().unwrap().is_empty());
+        {
+            let conn = database.read_connection();
+            assert_eq!(
+                find_session_by_id(&conn, &session_id).unwrap().state,
+                SessionState::Running
+            );
+        }
+        let receiver = svc
+            .register_native(&session_id, "turn-2", "r1", "ls", "/tmp", "codex")
+            .unwrap();
+        svc.cancel_session_pending(&session_id).unwrap();
+        assert!(receiver.await.is_err());
+    }
+
+    #[test]
+    fn abandoned_native_receiver_cannot_be_approved() {
+        let (database, session_id, _dir) = setup();
+        let svc = ApprovalService::new(database);
+        let receiver = svc
+            .register_native(&session_id, "turn-1", "r1", "ls", "/tmp", "grok")
+            .unwrap();
+        let row = svc.pending().unwrap().remove(0);
+        drop(receiver);
+        assert!(svc.resolve(&row.id, ResolveStatus::Approved).is_err());
+        assert_eq!(svc.pending().unwrap()[0].status, "pending");
     }
 
     #[test]

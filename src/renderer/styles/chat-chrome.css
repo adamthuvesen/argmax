@@ -1272,6 +1272,21 @@
   overflow: hidden;
 }
 
+.details-popup:has(.details-popup-approvals) {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.details-popup-approvals {
+  max-height: 240px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+
+.details-popup-approvals .approval-surface {
+  margin: 0;
+  padding: var(--space-3);
+}
+
 .details-popup .conversation-surface {
   min-height: 0;
   /* Compact frame: the popup header is chrome, not a pane hero. */

@@ -73,6 +73,9 @@ export function SettingsPanel({
   detectedIdes,
   defaultIde,
   onDefaultIdeChange,
+  defaultAgentSaveError,
+  isSavingDefaultAgent,
+  onRetryDefaultAgentSave,
   permissionMode,
   onPermissionModeChange,
   newSessionMode,
@@ -127,6 +130,9 @@ export function SettingsPanel({
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   onDefaultIdeChange: (ide: IdeId | null) => void;
+  defaultAgentSaveError?: string | null;
+  isSavingDefaultAgent?: boolean;
+  onRetryDefaultAgentSave?: () => void;
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
   newSessionMode: NewSessionMode;
@@ -335,6 +341,9 @@ export function SettingsPanel({
               turnChangesExpanded={turnChangesExpanded}
               onTurnChangesExpandedChange={onTurnChangesExpandedChange}
               onFastModeEnabledChange={onFastModeEnabledChange}
+              defaultAgentSaveError={defaultAgentSaveError}
+              isSavingDefaultAgent={isSavingDefaultAgent}
+              onRetryDefaultAgentSave={onRetryDefaultAgentSave}
               permissionMode={permissionMode}
               onPermissionModeChange={onPermissionModeChange}
               providers={providers}

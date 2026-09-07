@@ -289,23 +289,23 @@ mod tests {
     }
 
     #[test]
-    fn approval_support_is_explicit_and_conservative() {
+    fn approval_support_uses_native_response_transports() {
         use crate::providers::adapters::get_provider_definition;
         assert_eq!(
             get_provider_definition(ProviderId::Claude).approval_support,
-            ApprovalSupport::ObservableOnly
+            ApprovalSupport::Respondable
         );
         assert_eq!(
             get_provider_definition(ProviderId::Codex).approval_support,
-            ApprovalSupport::ObservableOnly
+            ApprovalSupport::Respondable
         );
         assert_eq!(
             get_provider_definition(ProviderId::Cursor).approval_support,
-            ApprovalSupport::Unsupported
+            ApprovalSupport::Respondable
         );
         assert_eq!(
             get_provider_definition(ProviderId::Opencode).approval_support,
-            ApprovalSupport::Unsupported
+            ApprovalSupport::Respondable
         );
     }
 

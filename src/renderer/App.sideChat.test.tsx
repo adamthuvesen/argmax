@@ -132,6 +132,7 @@ describe("App side chat launcher", () => {
   });
 
   it("never sweeps the details popup it is mid-launching when its delta lands early", async () => {
+    window.localStorage.setItem("argmax.permissionMode", "ask-each-time");
     // The backend publishes the scratch row before createScratch returns, so a
     // dashboard delta can arrive while providers.launch is still awaited. The
     // sweep must treat that row as claimed, not as a crash stray.
@@ -170,6 +171,10 @@ describe("App side chat launcher", () => {
       await screen.findByRole("button", { name: "Explain selection in more detail" })
     );
     await waitFor(() => expect(createScratchWorkspace).toHaveBeenCalledTimes(1));
+
+    expect(launchProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ permissionMode: "ask-each-time" })
+    );
 
     // The early delta arrives while providers.launch is still pending.
     act(() => {

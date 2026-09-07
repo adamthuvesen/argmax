@@ -190,6 +190,7 @@ pub struct WorkspaceService {
     /// evict the entry for a checkout they are about to stop managing —
     /// nothing else drains the pool before `RunEvent::Exit`.
     cursor_acp: OnceLock<Arc<CursorAcpSessions>>,
+    grok_acp: OnceLock<Arc<crate::providers::grok_acp::GrokAcpSessions>>,
     /// App-owned directory that holds one subdirectory per scratch workspace
     /// (repo-less side chats). `None` when the app data dir could not be
     /// resolved — `create_scratch` then fails with a clear error.
@@ -259,6 +260,7 @@ impl WorkspaceService {
             terminals,
             approvals,
             cursor_acp: OnceLock::new(),
+            grok_acp: OnceLock::new(),
             scratch_root,
             archive_recovery_root,
         })
@@ -267,6 +269,12 @@ impl WorkspaceService {
     /// Install the warm Cursor ACP pool so archive and project removal can
     /// evict its per-workspace processes. Wired at boot after the pool is
     /// built; without it eviction is a no-op and the pool only drains at exit.
+    pub fn set_grok_acp(&self, pool: Arc<crate::providers::grok_acp::GrokAcpSessions>) {
+        if self.grok_acp.set(pool).is_err() {
+            tracing::warn!("Grok ACP pool already set");
+        }
+    }
+
     pub fn set_cursor_acp(&self, pool: Arc<CursorAcpSessions>) {
         if self.cursor_acp.set(pool).is_err() {
             tracing::warn!("cursor ACP pool was already installed on the workspace service");
@@ -277,7 +285,10 @@ impl WorkspaceService {
     /// Called where Argmax stops managing that checkout: the child otherwise
     /// keeps running — on a removed worktree, with its cwd on a deleted
     /// inode — until the app exits.
-    async fn evict_cursor_acp(&self, path: &str) {
+    async fn evict_provider_acp(&self, path: &str) {
+        if let Some(pool) = self.grok_acp.get() {
+            pool.evict(std::path::Path::new(path)).await;
+        }
         if let Some(pool) = self.cursor_acp.get() {
             pool.evict(Path::new(path)).await;
         }
@@ -1736,7 +1747,7 @@ impl WorkspaceService {
         self.close_watcher(&workspace_id);
         // The warm ACP process holds this worktree as its cwd, and the pool is
         // keyed by path, so it must go before `worktree move`.
-        self.evict_cursor_acp(&workspace.path).await;
+        self.evict_provider_acp(&workspace.path).await;
 
         if !force && !workspace.shared_workspace {
             let path = Path::new(&workspace.path);
@@ -2053,7 +2064,7 @@ impl WorkspaceService {
             // alone. A real shared checkout is left warm: sibling workspaces
             // on the same directory may still be running a turn on it.
             if let Some(path) = acp_path_to_evict {
-                service.evict_cursor_acp(&path).await;
+                service.evict_provider_acp(&path).await;
             }
             if let Some(path) = popup_dir_to_remove {
                 if let Err(error) = tokio::fs::remove_dir_all(&path).await {
@@ -2155,7 +2166,7 @@ impl WorkspaceService {
             // Every workspace on this project is going away, the shared
             // checkout included, so no warm process on any of these paths has
             // a session left to serve.
-            self.evict_cursor_acp(&path).await;
+            self.evict_provider_acp(&path).await;
         }
     }
 

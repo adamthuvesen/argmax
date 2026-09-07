@@ -1,4 +1,3 @@
-import { ShieldAlert } from "lucide-react";
 import {
   Suspense,
   lazy,
@@ -45,6 +44,7 @@ import { readBoundedNumberPreference, type ToolCallsDisplay } from "../lib/uiPre
 import type { ToolCall } from "../lib/toolCalls.js";
 import { agentTabId } from "../lib/agentTabs.js";
 import { CommitDialog } from "./CommitDialog.js";
+import { ApprovalSurface } from "./ApprovalSurface.js";
 import { DebugPanel } from "./debug/DebugPanel.js";
 // ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
 // chunk shared with the LaunchSurface call site.
@@ -104,6 +104,7 @@ export function SessionPane({
   rightPanelToggleSignal,
   debugLogToggleSignal,
   session,
+  agentsViewAvailable = true,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
   workspace
@@ -163,6 +164,9 @@ export function SessionPane({
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
   session: SessionSummary | null;
+  /** Whether this surface has a dock to host the Agents view. False on the
+      phone, where a launch row is a record of the delegated work, not a way in. */
+  agentsViewAvailable?: boolean;
   /** User preference for the floating workspace card. Visible when enabled
       and the conversation column is wide enough to hold it beside the transcript. */
   workspaceCardVisible?: boolean;
@@ -216,14 +220,6 @@ export function SessionPane({
     () => onWorkspaceCardVisibleChange?.(!workspaceCardVisible),
     [onWorkspaceCardVisibleChange, workspaceCardVisible]
   );
-  const handleResolveApproval = async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
-    try {
-      await onResolveApproval(approvalId, status);
-    } catch {
-      // Errors are surfaced through the parent toast system.
-    }
-  };
-
   const gridClass = [
     "session-grid",
     reviewState.isPanelOpen && "review-open",
@@ -275,13 +271,16 @@ export function SessionPane({
   // A launch row in the transcript opens the subagent in this pane's review
   // panel — the same dock that holds Changes and Files, so delegated work reads
   // beside the work it came from instead of taking a column of the grid.
+  // A surface without that dock (the phone) hands the rows no handler, and they
+  // read as a record instead of opening a panel that has nowhere to land.
   const openAgentInPanel = reviewState.openAgent;
-  const handleOpenAgent = useCallback(
+  const openAgent = useCallback(
     (tool: ToolCall): void => {
       openAgentInPanel(agentTabId(tool));
     },
     [openAgentInPanel]
   );
+  const handleOpenAgent = agentsViewAvailable ? openAgent : undefined;
 
   // A multitask row opens its chat in the same dock, one tab over from the
   // subagents: both are work running alongside this one.
@@ -593,51 +592,11 @@ export function SessionPane({
           workspace={workspace}
         />
 
-        {visibleApprovals.length > 0 ? (
-          <section className="approval-surface">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">Pending</p>
-                <h2>Approvals</h2>
-              </div>
-              <ShieldAlert size={20} />
-            </div>
-            {visibleApprovals.map((approval) => (
-              <div className="approval-row" data-risk={approval.riskLevel} key={approval.id}>
-                <div className="approval-risk">
-                  <strong>{approval.riskLevel}</strong>
-                  <span>{approval.status}</span>
-                </div>
-                <div className="approval-command">
-                  <code>{approval.command}</code>
-                  <span>
-                    {approval.provider} / {approval.cwd}
-                  </span>
-                </div>
-                <div className="approval-actions">
-                  <button
-                    disabled={approval.status !== "pending"}
-                    type="button"
-                    onClick={() => {
-                      void handleResolveApproval(approval.id, "rejected");
-                    }}
-                  >
-                    Reject
-                  </button>
-                  <button
-                    disabled={approval.status !== "pending"}
-                    type="button"
-                    onClick={() => {
-                      void handleResolveApproval(approval.id, "approved");
-                    }}
-                  >
-                    Approve
-                  </button>
-                </div>
-              </div>
-            ))}
-          </section>
-        ) : null}
+        <ApprovalSurface
+          approvals={visibleApprovals}
+          events={visibleEvents}
+          onResolveApproval={onResolveApproval}
+        />
       </div>
       {reviewState.isPanelOpen ? (
         <Suspense fallback={null}>

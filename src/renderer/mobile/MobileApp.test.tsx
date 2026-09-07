@@ -456,6 +456,7 @@ describe("MobileApp", () => {
         fastMode: false
       })
     );
+    expect(launchProvider.mock.calls[0][0]).not.toHaveProperty("permissionMode");
     expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
   });
 

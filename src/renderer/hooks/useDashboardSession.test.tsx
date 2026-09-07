@@ -1051,7 +1051,7 @@ describe("useDashboardSession — refresh / delta race", () => {
     });
   });
 
-  it("rolls back only the failed approval when approval resolves overlap", async () => {
+  it("keeps an approval pending until the backend acknowledges it and rejects failures", async () => {
     const approvalA: ApprovalRequest = {
       id: "approval-a",
       sessionId: "session-existing",
@@ -1065,56 +1065,51 @@ describe("useDashboardSession — refresh / delta race", () => {
       createdAt: "2026-05-12T15:00:02.000Z",
       resolvedAt: null
     };
-    const approvalB: ApprovalRequest = {
-      ...approvalA,
-      id: "approval-b",
-      command: "npm run lint",
-      createdAt: "2026-05-12T15:00:03.000Z"
-    };
-    baseSnapshot = { ...baseSnapshot, approvals: [approvalA, approvalB] };
+    baseSnapshot = { ...baseSnapshot, approvals: [approvalA] };
 
     let rejectA!: (error: Error) => void;
     const pendingA = new Promise<ApprovalRequest>((_resolve, reject) => {
       rejectA = reject;
     });
-    const pendingB = new Promise<ApprovalRequest>(() => undefined);
-    resolveApprovalMock.mockImplementation((input) =>
-      input.approvalId === "approval-a" ? pendingA : pendingB
-    );
+    resolveApprovalMock.mockReturnValue(pendingA);
 
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
-    await waitFor(() => expect(result.current.snapshot.approvals).toHaveLength(2));
+    await waitFor(() => expect(result.current.snapshot.approvals).toHaveLength(1));
 
     let resolveA!: Promise<void>;
     act(() => {
       resolveA = result.current.resolveApproval("approval-a", "approved");
     });
-    await waitFor(() =>
-      expect(result.current.snapshot.approvals.find((approval) => approval.id === "approval-a")?.status).toBe(
-        "approved"
-      )
-    );
-
-    act(() => {
-      void result.current.resolveApproval("approval-b", "rejected");
-    });
-    await waitFor(() =>
-      expect(result.current.snapshot.approvals.find((approval) => approval.id === "approval-b")?.status).toBe(
-        "rejected"
-      )
-    );
+    expect(result.current.snapshot.approvals[0]?.status).toBe("pending");
 
     await act(async () => {
       rejectA(new Error("approval failed"));
-      await resolveA;
+      await expect(resolveA).rejects.toThrow("approval failed");
     });
 
-    expect(result.current.snapshot.approvals.find((approval) => approval.id === "approval-a")?.status).toBe(
-      "pending"
+    expect(result.current.snapshot.approvals[0]?.status).toBe("pending");
+
+    let acknowledge!: (approval: ApprovalRequest) => void;
+    resolveApprovalMock.mockReturnValueOnce(
+      new Promise<ApprovalRequest>((resolve) => {
+        acknowledge = resolve;
+      })
     );
-    expect(result.current.snapshot.approvals.find((approval) => approval.id === "approval-b")?.status).toBe(
-      "rejected"
-    );
+    let retry!: Promise<void>;
+    act(() => {
+      retry = result.current.resolveApproval("approval-a", "approved");
+    });
+    expect(result.current.snapshot.approvals[0]?.status).toBe("pending");
+
+    await act(async () => {
+      acknowledge({
+        ...approvalA,
+        status: "approved",
+        resolvedAt: "2026-05-12T15:00:04.000Z"
+      });
+      await retry;
+    });
+    expect(result.current.snapshot.approvals).toEqual([]);
   });
 });

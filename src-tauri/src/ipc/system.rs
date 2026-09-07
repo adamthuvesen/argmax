@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::util::workspace_paths::normalize;
@@ -357,6 +358,7 @@ fn persist_default_agent<R: Runtime>(
     fs::create_dir_all(&app_data)
         .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_DIR", error.to_string()))?;
     let body = serde_json::to_vec(&crate::default_agent::DefaultAgent {
+        permission_mode: input.permission_mode.unwrap_or_default(),
         provider: input.provider.as_str().to_string(),
         model_label: input.model_label.as_str().to_string(),
         model_id: input.model_id.as_str().to_string(),
@@ -365,11 +367,21 @@ fn persist_default_agent<R: Runtime>(
             .map(|effort| effort.as_str().to_string()),
     })
     .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_SERIALIZE", error.to_string()))?;
-    fs::write(
-        app_data.join(crate::default_agent::DEFAULT_AGENT_FILE),
-        body,
-    )
-    .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_WRITE", error.to_string()))
+    // Autonomous launches must see either the old settings or the complete
+    // new settings, never a partially written permission preference.
+    let mut staged = tempfile::NamedTempFile::new_in(&app_data)
+        .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_WRITE", error.to_string()))?;
+    staged
+        .write_all(&body)
+        .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_WRITE", error.to_string()))?;
+    staged
+        .as_file()
+        .sync_all()
+        .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_WRITE", error.to_string()))?;
+    staged
+        .persist(app_data.join(crate::default_agent::DEFAULT_AGENT_FILE))
+        .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_WRITE", error.to_string()))?;
+    Ok(())
 }
 
 fn apply_theme<R: Runtime>(app: &AppHandle<R>, mode: ThemeMode) -> ArgmaxResult<()> {

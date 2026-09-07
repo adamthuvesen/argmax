@@ -119,7 +119,7 @@ fn ensure_permission_mode_supported(
         return Err(ArgmaxError::service(
             "PROVIDER_APPROVAL_UNSUPPORTED",
             format!(
-                "{} cannot answer live approval requests in this runtime. Choose Auto-approve or a provider with live approval support.",
+                "{} cannot answer live approval requests in this runtime. Update the provider CLI to a version with live approval support.",
                 get_provider_definition(provider).display_name
             ),
         ));
@@ -433,7 +433,9 @@ impl ProviderSessionService {
     ) -> ArgmaxResult<SessionSummary> {
         let session_id = Uuid::new_v4().to_string();
         let agent_mode = input.agent_mode.unwrap_or(AgentMode::Auto);
-        let permission_mode = input.permission_mode.unwrap_or(PermissionMode::AutoApprove);
+        let permission_mode = input
+            .permission_mode
+            .unwrap_or(PermissionMode::ProviderDefaults);
         let provider = input.provider;
         ensure_permission_mode_supported(provider, permission_mode)?;
         let admission = self.lifecycle.admit(input.workspace_id.as_str())?;
@@ -1263,6 +1265,14 @@ impl ProviderSessionService {
         entry: Option<HandleEntry>,
     ) -> ArgmaxResult<()> {
         let mut first_error = None;
+        // Release native permission waiters before waiting for provider cancel.
+        // ACP cannot finish session/cancel until pending requests are answered.
+        if let Some(approvals) = self.approvals.as_ref() {
+            if let Err(error) = approvals.cancel_session_pending(session_id) {
+                first_error = Some(error);
+            }
+        }
+
         match entry {
             Some(HandleEntry::Resolved(handle)) => {
                 // User-initiated cancel: flush buffered text but don't
@@ -3786,7 +3796,7 @@ mod tests {
     }
 
     #[test]
-    fn ask_each_time_is_rejected_without_a_live_provider_responder() {
+    fn all_provider_permission_modes_have_native_responders() {
         for provider in [
             ProviderId::Claude,
             ProviderId::Codex,
@@ -3794,13 +3804,10 @@ mod tests {
             ProviderId::Opencode,
             ProviderId::Grok,
         ] {
-            let error = ensure_permission_mode_supported(provider, PermissionMode::AskEachTime)
-                .expect_err("unsupported provider approval mode must fail closed");
-            assert!(matches!(
-                error,
-                ArgmaxError::ServiceError { sub_code, .. }
-                    if sub_code == "PROVIDER_APPROVAL_UNSUPPORTED"
-            ));
+            ensure_permission_mode_supported(provider, PermissionMode::AskEachTime)
+                .expect("native provider approval mode is supported");
+            ensure_permission_mode_supported(provider, PermissionMode::ProviderDefaults)
+                .expect("provider defaults is supported");
             ensure_permission_mode_supported(provider, PermissionMode::AutoApprove)
                 .expect("auto-approve remains supported");
         }

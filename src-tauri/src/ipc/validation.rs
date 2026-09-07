@@ -45,8 +45,11 @@ pub enum AgentMode {
     Plan,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum PermissionMode {
+    #[default]
+    #[serde(rename = "provider-defaults")]
+    ProviderDefaults,
     #[serde(rename = "auto-approve")]
     AutoApprove,
     #[serde(rename = "ask-each-time")]

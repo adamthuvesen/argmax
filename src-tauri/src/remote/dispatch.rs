@@ -19,6 +19,7 @@ use crate::ipc::{
     approvals, attachments, checks, dashboard, git_ops, health, learnings, projects, providers,
     prs, review, session, skills, system, terminal, usage, workspace_files, workspaces,
 };
+use crate::providers::PermissionMode;
 use crate::state::AppState;
 
 /// Channels whose handlers need an `AppHandle` (native dialogs, the shell
@@ -70,6 +71,15 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
 ];
 
 pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxResult<Value> {
+    dispatch_with_permission_mode(state, channel, input, PermissionMode::default()).await
+}
+
+pub async fn dispatch_with_permission_mode(
+    state: &AppState,
+    channel: &str,
+    input: Value,
+    default_permission_mode: PermissionMode,
+) -> ArgmaxResult<Value> {
     if REMOTE_UNSUPPORTED_CHANNELS.contains(&channel) {
         return Err(ArgmaxError::service(
             "REMOTE_UNSUPPORTED",
@@ -203,7 +213,7 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
         }
         "providers:launch" => {
             let input: ProvidersLaunchInput = parse(channel, input)?;
-            encode(providers::providers_launch_impl(state, input).await?)
+            encode(providers::providers_launch_impl(state, input, default_permission_mode).await?)
         }
         "providers:send-input" => {
             let input: ProvidersSendInput = parse(channel, input)?;

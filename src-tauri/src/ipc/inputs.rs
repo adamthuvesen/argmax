@@ -848,6 +848,7 @@ pub struct SystemSetKeepAwakeInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemSetDefaultAgentInput {
     pub provider: ProviderId,
+    pub permission_mode: Option<PermissionMode>,
     pub model_label: NonEmptyString,
     pub model_id: NonEmptyString,
     /// Absent for a fast model that has no effort control at all.

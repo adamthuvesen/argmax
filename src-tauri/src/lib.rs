@@ -771,12 +771,14 @@ pub fn run() {
                             if state.cursor_acp.set(Arc::clone(&cursor_acp)).is_err() {
                                 tracing::warn!("cursor ACP pool state was already initialized");
                             }
+                            let grok_acp = Arc::new(providers::grok_acp::GrokAcpSessions::new());
+                            let _ = state.grok_acp.set(Arc::clone(&grok_acp));
                             let provider_launcher: Arc<dyn providers::runtime::ProviderProcessLauncher> =
                                 Arc::new(providers::runtime::RealProviderProcessLauncher::with_discovery(
                                     (*state.provider_discovery).clone(),
                                     session_launch_registry.clone(),
                                     Arc::clone(&cursor_acp),
-                                ));
+                                ).with_approvals(Arc::clone(&approvals)).with_grok_acp(Arc::clone(&grok_acp)));
                             let providers = providers::session_service::ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
                                 Arc::clone(&database),
                                 provider_launcher,
@@ -977,6 +979,7 @@ pub fn run() {
                             // here that eviction is a no-op and the child
                             // outlives its removed worktree.
                             workspaces.set_cursor_acp(cursor_acp);
+                            workspaces.set_grok_acp(grok_acp);
                             let workspaces_for_watchers = Arc::clone(&workspaces);
                             if state.workspaces.set(workspaces).is_err() {
                                 tracing::warn!("workspace service state was already initialized");
@@ -1116,6 +1119,9 @@ pub fn run() {
                 // the blocking pool lock is safe.
                 let state = tauri::Manager::state::<state::AppState>(app_handle);
                 if let Some(pool) = state.cursor_acp.get() {
+                    pool.kill_all_blocking();
+                }
+                if let Some(pool) = state.grok_acp.get() {
                     pool.kill_all_blocking();
                 }
             }
@@ -1307,6 +1313,7 @@ fn build_check_failure_follow_up_input(
         "modelLabel": agent.model_label,
         "modelId": agent.model_id,
         "reasoningEffort": agent.reasoning_effort,
+        "permissionMode": agent.permission_mode,
         "cols": 120,
         "rows": 36
     }))
@@ -1688,9 +1695,14 @@ mod tests {
             model_label: "GPT-5.6 Luna".to_string(),
             model_id: "gpt-5.6-luna".to_string(),
             reasoning_effort: Some("high".to_string()),
+            permission_mode: providers::PermissionMode::AskEachTime,
         };
         let input = build_check_failure_follow_up_input("w1", &agent, &follow_up_context())
             .expect("follow-up input");
+        assert_eq!(
+            input.permission_mode,
+            Some(providers::PermissionMode::AskEachTime)
+        );
         assert_eq!(input.model_label.as_str(), "GPT-5.6 Luna");
         assert_eq!(input.model_id.as_str(), "gpt-5.6-luna");
         assert_eq!(

@@ -69,8 +69,11 @@ async fn tick(app: &tauri::AppHandle) -> ArgmaxResult<()> {
         let connection = database.connection();
         routines::due_routines(&connection, &now_iso())?
     };
+    let app_data = crate::util::data_dir::app_data_dir(app)
+        .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
+    let permission_mode = crate::default_agent::read_default_agent(&app_data).permission_mode;
     for fields in due {
-        fire_routine(&database, &workspaces, &providers, fields).await;
+        fire_routine(&database, &workspaces, &providers, fields, permission_mode).await;
     }
     Ok(())
 }
@@ -84,6 +87,7 @@ pub(crate) async fn fire_routine(
     workspaces: &Arc<WorkspaceService>,
     providers: &Arc<ProviderSessionService>,
     fields: RoutineLaunchFields,
+    permission_mode: PermissionMode,
 ) {
     let now = Utc::now();
     let last_run = now_iso();
@@ -174,10 +178,9 @@ pub(crate) async fn fire_routine(
         model_id: fields.model_id.clone(),
         reasoning_effort: None::<ReasoningEffort>,
         fast_mode: false,
-        // Nobody is watching a scheduled run, so an approval prompt would just
-        // hang the session until someone noticed. Scheduled tasks are always
-        // auto-approve; the panel offers no other mode.
-        permission_mode: PermissionMode::AutoApprove,
+        // Scheduled chats follow the same explicit app permission choice.
+        // Native prompts remain pending until the user answers them.
+        permission_mode,
         agent_mode: AgentMode::Auto,
         task_label: Some(fields.name.clone()),
     };

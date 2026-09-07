@@ -92,6 +92,7 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
+                    archive_on_merge: false,
                     worktree_location: repo.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -108,6 +109,7 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
+                    archive_on_merge: false,
                     worktree_location: destination_repo
                         .path()
                         .join("worktrees")
@@ -327,8 +329,8 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
     );
     assert_eq!(move_response["scheduled"]["scheduled"], true);
     assert_eq!(move_response["scheduled"]["projectId"], "project-2");
-    assert!(registry.has_pending_move("session-parent"));
-    registry.settle_move("session-parent");
+    assert!(registry.pending_after_turn("session-parent").is_some());
+    registry.signal_turn_settled("session-parent");
     for _ in 0..100 {
         let moved_count = {
             let connection = database.connection();
@@ -340,12 +342,12 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
                 )
                 .expect("moved session count")
         };
-        if moved_count == 1 && !registry.has_pending_move("session-parent") {
+        if moved_count == 1 && registry.pending_after_turn("session-parent").is_none() {
             break;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    assert!(!registry.has_pending_move("session-parent"));
+    assert!(registry.pending_after_turn("session-parent").is_none());
     {
         let connection = database.connection();
         let moved_count: i64 = connection
@@ -420,6 +422,7 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
+                    archive_on_merge: false,
                     worktree_location: repo.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -621,6 +624,7 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
+                    archive_on_merge: false,
                     worktree_location: repo.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -940,6 +944,7 @@ fn seed_sessions(database: &Database, repo_path: &str, sessions: &[(&str, &str, 
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),
             settings: ProjectSettings {
+                archive_on_merge: false,
                 worktree_location: format!("{repo_path}/worktrees"),
                 setup_command: String::new(),
                 check_commands: Vec::new(),
@@ -1359,4 +1364,61 @@ async fn a_completion_notice_queued_behind_a_running_turn_stays_collectable() {
         .as_str()
         .expect("body")
         .contains("finished with state cancelled"));
+}
+
+/// Archiving stops every provider process in the workspace, and the agent that
+/// asked is one of them — so the tool must schedule the archive for the end of
+/// the turn rather than run it inline. Run inline it would kill the caller
+/// before it could write the report the request was made for.
+#[tokio::test]
+async fn archiving_a_workspace_is_scheduled_rather_than_immediate() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Land the PR", SessionState::Running)],
+    );
+
+    let launcher = Arc::new(RecordingLauncher::default());
+    let providers =
+        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let (server, registry) = SessionLaunchServer::bind().expect("bind control socket");
+    providers.set_session_control(Arc::clone(&registry));
+    let (socket, token) = credential(&registry, repo.path(), "session-agent");
+    let _server = server
+        .start(
+            None,
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            Arc::clone(&providers),
+        )
+        .expect("start control socket");
+
+    let response = ask_raw(socket.clone(), token.clone(), json!({ "archive": {} })).await;
+    let response: serde_json::Value = serde_json::from_str(&response).expect("response json");
+    assert!(response["error"].is_null(), "archive response: {response}");
+    let archiving = &response["archiving"];
+    assert_eq!(archiving["scheduled"], true);
+    assert_eq!(archiving["workspaceId"], "workspace-session-agent");
+    // A shared checkout is every other session's tree too: archiving one ends
+    // the chat and never removes a directory.
+    assert_eq!(archiving["removesWorktree"], false);
+
+    {
+        let connection = database.connection();
+        let workspace =
+            find_workspace_by_id(&connection, "workspace-session-agent").expect("workspace");
+        assert_ne!(
+            workspace.state, "archived",
+            "the turn is still open, so the archive must not have run yet"
+        );
+    }
+
+    // A second request has nowhere to go: the slot is taken until the turn
+    // settles and the archive finishes.
+    let refused = ask_raw(socket, token, json!({ "archive": {} })).await;
+    let refused: serde_json::Value = serde_json::from_str(&refused).expect("response json");
+    assert_eq!(refused["error"]["code"], "ARCHIVE_ALREADY_PENDING");
 }

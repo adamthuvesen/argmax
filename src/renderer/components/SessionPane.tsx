@@ -26,6 +26,7 @@ import type {
   NativeAgentIdentity,
   PendingMessage,
   ProjectSummary,
+  ProviderId,
   RawProviderOutput,
   SessionSummary,
   TimelineEvent,
@@ -149,7 +150,7 @@ export function SessionPane({
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
   /** Multitasks dispatched from this pane's session. They have no sidebar row
    *  of their own — this pane's dock is where they are read and answered. */
   multitasks?: MultitaskChild[];

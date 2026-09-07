@@ -636,7 +636,7 @@ pub(super) fn composer_payload(
 // preferred entry point everywhere else.
 // ---------------------------------------------------------------------------
 
-pub(super) fn parse_provider(value: &str) -> ArgmaxResult<ProviderId> {
+pub(crate) fn parse_provider(value: &str) -> ArgmaxResult<ProviderId> {
     match value {
         "claude" => Ok(ProviderId::Claude),
         "codex" => Ok(ProviderId::Codex),

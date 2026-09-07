@@ -16,6 +16,7 @@ function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
     currentBranch: "main",
     defaultBranch: "main",
     settings: {
+      archiveOnMerge: false,
       worktreeLocation: "/Users/dev/argmax/.argmax/worktrees",
       setupCommand: "npm install",
       checkCommands: ["npm run lint"]
@@ -67,12 +68,36 @@ describe("ProjectsSettings", () => {
       projectId: "project-1",
       settings: {
         setupCommand: "npm ci",
+        archiveOnMerge: false,
         worktreeLocation: "/Users/dev/argmax/.argmax/worktrees",
         checkCommands: ["npm run lint", "npm test"]
       }
     });
     await waitFor(() => expect(onProjectUpdated).toHaveBeenCalledWith(saved));
     expect(screen.getByRole("status")).toHaveTextContent("Project settings saved.");
+  });
+
+  it("saves the archive-on-merge opt-in", async () => {
+    const updateSettings = vi.fn().mockResolvedValue(project());
+    installUpdateStub(updateSettings);
+
+    render(<ProjectsSettings projects={[project()]} onProjectUpdated={vi.fn()} />);
+
+    const toggle = screen.getByRole("checkbox", { name: "Archive a workspace when its PR merges" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "Save project settings" }));
+
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));
+    expect(updateSettings).toHaveBeenCalledWith({
+      projectId: "project-1",
+      settings: {
+        setupCommand: "npm install",
+        worktreeLocation: "/Users/dev/argmax/.argmax/worktrees",
+        checkCommands: ["npm run lint"],
+        archiveOnMerge: true
+      }
+    });
   });
 
   it("rejects a relative worktree location without calling the backend", async () => {
@@ -108,6 +133,7 @@ describe("ProjectsSettings", () => {
       name: "Other",
       repoPath: "/Users/dev/other",
       settings: {
+        archiveOnMerge: false,
         worktreeLocation: "/Users/dev/other/.argmax/worktrees",
         setupCommand: "",
         checkCommands: []

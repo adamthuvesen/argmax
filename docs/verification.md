@@ -106,6 +106,17 @@ same transcripts. Token counts must match; see [usage.md](usage.md).
 
 ## Rung 2: the renderer in a real browser
 
+For chat scrolling, run `node scripts/check-chat-scroll.mjs`. It mounts the
+production scroll controller in a browser fixture and checks small upward
+gestures during streaming, folding content, nested scrolling, viewport
+resizes, and returning to live output. The command exits nonzero on a failed
+position assertion. These real-layout checks complement the hook's unit tests.
+
+Use `node scripts/check-chat-scroll.mjs --serve` to open the printed fixture
+URL in Argmax's WebKit browser. Run `window.chatScrollCheck.runChecks()` there
+and inspect the resolved results. This exercises the browser engine without
+replacing or restarting the application hosting the chat.
+
 Without `window.argmax` the renderer boots against the demo snapshot
 ([loadDashboardSnapshot.ts](../src/renderer/lib/loadDashboardSnapshot.ts)), so
 the full UI renders in any browser with no Rust backend.

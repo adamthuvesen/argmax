@@ -8,7 +8,9 @@ export function ProjectMoveNotice({ notice }: { notice: Notice }): JSX.Element {
       ? "isolated worktree"
       : notice.checkoutMode === "shared"
         ? "shared checkout"
-        : null,
+        : notice.checkoutMode === "attached"
+          ? "existing checkout"
+          : null,
     notice.sourceArchiveState === "kept" ? "source kept" : null
   ].filter((detail): detail is string => detail !== null);
   const accessibleLabel = details.length > 0 ? `${label}, ${details.join(", ")}` : label;

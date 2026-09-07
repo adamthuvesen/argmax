@@ -113,6 +113,7 @@ pub(crate) fn projects_update_settings_impl(
         worktree_location: input.settings.worktree_location.as_str().to_owned(),
         setup_command: input.settings.setup_command,
         check_commands: input.settings.check_commands,
+        archive_on_merge: input.settings.archive_on_merge,
     };
     update_project_settings(&connection, input.project_id.as_str(), &settings)
 }
@@ -469,6 +470,7 @@ fn default_settings(repo_path: &Path) -> ProjectSettings {
             .to_string(),
         setup_command: String::new(),
         check_commands: Vec::new(),
+        archive_on_merge: false,
     }
 }
 

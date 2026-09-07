@@ -8,8 +8,13 @@
 //
 // Usage:
 //   node scripts/ui-screenshot.mjs [--out shot.png] [--theme dark|light|system]
-//        [--width 1400] [--height 900] [--mobile] [--url http://…]
+//        [--width 1400] [--height 900] [--mobile] [--touch] [--url http://…]
 //        [--eval '<js>'] [--settle 900]
+//
+// --touch emulates a phone: the viewport is overridden rather than sized by the
+// window (headless Chrome refuses to go much under 500px wide), and touch
+// emulation makes `(pointer: coarse)` match — the gate the composer's queue
+// button and the selection toolbar read.
 //
 // With no --url a vite dev server is started on a spare port and stopped
 // afterwards. --eval runs after load and before the capture — use it to click
@@ -43,6 +48,7 @@ function parseArgs(argv) {
     width: 1400,
     height: 900,
     mobile: false,
+    touch: false,
     url: null,
     evaluate: null,
     settle: 900
@@ -54,6 +60,7 @@ function parseArgs(argv) {
     else if (arg === "--width") options.width = Number(argv[++i]);
     else if (arg === "--height") options.height = Number(argv[++i]);
     else if (arg === "--mobile") options.mobile = true;
+    else if (arg === "--touch") options.touch = true;
     else if (arg === "--url") options.url = argv[++i];
     else if (arg === "--eval") options.evaluate = argv[++i];
     else if (arg === "--settle") options.settle = Number(argv[++i]);
@@ -188,6 +195,18 @@ await cdp.send(
   { source: `try { localStorage.setItem("argmax.theme.mode", ${JSON.stringify(options.theme)}); } catch {}` },
   sessionId
 );
+if (options.touch) {
+  await cdp.send(
+    "Emulation.setDeviceMetricsOverride",
+    { width: options.width, height: options.height, deviceScaleFactor: 2, mobile: true },
+    sessionId
+  );
+  await cdp.send(
+    "Emulation.setTouchEmulationEnabled",
+    { enabled: true, maxTouchPoints: 5 },
+    sessionId
+  );
+}
 const loaded = cdp.waitForEvent("Page.loadEventFired");
 await cdp.send("Page.navigate", { url: pageUrl }, sessionId);
 await loaded;

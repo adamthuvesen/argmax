@@ -71,7 +71,7 @@ import {
 import { usePaneGrid } from "../state/paneGrid.js";
 import { setSidebarPeek, useSidebarChrome } from "../state/sidebarChrome.js";
 import { beginWorkspaceDrag, endWorkspaceDrag } from "../state/workspaceDrag.js";
-import { computePriorityEntries, nextPriorityIdleAt } from "../lib/priority.js";
+import { computePriorityEntries, nextPriorityIdleAt, workingWorkspaceIds } from "../lib/priority.js";
 import { formatSessionIds } from "../lib/sessionIds.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
@@ -459,6 +459,13 @@ export function Sidebar({
   // chat that dispatched it, which shows it in its own dock.
   const hiddenMultitasks = useMemo(
     () => hiddenMultitaskWorkspaceIds(snapshot.sessions),
+    [snapshot.sessions]
+  );
+  // A multitask's turn belongs to the row of the chat that dispatched it: it
+  // has no row of its own, so without this a parent goes still the moment its
+  // own turn ends while a sibling agent is still working the checkout.
+  const workingWorkspaces = useMemo(
+    () => workingWorkspaceIds(snapshot.sessions),
     [snapshot.sessions]
   );
   const sidebarWorkspaces = useMemo(
@@ -991,6 +998,7 @@ export function Sidebar({
               <div key={workspace.id} className="session-row-wrap">
                 <SidebarSessionRow
                   workspace={workspace}
+                  isWorking={workingWorkspaces.has(workspace.id)}
                   copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                   launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
                   isSelected={selectedWorkspaceId === workspace.id}
@@ -1145,6 +1153,7 @@ export function Sidebar({
               <div key={workspace.id} className="session-row-wrap">
                 <SidebarSessionRow
                   workspace={workspace}
+                  isWorking={workingWorkspaces.has(workspace.id)}
                   copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                   subtitle={subtitleFor(workspace.projectId)}
                   importedProvider={importedProviderByWorkspace.get(workspace.id)}
@@ -1202,6 +1211,7 @@ export function Sidebar({
               <div key={entry.workspace.id} className="session-row-wrap">
                 <SidebarSessionRow
                   workspace={entry.workspace}
+                  isWorking={entry.working}
                   copyableIds={copyableIdsByWorkspace.get(entry.workspace.id)}
                   subtitle={subtitleFor(entry.workspace.projectId)}
                   importedProvider={importedProviderByWorkspace.get(entry.workspace.id)}
@@ -1283,6 +1293,7 @@ export function Sidebar({
                         >
                           <SidebarSessionRow
                             workspace={workspace}
+                            isWorking={workingWorkspaces.has(workspace.id)}
                             copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                             subtitle={subtitleFor(workspace.projectId)}
                             importedProvider={importedProviderByWorkspace.get(workspace.id)}
@@ -1446,6 +1457,7 @@ export function Sidebar({
                     >
                       <SidebarSessionRow
                         workspace={workspace}
+                        isWorking={workingWorkspaces.has(workspace.id)}
                         copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                         launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
                         isSelected={selectedWorkspaceId === workspace.id}

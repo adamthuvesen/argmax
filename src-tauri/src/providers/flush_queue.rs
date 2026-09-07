@@ -118,6 +118,11 @@ pub struct PendingMessage {
     // rather than as something the user typed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub origin: Option<super::session_service::MessageOrigin>,
+    /// Present only after startup recovery. Recovered messages stay visible
+    /// but are excluded from automatic queue draining until the user chooses
+    /// Send explicitly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_status: Option<String>,
     pub queued_at: String,
 }
 
@@ -774,6 +779,7 @@ mod tests {
             attachments: Vec::new(),
             agent_references: Vec::new(),
             origin: None,
+            recovery_status: None,
             queued_at: "2026-01-01T00:00:00Z".to_string(),
         };
 

@@ -10,6 +10,11 @@ import { WorkingNest } from "./WorkingNest.js";
  *  can take ten to thirty seconds to say its first word. */
 const ELAPSED_VISIBLE_AFTER_MS = 3_000;
 
+// One word per silent beat, so the set has to be big enough that a long turn
+// never repeats itself into looking stuck. US spelling throughout, gerunds
+// only, and each one names work the agent actually does — nothing that
+// advertises guessing. The rare draws sit at the end: Argmaxing, the
+// signature, then the jokes.
 export const THINKING_WORDS = [
   "Brainstorming",
   "Disentangling",
@@ -21,16 +26,83 @@ export const THINKING_WORDS = [
   "Distilling",
   "Reconciling",
   "Refining",
-  "Argmaxing"
+  "Calculating",
+  "Thinking",
+  "Computing",
+  "Analyzing",
+  "Philosophizing",
+  "Reasoning",
+  "Deducing",
+  "Inferring",
+  "Extrapolating",
+  "Hypothesizing",
+  "Deliberating",
+  "Contemplating",
+  "Dissecting",
+  "Unpacking",
+  "Parsing",
+  "Triangulating",
+  "Cross-referencing",
+  "Correlating",
+  "Diagnosing",
+  "Investigating",
+  "Excavating",
+  "Spelunking",
+  "Retracing",
+  "Surveying",
+  "Sleuthing",
+  "Formulating",
+  "Composing",
+  "Drafting",
+  "Assembling",
+  "Consolidating",
+  "Architecting",
+  "Scrutinizing",
+  "Second-guessing",
+  "Stress-testing",
+  "Interrogating",
+  "Falsifying",
+  "Auditing",
+  "Verifying",
+  "Optimizing",
+  "Converging",
+  "Approximating",
+  "Quantifying",
+  "Simulating",
+  "Enumerating",
+  "Backpropagating",
+  "Condensing",
+  "Sharpening",
+  "Tightening",
+  "Weighing",
+  "Prioritizing",
+  "Argmaxing",
+  "Yak-shaving",
+  "Tail-chasing",
+  "Overthinking",
+  "Gradient-descending"
 ] as const;
 
-const REGULAR_THINKING_WORDS = THINKING_WORDS.filter((word) => word !== "Argmaxing");
-const ARGMAXING_FREQUENCY = 0.06;
+/** The jokes only work while they stay surprises, so they are drawn from their
+ *  own band rather than earning a regular slot. They also read as honest on a
+ *  long wait, which is exactly when the label is being stared at. */
+const EASTER_EGG_WORDS = ["Yak-shaving", "Tail-chasing", "Overthinking", "Gradient-descending"] as const;
+const RARE_THINKING_WORDS: readonly string[] = ["Argmaxing", ...EASTER_EGG_WORDS];
+const REGULAR_THINKING_WORDS = THINKING_WORDS.filter((word) => !RARE_THINKING_WORDS.includes(word));
+// Draws per hundred. Integers, because the seeded path buckets its hash into a
+// hundred and a float sum (0.06 + 0.02) misses the bucket edge by an ulp.
+const ARGMAXING_DRAWS = 6;
+const EASTER_EGG_DRAWS = 2;
 
 function chooseThinkingWord(seed: string | undefined): (typeof THINKING_WORDS)[number] {
   // No stable seed (a caller without an anchor) keeps the old random pick.
   if (seed === undefined) {
-    if (Math.random() < ARGMAXING_FREQUENCY) return "Argmaxing";
+    const roll = Math.floor(Math.random() * 100);
+    if (roll < ARGMAXING_DRAWS) return "Argmaxing";
+    if (roll < ARGMAXING_DRAWS + EASTER_EGG_DRAWS) {
+      const egg = Math.floor(Math.random() * EASTER_EGG_WORDS.length);
+      return EASTER_EGG_WORDS[egg] ?? "Argmaxing";
+    }
     const index = Math.floor(Math.random() * REGULAR_THINKING_WORDS.length);
     return REGULAR_THINKING_WORDS[index] ?? "Refining";
   }
@@ -45,7 +117,14 @@ function chooseThinkingWord(seed: string | undefined): (typeof THINKING_WORDS)[n
     hash = Math.imul(hash, 0x01000193);
   }
   hash >>>= 0;
-  if (hash % 100 < ARGMAXING_FREQUENCY * 100) return "Argmaxing";
+  const bucket = hash % 100;
+  if (bucket < ARGMAXING_DRAWS) return "Argmaxing";
+  if (bucket < ARGMAXING_DRAWS + EASTER_EGG_DRAWS) {
+    // Not `hash % length`: the band is two buckets wide and 100 divides by four,
+    // so the bucket would fix the remainder and half the jokes would never be
+    // drawn. The digits above the bucket are free to vary.
+    return EASTER_EGG_WORDS[Math.floor(hash / 100) % EASTER_EGG_WORDS.length] ?? "Argmaxing";
+  }
   return REGULAR_THINKING_WORDS[hash % REGULAR_THINKING_WORDS.length] ?? "Refining";
 }
 

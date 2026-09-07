@@ -46,6 +46,7 @@ function makeProject(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
     currentBranch: "main",
     defaultBranch: "main",
     settings: {
+      archiveOnMerge: false,
       worktreeLocation: "/tmp/wt",
       setupCommand: "",
       checkCommands: []
@@ -446,6 +447,105 @@ describe("useReviewState — IPC fan-out resistance", () => {
       result.current.openInFilesView("src/file-0.ts");
     });
     await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledTimes(14));
+  });
+
+  it("saves rapid edits in order so an older response cannot overwrite the newest buffer", async () => {
+    readWorkspaceFile.mockResolvedValue({
+      kind: "text",
+      content: "original\n",
+      size: 9,
+      mtimeMs: 10
+    });
+    let resolveFirst!: (value: { ok: "true"; mtimeMs: number; size: number }) => void;
+    let resolveSecond!: (value: { ok: "true"; mtimeMs: number; size: number }) => void;
+    writeWorkspaceFile
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+    act(() => {
+      result.current.openInFilesView("src/rapid.ts");
+    });
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+
+    let firstSave!: Promise<void>;
+    let secondSave!: Promise<void>;
+    act(() => {
+      result.current.workspaceFiles.editFile("first\n");
+    });
+    act(() => {
+      firstSave = result.current.workspaceFiles.saveFile();
+    });
+    act(() => {
+      result.current.workspaceFiles.editFile("second\n");
+    });
+    act(() => {
+      secondSave = result.current.workspaceFiles.saveFile();
+    });
+    await waitFor(() => expect(writeWorkspaceFile).toHaveBeenCalledTimes(1));
+    expect(writeWorkspaceFile).toHaveBeenLastCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/rapid.ts", "first\n", 10
+    );
+
+    await act(async () => {
+      resolveFirst({ ok: "true", mtimeMs: 11, size: 6 });
+      await firstSave;
+    });
+    await waitFor(() => expect(writeWorkspaceFile).toHaveBeenCalledTimes(2));
+    expect(writeWorkspaceFile).toHaveBeenLastCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/rapid.ts", "second\n", 11
+    );
+    await act(async () => {
+      resolveSecond({ ok: "true", mtimeMs: 12, size: 7 });
+      await secondSave;
+    });
+    expect(result.current.workspaceFiles.buffer).toBe("second\n");
+    expect(result.current.workspaceFiles.isDirty).toBe(false);
+    expect(result.current.workspaceFiles.diskMtimeMs).toBe(12);
+  });
+
+  it("abandons queued saves when a discarded tab is closed and reopened", async () => {
+    readWorkspaceFile.mockResolvedValue({
+      kind: "text",
+      content: "original\n",
+      size: 9,
+      mtimeMs: 10
+    });
+    let resolveFirst!: (value: { ok: "true"; mtimeMs: number; size: number }) => void;
+    writeWorkspaceFile.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+    act(() => {
+      result.current.openInFilesView("src/discarded.ts");
+    });
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+    act(() => {
+      result.current.workspaceFiles.editFile("first\n");
+    });
+    act(() => {
+      void result.current.workspaceFiles.saveFile();
+    });
+    await waitFor(() => expect(writeWorkspaceFile).toHaveBeenCalledTimes(1));
+    act(() => {
+      result.current.workspaceFiles.editFile("discarded queued save\n");
+    });
+    act(() => {
+      void result.current.workspaceFiles.saveFile();
+      result.current.workspaceFiles.closeTab("src/discarded.ts");
+    });
+    expect(result.current.workspaceFiles.dirtyClosePrompt?.path).toBe("src/discarded.ts");
+    act(() => {
+      result.current.workspaceFiles.discardDirtyTabAndClose();
+      result.current.openInFilesView("src/discarded.ts");
+    });
+    await waitFor(() => expect(result.current.workspaceFiles.activeTabPath).toBe("src/discarded.ts"));
+
+    await act(async () => {
+      resolveFirst({ ok: "true", mtimeMs: 11, size: 6 });
+      await Promise.resolve();
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(writeWorkspaceFile).toHaveBeenCalledTimes(1);
   });
 
   it("prompts before closing dirty tabs and supports cancel, discard, and save", async () => {

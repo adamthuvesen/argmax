@@ -344,6 +344,7 @@ mod tests {
                     default_branch: Some("main".to_string()),
                     current_branch: "main".to_string(),
                     settings: ProjectSettings {
+                        archive_on_merge: false,
                         worktree_location: "/tmp/argmax-fixture-repo/.worktrees".to_string(),
                         setup_command: String::new(),
                         check_commands: Vec::new(),

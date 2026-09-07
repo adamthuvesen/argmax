@@ -61,6 +61,11 @@ use crate::{
             persist_timeline_event, update_event_payload, PersistRawOutputInput,
             PersistTimelineEventInput, TimelineEvent,
         },
+        pending_messages::{
+            clear_session_queue, delete_message as delete_pending_message,
+            list_session_pending_messages, mark_message_launching, recover_pending_messages,
+            replace_session_queue, restore_launching_message,
+        },
         projects::list_projects,
         session_messages::{
             insert_session_message, is_message_delivered, mark_message_delivered,
@@ -77,7 +82,7 @@ use crate::{
         usage::session_usage_since_conversation_start,
         workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
     },
-    session_control::SessionLaunchRegistry,
+    session_control::{AfterTurn, SessionLaunchRegistry},
     workspaces::lifecycle::{WorkspaceAdmission, WorkspaceLifecycle},
 };
 
@@ -177,7 +182,6 @@ pub struct ProviderSessionService {
     handles: Arc<Mutex<HashMap<String, HandleEntry>>>,
     queues: Arc<Mutex<HashMap<String, VecDeque<PendingMessage>>>>,
     queue_promotions: Arc<Mutex<HashSet<String>>>,
-    preserve_queue_on_launch_failure: Arc<Mutex<HashSet<String>>>,
     flush_queue: Arc<Mutex<ProviderEventFlushQueue>>,
     /// Debounced `flush_trailing` for sessions with a partial provider line in
     /// the stream buffer (no newline delimiter yet).
@@ -280,14 +284,18 @@ impl ProviderSessionService {
         lifecycle: Arc<WorkspaceLifecycle>,
         approvals: Option<Arc<ApprovalService>>,
     ) -> Arc<Self> {
+        let recovered_queues = {
+            let mut connection = database.connection();
+            recover_pending_messages(&mut connection)
+                .expect("durable pending-message journal must be readable")
+        };
         Arc::new(Self {
             database,
             launcher,
             publish_delta: Arc::new(publish_delta),
             handles: Arc::new(Mutex::new(HashMap::new())),
-            queues: Arc::new(Mutex::new(HashMap::new())),
+            queues: Arc::new(Mutex::new(recovered_queues)),
             queue_promotions: Arc::new(Mutex::new(HashSet::new())),
-            preserve_queue_on_launch_failure: Arc::new(Mutex::new(HashSet::new())),
             flush_queue: Arc::new(Mutex::new(ProviderEventFlushQueue::new())),
             idle_flush_generation: Arc::new(Mutex::new(HashMap::new())),
             idle_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
@@ -308,49 +316,67 @@ impl ProviderSessionService {
         }
     }
 
-    pub fn ensure_move_schedulable(&self, session_id: &str) -> ArgmaxResult<()> {
+    /// A queued follow-up and a scheduled disposal contradict each other: the
+    /// follow-up expects the chat to still be here after this turn.
+    pub fn ensure_after_turn_schedulable(
+        &self,
+        session_id: &str,
+        action: AfterTurn,
+    ) -> ArgmaxResult<()> {
         if self
             .queues
             .lock_or_recover("queues")
             .get(session_id)
             .is_some_and(|queue| !queue.is_empty())
         {
-            return Err(ArgmaxError::service(
-                "MOVE_HAS_QUEUED_MESSAGES",
-                "Send or cancel queued follow-ups before moving this chat.",
-            ));
+            return Err(match action {
+                AfterTurn::Move => ArgmaxError::service(
+                    "MOVE_HAS_QUEUED_MESSAGES",
+                    "Send or cancel queued follow-ups before moving this chat.",
+                ),
+                AfterTurn::Archive => ArgmaxError::service(
+                    "ARCHIVE_HAS_QUEUED_MESSAGES",
+                    "Send or cancel queued follow-ups before archiving this chat.",
+                ),
+            });
         }
         Ok(())
     }
 
-    fn ensure_move_not_pending(&self, session_id: &str) -> ArgmaxResult<()> {
-        if self
+    fn ensure_no_pending_after_turn(&self, session_id: &str) -> ArgmaxResult<()> {
+        let Some(pending) = self
             .session_control
             .get()
-            .is_some_and(|registry| registry.has_pending_move(session_id))
-        {
-            return Err(ArgmaxError::service(
+            .and_then(|registry| registry.pending_after_turn(session_id))
+        else {
+            return Ok(());
+        };
+        Err(match pending {
+            AfterTurn::Move => ArgmaxError::service(
                 "MOVE_ALREADY_PENDING",
                 "This chat is moving after the current turn. New follow-ups are disabled.",
-            ));
-        }
-        Ok(())
+            ),
+            AfterTurn::Archive => ArgmaxError::service(
+                "ARCHIVE_ALREADY_PENDING",
+                "This chat is archiving after the current turn. New follow-ups are disabled.",
+            ),
+        })
     }
 
-    fn settle_session_move(&self, session_id: &str) {
+    fn settle_session_after_turn(&self, session_id: &str) {
         if let Some(registry) = self.session_control.get() {
-            registry.settle_move(session_id);
+            registry.signal_turn_settled(session_id);
         }
     }
 
-    fn abort_session_move(&self, session_id: &str, message: &str) -> ArgmaxResult<()> {
+    fn abort_session_after_turn(&self, session_id: &str, message: &str) -> ArgmaxResult<()> {
         let Some(registry) = self.session_control.get() else {
             return Ok(());
         };
-        if !registry.has_pending_move(session_id) {
+        let Some(pending) = registry.pending_after_turn(session_id) else {
             return Ok(());
-        }
-        registry.cancel_move(session_id);
+        };
+        registry.cancel_after_turn(session_id);
         let (session, event) = {
             let connection = self.database.connection();
             let session = find_session_by_id(&connection, session_id)?;
@@ -361,7 +387,10 @@ impl ProviderSessionService {
                     session_id: session_id.to_string(),
                     r#type: "error".to_string(),
                     message: message.to_string(),
-                    payload: json!({ "operation": "session.move" }),
+                    payload: json!({ "operation": match pending {
+                        AfterTurn::Move => "session.move",
+                        AfterTurn::Archive => "workspace.archive",
+                    } }),
                     created_at: None,
                 },
             )?;
@@ -588,10 +617,6 @@ impl ProviderSessionService {
                             );
                         }
                     }
-                    service
-                        .preserve_queue_on_launch_failure
-                        .lock_or_recover("queue-preserving launches")
-                        .remove(&session_id);
                     return;
                 }
             };
@@ -620,10 +645,6 @@ impl ProviderSessionService {
                 if let Err(error) = handle.terminate().await {
                     tracing::error!(?error, "failed to dispose handle cancelled during spawn");
                 }
-                service
-                    .preserve_queue_on_launch_failure
-                    .lock_or_recover("queue-preserving launches")
-                    .remove(&session_id);
                 return;
             };
             for op in pending_ops {
@@ -631,10 +652,6 @@ impl ProviderSessionService {
                     tracing::error!(?error, "failed to apply queued op after launch");
                 }
             }
-            service
-                .preserve_queue_on_launch_failure
-                .lock_or_recover("queue-preserving launches")
-                .remove(&session_id);
         });
     }
 
@@ -664,7 +681,7 @@ impl ProviderSessionService {
                 queued: false,
             });
         }
-        self.ensure_move_not_pending(&session_id)?;
+        self.ensure_no_pending_after_turn(&session_id)?;
 
         let (workspace_id, session_provider, session_permission_mode) = {
             let connection = self.database.connection();
@@ -1111,7 +1128,7 @@ impl ProviderSessionService {
             })
             .await?;
         } else {
-            self.clear_queue(&session_id);
+            self.clear_queue(&session_id)?;
         }
 
         let connection = self.database.connection();
@@ -1181,7 +1198,7 @@ impl ProviderSessionService {
     ) -> ArgmaxResult<watch::Receiver<Option<ArgmaxResult<()>>>> {
         self.cancel_idle_flush(&session_id);
         if !preserve_queue {
-            self.clear_queue(&session_id);
+            self.clear_queue(&session_id)?;
         }
         let mut jobs = self.termination_jobs.lock_or_recover("termination jobs");
         if let Some(done) = jobs.get(&session_id) {
@@ -1250,28 +1267,41 @@ impl ProviderSessionService {
             .lock_or_recover("terminating")
             .remove(session_id);
         if let Some(error) = first_error {
-            let _ = self.abort_session_move(
+            let _ = self.abort_session_after_turn(
                 session_id,
                 "Could not move this chat because the agent process did not stop safely.",
             );
             Err(error)
         } else {
-            self.settle_session_move(session_id);
+            self.settle_session_after_turn(session_id);
             Ok(())
         }
     }
 
-    pub fn cancel_queued_message(&self, input: ProvidersCancelQueuedMessageInput) {
+    pub fn cancel_queued_message(
+        &self,
+        input: ProvidersCancelQueuedMessageInput,
+    ) -> ArgmaxResult<()> {
         let session_id = input.session_id.as_str();
+        let mut connection = self.database.connection();
         let mut queues = self.queues.lock_or_recover("queues");
-        if let Some(queue) = queues.get_mut(session_id) {
-            queue.retain(|message| message.id != input.message_id.as_str());
-            if queue.is_empty() {
-                queues.remove(session_id);
-            }
+        let Some(current) = queues.get(session_id) else {
+            return Err(ArgmaxError::service("QUEUED_MESSAGE_NOT_CANCELLABLE", "This follow-up has already left the queue. Check the chat before sending another copy."));
+        };
+        let mut updated = current.clone();
+        updated.retain(|message| message.id != input.message_id.as_str());
+        if updated.len() == current.len() {
+            return Err(ArgmaxError::service("QUEUED_MESSAGE_NOT_CANCELLABLE", "This follow-up has already left the queue. Check the chat before sending another copy."));
+        }
+        replace_session_queue(&mut connection, session_id, &updated)?;
+        if updated.is_empty() {
+            queues.remove(session_id);
+        } else {
+            queues.insert(session_id.to_string(), updated);
         }
         drop(queues);
         self.publish_pending_messages(session_id);
+        Ok(())
     }
 
     pub async fn send_queued_message_now(
@@ -1279,16 +1309,34 @@ impl ProviderSessionService {
         input: ProvidersSendQueuedMessageNowInput,
     ) -> ArgmaxResult<SendInputResult> {
         let session_id = input.session_id.as_str().to_string();
-        self.queue_promotions
+        if !self
+            .queue_promotions
             .lock_or_recover("queue promotions")
-            .insert(session_id.clone());
+            .insert(session_id.clone())
+        {
+            return Err(ArgmaxError::service(
+                "QUEUED_MESSAGE_SEND_IN_PROGRESS",
+                "Another queued follow-up is already being sent. Wait for it to finish.",
+            ));
+        }
         let queued_message = {
+            let connection = self.database.connection();
             let mut queues = self.queues.lock_or_recover("queues");
             if let Some(queue) = queues.get_mut(&session_id) {
                 if let Some(index) = queue
                     .iter()
                     .position(|message| message.id == input.message_id.as_str())
                 {
+                    if let Err(error) =
+                        mark_message_launching(&connection, &session_id, input.message_id.as_str())
+                    {
+                        drop(queues);
+                        drop(connection);
+                        self.queue_promotions
+                            .lock_or_recover("queue promotions")
+                            .remove(&session_id);
+                        return Err(error);
+                    }
                     let message = queue
                         .remove(index)
                         .expect("queued message index must exist");
@@ -1303,7 +1351,7 @@ impl ProviderSessionService {
                 None
             }
         };
-        let Some((queue_index, message)) = queued_message else {
+        let Some((_queue_index, message)) = queued_message else {
             self.queue_promotions
                 .lock_or_recover("queue promotions")
                 .remove(&session_id);
@@ -1312,13 +1360,38 @@ impl ProviderSessionService {
                 "Queued follow-up no longer exists.",
             ));
         };
+        let message_id = message.id.clone();
 
-        let restore = |service: &Self, message: PendingMessage| {
+        if origin_row_is_delivered(self, &message) {
+            let delete_result = {
+                let connection = self.database.connection();
+                delete_pending_message(&connection, &session_id, &message_id)
+            };
+            self.queue_promotions
+                .lock_or_recover("queue promotions")
+                .remove(&session_id);
+            delete_result?;
+            self.publish_pending_messages(&session_id);
+            return Err(ArgmaxError::service(
+                "QUEUED_MESSAGE_ALREADY_DELIVERED",
+                "This follow-up was already collected from the chat inbox.",
+            ));
+        }
+
+        let restore = |service: &Self, message: PendingMessage| -> ArgmaxResult<()> {
+            let connection = service.database.connection();
+            restore_launching_message(
+                &connection,
+                &session_id,
+                &message.id,
+                message.recovery_status.as_deref(),
+            )?;
+            let queue = list_session_pending_messages(&connection, &session_id)?;
             let mut queues = service.queues.lock_or_recover("queues");
-            let queue = queues.entry(session_id.clone()).or_default();
-            queue.insert(queue_index.min(queue.len()), message);
+            queues.insert(session_id.clone(), queue);
             drop(queues);
             service.publish_pending_messages(&session_id);
+            Ok(())
         };
 
         let done = match self.start_termination(session_id.clone(), true) {
@@ -1327,7 +1400,7 @@ impl ProviderSessionService {
                 self.queue_promotions
                     .lock_or_recover("queue promotions")
                     .remove(&session_id);
-                restore(self, message);
+                restore(self, message)?;
                 return Err(error);
             }
         };
@@ -1336,7 +1409,7 @@ impl ProviderSessionService {
             self.queue_promotions
                 .lock_or_recover("queue promotions")
                 .remove(&session_id);
-            restore(self, message);
+            restore(self, message)?;
             return Err(error);
         }
         if !self
@@ -1356,50 +1429,46 @@ impl ProviderSessionService {
                 self.queue_promotions
                     .lock_or_recover("queue promotions")
                     .remove(&session_id);
-                restore(self, message);
+                restore(self, message)?;
                 return Err(error);
             }
         };
-        self.preserve_queue_on_launch_failure
-            .lock_or_recover("queue-preserving launches")
-            .insert(session_id.clone());
-        let result = self.send_input(send_input).await;
-        if let Err(error) = result.as_ref() {
-            // send_input can reject before the message is persisted as a
-            // user.message — an archiving workspace, a refused lifecycle
-            // admission, a pending move, a terminating provider. Put the
-            // follow-up back instead of losing what the user typed. Spawn
-            // happens after this returns, so drop the marker here; a later
-            // launch failure is owned by the background spawn task, which
-            // clears the marker when it finishes.
-            tracing::warn!(
-                session_id,
-                error = %error,
-                "restoring queued follow-up after a failed send"
-            );
-            restore(self, message);
-            self.preserve_queue_on_launch_failure
-                .lock_or_recover("queue-preserving launches")
-                .remove(&session_id);
-        }
+        let result = match self.send_input(send_input).await {
+            Ok(result) => result,
+            Err(error) => {
+                // send_input can reject before the message is persisted as a
+                // user.message — an archiving workspace, a refused lifecycle
+                // admission, a pending move, a terminating provider. Put the
+                // follow-up back instead of losing what the user typed.
+                tracing::warn!(
+                    session_id,
+                    error = %error,
+                    "restoring queued follow-up after a failed send"
+                );
+                self.queue_promotions
+                    .lock_or_recover("queue promotions")
+                    .remove(&session_id);
+                restore(self, message)?;
+                return Err(error);
+            }
+        };
         let promotion_active = self
             .queue_promotions
             .lock_or_recover("queue promotions")
             .remove(&session_id);
+        {
+            let connection = self.database.connection();
+            delete_pending_message(&connection, &session_id, &message_id)?;
+        }
         if !promotion_active {
-            if result.is_ok() {
-                let done = self.start_termination(session_id.clone(), false)?;
-                wait_for_termination(done).await?;
-            }
+            let done = self.start_termination(session_id.clone(), false)?;
+            wait_for_termination(done).await?;
             return Err(ArgmaxError::service(
                 "QUEUED_SEND_CANCELLED",
                 "Queued follow-up was cancelled by Stop.",
             ));
         }
-        match result {
-            Ok(result) => Ok(result),
-            Err(error) => Err(error),
-        }
+        Ok(result)
     }
 
     pub fn recover_orphaned_sessions(&self) -> ArgmaxResult<usize> {
@@ -1750,7 +1819,7 @@ impl ProviderSessionService {
             .lock_or_recover("flush queue")
             .delete_session(&event.session_id);
         if !succeeded {
-            self.clear_queue(&event.session_id);
+            self.pause_queue_with_connection(&connection, &event.session_id)?;
         }
         let mut delta = DashboardDelta {
             projects: list_projects(&connection)?,
@@ -1770,7 +1839,7 @@ impl ProviderSessionService {
             Some(approvals) => approvals.cancel_session_pending(&event.session_id),
             None => Ok(()),
         };
-        self.settle_session_move(&event.session_id);
+        self.settle_session_after_turn(&event.session_id);
         self.notify_launcher_of_turn_end(&event.session_id, state, &completed_at);
         if succeeded {
             self.drain_queue_after_complete(event.session_id);
@@ -1997,13 +2066,7 @@ impl ProviderSessionService {
                 created_at: None,
             },
         )?;
-        if !self
-            .preserve_queue_on_launch_failure
-            .lock_or_recover("queue-preserving launches")
-            .contains(session_id)
-        {
-            self.clear_queue(session_id);
-        }
+        self.pause_queue_with_connection(&connection, session_id)?;
         self.publish(DashboardDelta {
             projects: list_projects(&connection)?,
             workspaces: vec![workspace],
@@ -2148,9 +2211,9 @@ impl ProviderSessionService {
         // must not survive the queue either — persisting it would write e.g. a
         // Codex model id onto a Claude session and relaunch with a foreign
         // --model flag.
+        let mut connection = self.database.connection();
         let switches_provider = match input.provider {
             Some(requested) => {
-                let connection = self.database.connection();
                 find_session_by_id(&connection, session_id)?.provider != requested.as_str()
             }
             None => false,
@@ -2173,9 +2236,9 @@ impl ProviderSessionService {
                 input.fast_mode,
             )
         };
+        self.ensure_no_pending_after_turn(session_id)?;
         let mut queues = self.queues.lock_or_recover("queues");
-        self.ensure_move_not_pending(session_id)?;
-        let queue = queues.entry(session_id.to_string()).or_default();
+        let mut queue = queues.get(session_id).cloned().unwrap_or_default();
         if queue.len() >= MAX_PENDING_QUEUE {
             return Err(ArgmaxError::service(
                 "PENDING_QUEUE_FULL",
@@ -2194,14 +2257,27 @@ impl ProviderSessionService {
             attachments: input.attachments.clone().unwrap_or_default(),
             agent_references: input.agent_references.clone().unwrap_or_default(),
             origin,
+            recovery_status: None,
             queued_at: now_iso(),
         });
+        replace_session_queue(&mut connection, session_id, &queue)?;
+        queues.insert(session_id.to_string(), queue);
         drop(queues);
         self.publish_pending_messages(session_id);
         Ok(())
     }
 
-    fn clear_queue(&self, session_id: &str) {
+    fn clear_queue(&self, session_id: &str) -> ArgmaxResult<()> {
+        let connection = self.database.connection();
+        self.clear_queue_with_connection(&connection, session_id)
+    }
+
+    fn clear_queue_with_connection(
+        &self,
+        connection: &rusqlite::Connection,
+        session_id: &str,
+    ) -> ArgmaxResult<()> {
+        clear_session_queue(connection, session_id)?;
         let removed = self
             .queues
             .lock_or_recover("queues")
@@ -2210,6 +2286,34 @@ impl ProviderSessionService {
         if removed {
             self.publish_pending_messages(session_id);
         }
+        Ok(())
+    }
+
+    /// Provider failures are not a user request to discard unsent work.
+    /// Pause it durably so a later turn cannot silently drain the old queue.
+    fn pause_queue_with_connection(
+        &self,
+        connection: &rusqlite::Connection,
+        session_id: &str,
+    ) -> ArgmaxResult<()> {
+        connection
+            .execute(
+                "UPDATE pending_messages SET delivery_state = 'recovered', updated_at = ?2
+             WHERE session_id = ?1 AND delivery_state = 'pending'",
+                (session_id, now_iso()),
+            )
+            .map_err(crate::persistence::sqlite_error)?;
+        let mut queues = self.queues.lock_or_recover("queues");
+        if let Some(queue) = queues.get_mut(session_id) {
+            for message in queue {
+                if message.recovery_status.is_none() {
+                    message.recovery_status = Some("unsent".to_string());
+                }
+            }
+        }
+        drop(queues);
+        self.publish_pending_messages(session_id);
+        Ok(())
     }
 
     pub fn pending_messages_snapshot(&self) -> BTreeMap<String, Vec<PendingMessage>> {
@@ -2262,8 +2366,13 @@ impl ProviderSessionService {
     }
 
     fn drain_queue_after_complete(self: &Arc<Self>, session_id: String) {
-        let Some(next) = self.pop_next_undelivered(&session_id) else {
-            return;
+        let (_queue_index, next) = match self.pop_next_undelivered(&session_id) {
+            Ok(Some(next)) => next,
+            Ok(None) => return,
+            Err(error) => {
+                tracing::warn!(session_id, ?error, "failed to claim pending follow-up");
+                return;
+            }
         };
         self.publish_pending_messages(&session_id);
         let service = Arc::clone(self);
@@ -2277,6 +2386,17 @@ impl ProviderSessionService {
             // that was already handed over through the inbox would deliver it
             // twice.
             if origin_row_is_delivered(&service, &next) {
+                let connection = service.database.connection();
+                if let Err(error) = delete_pending_message(&connection, &restore_session, &next.id)
+                {
+                    tracing::warn!(
+                        session_id = %restore_session,
+                        ?error,
+                        "failed to delete collected pending follow-up"
+                    );
+                    return;
+                }
+                drop(connection);
                 service.drain_queue_after_complete(restore_session);
                 return;
             }
@@ -2290,6 +2410,16 @@ impl ProviderSessionService {
                         ?error,
                         "dropping invalid queued follow-up"
                     );
+                    let connection = service.database.connection();
+                    if let Err(delete_error) =
+                        delete_pending_message(&connection, &restore_session, &restore.id)
+                    {
+                        tracing::warn!(
+                            session_id = %restore_session,
+                            ?delete_error,
+                            "failed to delete invalid pending follow-up"
+                        );
+                    }
                     return;
                 }
             };
@@ -2301,8 +2431,17 @@ impl ProviderSessionService {
                 // every later tool result flags unread mail and `inbox_read`
                 // hands the agent a message it has just taken as a turn.
                 Ok(result) if !result.queued => {
+                    let connection = service.database.connection();
+                    if let Err(error) =
+                        delete_pending_message(&connection, &restore_session, &restore.id)
+                    {
+                        tracing::warn!(
+                            session_id = %restore_session,
+                            ?error,
+                            "failed to finish pending follow-up delivery"
+                        );
+                    }
                     if let Some(id) = inbox_row {
-                        let connection = service.database.connection();
                         if let Err(error) = mark_message_delivered(&connection, &id) {
                             tracing::warn!(
                                 session_id = %restore_session,
@@ -2313,8 +2452,19 @@ impl ProviderSessionService {
                     }
                 }
                 // A turn started between the pop and the send, so this is
-                // pending again rather than delivered. The row stays open.
-                Ok(_) => {}
+                // pending under a fresh queue id. The claimed row is complete.
+                Ok(_) => {
+                    let connection = service.database.connection();
+                    if let Err(error) =
+                        delete_pending_message(&connection, &restore_session, &restore.id)
+                    {
+                        tracing::warn!(
+                            session_id = %restore_session,
+                            ?error,
+                            "failed to replace a raced pending follow-up"
+                        );
+                    }
+                }
                 Err(error) => {
                     tracing::warn!(
                         session_id = %restore_session,
@@ -2322,11 +2472,27 @@ impl ProviderSessionService {
                         "failed to launch queued follow-up; restoring it to the queue"
                     );
                     {
+                        let connection = service.database.connection();
+                        let restore_result = restore_launching_message(
+                            &connection,
+                            &restore_session,
+                            &restore.id,
+                            restore.recovery_status.as_deref(),
+                        )
+                        .and_then(|_| list_session_pending_messages(&connection, &restore_session));
                         let mut queues = service.queues.lock_or_recover("queues");
-                        queues
-                            .entry(restore_session.clone())
-                            .or_default()
-                            .push_front(restore);
+                        match restore_result {
+                            Ok(queue) => {
+                                queues.insert(restore_session.clone(), queue);
+                            }
+                            Err(persist_error) => {
+                                tracing::error!(
+                                    session_id = %restore_session,
+                                    ?persist_error,
+                                    "failed to restore pending follow-up after launch failure"
+                                );
+                            }
+                        }
                     }
                     service.publish_pending_messages(&restore_session);
                 }
@@ -2339,27 +2505,45 @@ impl ProviderSessionService {
     /// through `inbox_read` is dropped here rather than also arriving as a
     /// turn — and popping continues to the message behind it, since no turn
     /// will start to trigger the next drain.
-    fn pop_next_undelivered(&self, session_id: &str) -> Option<PendingMessage> {
+    fn pop_next_undelivered(
+        &self,
+        session_id: &str,
+    ) -> ArgmaxResult<Option<(usize, PendingMessage)>> {
         loop {
             let next = {
+                let connection = self.database.connection();
                 let mut queues = self.queues.lock_or_recover("queues");
                 if self
                     .queue_promotions
                     .lock_or_recover("queue promotions")
                     .contains(session_id)
                 {
-                    return None;
+                    return Ok(None);
                 }
-                let queue = queues.get_mut(session_id)?;
-                let next = queue.pop_front();
+                let Some(queue) = queues.get_mut(session_id) else {
+                    return Ok(None);
+                };
+                // Recovered items require explicit user action, but they do
+                // not block newer in-process follow-ups from draining.
+                let Some(index) = queue
+                    .iter()
+                    .position(|message| message.recovery_status.is_none())
+                else {
+                    return Ok(None);
+                };
+                let message_id = queue[index].id.clone();
+                mark_message_launching(&connection, session_id, &message_id)?;
+                let next = queue.remove(index);
                 if queue.is_empty() {
                     queues.remove(session_id);
                 }
-                next
+                next.map(|message| (index, message))
             };
-            let next = next?;
+            let Some((index, next)) = next else {
+                return Ok(None);
+            };
             if !origin_row_is_delivered(self, &next) {
-                return Some(next);
+                return Ok(Some((index, next)));
             }
             tracing::info!(
                 session_id,
@@ -2369,6 +2553,8 @@ impl ProviderSessionService {
                     .and_then(|origin| origin.message_id.as_deref()),
                 "dropping a queued follow-up the recipient already collected from its inbox"
             );
+            let connection = self.database.connection();
+            delete_pending_message(&connection, session_id, &next.id)?;
             self.publish_pending_messages(session_id);
         }
     }
@@ -2464,14 +2650,14 @@ impl ProviderSessionService {
 
         if let Some(HandleEntry::Resolved(handle)) = entry {
             if let Err(error) = handle.terminate().await {
-                let _ = self.abort_session_move(
+                let _ = self.abort_session_after_turn(
                     session_id,
                     "Could not move this chat because the Cursor turn did not stop safely.",
                 );
                 return Err(error);
             }
         }
-        self.settle_session_move(session_id);
+        self.settle_session_after_turn(session_id);
         // Cursor ends a turn on `result/success` rather than on a process exit,
         // so this is that provider's only turn-end seam — and whoever launched
         // this session is told here, exactly as the exit path tells them. Left
@@ -2901,6 +3087,7 @@ mod tests {
             attachments: Vec::new(),
             agent_references: references,
             origin: None,
+            recovery_status: None,
             queued_at: now_iso(),
         };
         let expected = message.agent_references.clone();
@@ -2928,6 +3115,7 @@ mod tests {
                     current_branch: "main".to_string(),
                     default_branch: Some("main".to_string()),
                     settings: ProjectSettings {
+                        archive_on_merge: false,
                         worktree_location: "/tmp/worktrees".to_string(),
                         setup_command: String::new(),
                         check_commands: Vec::new(),
@@ -2987,6 +3175,7 @@ mod tests {
             attachments: Vec::new(),
             agent_references: references,
             origin: None,
+            recovery_status: None,
             queued_at: now_iso(),
         };
         let input =
@@ -3063,6 +3252,7 @@ mod tests {
                     current_branch: "main".to_string(),
                     default_branch: Some("main".to_string()),
                     settings: ProjectSettings {
+                        archive_on_merge: false,
                         worktree_location: "/tmp/worktrees".to_string(),
                         setup_command: String::new(),
                         check_commands: Vec::new(),
@@ -3107,25 +3297,52 @@ mod tests {
 
         let service = ProviderSessionService::new(database);
         let message_id = Uuid::new_v4().to_string();
+        let queued = VecDeque::from([PendingMessage {
+            id: message_id.clone(),
+            session_id: "session-1".to_string(),
+            content: "please keep this".to_string(),
+            agent_mode: AgentMode::Auto.as_str().to_string(),
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            attachments: Vec::new(),
+            agent_references: Vec::new(),
+            origin: None,
+            recovery_status: None,
+            queued_at: now_iso(),
+        }]);
+        {
+            let mut connection = service.database.connection();
+            replace_session_queue(&mut connection, "session-1", &queued).expect("persist queue");
+        }
         service
             .queues
             .lock_or_recover("queues")
-            .entry("session-1".to_string())
-            .or_default()
-            .push_back(PendingMessage {
-                id: message_id.clone(),
-                session_id: "session-1".to_string(),
-                content: "please keep this".to_string(),
-                agent_mode: AgentMode::Auto.as_str().to_string(),
-                model_label: None,
-                model_id: None,
-                reasoning_effort: None,
-                fast_mode: false,
-                attachments: Vec::new(),
-                agent_references: Vec::new(),
-                origin: None,
-                queued_at: now_iso(),
-            });
+            .insert("session-1".to_string(), queued);
+
+        service
+            .queue_promotions
+            .lock_or_recover("queue promotions")
+            .insert("session-1".to_string());
+        let concurrent = service
+            .send_queued_message_now(ProvidersSendQueuedMessageNowInput {
+                session_id: SessionId::try_from("session-1".to_string()).unwrap(),
+                message_id: NonEmptyString::try_from(message_id.clone()).unwrap(),
+            })
+            .await
+            .expect_err("a second promotion must not claim another message");
+        assert!(
+            matches!(concurrent, ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == "QUEUED_MESSAGE_SEND_IN_PROGRESS")
+        );
+        assert_eq!(
+            service.pending_messages_snapshot()["session-1"][0].id,
+            message_id
+        );
+        service
+            .queue_promotions
+            .lock_or_recover("queue promotions")
+            .remove("session-1");
 
         let error = service
             .send_queued_message_now(ProvidersSendQueuedMessageNowInput {
@@ -3150,8 +3367,107 @@ mod tests {
         assert_eq!(queue[0].content, "please keep this");
         let snapshot = service.pending_messages_snapshot();
         assert_eq!(snapshot["session-1"][0].id, message_id);
-        service.clear_queue("session-1");
+        {
+            let connection = service.database.connection();
+            let durable = crate::persistence::pending_messages::list_pending_messages(&connection)
+                .expect("durable queue");
+            assert_eq!(durable.len(), 1);
+            assert_eq!(durable[0].id, message_id);
+        }
+        service
+            .record_launch_failure(
+                "session-1",
+                ProviderId::Claude,
+                ArgmaxError::service("SPAWN_FAILED", "fixture provider could not start"),
+            )
+            .expect("record launch failure without discarding pending work");
+        assert_eq!(
+            service.pending_messages_snapshot()["session-1"][0].id,
+            message_id
+        );
+        assert_eq!(
+            service.pending_messages_snapshot()["session-1"][0]
+                .recovery_status
+                .as_deref(),
+            Some("unsent")
+        );
+        assert!(service.pop_next_undelivered("session-1").unwrap().is_none());
+        {
+            let connection = service.database.connection();
+            let durable =
+                crate::persistence::pending_messages::list_pending_messages(&connection).unwrap();
+            assert_eq!(durable[0].id, message_id);
+            assert_eq!(durable[0].recovery_status.as_deref(), Some("unsent"));
+        }
+        service.clear_queue("session-1").expect("clear queue");
         assert!(service.pending_messages_snapshot().is_empty());
+        assert!(
+            service
+                .cancel_queued_message(ProvidersCancelQueuedMessageInput {
+                    session_id: SessionId::try_from("session-1".to_string()).unwrap(),
+                    message_id: NonEmptyString::try_from(message_id.clone()).unwrap(),
+                })
+                .is_err(),
+            "a missing or already dispatched row cannot be acknowledged as cancelled"
+        );
+        {
+            let connection = service.database.connection();
+            assert!(
+                crate::persistence::pending_messages::list_pending_messages(&connection)
+                    .expect("cleared durable queue")
+                    .is_empty()
+            );
+        }
+
+        // Keep the writer unavailable while cancellation starts. The cancel
+        // path must wait for SQLite before taking `queues`; otherwise a stop
+        // path holding SQLite and waiting for `queues` can deadlock it.
+        let lock_message_id = Uuid::new_v4().to_string();
+        let lock_queue = VecDeque::from([PendingMessage {
+            id: lock_message_id.clone(),
+            session_id: "session-1".to_string(),
+            content: "lock ordering".to_string(),
+            agent_mode: AgentMode::Auto.as_str().to_string(),
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            attachments: Vec::new(),
+            agent_references: Vec::new(),
+            origin: None,
+            recovery_status: None,
+            queued_at: now_iso(),
+        }]);
+        {
+            let mut connection = service.database.connection();
+            replace_session_queue(&mut connection, "session-1", &lock_queue)
+                .expect("persist lock-order queue");
+        }
+        service
+            .queues
+            .lock_or_recover("queues")
+            .insert("session-1".to_string(), lock_queue);
+        let database_guard = service.database.connection();
+        let cancel_service = Arc::clone(&service);
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let cancel_thread = std::thread::spawn(move || {
+            started_tx.send(()).expect("signal cancel start");
+            cancel_service.cancel_queued_message(ProvidersCancelQueuedMessageInput {
+                session_id: SessionId::try_from("session-1".to_string()).expect("session id"),
+                message_id: NonEmptyString::try_from(lock_message_id).expect("message id"),
+            })
+        });
+        started_rx.recv().expect("cancel started");
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(
+            service.queues.try_lock().is_ok(),
+            "cancel took queues before SQLite"
+        );
+        drop(database_guard);
+        cancel_thread
+            .join()
+            .expect("cancel thread")
+            .expect("cancel queue");
     }
 
     #[test]

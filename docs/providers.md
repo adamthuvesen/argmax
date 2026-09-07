@@ -69,9 +69,42 @@ An idle follow-up persists the user message and returns, then spawns the provide
 - **Provider switching:** Changing the provider on an idle session clears `provider_conversation_id`, starts a new provider process with the capped transcript, and records a `session.provider-changed` marker.
 - **Clear:** `/clear` in the session composer drops `provider_conversation_id`, writes a `session.cleared` watermark, and hides the existing transcript. The next message starts a fresh provider conversation in the same workspace. A running session is stopped first. Headless provider CLIs do not honor `/clear` as a prompt, so Argmax owns the command for every provider.
 - **Forking:** `session:fork` creates a new session flagged with `resume_fork`. The next turn invokes the provider's fork flag (`--fork-session` for Claude and Grok, `exec fork` for Codex, `--fork` for OpenCode). Cursor does not support session forking.
-- **Project moves:** An agent-requested move waits for the current turn to settle, copies the transcript into a fresh session in the destination project, and clears `provider_conversation_id`. The first destination turn receives the capped transcript plus the project handoff.
+- **Session moves:** An agent-requested move waits for the current turn to settle and copies the transcript into a fresh session at the destination. A cross-project move always clears `provider_conversation_id`. A move to another checkout of the same project carries it where the provider allows — see below. The first destination turn receives the handoff note, plus the capped transcript when the conversation did not travel.
 - **Default agent:** one model and one reasoning effort for the whole app (Settings → Agents), not a per-project setting. A model that doesn't offer the chosen effort runs at Medium instead, and failing that at the nearest level it does offer — see `effortForModel` in [providerModels.ts](../src/shared/providerModels.ts). A fresh install starts on Opus 5 at Medium. The renderer owns the preference and mirrors it through `system:set-default-agent` so the sessions Argmax starts on its own (the PR check-failure fix chat) use it too.
 - **Fast mode & reasoning effort:** Claude uses `--settings {"fastMode": ...}` and `--append-system-prompt` for effort (including Max/Ultra). Codex uses `-c service_tier="priority"` and `-c model_reasoning_effort=...` (Astra/Sol/Terra through ultra, Luna through max). Cursor encodes effort and fast mode into the model string (e.g. `gpt-5.6-sol-max-fast`). Grok takes `--reasoning-effort` and has no fast mode; its CLI accepts only low/medium/high/xhigh, so Max and Ultra clamp to xhigh.
+
+### Session moves and the provider conversation
+
+A move to another checkout of the same project is the same work continuing in a
+different worktree, so it carries the provider conversation rather than starting
+cold. Two provider facts have to hold at once, and only Claude and Codex have
+both — `move_carries_conversation` in
+[adapters.rs](../src-tauri/src/providers/adapters.rs) is the single place that
+records which:
+
+| Provider | Resume follows the new cwd | Can fork on resume | Carries |
+|---|---|---|---|
+| Claude | yes | `--fork-session` | yes |
+| Codex | yes | `exec fork` | yes |
+| Cursor | yes | no | no |
+| OpenCode | **no** | `--fork` | no |
+| Grok | **no** | `--fork-session` | no |
+
+Grok and OpenCode keep executing in the directory their conversation started in
+whatever `--cwd` / `--dir` says on resume, verified by resuming a session from a
+second directory and having the agent report its own `pwd`. Carrying a
+conversation for those two would leave the agent editing the old checkout while
+the moved workspace, its diff, and its pull-request actions all describe the new
+one. Cursor's resume does follow the new directory, but it has no fork flag, and
+the move copies the transcript into a second session row — both rows resuming
+one conversation would interleave two chats into it.
+
+Where the conversation is carried, it is carried as a fork (`resume_fork`), for
+that same reason: `--keep-source` leaves the origin chat live and resumable.
+
+A cold start is not a lost transcript. The copied timeline travels either way,
+and the destination's first turn opens with the capped transcript, so the chat
+reads continuously whichever side of the table a provider is on.
 
 ## Cursor Warm ACP Runtime
 

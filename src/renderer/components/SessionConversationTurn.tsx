@@ -411,12 +411,11 @@ function SessionConversationTurnInner({
     });
   const coalescedChildren: AnnotatedChild[] = [];
   for (const child of sortedChildren) {
-    // Convert routine launches before coalescing, so an adjacent failed
-    // launch cannot pull successful agent activity out of a Compact summary.
-    if (compactActivity && child.agentTools?.every((tool) => tool.status !== "error")) {
-      coalescedChildren.push({ ...child, runTools: child.agentTools, agentTools: undefined });
-      continue;
-    }
+    // A launch keeps its own row at every verbosity, Compact included. Folding
+    // routine ones into the activity summary buried the single row that names
+    // the delegated work, carries the codename and emblem, and opens the
+    // subagent's pane — a whole child agent read as "started an agent" behind
+    // a collapsed line, indistinguishable from a file read.
     const last = coalescedChildren[coalescedChildren.length - 1];
     if (child.agentTools && last?.agentTools) {
       last.agentTools.push(...child.agentTools);
@@ -466,10 +465,15 @@ function SessionConversationTurnInner({
     .filter((t): t is string => typeof t === "string" && t.length > 0)
     .sort()[0];
   // Hover footer content: the turn's assistant prose for Copy, and a fork
-  // handler when the provider supports forking a resumed conversation.
-  const turnMarkdown = item.assistantEvents
-    .map((event) => event.message)
-    .filter((message) => message.length > 0)
+  // handler when the provider supports forking a resumed conversation. Read
+  // from the same groups the chat renders, not from the raw events: those
+  // still carry the extended-thinking blocks and stderr log lines, and their
+  // answer text is one row per streamed fragment, so "Copy reply" pasted the
+  // model's reasoning ahead of a reply chopped at every delta boundary.
+  const turnMarkdown = visibleAssistantGroups
+    .filter((group) => !group.thinking && !group.error)
+    .map((group) => group.text.trim())
+    .filter((text) => text.length > 0)
     .join("\n\n");
   // Mirror `fork_session`'s gate (orchestration.rs): a mid-turn fork would copy
   // a partial transcript, so the backend refuses "running" and "waiting". The

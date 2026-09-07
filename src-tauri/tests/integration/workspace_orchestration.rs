@@ -16,6 +16,7 @@ use argmax_lib::ipc::inputs::{
     WorkspacesKeepInput, WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
 };
 use argmax_lib::ipc::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
+use argmax_lib::persistence::workspaces::WorkspaceSummary;
 use argmax_lib::persistence::{
     checks::list_checks,
     database::Database,
@@ -37,9 +38,10 @@ use argmax_lib::providers::runtime::{
 use argmax_lib::providers::session_service::ProviderSessionService;
 use argmax_lib::providers::ProviderLaunchInput;
 use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
+use argmax_lib::workspaces::orchestration::MoveDestination;
 use argmax_lib::workspaces::WorkspaceService;
 
-use crate::support::git_repo::{run_git, run_git_stdout, seed_git_repo};
+use crate::support::git_repo::{run_git, run_git_stdout, seed_git_repo, SeededGitRepo};
 use argmax_lib::sessions::state::SessionState;
 
 // ---------------------------------------------------------------------------
@@ -80,6 +82,7 @@ fn build_project_with_setup(
             current_branch: "main".to_owned(),
             default_branch: Some("main".to_owned()),
             settings: ProjectSettings {
+                archive_on_merge: false,
                 worktree_location: worktree_location.to_owned(),
                 setup_command: setup_command.to_owned(),
                 check_commands: vec![],
@@ -106,6 +109,7 @@ fn build_named_project(
             current_branch: "main".to_owned(),
             default_branch: Some("main".to_owned()),
             settings: ProjectSettings {
+                archive_on_merge: false,
                 worktree_location: worktree_location.to_owned(),
                 setup_command: String::new(),
                 check_commands: vec![],
@@ -130,7 +134,26 @@ fn service_with_checks(
         None,
         None,
         None,
+        None,
     )
+}
+
+fn service_with_archive_recovery(
+    database: &Arc<Database>,
+) -> (Arc<WorkspaceService>, tempfile::TempDir) {
+    let recovery = tempfile::tempdir().expect("archive recovery root");
+    let service = WorkspaceService::with_services(
+        Arc::clone(database),
+        |_| {},
+        argmax_lib::workspaces::lifecycle::WorkspaceLifecycle::new(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(recovery.path().to_path_buf()),
+    );
+    (service, recovery)
 }
 
 fn ensure_main_branch(repo_path: &std::path::Path) {
@@ -316,6 +339,7 @@ fn scratch_service(
         None,
         None,
         Some(scratch_root),
+        None,
     )
 }
 
@@ -401,6 +425,7 @@ async fn create_current_records_project_default_as_base_ref() {
                 current_branch: "feature".to_owned(),
                 default_branch: Some("main".to_owned()),
                 settings: ProjectSettings {
+                    archive_on_merge: false,
                     worktree_location: repo.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: vec![],
@@ -748,6 +773,7 @@ async fn archive_waits_for_and_cancels_a_live_check() {
         None,
         None,
         None,
+        None,
     );
     let check_task = tokio::spawn({
         let checks = checks.clone();
@@ -995,7 +1021,7 @@ async fn archive_isolated_worktree_succeeds_when_worktree_is_already_removed_fro
         &repo.path().display().to_string(),
         &worktree_location.display().to_string(),
     );
-    let service = WorkspaceService::new(database.clone());
+    let (service, _recovery) = service_with_archive_recovery(&database);
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
@@ -1022,6 +1048,89 @@ async fn archive_isolated_worktree_succeeds_when_worktree_is_already_removed_fro
         .expect("archive should succeed when worktree already removed");
 
     assert_eq!(result.state, "archived");
+}
+
+#[tokio::test]
+async fn startup_completes_an_archive_after_the_worktree_was_moved() {
+    let repo = seed_git_repo(&[("README.md", "hello")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, recovery) = service_with_archive_recovery(&database);
+    let workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Interrupted archive".to_string()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_string()).expect("base ref")),
+        })
+        .await
+        .expect("isolated workspace");
+    std::fs::write(
+        std::path::Path::new(&workspace.path).join("ignored-by-state.txt"),
+        "still here",
+    )
+    .expect("local file");
+    let recovery_path = recovery.path().join(&workspace.id);
+    // Simulate stopping between Git's directory move and registration update.
+    std::fs::rename(&workspace.path, &recovery_path).expect("move checkout files");
+    {
+        let connection = database.connection();
+        argmax_lib::persistence::workspaces::update_workspace_state(
+            &connection,
+            &workspace.id,
+            "archiving",
+        )
+        .expect("mark interrupted archive");
+    }
+
+    assert_eq!(service.recover_interrupted_archives().expect("recover"), 1);
+    let registrations = run_git_stdout(repo.path(), &["worktree", "list", "--porcelain"]);
+    assert!(registrations.contains(recovery_path.to_str().expect("recovery path")));
+    let connection = database.connection();
+    assert_eq!(
+        find_workspace_by_id(&connection, &workspace.id)
+            .expect("workspace")
+            .state,
+        "archived"
+    );
+    assert_eq!(
+        std::fs::read_to_string(recovery_path.join("ignored-by-state.txt")).expect("recovery file"),
+        "still here"
+    );
+    drop(connection);
+
+    // Existence alone cannot prove a later interrupted archive succeeded.
+    // Watcher restoration must not override recovery's rejected identity.
+    run_git(
+        &recovery_path,
+        &["checkout", "-b", "unexpected-recovery-branch"],
+    );
+    {
+        let connection = database.connection();
+        argmax_lib::persistence::workspaces::update_workspace_state(
+            &connection,
+            &workspace.id,
+            "archiving",
+        )
+        .unwrap();
+    }
+    service.recover_interrupted_archives().unwrap();
+    service.start_open_watchers().unwrap();
+    let connection = database.connection();
+    assert_eq!(
+        find_workspace_by_id(&connection, &workspace.id)
+            .unwrap()
+            .state,
+        "archive-failed"
+    );
+    assert_eq!(
+        std::fs::read_to_string(recovery_path.join("ignored-by-state.txt")).unwrap(),
+        "still here"
+    );
 }
 
 #[tokio::test]
@@ -1157,7 +1266,7 @@ async fn archive_isolated_worktree_kept_when_dirty_and_not_forced() {
         &repo.path().display().to_string(),
         &worktree_location.display().to_string(),
     );
-    let service = WorkspaceService::new(database.clone());
+    let (service, _recovery) = service_with_archive_recovery(&database);
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
@@ -1651,6 +1760,7 @@ async fn archive_keeps_the_worktree_when_provider_teardown_fails() {
         |_delta| {},
         Arc::clone(&lifecycle),
     );
+    let recovery = tempfile::tempdir().expect("archive recovery root");
     let service = WorkspaceService::with_services(
         Arc::clone(&database),
         |_delta| {},
@@ -1660,6 +1770,7 @@ async fn archive_keeps_the_worktree_when_provider_teardown_fails() {
         None,
         None,
         None,
+        Some(recovery.path().to_path_buf()),
     );
 
     let workspace = service
@@ -1792,7 +1903,14 @@ async fn move_session_copies_history_without_native_resume_and_can_keep_source()
     .expect("source lineage");
 
     let moved = service
-        .move_session_to_project("source-session", "destination-project", false, true)
+        .move_session(
+            "source-session",
+            MoveDestination::Project {
+                project_id: "destination-project".to_string(),
+                worktree: false,
+            },
+            true,
+        )
         .await
         .expect("move session");
 
@@ -1830,6 +1948,257 @@ async fn move_session_copies_history_without_native_resume_and_can_keep_source()
     assert_eq!(seam.payload["destinationProjectName"], "Destination");
 }
 
+/// Seeds one project whose repository has a second worktree, and a completed
+/// session sitting on the main checkout. Returns the service, the source
+/// workspace and the sibling worktree's path.
+fn checkout_move_fixture(
+    database: &Arc<Database>,
+    provider: &str,
+) -> (
+    Arc<WorkspaceService>,
+    WorkspaceSummary,
+    String,
+    SeededGitRepo,
+) {
+    let repo = seed_git_repo(&[("README.md", "source")]);
+    ensure_main_branch(repo.path());
+    // The worktree has to outlive the `TempDir` guard the fixture drops, so it
+    // goes inside the repository rather than beside it.
+    let sibling = repo.path().join("worktrees").join("feature");
+    run_git(
+        repo.path(),
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feature",
+            &sibling.display().to_string(),
+        ],
+    );
+    build_named_project(
+        database,
+        "source-project",
+        "Source",
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let service = WorkspaceService::new(Arc::clone(database));
+    let source_workspace = service
+        .create_current(WorkspacesCreateCurrentInput {
+            project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Move this chat".to_string()).expect("task label"),
+        })
+        .expect("source workspace");
+    seed_completed_session(database, &source_workspace.id, "source-session");
+    {
+        let connection = database.connection();
+        connection
+            .execute(
+                "UPDATE sessions SET provider = ? WHERE id = 'source-session'",
+                [provider],
+            )
+            .expect("session provider");
+    }
+    // The guard travels with the fixture: the worktree lives inside the
+    // repository, so one guard keeps both directories alive for the test.
+    (
+        service,
+        source_workspace,
+        sibling.display().to_string(),
+        repo,
+    )
+}
+
+#[tokio::test]
+async fn move_session_to_a_sibling_worktree_lands_on_its_branch_and_carries_the_conversation() {
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let (service, source_workspace, sibling, _repo) = checkout_move_fixture(&database, "claude");
+
+    let moved = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout {
+                path: sibling.clone(),
+            },
+            true,
+        )
+        .await
+        .expect("move session");
+
+    assert_eq!(
+        moved.workspace.project_id, "source-project",
+        "a checkout move stays in the project it started in"
+    );
+    assert_eq!(moved.workspace.branch, "feature");
+    assert!(
+        moved.workspace.shared_workspace,
+        "Argmax did not create this worktree, so archiving must never delete it"
+    );
+    assert_ne!(moved.workspace.id, source_workspace.id);
+    assert_ne!(
+        moved.workspace.path, source_workspace.path,
+        "the destination is a different directory"
+    );
+    // Claude's resume follows the new working directory and can fork, so the
+    // chat carries on rather than starting cold in the new worktree.
+    assert_eq!(
+        moved.session.provider_conversation_id.as_deref(),
+        Some("native-conversation")
+    );
+    let connection = database.connection();
+    let resume_fork: i64 = connection
+        .query_row(
+            "SELECT resume_fork FROM sessions WHERE id = ?",
+            [&moved.session.id],
+            |row| row.get(0),
+        )
+        .expect("resume_fork");
+    assert_eq!(
+        resume_fork, 1,
+        "the carried conversation forks so the source and destination rows never share one"
+    );
+    let copied = list_all_session_events(&connection, &moved.session.id).expect("copied events");
+    assert!(copied.iter().any(|event| event.message == "Source answer"));
+    let seam = copied
+        .iter()
+        .find(|event| event.r#type == "session.moved")
+        .expect("move seam");
+    assert_eq!(seam.payload["checkoutMode"], "attached");
+    assert_eq!(seam.payload["conversationCarried"], true);
+}
+
+#[tokio::test]
+async fn move_session_to_a_checkout_starts_cold_when_the_provider_resume_ignores_the_new_directory()
+{
+    // Grok and OpenCode keep executing in the directory a conversation started
+    // in, whatever `--cwd` / `--dir` says on resume. Carrying the conversation
+    // would edit the old checkout from a workspace showing the new one.
+    for provider in ["grok", "opencode", "cursor"] {
+        let database = Arc::new(Database::open_in_memory().expect("db"));
+        let (service, _source, sibling, _repo) = checkout_move_fixture(&database, provider);
+        let moved = service
+            .move_session(
+                "source-session",
+                MoveDestination::Checkout { path: sibling },
+                true,
+            )
+            .await
+            .unwrap_or_else(|error| panic!("move session for {provider}: {error}"));
+        assert_eq!(
+            moved.session.provider_conversation_id, None,
+            "{provider} must start a fresh conversation in the new checkout"
+        );
+        let connection = database.connection();
+        let seam = list_all_session_events(&connection, &moved.session.id)
+            .expect("copied events")
+            .into_iter()
+            .find(|event| event.r#type == "session.moved")
+            .expect("move seam");
+        assert_eq!(seam.payload["conversationCarried"], false);
+    }
+}
+
+#[tokio::test]
+async fn move_session_refuses_a_checkout_another_workspace_owns_or_one_with_no_branch() {
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let (service, _source, sibling, _repo) = checkout_move_fixture(&database, "claude");
+
+    // `git worktree list` reports the worktrees Argmax minted too. Attaching to
+    // one leaves two rows on it, and the owning row's archive removes the
+    // directory out from under the moved chat.
+    let owned = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Owns a worktree".to_string()).expect("task label"),
+            base_ref: None,
+        })
+        .await
+        .expect("isolated workspace");
+    assert!(!owned.shared_workspace);
+    let error = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout {
+                path: owned.path.clone(),
+            },
+            true,
+        )
+        .await
+        .expect_err("a worktree Argmax owns is not a destination");
+    assert!(
+        error.to_string().contains("another workspace"),
+        "unexpected error: {error}"
+    );
+
+    // A workspace records the branch it sits on, so a detached HEAD has no
+    // name to record.
+    run_git(std::path::Path::new(&sibling), &["checkout", "--detach"]);
+    let detached = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout { path: sibling },
+            true,
+        )
+        .await
+        .expect_err("a detached HEAD has no branch to record");
+    assert!(
+        detached.to_string().contains("detached HEAD"),
+        "unexpected error: {detached}"
+    );
+}
+
+#[tokio::test]
+async fn move_session_refuses_a_checkout_that_is_not_a_worktree_of_the_project() {
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let (service, source_workspace, _sibling, _repo) = checkout_move_fixture(&database, "claude");
+    let stranger = seed_git_repo(&[("README.md", "elsewhere")]);
+
+    let error = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout {
+                path: stranger.path().display().to_string(),
+            },
+            true,
+        )
+        .await
+        .expect_err("a checkout of another repository is not a destination");
+    assert!(
+        error.to_string().contains("not a worktree of this project"),
+        "unexpected error: {error}"
+    );
+
+    let already_here = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout {
+                path: source_workspace.path.clone(),
+            },
+            true,
+        )
+        .await
+        .expect_err("moving into the checkout the chat is already in is a no-op, not a move");
+    assert!(
+        already_here.to_string().contains("already working"),
+        "unexpected error: {already_here}"
+    );
+
+    let missing = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout {
+                path: "relative/path".to_string(),
+            },
+            true,
+        )
+        .await
+        .expect_err("a relative path has no single meaning");
+    assert!(
+        missing.to_string().contains("not absolute"),
+        "unexpected error: {missing}"
+    );
+}
+
 #[tokio::test]
 async fn move_session_archives_clean_source_and_can_create_isolated_destination() {
     let source_repo = seed_git_repo(&[("README.md", "source")]);
@@ -1865,7 +2234,14 @@ async fn move_session_archives_clean_source_and_can_create_isolated_destination(
     seed_completed_session(&database, &source_workspace.id, "source-session");
 
     let moved = service
-        .move_session_to_project("source-session", "destination-project", true, false)
+        .move_session(
+            "source-session",
+            MoveDestination::Project {
+                project_id: "destination-project".to_string(),
+                worktree: true,
+            },
+            false,
+        )
         .await
         .expect("move session");
 
@@ -1906,7 +2282,7 @@ async fn move_session_keeps_dirty_isolated_source_without_forcing_archive() {
             .display()
             .to_string(),
     );
-    let service = WorkspaceService::new(Arc::clone(&database));
+    let (service, _recovery) = service_with_archive_recovery(&database);
     let source_workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
             project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
@@ -1923,7 +2299,14 @@ async fn move_session_keeps_dirty_isolated_source_without_forcing_archive() {
     .expect("dirty file");
 
     let moved = service
-        .move_session_to_project("source-session", "destination-project", false, false)
+        .move_session(
+            "source-session",
+            MoveDestination::Project {
+                project_id: "destination-project".to_string(),
+                worktree: false,
+            },
+            false,
+        )
         .await
         .expect("move session");
 
@@ -1969,11 +2352,25 @@ async fn each_move_adds_an_arrival_the_copied_transcript_carries_on() {
     seed_completed_session(&database, &source_workspace.id, "source-session");
 
     let first = service
-        .move_session_to_project("source-session", "project-1", false, true)
+        .move_session(
+            "source-session",
+            MoveDestination::Project {
+                project_id: "project-1".to_string(),
+                worktree: false,
+            },
+            true,
+        )
         .await
         .expect("first move");
     let second = service
-        .move_session_to_project(&first.session.id, "project-2", false, true)
+        .move_session(
+            &first.session.id,
+            MoveDestination::Project {
+                project_id: "project-2".to_string(),
+                worktree: false,
+            },
+            true,
+        )
         .await
         .expect("second move");
 
@@ -1993,7 +2390,7 @@ async fn each_move_adds_an_arrival_the_copied_transcript_carries_on() {
 }
 
 #[tokio::test]
-async fn archive_failed_workspace_retries_with_force_and_succeeds() {
+async fn archive_failed_workspace_requires_fresh_force_and_preserves_changes() {
     let repo = seed_git_repo(&[("README.md", "hello")]);
     ensure_main_branch(repo.path());
     let database = Arc::new(Database::open_in_memory().expect("db"));
@@ -2002,7 +2399,7 @@ async fn archive_failed_workspace_retries_with_force_and_succeeds() {
         &repo.path().display().to_string(),
         &repo.path().join("worktrees").display().to_string(),
     );
-    let service = WorkspaceService::new(Arc::clone(&database));
+    let (service, _recovery) = service_with_archive_recovery(&database);
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
             project_id: ProjectId::try_from(PROJECT_ID.to_string()).expect("project id"),
@@ -2030,15 +2427,89 @@ async fn archive_failed_workspace_retries_with_force_and_succeeds() {
         .expect("mark failed");
     }
 
-    // Now call archive without explicit force: should force because state is archive-failed
-    let archived = service
+    let kept = service
         .archive(WorkspacesArchiveInput {
             workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
             force: None,
         })
         .await
-        .expect("archive retry succeeded");
+        .expect("archive retry should be refused");
+
+    assert_eq!(kept.state, "kept");
+    assert!(std::path::Path::new(&workspace.path).exists());
+
+    let archived = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
+            force: Some(true),
+        })
+        .await
+        .expect("forced archive retry");
 
     assert_eq!(archived.state, "archived");
     assert!(!std::path::Path::new(&workspace.path).exists());
+    let recovery_path = archived.recovery_path.expect("recovery path");
+    assert_eq!(
+        std::fs::read_to_string(std::path::Path::new(&recovery_path).join("uncommitted.txt"))
+            .expect("recovered file"),
+        "changes"
+    );
+}
+
+#[tokio::test]
+async fn archive_retains_ignored_files_and_repeated_calls_find_the_same_recovery() {
+    let repo = seed_git_repo(&[(".gitignore", "ignored/\n"), ("README.md", "hello")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+    let workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Ignored output".to_string()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_string()).expect("base ref")),
+        })
+        .await
+        .expect("isolated workspace");
+    let ignored_dir = std::path::Path::new(&workspace.path).join("ignored");
+    std::fs::create_dir_all(&ignored_dir).expect("ignored dir");
+    std::fs::write(ignored_dir.join("cache.db"), "valuable local data").expect("ignored file");
+    assert!(run_git_stdout(
+        std::path::Path::new(&workspace.path),
+        &["status", "--porcelain"]
+    )
+    .trim()
+    .is_empty());
+
+    let first = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("archive");
+    let recovery_path = first.recovery_path.clone().expect("recovery path");
+    assert_eq!(
+        std::fs::read_to_string(std::path::Path::new(&recovery_path).join("ignored/cache.db"))
+            .expect("ignored recovery file"),
+        "valuable local data"
+    );
+    let worktrees = run_git_stdout(repo.path(), &["worktree", "list", "--porcelain"]);
+    assert!(worktrees.contains(&recovery_path));
+
+    let repeated = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(workspace.id).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("repeated archive");
+    assert_eq!(
+        repeated.recovery_path.as_deref(),
+        Some(recovery_path.as_str())
+    );
 }

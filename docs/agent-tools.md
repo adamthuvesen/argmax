@@ -23,7 +23,8 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `session_stop` | `session` | `{sessionId, state}` |
 | `inbox_read` | — | `{messages: [{fromSessionId?, fromLabel?, kind, body, createdAt}]}` |
 | `session_wait` | `sessions?`, `timeoutS?` | `{timedOut, sessions: [{sessionId, taskLabel, state}], messages: […]}` |
-| `session_move` | `project`, `prompt`, `worktree?`, `keepSource?` | `{scheduled, sourceSessionId, projectId, projectName}` |
+| `session_move` | `project?` \| `path?`, `prompt`, `worktree?`, `keepSource?` | `{scheduled, sourceSessionId, projectId, projectName, path?}` |
+| `workspace_archive` | — | `{scheduled, sessionId, workspaceId, removesWorktree}` |
 
 ### Browser
 
@@ -141,6 +142,15 @@ has no model-label catalog, that lives in
 A move is scheduled rather than immediate: it runs once the calling turn
 settles, since the agent asking for it is mid-turn.
 
+`session_move` takes exactly one destination. `project` moves to another
+registered project; `path` moves to another checkout of the project the chat is
+already in. `path` is the reason an agent should never reach for `cd` when the
+work belongs in a different worktree: `cd` moves only that shell, so the
+workspace card, its diff, and its commit and pull-request actions keep targeting
+the checkout the session started in, and the next turn relaunches there — the
+agent's work lands somewhere Argmax is not looking. The tool description says so
+directly, because the alternative is one an agent reaches for by habit.
+
 A move relocates work, so it does not stop at relocating the transcript: once
 the destination workspace exists, its `prompt` starts the chat's first turn
 there, in the destination checkout. That turn is composed like any follow-up
@@ -164,6 +174,30 @@ live turn between them unattended; past the cap the chat lands in the
 destination and waits for a person, and says so in the timeline. A move whose
 continuation cannot start records that on the destination too, where the
 transcript now lives — the source is usually archived by then.
+
+`workspace_archive` closes the caller's own workspace on the same schedule, and
+for a sharper version of the same reason: archiving terminates every provider
+process in the workspace, and the agent asking is one of them. Run inline the
+call would kill its caller before it could report, so it is deferred and the
+tool answers `{scheduled: true}`. One slot serves both — a chat cannot be
+moving and archiving at once, and the refusal names whichever was scheduled
+first (`MOVE_ALREADY_PENDING` / `ARCHIVE_ALREADY_PENDING`). While either is
+pending, follow-ups into that chat are refused.
+
+It exists because merged work leaves its checkout behind. An agent that lands a
+pull request — `ship`'s babysit mode is the usual one — can now hand the
+disposal to Argmax instead of removing the directory it is standing in:
+`git worktree remove` on your own working directory succeeds and then every
+later command in the turn fails, and a worktree removed behind the app's back
+leaves a sidebar row pointing at nothing. The archive is the app's own path:
+checkout moved into the archive location with its files and branch retained,
+then the row archived. Settings exposes the archived-workspace directory.
+
+The archive is never forced. A workspace with uncommitted changes comes to rest
+as **kept** instead ([CONTEXT.md](../CONTEXT.md)), so an agent should report the
+archive as requested rather than done. The legacy `removesWorktree` result is
+now always false. An isolated checkout moves into recovery storage, while a
+shared checkout stays in place because other sessions may still use it.
 
 ## Observing another session
 

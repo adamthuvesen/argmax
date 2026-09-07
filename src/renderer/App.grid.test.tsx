@@ -185,8 +185,8 @@ describe("App grid", () => {
       sessions: [...snapshot.sessions, secondSession]
     });
     archiveWorkspace.mockResolvedValue({
-      ...secondWorkspace,
-      state: "archived"
+      workspace: { ...secondWorkspace, state: "archived" },
+      recoveryPath: "/tmp/workspace-archive/workspace-2"
     });
 
     render(<App />);
@@ -500,9 +500,7 @@ describe("App grid", () => {
     await screen.findByText("I will delegate this.");
     expect(screen.queryByText("Subagent found parser.")).toBeNull();
 
-    const agentGroup = screen.getByRole("button", { name: "Started an agent" });
-    expect(screen.queryByRole("button", { name: startedAgentName("Map renderer") })).toBeNull();
-    fireEvent.click(agentGroup);
+    expect(screen.queryByRole("button", { name: "Started an agent" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: /^Agent activity: / });

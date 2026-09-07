@@ -37,6 +37,7 @@ import type {
   AgentMode,
   ComposerAttachment,
   PendingMessage,
+  ProviderId,
   SessionSummary,
   WorkspaceSummary
 } from "../../shared/types.js";
@@ -65,7 +66,7 @@ import {
 } from "../lib/agentMode.js";
 import { isClearCommand, type ComposerCommand } from "../lib/composerCommands.js";
 import { multitaskCommandPrompt } from "../lib/multitask.js";
-import { clearDraft } from "../lib/composerDrafts.js";
+import { clearDraft, writeDraftAttachments, writeDraftText } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
@@ -151,8 +152,9 @@ export function SessionComposer({
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
   /** Dispatch a prompt as a multitask: a sibling chat in this checkout that
-   *  runs alongside the current turn instead of waiting behind it. */
-  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
+   *  runs alongside the current turn instead of waiting behind it. It inherits
+   *  this chat's provider, which is why the call carries it. */
+  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
   /** For a chat that lives inside a panel (a multitask in the Agents dock):
    *  promote it to the pane it is docked beside. Absent in a pane, which is
    *  already the full chat. */
@@ -189,11 +191,20 @@ export function SessionComposer({
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
-  const [isSending, setIsSending] = useState(false);
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
+  const [sendingSessionId, setSendingSessionId] = useState<string | null>(null);
+  const isSending = sendingSessionId !== null;
+  const persistCurrentDraft = sendingSessionId === null || sendingSessionId !== sessionId;
   // Unsent text belongs to the session, not to this component: it survives
   // switching to another session and comes back when this one does.
-  const [input, setInput] = useComposerDraft(sessionId, { persist: !isSending });
+  const [input, setInput] = useComposerDraft(sessionId, { persist: persistCurrentDraft });
   const [sendingQueuedMessageId, setSendingQueuedMessageId] = useState<string | null>(null);
+  // Touch surfaces (the phone companion) have no Enter key sitting under the
+  // hands, so the keyboard shortcuts this composer leans on need a button.
+  const [isCoarsePointer] = useState(
+    () => window.matchMedia?.("(pointer: coarse)").matches ?? false
+  );
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   // A pick that changes provider is held here until the user confirms: the new
@@ -237,12 +248,13 @@ export function SessionComposer({
     onComposerPaste,
     onAttachmentInputChange,
     openFilePicker,
-    clearAttachments
+    clearAttachments,
+    restoreAttachments
   } = useComposerAttachments({
     draftKey: sessionId,
     workspacePath: workspace?.path ?? null,
     setInput,
-    persist: !isSending,
+    persist: persistCurrentDraft,
     // The attachments hook only ever reports failures (string status contract,
     // shared with LaunchSurface); lift them into the error kind here.
     setStatus: (message) => setStatus(message === null ? null : { kind: "error", message })
@@ -420,9 +432,9 @@ export function SessionComposer({
     // Touch devices (the phone companion) get no programmatic focus: it pops
     // the on-screen keyboard over half the viewport the moment a session
     // opens. Phones focus the composer only on an explicit tap.
-    if (window.matchMedia?.("(pointer: coarse)").matches) return;
+    if (isCoarsePointer) return;
     inputRef.current?.focus();
-  }, [reviewPanelOpen, canSend, inputRef, isSending]);
+  }, [reviewPanelOpen, canSend, inputRef, isCoarsePointer, isSending]);
 
   const onSessionInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     slashAutocomplete.onKeyDown(event);
@@ -461,8 +473,8 @@ export function SessionComposer({
 
   /**
    * Build the prompt from the draft plus attachments and hand it to `deliver`.
-   * Storage is dropped as soon as send starts so a remount cannot restore it.
-   * The on-screen text stays until delivery resolves, so a failed send can retry.
+   * Storage and the on-screen text are cleared as soon as send starts. A failed
+   * delivery restores both so the user can retry.
    */
   const deliverDraft = async (
     deliver: (
@@ -471,13 +483,14 @@ export function SessionComposer({
       attachments: ComposerAttachment[] | undefined
     ) => Promise<void>
   ): Promise<void> => {
-    const trimmedInput = input.trim();
+    const draftInput = input;
+    const trimmedInput = draftInput.trim();
     if (!session || !hasSendableContent || isSending || sendingQueuedMessageId) {
       return;
     }
 
     if (isClearCommand(trimmedInput)) {
-      setIsSending(true);
+      setSendingSessionId(session.id);
       setStatus(null);
       shouldRefocusInput.current = true;
       clearDraft(session.id);
@@ -492,7 +505,7 @@ export function SessionComposer({
           message: error instanceof Error ? error.message : "Could not clear the conversation."
         });
       } finally {
-        setIsSending(false);
+        setSendingSessionId((current) => (current === session.id ? null : current));
       }
       return;
     }
@@ -501,11 +514,11 @@ export function SessionComposer({
     // sibling chat in this checkout, and this composer's turn is left alone.
     const multitaskPrompt = multitaskCommandPrompt(trimmedInput);
     if (multitaskPrompt && onMultitask) {
-      setIsSending(true);
+      setSendingSessionId(session.id);
       setStatus(null);
       shouldRefocusInput.current = true;
       try {
-        await onMultitask(session.id, multitaskPrompt);
+        await onMultitask(session.id, multitaskPrompt, session.provider);
         setInput("");
         clearDraft(session.id);
       } catch (error) {
@@ -514,32 +527,41 @@ export function SessionComposer({
           message: error instanceof Error ? error.message : "Could not start the multitask."
         });
       } finally {
-        setIsSending(false);
+        setSendingSessionId((current) => (current === session.id ? null : current));
       }
       return;
     }
 
-    const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
+    const attachmentsToSend = pendingAttachments;
+    const refs = attachmentsToSend.map((a) => imageAttachmentReference(a.filePath));
     const withRefs = refs.length > 0 ? appendReferencesToPrompt(trimmedInput, refs) : trimmedInput;
     const withAnnotations = prependAnnotationsToPrompt(withRefs, pendingAnnotations);
     const prompt = openFilesAttached ? appendOpenFilesToPrompt(withAnnotations, openFilePaths) : withAnnotations;
 
-    setIsSending(true);
+    setSendingSessionId(session.id);
     setStatus(null);
     shouldRefocusInput.current = true;
     clearDraft(session.id);
+    setInput("");
     try {
-      await deliver(session.id, prompt, pendingAttachments.length > 0 ? pendingAttachments : undefined);
-      setInput("");
-      clearAttachments();
-      onClearAnnotations?.();
+      await deliver(session.id, prompt, attachmentsToSend.length > 0 ? attachmentsToSend : undefined);
+      if (sessionIdRef.current === session.id) {
+        clearAttachments();
+        onClearAnnotations?.();
+      }
     } catch (error) {
-      setStatus({
-        kind: "error",
-        message: error instanceof Error ? error.message : "Could not send input."
-      });
+      writeDraftText(session.id, draftInput);
+      writeDraftAttachments(session.id, attachmentsToSend);
+      if (sessionIdRef.current === session.id) {
+        setInput(draftInput);
+        restoreAttachments(attachmentsToSend);
+        setStatus({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not send input."
+        });
+      }
     } finally {
-      setIsSending(false);
+      setSendingSessionId((current) => (current === session.id ? null : current));
     }
   };
 
@@ -581,7 +603,9 @@ export function SessionComposer({
           {pendingMessages.map((entry) => {
             const cancel = (): void => {
               if (!session || !onCancelQueuedMessage) return;
-              void onCancelQueuedMessage(session.id, entry.id).catch(() => undefined);
+              void onCancelQueuedMessage(session.id, entry.id).catch((error: unknown) => {
+                setStatus({ kind: "error", message: error instanceof Error ? error.message : "Could not cancel this follow-up." });
+              });
             };
             const sendQueuedNow = async (): Promise<void> => {
               if (!session || !onSendQueuedMessageNow || sendingQueuedMessageId) return;
@@ -608,7 +632,7 @@ export function SessionComposer({
               setSendingQueuedMessageId(id);
               setStatus(null);
               try {
-                await onMultitask(session.id, content);
+                await onMultitask(session.id, content, session.provider);
               } catch (error) {
                 setStatus({
                   kind: "error",
@@ -688,7 +712,19 @@ export function SessionComposer({
                   size={14}
                   aria-hidden="true"
                 />
-                <span className="composer-queued-chip-label">{entry.content}</span>
+                <span className="composer-queued-chip-copy">
+                  <span className="composer-queued-chip-label">{entry.content}</span>
+                  {entry.recoveryStatus ? (
+                    <span
+                      className="composer-queued-chip-recovery"
+                      data-recovery-status={entry.recoveryStatus}
+                    >
+                      {entry.recoveryStatus === "delivery-unknown"
+                        ? "Delivery uncertain after restart • check the chat before sending again"
+                        : "Paused after interruption • not sent"}
+                    </span>
+                  ) : null}
+                </span>
                 <button
                   type="button"
                   className="composer-queued-chip-action"
@@ -1043,16 +1079,35 @@ export function SessionComposer({
           // One control while running: Stop. Enter queues the follow-up, and
           // interrupting is the queued chip's explicit "Send now" — a second
           // send button here made the running state read as a puzzle.
-          <button
-            className="session-send-button session-stop-button"
-            type="button"
-            title="Stop chat"
-            aria-label="Stop chat"
-            disabled={sendingQueuedMessageId !== null}
-            onClick={() => void onTerminateSession(session.id)}
-          >
-            <Square size={9} fill="currentColor" strokeWidth={0} />
-          </button>
+          //
+          // A thumb has no Enter key, so on touch the queue button is the only
+          // way to line a follow-up up — but it arrives with the text it would
+          // queue, so a running turn nobody is typing into still shows Stop
+          // alone. The slot wraps both: the compact toolbar is a grid, and two
+          // bare buttons would land on the same `send` cell.
+          <div className="session-send-slot">
+            <button
+              className="session-send-button session-stop-button"
+              type="button"
+              title="Stop chat"
+              aria-label="Stop chat"
+              disabled={sendingQueuedMessageId !== null}
+              onClick={() => void onTerminateSession(session.id)}
+            >
+              <Square size={9} fill="currentColor" strokeWidth={0} />
+            </button>
+            {isCoarsePointer && hasSendableContent ? (
+              <button
+                className="session-send-button"
+                type="submit"
+                title="Queue follow-up — sent when the current turn finishes"
+                aria-label="Queue follow-up"
+                disabled={!canSend || isSending || sendingQueuedMessageId !== null}
+              >
+                <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
         ) : (() => {
           const sendDisabled = !canSend || isSending || !hasSendableContent;
           const sendTitle = isQueueing

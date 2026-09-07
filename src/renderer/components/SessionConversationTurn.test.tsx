@@ -1,4 +1,4 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createRef, type JSX } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary } from "../../shared/types.js";
@@ -123,6 +123,40 @@ describe("SessionConversationTurn", () => {
     rerender();
 
     expect(collectTurnFileChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it("copies the reply, not the reasoning that produced it", () => {
+    // "Copy reply" used to join the turn's raw events, which carry the
+    // extended-thinking blocks and one row per streamed answer fragment.
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const thoughtfulTurn: Extract<RenderItem, { kind: "turn" }> = {
+      ...turn,
+      toolItems: [],
+      assistantEvents: [
+        {
+          id: "think",
+          sessionId: "session-a",
+          type: "message.delta",
+          message: "The user wants the file edited.",
+          payload: { thinking: true },
+          createdAt: "2026-05-12T15:00:01.000Z"
+        },
+        {
+          id: "answer",
+          sessionId: "session-a",
+          type: "message.completed",
+          message: "Done.",
+          payload: {},
+          createdAt: "2026-05-12T15:00:04.000Z"
+        }
+      ]
+    };
+    renderTurn({ item: thoughtfulTurn });
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy reply" }));
+
+    expect(writeText).toHaveBeenCalledWith("Done.");
   });
 
   it("shows a live thought in full, without the answer bubble's paced reveal", () => {

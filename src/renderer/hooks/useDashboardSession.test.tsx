@@ -86,6 +86,7 @@ describe("useDashboardSession — refresh / delta race", () => {
           currentBranch: "main",
           defaultBranch: "main",
           settings: {
+            archiveOnMerge: false,
             worktreeLocation: "/tmp/wt",
             setupCommand: "",
             checkCommands: []

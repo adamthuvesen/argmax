@@ -548,6 +548,9 @@
 
   .conversation-list {
     --conversation-list-gap: var(--space-4);
+  }
+
+  .conversation-content {
     padding-top: 0;
     padding-bottom: var(--space-2);
   }

@@ -30,7 +30,7 @@ describe("SessionComposer multitask", () => {
     fireEvent.keyDown(prompt(), { key: "Enter" });
 
     await waitFor(() =>
-      expect(onMultitask).toHaveBeenCalledWith("session-a", "fix the README typo")
+      expect(onMultitask).toHaveBeenCalledWith("session-a", "fix the README typo", "codex")
     );
     // The running turn is left alone: nothing was sent or queued behind it.
     expect(onSendSessionInput).not.toHaveBeenCalled();
@@ -52,7 +52,9 @@ describe("SessionComposer multitask", () => {
       screen.getByRole("button", { name: "Multitask queued follow-up: Fix the README typo" })
     );
 
-    await waitFor(() => expect(onMultitask).toHaveBeenCalledWith("session-a", "Fix the README typo"));
+    await waitFor(() =>
+      expect(onMultitask).toHaveBeenCalledWith("session-a", "Fix the README typo", "codex")
+    );
     // It leaves the queue, because it is running now.
     await waitFor(() => expect(onCancelQueuedMessage).toHaveBeenCalledWith("session-a", "pending-1"));
     // And unlike "Send now", it never stops the turn in flight.

@@ -5,10 +5,10 @@
 //   - `create_current` records a workspace pointing at the project's
 //     existing checkout (sharedWorkspace = true).
 //   - `keep`, `archive`, `set_pinned` flip state bits.
-//   - `archive` is the one with real teeth for isolated worktrees:
-//     refreshes status, refuses to remove dirty worktrees without
-//     `force`, re-checks porcelain immediately before `worktree remove`
-//     to close the TOCTOU window, closes the fs watcher before remove so
+//   - `archive` relocates isolated worktrees into app-owned recovery storage:
+//     refreshes status, refuses to move dirty worktrees without
+//     `force`, re-checks porcelain immediately before `worktree move`
+//     to close the TOCTOU window, closes the fs watcher before move so
 //     teardown doesn't ENOENT-spam. Shared workspaces only archive the app
 //     row and leave the checkout untouched: the state flips to "archived"
 //     immediately and process teardown runs in the background, so the row
@@ -84,6 +84,39 @@ pub struct SessionMoveResult {
     pub source_archive_state: String,
 }
 
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceArchiveResult {
+    pub workspace: WorkspaceSummary,
+    pub recovery_path: Option<String>,
+}
+
+impl std::ops::Deref for WorkspaceArchiveResult {
+    type Target = WorkspaceSummary;
+
+    fn deref(&self) -> &Self::Target {
+        &self.workspace
+    }
+}
+
+/// Where a moved session lands.
+///
+/// A workspace's `path` is write-once, so a session that needs to work in a
+/// different directory gets a new workspace rather than having its own
+/// retargeted — the same rule cross-project moves already follow.
+#[derive(Debug, Clone)]
+pub enum MoveDestination {
+    /// Another registered project, on its shared checkout or a fresh worktree.
+    Project { project_id: String, worktree: bool },
+    /// An existing checkout of the *same* project: any directory `git worktree
+    /// list` reports for it, including the main one. The row Argmax adds for it
+    /// is always a shared checkout, so archiving the moved chat never deletes
+    /// the tree. A checkout an isolated workspace already owns is refused —
+    /// `git worktree list` reports those too, and that workspace's own archive
+    /// would remove the directory out from under the moved chat.
+    Checkout { path: String },
+}
+
 /// Trailing-edge coalescing window for fs.watch bursts (e.g. `npm install`).
 pub(super) const WATCH_DEBOUNCE_MS: u64 = 200;
 pub(super) const WATCH_MAX_DEBOUNCE_MS: u64 = 1_000;
@@ -101,6 +134,7 @@ const SLUG_MAX_LEN: usize = 42;
 /// `src/shared/types.ts` (`SCRATCH_PROJECT_ID`) so the renderer can exclude it
 /// from repo pickers and normal sidebar grouping.
 pub const SCRATCH_PROJECT_ID: &str = "scratch-side-chats";
+pub const ARCHIVE_RECOVERY_DIR: &str = "workspace-archive";
 
 /// 200 ms settle after `cancelChecks` fires so SIGTERM has time to land
 /// before we recheck porcelain. See TS comment in `archiveWorkspace`.
@@ -149,6 +183,9 @@ pub struct WorkspaceService {
     /// (repo-less side chats). `None` when the app data dir could not be
     /// resolved — `create_scratch` then fails with a clear error.
     scratch_root: Option<PathBuf>,
+    /// App-owned directory where isolated worktrees remain available after
+    /// archive, including their untracked and ignored files.
+    archive_recovery_root: Option<PathBuf>,
 }
 
 /// A workspace pointing at a checkout that already exists — the one the chat
@@ -182,6 +219,7 @@ impl WorkspaceService {
             None,
             None,
             None,
+            None,
         )
     }
 
@@ -195,6 +233,7 @@ impl WorkspaceService {
         terminals: Option<Arc<TerminalService>>,
         approvals: Option<Arc<ApprovalService>>,
         scratch_root: Option<PathBuf>,
+        archive_recovery_root: Option<PathBuf>,
     ) -> Arc<Self>
     where
         F: Fn(DashboardDelta) + Send + Sync + 'static,
@@ -210,6 +249,7 @@ impl WorkspaceService {
             approvals,
             cursor_acp: OnceLock::new(),
             scratch_root,
+            archive_recovery_root,
         })
     }
 
@@ -260,10 +300,19 @@ impl WorkspaceService {
                     && workspace.kind == "git"
                     && !Path::new(&workspace.path).exists()
                 {
+                    // Archive recovery already validated this retained path.
+                    // A rejected recovery must not be reclassified as a
+                    // deleted checkout just because the old path is gone.
+                    if self
+                        .archive_recovery_path(&workspace.id)
+                        .is_some_and(|path| path.exists())
+                    {
+                        continue;
+                    }
                     let registration = {
                         let connection = self.database.connection();
                         require_project(&connection, &workspace.project_id).and_then(|project| {
-                            isolated_worktree_is_registered(
+                            worktree_is_registered(
                                 Path::new(&project.repo_path),
                                 Path::new(&workspace.path),
                             )
@@ -314,9 +363,8 @@ impl WorkspaceService {
         Ok(started)
     }
 
-    /// Reconcile an interrupted archive from durable evidence without
-    /// repeating a destructive worktree removal. An isolated worktree is
-    /// archived only when both its path and Git registration are gone.
+    /// Reconcile an interrupted archive, repairing Git's registration when
+    /// the process stopped after moving files but before updating metadata.
     pub fn recover_interrupted_archives(self: &Arc<Self>) -> ArgmaxResult<usize> {
         let workspaces = {
             let connection = self.database.connection();
@@ -333,11 +381,30 @@ impl WorkspaceService {
                     "archived"
                 } else if Path::new(&workspace.path).exists() {
                     "archive-failed"
+                } else if let Some(recovery) = self
+                    .archive_recovery_path(&workspace.id)
+                    .filter(|path| path.exists())
+                {
+                    let project = {
+                        let connection = self.database.connection();
+                        require_project(&connection, &workspace.project_id)?
+                    };
+                    match repair_archived_worktree(
+                        Path::new(&project.repo_path),
+                        &recovery,
+                        &workspace.branch,
+                    ) {
+                        Ok(()) => "archived",
+                        Err(error) => {
+                            tracing::warn!(workspace_id = %workspace.id, ?error, "archived files retained but Git recovery failed");
+                            "archive-failed"
+                        }
+                    }
                 } else {
                     let registration = {
                         let connection = self.database.connection();
                         require_project(&connection, &workspace.project_id).and_then(|project| {
-                            isolated_worktree_is_registered(
+                            worktree_is_registered(
                                 Path::new(&project.repo_path),
                                 Path::new(&workspace.path),
                             )
@@ -859,11 +926,40 @@ impl WorkspaceService {
         Ok(SessionForkResult { workspace, session })
     }
 
-    pub async fn move_session_to_project(
+    /// The task label of a live isolated workspace whose worktree is `path`, if
+    /// there is one. Paths are compared the way `git worktree list` output is,
+    /// so a symlinked or non-canonical spelling still matches.
+    fn isolated_workspace_at(&self, path: &str) -> ArgmaxResult<Option<String>> {
+        let target = comparable_worktree_path(Path::new(path));
+        let connection = self.database.connection();
+        let mut statement = connection
+            .prepare_cached(
+                "SELECT task_label, path FROM workspaces \
+                 WHERE shared_workspace = 0 AND state != 'archived'",
+            )
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>("task_label")?,
+                    row.get::<_, String>("path")?,
+                ))
+            })
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        for row in rows {
+            let (task_label, workspace_path) =
+                row.map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+            if comparable_worktree_path(Path::new(&workspace_path)) == target {
+                return Ok(Some(task_label));
+            }
+        }
+        Ok(None)
+    }
+
+    pub async fn move_session(
         self: &Arc<Self>,
         source_session_id: &str,
-        destination_project_id: &str,
-        worktree: bool,
+        destination: MoveDestination,
         keep_source: bool,
     ) -> ArgmaxResult<SessionMoveResult> {
         let (source_session, source_workspace, source_project, destination_project) = {
@@ -879,14 +975,22 @@ impl WorkspaceService {
                 ));
             }
             let source_workspace = find_workspace_by_id(&connection, &source_session.workspace_id)?;
-            if source_workspace.project_id == destination_project_id {
-                return Err(invalid_workspace(
-                    "The destination must be a different project.",
-                    "Choose another registered project.",
-                ));
-            }
             let source_project = require_project(&connection, &source_workspace.project_id)?;
-            let destination_project = require_project(&connection, destination_project_id)?;
+            // A checkout move stays inside the project it started in; only a
+            // project move has a second project to look up, and only it has to
+            // be somewhere else.
+            let destination_project = match &destination {
+                MoveDestination::Project { project_id, .. } => {
+                    if &source_workspace.project_id == project_id {
+                        return Err(invalid_workspace(
+                            "The destination must be a different project.",
+                            "Choose another registered project.",
+                        ));
+                    }
+                    require_project(&connection, project_id)?
+                }
+                MoveDestination::Checkout { .. } => source_project.clone(),
+            };
             (
                 source_session,
                 source_workspace,
@@ -901,22 +1005,96 @@ impl WorkspaceService {
         let task_label =
             crate::ipc::validation::TaskLabel::try_from(source_workspace.task_label.clone())
                 .map_err(ArgmaxError::invalid)?;
-        let destination_workspace = if worktree {
-            let base_ref = crate::ipc::validation::BaseRef::try_from(
-                destination_project.current_branch.clone(),
-            )
-            .map_err(ArgmaxError::invalid)?;
-            self.create_isolated(WorkspacesCreateIsolatedInput {
+        let destination_workspace = match &destination {
+            MoveDestination::Project { worktree: true, .. } => {
+                let base_ref = crate::ipc::validation::BaseRef::try_from(
+                    destination_project.current_branch.clone(),
+                )
+                .map_err(ArgmaxError::invalid)?;
+                self.create_isolated(WorkspacesCreateIsolatedInput {
+                    project_id,
+                    task_label,
+                    base_ref: Some(base_ref),
+                })
+                .await?
+            }
+            MoveDestination::Project {
+                worktree: false, ..
+            } => self.create_current(WorkspacesCreateCurrentInput {
                 project_id,
                 task_label,
-                base_ref: Some(base_ref),
-            })
-            .await?
-        } else {
-            self.create_current(WorkspacesCreateCurrentInput {
-                project_id,
-                task_label,
-            })?
+            })?,
+            MoveDestination::Checkout { path } => {
+                let (path, branch) =
+                    attached_checkout(&destination_project.repo_path, &source_workspace, path)
+                        .await?;
+                // `git worktree list` reports the worktrees Argmax minted as
+                // well as the user's own. Attaching to one Argmax owns would
+                // leave two rows on it, and the owning row's archive removes
+                // the directory — it is the only row licensed to, and it does
+                // not look for company.
+                if let Some(owner) = self.isolated_workspace_at(&path)? {
+                    return Err(invalid_workspace(
+                        format!(
+                            "{path} is the worktree of another workspace ({}).",
+                            owner
+                        ),
+                        "Move into a checkout Argmax does not own, or archive that workspace first.",
+                    ));
+                }
+                self.create_alongside(WorkspacesCreateAlongsideInput {
+                    project_id,
+                    task_label,
+                    path,
+                    branch,
+                    base_ref: destination_project
+                        .default_branch
+                        .clone()
+                        .unwrap_or_else(|| destination_project.current_branch.clone()),
+                })?
+            }
+        };
+
+        // Whether the destination picks the provider conversation up or starts
+        // cold there. Only a checkout move carries it: that is the same work
+        // continuing in another worktree of the same repository, where losing
+        // the conversation is the regression. A cross-project move keeps the
+        // long-standing cold start — its transcript describes a different
+        // repository. Provider-dependent on top of that, because resume has to
+        // follow the new directory and be able to fork; see
+        // `ProviderLaunchDefinition::move_carries_conversation`. An unknown
+        // provider string starts cold, which is the safe direction.
+        let carried_conversation = source_session
+            .provider_conversation_id
+            .clone()
+            .filter(|_| matches!(destination, MoveDestination::Checkout { .. }))
+            .filter(|_| {
+                crate::providers::runtime::parse_provider(&source_session.provider)
+                    .map(|provider| {
+                        crate::providers::adapters::get_provider_definition(provider)
+                            .move_carries_conversation
+                    })
+                    .unwrap_or(false)
+            });
+        let checkout_mode = match &destination {
+            MoveDestination::Project { worktree: true, .. } => "worktree",
+            MoveDestination::Project {
+                worktree: false, ..
+            } => "shared",
+            MoveDestination::Checkout { .. } => "attached",
+        };
+        // A cross-project move is named by where it landed; a checkout move
+        // stays in one project, so the project name would say nothing.
+        let destination_label = match &destination {
+            MoveDestination::Project { .. } => destination_project.name.clone(),
+            MoveDestination::Checkout { .. } => format!(
+                "{} on {}",
+                Path::new(&destination_workspace.path)
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| destination_workspace.path.clone()),
+                destination_workspace.branch
+            ),
         };
 
         let copied = (|| -> ArgmaxResult<(WorkspaceSummary, SessionSummary, TimelineEvent)> {
@@ -956,6 +1134,23 @@ impl WorkspaceService {
                 }
                 None => destination_session,
             };
+            // Carry the provider conversation where the provider supports it,
+            // as a fork: the source row keeps the original, so resuming the
+            // same id from both would interleave two chats into one CLI
+            // conversation. Order matters — setting the id clears resume_fork,
+            // so the flag goes on afterwards.
+            let destination_session = match carried_conversation.as_deref() {
+                Some(conversation_id) => {
+                    let session = update_session_provider_conversation_id(
+                        &transaction,
+                        &destination_session.id,
+                        conversation_id,
+                    )?;
+                    set_session_resume_fork(&transaction, &session.id)?;
+                    session
+                }
+                None => destination_session,
+            };
             for event in list_all_session_events(&transaction, source_session_id)? {
                 persist_timeline_event(
                     &transaction,
@@ -975,10 +1170,15 @@ impl WorkspaceService {
                     id: Uuid::new_v4().to_string(),
                     session_id: destination_session.id.clone(),
                     r#type: "session.moved".to_string(),
-                    message: format!(
-                        "Moved from {} to {}.",
-                        source_project.name, destination_project.name
-                    ),
+                    message: match &destination {
+                        MoveDestination::Project { .. } => format!(
+                            "Moved from {} to {}.",
+                            source_project.name, destination_label
+                        ),
+                        MoveDestination::Checkout { .. } => {
+                            format!("Moved to {destination_label}.")
+                        }
+                    },
                     payload: json!({
                         "direction": "destination",
                         "sourceSessionId": source_session.id,
@@ -990,7 +1190,8 @@ impl WorkspaceService {
                         "destinationProjectId": destination_project.id,
                         "destinationProjectName": destination_project.name,
                         "destinationPath": destination_workspace.path,
-                        "checkoutMode": if worktree { "worktree" } else { "shared" },
+                        "checkoutMode": checkout_mode,
+                        "conversationCarried": carried_conversation.is_some(),
                         "sourceArchiveRequested": !keep_source,
                     }),
                     created_at: None,
@@ -1052,7 +1253,7 @@ impl WorkspaceService {
                 })
                 .await
             {
-                Ok(workspace) => (workspace.state, None),
+                Ok(result) => (result.workspace.state, None),
                 Err(error) => ("error".to_string(), Some(error.to_string())),
             }
         };
@@ -1069,7 +1270,7 @@ impl WorkspaceService {
                     id: Uuid::new_v4().to_string(),
                     session_id: source_session_id.to_string(),
                     r#type: "session.moved".to_string(),
-                    message: format!("Moved to {}.", destination_project.name),
+                    message: format!("Moved to {destination_label}."),
                     payload: json!({
                         "direction": "source",
                         "sourceSessionId": source_session_id,
@@ -1081,7 +1282,8 @@ impl WorkspaceService {
                         "destinationProjectId": destination_project.id,
                         "destinationProjectName": destination_project.name,
                         "destinationPath": destination_workspace.path,
-                        "checkoutMode": if worktree { "worktree" } else { "shared" },
+                        "checkoutMode": checkout_mode,
+                        "conversationCarried": carried_conversation.is_some(),
                         "sourceArchiveState": source_archive_state,
                         "archiveError": archive_error,
                     }),
@@ -1265,20 +1467,34 @@ impl WorkspaceService {
     pub async fn archive(
         self: &Arc<Self>,
         input: WorkspacesArchiveInput,
-    ) -> ArgmaxResult<WorkspaceSummary> {
+    ) -> ArgmaxResult<WorkspaceArchiveResult> {
         let workspace_id = input.workspace_id.as_str().to_string();
         let prior = {
             let connection = self.database.connection();
             find_workspace_by_id(&connection, &workspace_id)?
         };
         if prior.state == "archived" {
-            return Ok(prior);
+            return Ok(WorkspaceArchiveResult {
+                recovery_path: self.existing_archive_recovery_path(&prior),
+                workspace: prior,
+            });
         }
-        let force = input.force.unwrap_or(false) || prior.state == "archive-failed";
+        let force = input.force.unwrap_or(false);
+        let recovery_path = if prior.shared_workspace {
+            None
+        } else {
+            Some(self.archive_recovery_path(&workspace_id).ok_or_else(|| {
+                ArgmaxError::service(
+                    "WORKSPACE_RECOVERY_UNAVAILABLE",
+                    "Could not resolve the archive recovery directory; the worktree was left in place.",
+                )
+            })?)
+        };
         let lease = self.lifecycle.begin_archive(&workspace_id)?;
         if prior.shared_workspace {
             return self.archive_shared(workspace_id, lease);
         }
+        let recovery_path = recovery_path.expect("isolated workspaces have a recovery path");
         let archiving = {
             let connection = self.database.connection();
             update_workspace_state(&connection, &workspace_id, "archiving")?
@@ -1287,6 +1503,49 @@ impl WorkspaceService {
             workspaces: vec![archiving],
             ..DashboardDelta::default()
         });
+        if recovery_path.exists() && !Path::new(&prior.path).exists() {
+            let project = {
+                let connection = self.database.connection();
+                require_project(&connection, &prior.project_id)?
+            };
+            let repair_path = recovery_path.clone();
+            let branch = prior.branch.clone();
+            let repaired = tokio::task::spawn_blocking(move || {
+                repair_archived_worktree(Path::new(&project.repo_path), &repair_path, &branch)
+            })
+            .await
+            .map_err(|error| ArgmaxError::service("ARCHIVE_RECOVERY_FAILED", error.to_string()))
+            .and_then(|result| result);
+            if let Err(error) = repaired {
+                self.mark_archive_failed(&workspace_id)?;
+                lease.finish(ArchiveOutcome::Failed);
+                return Err(error);
+            }
+            let archived = {
+                let connection = self.database.connection();
+                match update_workspace_state(&connection, &workspace_id, "archived") {
+                    Ok(workspace) => workspace,
+                    Err(error) => {
+                        drop(connection);
+                        if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                            tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                        }
+                        lease.finish(ArchiveOutcome::Failed);
+                        return Err(error);
+                    }
+                }
+            };
+            self.publish(DashboardDelta {
+                workspaces: vec![archived.clone()],
+                ..DashboardDelta::default()
+            });
+            self.close_watcher(&workspace_id);
+            lease.finish(ArchiveOutcome::Archived);
+            return Ok(WorkspaceArchiveResult {
+                workspace: archived,
+                recovery_path: Some(recovery_path.display().to_string()),
+            });
+        }
         if !self
             .lifecycle
             .wait_for_admissions(
@@ -1322,7 +1581,10 @@ impl WorkspaceService {
 
         if workspace.state == "archived" {
             lease.finish(ArchiveOutcome::Archived);
-            return Ok(workspace);
+            return Ok(WorkspaceArchiveResult {
+                recovery_path: self.existing_archive_recovery_path(&workspace),
+                workspace,
+            });
         }
 
         let project = {
@@ -1351,7 +1613,10 @@ impl WorkspaceService {
                 ..DashboardDelta::default()
             });
             lease.finish(ArchiveOutcome::Reopened);
-            return Ok(kept);
+            return Ok(WorkspaceArchiveResult {
+                workspace: kept,
+                recovery_path: None,
+            });
         }
 
         let timeout = Duration::from_millis(ARCHIVE_QUIESCE_TIMEOUT_MS);
@@ -1456,10 +1721,10 @@ impl WorkspaceService {
         }
         tokio::time::sleep(Duration::from_millis(CANCEL_SETTLE_MS)).await;
         // No more status refreshes can be useful once quiescence has completed.
-        // Close the OS watcher before the final git read and worktree removal.
+        // Close the OS watcher before the final git read and worktree move.
         self.close_watcher(&workspace_id);
         // The warm ACP process holds this worktree as its cwd, and the pool is
-        // keyed by path, so it must go before `worktree remove --force`.
+        // keyed by path, so it must go before `worktree move`.
         self.evict_cursor_acp(&workspace.path).await;
 
         if !force && !workspace.shared_workspace {
@@ -1497,83 +1762,76 @@ impl WorkspaceService {
                         tracing::warn!(workspace_id = %workspace_id, ?error, "failed to restore watcher after dirty archive refusal");
                     }
                     lease.finish(ArchiveOutcome::Reopened);
-                    return Ok(kept);
+                    return Ok(WorkspaceArchiveResult {
+                        workspace: kept,
+                        recovery_path: None,
+                    });
                 }
             }
         }
 
-        if !workspace.shared_workspace {
-            let path_exists = Path::new(&workspace.path).exists();
-            let remove_args: Vec<&str> = if force {
-                vec!["worktree", "remove", "--force", workspace.path.as_str()]
-            } else {
-                vec!["worktree", "remove", workspace.path.as_str()]
-            };
-            if let Err(error) = run_git_text(
-                Path::new(&project.repo_path),
-                &remove_args,
-                Duration::from_millis(GIT_TIMEOUT_MS),
-            )
-            .await
-            {
-                if !path_exists {
-                    let _ = run_git_text(
-                        Path::new(&project.repo_path),
-                        &["worktree", "prune"],
-                        Duration::from_millis(GIT_TIMEOUT_MS),
-                    )
-                    .await;
+        let active_path = Path::new(&workspace.path);
+        if active_path.exists() {
+            if recovery_path.exists() {
+                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
                 }
-                let is_unregistered = !isolated_worktree_is_registered(
-                    Path::new(&project.repo_path),
-                    Path::new(&workspace.path),
-                )
-                .unwrap_or(true);
-                let is_not_worktree = error.to_string().contains("is not a working tree");
-
-                if !path_exists && (is_unregistered || is_not_worktree) {
-                    tracing::info!(
-                        workspace_id = %workspace_id,
-                        "worktree was already removed from disk and git; archive succeeded"
-                    );
-                } else if force {
-                    let _ = tokio::fs::remove_dir_all(&workspace.path).await;
-                    let _ = run_git_text(
-                        Path::new(&project.repo_path),
-                        &["worktree", "prune"],
-                        Duration::from_millis(GIT_TIMEOUT_MS),
-                    )
-                    .await;
-                    let now_unregistered = !isolated_worktree_is_registered(
-                        Path::new(&project.repo_path),
-                        Path::new(&workspace.path),
-                    )
-                    .unwrap_or(true);
-                    if !Path::new(&workspace.path).exists() && now_unregistered {
-                        tracing::info!(
-                            workspace_id = %workspace_id,
-                            "worktree directory removed directly and pruned; archive succeeded"
-                        );
-                    } else {
-                        if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                            tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-                        }
-                        lease.finish(ArchiveOutcome::Failed);
-                        return Err(invalid_workspace(
-                            format!("Could not archive worktree. {error}"),
-                            "Review the worktree and retry archive.",
-                        ));
-                    }
-                } else {
+                lease.finish(ArchiveOutcome::Failed);
+                return Err(ArgmaxError::service(
+                    "WORKSPACE_RECOVERY_EXISTS",
+                    format!(
+                        "Archive recovery already exists at {}; the active worktree was left in place.",
+                        recovery_path.display()
+                    ),
+                ));
+            }
+            if let Some(parent) = recovery_path.parent() {
+                if let Err(error) = tokio::fs::create_dir_all(parent).await {
                     if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
                         tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
                     }
                     lease.finish(ArchiveOutcome::Failed);
-                    return Err(invalid_workspace(
-                        format!("Could not archive worktree. {error}"),
-                        "Review the worktree and retry archive.",
+                    return Err(ArgmaxError::service(
+                        "WORKSPACE_RECOVERY_CREATE_FAILED",
+                        error.to_string(),
                     ));
                 }
+            }
+            let recovery_text = recovery_path.to_string_lossy().to_string();
+            if let Err(error) = run_git_text(
+                Path::new(&project.repo_path),
+                &[
+                    "worktree",
+                    "move",
+                    workspace.path.as_str(),
+                    recovery_text.as_str(),
+                ],
+                Duration::from_millis(GIT_TIMEOUT_MS),
+            )
+            .await
+            {
+                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                }
+                lease.finish(ArchiveOutcome::Failed);
+                return Err(invalid_workspace(
+                    format!("Could not retain worktree for recovery. {error}"),
+                    "Review the worktree and retry archive.",
+                ));
+            }
+        } else if !recovery_path.exists() {
+            let is_unregistered =
+                !worktree_is_registered(Path::new(&project.repo_path), active_path)
+                    .unwrap_or(false);
+            if !is_unregistered {
+                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                }
+                lease.finish(ArchiveOutcome::Failed);
+                return Err(ArgmaxError::service(
+                    "WORKSPACE_ARCHIVE_INCOMPLETE",
+                    "The worktree path is missing but Git still registers it; the archive was not completed.",
+                ));
             }
         }
 
@@ -1596,7 +1854,27 @@ impl WorkspaceService {
             ..DashboardDelta::default()
         });
         lease.finish(ArchiveOutcome::Archived);
-        Ok(archived)
+        Ok(WorkspaceArchiveResult {
+            recovery_path: recovery_path
+                .exists()
+                .then(|| recovery_path.display().to_string()),
+            workspace: archived,
+        })
+    }
+
+    fn archive_recovery_path(&self, workspace_id: &str) -> Option<PathBuf> {
+        self.archive_recovery_root
+            .as_ref()
+            .map(|root| root.join(workspace_id))
+    }
+
+    fn existing_archive_recovery_path(&self, workspace: &WorkspaceSummary) -> Option<String> {
+        if workspace.shared_workspace {
+            return None;
+        }
+        self.archive_recovery_path(&workspace.id)
+            .filter(|path| path.exists())
+            .map(|path| path.display().to_string())
     }
 
     /// Archive a shared-checkout workspace. Nothing destructive follows the
@@ -1608,7 +1886,7 @@ impl WorkspaceService {
         self: &Arc<Self>,
         workspace_id: String,
         lease: WorkspaceArchiveLease,
-    ) -> ArgmaxResult<WorkspaceSummary> {
+    ) -> ArgmaxResult<WorkspaceArchiveResult> {
         let archived = {
             let connection = self.database.connection();
             update_workspace_state(&connection, &workspace_id, "archived")?
@@ -1653,7 +1931,10 @@ impl WorkspaceService {
                 }
             }
         });
-        Ok(archived)
+        Ok(WorkspaceArchiveResult {
+            workspace: archived,
+            recovery_path: None,
+        })
     }
 
     /// Best-effort drain of every process-owning subsystem for an
@@ -1797,7 +2078,7 @@ impl WorkspaceService {
                 let is_unregistered = {
                     let connection = self.database.connection();
                     require_project(&connection, &workspace.project_id).and_then(|project| {
-                        isolated_worktree_is_registered(Path::new(&project.repo_path), path)
+                        worktree_is_registered(Path::new(&project.repo_path), path)
                     })
                 };
                 if matches!(is_unregistered, Ok(false)) {
@@ -1865,7 +2146,7 @@ impl WorkspaceService {
                 let is_unregistered = {
                     let connection = self.database.connection();
                     require_project(&connection, &workspace.project_id).and_then(|project| {
-                        isolated_worktree_is_registered(
+                        worktree_is_registered(
                             Path::new(&project.repo_path),
                             Path::new(&workspace.path),
                         )
@@ -2282,6 +2563,7 @@ fn ensure_scratch_project(
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),
             settings: ProjectSettings {
+                archive_on_merge: false,
                 worktree_location: scratch_root.display().to_string(),
                 setup_command: String::new(),
                 check_commands: Vec::new(),
@@ -2302,7 +2584,123 @@ fn invalid_workspace(
     .into()
 }
 
-fn isolated_worktree_is_registered(repo_path: &Path, worktree_path: &Path) -> ArgmaxResult<bool> {
+/// Resolve the checkout a session asked to move into, or say why it cannot.
+///
+/// Returns the canonical path and the branch checked out there. The path has to
+/// be a working tree `git worktree list` reports for the project's repository:
+/// that is what turns "a checkout of this project" into a claim Argmax can
+/// check, rather than trusting any directory an agent happens to name. The
+/// project's main checkout is listed too, so moving back to it is allowed.
+async fn attached_checkout(
+    repo_path: &str,
+    source_workspace: &WorkspaceSummary,
+    requested: &str,
+) -> ArgmaxResult<(String, String)> {
+    let requested = requested.trim();
+    let path = Path::new(requested);
+    if !path.is_absolute() {
+        return Err(invalid_workspace(
+            format!("Checkout path '{requested}' is not absolute."),
+            "Pass the absolute path of a worktree of this project.",
+        ));
+    }
+    let path = path.canonicalize().map_err(|error| {
+        invalid_workspace(
+            format!("No directory at {requested}: {error}"),
+            "Check the path and retry.",
+        )
+    })?;
+    if !path.is_dir() {
+        return Err(invalid_workspace(
+            format!("{} is not a directory.", path.display()),
+            "Pass the root directory of a worktree.",
+        ));
+    }
+    if comparable_worktree_path(&path)
+        == comparable_worktree_path(Path::new(&source_workspace.path))
+    {
+        return Err(invalid_workspace(
+            "This chat is already working in that checkout.",
+            "Name a different worktree, or skip the move.",
+        ));
+    }
+    if !worktree_is_registered(Path::new(repo_path), &path)? {
+        return Err(invalid_workspace(
+            format!("{} is not a worktree of this project.", path.display()),
+            "Run `git worktree list` in the project to see the checkouts a chat can move into.",
+        ));
+    }
+    let branch = run_git_text(
+        &path,
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        Duration::from_millis(GIT_TIMEOUT_MS),
+    )
+    .await
+    .map_err(|error| {
+        invalid_workspace(
+            format!("Could not read the branch at {}: {error}", path.display()),
+            "Check the checkout and retry.",
+        )
+    })?;
+    let branch = branch.trim();
+    // A workspace records the branch it sits on, and a detached HEAD has no
+    // name to record.
+    if branch.is_empty() || branch == "HEAD" {
+        return Err(invalid_workspace(
+            format!("{} has a detached HEAD.", path.display()),
+            "Check out a branch there first.",
+        ));
+    }
+    Ok((path.to_string_lossy().into_owned(), branch.to_string()))
+}
+
+/// Whether `git worktree list` in `repo_path` reports `worktree_path`. True for
+/// the repository's main checkout as well as its added worktrees.
+fn repair_archived_worktree(
+    repo_path: &Path,
+    recovery_path: &Path,
+    branch: &str,
+) -> ArgmaxResult<()> {
+    if !recovery_path.join(".git").is_file() {
+        return Err(ArgmaxError::service(
+            "ARCHIVE_RECOVERY_INVALID",
+            "Retained directory is not a linked Git worktree. Its files were left intact.",
+        ));
+    }
+    let common = |path: &Path| -> ArgmaxResult<PathBuf> {
+        let output =
+            run_git_text_blocking(path, ["rev-parse", "--git-common-dir"], GIT_DEFAULT_TIMEOUT)?;
+        Ok(comparable_worktree_path(&path.join(output.trim())))
+    };
+    if common(repo_path)? != common(recovery_path)? {
+        return Err(ArgmaxError::service(
+            "ARCHIVE_RECOVERY_INVALID",
+            "Retained worktree belongs to a different repository. Its files were left intact.",
+        ));
+    }
+    let retained_branch = run_git_text_blocking(
+        recovery_path,
+        ["symbolic-ref", "--short", "HEAD"],
+        GIT_DEFAULT_TIMEOUT,
+    )?;
+    if retained_branch.trim() != branch {
+        return Err(ArgmaxError::service("ARCHIVE_RECOVERY_INVALID", "Retained worktree is on a different branch. Inspect its files before retrying archive."));
+    }
+    run_git_text_blocking(
+        repo_path,
+        ["worktree", "repair", &recovery_path.to_string_lossy()],
+        GIT_DEFAULT_TIMEOUT,
+    )?;
+    if !worktree_is_registered(repo_path, recovery_path)? {
+        return Err(ArgmaxError::service(
+            "ARCHIVE_RECOVERY_INVALID",
+            "Git could not register the retained worktree. Its files were left intact.",
+        ));
+    }
+    Ok(())
+}
+
+fn worktree_is_registered(repo_path: &Path, worktree_path: &Path) -> ArgmaxResult<bool> {
     // Startup recovery runs before any runtime is available to await on.
     let stdout = run_git_text_blocking(
         repo_path,

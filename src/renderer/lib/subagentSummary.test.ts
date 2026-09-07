@@ -43,7 +43,7 @@ describe("buildSubagentCluster", () => {
     const cluster = buildSubagentCluster([], new Map(), [multitask("running"), multitask("cancelled")]);
     expect(cluster?.hasMultitask).toBe(true);
     expect(cluster?.running).toBe(1);
-    expect(cluster?.failed).toBe(1);
+    expect(cluster?.entries.map((entry) => entry.status)).toEqual(["running", "error"]);
     expect(cluster?.entries.map((entry) => entry.codename)).toEqual([
       "Fix the changelog date",
       "Fix the changelog date"
@@ -55,7 +55,7 @@ describe("buildSubagentCluster", () => {
     expect(buildSubagentCluster(tools, assignAgentCodenames(tools))?.hasMultitask).toBe(false);
   });
 
-  it("counts statuses and names each spawn with its codename and title", () => {
+  it("carries each spawn's status and names it with its codename and title", () => {
     const tools = [
       tool({ toolUseId: "spawn-1", id: "row-1", status: "done" }),
       tool({ toolUseId: "spawn-2", id: "row-2", status: "running", inputFull: { subagent_type: "general" } }),
@@ -66,8 +66,7 @@ describe("buildSubagentCluster", () => {
     const cluster = buildSubagentCluster(tools, assignAgentCodenames(tools));
     expect(cluster).not.toBeNull();
     expect(cluster?.running).toBe(1);
-    expect(cluster?.done).toBe(1);
-    expect(cluster?.failed).toBe(1);
+    expect(cluster?.entries.map((entry) => entry.status)).toEqual(["done", "running", "error"]);
     expect(cluster?.entries.map((entry) => entry.toolUseId)).toEqual(["spawn-1", "spawn-2", "spawn-3"]);
     expect(cluster?.entries.every((entry) => SCIENTIST_NAMES.includes(entry.codename))).toBe(true);
     // Title prefers the description, then the subagent type, then the preview.

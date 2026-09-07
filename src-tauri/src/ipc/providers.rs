@@ -108,7 +108,7 @@ pub(crate) fn providers_cancel_queued_message_impl(
     state: &AppState,
     input: ProvidersCancelQueuedMessageInput,
 ) -> ArgmaxResult<SystemOk> {
-    live_providers(state)?.cancel_queued_message(input);
+    live_providers(state)?.cancel_queued_message(input)?;
     Ok(SystemOk { ok: true })
 }
 

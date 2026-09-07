@@ -8,6 +8,7 @@
 // readiness probe.
 
 import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -46,6 +47,7 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
     const socket = new WebSocket(`ws://127.0.0.1:${port}/api/ws`);
     const pending = new Map();
     const eventListeners = new Set();
+    const clientId = randomUUID();
     let nextId = 1;
     let settled = false;
 
@@ -109,7 +111,10 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
                     rejectCall(error);
                   }
                 });
-                socket.send(JSON.stringify({ type: "request", id, channel, input }));
+                socket.send(JSON.stringify({
+                  type: "request", id, channel, input,
+                  operation: { clientId, operationId: randomUUID() }
+                }));
               });
             },
             onEvent(listener) {

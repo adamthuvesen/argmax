@@ -113,6 +113,13 @@ type MoveRequestedLifecycleEvent = CanonicalCommon & {
   keepSource: boolean | null;
 };
 
+type ArchiveRequestedLifecycleEvent = CanonicalCommon & {
+  kind: "lifecycle";
+  name: "archive-requested";
+  workspaceId: string | null;
+  removesWorktree: boolean | null;
+};
+
 type MovedLifecycleEvent = CanonicalCommon & {
   kind: "lifecycle";
   name: "moved";
@@ -124,7 +131,7 @@ type MovedLifecycleEvent = CanonicalCommon & {
   destinationWorkspaceId: string | null;
   destinationProjectName: string | null;
   destinationPath: string | null;
-  checkoutMode: "shared" | "worktree" | null;
+  checkoutMode: "shared" | "worktree" | "attached" | null;
   sourceArchiveState: string | null;
 };
 
@@ -133,6 +140,7 @@ export type CanonicalLifecycleEvent =
   | CompactionLifecycleEvent
   | ProviderLifecycleEvent
   | MoveRequestedLifecycleEvent
+  | ArchiveRequestedLifecycleEvent
   | MovedLifecycleEvent;
 
 export type CanonicalAgentEvent = CanonicalCommon & {
@@ -327,9 +335,23 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
       keepSource: typeof payload.keepSource === "boolean" ? payload.keepSource : null
     };
   }
+  if (name === "archive-requested") {
+    return {
+      ...shared,
+      kind: "lifecycle",
+      name,
+      workspaceId: stringValue(payload.workspaceId),
+      removesWorktree: typeof payload.removesWorktree === "boolean" ? payload.removesWorktree : null
+    };
+  }
   if (name === "moved") {
     const direction = payload.direction === "source" || payload.direction === "destination" ? payload.direction : null;
-    const checkoutMode = payload.checkoutMode === "shared" || payload.checkoutMode === "worktree" ? payload.checkoutMode : null;
+    const checkoutMode =
+      payload.checkoutMode === "shared" ||
+      payload.checkoutMode === "worktree" ||
+      payload.checkoutMode === "attached"
+        ? payload.checkoutMode
+        : null;
     return {
       ...shared,
       kind: "lifecycle",
@@ -396,6 +418,7 @@ export function decodeTimelineEvent(raw: RawTimelineEvent): CanonicalTimelineEve
     raw.type === "session.provider-changed" ||
     raw.type === "session.cleared" ||
     raw.type === "session.move-requested" ||
+    raw.type === "session.archive-requested" ||
     raw.type === "session.moved" ||
     raw.type === "session.recovered-from-crash"
   ) {

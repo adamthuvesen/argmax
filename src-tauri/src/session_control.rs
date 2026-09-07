@@ -53,7 +53,10 @@ use crate::{
         session_service::{MessageOrigin, ProviderSessionService},
         ProviderLaunchInput,
     },
-    workspaces::{orchestration::WorkspacesCreateAlongsideInput, WorkspaceService},
+    workspaces::{
+        orchestration::{MoveDestination, WorkspacesCreateAlongsideInput},
+        WorkspaceService,
+    },
 };
 
 const PROTOCOL_VERSION: u32 = 1;
@@ -130,13 +133,24 @@ struct RegistryInner {
     socket_path: PathBuf,
     argmax_bin: PathBuf,
     credentials: Mutex<CredentialState>,
-    pending_moves: Mutex<HashMap<String, PendingMoveSignal>>,
+    pending_after_turn: Mutex<HashMap<String, PendingAfterTurn>>,
     /// Recipients of rows just written to `session_messages`. A blocked
     /// `session_wait` subscribes to this rather than polling the table.
     inbox: broadcast::Sender<String>,
 }
 
-struct PendingMoveSignal {
+/// What an agent has asked to happen once its own turn settles. Both of these
+/// dispose of the chat the caller is running inside — a move takes the
+/// transcript elsewhere and archives the source, an archive ends it where it
+/// stands — so a session holds at most one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AfterTurn {
+    Move,
+    Archive,
+}
+
+struct PendingAfterTurn {
+    action: AfterTurn,
     settled: Option<oneshot::Sender<()>>,
 }
 
@@ -283,25 +297,36 @@ impl SessionLaunchRegistry {
             .cloned()
     }
 
-    fn schedule_move(
+    fn schedule_after_turn(
         &self,
         session_id: &str,
+        action: AfterTurn,
         settled: oneshot::Sender<()>,
     ) -> Result<(), SessionControlError> {
         let mut pending = self
             .inner
-            .pending_moves
+            .pending_after_turn
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if pending.contains_key(session_id) {
-            return Err(protocol_error(
-                "MOVE_ALREADY_PENDING",
-                "A move is already scheduled for this session.",
-            ));
+        // The refusal names what is already scheduled, not what was asked for:
+        // an agent that asks to archive a chat that is already moving needs to
+        // know which one it is.
+        if let Some(existing) = pending.get(session_id) {
+            return Err(match existing.action {
+                AfterTurn::Move => protocol_error(
+                    "MOVE_ALREADY_PENDING",
+                    "A move is already scheduled for this session.",
+                ),
+                AfterTurn::Archive => protocol_error(
+                    "ARCHIVE_ALREADY_PENDING",
+                    "An archive is already scheduled for this session.",
+                ),
+            });
         }
         pending.insert(
             session_id.to_string(),
-            PendingMoveSignal {
+            PendingAfterTurn {
+                action,
                 settled: Some(settled),
             },
         );
@@ -319,26 +344,27 @@ impl SessionLaunchRegistry {
         self.inner.inbox.subscribe()
     }
 
-    pub fn cancel_move(&self, session_id: &str) {
+    pub fn cancel_after_turn(&self, session_id: &str) {
         self.inner
-            .pending_moves
+            .pending_after_turn
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .remove(session_id);
     }
 
-    pub fn has_pending_move(&self, session_id: &str) -> bool {
+    pub fn pending_after_turn(&self, session_id: &str) -> Option<AfterTurn> {
         self.inner
-            .pending_moves
+            .pending_after_turn
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .contains_key(session_id)
+            .get(session_id)
+            .map(|pending| pending.action)
     }
 
-    pub fn settle_move(&self, session_id: &str) {
+    pub fn signal_turn_settled(&self, session_id: &str) {
         let settled = self
             .inner
-            .pending_moves
+            .pending_after_turn
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .get_mut(session_id)
@@ -348,9 +374,9 @@ impl SessionLaunchRegistry {
         }
     }
 
-    fn finish_move(&self, session_id: &str) {
+    fn finish_after_turn(&self, session_id: &str) {
         self.inner
-            .pending_moves
+            .pending_after_turn
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .remove(session_id);
@@ -391,7 +417,7 @@ impl SessionLaunchServer {
                 socket_path,
                 argmax_bin,
                 credentials: Mutex::new(CredentialState::default()),
-                pending_moves: Mutex::new(HashMap::new()),
+                pending_after_turn: Mutex::new(HashMap::new()),
                 inbox: broadcast::channel(INBOX_BROADCAST_CAPACITY).0,
             }),
         });
@@ -500,6 +526,7 @@ pub struct SessionControlRequest {
 pub enum SessionControlAction {
     Launch(LaunchAction),
     Move(MoveAction),
+    Archive(ArchiveAction),
     List(ListAction),
     Message(MessageAction),
     /// Drive the in-app browser. The MCP process has no `AppHandle`, so the
@@ -534,7 +561,13 @@ pub struct LaunchAction {
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MoveAction {
-    pub project: String,
+    /// Another registered project to move to. Mutually exclusive with `path`.
+    #[serde(default)]
+    pub project: Option<String>,
+    /// An existing checkout of the current project to move to — any directory
+    /// `git worktree list` reports for it. Mutually exclusive with `project`.
+    #[serde(default)]
+    pub path: Option<String>,
     /// The turn the destination chat opens with. A move relocates work in
     /// progress, so the destination has to be told what to pick up there.
     pub prompt: String,
@@ -543,6 +576,13 @@ pub struct MoveAction {
     #[serde(default)]
     pub keep_source: bool,
 }
+
+/// No arguments: a session may only archive the workspace it is running in.
+/// Archiving someone else's checkout out from under them is not an agent's
+/// call, and the caller's own is the one it can reason about.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ArchiveAction {}
 
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -624,6 +664,7 @@ pub struct SessionControlResponse {
 pub enum SessionControlResult {
     Launched(LaunchedSession),
     Scheduled(ScheduledMove),
+    Archiving(ScheduledArchive),
     Listed(SessionList),
     Messaged(MessageDelivery),
     Browsed(BrowserOutcome),
@@ -651,6 +692,21 @@ pub struct ScheduledMove {
     pub source_session_id: String,
     pub project_id: String,
     pub project_name: String,
+    /// Set for a checkout move: the directory the chat is headed for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScheduledArchive {
+    pub scheduled: bool,
+    pub session_id: String,
+    pub workspace_id: String,
+    /// What the archive will actually do, so the agent's report can say it
+    /// without guessing: an isolated workspace loses its worktree and branch,
+    /// a shared checkout only drains and flips state.
+    pub removes_worktree: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1166,6 +1222,10 @@ async fn handle_session_control(
         }
         SessionControlAction::Move(action) => {
             schedule_session_move(action, parent, database, workspaces, providers, registry).await
+        }
+        SessionControlAction::Archive(action) => {
+            schedule_workspace_archive(action, parent, database, workspaces, providers, registry)
+                .await
         }
         SessionControlAction::List(action) => list_sessions_action(action, parent, database).await,
         SessionControlAction::Message(action) => {
@@ -1787,6 +1847,134 @@ fn collect_wait_outcome(
     }))
 }
 
+/// Archive the caller's own workspace once its turn settles.
+///
+/// Scheduled rather than immediate for the same reason a move is: archiving
+/// terminates every provider process in the workspace, and the agent asking
+/// for it is one of them. Run inline, the tool call would kill the caller
+/// before it could write its report — and the report is usually the point
+/// (`ship`'s babysit hands one back after it lands a PR).
+///
+/// Never forced. A dirty checkout comes to rest as `kept` instead, which is
+/// the existing answer to "archive refused because there is work here" and the
+/// only safe one when an agent is the one asking.
+async fn schedule_workspace_archive(
+    _action: ArchiveAction,
+    parent: ParentLaunchSettings,
+    database: Arc<Database>,
+    workspaces: Arc<WorkspaceService>,
+    providers: Arc<ProviderSessionService>,
+    registry: Arc<SessionLaunchRegistry>,
+) -> Result<SessionControlResponse, SessionControlError> {
+    let (session, workspace) = {
+        let connection = database.connection();
+        let session =
+            find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
+        let workspace = find_workspace_by_id(&connection, &session.workspace_id)
+            .map_err(argmax_protocol_error)?;
+        (session, workspace)
+    };
+    if workspace.state == "archived" {
+        return Err(protocol_error(
+            "WORKSPACE_ALREADY_ARCHIVED",
+            "This workspace is already archived.",
+        ));
+    }
+
+    let (settled_tx, settled_rx) = oneshot::channel();
+    registry.schedule_after_turn(&parent.session_id, AfterTurn::Archive, settled_tx)?;
+    if let Err(error) =
+        providers.ensure_after_turn_schedulable(&parent.session_id, AfterTurn::Archive)
+    {
+        registry.cancel_after_turn(&parent.session_id);
+        return Err(argmax_protocol_error(error));
+    }
+
+    // Validated here rather than inside the spawned task: the task runs after
+    // the reply is gone, with nowhere to report a malformed id.
+    let archive_target =
+        WorkspaceId::try_from(workspace.id.clone()).map_err(invalid_input_error)?;
+    // Retained for older tool clients. Archive relocates isolated checkouts
+    // with their branch and files intact, and never removes shared checkouts.
+    let removes_worktree = false;
+    let requested_event = {
+        let connection = database.connection();
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: Uuid::new_v4().to_string(),
+                session_id: parent.session_id.clone(),
+                r#type: "session.archive-requested".to_string(),
+                message: if !workspace.shared_workspace {
+                    "Archive scheduled: the checkout and its branch will be retained in the archive location when this turn ends."
+                        .to_string()
+                } else {
+                    "Archive scheduled for the end of this turn.".to_string()
+                },
+                payload: serde_json::json!({
+                    "workspaceId": workspace.id,
+                    "removesWorktree": removes_worktree,
+                    "retainsWorktree": true,
+                }),
+                created_at: None,
+            },
+        )
+    };
+    let requested_event = match requested_event {
+        Ok(event) => event,
+        Err(error) => {
+            registry.cancel_after_turn(&parent.session_id);
+            return Err(argmax_protocol_error(error));
+        }
+    };
+    workspaces.publish_session_with_events(session, vec![requested_event]);
+
+    let session_id = parent.session_id.clone();
+    let workspace_id = workspace.id.clone();
+    let archive_registry = Arc::clone(&registry);
+    let scheduled_workspace_id = workspace_id.clone();
+    tauri::async_runtime::spawn(async move {
+        if settled_rx.await.is_err() {
+            archive_registry.finish_after_turn(&session_id);
+            return;
+        }
+        let outcome = workspaces
+            .archive(WorkspacesArchiveInput {
+                workspace_id: archive_target,
+                force: Some(false),
+            })
+            .await;
+        archive_registry.finish_after_turn(&session_id);
+        match outcome {
+            // `kept` is the refusal, not a failure: the checkout had
+            // uncommitted work and stays live. Worth a line, because the agent
+            // that asked has already reported the workspace gone.
+            Ok(result) if result.workspace.state == "kept" => tracing::info!(
+                workspace_id = %scheduled_workspace_id,
+                "scheduled archive kept the workspace: it has uncommitted changes"
+            ),
+            Ok(_) => tracing::info!(
+                workspace_id = %scheduled_workspace_id,
+                "archived the workspace its agent asked to close"
+            ),
+            Err(error) => tracing::warn!(
+                ?error,
+                workspace_id = %scheduled_workspace_id,
+                "scheduled workspace archive failed"
+            ),
+        }
+    });
+
+    Ok(SessionControlResponse::new(
+        SessionControlResult::Archiving(ScheduledArchive {
+            scheduled: true,
+            session_id: parent.session_id,
+            workspace_id,
+            removes_worktree,
+        }),
+    ))
+}
+
 async fn schedule_session_move(
     action: MoveAction,
     parent: ParentLaunchSettings,
@@ -1801,18 +1989,55 @@ async fn schedule_session_move(
     // way to the provider, which is the same dead end.
     let continuation =
         Prompt::try_from(action.prompt.trim().to_string()).map_err(invalid_input_error)?;
-    let selector = action.project.as_str();
+    // Exactly one destination. Both, or neither, is a caller mistake worth
+    // naming rather than silently preferring one.
+    let checkout_path = match (action.project.as_deref(), action.path.as_deref()) {
+        (Some(_), Some(_)) => {
+            return Err(protocol_error(
+                "MOVE_DESTINATION_AMBIGUOUS",
+                "Pass either project or path, not both.",
+            ))
+        }
+        (None, None) => {
+            return Err(protocol_error(
+                "MOVE_DESTINATION_MISSING",
+                "Pass the project to move to, or the path of a checkout of this project.",
+            ))
+        }
+        (None, Some(path)) => {
+            if action.worktree {
+                return Err(protocol_error(
+                    "MOVE_WORKTREE_WITH_PATH",
+                    "worktree creates a new worktree; path moves into one that exists. Pass only one.",
+                ));
+            }
+            Some(path.to_string())
+        }
+        (Some(_), None) => None,
+    };
     let (source_session, source_workspace, destination) = {
         let connection = database.connection();
         let source_session =
             find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
         let source_workspace = find_workspace_by_id(&connection, &source_session.workspace_id)
             .map_err(argmax_protocol_error)?;
+        if checkout_path.is_some() && source_workspace.kind != "git" {
+            return Err(protocol_error(
+                "MOVE_PATH_WITHOUT_REPO",
+                "This chat has no repository, so it has no checkouts to move between.",
+            ));
+        }
         let projects = list_projects(&connection).map_err(argmax_protocol_error)?;
-        let destination = resolve_project(&projects, Some(selector), &source_workspace.project_id)?;
+        // A checkout move stays in the project it is already in, which is what
+        // `resolve_project` returns for a `None` selector.
+        let destination = resolve_project(
+            &projects,
+            action.project.as_deref(),
+            &source_workspace.project_id,
+        )?;
         (source_session, source_workspace, destination)
     };
-    if destination.id == source_workspace.project_id {
+    if checkout_path.is_none() && destination.id == source_workspace.project_id {
         return Err(protocol_error(
             "MOVE_SAME_PROJECT",
             "The destination must be a different project.",
@@ -1820,9 +2045,10 @@ async fn schedule_session_move(
     }
 
     let (settled_tx, settled_rx) = oneshot::channel();
-    registry.schedule_move(&parent.session_id, settled_tx)?;
-    if let Err(error) = providers.ensure_move_schedulable(&parent.session_id) {
-        registry.cancel_move(&parent.session_id);
+    registry.schedule_after_turn(&parent.session_id, AfterTurn::Move, settled_tx)?;
+    if let Err(error) = providers.ensure_after_turn_schedulable(&parent.session_id, AfterTurn::Move)
+    {
+        registry.cancel_after_turn(&parent.session_id);
         return Err(argmax_protocol_error(error));
     }
     let requested_event = {
@@ -1833,10 +2059,14 @@ async fn schedule_session_move(
                 id: Uuid::new_v4().to_string(),
                 session_id: parent.session_id.clone(),
                 r#type: "session.move-requested".to_string(),
-                message: format!("Move to {} scheduled.", destination.name),
+                message: match checkout_path.as_deref() {
+                    Some(path) => format!("Move to {path} scheduled."),
+                    None => format!("Move to {} scheduled.", destination.name),
+                },
                 payload: serde_json::json!({
                     "destinationProjectId": destination.id,
                     "destinationProjectName": destination.name,
+                    "destinationPath": checkout_path,
                     "worktree": action.worktree,
                     "keepSource": action.keep_source,
                 }),
@@ -1847,7 +2077,7 @@ async fn schedule_session_move(
     let requested_event = match requested_event {
         Ok(event) => event,
         Err(error) => {
-            registry.cancel_move(&parent.session_id);
+            registry.cancel_after_turn(&parent.session_id);
             return Err(argmax_protocol_error(error));
         }
     };
@@ -1856,25 +2086,26 @@ async fn schedule_session_move(
     let source_session_id = parent.session_id.clone();
     let destination_project_id = destination.id.clone();
     let destination_project_name = destination.name.clone();
-    let scheduled_destination_project_id = destination_project_id.clone();
+    let move_destination = match checkout_path.clone() {
+        Some(path) => MoveDestination::Checkout { path },
+        None => MoveDestination::Project {
+            project_id: destination_project_id.clone(),
+            worktree: action.worktree,
+        },
+    };
     let move_registry = Arc::clone(&registry);
     tauri::async_runtime::spawn(async move {
         if settled_rx.await.is_err() {
-            move_registry.finish_move(&source_session_id);
+            move_registry.finish_after_turn(&source_session_id);
             return;
         }
         let result = workspaces
-            .move_session_to_project(
-                &source_session_id,
-                &scheduled_destination_project_id,
-                action.worktree,
-                action.keep_source,
-            )
+            .move_session(&source_session_id, move_destination, action.keep_source)
             .await;
         // The pending-move guard belongs to the source and the move is over
         // either way. Holding it across the destination's launch would refuse
         // a follow-up in a kept source chat that is no longer going anywhere.
-        move_registry.finish_move(&source_session_id);
+        move_registry.finish_after_turn(&source_session_id);
         match result {
             Ok(moved) => {
                 continue_moved_session(
@@ -1911,12 +2142,14 @@ async fn schedule_session_move(
             source_session_id: parent.session_id,
             project_id: destination_project_id,
             project_name: destination_project_name,
+            path: checkout_path,
         }),
     ))
 }
 
-/// The destination's first turn. A move carries the transcript over but not
-/// the provider conversation, so nothing runs there until a turn is sent —
+/// The destination's first turn. A move always carries the transcript, and
+/// carries the provider conversation only where the provider supports it
+/// (`move_carries_conversation`). Nothing runs there until a turn is sent —
 /// this is that turn, the handoff the moving agent wrote. `send_input`
 /// composes it with the move seam's own handoff note (`providers::follow_up`),
 /// so the agent that wakes up in the destination is told where it is and what
@@ -2191,7 +2424,8 @@ pub enum SessionControlCliInput {
         worktree: bool,
     },
     Move {
-        project: String,
+        project: Option<String>,
+        path: Option<String>,
         prompt: CliPrompt,
         worktree: bool,
         keep_source: bool,
@@ -2223,11 +2457,13 @@ impl SessionControlCliInput {
             }),
             SessionControlCliInput::Move {
                 project,
+                path,
                 prompt,
                 worktree,
                 keep_source,
             } => SessionControlAction::Move(MoveAction {
                 project,
+                path,
                 prompt: prompt.read()?,
                 worktree,
                 keep_source,
@@ -2344,6 +2580,7 @@ fn parse_session_launch_cli(args: &[OsString]) -> Result<SessionControlCliInput,
 
 fn parse_session_move_cli(args: &[OsString]) -> Result<SessionControlCliInput, String> {
     let mut project = None;
+    let mut path = None;
     let mut prompt = None;
     let mut worktree = false;
     let mut keep_source = false;
@@ -2366,6 +2603,20 @@ fn parse_session_move_cli(args: &[OsString]) -> Result<SessionControlCliInput, S
                     return Err("--project must not be empty".to_string());
                 }
                 project = Some(value.to_string());
+            }
+            "--path" => {
+                if path.is_some() {
+                    return Err("--path may be provided only once".to_string());
+                }
+                index += 1;
+                let value = args
+                    .get(index)
+                    .and_then(|value| value.to_str())
+                    .ok_or_else(|| "--path requires a value".to_string())?;
+                if value.is_empty() {
+                    return Err("--path must not be empty".to_string());
+                }
+                path = Some(value.to_string());
             }
             "--worktree" => {
                 if worktree {
@@ -2400,8 +2651,12 @@ fn parse_session_move_cli(args: &[OsString]) -> Result<SessionControlCliInput, S
         }
         index += 1;
     }
+    if project.is_some() == path.is_some() {
+        return Err("provide exactly one of --project or --path".to_string());
+    }
     Ok(SessionControlCliInput::Move {
-        project: project.ok_or_else(session_move_usage)?,
+        project,
+        path,
         prompt: prompt.ok_or_else(session_move_usage)?,
         worktree,
         keep_source,
@@ -2503,7 +2758,7 @@ fn session_launch_usage() -> String {
 }
 
 fn session_move_usage() -> String {
-    "usage: argmax session move --project VALUE (--prompt VALUE | --prompt-stdin) [--worktree] [--keep-source]"
+    "usage: argmax session move (--project VALUE | --path VALUE) (--prompt VALUE | --prompt-stdin) [--worktree] [--keep-source]"
         .to_string()
 }
 
@@ -2723,6 +2978,7 @@ mod tests {
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),
             settings: ProjectSettings {
+                archive_on_merge: false,
                 worktree_location: "/tmp/worktrees".to_string(),
                 setup_command: String::new(),
                 check_commands: Vec::new(),
@@ -2771,6 +3027,62 @@ mod tests {
     }
 
     #[test]
+    fn a_move_action_accepts_either_destination_on_the_wire() {
+        // What an agent's `session_move` call actually deserializes into.
+        let by_path: MoveAction =
+            serde_json::from_str(r#"{"path":"/repo/worktrees/feature","prompt":"Carry on here"}"#)
+                .expect("path-only move");
+        assert_eq!(by_path.path.as_deref(), Some("/repo/worktrees/feature"));
+        assert_eq!(by_path.project, None);
+
+        let by_project: MoveAction =
+            serde_json::from_str(r#"{"project":"Other","prompt":"Port the fix"}"#)
+                .expect("project-only move");
+        assert_eq!(by_project.project.as_deref(), Some("Other"));
+        assert_eq!(by_project.path, None);
+    }
+
+    #[test]
+    fn cli_parser_takes_a_checkout_path_and_rejects_two_destinations() {
+        let args = [
+            "argmax",
+            "session",
+            "move",
+            "--path",
+            "/repo/worktrees/feature",
+            "--prompt",
+            "Carry on here",
+        ]
+        .map(OsString::from);
+        assert_eq!(
+            parse_session_control_cli(&args).unwrap(),
+            SessionControlCliInput::Move {
+                project: None,
+                path: Some("/repo/worktrees/feature".to_string()),
+                prompt: CliPrompt::Value("Carry on here".to_string()),
+                worktree: false,
+                keep_source: false,
+            }
+        );
+
+        // Naming both destinations is a mistake worth reporting: silently
+        // preferring one would move the chat somewhere the caller did not ask.
+        let both = [
+            "argmax",
+            "session",
+            "move",
+            "--project",
+            "Other",
+            "--path",
+            "/repo/worktrees/feature",
+            "--prompt",
+            "Carry on here",
+        ]
+        .map(OsString::from);
+        assert!(parse_session_control_cli(&both).is_err());
+    }
+
+    #[test]
     fn cli_parser_accepts_move_flags_and_requires_project() {
         let args = [
             "argmax",
@@ -2787,7 +3099,8 @@ mod tests {
         assert_eq!(
             parse_session_control_cli(&args).unwrap(),
             SessionControlCliInput::Move {
-                project: "Other".to_string(),
+                project: Some("Other".to_string()),
+                path: None,
                 prompt: CliPrompt::Value("Port the fix here".to_string()),
                 worktree: true,
                 keep_source: true,
@@ -2950,7 +3263,8 @@ mod tests {
 
         for action in [
             SessionControlAction::Move(MoveAction {
-                project: "Other".to_string(),
+                project: Some("Other".to_string()),
+                path: None,
                 prompt: "Port the fix here".to_string(),
                 worktree: false,
                 keep_source: true,
@@ -3068,16 +3382,42 @@ mod tests {
     fn pending_move_stays_guarded_until_execution_finishes() {
         let (_server, registry) = SessionLaunchServer::bind().unwrap();
         let (settled_tx, mut settled_rx) = oneshot::channel();
-        registry.schedule_move("session-1", settled_tx).unwrap();
-        assert!(registry.has_pending_move("session-1"));
+        registry
+            .schedule_after_turn("session-1", AfterTurn::Move, settled_tx)
+            .unwrap();
+        assert_eq!(
+            registry.pending_after_turn("session-1"),
+            Some(AfterTurn::Move)
+        );
         assert!(settled_rx.try_recv().is_err());
 
-        registry.settle_move("session-1");
+        registry.signal_turn_settled("session-1");
         assert_eq!(settled_rx.try_recv(), Ok(()));
-        assert!(registry.has_pending_move("session-1"));
+        assert_eq!(
+            registry.pending_after_turn("session-1"),
+            Some(AfterTurn::Move)
+        );
 
-        registry.finish_move("session-1");
-        assert!(!registry.has_pending_move("session-1"));
+        registry.finish_after_turn("session-1");
+        assert_eq!(registry.pending_after_turn("session-1"), None);
+    }
+
+    /// One slot: a chat cannot be both moving and archiving, and the refusal
+    /// names whichever was scheduled first rather than what was asked for.
+    #[cfg(unix)]
+    #[test]
+    fn a_second_after_turn_action_is_refused_by_the_pending_one() {
+        let (_server, registry) = SessionLaunchServer::bind().unwrap();
+        let (settled_tx, _settled_rx) = oneshot::channel();
+        registry
+            .schedule_after_turn("session-1", AfterTurn::Archive, settled_tx)
+            .unwrap();
+
+        let (second_tx, _second_rx) = oneshot::channel();
+        let error = registry
+            .schedule_after_turn("session-1", AfterTurn::Move, second_tx)
+            .expect_err("the archive already owns the slot");
+        assert_eq!(error.code, "ARCHIVE_ALREADY_PENDING");
     }
 
     #[test]

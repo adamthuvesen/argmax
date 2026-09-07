@@ -206,6 +206,7 @@ export type GitCreateBranchInput = Bindings.GitCreateBranchInput;
 export type GitViewOrCreatePrInput = Bindings.GitViewOrCreatePrInput;
 
 export type GitCommitResult = Bindings.GitCommitResult;
+export type WorkspaceArchiveResult = Retype<Bindings.WorkspaceArchiveResult, { workspace: WorkspaceSummary }>;
 export type GitPushResult = Bindings.GitPushResult;
 export type GitCreateBranchResult = Bindings.GitCreateBranchResult;
 export type GitViewOrCreatePrResult = Bindings.GitViewOrCreatePrResult;
@@ -274,8 +275,9 @@ export type SessionSummary = Retype<
 
 /**
  * A user-composed follow-up that arrived while the agent was mid-turn. Held in
- * the main-process queue (in-memory only) until the session reaches `complete`,
- * at which point items drain one-at-a-time as fresh follow-up turns.
+ * the durable pending-message queue until the session reaches `complete`, at
+ * which point ordinary items drain one-at-a-time as fresh follow-up turns.
+ * Recovered items wait for an explicit send after restart.
  */
 export interface PendingMessage {
   id: string;
@@ -287,6 +289,7 @@ export interface PendingMessage {
   reasoningEffort?: ReasoningEffort;
   fastMode?: boolean;
   attachments?: ComposerAttachment[];
+  recoveryStatus?: "unsent" | "delivery-unknown";
   queuedAt: string;
 }
 
@@ -424,7 +427,7 @@ export interface ArgmaxApi {
     refreshStatus: (workspaceId: string) => Promise<WorkspaceSummary>;
     status: (input?: WorkspaceStatusInput) => Promise<WorkspaceStatusSnapshot>;
     keep: (workspaceId: string) => Promise<WorkspaceSummary>;
-    archive: (input: { workspaceId: string; force?: boolean }) => Promise<WorkspaceSummary>;
+    archive: (input: { workspaceId: string; force?: boolean }) => Promise<WorkspaceArchiveResult>;
     openInIde: (input: OpenInIdeInput) => Promise<{ ok: true }>;
     autoTitle: (input: AutotitleWorkspaceInput) => Promise<{ ok: true }>;
     setPinned: (input: { workspaceId: string; pinned: boolean }) => Promise<WorkspaceSummary>;

@@ -122,7 +122,6 @@ function ToolCallGroupBubbleInner({
     <div
       className="tool-call-group activity-summary-line"
       data-status={summary.status}
-      data-has-errors={summary.hasErrors ? "true" : undefined}
       data-expanded={directTool ? undefined : expanded}
     >
       {directTool ? (
@@ -176,12 +175,8 @@ function ToolCallGroupBubbleInner({
           </button>
           {expanded ? (
             <div className="tool-call-group-body">
-              {rows.map(({ tool, children }, index) => (
-                <div
-                  className="tool-call-group-row"
-                  key={tool.id}
-                  style={{ animationDelay: `${Math.min(index, 8) * 28}ms` }}
-                >
+              {rows.map(({ tool, children }) => (
+                <div key={tool.id}>
                   <ToolCallRow
                     tool={tool}
                     defaultExpanded={
@@ -196,20 +191,15 @@ function ToolCallGroupBubbleInner({
                   />
                   {children.length > 0 ? (
                     <div className="tool-call-agent-children">
-                      {children.map((child, childIndex) => (
-                        <div
-                          className="tool-call-group-row"
+                      {children.map((child) => (
+                        <ToolCallRow
                           key={child.id}
-                          style={{ animationDelay: `${Math.min(childIndex, 8) * 28}ms` }}
-                        >
-                          <ToolCallRow
-                            tool={child}
-                            defaultExpanded={defaultToolsExpanded}
-                            workspaceCwd={workspaceCwd ?? null}
-                            onOpenFile={onOpenFile}
-                            onOpenAgent={onOpenAgent}
-                          />
-                        </div>
+                          tool={child}
+                          defaultExpanded={defaultToolsExpanded}
+                          workspaceCwd={workspaceCwd ?? null}
+                          onOpenFile={onOpenFile}
+                          onOpenAgent={onOpenAgent}
+                        />
                       ))}
                     </div>
                   ) : null}

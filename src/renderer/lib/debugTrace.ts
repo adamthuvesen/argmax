@@ -86,6 +86,9 @@ function canonicalDiagnostic(event: CanonicalTimelineEvent): Record<string, unkn
         lifecycle.destinationProjectName = event.destinationProjectName;
         lifecycle.worktree = event.worktree;
         lifecycle.keepSource = event.keepSource;
+      } else if (event.name === "archive-requested") {
+        lifecycle.workspaceId = event.workspaceId;
+        lifecycle.removesWorktree = event.removesWorktree;
       } else if (event.name === "moved") {
         lifecycle.direction = event.direction;
         lifecycle.sourceSessionId = event.sourceSessionId;

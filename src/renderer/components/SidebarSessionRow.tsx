@@ -82,6 +82,11 @@ type SidebarSessionRowProps = {
   launchedByLabel?: string | null;
   /** Set when the row renders inside the Priority section: why it floated up. */
   priorityAttention?: PriorityAttention;
+  /** A turn in flight on this workspace, or in a multitask its chat dispatched.
+   *  A multitask has no row of its own, so this row carries its motion too —
+   *  work in the checkout does not stop being work because a sibling is doing
+   *  it (lib/priority.ts). */
+  isWorking?: boolean;
   /** Priority rows only — right-click "Done" drops the row back to its group. */
   onRemoveFromPriority?: (workspaceId: string) => void;
   /** Non-priority rows — right-click "Add to priority" floats the row manually. */
@@ -106,12 +111,12 @@ type SidebarSessionRowProps = {
 // merged PR shows a violet merge glyph, an open PR a green pull-request glyph.
 // With no PR (or a closed one) a failed session shows a red cross.
 function StatusMarker({
-  state,
+  working,
   prState,
   priorityAttention,
   phaseKey
 }: {
-  state: WorkspaceSummary["state"];
+  working: boolean;
   prState?: WorkspaceSummary["prState"];
   priorityAttention?: PriorityAttention;
   phaseKey: string;
@@ -125,7 +130,7 @@ function StatusMarker({
   if (priorityAttention === "approval-needed" || priorityAttention === "blocked") {
     return <CircleEllipsis size={16} aria-hidden className="status-marker" data-attention={priorityAttention} />;
   }
-  if (state === "running") {
+  if (working) {
     // The shared working nest, sized to the 16px marker box. It is the same mark
     // and motion an agent tab and a sub-agent launch row show while they run.
     return <WorkingNest active className="status-marker" size={16} phaseKey={phaseKey} />;
@@ -147,16 +152,18 @@ function StatusMarker({
 type StatusOverlay = "awaiting" | "working" | "pr-merged" | "pr-open" | "failed";
 
 function statusOverlayFor({
+  working,
   state,
   prState,
   priorityAttention
 }: {
+  working: boolean;
   state: WorkspaceSummary["state"];
   prState?: WorkspaceSummary["prState"];
   priorityAttention?: PriorityAttention;
 }): StatusOverlay | null {
   if (priorityAttention === "approval-needed" || priorityAttention === "blocked") return "awaiting";
-  if (state === "running") return "working";
+  if (working) return "working";
   if (prState === "MERGED") return "pr-merged";
   if (prState === "OPEN") return "pr-open";
   // "archive-failed" borrows the failed cross: the row survived an archive
@@ -214,6 +221,7 @@ function SidebarSessionRowInner({
   importedProvider,
   launchedByLabel,
   priorityAttention,
+  isWorking,
   onRemoveFromPriority,
   onAddToPriority,
   onSetIcon,
@@ -256,6 +264,7 @@ function SidebarSessionRowInner({
   const showArchive =
     workspace.state === "complete" ||
     workspace.state === "failed" ||
+    workspace.state === "archive-failed" ||
     workspace.state === "cancelled" ||
     workspace.state === "kept";
 
@@ -412,7 +421,9 @@ function SidebarSessionRowInner({
   // Without a custom icon, a calm row stays text-only and only a live signal
   // (running, awaiting input, failed, open or merged PR) earns a glyph. The
   // marker column stays reserved either way so every title lines up.
+  const working = isWorking ?? workspace.state === "running";
   const statusOverlay = statusOverlayFor({
+    working,
     state: workspace.state,
     prState: workspace.prState,
     priorityAttention
@@ -427,7 +438,7 @@ function SidebarSessionRowInner({
       />
     ) : statusOverlay ? (
       <StatusMarker
-        state={workspace.state}
+        working={working}
         prState={workspace.prState}
         priorityAttention={priorityAttention}
         phaseKey={workspace.id}
@@ -721,6 +732,7 @@ export function sidebarSessionRowEqual(
   if (prev.importedProvider !== next.importedProvider) return false;
   if (prev.launchedByLabel !== next.launchedByLabel) return false;
   if (prev.priorityAttention !== next.priorityAttention) return false;
+  if (prev.isWorking !== next.isWorking) return false;
   if (prev.onRemoveFromPriority !== next.onRemoveFromPriority) return false;
   if (prev.onAddToPriority !== next.onAddToPriority) return false;
   if (prev.onSetIcon !== next.onSetIcon) return false;

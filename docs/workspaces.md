@@ -13,19 +13,30 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
   - `worktree`: Isolated worktree (`create_isolated`), branched as `argmax/<slug>-<short-id>`.
 - **Setup commands:** For isolated worktrees, the project's configured setup command runs via `CheckService` after creation. Failures are recorded as check rows and do not block workspace creation.
 - **Archiving:**
+  - Successful archives quietly leave the active list. Recovery access lives in Settings, while notifications are reserved for failures or changes that need attention.
   - Shared checkouts mark `archived` immediately and drain child processes in the background.
-  - Isolated worktrees mark `archiving`, cancel child processes, expire pending approvals, evict warm Cursor ACP instances, remove the git worktree, and persist `archived`. Dirty worktrees return to `kept` unless `force: true` is passed.
+  - Isolated worktrees mark `archiving`, cancel child processes, expire pending approvals, evict warm Cursor ACP instances, and use `git worktree move` to retain the complete checkout under `local-state/workspace-archive/<workspace-id>`. The moved checkout stays registered with Git, so tracked, untracked, and ignored files remain available. Settings → Advanced → Diagnostics → Archived workspaces opens the recovery root.
+  - Dirty worktrees return to `kept` unless `force: true` is passed. An `archive-failed` retry never implies force. The renderer confirms against the current dirty state before retrying with force.
+  - Archive recovery has no automatic expiry. Repeating an archive after the row reaches `archived` returns the same recovery path. Startup recovery recognizes a checkout already moved into its deterministic recovery path and completes the interrupted archive without moving or deleting it again.
+  - Archiving is also how a workspace is disposed of automatically. A project with `archive_on_merge` on (Settings → Projects) has each of its *isolated* workspaces archived by the gh poller once the PR on that workspace's branch merges, never forced — see [gh.md](gh.md).
+  - An agent can ask for the same thing from inside: the `workspace_archive` MCP tool archives the caller's own workspace once its turn settles, which is how `ship`'s babysit mode disposes of a worktree it is standing in without pulling the floor out from under itself — see [agent-tools.md](agent-tools.md).
   - Stopping a chat within 10 seconds of launch is an undo of a mistaken start: the pane returns to the composer, and the workspace is force-archived so no cancelled row stays in the sidebar. Docked multitasks and details popups are excluded. See [earlyStop.ts](../src/renderer/lib/earlyStop.ts).
 
 ### Session Moves
 
-`$ARGMAX_BIN session move --project <name-or-path> --prompt <what-to-do-there>` schedules an explicit cross-project handoff from inside an active agent turn. When the turn settles, `WorkspaceService` creates a destination workspace, copies the timeline into a fresh session, and leaves the provider conversation id empty. The source workspace is never retargeted.
+`$ARGMAX_BIN session move (--project <name-or-path> | --path <checkout>) --prompt <what-to-do-there>` schedules an explicit handoff from inside an active agent turn. When the turn settles, `WorkspaceService` creates a destination workspace and copies the timeline into a fresh session. The source workspace is never retargeted: a workspace's `path` is write-once, so landing somewhere new always means a new row.
+
+Exactly one destination is required. `--project` moves to another registered project. `--path` moves to another checkout of the *same* project — any directory `git worktree list` reports for its repository, including the main one. That is the supported answer to "this work belongs in a different worktree"; running `cd` inside a tool call only moves the agent's shell, leaving the workspace, its diff, and its commit and pull-request actions pointed at the checkout the session started in, and the next turn relaunches back there.
+
+A `--path` destination is validated against the project's own `git worktree list`, so an arbitrary directory is refused rather than attached. It is always recorded as a shared checkout (`shared_workspace = 1`): Argmax did not create that worktree, so archiving the workspace must never delete it. A detached HEAD is refused too — a workspace records the branch it sits on.
 
 The prompt is required because a move relocates work in progress: it starts the destination chat's first turn there, so the chat carries on in the new checkout instead of waiting for a person. The destination keeps the source's launch lineage, so whoever dispatched the chat still hears when it finishes and the launch caps still count it. A chat that has arrived somewhere by moving more than three times stops continuing on its own and says so. See [agent-tools.md](agent-tools.md).
 
-The destination uses the shared checkout by default. `--worktree` creates an isolated workspace and runs its setup command. The source archives after a successful copy unless `--keep-source` was passed. Archive never uses `force`, so an isolated source with uncommitted changes returns to `kept`.
+A `--project` destination uses that project's shared checkout by default; `--worktree` creates an isolated workspace and runs its setup command. The source archives after a successful copy unless `--keep-source` was passed. Archive never uses `force`, so an isolated source with uncommitted changes returns to `kept`.
 
-`session.moved` marks the handoff in both timelines. The renderer follows the destination only when the source session is still selected.
+A cross-project move always leaves the provider conversation id empty. A `--path` move carries it where the provider supports that, so the same work continues in the new worktree instead of starting cold — see [providers.md](providers.md#session-moves-and-the-provider-conversation).
+
+`session.moved` marks the handoff in both timelines; its payload carries `checkoutMode` (`shared`, `worktree`, or `attached`) and `conversationCarried`. The renderer follows the destination only when the source session is still selected.
 
 ## Scratch Workspaces
 
@@ -90,3 +101,5 @@ Images are the one file kind the text read can't carry: `workspace:read-file` re
 ## Git
 
 [src-tauri/src/git](../src-tauri/src/git) executes git commands via direct argv arguments for branching, commits, pushing, and pull request actions.
+
+Selected-file commits build and commit through a temporary index, leaving unrelated staged entries in the checkout index alone. If the follow-up reset of that real index is blocked, the commit still returns its new SHA with an `indexCleanupWarning`; the commit dialog keeps the successful result visible and asks the user to repair the index rather than reporting a false failure. Git writes from Argmax serialize per canonical checkout, including separate IPC-created service instances that target a shared workspace.

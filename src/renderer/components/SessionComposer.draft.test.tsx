@@ -1,6 +1,10 @@
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { baseSession, renderConversation } from "../../test/sessionConversationTestHarness.js";
+import {
+  baseSession,
+  renderConversation,
+  rerenderConversation
+} from "../../test/sessionConversationTestHarness.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { ArgmaxApi } from "../../shared/types.js";
 import type * as TauriBridgeModule from "../lib/tauriBridge.js";
@@ -88,16 +92,61 @@ describe("SessionComposer unsent drafts", () => {
   });
 
   it("leaves the draft in place when the send fails", async () => {
-    const onSendSessionInput = vi.fn().mockRejectedValue(new Error("provider offline"));
+    let rejectSend: ((error: Error) => void) | undefined;
+    const onSendSessionInput = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSend = reject;
+        })
+    );
     renderConversation(baseSession(), [], { onSendSessionInput });
     fireEvent.change(prompt(), { target: { value: "retry me" } });
     fireEvent.keyDown(prompt(), { key: "Enter" });
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+    expect(prompt()).toHaveValue("");
+    act(() => rejectSend?.(new Error("provider offline")));
+    await waitFor(() => expect(prompt()).toHaveValue("retry me"));
     cleanup();
 
     renderConversation(baseSession());
     expect(prompt().value).toBe("retry me");
+  });
+
+  it("restores a failed send with its attachment after the pane switches away and back", async () => {
+    let rejectSend: ((error: Error) => void) | undefined;
+    const onSendSessionInput = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSend = reject;
+        })
+    );
+    const { rerender } = renderConversation(baseSession(), [], { onSendSessionInput });
+    pasteScreenshot();
+    await waitFor(() => expect(attachedScreenshots()).toHaveLength(1));
+    fireEvent.change(prompt(), { target: { value: "retry in session a" } });
+    fireEvent.keyDown(prompt(), { key: "Enter" });
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+
+    rerenderConversation(rerender, baseSession({ id: "session-b" }), [], { onSendSessionInput });
+    expect(prompt()).toHaveValue("");
+    rerenderConversation(rerender, baseSession(), [], { onSendSessionInput });
+    expect(attachedScreenshots()).toEqual([]);
+    act(() => rejectSend?.(new Error("provider offline")));
+    await waitFor(() => expect(prompt()).toHaveValue("retry in session a"));
+    expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(SCREENSHOT_PATH)]);
+
+    onSendSessionInput.mockImplementationOnce(() => Promise.resolve());
+    fireEvent.keyDown(prompt(), { key: "Enter" });
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledTimes(2));
+    const retry = onSendSessionInput.mock.calls[1] as unknown as unknown[] | undefined;
+    expect(retry?.[4]).toEqual([
+      { filePath: SCREENSHOT_PATH, mimeType: "image/png", sizeBytes: 4 }
+    ]);
+
+    cleanup();
+    renderConversation(baseSession());
+    expect(prompt()).toHaveValue("");
   });
 
   it("saves a pasted image through the remote bridge", async () => {

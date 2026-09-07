@@ -56,6 +56,17 @@ pub struct CheckFailureContext {
     pub head_sha: String,
 }
 
+/// Optional hook fired once per workspace when the PR on its branch reaches
+/// `MERGED`, and only for projects with `archive_on_merge` on. The caller
+/// archives the workspace; the poller owns the deduplication.
+pub type MergedPrHook = Arc<dyn Fn(MergedPrContext) + Send + Sync>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MergedPrContext {
+    pub workspace_id: String,
+    pub pr_number: i64,
+}
+
 /// Dependencies for `GhPoller`. Everything except `database` and `service`
 /// is optional so tests can wire one piece at a time.
 pub struct GhPollerConfig {
@@ -64,6 +75,7 @@ pub struct GhPollerConfig {
     pub interval: Duration,
     pub publish_delta: Option<DeltaPublisher>,
     pub on_check_failure: Option<CheckFailureHook>,
+    pub on_pr_merged: Option<MergedPrHook>,
 }
 
 impl GhPollerConfig {
@@ -74,6 +86,7 @@ impl GhPollerConfig {
             interval: DEFAULT_POLL_INTERVAL,
             publish_delta: None,
             on_check_failure: None,
+            on_pr_merged: None,
         }
     }
 
@@ -89,6 +102,11 @@ impl GhPollerConfig {
 
     pub fn with_check_failure_hook(mut self, hook: CheckFailureHook) -> Self {
         self.on_check_failure = Some(hook);
+        self
+    }
+
+    pub fn with_pr_merged_hook(mut self, hook: MergedPrHook) -> Self {
+        self.on_pr_merged = Some(hook);
         self
     }
 }
@@ -108,22 +126,24 @@ struct PollerInner {
     service: Arc<GhService>,
     publish_delta: Option<DeltaPublisher>,
     on_check_failure: Option<CheckFailureHook>,
+    on_pr_merged: Option<MergedPrHook>,
     /// Last-seen PR state per `(session_id, pr_number)` so a repeated tick is
     /// a no-op while recovered milestone timestamps still publish.
     last_state: Mutex<HashMap<(String, i64), PrState>>,
-    /// Insertion-ordered ledger of failure events we've already fired, keyed
-    /// `workspace:pr:head_sha`. Bounded so a long-running app doesn't grow it.
-    failure_ledger: Mutex<VecDeque<String>>,
+    /// Insertion-ordered ledger of the hooks we've already fired: check
+    /// failures keyed `workspace:pr:head_sha`, merges keyed
+    /// `merged:workspace:pr`. Bounded so a long-running app doesn't grow it.
+    fired_ledger: Mutex<VecDeque<String>>,
 }
 
 impl PollerInner {
     fn ledger_has(&self, key: &str) -> bool {
-        let ledger = self.failure_ledger.lock_or_recover("ledger");
+        let ledger = self.fired_ledger.lock_or_recover("ledger");
         ledger.iter().any(|entry| entry == key)
     }
 
     fn ledger_add(&self, key: String) {
-        let mut ledger = self.failure_ledger.lock_or_recover("ledger");
+        let mut ledger = self.fired_ledger.lock_or_recover("ledger");
         if ledger.iter().any(|entry| entry == &key) {
             return;
         }
@@ -150,8 +170,9 @@ impl GhPoller {
                 service: config.service,
                 publish_delta: config.publish_delta,
                 on_check_failure: config.on_check_failure,
+                on_pr_merged: config.on_pr_merged,
                 last_state: Mutex::new(HashMap::new()),
-                failure_ledger: Mutex::new(VecDeque::new()),
+                fired_ledger: Mutex::new(VecDeque::new()),
             }),
             interval: config.interval,
             tasks: Mutex::new(Vec::new()),
@@ -304,6 +325,11 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
                 (hook)(transition.context.clone());
             }
         }
+        if let Some(merged) = transition.merged {
+            if let Some(hook) = inner.on_pr_merged.as_ref() {
+                (hook)(merged);
+            }
+        }
     }
 
     Ok(())
@@ -336,6 +362,9 @@ struct Transition {
     /// must not re-publish it.
     publish: bool,
     is_failure: bool,
+    /// Set once per workspace when its PR merges and the project archives on
+    /// merge. Independent of `publish` for the same reason as `is_failure`.
+    merged: Option<MergedPrContext>,
     context: CheckFailureContext,
 }
 
@@ -371,17 +400,20 @@ fn detect_transition(
         }
     };
 
-    // A still-failing PR is re-evaluated on every tick, not only on the tick
-    // its state changed: the launch below can decline for reasons that clear
-    // on their own — a running turn, a workspace lookup that failed — and a
-    // check that stays red never produces a second change to hang a retry on.
-    if !changed && next.check_state != "failure" {
+    // A still-failing PR — and a PR that stays merged — is re-evaluated on
+    // every tick, not only on the tick its state changed: the work below can
+    // decline for reasons that clear on their own (a running turn, a workspace
+    // lookup that failed), and a state that stays put never produces a second
+    // change to hang a retry on.
+    let is_merged = next.pr_state.as_deref() == Some("MERGED");
+    if !changed && next.check_state != "failure" && !is_merged {
         return None;
     }
 
     let mut transition = Transition {
         publish: changed,
         is_failure: false,
+        merged: None,
         context: CheckFailureContext {
             session_id: session_id.to_string(),
             workspace_id: String::new(),
@@ -423,10 +455,60 @@ fn detect_transition(
         }
     }
 
-    if !transition.publish && !transition.is_failure {
+    // A merged PR is the end of the workspace's job: for projects that opted
+    // in, the worktree and its local branch go away with it.
+    if is_merged && inner.on_pr_merged.is_some() {
+        match resolve_workspace_id(&inner.database, session_id) {
+            Ok(workspace_id) => {
+                // Keyed by workspace and PR, not by session or head_sha: every
+                // session in the checkout sees the same merge, and a merged PR
+                // keeps reporting the same commit on every later tick.
+                let ledger_key = format!("merged:{}:{}", workspace_id, latest.pr_number);
+                if !inner.ledger_has(&ledger_key) && archives_on_merge(inner, &workspace_id) {
+                    if workspace_is_busy(inner, &workspace_id) {
+                        // Deferred, not dropped, exactly like the check-failure
+                        // follow-up: archiving cancels the running agent's
+                        // processes and removes the tree it is editing.
+                        tracing::info!(
+                            %workspace_id,
+                            pr_number = latest.pr_number,
+                            "gh poller: PR merged but a turn is still running; archive deferred"
+                        );
+                    } else {
+                        inner.ledger_add(ledger_key);
+                        transition.merged = Some(MergedPrContext {
+                            workspace_id,
+                            pr_number: latest.pr_number,
+                        });
+                    }
+                }
+            }
+            Err(error) => {
+                tracing::warn!(
+                    %session_id,
+                    ?error,
+                    "gh poller: could not resolve workspace for merged PR; will retry next tick"
+                );
+            }
+        }
+    }
+
+    if !transition.publish && !transition.is_failure && transition.merged.is_none() {
         return None;
     }
     Some(transition)
+}
+
+/// Only projects that opted in archive a workspace when its PR merges. A
+/// lookup error means we don't know, and archiving the wrong checkout is the
+/// expensive mistake, so treat it as opted out and retry next tick.
+fn archives_on_merge(inner: &Arc<PollerInner>, workspace_id: &str) -> bool {
+    let conn = inner.database.connection();
+    crate::persistence::projects::workspace_project_archives_on_merge(&conn, workspace_id)
+        .unwrap_or_else(|error| {
+            tracing::warn!(%workspace_id, ?error, "gh poller: archive-on-merge lookup failed");
+            false
+        })
 }
 
 /// Persisted twin of the in-memory ledger, so a restart mid-failure does not
@@ -531,6 +613,7 @@ mod tests {
                 default_branch: Some("main".to_string()),
                 current_branch: "main".to_string(),
                 settings: ProjectSettings {
+                    archive_on_merge: false,
                     worktree_location: "/tmp/argmax-gh-poller/.worktrees".to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -582,6 +665,16 @@ mod tests {
             (now_iso(), session_id),
         )
         .expect("settle session");
+    }
+
+    /// Archiving on merge is opt-in per project; the fixture starts opted out.
+    fn enable_archive_on_merge(database: &Arc<Database>) {
+        let conn = database.connection();
+        conn.execute(
+            "UPDATE projects SET archive_on_merge = 1 WHERE id = 'p1'",
+            [],
+        )
+        .expect("enable archive on merge");
     }
 
     // A worktree that's gone can't be polled: `gh pr view` fails every tick
@@ -943,6 +1036,127 @@ mod tests {
         settle_session(&database, "s1");
         poller.tick_for_test().await.expect("tick once settled");
         assert_eq!(failure_hits.load(Ordering::SeqCst), 1);
+    }
+
+    // A merged PR stays merged: there is no second transition to hang a retry
+    // on, so the hook has to be re-evaluated on every tick and deduped by the
+    // ledger instead of by `changed`.
+    #[tokio::test]
+    async fn merge_hook_fires_once_and_only_for_an_opted_in_project() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        settle_session(&database, "s1");
+        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "MERGED", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "success"}]}"#;
+        let stub = StubRunner::new(vec![
+            Ok(merged_payload.to_string()),
+            Ok(merged_payload.to_string()),
+            Ok(merged_payload.to_string()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let merged = Arc::new(Mutex::new(Vec::<MergedPrContext>::new()));
+        let merged_seen = Arc::clone(&merged);
+        let hook: MergedPrHook = Arc::new(move |context| {
+            merged_seen
+                .lock()
+                .expect("merged contexts poisoned")
+                .push(context);
+        });
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_pr_merged_hook(hook),
+        );
+
+        poller.tick_for_test().await.expect("opted-out tick");
+        assert!(
+            merged.lock().expect("merged contexts poisoned").is_empty(),
+            "a project that never opted in keeps its workspace"
+        );
+
+        enable_archive_on_merge(&database);
+        poller.tick_for_test().await.expect("opted-in tick");
+        poller.tick_for_test().await.expect("still merged tick");
+
+        let contexts = merged.lock().expect("merged contexts poisoned");
+        assert_eq!(
+            contexts.as_slice(),
+            &[MergedPrContext {
+                workspace_id: "w1".to_string(),
+                pr_number: 42,
+            }],
+            "one merge archives the workspace once",
+        );
+    }
+
+    /// Archiving a shared checkout deletes nothing — it would only close a chat
+    /// in a tree the user is still working in, which is not the cleanup this
+    /// setting is for.
+    #[tokio::test]
+    async fn merge_hook_leaves_a_shared_checkout_alone() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        settle_session(&database, "s1");
+        enable_archive_on_merge(&database);
+        {
+            let connection = database.connection();
+            connection
+                .execute(
+                    "UPDATE workspaces SET shared_workspace = 1 WHERE id = 'w1'",
+                    [],
+                )
+                .expect("share the checkout");
+        }
+        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "MERGED", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "success"}]}"#;
+        let stub = StubRunner::new(vec![Ok(merged_payload.to_string())]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let merged = Arc::new(Mutex::new(Vec::<MergedPrContext>::new()));
+        let merged_seen = Arc::clone(&merged);
+        let hook: MergedPrHook = Arc::new(move |context| {
+            merged_seen
+                .lock()
+                .expect("merged contexts poisoned")
+                .push(context);
+        });
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_pr_merged_hook(hook),
+        );
+
+        poller.tick_for_test().await.expect("merged tick");
+        assert!(
+            merged.lock().expect("merged contexts poisoned").is_empty(),
+            "a shared checkout is nobody's to archive on a merge"
+        );
+    }
+
+    // Archiving cancels the checkout's processes and removes the tree, so a
+    // merge that lands mid-turn waits for the turn instead of being dropped.
+    #[tokio::test]
+    async fn merge_hook_waits_for_the_running_turn_to_settle() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        enable_archive_on_merge(&database);
+        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "state": "MERGED", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "success"}]}"#;
+        let stub = StubRunner::new(vec![
+            Ok(merged_payload.to_string()),
+            Ok(merged_payload.to_string()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let merge_hits = Arc::new(AtomicUsize::new(0));
+        let merge_count = Arc::clone(&merge_hits);
+        let hook: MergedPrHook = Arc::new(move |_| {
+            merge_count.fetch_add(1, Ordering::SeqCst);
+        });
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_pr_merged_hook(hook),
+        );
+
+        poller.tick_for_test().await.expect("tick while running");
+        assert_eq!(merge_hits.load(Ordering::SeqCst), 0);
+
+        settle_session(&database, "s1");
+        poller.tick_for_test().await.expect("tick once settled");
+        assert_eq!(merge_hits.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

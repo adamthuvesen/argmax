@@ -24,6 +24,7 @@ import type {
   NativeAgentIdentity,
   PendingMessage,
   ProjectSummary,
+  ProviderId,
   SessionSummary,
   WorkspaceSummary
 } from "../../shared/types.js";
@@ -115,7 +116,7 @@ interface SessionMultiGridProps {
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;

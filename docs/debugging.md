@@ -64,8 +64,11 @@ Logs and IPC poll `system:debug-snapshot` once a second, and only while their
 tab is open. That channel reads two in-memory ring buffers and nothing else.
 
 Do not reach for `system:diagnostics` on an interval: it runs nine `COUNT(*)`
-scans and shells out to `ps`. It is correct exactly where it is used — once,
-when the Settings page opens.
+scans and shells out to `ps`. It is collected once, when the Advanced group
+opens — the only group that shows the report. Loading it from every group put
+those scans between the click and the Settings page appearing, which on a 1.8 GB
+database was 1.7 s. It resolves through `read_off_main` for the same reason: the
+scans used to run inline on the macOS main thread and froze the window.
 
 Log lines are fetched by a monotonic `seq` cursor, so each tick transfers only
 what is new rather than re-sending the ring.

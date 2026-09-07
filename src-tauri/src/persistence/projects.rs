@@ -27,6 +27,9 @@ pub struct ProjectSettings {
     pub worktree_location: String,
     pub setup_command: String,
     pub check_commands: Vec<String>,
+    /// Archive a workspace once the PR on its branch merges, retaining its
+    /// checkout and branch in recovery storage. Off unless the project opts in.
+    pub archive_on_merge: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -111,11 +114,13 @@ pub fn persist_project(
         INSERT INTO projects (
           id, name, repo_path, current_branch, default_branch,
           worktree_location, setup_command,
-          check_commands_json, ui_preferences_json, created_at, updated_at
+          check_commands_json, archive_on_merge, ui_preferences_json,
+          created_at, updated_at
         ) VALUES (
           @id, @name, @repo_path, @current_branch, @default_branch,
           @worktree_location, @setup_command,
-          @check_commands_json, '{}', @created_at, @updated_at
+          @check_commands_json, @archive_on_merge, '{}',
+          @created_at, @updated_at
         )
         ON CONFLICT(repo_path) DO UPDATE SET
           name = excluded.name,
@@ -135,6 +140,7 @@ pub fn persist_project(
             "@worktree_location": input.settings.worktree_location,
             "@setup_command": input.settings.setup_command,
             "@check_commands_json": check_commands_json,
+            "@archive_on_merge": input.settings.archive_on_merge,
             "@created_at": timestamp,
             "@updated_at": timestamp,
         })
@@ -158,6 +164,7 @@ pub fn update_project_settings(
           worktree_location = @worktree_location,
           setup_command = @setup_command,
           check_commands_json = @check_commands_json,
+          archive_on_merge = @archive_on_merge,
           updated_at = @updated_at
         WHERE id = @project_id
         "#,
@@ -169,10 +176,43 @@ pub fn update_project_settings(
             "@worktree_location": settings.worktree_location,
             "@setup_command": settings.setup_command,
             "@check_commands_json": check_commands_json,
+            "@archive_on_merge": settings.archive_on_merge,
             "@updated_at": now_iso(),
         })
         .map_err(sqlite_error)?;
     require_project(connection, project_id)
+}
+
+/// Whether the project owning this workspace archives it once its PR merges.
+/// Resolved from the workspace so the gh poller, which only knows the
+/// workspace, does not need a second lookup.
+/// Whether a merged pull request should dispose of this workspace on its own.
+///
+/// Isolated workspaces only. The setting exists to stop merged worktrees piling
+/// up on disk, and archiving one of those is exactly that: the worktree and its
+/// branch go. Archiving a shared checkout deletes nothing — it would only close
+/// a chat the user is still sitting in, which is not cleanup.
+pub fn workspace_project_archives_on_merge(
+    connection: &Connection,
+    workspace_id: &str,
+) -> ArgmaxResult<bool> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        SELECT p.archive_on_merge AND NOT w.shared_workspace
+        FROM workspaces w
+        JOIN projects p ON p.id = w.project_id
+        WHERE w.id = ?
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    match statement.query_row([workspace_id], |row| row.get::<_, bool>(0)) {
+        Ok(enabled) => Ok(enabled),
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            Err(ArgmaxError::record_not_found("workspace", workspace_id))
+        }
+        Err(error) => Err(sqlite_error(error)),
+    }
 }
 
 pub fn update_project_branch(
@@ -389,6 +429,7 @@ fn project_summary_from_row(
             worktree_location: row.get("worktree_location")?,
             setup_command: row.get("setup_command")?,
             check_commands: parse_string_array(row.get("check_commands_json")?),
+            archive_on_merge: row.get("archive_on_merge")?,
         },
         counts,
         latest_activity_at,

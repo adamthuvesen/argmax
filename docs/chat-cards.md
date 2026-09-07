@@ -12,11 +12,60 @@ The chat surface renders assistant bubbles, tools, and interactive cards: **Plan
 
 ## Follow scroll
 
-The conversation list pins to the physical bottom while the reader is attached, and a leftover-viewport spacer after the latest user message makes that pin sit the prompt at the top of the pane until the turn fills it. Logic lives in [useSmartFollowScroll.ts](../src/renderer/hooks/useSmartFollowScroll.ts).
+[useConversationScroll.ts](../src/renderer/hooks/useConversationScroll.ts) owns
+scrolling in the chat, a single agent run, and persistent agent history. Each
+has one scroll viewport and one content wrapper. The scroll-to-latest button
+is an absolute overlay outside the viewport, so its visibility cannot change
+the transcript height.
 
-The macOS app is WKWebView, which has no CSS `overflow-anchor`. While attached, JS pinning hides layout shifts. After the reader scrolls up, the next insertion above the viewport would slide older transcript into view, so a detached pass keeps the in-view node still by its content coordinate. The node is probed at the middle of the reading column, 48px below the viewport top, with the child straddling that line as the fallback. The list's inline padding is the gutter around the column, so a probe near the list's left edge hits the scroller itself at ordinary desktop widths, and for a while that left the detached pass with no anchor at all. The spacer is a follow layout and is frozen while detached: resizing it used to land the reader on the bottom, re-arm follow, grow the spacer back, and jump them to the latest user message. Re-attach only when the reader moves toward the bottom (including trackpad momentum), taps scroll-to-latest, sends a new message, or changes session. Collapse that brings the bottom to them is not a request to follow.
+The controller follows the physical bottom until the reader moves upward.
+An upward wheel or touch gesture releases following before the browser moves
+the viewport. Scroll events record the reading position. Layout reconciliation
+owns programmatic scroll writes. Reaching the bottom by scrolling downward,
+sending a new message, switching session, or clicking scroll-to-latest resumes
+following. A content resize alone cannot resume it.
+
+Returning to the bottom is recognized before layout reconciliation records
+the position, even if the native scroll event is still queued. If output
+grows in that interval, the controller uses the bottom the reader reached
+before growth. This keeps a render from swallowing the return to live output.
+
+While following, the controller retains the measured content height between
+reconciliations. Replacing streamed rows can briefly shrink the scroll range
+and then grow it again before a callback runs. Reserving the height prevents
+that temporary clamp from looking like an upward reader scroll. Each
+reconciliation releases the reservation before measuring, so a permanent
+collapse still removes excess space.
+ResizeObserver watches the viewport and direct transcript rows, then reconciles
+before paint. The controller-owned wrapper is excluded so its height changes
+cannot feed back into the observer. Deferring correction by a frame lets an
+earlier row's reflow briefly move the visible prompt before it is restored.
+
+The chat content has a minimum height that lets the latest user message sit
+at the top of the viewport. Output fills that space naturally as the turn
+grows. While detached, the content also retains a minimum height from before
+the gesture. A folding Thought block below the reader therefore cannot
+shorten the scroll range and clamp them upward. This may leave blank space
+below a collapsed turn until the reader resumes following.
+
+Detached layout changes preserve the visible anchor. Nested scroll areas use
+their outer box so scrolling a diff cannot look like a transcript layout
+change. CSS `overflow-anchor: none` keeps browser anchoring from competing
+with the controller. ResizeObserver watches the transcript rows and viewport,
+including composer, panel, and hidden-tab size changes.
+
+The design draws on [use-stick-to-bottom](https://github.com/stackblitz-labs/use-stick-to-bottom)'s
+immediate wheel cancellation. Its shrink-triggered reattachment near the
+bottom conflicts with the detached-reading contract here, so Argmax owns this
+controller rather than adapting a second follow state machine around it.
 
 ## The Sent Prompt
+
+Sending an idle follow-up clears the composer text and shows its user bubble
+alongside Thinking immediately, before the send request returns. The local
+bubble stays until its persisted `user.message` arrives, then gives way to that
+row without a duplicate. A rejected send removes the local bubble and restores
+the draft for retry. Follow-ups sent mid-turn still use the pending-message queue.
 
 A user bubble shows the text that was typed, not markdown: `SessionConversationUserMessage` renders it into a `<p>` with `white-space: pre-wrap` so a pasted snippet keeps its own line breaks and a `**bold**` stays two asterisks. Two things are marked up on top of that plain text, both in `markUserMessage`.
 
@@ -91,7 +140,7 @@ Tool activity renders as text, not chrome. One grammar covers every row and ever
 
 Rules this surface holds to:
 
-- **No icons.** The verb already names the action, and a glyph column competes with the one left edge. Errors tint the verb rose rather than an icon, so a failing row does not shift its left edge.
+- **No icons.** The verb already names the action, and a glyph column competes with the one left edge. Summary verbs stay neutral even when tools fail. Collapsed groups omit failure counts, and failures do not automatically expand rows. Error labels and details remain available inside expanded tool rows.
 - **Invocation-scoped identity.** Provider tool IDs can repeat across turns. `buildSessionToolCalls` scopes them with `providerInvocationId` and uses chronological unmatched pairs for historical rows that predate that field, so a tool stays in the turn that ran it.
 - **Verb/target contrast is a token step, not an opacity fade.** Fading `--muted` drops the file name to 2.4:1 in the light theme; `--muted-strong` over `--muted` measures 6.9:1 / 3.6:1 (light) and 8.0:1 / 5.1:1 (dark). Pinned by `accentTokens.test.ts`.
 - **Transport is never a row.** Codex's `wait`, `close_agent`, and `send_message_to_thread` name no work and carry only internal thread ids, so `foldCodexAgentControlTools` drops them unconditionally. Matching one to a spawn decides only whether its outcome settles that launch. When a name collides with a real tool, the Codex thread ids in the input are what identify the transport. Grok's `get_command_or_subagent_output` is the same poll for a spawned child and is hidden by `isHiddenToolName`. Leaving it visible split the parent sentence around "Get command or subagent output".
@@ -232,12 +281,12 @@ Clicking the text opens the activity pane; the trailing chevron expands the raw 
 
 Configured in Settings → Agents ("Chat detail & verbosity"): a **1–5 scale** (**Minimal / Compact / Balanced / Detailed / Full trace**). Compact is the default when no preference is saved. Existing saved levels and legacy preferences keep their equivalent disclosure settings.
 
-Every level starts from the same chronological activity. `foldConversationItems` carries individual messages and tools, and `foldTurnToolItems` attaches subagent children. The renderer interleaves those calls with prose, cards, and agent launches before `foldToolRunsToSummaries` groups adjacent routine work for display. A group can mix reads, searches, edits, and commands, but cannot cross a visible message. Compact folds routine agent launches into these summaries too. Failed launches remain separate, and other levels keep all agent launches separate. Hidden Minimal narration remains a grouping boundary so collapsing a turn cannot combine work from separate parts of the conversation.
+Every level starts from the same chronological activity. `foldConversationItems` carries individual messages and tools, and `foldTurnToolItems` attaches subagent children. The renderer interleaves those calls with prose, cards, and agent launches before `foldToolRunsToSummaries` groups adjacent routine work for display. A group can mix reads, searches, edits, and commands, but cannot cross a visible message. An agent launch is never one of them: at every level, Compact included, it keeps its own row and ends the run. A summary line reading "started an agent" hid the launch row that names the delegated work, carries the codename and emblem, and opens the subagent's pane, leaving a whole child agent to read like a file read. Hidden Minimal narration remains a grouping boundary so collapsing a turn cannot combine work from separate parts of the conversation.
 
 [ToolCallGroupBubble.tsx](../src/renderer/components/ToolCallGroupBubble.tsx) owns all activity disclosure. Compact gives single calls a short summary too. Other levels show their targets directly. Multiple calls show natural summaries such as "Edited a file, read files, ran commands". Opening the headline reveals compact rows, and opening a row reveals its output or diff. The group keeps its first tool's identity as calls arrive and preserves the reader's expansion choice through growth and completion. Failed calls add an explicit "N failed" suffix and tint the headline, including groups with successful calls.
 
 - **Minimal:** shows activity summaries while working. Finished turns hide successful work and pre-tool narration behind `Worked for`, keeping the answer, changed files, and any failed activity visible. Opening the chip restores narration and activity summaries.
-- **Compact:** keeps one short activity summary between commentary messages, including routine agent activity. Command text, file names, individual calls, and output appear only after expansion. A running indicator reports ongoing work without printing a changing command preview.
+- **Compact:** keeps one short activity summary between commentary messages, with agent launches standing apart from it. Command text, file names, individual calls, and output appear only after expansion. A running indicator reports ongoing work without printing a changing command preview.
 - **Balanced:** opens group rows in the latest turn, keeping individual output collapsed until requested.
 - **Detailed / Full trace:** opens recent tool details too. Full trace also opens thought history by default. Older turns start with collapsed activity groups.
 
@@ -246,10 +295,10 @@ The turn chip controls disclosure across the turn. Per-group and per-row choices
 ## Smooth Answer Reveal & Live Auto-Scroll
 
 - **Paced reveal:** [StreamingMarkdown.tsx](../src/renderer/components/StreamingMarkdown.tsx) types out large visible streaming blocks on a 32 ms tick. The pace adapts to delivery: each newly arrived backlog is spread over ~1.3 s (never slower than 5 characters a tick), because no provider streams at typewriter speed — Claude sends ~130-character chunks every 0.7 s, Codex and OpenCode land the whole answer as one `message.completed`, and Cursor fires word-sized deltas in a burst. A block built from one `message.completed` is as live as a delta group while its turn runs (`coalesceAssistantGroups` marks it `streaming`), so an atomic Codex answer sweeps in instead of popping, and Claude's completion replacing its deltas no longer ends the reveal. When the block does stop streaming, text still unrevealed finishes over the same window at no less than its previous pace instead of snapping to the end; the old fixed cadence left hundreds of characters unrevealed at that moment and dumped them in one block. Progress is cached in a module-level map keyed by `revealKey` (session/agent ID + group creation time + group ID) so a live block the reader already watched resumes instead of restarting. Reopening a session still remounts the pane (`useRestoreWithoutMotion`): every completed group in a running turn is `streaming`, so without that flag they would all type out from nothing at once. Restore paints already-arrived text in full; only growth after the window types. The same snap applies while `document.hidden` — a backgrounded window cannot show the ticks, and pausing them left every finished bubble to replay when the user came back.
-- **Streaming code blocks stay intact.** The committed/tail split tracks the opening fence's marker and length. Shorter fences, other markers, and fence-like lines with trailing text remain code content, following the [CommonMark fence rules](https://spec.commonmark.org/0.31.2/#fenced-code-blocks).
+- **Streaming Markdown retains document context.** Each revealed message is parsed as one document, so reference links, loose lists, and nested blocks have the same meaning during streaming and after completion. The same render root persists across completion, preserving code-block state. Fence parsing belongs to `react-markdown` and its CommonMark parser.
 - **LaTeX & Math Equations:** Mathematical expressions in assistant responses render via `remark-math` and `rehype-katex` with bundled KaTeX stylesheets. Delimiters are normalized via [normalizeMathDelimiters.ts](../src/renderer/lib/normalizeMathDelimiters.ts), supporting LaTeX display equations (`\[ ... \]`), inline math (`\( ... \)`), bare Greek letters (`\tau`), LaTeX environments (`\begin{align}`), and standard markdown `$$...$$` / `$...$`. Single dollar currency amounts (`$50`) are disambiguated and preserved without entering math mode.
 - **Mermaid diagrams:** Fenced `mermaid` / `mmd` blocks render as SVG via the `mermaid` package, loaded on first use so the cold-start graph stays lean. [MermaidDiagram.tsx](../src/renderer/components/MermaidDiagram.tsx) draws them as a hugging well on `--tool-block-surface`, themed from live CSS tokens (Light / Dark / accent). A wide flowchart scales to the column. Expand in the toolbar opens the diagram at native size in a window overlay. Escape or the backdrop closes it. Incomplete fences while streaming show a pending status. A finished fence that cannot be parsed falls back to the source and a short error. Copy and Source live in the same hover toolbar.
-- **Auto-follow scroll:** [useSmartFollowScroll.ts](../src/renderer/hooks/useSmartFollowScroll.ts) locks viewport to the physical bottom during output. A leftover-viewport spacer after the latest user message sits that message at the top of the pane while the new turn is shorter than the view, so a follow-up is not tucked under a long previous reply. Upward user gestures detach auto-follow and show the scroll-to-bottom button.
+- **Auto-follow scroll:** [useConversationScroll.ts](../src/renderer/hooks/useConversationScroll.ts) follows output until the reader scrolls upward. The content minimum height reserves space for the latest prompt and protects a detached reader from content collapse. See Follow scroll above.
 - **Images in answers:** [MarkdownImage.tsx](../src/renderer/components/MarkdownImage.tsx) renders web images, workspace images through `argmax-asset://`, and saved chat attachments through `argmax-attachment://`. Both protocols enforce their existing filesystem allowlists. A local path that neither handler accepts becomes a file chip after the image request fails, never a broken image box.
 - **File links in answers:** Absolute paths inside the active workspace are reduced to workspace-relative paths before opening. [openableFile.ts](../src/renderer/lib/openableFile.ts) also recognizes the same repo-relative suffix when an answer names a file from another checkout. A real absolute path outside the workspace opens through the system instead of sending the Files panel a path it is not allowed to preview.
 - **Tail reserve & resize:** `.conversation-list` maintains constant bottom padding (`--space-8`). A `ResizeObserver` monitors the viewport and composer textarea to adjust scroll offsets dynamically as drafts expand. A width-driven reflow (the side review/log panel opening or closing) keeps a reader who was already at the bottom at the bottom instead of leaving the new bottom out of view; height-only growth below a detached reader still leaves them alone.
@@ -257,7 +306,7 @@ The turn chip controls disclosure across the turn. Per-group and per-row choices
 
 ## Follow-up Queuing & Drafts
 
-- **Mid-turn messages:** Submitting a prompt while an agent is running places the message into a pending queue. The queue sits on top of the composer as a tucked tab, slightly narrower and behind the input card. Users can delete queued messages or click **Send now** to interrupt the active turn (`providers:send-queued-message-now`).
+- **Mid-turn messages:** Submitting a prompt while an agent is running places the message into a pending queue. The queue sits on top of the composer as a tucked tab, slightly narrower and behind the input card. Users can delete queued messages or click **Send now** to interrupt the active turn (`providers:send-queued-message-now`). **Enter** is what queues, so the running composer shows Stop as its only control — except on a touch surface (`pointer: coarse`, the phone companion), where a queue button appears beside Stop once the draft has text: a thumb has no Enter key, and an empty draft still leaves Stop alone there.
 - **Suggested follow-up:** once a turn completes, [useFollowUpSuggestion.ts](../src/renderer/hooks/useFollowUpSuggestion.ts) asks `session:suggest-follow-up` for the reply the user would most plausibly send, and shows it as the composer placeholder instead of the static hint. **Tab** drops it into the draft (only while the draft is empty) so **Enter** sends it; agent mode moved to **Shift+Tab** in the session composer, and the launcher takes either. One call per completed turn (keyed on `completedAt`), on the cheap title model; a failure or an empty answer keeps the static placeholder.
 - **Drafts:** Unsent drafts and screenshots persist in `localStorage` under `argmax.composer.drafts` via [composerDrafts.ts](../src/renderer/lib/composerDrafts.ts), keyed by session ID or `launch-<projectId>`. Changing projects in the launcher transfers text via `carryTextOnRetarget`. A send drops the stored entry immediately (the on-screen text stays until delivery finishes) so the next NEW CHAT cannot restore a prompt that already launched.
 - **Selection annotations:** Highlighted text in the transcript opens [SelectionToolbar.tsx](../src/renderer/components/SelectionToolbar.tsx). "Add to chat" inserts the excerpt as a blockquote annotation in the prompt. Line comments from the review panel and open review tabs append context in the same format. An attached annotation is sendable on its own: with a chip in the lane, send is enabled and Enter works on an empty draft.

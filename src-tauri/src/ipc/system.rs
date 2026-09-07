@@ -91,6 +91,7 @@ pub struct DiagnosticsReport {
     pub app_version: String,
     pub sqlite_version: String,
     pub database_path: String,
+    pub archive_recovery_path: String,
     pub platform: String,
     pub arch: String,
     pub generated_at: String,
@@ -126,39 +127,57 @@ pub async fn system_list_detected_ides(_input: SystemListDetectedIdesInput) -> V
 
 #[tauri::command(rename = "system:diagnostics")]
 #[specta::specta]
-pub fn system_diagnostics(
+/// Nothing here is a small read: the row counts are nine `COUNT(*)` scans, and
+/// on a database that has been collecting transcripts for a while that is
+/// seconds of table scan. `rss_bytes` forks `ps` on top. Resolved on the main
+/// thread it froze the whole window — the Settings page could not paint until
+/// the scans finished. The reader pool serves the counts so they never queue
+/// behind the writer either.
+pub async fn system_diagnostics(
     app: AppHandle,
     state: State<'_, AppState>,
     _input: SystemDiagnosticsInput,
 ) -> ArgmaxResult<DiagnosticsReport> {
     let database = live_database(&state)?;
     let database_path = database_path(&app)?;
-    let connection = database.connection();
-    let sqlite_version = connection
-        .query_row("SELECT sqlite_version()", [], |row| row.get::<_, String>(0))
-        .unwrap_or_else(|_| "unknown".to_string());
-    let database_stats = collect_database_stats(&connection, &database_path);
-    let sqlite_pragmas = collect_sqlite_pragmas(&connection);
-    drop(connection);
+    let archive_recovery_path =
+        data_dir(&app)?.join(crate::workspaces::orchestration::ARCHIVE_RECOVERY_DIR);
+    fs::create_dir_all(&archive_recovery_path).map_err(|error| {
+        ArgmaxError::service("WORKSPACE_RECOVERY_CREATE_FAILED", error.to_string())
+    })?;
+    let startup_phases = startup_phases(&state);
+    let tokio_tracked_tasks = database.prune_task_count() as u64;
 
-    Ok(DiagnosticsReport {
-        app_version: env!("CARGO_PKG_VERSION").to_string(),
-        sqlite_version,
-        database_path: database_path.to_string_lossy().to_string(),
-        platform: std::env::consts::OS.to_string(),
-        arch: std::env::consts::ARCH.to_string(),
-        generated_at: Utc::now().to_rfc3339(),
-        startup_phases: startup_phases(&state),
-        database_stats,
-        ipc_stats: ipc_stats(),
-        recent_logs: crate::util::tracing_init::recent_logs(),
-        sqlite_pragmas,
-        runtime: RuntimeDiagnostics {
-            rss_bytes: rss_bytes(),
-            open_file_descriptors: open_file_descriptor_count(),
-            tokio_tracked_tasks: database.prune_task_count() as u64,
-        },
+    read_off_main(move || {
+        let connection = database.read_connection();
+        let sqlite_version = connection
+            .query_row("SELECT sqlite_version()", [], |row| row.get::<_, String>(0))
+            .unwrap_or_else(|_| "unknown".to_string());
+        let database_stats = collect_database_stats(&connection, &database_path);
+        let sqlite_pragmas = collect_sqlite_pragmas(&connection);
+        drop(connection);
+
+        Ok(DiagnosticsReport {
+            app_version: env!("CARGO_PKG_VERSION").to_string(),
+            sqlite_version,
+            database_path: database_path.to_string_lossy().to_string(),
+            archive_recovery_path: archive_recovery_path.to_string_lossy().to_string(),
+            platform: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            generated_at: Utc::now().to_rfc3339(),
+            startup_phases,
+            database_stats,
+            ipc_stats: ipc_stats(),
+            recent_logs: crate::util::tracing_init::recent_logs(),
+            sqlite_pragmas,
+            runtime: RuntimeDiagnostics {
+                rss_bytes: rss_bytes(),
+                open_file_descriptors: open_file_descriptor_count(),
+                tokio_tracked_tasks,
+            },
+        })
     })
+    .await
 }
 
 /// In-memory-only slice of the diagnostics report, safe to poll on an

@@ -14,7 +14,7 @@ use rmcp::{
 use serde::Deserialize;
 
 use crate::session_control::{
-    InboxAction, LaunchAction, ListAction, MessageAction, MoveAction, ReadAction,
+    ArchiveAction, InboxAction, LaunchAction, ListAction, MessageAction, MoveAction, ReadAction,
     SessionControlAction, StatusAction, StopAction, WaitAction,
 };
 
@@ -66,11 +66,22 @@ pub struct SessionMessageParams {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SessionMoveParams {
     /// The registered project to move to, by name or absolute repo path. It
-    /// must be a different project from the current one.
-    pub project: String,
+    /// must be a different project from the current one. Pass exactly one of
+    /// project or path.
+    #[serde(default)]
+    pub project: Option<String>,
+    /// Absolute path of an existing checkout of the project you are already
+    /// in — any directory `git worktree list` reports for it, including its
+    /// main one. Use this instead of `cd` when the work belongs in another
+    /// worktree: `cd` only moves your shell, so the workspace, its diff, and
+    /// its commit and pull-request actions would keep targeting the checkout
+    /// you started in.
+    #[serde(default)]
+    pub path: Option<String>,
     /// What to do once you are there. It becomes your first turn in the
-    /// destination, where the CLI starts cold and sees only the last few turns
-    /// of this transcript, so write it to stand on its own.
+    /// destination. Write it to stand on its own: unless the conversation
+    /// travels with you, the CLI starts cold there and sees only the last few
+    /// turns of this transcript.
     pub prompt: String,
     /// Create an isolated worktree in the destination instead of using its
     /// shared checkout.
@@ -107,6 +118,9 @@ pub struct SessionStopParams {
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct InboxReadParams {}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct WorkspaceArchiveParams {}
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct SessionWaitParams {
@@ -292,12 +306,33 @@ its answer."
     }
 
     #[tool(
+        name = "workspace_archive",
+        description = "Close this chat's workspace when the current turn ends: an isolated \
+worktree and its local branch are removed, and the chat leaves the sidebar. Like session_move it \
+is scheduled rather than immediate, because archiving stops every agent in the workspace — \
+including you — so call it as your last action and write your report after it. Use it once the \
+work has actually landed, typically after a pull request is merged and its branch is deleted; \
+that is what keeps merged worktrees from piling up on disk. A workspace with uncommitted changes \
+is kept instead of archived, so say the archive is requested rather than done. A shared checkout \
+is never deleted — archiving one only ends the chat."
+    )]
+    async fn workspace_archive(
+        &self,
+        Parameters(_params): Parameters<WorkspaceArchiveParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::Archive(ArchiveAction {})).await
+    }
+
+    #[tool(
         name = "session_move",
-        description = "Move this session to a different registered project and carry on working \
-there. The move is scheduled: it runs once the current turn settles, carries the transcript over, \
-and archives the source workspace unless keep_source is set. Your `prompt` then starts your first \
-turn in the destination checkout, so call this as the last action of a turn. Use it when the work \
-turns out to belong in another repository."
+        description = "Move this session to a different checkout and carry on working there: \
+another registered project (`project`), or another worktree of the project you are already in \
+(`path`). Pass exactly one. Reach for `path` whenever the work belongs in a different worktree — \
+running `cd` instead only moves your shell, so the workspace card, its diff, and its commit and \
+pull-request actions all keep pointing at the checkout you started in, and your next turn starts \
+back there. The move is scheduled: it runs once the current turn settles, carries the transcript \
+over, and archives the source workspace unless keep_source is set. Your `prompt` then starts your \
+first turn in the destination, so call this as the last action of a turn."
     )]
     async fn session_move(
         &self,
@@ -305,6 +340,7 @@ turns out to belong in another repository."
     ) -> Result<CallToolResult, ErrorData> {
         call(SessionControlAction::Move(MoveAction {
             project: params.project,
+            path: params.path,
             prompt: params.prompt,
             worktree: params.worktree,
             keep_source: params.keep_source,

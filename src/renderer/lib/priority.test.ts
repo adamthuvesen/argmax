@@ -260,6 +260,47 @@ describe("computePriorityEntries", () => {
     expect(entries).toEqual([]);
   });
 
+  it("counts a running multitask as work on the chat that dispatched it", () => {
+    // The multitask has no sidebar row of its own, so its turn has to register
+    // on the parent's: otherwise the row goes calm and drops out of Priority
+    // while a sibling agent is still writing to the checkout.
+    const parent = session("w-parent", "normal", { id: "parent", state: "complete" });
+    const entries = computePriorityEntries(
+      [workspace("w-parent", { state: "complete" })],
+      [
+        parent,
+        session("w-child", "normal", {
+          id: "child",
+          state: "running",
+          launchKind: "multitask",
+          launchedBySessionId: parent.id
+        })
+      ],
+      NOW
+    );
+    expect(entries.map((entry) => [entry.workspace.id, entry.working])).toEqual([
+      ["w-parent", true]
+    ]);
+  });
+
+  it("leaves the parent calm once its multitask settles", () => {
+    const parent = session("w-parent", "normal", { id: "parent", state: "complete" });
+    const entries = computePriorityEntries(
+      [workspace("w-parent", { state: "complete" })],
+      [
+        parent,
+        session("w-child", "normal", {
+          id: "child",
+          state: "complete",
+          launchKind: "multitask",
+          launchedBySessionId: parent.id
+        })
+      ],
+      NOW
+    );
+    expect(entries).toEqual([]);
+  });
+
   it("treats a missing attention stamp as stale", () => {
     // Pre-migration session rows have no attentionChangedAt — unknown age
     // counts as old, which keeps the first post-migration launch from

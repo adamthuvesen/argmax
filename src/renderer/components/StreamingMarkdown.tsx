@@ -256,60 +256,6 @@ function useSmoothStreamingText(
   return { text: textCharacters.slice(0, reveal.visible).join(""), revealing };
 }
 
-// Split the revealed text into a stable "committed" prefix (whole, completed
-// blocks) and the block currently being typed. Splitting only at blank-line
-// boundaries whose prefix has balanced code fences keeps each half independently
-// valid markdown, so the committed prefix re-parses once per completed block
-// instead of once per typewriter frame. react-markdown adds no wrapper element,
-// so the two halves render as flat sibling blocks with normal margin collapse.
-function splitStreamingMarkdown(text: string): { committed: string; tail: string } {
-  // One forward pass. Walking back from the end instead re-counted the fences
-  // over the whole prefix per candidate boundary, and an open fence — the state
-  // an agent is in for as long as it is emitting a code block — rejects every
-  // boundary inside it, so the cost grew with the square of the block.
-  let openFence: string | null = null;
-  let insideMath = false;
-  let cut = -1;
-  let lineStart = 0;
-  for (let i = 0; i <= text.length; i += 1) {
-    if (i !== text.length && text.charCodeAt(i) !== 10) continue;
-    const rawLine = text.slice(lineStart, i);
-    const line = rawLine.trim();
-    const fence = /^(`{3,}|~{3,})(.*)$/.exec(line);
-    if (i === lineStart) {
-      // A blank line: the second "\n" of a paragraph break. End of text is not
-      // one, only an unterminated last line, so it can never commit the tail.
-      if (i !== text.length && lineStart > 0 && !openFence && !insideMath) cut = lineStart + 1;
-    } else if (fence && !insideMath) {
-      if (openFence) {
-        // Shorter fences, other markers, and trailing text are code content.
-        if (
-          /^ {0,3}[`~]/.test(rawLine) &&
-          fence[1][0] === openFence[0] &&
-          fence[1].length >= openFence.length &&
-          !fence[2].trim()
-        ) {
-          openFence = null;
-        }
-      } else if (fence[1][0] !== "`" || !fence[2].includes("`")) {
-        openFence = fence[1];
-      }
-    } else if (!openFence && (line.startsWith("$$") || line.startsWith("\\["))) {
-      if (line.length > 2 && (line.endsWith("$$") || line.endsWith("\\]"))) {
-        // Opened and closed on the same line
-      } else {
-        insideMath = !insideMath;
-      }
-    } else if (!openFence && insideMath && (line.endsWith("$$") || line.endsWith("\\]"))) {
-      insideMath = false;
-    }
-    lineStart = i + 1;
-  }
-  return cut < 0
-    ? { committed: "", tail: text }
-    : { committed: text.slice(0, cut), tail: text.slice(cut) };
-}
-
 function MermaidDiagramFallback(): JSX.Element {
   return (
     <figure className="mermaid-diagram" data-state="pending" aria-label="Diagram">
@@ -320,9 +266,9 @@ function MermaidDiagramFallback(): JSX.Element {
   );
 }
 
-// One markdown render root. Memoized on its props so a stable `text` (the
-// committed prefix, which only changes when a block completes) skips re-parsing
-// entirely — `workspace` and `onOpenFile` are stable from the session pane.
+// One markdown render root. Memoized on its props so stable text skips
+// re-parsing entirely — `workspace` and `onOpenFile` are stable from the
+// session pane.
 //
 // The eager path renders without math plugins. Text that may contain math
 // delegates to the lazy `ChatMathMarkdown` (KaTeX chunk) with the plain render
@@ -448,41 +394,6 @@ const MarkdownBody = memo(function MarkdownBody({
   );
 });
 
-function MarkdownStream({
-  text,
-  streaming,
-  workspace,
-  onOpenFile
-}: {
-  text: string;
-  streaming: boolean;
-  workspace?: WorkspaceSummary | null;
-  onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
-}): JSX.Element {
-  // Only split while actively revealing. A completed message (or reduced-motion)
-  // renders as a single root — byte-identical to the non-streaming path.
-  const split = useMemo(
-    () => (streaming ? splitStreamingMarkdown(text) : null),
-    [streaming, text]
-  );
-  return (
-    <>
-      {split ? (
-        <>
-          {split.committed ? (
-            <MarkdownBody text={split.committed} workspace={workspace} onOpenFile={onOpenFile} />
-          ) : null}
-          {split.tail ? (
-            <MarkdownBody text={split.tail} workspace={workspace} onOpenFile={onOpenFile} />
-          ) : null}
-        </>
-      ) : (
-        <MarkdownBody text={text} workspace={workspace} onOpenFile={onOpenFile} />
-      )}
-    </>
-  );
-}
-
 export function StreamingMarkdown({
   text,
   streaming,
@@ -495,8 +406,7 @@ export function StreamingMarkdown({
   text: string;
   streaming: boolean;
   /** Reveal a streaming block at the typewriter cadence. Off, the block shows
-      every character as it arrives but still keeps the committed/tail split,
-      so a fast reasoning burst neither lags behind nor re-parses in full. */
+      every character as it arrives. */
   paced?: boolean;
   /** The pane is painting content that was already there (session switch
       remount). Already-arrived text shows in full; only growth after restore
@@ -543,9 +453,8 @@ export function StreamingMarkdown({
               )
             )
           : (
-            <MarkdownStream
+            <MarkdownBody
               text={markdownText}
-              streaming={live}
               workspace={workspace}
               onOpenFile={onOpenFile}
             />

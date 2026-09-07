@@ -49,6 +49,7 @@ fn project_workspace_and_session_repositories_round_trip() {
     assert_eq!(project.settings.check_commands, vec!["npm test"]);
 
     let updated_settings = ProjectSettings {
+        archive_on_merge: false,
         worktree_location: "~/.argmax/worktrees".to_owned(),
         setup_command: "npm install".to_owned(),
         check_commands: vec!["npm test".to_owned(), "npm run lint".to_owned()],
@@ -1299,6 +1300,7 @@ fn project_input() -> PersistProjectInput {
         current_branch: "main".to_owned(),
         default_branch: Some("main".to_owned()),
         settings: ProjectSettings {
+            archive_on_merge: false,
             worktree_location: "~/.argmax".to_owned(),
             setup_command: String::new(),
             check_commands: vec!["npm test".to_owned()],

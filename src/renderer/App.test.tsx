@@ -183,8 +183,11 @@ describe("App", () => {
     };
     mockDashboardSnapshot(sharedSnapshot);
     archiveWorkspace.mockResolvedValue({
-      ...(sharedSnapshot.workspaces[0] ?? snapshot.workspaces[0]),
-      state: "archived"
+      workspace: {
+        ...(sharedSnapshot.workspaces[0] ?? snapshot.workspaces[0]),
+        state: "archived"
+      },
+      recoveryPath: null
     });
 
     try {
@@ -195,6 +198,44 @@ describe("App", () => {
         expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false })
       );
       expect(confirmSpy).not.toHaveBeenCalled();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("requires confirmation when retrying a dirty failed archive", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const failedSnapshot: DashboardSnapshot = {
+      ...snapshot,
+      workspaces: snapshot.workspaces.map((workspace) => ({
+        ...workspace,
+        state: "archive-failed",
+        sharedWorkspace: false,
+        kind: "git",
+        dirty: true,
+        changedFiles: 2
+      })),
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "failed" }))
+    };
+    mockDashboardSnapshot(failedSnapshot);
+    archiveWorkspace.mockResolvedValue({
+      workspace: {
+        ...(failedSnapshot.workspaces[0] ?? snapshot.workspaces[0]),
+        state: "archived"
+      },
+      recoveryPath: "/tmp/workspace-archive/workspace-1"
+    });
+
+    try {
+      render(<App />);
+      fireEvent.click(await screen.findByRole("button", { name: "Archive chat" }));
+
+      expect(confirmSpy).toHaveBeenCalledWith(
+        "Build dashboard has 2 uncommitted changes. Archive this worktree and keep its files in recovery storage?"
+      );
+      await waitFor(() =>
+        expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: true })
+      );
     } finally {
       confirmSpy.mockRestore();
     }
@@ -215,8 +256,11 @@ describe("App", () => {
     };
     mockDashboardSnapshot(activeSnapshot);
     archiveWorkspace.mockResolvedValue({
-      ...(activeSnapshot.workspaces[0] ?? snapshot.workspaces[0]),
-      state: "archived"
+      workspace: {
+        ...(activeSnapshot.workspaces[0] ?? snapshot.workspaces[0]),
+        state: "archived"
+      },
+      recoveryPath: null
     });
 
     render(<App />);
@@ -256,8 +300,14 @@ describe("App", () => {
     mockDashboardSnapshot(cleanIsolatedSnapshot);
     const workspace = cleanIsolatedSnapshot.workspaces[0] ?? snapshot.workspaces[0];
     archiveWorkspace
-      .mockResolvedValueOnce({ ...workspace, state: "kept", dirty: true, changedFiles: 2 })
-      .mockResolvedValueOnce({ ...workspace, state: "archived" });
+      .mockResolvedValueOnce({
+        workspace: { ...workspace, state: "kept", dirty: true, changedFiles: 2 },
+        recoveryPath: null
+      })
+      .mockResolvedValueOnce({
+        workspace: { ...workspace, state: "archived" },
+        recoveryPath: "/tmp/workspace-archive/workspace-1"
+      });
 
     try {
       render(<App />);

@@ -477,6 +477,20 @@ html:has(.mobile-shell) body {
   margin-top: var(--space-2);
 }
 
+/* A queued follow-up's actions are 28px squares under a mouse. Four of them in
+   a row is a minefield for a thumb — and one is Cancel — so the hit areas grow
+   to a thumb's width here while the glyphs stay put. */
+.mobile-shell .composer-queued-chip {
+  min-height: 44px;
+  padding-right: var(--space-1);
+}
+
+.mobile-shell .composer-queued-chip-action,
+.mobile-shell .composer-queued-chip-remove {
+  width: 40px;
+  height: 40px;
+}
+
 /* The composer's compact layout is container-query driven, and its container
    root on desktop is the multigrid cell — absent here. Without a container
    ancestor the ≤720px rules never match and the phone gets the full desktop

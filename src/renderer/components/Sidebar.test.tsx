@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
-import { SCRATCH_PROJECT_ID, type DashboardSnapshot } from "../../shared/types.js";
+import { SCRATCH_PROJECT_ID, type DashboardSnapshot, type SessionSummary } from "../../shared/types.js";
 import {
   collapsedDateGroupsStorageKey,
   collapsedProjectsStorageKey,
@@ -12,6 +12,7 @@ import {
 import { Sidebar } from "./Sidebar.js";
 
 const projectSettings = {
+  archiveOnMerge: false,
   worktreeLocation: "/tmp/worktrees",
   setupCommand: "",
   checkCommands: []
@@ -467,6 +468,62 @@ describe("Sidebar — workspaces without sessions", () => {
     expect(screen.getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
     // The orphan is hidden.
     expect(screen.queryByRole("button", { name: /What is this project about/ })).toBeNull();
+  });
+
+  it("keeps the working mark on a chat whose multitask is still running", () => {
+    // A multitask has no row of its own, so the row of the chat that
+    // dispatched it is the only place its turn can show. Both the chat and its
+    // workspace are settled here: the motion is the child's alone.
+    const parentWorkspace = snapshot.workspaces[0];
+    if (!parentWorkspace) throw new Error("snapshot fixture missing workspace");
+    const settledSession: SessionSummary = {
+      id: "session-parent",
+      workspaceId: "workspace-1",
+      provider: "codex",
+      modelLabel: "GPT-5.3 Codex",
+      modelId: "gpt-5.5",
+      permissionMode: "auto-approve",
+      agentMode: "auto",
+      providerConversationId: null,
+      state: "complete",
+      attention: "normal",
+      startedAt: "2026-05-12T15:54:00.000Z",
+      completedAt: "2026-05-12T15:58:00.000Z",
+      lastActivityAt: "2026-05-12T15:58:00.000Z",
+      prompt: "Build the dashboard",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent"
+    };
+    const withMultitask: DashboardSnapshot = {
+      ...snapshot,
+      workspaces: [
+        { ...parentWorkspace, state: "complete" },
+        { ...parentWorkspace, id: "workspace-child", taskLabel: "Fix the heading" }
+      ],
+      sessions: [
+        settledSession,
+        {
+          ...settledSession,
+          id: "session-child",
+          workspaceId: "workspace-child",
+          state: "running",
+          completedAt: null,
+          launchKind: "multitask",
+          launchedBySessionId: "session-parent"
+        }
+      ]
+    };
+
+    render(<Sidebar {...baseProps} snapshot={withMultitask} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
+
+    const parentRow = screen.getByRole("button", { name: /Build dashboard/ });
+    expect(parentRow.querySelector('.status-marker[data-working="true"]')).not.toBeNull();
+    // And the multitask still has no row of its own to carry it instead.
+    expect(screen.queryByRole("button", { name: /Fix the heading/ })).toBeNull();
   });
 
   it("boots with every project collapsed so no workspaces are visible on startup", () => {

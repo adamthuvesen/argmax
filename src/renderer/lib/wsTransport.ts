@@ -25,6 +25,7 @@ import type { EventSubscription } from "../../shared/types.js";
 import type { BridgeTransport } from "./tauriBridge.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
+import { createRemoteOperationOwner, markRemoteOperationSent, markRemoteOperationUncertain, prepareRemoteOperation, remoteOperationWasSent, settleRemoteOperation, type RemoteOperation } from "./remoteOperations.js";
 
 const TOKEN_KEY = "argmax.remote.token";
 const MIN_RECONNECT_MS = 500;
@@ -53,6 +54,7 @@ const PING_FRAME = JSON.stringify({ type: "ping" });
  * it, and the transport reconnects on its own.
  */
 export const REMOTE_CONNECTION_LOST_MESSAGE = "Argmax remote connection lost";
+export const REMOTE_OUTCOME_UNKNOWN_MESSAGE = "The connection was lost before this action's outcome was confirmed. Check the chat or workspace. Retrying the same action will recover its outcome without running it twice.";
 
 /** The socket handle the transport drives; the browser `WebSocket` is wrapped. */
 export interface RemoteSocket {
@@ -122,6 +124,9 @@ interface PendingRequest {
   reject: (error: unknown) => void;
   /** Deadline while the request waits in `queued`; cleared once it is sent. */
   queueTimer: ReturnType<typeof setTimeout> | null;
+  retryTimer: ReturnType<typeof setTimeout> | null;
+  operation?: RemoteOperation;
+  sent: boolean;
 }
 
 function connectBrowserSocket(url: string, handlers: RemoteSocketHandlers): RemoteSocket {
@@ -165,6 +170,7 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
   const connect = options.connect ?? connectBrowserSocket;
   const url = options.url ?? defaultRemoteUrl();
   const promptForToken = options.promptForToken ?? (() => window.prompt("Argmax remote token"));
+  const operationOwner = createRemoteOperationOwner();
 
   const queued: PendingRequest[] = [];
   const inFlight = new Map<number, PendingRequest>();
@@ -173,6 +179,7 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
   let socket: RemoteSocket | null = null;
   let generation = 0;
   let authed = false;
+  let operationReplay = false;
   let attempt = 0;
   let authCount = 0;
   let nextRequestId = 1;
@@ -245,13 +252,17 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
    *  toasts already treat as "the banner covers this". */
   function failQueued(request: PendingRequest): void {
     clearQueueTimer(request);
-    request.reject(new Error(REMOTE_CONNECTION_LOST_MESSAGE));
+    if (request.retryTimer !== null) clearTimeout(request.retryTimer);
+    if (request.operation && !request.sent) settleRemoteOperation(request.operation);
+    if (request.operation && request.sent) markRemoteOperationUncertain(request.operation);
+    request.reject(new Error(request.operation && request.sent ? REMOTE_OUTCOME_UNKNOWN_MESSAGE : REMOTE_CONNECTION_LOST_MESSAGE));
   }
 
   function expireQueued(request: PendingRequest): void {
     const index = queued.indexOf(request);
-    if (index === -1) return;
-    queued.splice(index, 1);
+    if (index === -1 && !inFlight.has(request.id)) return;
+    if (index !== -1) queued.splice(index, 1);
+    inFlight.delete(request.id);
     failQueued(request);
   }
 
@@ -259,9 +270,36 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     while (authed && socket && queued.length > 0) {
       const request = queued.shift();
       if (!request) return;
+      // A sent mutation gets this timer only while the connection is down.
+      // Once it has been replayed, its host-side operation may still be
+      // running, so letting the offline deadline fire would reject it and
+      // discard a later durable outcome.
       clearQueueTimer(request);
+      if (request.operation && !operationReplay) {
+        if (!request.sent) settleRemoteOperation(request.operation);
+        clearQueueTimer(request);
+        request.reject(new Error("Update the Argmax host before sending remote actions."));
+        continue;
+      }
+      if (request.operation) {
+        try {
+          markRemoteOperationSent(request.operation);
+        } catch (error) {
+          clearQueueTimer(request);
+          request.reject(error);
+          continue;
+        }
+      }
       inFlight.set(request.id, request);
-      socket.send(request.frame);
+      request.sent = true;
+      try {
+        socket.send(request.frame);
+      } catch {
+        // A send can fail before onclose arrives. Reconnect with the same
+        // durable identity because the transport cannot know what got through.
+        socket.close();
+        return;
+      }
     }
   }
 
@@ -276,7 +314,24 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
       logger.warn("renderer.remote-bridge", "response for an unknown request", { id });
       return;
     }
+    const failure = asFrame(frame.error);
+    if (failure?.sub_code === "REMOTE_OPERATION_PENDING") {
+      request.retryTimer = setTimeout(() => {
+        request.retryTimer = null;
+        if (!inFlight.delete(request.id)) return;
+        queued.push(request);
+        flushQueue();
+      }, 500);
+      return;
+    }
     inFlight.delete(id);
+    clearQueueTimer(request);
+    if (request.retryTimer !== null) clearTimeout(request.retryTimer);
+    if (request.operation && frame.operationSettled === true) {
+      settleRemoteOperation(request.operation);
+    } else if (request.operation) {
+      markRemoteOperationUncertain(request.operation, failure?.sub_code === "REMOTE_OUTCOME_UNKNOWN");
+    }
     if ("error" in frame) {
       request.reject(remoteFailure(frame.error));
       return;
@@ -321,6 +376,7 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     switch (frame.type) {
       case "auth-ok":
         authed = true;
+        operationReplay = frame.operationReplay === true;
         attempt = 0;
         authCount += 1;
         markAuthed();
@@ -354,11 +410,17 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     authed = false;
     socket = null;
     stopHeartbeat();
-    // Queued requests ride the reconnect, but only until their own deadline —
-    // a command that lands after the user gave up on it is not a recovery.
-    // In-flight ones lost their answer and have to fail now.
     for (const request of inFlight.values()) {
-      request.reject(new Error(REMOTE_CONNECTION_LOST_MESSAGE));
+      if (request.operation && operationReplay) {
+        if (request.retryTimer !== null) clearTimeout(request.retryTimer);
+        request.retryTimer = null;
+        if (request.queueTimer === null) {
+          request.queueTimer = setTimeout(() => expireQueued(request), QUEUE_TIMEOUT_MS);
+        }
+        queued.push(request);
+      } else {
+        request.reject(new Error(REMOTE_CONNECTION_LOST_MESSAGE));
+      }
     }
     inFlight.clear();
     publishConnection({ status: "offline", resync: false });
@@ -471,12 +533,16 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
   function invoke<T>(channel: IpcChannel, input: unknown = {}): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const id = nextRequestId++;
+      const operation = prepareRemoteOperation(channel, input, operationOwner);
       const request: PendingRequest = {
         id,
-        frame: JSON.stringify({ type: "request", id, channel, input }),
+        frame: JSON.stringify({ type: "request", id, channel, input, operation }),
         resolve: (value: unknown) => resolve(value as T),
         reject,
-        queueTimer: null
+        queueTimer: null,
+        retryTimer: null,
+        operation,
+        sent: operation ? remoteOperationWasSent(operation) : false
       };
       request.queueTimer = setTimeout(() => expireQueued(request), QUEUE_TIMEOUT_MS);
       queued.push(request);

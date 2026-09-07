@@ -574,6 +574,7 @@ mod tests {
                     default_branch: Some("main".to_string()),
                     current_branch: "main".to_string(),
                     settings: ProjectSettings {
+                        archive_on_merge: false,
                         worktree_location: cwd_dir
                             .path()
                             .join(".worktrees")

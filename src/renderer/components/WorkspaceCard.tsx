@@ -97,13 +97,6 @@ export function WorkspaceCard({
       .viewOrCreatePr({ sessionId: session.id })
       .then((result) => {
         openWebUrl(result.url, { flip });
-        setStatus({
-          kind: "info",
-          message:
-            result.action === "created"
-              ? `Created pull request. Opening ${result.url}.`
-              : `Opening pull request #${result.prNumber}.`
-        });
       })
       .catch((error: unknown) => setStatus({ kind: "error", message: errorMessage(error) }))
       .finally(() => setIsPrPending(false));
@@ -209,9 +202,9 @@ export function WorkspaceCard({
 
 /**
  * The work-alongside section, Codex-card style: a labeled group with one
- * colored avatar per launch and a quiet count beside it. When the pane owns
- * the Agents view, the summary opens that dock; it still answers "is anything
- * working, and did the team finish" at a glance.
+ * colored avatar per launch, each wearing its own status. When the pane owns
+ * the Agents view, the summary opens that dock; the avatars and the nest
+ * answer "is anything still working" without a tally to read.
  *
  * It counts what the dock's tab strip counts: this session's subagents, plus
  * the multitasks dispatched from it. The label follows — "Alongside" once a
@@ -220,10 +213,6 @@ export function WorkspaceCard({
 function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster; onOpenAgents?: () => void }): JSX.Element {
   const visible = cluster.entries.slice(0, SUBAGENT_AVATAR_LIMIT);
   const overflow = cluster.entries.length - visible.length;
-  const segments: string[] = [];
-  if (cluster.running > 0) segments.push(`${cluster.running} running`);
-  if (cluster.failed > 0) segments.push(`${cluster.failed} failed`);
-  if (cluster.done > 0) segments.push(`${cluster.done} done`);
   const roster = cluster.entries
     .map((entry) => `${entry.codename} — ${agentStatusLabel(entry.status)}`)
     .join(", ");
@@ -257,7 +246,6 @@ function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster;
         {overflow > 0 ? <span className="workspace-card-agent workspace-card-agent-more">+{overflow}</span> : null}
       </span>
       {cluster.running > 0 ? <WorkingNest active size={12} phaseKey={firstRunning?.toolUseId} /> : null}
-      <span className="workspace-card-agent-count">{segments.join(" · ")}</span>
     </>
   );
 

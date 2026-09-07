@@ -1,12 +1,13 @@
 import { useCallback, useMemo, useState, type JSX } from "react";
 import type { ProjectSummary } from "../../../shared/types.js";
-import { SettingGroup, SettingRow, SettingsListPicker } from "./settingsPrimitives.js";
+import { SettingGroup, SettingRow, SettingsListPicker, Toggle } from "./settingsPrimitives.js";
 
 /**
  * Per-project settings editor (Settings → Projects). Every field here is
  * consumed by the runtime: worktree location places isolated worktrees, the
  * setup command runs once in each fresh worktree before the agent launches,
- * and check commands run from the changed-files card. The model is not a
+ * check commands run from the changed-files card, and archive-on-merge lets
+ * the gh poller dispose of a workspace once its PR lands. The model is not a
  * project setting — Settings → Agents holds one default agent for the app.
  */
 export function ProjectsSettings({
@@ -62,6 +63,7 @@ function ProjectSettingsForm({
   const [worktreeLocation, setWorktreeLocation] = useState(project.settings.worktreeLocation);
   const [setupCommand, setSetupCommand] = useState(project.settings.setupCommand);
   const [checkCommandsText, setCheckCommandsText] = useState(project.settings.checkCommands.join("\n"));
+  const [archiveOnMerge, setArchiveOnMerge] = useState(project.settings.archiveOnMerge);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ kind: "saved" | "error"; message: string } | null>(null);
 
@@ -77,7 +79,8 @@ function ProjectSettingsForm({
   const dirty =
     worktreeLocation.trim() !== project.settings.worktreeLocation ||
     setupCommand.trim() !== project.settings.setupCommand ||
-    checkCommands.join("\n") !== project.settings.checkCommands.join("\n");
+    checkCommands.join("\n") !== project.settings.checkCommands.join("\n") ||
+    archiveOnMerge !== project.settings.archiveOnMerge;
 
   const save = useCallback(async (): Promise<void> => {
     if (!window.argmax) {
@@ -99,7 +102,8 @@ function ProjectSettingsForm({
         settings: {
           setupCommand: setupCommand.trim(),
           worktreeLocation: location,
-          checkCommands
+          checkCommands,
+          archiveOnMerge
         }
       });
       onProjectUpdated(updated);
@@ -112,7 +116,7 @@ function ProjectSettingsForm({
     } finally {
       setSaving(false);
     }
-  }, [project, worktreeLocation, setupCommand, checkCommands, onProjectUpdated]);
+  }, [project, worktreeLocation, setupCommand, checkCommands, archiveOnMerge, onProjectUpdated]);
 
   return (
     <div className="settings-card">
@@ -175,6 +179,18 @@ function ProjectSettingsForm({
           workspace before shipping it.
         </p>
       </div>
+
+      <SettingRow
+        label="Archive a workspace when its PR merges"
+        description="Removes the worktree and deletes the local branch once GitHub reports the pull request merged. Only chats with their own worktree; one with uncommitted changes is kept instead."
+        control={
+          <Toggle
+            ariaLabel="Archive a workspace when its PR merges"
+            checked={archiveOnMerge}
+            onChange={setArchiveOnMerge}
+          />
+        }
+      />
 
       <div className="settings-form-footer">
         <button

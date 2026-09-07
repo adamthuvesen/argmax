@@ -26,8 +26,6 @@ export type SubagentClusterEntry = {
 export type SubagentCluster = {
   entries: SubagentClusterEntry[];
   running: number;
-  done: number;
-  failed: number;
   /** True when any entry is a multitask, which the section is named for. */
   hasMultitask: boolean;
 };
@@ -87,8 +85,6 @@ export function buildSubagentCluster(
   return {
     entries,
     running: entries.filter((entry) => entry.status === "running").length,
-    done: entries.filter((entry) => entry.status === "done").length,
-    failed: entries.filter((entry) => entry.status === "error").length,
     hasMultitask: entries.some((entry) => entry.multitask)
   };
 }

@@ -176,9 +176,13 @@ export function SettingsPanel({
     }
   }, []);
 
+  // Only Advanced renders the report, and collecting it means nine `COUNT(*)`
+  // scans over the whole database. Loading it from every group charged that to
+  // opening Settings at all.
   useEffect(() => {
+    if (activeGroup !== "advanced") return;
     void loadDiagnostics();
-  }, [loadDiagnostics]);
+  }, [activeGroup, loadDiagnostics]);
 
   const copyDiagnostics = useCallback(async (): Promise<void> => {
     if (!diagnostics) return;
@@ -196,6 +200,15 @@ export function SettingsPanel({
       await window.argmax.system.openPath({ path: diagnostics.databasePath });
     } catch (error) {
       setDiagnosticsStatus(error instanceof Error ? error.message : "Could not reveal database file.");
+    }
+  }, [diagnostics]);
+
+  const openArchiveRecovery = useCallback(async (): Promise<void> => {
+    if (!window.argmax || !diagnostics) return;
+    try {
+      await window.argmax.system.openPath({ path: diagnostics.archiveRecoveryPath });
+    } catch (error) {
+      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not open archived workspaces.");
     }
   }, [diagnostics]);
 
@@ -350,6 +363,7 @@ export function SettingsPanel({
             setDiagnosticsStatus={setDiagnosticsStatus}
             copyDiagnostics={copyDiagnostics}
             revealDatabase={revealDatabase}
+            openArchiveRecovery={openArchiveRecovery}
             vacuumDatabase={vacuumDatabase}
           />
         ) : null}

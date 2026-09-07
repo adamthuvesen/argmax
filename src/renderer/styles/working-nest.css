@@ -22,10 +22,11 @@
 .working-nest {
   --working-nest-phase: 0;
   --working-nest-phase-offset: calc(var(--working-nest-cycle) * var(--working-nest-phase) / -4);
-  /* 3x3 field geometry for `cascade`: a 26% cell on a 37% pitch leaves an 11%
-     gutter, enough for the cells to read as separate pixels at 14px. */
-  --working-nest-cell: 26%;
-  --working-nest-pitch: 37%;
+  /* 3x3 field geometry for `cascade`: sized to sit beside the nest's ~72%
+     cluster rather than filling the box edge to edge. */
+  --working-nest-cell: 19%;
+  --working-nest-pitch: 22%;
+  --working-nest-field-inset: 13%;
   position: relative;
   /* The mark used to be an `<svg>`, which sized itself from its width/height
      attributes in any container. A `<span>` needs to be told: inline-block so
@@ -155,12 +156,12 @@
   transform: scale(0.66);
 }
 
-.working-nest[data-mark="cascade"] .working-nest-part:nth-child(3n + 1) { left: 0; }
-.working-nest[data-mark="cascade"] .working-nest-part:nth-child(3n + 2) { left: var(--working-nest-pitch); }
-.working-nest[data-mark="cascade"] .working-nest-part:nth-child(3n + 3) { left: calc(var(--working-nest-pitch) * 2); }
-.working-nest[data-mark="cascade"] .working-nest-part:nth-child(-n + 3) { top: 0; }
-.working-nest[data-mark="cascade"] .working-nest-part:nth-child(n + 4):nth-child(-n + 6) { top: var(--working-nest-pitch); }
-.working-nest[data-mark="cascade"] .working-nest-part:nth-child(n + 7) { top: calc(var(--working-nest-pitch) * 2); }
+.working-nest[data-mark="cascade"] .working-nest-part:nth-child(3n + 1) { left: var(--working-nest-field-inset); }
+.working-nest[data-mark="cascade"] .working-nest-part:nth-child(3n + 2) { left: calc(var(--working-nest-field-inset) + var(--working-nest-pitch)); }
+.working-nest[data-mark="cascade"] .working-nest-part:nth-child(3n + 3) { left: calc(var(--working-nest-field-inset) + var(--working-nest-pitch) * 2); }
+.working-nest[data-mark="cascade"] .working-nest-part:nth-child(-n + 3) { top: var(--working-nest-field-inset); }
+.working-nest[data-mark="cascade"] .working-nest-part:nth-child(n + 4):nth-child(-n + 6) { top: calc(var(--working-nest-field-inset) + var(--working-nest-pitch)); }
+.working-nest[data-mark="cascade"] .working-nest-part:nth-child(n + 7) { top: calc(var(--working-nest-field-inset) + var(--working-nest-pitch) * 2); }
 
 .working-nest[data-active="true"][data-mark="cascade"] .working-nest-part {
   animation: working-nest-cascade 1.15s var(--ease-in-out) infinite;
@@ -186,7 +187,7 @@
 
 @keyframes working-nest-cascade {
   0%, 62% { opacity: 0.22; transform: scale(0.66); }
-  18% { opacity: 1; transform: scale(1.06); }
+  18% { opacity: 1; transform: scale(0.98); }
   40% { opacity: 0.4; transform: scale(0.8); }
   100% { opacity: 0.22; transform: scale(0.66); }
 }
@@ -199,17 +200,17 @@
    not less. */
 
 .working-nest[data-mark="meter"] .working-nest-part {
-  bottom: 0;
-  width: 22%;
-  height: 100%;
+  bottom: 14%;
+  width: 20%;
+  height: 72%;
   border-radius: 1.5px;
   background: currentColor;
   transform-origin: 50% 100%;
 }
 
-.working-nest[data-mark="meter"] .working-nest-part[data-dot="1"] { left: 6%; }
-.working-nest[data-mark="meter"] .working-nest-part[data-dot="2"] { left: 39%; background: var(--working-nest-lead, currentColor); }
-.working-nest[data-mark="meter"] .working-nest-part[data-dot="3"] { left: 72%; }
+.working-nest[data-mark="meter"] .working-nest-part[data-dot="1"] { left: 13%; }
+.working-nest[data-mark="meter"] .working-nest-part[data-dot="2"] { left: 40%; background: var(--working-nest-lead, currentColor); }
+.working-nest[data-mark="meter"] .working-nest-part[data-dot="3"] { left: 67%; }
 
 .working-nest[data-active="true"][data-mark="meter"] .working-nest-part {
   animation-play-state: var(--loop-play-state, running);
@@ -289,7 +290,12 @@
   background: var(--working-nest-lead, currentColor);
 }
 
+/* `from` is spelled out because the part's own `transform` is `scale(1)`, and an
+   implicit first keyframe would take it: `scale(1)` and `rotate(360deg)` are
+   different function lists, so the browser drops to interpolating matrices —
+   both of which are the identity here. The comet held still. */
 @keyframes working-nest-orbit {
+  from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 

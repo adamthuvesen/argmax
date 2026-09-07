@@ -6,6 +6,7 @@ pub mod events;
 pub mod gh;
 pub mod learnings;
 pub mod migrations;
+pub mod pending_messages;
 pub mod projects;
 pub mod routines;
 pub mod session_messages;

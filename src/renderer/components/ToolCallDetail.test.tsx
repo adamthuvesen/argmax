@@ -70,7 +70,7 @@ describe("ToolCallDetail", () => {
   });
 
   it("leaves a JSON file's own bytes alone when a read prints it", () => {
-    const contents = '{"name":"argmax","version":"0.4.0"}';
+    const contents = '{"name":"argmax","version":"0.5.0"}';
     render(
       <ToolCallDetail
         tool={tool({ name: "Read", inputFull: { file_path: "/repo/package.json" }, output: contents })}

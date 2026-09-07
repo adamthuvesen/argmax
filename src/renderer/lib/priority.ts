@@ -1,11 +1,24 @@
 import type { AttentionState, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import { workspacesWithRunningMultitask } from "./multitask.js";
 
 /** Attention values that earn a workspace a spot in the Priority section. */
 export type PriorityAttention = Exclude<AttentionState, "normal">;
 
-/** True when any session on the workspace is mid-turn. */
-export function isWorkspaceWorking(sessions: SessionSummary[], workspaceId: string): boolean {
-  return sessions.some((session) => session.workspaceId === workspaceId && session.state === "running");
+/**
+ * Workspaces with a turn in flight — their own, or one belonging to a
+ * multitask they dispatched. A multitask is work in progress on the chat that
+ * started it, which is the only row it has, so it counts here too: it keeps
+ * the row marked and holds its place instead of ageing out mid-run.
+ *
+ * Built once per snapshot rather than asked per workspace, since both callers
+ * walk every workspace.
+ */
+export function workingWorkspaceIds(sessions: readonly SessionSummary[]): Set<string> {
+  const working = workspacesWithRunningMultitask(sessions);
+  for (const session of sessions) {
+    if (session.state === "running") working.add(session.workspaceId);
+  }
+  return working;
 }
 
 // Triage order: stalled-on-you beats needs-your-judgment.
@@ -107,12 +120,13 @@ export function computeWorkspaceAttention(
     });
   }
 
+  const working = workingWorkspaceIds(sessions);
   const result = new Map<string, WorkspaceAttention>();
   for (const workspace of workspaces) {
     if (workspace.state === "archived" || workspace.state === "kept") continue;
     const found = bySession.get(workspace.id);
     if (!found || found.changedAt === null) continue;
-    if (!isWorkspaceWorking(sessions, workspace.id)) {
+    if (!working.has(workspace.id)) {
       const idleAtMs = idleDeadline(found.lastActivityAt);
       if (idleAtMs === null || nowMs > idleAtMs) continue;
     }
@@ -153,6 +167,7 @@ export function computePriorityEntries(
   nowMs: number
 ): PriorityEntry[] {
   const attentionByWorkspace = computeWorkspaceAttention(workspaces, sessions, nowMs);
+  const workingWorkspaces = workingWorkspaceIds(sessions);
 
   const entries: PriorityEntry[] = [];
   for (const workspace of workspaces) {
@@ -164,7 +179,7 @@ export function computePriorityEntries(
       workspace.state === "archive-failed"
     ) continue;
     const found = attentionByWorkspace.get(workspace.id);
-    const working = isWorkspaceWorking(sessions, workspace.id);
+    const working = workingWorkspaces.has(workspace.id);
     const manuallyAdded = Boolean(workspace.priorityAddedAt);
     if (!found && !working && !manuallyAdded) continue;
     entries.push({

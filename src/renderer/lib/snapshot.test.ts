@@ -184,6 +184,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
           currentBranch: "main",
           defaultBranch: "main",
           settings: {
+            archiveOnMerge: false,
             worktreeLocation: "/tmp",
             setupCommand: "",
             checkCommands: []

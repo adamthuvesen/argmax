@@ -12,6 +12,7 @@
 
 pub mod dispatch;
 pub mod ntfy;
+pub mod operations;
 pub mod server;
 pub mod ws;
 

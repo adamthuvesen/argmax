@@ -21,11 +21,11 @@ The directory on disk a workspace's `path` points at. Shared by every workspace 
 _Avoid_: Workspace, worktree, repo
 
 **Isolated workspace**:
-A workspace backed by its own `git worktree`, forked onto `argmax/<slug>-<short-id>`. Archiving one removes the worktree, so archive is destructive and strictly sequenced.
+A workspace backed by its own `git worktree`, forked onto `argmax/<slug>-<short-id>`. Archiving one moves its checkout into recoverable storage, retaining its files and branch.
 _Avoid_: Worktree workspace, forked workspace
 
 **Shared checkout**:
-A workspace pointing at the project's main checkout, shared with every other session doing the same. `shared_workspace = 1`. Archiving one flips state and drains processes but never touches the tree. The sharing is what makes archive non-destructive, which is why the term names it.
+A workspace pointing at a checkout Argmax did not create, shared with every other session doing the same. `shared_workspace = 1`. Usually the project's main checkout, or a worktree a session was moved into with `session move --path`. Archiving one flips state and drains processes but never moves its checkout.
 _Avoid_: Current workspace, main workspace, non-isolated workspace
 
 Two surfaces still say `current` for this: the `argmax.workspaceMode` value stored in `localStorage` (`worktree` | `current`) and the launcher's "Worktree" toggle. Those are wire and label values, not the domain term — leave them alone and say "shared checkout" everywhere else.
@@ -51,7 +51,7 @@ _Avoid_: Title, name, description
 Declining to archive a workspace, leaving its checkout live. The resting state after a dirty archive is refused.
 
 **Archive**:
-Ending a workspace: close admission, drain providers, checks, terminals, and pending approvals, then (for an isolated workspace only) remove the worktree.
+Ending a workspace: close admission, drain providers, checks, terminals, and pending approvals, then preserve an isolated checkout in the archive location. A shared checkout stays in place.
 _Avoid_: Delete, close, clean up
 
 ### Agents at work
@@ -100,7 +100,7 @@ _Avoid_: Status, state, urgency
 The sidebar section holding workspaces that need attention, plus any the user pinned there manually. A dismissal is spent as soon as attention changes again.
 
 **Pending message**:
-A follow-up the user composed while the agent was mid-turn. Held in memory only and drained one at a time once the session completes.
+A follow-up the user composed while the agent was mid-turn. Saved durably and normally sent after the current turn. Messages recovered after a restart wait for an explicit send, with uncertain delivery called out.
 _Avoid_: Queued message, draft
 
 **Agent mode**:

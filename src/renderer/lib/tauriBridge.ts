@@ -283,7 +283,7 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       status: (input: WorkspaceStatusInput = { workspaceIds: null }) =>
         invokeCommand<WorkspaceStatusSnapshot>("workspace:status", input),
       keep: (workspaceId) => invokeCommand<WorkspaceSummary>("workspaces:keep", { workspaceId }),
-      archive: (input) => invokeCommand<WorkspaceSummary>("workspaces:archive", input),
+      archive: (input) => invokeCommand<{ workspace: WorkspaceSummary; recoveryPath: string | null }>("workspaces:archive", input),
       openInIde: (input: OpenInIdeInput) => invokeCommand<{ ok: true }>("workspaces:open-in-ide", input),
       autoTitle: (input) => invokeCommand<{ ok: true }>("workspaces:autotitle", input),
       setPinned: (input) => invokeCommand<WorkspaceSummary>("workspaces:set-pinned", input),

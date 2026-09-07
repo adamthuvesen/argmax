@@ -339,9 +339,11 @@ export function demoUsageRemaining(): UsageRemaining {
         planLabel: "Max 20x",
         windows: [
           { id: "five_hour", label: "5-hour", remainingPercent: 84.8, resetsAt: "2026-09-06T16:00:00Z" },
+          { id: "seven_day_fable", label: "Weekly Fable", remainingPercent: 54, resetsAt: "2026-09-10T00:00:00Z" },
           { id: "seven_day", label: "Weekly", remainingPercent: 58, resetsAt: "2026-09-13T00:00:00Z" }
         ],
-        message: null
+        message: null,
+        messageUrl: null
       },
       {
         provider: "codex",
@@ -350,14 +352,16 @@ export function demoUsageRemaining(): UsageRemaining {
         windows: [
           { id: "seven_day", label: "Weekly", remainingPercent: 88, resetsAt: "2026-09-13T06:00:00Z" }
         ],
-        message: null
+        message: null,
+        messageUrl: null
       },
       {
         provider: "cursor",
         kind: "enterprise",
         planLabel: "Teams",
         windows: [],
-        message: "Cursor remaining lives on the Spending dashboard."
+        message: "Cursor remaining lives on the Spending dashboard.",
+        messageUrl: "https://cursor.com/dashboard/spending"
       },
       {
         provider: "opencode",
@@ -368,7 +372,8 @@ export function demoUsageRemaining(): UsageRemaining {
           { id: "seven_day", label: "Weekly", remainingPercent: 97, resetsAt: "2026-09-13T00:00:00Z" },
           { id: "monthly", label: "Monthly", remainingPercent: 99, resetsAt: "2026-10-01T00:00:00Z" }
         ],
-        message: null
+        message: null,
+        messageUrl: null
       },
       {
         provider: "grok",
@@ -377,7 +382,8 @@ export function demoUsageRemaining(): UsageRemaining {
         windows: [
           { id: "seven_day", label: "Weekly", remainingPercent: 62, resetsAt: "2026-09-13T00:00:00Z" }
         ],
-        message: null
+        message: null,
+        messageUrl: null
       }
     ]
   };

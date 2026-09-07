@@ -1002,8 +1002,13 @@
   margin-bottom: var(--space-2);
 }
 
+/* 500, not 520. The app bundles Geist Sans as 400/500/700 statics, and CSS
+   resolves a request above 500 by searching upward first — so 520 rendered
+   Geist 700, the same face as the headings, and every bold lead-in in an
+   answer landed with heading weight. 500 asks for the medium that is actually
+   in the bundle. */
 .markdown strong {
-  font-weight: 520;
+  font-weight: 500;
   color: var(--prose-ink-strong);
 }
 
@@ -1162,10 +1167,16 @@
 }
 
 /* The ink ladder has to stay monotonic: h1-h3 on --prose-ink-strong, `strong`
-   at 520 one step under them, body on --prose-ink. Painting headings from
+   at 500 one step under them, body on --prose-ink. Painting headings from
    --text-soft/--muted put them *behind* the paragraphs they introduce and let
    bold body text win the page, which is what made a heading-heavy answer read
    as one flat river.
+
+   The weights below all resolve to Geist 700 — the bundle carries 400/500/700
+   statics, and 570-600 rounds up. That is the intent (headings are the top of
+   the ladder), but it is also why `strong` has to sit at 500 rather than at a
+   number that merely *looks* lower: anything past 500 lands on the same face
+   the headings use and the step disappears.
 
    Size does little of the work here — the range is one token wider than the
    body, so an answer full of `##` never shouts inside a 780px prose column.

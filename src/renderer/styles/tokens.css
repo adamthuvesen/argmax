@@ -469,11 +469,19 @@
 
   /* Prose runs brighter than chrome ink in dark, not softer. The bloom that
      rules out paper-white for labels is a weight problem at small sizes, and
-     rendered prose already pays for it with --weight-prose plus a 1.9 line
+     rendered prose already pays for it with --weight-prose plus an open line
      box, so it can afford the extra luminance a wall of text wants. Kept a
-     hair warm so it stays in family with the charcoal ground. */
-  --prose-ink: #f1efe9;
-  --prose-ink-strong: #fbf9f5;
+     hair warm (OKLCH C 0.008 / H 90) so it stays in family with the charcoal
+     ground — a neutral gray of the same lightness reads as a foreign patch on
+     this background.
+
+     Both are one step off paper-white rather than at it. The previous pair
+     (#f1efe9 / #fbf9f5) put emphasis within two percent of #ffffff, which
+     glared on charcoal at the weight bold actually renders — see the ladder
+     comment in chat-conversation.css. Levels were compared side by side in
+     docs/design/prose-ink. */
+  --prose-ink: #ebe9e4;
+  --prose-ink-strong: #f5f3ed;
 
   --weight-ui: 380;
   --weight-prose: 390;

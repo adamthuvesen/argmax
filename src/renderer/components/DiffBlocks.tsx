@@ -12,7 +12,7 @@ import { ChevronsUpDown, Plus } from "lucide-react";
 import { type ParsedDiffBlock } from "../lib/diff.js";
 import { highlightLine, langFromPath, useHighlighterReady } from "../lib/highlighter.js";
 import { themeAppearance } from "../lib/theme.js";
-import type { ReviewCommentInput } from "../lib/composerAnnotations.js";
+import type { DiffNoteAnchor } from "../lib/composerAnnotations.js";
 
 function subscribeToThemeAttribute(onChange: () => void): () => void {
   if (typeof document === "undefined") return () => {};
@@ -57,8 +57,8 @@ export const DiffBlocks = memo(function DiffBlocks({
   filePath?: string | null;
   /** When provided (the review panel), every numbered diff line grows a
    *  hover "+" that opens an inline comment form. Submitted comments land on
-   *  the session composer as annotations. */
-  onAddComment?: (input: ReviewCommentInput) => void;
+   *  the session composer as diff notes. */
+  onAddComment?: (input: DiffNoteAnchor) => void;
   /** When provided, each between-hunk gap becomes a button that asks for more
    *  context. Omit it (chat cards) and the gaps render as static labels. */
   onExpandContext?: () => void;
@@ -164,7 +164,7 @@ function UnifiedHunk({
   block: Extract<ParsedDiffBlock, { kind: "hunk" }>;
   lang: string | null;
   filePath: string | null;
-  onAddComment?: (input: ReviewCommentInput) => void;
+  onAddComment?: (input: DiffNoteAnchor) => void;
   activeCommentKey: string | null;
   onActiveCommentKeyChange: (key: string | null) => void;
 }): JSX.Element {
@@ -207,6 +207,10 @@ function UnifiedHunk({
                   onAddComment({
                     filePath,
                     line: lineNumber,
+                    // A deletion's number is the pre-change one, so the side
+                    // travels with it: the agent needs to know that line is
+                    // not in the file on disk.
+                    side: line.kind,
                     lineText: line.content,
                     comment
                   });

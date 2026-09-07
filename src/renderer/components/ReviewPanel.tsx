@@ -51,7 +51,7 @@ import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
 import { ChangeCount } from "./ChangeCount.js";
 import { DiffBlocks } from "./DiffBlocks.js";
-import type { ReviewCommentInput } from "../lib/composerAnnotations.js";
+import type { DiffNoteAnchor, DiffNoteInput } from "../lib/composerAnnotations.js";
 import { FilePreview, type EditorCursor } from "./FilePreview.js";
 import { languageLabelFor } from "../lib/fileLanguage.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
@@ -202,6 +202,24 @@ function scopeDescription(scope: ReviewChangesScope, baseLabel: string | null): 
   }
 }
 
+/**
+ * What the diff on screen is taken against, in the few words a diff note
+ * carries to the agent. A note's line number belongs to this comparison, not
+ * necessarily to the file on disk.
+ */
+function diffBaseLabel(scope: ReviewChangesScope, baseLabel: string | null): string {
+  const base = baseLabel ?? "the base branch";
+  switch (scope) {
+    case "branch":
+    case "lastTurn":
+      return `the whole branch vs ${base}`;
+    case "committed":
+      return `commits on this branch vs ${base}`;
+    case "uncommitted":
+      return "working tree vs HEAD";
+  }
+}
+
 /** Which slice of the branch's work the Changes list covers. */
 function ReviewScopePicker({ review }: { review: ReviewState }): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -308,7 +326,7 @@ function countLines(text: string): number {
 export function ReviewPanel({
   agents,
   isFocused = true,
-  onAddReviewComment,
+  onAddDiffNote,
   onResizePanelMouseDown,
   review
 }: {
@@ -319,8 +337,8 @@ export function ReviewPanel({
    *  close a tab in a panel the user isn't looking at. */
   isFocused?: boolean;
   /** When provided, diff lines grow a hover "+" for line comments; submitted
-   *  comments become composer annotations on the pane's session. */
-  onAddReviewComment?: (input: ReviewCommentInput) => void;
+   *  comments become diff-note annotations on the pane's session. */
+  onAddDiffNote?: (input: DiffNoteInput) => void;
   onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
   review: ReviewState;
 }): JSX.Element {
@@ -350,6 +368,16 @@ export function ReviewPanel({
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
+  // The diff view knows the line; only the panel knows which comparison it was
+  // taken against. Memoized because `DiffBlocks` is memoized on its props.
+  const changesScope = review.changesScope;
+  const comparisonBaseLabel = review.comparisonBaseLabel;
+  const addDiffNote = useCallback(
+    (anchor: DiffNoteAnchor): void => {
+      onAddDiffNote?.({ ...anchor, base: diffBaseLabel(changesScope, comparisonBaseLabel) });
+    },
+    [onAddDiffNote, changesScope, comparisonBaseLabel]
+  );
   const [leftColumnWidth, setLeftColumnWidth] = useState<number | null>(() => readStoredLeftColumnWidth());
   const [panelWidth, setPanelWidth] = useState(0);
   const [cursor, setCursor] = useState<EditorCursor | null>(null);
@@ -800,7 +828,7 @@ export function ReviewPanel({
                               <DiffBlocks
                                 blocks={diffBlocks}
                                 filePath={file.path}
-                                onAddComment={onAddReviewComment}
+                                onAddComment={onAddDiffNote ? addDiffNote : undefined}
                                 onExpandContext={review.expandDiffContext}
                               />
                             ) : null}

@@ -151,6 +151,10 @@ A single command a provider asked permission to run, with its risk classificatio
 The baseline a diff is taken against: `workingTree` (uncommitted changes vs `HEAD`) or `branch` (the whole delta from the base ref, committed and not).
 _Avoid_: Diff mode, comparison
 
+**Diff note**:
+A note the user wrote on one line of a diff in the review panel. It attaches to the composer as an annotation and is serialized into the prompt as an `<argmax-diff-note>` block naming the file, line, side, and review comparison. Local to this machine — an agent addresses it by editing the worktree. GitHub's review comments are a different thing entirely, and calling this one a review comment is what sends an agent looking for a pull request.
+_Avoid_: Review comment, line comment, inline comment
+
 **Checkpoint**:
 A saved marker of a workspace's tree at a moment — a git ref, a patch file, or both — so work can be recovered.
 

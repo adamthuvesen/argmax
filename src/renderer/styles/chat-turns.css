@@ -417,6 +417,26 @@
   color: color-mix(in oklab, var(--muted) 78%, transparent);
 }
 
+/* A note about the session itself. Not a seam — nothing changed hands — so it
+   carries no rules, only the centered caption, and it wraps because these lines
+   are sentences rather than labels. */
+.conversation-note {
+  display: flex;
+  justify-content: center;
+  margin: var(--space-2) 0;
+  animation: msg-in 200ms var(--ease);
+}
+
+.conversation-note-text {
+  max-width: 56ch;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  text-align: center;
+}
+
 /* Compaction runs for minutes in complete silence, so the live marker is the
    pane's only progress cue (SessionConversation suppresses Thinking while it
    runs). A breath, not a blink: the curve is symmetric and flat at both ends,

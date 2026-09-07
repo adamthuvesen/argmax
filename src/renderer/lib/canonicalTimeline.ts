@@ -119,6 +119,18 @@ type ArchiveRequestedLifecycleEvent = CanonicalCommon & {
   workspaceId: string | null;
 };
 
+/**
+ * A plain line Argmax wrote into the chat about something it did to the
+ * session itself — resuming a scheduled move or archive, or dropping one the
+ * turn never earned. Not a failure: the turn's own error, if there was one, is
+ * its own row.
+ */
+type NoteLifecycleEvent = CanonicalCommon & {
+  kind: "lifecycle";
+  name: "note";
+  operation: string | null;
+};
+
 type MovedLifecycleEvent = CanonicalCommon & {
   kind: "lifecycle";
   name: "moved";
@@ -140,7 +152,8 @@ export type CanonicalLifecycleEvent =
   | ProviderLifecycleEvent
   | MoveRequestedLifecycleEvent
   | ArchiveRequestedLifecycleEvent
-  | MovedLifecycleEvent;
+  | MovedLifecycleEvent
+  | NoteLifecycleEvent;
 
 export type CanonicalAgentEvent = CanonicalCommon & {
   kind: "agent";
@@ -342,6 +355,14 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
       workspaceId: stringValue(payload.workspaceId)
     };
   }
+  if (name === "note") {
+    return {
+      ...shared,
+      kind: "lifecycle",
+      name,
+      operation: stringValue(payload.operation)
+    };
+  }
   if (name === "moved") {
     const direction = payload.direction === "source" || payload.direction === "destination" ? payload.direction : null;
     const checkoutMode =
@@ -418,6 +439,7 @@ export function decodeTimelineEvent(raw: RawTimelineEvent): CanonicalTimelineEve
     raw.type === "session.move-requested" ||
     raw.type === "session.archive-requested" ||
     raw.type === "session.moved" ||
+    raw.type === "session.note" ||
     raw.type === "session.recovered-from-crash"
   ) {
     decoded = decodeLifecycle(raw, payload);

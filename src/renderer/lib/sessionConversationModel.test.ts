@@ -76,6 +76,19 @@ describe("buildConversationEvents", () => {
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "thinking", "done"]);
   });
 
+  // A note about the chat's own move or archive used to be written as an
+  // `error` because that was the only non-message kind the chat rendered.
+  it("keeps a session note in the visible chat", () => {
+    const events = [
+      event("note", "session.note", "2026-05-12T15:00:02.000Z", "Resuming the archive scheduled before Argmax last quit.", {
+        operation: "workspace.archive"
+      }),
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+    ];
+
+    expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "note"]);
+  });
+
   it("hides transcript events at and before the latest session.cleared watermark", () => {
     const events = [
       event("new", "user.message", "2026-05-12T15:00:03.000Z", "after"),

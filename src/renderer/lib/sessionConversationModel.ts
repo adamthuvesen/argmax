@@ -33,6 +33,7 @@ function isConversationVisible(event: TimelineEvent): boolean {
       (canonical.name === "compacting" ||
         canonical.name === "compacted" ||
         canonical.name === "moved" ||
+        canonical.name === "note" ||
         canonical.name === "provider-changed"));
   return (
     !canonical.isRaw &&

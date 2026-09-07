@@ -206,9 +206,10 @@ the agent reports to the user on that answer, so the request is written to
 quits or crashes before the turn settles, the next launch picks the row up
 after it has recovered orphaned sessions and repaired interrupted archives, and
 runs the disposal then — the turn ended with the process, so there is nothing
-left to wait for. It says so in the chat's timeline first. A promise with
-nothing left to do (the session is gone, the workspace is already archived, or
-the move already happened) is dropped instead of run again.
+left to wait for. It says so in the chat's timeline first, as a `session.note`
+row ([chat-cards.md](chat-cards.md)). A promise with nothing left to do (the
+session is gone, the workspace is already archived, or the move already
+happened) is dropped instead of run again.
 
 ## Observing another session
 
@@ -217,7 +218,8 @@ provider's output is translated into `events` rows on the way in
 ([data.md](data.md)), so a read is the same query the chat pane makes
 (`session:events-since`) with each row flattened to one line: `user` prompts,
 `assistant` answers, `tool` calls as name plus one argument, `tool-result` as
-`ok` or `error: …`, and `state` for a session ending. Rows the chat hides —
+`ok` or `error: …`, `note` for what Argmax did to the chat itself, and `state`
+for a session ending. Rows the chat hides —
 streaming deltas, subagent traces, lifecycle bookkeeping — are dropped here
 too.
 

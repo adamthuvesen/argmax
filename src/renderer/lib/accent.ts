@@ -1,4 +1,11 @@
-export type AccentId = "green" | "purple" | "neutral" | "orange" | "blue" | "coral";
+export type AccentId =
+  | "green"
+  | "purple"
+  | "neutral"
+  | "black"
+  | "orange"
+  | "blue"
+  | "coral";
 
 export type AccentOption = {
   id: AccentId;
@@ -31,6 +38,12 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     label: "Neutral",
     hint: "A quiet black/gray tint for the lowest-key interface.",
     swatch: { color: "#2f2f2b", soft: "#ededeb" }
+  },
+  {
+    id: "black",
+    label: "Black",
+    hint: "High-contrast ink. Black on paper, cream on charcoal.",
+    swatch: { color: "#1c1b18", soft: "#ecebea" }
   },
   {
     id: "orange",

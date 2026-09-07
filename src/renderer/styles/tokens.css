@@ -530,7 +530,8 @@
   /* Default dark accent is sage. Mid-deep fill plus white ink, so the
      lifted --accent stays on chrome (rings, selection, nests) and the
      bubble recedes. Orange, blue, and neutral override the fill. Purple
-     keeps filling with --accent. */
+     and black keep filling with --accent (black uses charcoal ink on the
+     cream fill). */
   --user-message-bg: #3a664c;
   --user-message-fg: #ffffff;
   --user-message-shadow: none;
@@ -640,6 +641,12 @@
   --accent-deep: #862b3c;
 }
 
+:root[data-accent="black"] {
+  --accent: #1c1b18;
+  --accent-soft: #ecebea;
+  --accent-deep: #0f0e0c;
+}
+
 :root[data-theme="dark"][data-accent="purple"] {
   --accent: #714fb0;
   --accent-soft: rgba(113, 79, 176, 0.16);
@@ -695,6 +702,19 @@
   --accent-deep: #f38a97;
   --user-message-bg: #913948;
   --user-message-fg: #ffffff;
+}
+
+/* Black inverts: cream chrome on charcoal, the way it is black ink on paper.
+   The bubble fills with that cream so it stays a high-contrast slab instead
+   of a near-black card that disappears into --bg. Charcoal ink on the cream
+   is the readable pair; --bubble-on-ink is already that colour in dark. */
+:root[data-theme="dark"][data-accent="black"] {
+  --accent: #f4f2ec;
+  --accent-soft: rgba(244, 242, 236, 0.14);
+  --accent-deep: #fbf9f5;
+  --on-accent: #131312;
+  --user-message-bg: var(--accent);
+  --user-message-fg: var(--on-accent);
 }
 
 /* Opting out of the accent fill (Settings → Appearance → Your message bubbles).

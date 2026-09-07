@@ -581,6 +581,7 @@ describe("App settings", () => {
       "aria-checked",
       "true"
     );
+    expect(within(accentPicker).getByRole("radio", { name: "Black" })).toBeTruthy();
 
     fireEvent.click(within(accentPicker).getByRole("radio", { name: "Orange" }));
     await waitFor(() =>

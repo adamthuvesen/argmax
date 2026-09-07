@@ -949,6 +949,7 @@ describe("MobileApp", () => {
       "aria-checked",
       "true"
     );
+    expect(within(accentPicker).getByRole("radio", { name: "Black" })).toBeTruthy();
 
     fireEvent.click(within(accentPicker).getByRole("radio", { name: "Orange" }));
     expect(document.documentElement.getAttribute("data-accent")).toBe("orange");

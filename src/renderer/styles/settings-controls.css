@@ -192,7 +192,7 @@
   color: var(--text-soft);
 }
 
-/* ---- Accent picker: six colors, six circles ---- */
+/* ---- Accent picker: one circle per tint ---- */
 
 .accent-picker {
   display: inline-flex;
@@ -239,6 +239,15 @@
 .accent-picker-chip[data-accent-id="neutral"] {
   --accent-swatch-color: #6c6960;
   --accent-swatch-soft: #ecebea;
+}
+
+.accent-picker-chip[data-accent-id="black"] {
+  --accent-swatch-color: #1c1b18;
+  --accent-swatch-soft: #ecebea;
+}
+
+:root[data-theme="dark"] .accent-picker-chip[data-accent-id="black"] {
+  --accent-swatch-color: #f4f2ec;
 }
 
 .accent-picker-chip[data-accent-id="orange"] {

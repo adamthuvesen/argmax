@@ -97,13 +97,6 @@ export function WorkspaceCard({
       .viewOrCreatePr({ sessionId: session.id })
       .then((result) => {
         openWebUrl(result.url, { flip });
-        setStatus({
-          kind: "info",
-          message:
-            result.action === "created"
-              ? `Created pull request. Opening ${result.url}.`
-              : `Opening pull request #${result.prNumber}.`
-        });
       })
       .catch((error: unknown) => setStatus({ kind: "error", message: errorMessage(error) }))
       .finally(() => setIsPrPending(false));

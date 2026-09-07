@@ -169,13 +169,8 @@ describe("WorkspaceCard", () => {
     const { rerender } = renderCard({ setStatus });
     fireEvent.click(screen.getByRole("button", { name: "Create pull request" }));
     expect(viewOrCreatePr).toHaveBeenCalledWith({ sessionId: "session-a" });
-    await waitFor(() =>
-      expect(setStatus).toHaveBeenCalledWith({
-        kind: "info",
-        message: "Created pull request. Opening https://x/1."
-      })
-    );
-    expect(openPath).toHaveBeenCalledWith({ path: "https://x/1" });
+    await waitFor(() => expect(openPath).toHaveBeenCalledWith({ path: "https://x/1" }));
+    expect(setStatus).toHaveBeenCalledExactlyOnceWith(null);
 
     viewOrCreatePr.mockResolvedValue({ action: "opened", url: "https://github.com/o/r/pull/1158", prNumber: 1158 });
     const openStatus = vi.fn();
@@ -203,10 +198,7 @@ describe("WorkspaceCard", () => {
     await waitFor(() =>
       expect(openPath).toHaveBeenCalledWith({ path: "https://github.com/o/r/pull/1158" })
     );
-    expect(openStatus).toHaveBeenCalledWith({
-      kind: "info",
-      message: "Opening pull request #1158."
-    });
+    expect(openStatus).toHaveBeenCalledExactlyOnceWith(null);
 
     rerender(
       <WorkspaceCard

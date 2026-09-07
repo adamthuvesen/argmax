@@ -29,11 +29,25 @@ export function CommitDialog({
   const [message, setMessage] = useState<string>(defaultMessage);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const requestGeneration = useRef(0);
+  const isOpenRef = useRef(open);
+  const isSubmittingRef = useRef(submitting);
+  const latestDefaults = useRef({ allPaths, defaultMessage });
+  latestDefaults.current = { allPaths, defaultMessage };
+  isOpenRef.current = open;
+  isSubmittingRef.current = submitting;
 
   // Reset state every time the dialog re-opens so the user always starts from
   // the freshest changed-file list and the default message.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      requestGeneration.current += 1;
+      return;
+    }
+    // A refreshed changed-file list must not turn an in-flight request back
+    // into a closable dialog instance. Its result still belongs to this open
+    // lifecycle and will settle the visible request.
+    if (isSubmittingRef.current) return;
     setSelected(new Set(allPaths));
     setMessage(defaultMessage);
     setSubmitting(false);
@@ -50,6 +64,7 @@ export function CommitDialog({
     if (!open) return;
     function onKey(event: globalThis.KeyboardEvent): void {
       if (event.key === "Escape") {
+        if (submitting) return;
         event.preventDefault();
         onClose();
         return;
@@ -73,13 +88,13 @@ export function CommitDialog({
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, submitting]);
 
   if (!open) return null;
 
   const allSelected = allPaths.length > 0 && selected.size === allPaths.length;
   const submitDisabled =
-    submitting || selected.size === 0 || message.trim().length === 0 || allPaths.length === 0;
+    submitting || feedback?.kind === "success" || selected.size === 0 || message.trim().length === 0 || allPaths.length === 0;
 
   const togglePath = (path: string): void => {
     setSelected((current) => {
@@ -98,7 +113,9 @@ export function CommitDialog({
   };
 
   const handleSubmit = async (): Promise<void> => {
-    if (submitDisabled || !window.argmax) return;
+    if (submitDisabled || isSubmittingRef.current || !window.argmax) return;
+    const request = ++requestGeneration.current;
+    isSubmittingRef.current = true;
     setSubmitting(true);
     setFeedback(null);
     try {
@@ -107,20 +124,41 @@ export function CommitDialog({
         message: message.trim(),
         selectedFiles: Array.from(selected)
       });
+      if (requestGeneration.current !== request || !isOpenRef.current) return;
       onCommitted?.(result);
+      if (result.indexCleanupWarning || result.postCommitWarning) {
+        setFeedback({
+          kind: "success",
+          message: result.indexCleanupWarning
+            ? `Committed, but the Git index needs repair: ${result.indexCleanupWarning}`
+            : `Committed, but post-commit verification needs attention: ${result.postCommitWarning}`
+        });
+        return;
+      }
       onClose();
     } catch (error) {
+      if (requestGeneration.current !== request || !isOpenRef.current) return;
       setFeedback({
         kind: "error",
         message: error instanceof Error ? error.message : "Commit failed."
       });
     } finally {
+      // Only one request can run, even across controlled close/reopen. Its
+      // settlement must release the new dialog's busy state without applying
+      // the old request's result to that dialog.
+      isSubmittingRef.current = false;
       setSubmitting(false);
+      if (requestGeneration.current !== request && isOpenRef.current) {
+        setSelected(new Set(latestDefaults.current.allPaths));
+        setMessage(latestDefaults.current.defaultMessage);
+        setFeedback(null);
+      }
     }
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (event.key === "Escape") {
+      if (submitting) return;
       event.preventDefault();
       onClose();
     }
@@ -137,7 +175,7 @@ export function CommitDialog({
       aria-modal="true"
       ref={dialogRef}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (!submitting && event.target === event.currentTarget) onClose();
       }}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
@@ -145,7 +183,7 @@ export function CommitDialog({
       <div className="commit-dialog">
         <header className="commit-dialog-header">
           <h2>Commit selected</h2>
-          <button type="button" aria-label="Close commit dialog" onClick={onClose}>
+          <button type="button" aria-label="Close commit dialog" onClick={onClose} disabled={submitting}>
             ×
           </button>
         </header>
@@ -223,7 +261,7 @@ export function CommitDialog({
         ) : null}
 
         <footer className="commit-dialog-actions">
-          <button type="button" onClick={onClose}>
+          <button type="button" onClick={onClose} disabled={submitting}>
             Cancel
           </button>
           <button

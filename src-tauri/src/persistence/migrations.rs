@@ -365,6 +365,15 @@ pub static GH_PR_MILESTONE_COLUMNS: phf::Map<&'static str, &'static [&'static st
     ] as &'static [&'static str],
 };
 
+pub static PENDING_MESSAGES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "pending_messages" => &[
+        "agent_mode", "agent_references_json", "attachments_json", "content",
+        "delivery_state", "fast_mode", "id", "model_id", "model_label",
+        "origin_json", "position", "queued_at", "reasoning_effort", "session_id",
+        "updated_at",
+    ] as &'static [&'static str],
+};
+
 pub static MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -619,11 +628,72 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &PROJECT_ARCHIVE_ON_MERGE_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 32,
+        name: "pending_messages",
+        up: PENDING_MESSAGES,
+        affected_tables: &["pending_messages"],
+        expected_columns: &PENDING_MESSAGES_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 33,
+        name: "remote_operation_outcomes",
+        up: REMOTE_OPERATION_OUTCOMES,
+        affected_tables: &["remote_operations"],
+        expected_columns: &REMOTE_OPERATION_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
+static REMOTE_OPERATION_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "remote_operations" => &["client_id", "operation_id", "request_digest", "run_id", "outcome_json", "created_at"],
+};
+
+const REMOTE_OPERATION_OUTCOMES: &str = r#"
+CREATE TABLE remote_operations (
+  client_id TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  request_digest TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  outcome_json TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (client_id, operation_id)
+);
+"#;
+
+// A pending follow-up is acknowledged only after this journal row commits.
+// `launching` is deliberately distinct from deletion: after a crash, Argmax
+// cannot know whether the provider accepted the turn, so recovery exposes it
+// as `delivery_unknown` and waits for an explicit user decision.
+const PENDING_MESSAGES: &str = r#"
+CREATE TABLE pending_messages (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  content TEXT NOT NULL,
+  agent_mode TEXT NOT NULL,
+  model_label TEXT,
+  model_id TEXT,
+  reasoning_effort TEXT,
+  fast_mode INTEGER NOT NULL DEFAULT 0 CHECK (fast_mode IN (0, 1)),
+  attachments_json TEXT NOT NULL DEFAULT '[]',
+  agent_references_json TEXT NOT NULL DEFAULT '[]',
+  origin_json TEXT,
+  queued_at TEXT NOT NULL,
+  delivery_state TEXT NOT NULL DEFAULT 'pending'
+    CHECK (delivery_state IN ('pending', 'recovered', 'launching', 'delivery_unknown')),
+  updated_at TEXT NOT NULL,
+  UNIQUE (session_id, position)
+);
+
+CREATE INDEX idx_pending_messages_session_position
+  ON pending_messages(session_id, position);
+"#;
+
 // Opt-in per project: when the PR on a workspace's branch merges, the gh
-// poller archives that workspace, which is what removes the worktree and its
-// local branch. Off by default — archiving is destructive to a checkout.
+// poller archives that workspace, retaining its checkout and branch in the
+// archive location. Off by default.
 const PROJECT_ARCHIVE_ON_MERGE: &str = r#"
 ALTER TABLE projects ADD COLUMN archive_on_merge INTEGER NOT NULL DEFAULT 0
   CHECK (archive_on_merge IN (0, 1));
@@ -1695,6 +1765,8 @@ mod tests {
                 (29, compute_migration_checksum(SESSION_CHANGE_FEED_CLEANUP)),
                 (30, compute_migration_checksum(GH_PR_MILESTONE_TIMESTAMPS)),
                 (31, compute_migration_checksum(PROJECT_ARCHIVE_ON_MERGE)),
+                (32, compute_migration_checksum(PENDING_MESSAGES)),
+                (33, compute_migration_checksum(REMOTE_OPERATION_OUTCOMES)),
             ]
         );
 

@@ -501,8 +501,7 @@ describe("summarizeToolGroup — currentAction while running", () => {
       tool({ name: "Read", id: "2", status: "error", error: "EISDIR" })
     ]);
     expect(out.status).toBe("done");
-    expect(out.hasErrors).toBe(true);
-    expect(out.headline).toBe("Read files · 1 failed");
+    expect(out.headline).toBe("Read files");
   });
 
   it("marks the group as error when every child failed", () => {
@@ -511,8 +510,7 @@ describe("summarizeToolGroup — currentAction while running", () => {
       tool({ name: "Bash", id: "2", status: "error", error: "exit 1" })
     ]);
     expect(out.status).toBe("error");
-    expect(out.hasErrors).toBe(true);
-    expect(out.headline).toBe("Read a file, ran a command · 2 failed");
+    expect(out.headline).toBe("Read a file, ran a command");
   });
 });
 

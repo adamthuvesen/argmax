@@ -1894,7 +1894,9 @@ async fn schedule_workspace_archive(
     // the reply is gone, with nowhere to report a malformed id.
     let archive_target =
         WorkspaceId::try_from(workspace.id.clone()).map_err(invalid_input_error)?;
-    let removes_worktree = !workspace.shared_workspace;
+    // Retained for older tool clients. Archive relocates isolated checkouts
+    // with their branch and files intact, and never removes shared checkouts.
+    let removes_worktree = false;
     let requested_event = {
         let connection = database.connection();
         persist_timeline_event(
@@ -1903,8 +1905,8 @@ async fn schedule_workspace_archive(
                 id: Uuid::new_v4().to_string(),
                 session_id: parent.session_id.clone(),
                 r#type: "session.archive-requested".to_string(),
-                message: if removes_worktree {
-                    "Archive scheduled: the worktree and its branch go when this turn ends."
+                message: if !workspace.shared_workspace {
+                    "Archive scheduled: the checkout and its branch will be retained in the archive location when this turn ends."
                         .to_string()
                 } else {
                     "Archive scheduled for the end of this turn.".to_string()
@@ -1912,6 +1914,7 @@ async fn schedule_workspace_archive(
                 payload: serde_json::json!({
                     "workspaceId": workspace.id,
                     "removesWorktree": removes_worktree,
+                    "retainsWorktree": true,
                 }),
                 created_at: None,
             },
@@ -1946,7 +1949,7 @@ async fn schedule_workspace_archive(
             // `kept` is the refusal, not a failure: the checkout had
             // uncommitted work and stays live. Worth a line, because the agent
             // that asked has already reported the workspace gone.
-            Ok(workspace) if workspace.state == "kept" => tracing::info!(
+            Ok(result) if result.workspace.state == "kept" => tracing::info!(
                 workspace_id = %scheduled_workspace_id,
                 "scheduled archive kept the workspace: it has uncommitted changes"
             ),

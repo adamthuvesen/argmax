@@ -27,8 +27,8 @@ pub struct ProjectSettings {
     pub worktree_location: String,
     pub setup_command: String,
     pub check_commands: Vec<String>,
-    /// Archive a workspace once the PR on its branch merges, which removes its
-    /// worktree and local branch. Off unless the project opts in.
+    /// Archive a workspace once the PR on its branch merges, retaining its
+    /// checkout and branch in recovery storage. Off unless the project opts in.
     pub archive_on_merge: bool,
 }
 

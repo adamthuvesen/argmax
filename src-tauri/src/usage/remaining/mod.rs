@@ -69,6 +69,8 @@ pub struct UsageProviderRemaining {
     pub plan_label: Option<String>,
     pub windows: Vec<UsageLimitWindow>,
     pub message: Option<String>,
+    /// When set, the renderer opens this URL from the message (e.g. Cursor Spending).
+    pub message_url: Option<String>,
 }
 
 impl UsageProviderRemaining {
@@ -79,6 +81,7 @@ impl UsageProviderRemaining {
             plan_label: None,
             windows: Vec::new(),
             message: Some(message.into()),
+            message_url: None,
         }
     }
 
@@ -89,6 +92,7 @@ impl UsageProviderRemaining {
             plan_label: None,
             windows: Vec::new(),
             message: Some(message.into()),
+            message_url: None,
         }
     }
 
@@ -99,6 +103,7 @@ impl UsageProviderRemaining {
             plan_label: Some(plan_label.into()),
             windows: Vec::new(),
             message: None,
+            message_url: None,
         }
     }
 
@@ -109,6 +114,7 @@ impl UsageProviderRemaining {
             plan_label: None,
             windows: Vec::new(),
             message: Some("Billed by API key. No included allowance.".to_string()),
+            message_url: None,
         }
     }
 
@@ -123,6 +129,7 @@ impl UsageProviderRemaining {
             plan_label,
             windows,
             message: None,
+            message_url: None,
         }
     }
 }

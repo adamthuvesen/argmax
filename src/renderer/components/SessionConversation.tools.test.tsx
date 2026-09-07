@@ -991,7 +991,7 @@ describe("SessionConversation — single-line activity mode", () => {
       { defaultToolCallsDisplay: "single-line" }
     );
 
-    expect(screen.getByRole("button", { name: "Read a file, ran a command · 1 failed" }))
+    expect(screen.getByRole("button", { name: "Read a file, ran a command" }))
       .toHaveAttribute("aria-expanded", "false");
     expect(screen.getByText("The test failed.")).toBeInTheDocument();
   });

@@ -1485,7 +1485,7 @@ async fn a_queued_message_is_marked_delivered_once_the_drain_sends_it() {
 /// makes that survivable: the queue entry goes, the row stays open, and the
 /// message is still there to be collected.
 #[tokio::test]
-async fn a_failed_turn_clears_the_queue_but_not_the_inbox() {
+async fn a_failed_turn_pauses_the_queue_and_preserves_the_inbox() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
@@ -1551,8 +1551,7 @@ async fn a_failed_turn_clears_the_queue_but_not_the_inbox() {
     .expect("exit emitted");
     wait_for_session_state(&database, &session.id, SessionState::Failed).await;
 
-    // The queue is gone: the last pending-messages delta for this session is
-    // empty, so nothing will ever send this message as a turn.
+    // The failed turn pauses unsent work until the user explicitly sends it.
     let last_pending = deltas
         .lock()
         .expect("deltas poisoned")
@@ -1560,15 +1559,12 @@ async fn a_failed_turn_clears_the_queue_but_not_the_inbox() {
         .filter_map(|delta| delta.pending_messages.as_ref()?.get(&session.id).cloned())
         .next_back()
         .expect("the queue was published at least once");
-    assert!(
-        last_pending.is_empty(),
-        "a failed turn clears its pending queue, leaving {last_pending:?}"
-    );
-    // The row is not, so the message is still reachable.
+    assert_eq!(last_pending.len(), 1);
+    assert_eq!(last_pending[0].recovery_status.as_deref(), Some("unsent"));
     assert_eq!(
         count_undelivered(&database, &session.id),
         1,
-        "the inbox row outlives the queue entry the failed turn threw away"
+        "the inbox remains readable while its queued delivery is paused"
     );
     let collected = {
         let mut connection = database.connection();

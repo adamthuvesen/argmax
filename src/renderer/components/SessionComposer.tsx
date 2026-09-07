@@ -603,7 +603,9 @@ export function SessionComposer({
           {pendingMessages.map((entry) => {
             const cancel = (): void => {
               if (!session || !onCancelQueuedMessage) return;
-              void onCancelQueuedMessage(session.id, entry.id).catch(() => undefined);
+              void onCancelQueuedMessage(session.id, entry.id).catch((error: unknown) => {
+                setStatus({ kind: "error", message: error instanceof Error ? error.message : "Could not cancel this follow-up." });
+              });
             };
             const sendQueuedNow = async (): Promise<void> => {
               if (!session || !onSendQueuedMessageNow || sendingQueuedMessageId) return;
@@ -710,7 +712,19 @@ export function SessionComposer({
                   size={14}
                   aria-hidden="true"
                 />
-                <span className="composer-queued-chip-label">{entry.content}</span>
+                <span className="composer-queued-chip-copy">
+                  <span className="composer-queued-chip-label">{entry.content}</span>
+                  {entry.recoveryStatus ? (
+                    <span
+                      className="composer-queued-chip-recovery"
+                      data-recovery-status={entry.recoveryStatus}
+                    >
+                      {entry.recoveryStatus === "delivery-unknown"
+                        ? "Delivery uncertain after restart • check the chat before sending again"
+                        : "Paused after interruption • not sent"}
+                    </span>
+                  ) : null}
+                </span>
                 <button
                   type="button"
                   className="composer-queued-chip-action"

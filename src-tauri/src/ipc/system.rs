@@ -91,6 +91,7 @@ pub struct DiagnosticsReport {
     pub app_version: String,
     pub sqlite_version: String,
     pub database_path: String,
+    pub archive_recovery_path: String,
     pub platform: String,
     pub arch: String,
     pub generated_at: String,
@@ -139,6 +140,11 @@ pub async fn system_diagnostics(
 ) -> ArgmaxResult<DiagnosticsReport> {
     let database = live_database(&state)?;
     let database_path = database_path(&app)?;
+    let archive_recovery_path =
+        data_dir(&app)?.join(crate::workspaces::orchestration::ARCHIVE_RECOVERY_DIR);
+    fs::create_dir_all(&archive_recovery_path).map_err(|error| {
+        ArgmaxError::service("WORKSPACE_RECOVERY_CREATE_FAILED", error.to_string())
+    })?;
     let startup_phases = startup_phases(&state);
     let tokio_tracked_tasks = database.prune_task_count() as u64;
 
@@ -155,6 +161,7 @@ pub async fn system_diagnostics(
             app_version: env!("CARGO_PKG_VERSION").to_string(),
             sqlite_version,
             database_path: database_path.to_string_lossy().to_string(),
+            archive_recovery_path: archive_recovery_path.to_string_lossy().to_string(),
             platform: std::env::consts::OS.to_string(),
             arch: std::env::consts::ARCH.to_string(),
             generated_at: Utc::now().to_rfc3339(),

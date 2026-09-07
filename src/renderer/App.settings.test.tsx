@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
@@ -123,6 +123,14 @@ describe("App settings", () => {
     menu = await openArgmaxMenu();
     fireEvent.click(within(menu).getByRole("menuitem", { name: /Diagnostics & Logs/ }));
     expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
+    assert(window.argmax);
+    const openPath = vi.spyOn(window.argmax.system, "openPath");
+    const openArchives = await screen.findByRole("button", { name: "Open archived workspaces" });
+    await waitFor(() => expect(openArchives).toBeEnabled());
+    fireEvent.click(openArchives);
+    await waitFor(() => expect(openPath).toHaveBeenCalledWith({ path: "/tmp/workspace-archive" }));
+    expect(screen.queryByText("/tmp/workspace-archive")).not.toBeInTheDocument();
+    openPath.mockRestore();
 
     await closeSettings();
     menu = await openArgmaxMenu();

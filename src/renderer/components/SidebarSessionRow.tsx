@@ -264,6 +264,7 @@ function SidebarSessionRowInner({
   const showArchive =
     workspace.state === "complete" ||
     workspace.state === "failed" ||
+    workspace.state === "archive-failed" ||
     workspace.state === "cancelled" ||
     workspace.state === "kept";
 

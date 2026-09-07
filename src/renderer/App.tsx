@@ -144,6 +144,7 @@ import { isMultitaskSession, multitasksByParentSession } from "./lib/multitask.j
 import { loadDashboardSnapshot } from "./lib/loadDashboardSnapshot.js";
 import { buildPaletteCommands, buildSessionLabelById } from "./lib/buildPaletteCommands.js";
 import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
+import { useStandaloneBrowserLinks } from "./hooks/useStandaloneBrowserLinks.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 import { isTauriRuntime } from "./lib/tauriBridge.js";
@@ -632,17 +633,15 @@ export function App(): JSX.Element {
       showErrorToast("Open the Tauri app window to archive workspaces.");
       return;
     }
-    // Shared workspaces leave the filesystem alone — only the sidebar row
-    // goes away. Dirty isolated worktrees are destructive, so ask once and
-    // pass force only after confirmation.
+    // Shared workspaces leave the filesystem alone. Isolated worktrees move
+    // into recovery storage, but dirty ones still require explicit consent so
+    // an archive-failed retry cannot silently act on newer changes.
     const workspace = workspacesById.get(workspaceId);
     let force = false;
-    if (workspace?.state === "archive-failed") {
-      force = true;
-    } else if (workspace?.dirty && !workspace.sharedWorkspace) {
+    if (workspace?.dirty && !workspace.sharedWorkspace) {
       const fileLabel = workspace.changedFiles === 1 ? "1 uncommitted change" : `${workspace.changedFiles} uncommitted changes`;
       const confirmed = window.confirm(
-        `${workspace.taskLabel} has ${fileLabel}. Archiving will delete the worktree and discard these changes (the branch is preserved). Continue?`
+        `${workspace.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
       );
       if (!confirmed) return;
       force = true;
@@ -658,13 +657,13 @@ export function App(): JSX.Element {
     // fresh status check found changes our cached snapshot missed, so the
     // confirm dialog above never showed. Re-prompt once with the real count
     // and retry with force; declining leaves the row kept, as intended.
-    if (result.state === "kept" && !force && !result.sharedWorkspace) {
-      const fileLabel = result.changedFiles === 1 ? "1 uncommitted change" : `${result.changedFiles} uncommitted changes`;
+    if (result.workspace.state === "kept" && !force && !result.workspace.sharedWorkspace) {
+      const fileLabel = result.workspace.changedFiles === 1 ? "1 uncommitted change" : `${result.workspace.changedFiles} uncommitted changes`;
       const confirmed = window.confirm(
-        `${result.taskLabel} has ${fileLabel}. Archiving will delete the worktree and discard these changes (the branch is preserved). Continue?`
+        `${result.workspace.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
       );
       if (!confirmed) {
-        setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result] }));
+        setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result.workspace] }));
         return;
       }
       try {
@@ -674,8 +673,8 @@ export function App(): JSX.Element {
         return;
       }
     }
-    setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result] }));
-    if (result.state !== "archived") {
+    setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result.workspace] }));
+    if (result.workspace.state !== "archived") {
       showInfoToast(
         "Workspace has uncommitted changes — kept in sidebar. Commit or discard, then retry archive."
       );
@@ -1028,6 +1027,15 @@ export function App(): JSX.Element {
     hideFullLauncher();
     setIsBrowserPageOpen(true);
   }, [setIsBrowserPageOpen]);
+  const openUrlInAppBrowser = useCallback((): void => {
+    hideStandalonePage();
+    hideFullLauncher();
+    setIsBrowserPageOpen(true);
+  }, [setIsBrowserPageOpen]);
+  useStandaloneBrowserLinks({
+    active: standalonePageOpen,
+    onOpenInAppBrowser: openUrlInAppBrowser
+  });
   // Focus another chat by session id: the sender named on an agent message's
   // bubble, and the chat whose agent launched this one. A session that has
   // since been pruned resolves to nothing and the click is a no-op.

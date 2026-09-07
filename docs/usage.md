@@ -57,11 +57,11 @@ Remaining usage is a second, live read. It does not go through `usage_hourly`.
 
 | Provider | Remaining source | Notes |
 |---|---|---|
-| Claude | `GET https://api.anthropic.com/api/oauth/usage` with Claude Code OAuth (Keychain / `.credentials.json` / `CLAUDE_CODE_OAUTH_TOKEN`). Plan from `~/.claude.json` `oauthAccount`. | Undocumented; the same endpoint Claude Code uses for `/usage`. Rate-limited if polled hard. Keychain service is namespaced per config dir — see below. |
+| Claude | `GET https://api.anthropic.com/api/oauth/usage` with Claude Code OAuth (Keychain / `.credentials.json` / `CLAUDE_CODE_OAUTH_TOKEN`). Plan from `~/.claude.json` `oauthAccount`. | Undocumented; the same endpoint Claude Code uses for `/usage`. Reports the 5-hour session, weekly (all models), and Fable weekly (`limits[]` → `weekly_scoped`). Rate-limited if polled hard. Keychain service is namespaced per config dir — see below. |
 | Codex | `codex app-server` `account/rateLimits/read`, else the newest `rate_limits` object in a local rollout. | Official JSON-RPC. Windows are labeled from duration — Pro may report weekly on `primary` with no 5-hour window. |
 | Grok | `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` with `~/.grok/auth.json`. | Same call Grok Build's `/usage` makes. |
 | OpenCode | `GET https://opencode.ai/zen/go/v1/usage` when an OpenCode Go key is present. | Zen / BYOK have no OpenCode subscription quota. |
-| Cursor | Local `cli-config.json` `authInfo` only. | Teams/Enterprise is a label. Remaining numbers need unofficial dashboard APIs; the card points at the Spending dashboard. |
+| Cursor | Local `cli-config.json` `authInfo` only. | Teams/Enterprise is a label. Remaining numbers need unofficial dashboard APIs; the card links to the [Spending dashboard](https://cursor.com/dashboard/spending). |
 
 **Claude's keychain item is named after the config dir.** Claude Code stores
 credentials under `Claude Code-credentials-<first 8 hex of

@@ -188,8 +188,11 @@ export function setupAppTestMocks(): void {
   autotitleWorkspace = vi.fn<ArgmaxApi["workspaces"]["autoTitle"]>().mockResolvedValue({ ok: true });
   archiveWorkspace = vi.fn<ArgmaxApi["workspaces"]["archive"]>().mockImplementation(({ workspaceId }) =>
     Promise.resolve({
-      ...(snapshot.workspaces.find((w) => w.id === workspaceId) ?? snapshot.workspaces[0] ?? missingWorkspace()),
-      state: "archived"
+      workspace: {
+        ...(snapshot.workspaces.find((w) => w.id === workspaceId) ?? snapshot.workspaces[0] ?? missingWorkspace()),
+        state: "archived"
+      },
+      recoveryPath: "/tmp/workspace-archive/workspace-1"
     })
   );
   dashboardList = vi.fn<ArgmaxApi["dashboard"]["list"]>().mockResolvedValue(dashboardListSnapshot(snapshot));
@@ -252,6 +255,7 @@ export function setupAppTestMocks(): void {
     appVersion: "0.1.0",
     sqliteVersion: "3.45.0",
     databasePath: "/tmp/argmax.sqlite",
+    archiveRecoveryPath: "/tmp/workspace-archive",
     platform: "darwin",
     arch: "arm64",
     generatedAt: "2026-05-12T00:00:00.000Z",

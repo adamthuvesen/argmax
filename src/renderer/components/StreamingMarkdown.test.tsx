@@ -373,6 +373,55 @@ describe("<StreamingMarkdown />", () => {
     expect(screen.getByText(text)).toBeInTheDocument();
   });
 
+  it("keeps reference link definitions in the same streaming markdown document", () => {
+    render(
+      <StreamingMarkdown
+        text={["Read [the documentation][docs].", "", "[docs]: https://example.com/docs"].join("\n")}
+        streaming
+        paced={false}
+      />
+    );
+
+    expect(screen.getByRole("link", { name: "the documentation" })).toHaveAttribute(
+      "href",
+      "https://example.com/docs"
+    );
+  });
+
+  it("preserves loose and nested list structure while streaming", () => {
+    render(
+      <StreamingMarkdown
+        text={[
+          "- outer item",
+          "",
+          "  continuation paragraph",
+          "  - nested item",
+          "",
+          "    > nested quote"
+        ].join("\n")}
+        streaming
+        paced={false}
+      />
+    );
+
+    expect(screen.getAllByRole("list")).toHaveLength(2);
+    expect(screen.getByText("continuation paragraph")).toBeInTheDocument();
+    expect(screen.getByRole("blockquote")).toHaveTextContent("nested quote");
+  });
+
+  it("keeps the code node stable when a stream becomes completed", () => {
+    const text = ["```ts", "const answer = 42;", "```"].join("\n");
+    const { container, rerender } = render(
+      <StreamingMarkdown text={text} streaming paced={false} />
+    );
+    const code = container.querySelector("code");
+    expect(code).toBeInTheDocument();
+
+    rerender(<StreamingMarkdown text={text} streaming={false} paced={false} />);
+
+    expect(container.querySelector("code")).toBe(code);
+  });
+
   it("opens web links in the system browser by default, in the pane on ⌘-click", () => {
     const openPath = vi.fn().mockResolvedValue({ ok: true });
     (window as unknown as { argmax: unknown }).argmax = { system: { openPath } };

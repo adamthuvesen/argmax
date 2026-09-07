@@ -26,6 +26,8 @@ interface WorkspaceFileTabState {
   saveError: string | null;
 }
 
+type SaveOutcome = "saved" | "stale" | "aborted" | "error";
+
 // A text preview may hold up to 1 MiB. Closed tabs are only a convenience
 // cache, so keep a small recent window rather than retaining every file viewed
 // for the lifetime of a pane.
@@ -73,6 +75,11 @@ export function useFilePreview(args: {
   const workspaceReadTokens = useRef(new Map<string, number>());
   const workspaceSaveSeq = useRef(0);
   const workspaceSaveTokens = useRef(new Map<string, number>());
+  const workspaceSaveQueues = useRef(new Map<string, Promise<SaveOutcome>>());
+  const workspaceSaveMtimes = useRef(new Map<string, number | null>());
+  const workspaceTabLifetimeSeq = useRef(0);
+  const workspaceTabLifetimes = useRef(new Map<string, number>());
+  const sourceGeneration = useRef(0);
 
   // Remembers the disk content of files whose tabs were closed, so reopening
   // one is instant instead of re-reading from disk. Seeds new tabs as `ready`;
@@ -124,11 +131,15 @@ export function useFilePreview(args: {
   const externalCheckTimerRef = useRef<number | null>(null);
 
   const resetForSourceChange = useCallback((): void => {
+    sourceGeneration.current += 1;
     setTabs([]);
     setActiveTabPath(null);
     setDirtyClosePath(null);
     workspaceReadTokens.current.clear();
     workspaceSaveTokens.current.clear();
+    workspaceSaveQueues.current.clear();
+    workspaceSaveMtimes.current.clear();
+    workspaceTabLifetimes.current.clear();
     previewCache.current.clear();
   }, []);
 
@@ -158,6 +169,7 @@ export function useFilePreview(args: {
         .readFile(filePath)
         .then((preview) => {
           if (workspaceReadTokens.current.get(filePath) !== token) return;
+          workspaceSaveMtimes.current.set(filePath, preview.kind === "text" ? preview.mtimeMs : null);
           updateTab(filePath, (tab) => ({
             ...tab,
             preview,
@@ -197,6 +209,7 @@ export function useFilePreview(args: {
   const openFile = useCallback((filePath: string): void => {
     setTabs((current) => {
       if (current.some((tab) => tab.path === filePath)) return current;
+      workspaceTabLifetimes.current.set(filePath, ++workspaceTabLifetimeSeq.current);
       const cached = previewCache.current.get(filePath);
       const tab = cached
         ? {
@@ -248,6 +261,9 @@ export function useFilePreview(args: {
     setDirtyClosePath((promptPath) => (promptPath === filePath ? null : promptPath));
     workspaceReadTokens.current.delete(filePath);
     workspaceSaveTokens.current.delete(filePath);
+    workspaceSaveQueues.current.delete(filePath);
+    workspaceSaveMtimes.current.delete(filePath);
+    workspaceTabLifetimes.current.delete(filePath);
   }, []);
 
   const closeTab = useCallback(
@@ -310,15 +326,22 @@ export function useFilePreview(args: {
       });
   }, [updateTab]);
 
-  const saveFilePath = useCallback(
-    async (filePath: string): Promise<"saved" | "stale" | "aborted" | "error"> => {
+  const saveFilePathNow = useCallback(
+    async (
+      filePath: string,
+      generation: number,
+      tabLifetime: number,
+      contentToSave: string
+    ): Promise<SaveOutcome> => {
+      if (
+        sourceGeneration.current !== generation ||
+        workspaceTabLifetimes.current.get(filePath) !== tabLifetime
+      ) return "aborted";
       const id = listenerStateRef.current.sourceId;
       const kind = listenerStateRef.current.sourceKind;
       const tab =
         listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
       if (!id || !kind || !tab || !listenerStateRef.current.canEdit) return "aborted";
-      if (tab.buffer === null || tab.buffer === tab.original) return "saved";
-      const contentToSave = tab.buffer;
       const token = ++workspaceSaveSeq.current;
       workspaceSaveTokens.current.set(filePath, token);
       updateTab(filePath, (current) => ({
@@ -328,13 +351,18 @@ export function useFilePreview(args: {
       }));
       try {
         const ipc = dispatchRef.current;
-        const writePromise = ipc?.writeFile(filePath, contentToSave, tab.diskMtimeMs);
+        const expectedMtimeMs = workspaceSaveMtimes.current.get(filePath) ?? tab.diskMtimeMs;
+        const writePromise = ipc?.writeFile(filePath, contentToSave, expectedMtimeMs);
         if (!writePromise) {
           updateTab(filePath, (current) => ({ ...current, saveState: "idle" }));
           return "saved";
         }
         const result = await writePromise;
-        if (workspaceSaveTokens.current.get(filePath) !== token) return "aborted";
+        if (
+          sourceGeneration.current !== generation ||
+          workspaceTabLifetimes.current.get(filePath) !== tabLifetime ||
+          workspaceSaveTokens.current.get(filePath) !== token
+        ) return "aborted";
         if (result.ok === "false") {
           updateTab(filePath, (current) => ({
             ...current,
@@ -343,6 +371,7 @@ export function useFilePreview(args: {
           }));
           return "stale";
         }
+        workspaceSaveMtimes.current.set(filePath, result.mtimeMs);
         updateTab(filePath, (current) => ({
           ...current,
           original: contentToSave,
@@ -353,7 +382,11 @@ export function useFilePreview(args: {
         }));
         return "saved";
       } catch (error) {
-        if (workspaceSaveTokens.current.get(filePath) !== token) return "aborted";
+        if (
+          sourceGeneration.current !== generation ||
+          workspaceTabLifetimes.current.get(filePath) !== tabLifetime ||
+          workspaceSaveTokens.current.get(filePath) !== token
+        ) return "aborted";
         updateTab(filePath, (current) => ({
           ...current,
           saveState: "error",
@@ -363,6 +396,33 @@ export function useFilePreview(args: {
       }
     },
     [updateTab]
+  );
+
+  const saveFilePath = useCallback(
+    async (filePath: string): Promise<SaveOutcome> => {
+      const generation = sourceGeneration.current;
+      const tab =
+        listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
+      if (!tab || tab.buffer === null || tab.buffer === tab.original) return "saved";
+      const tabLifetime = workspaceTabLifetimes.current.get(filePath);
+      if (tabLifetime === undefined) return "aborted";
+      // Capture the requested buffer now, then serialize its IPC call behind
+      // earlier saves. Looking it up only when the queue runs would let a
+      // later keystroke silently replace the payload of this save request.
+      const contentToSave = tab.buffer;
+      const previous = workspaceSaveQueues.current.get(filePath) ?? Promise.resolve<SaveOutcome>("saved");
+      const queued = previous
+        .catch(() => "error" as const)
+        .then(() => saveFilePathNow(filePath, generation, tabLifetime, contentToSave));
+      workspaceSaveQueues.current.set(filePath, queued);
+      void queued.finally(() => {
+        if (workspaceSaveQueues.current.get(filePath) === queued) {
+          workspaceSaveQueues.current.delete(filePath);
+        }
+      });
+      return queued;
+    },
+    [saveFilePathNow]
   );
 
   const saveFile = useCallback(async (): Promise<void> => {

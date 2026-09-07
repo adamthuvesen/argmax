@@ -190,14 +190,14 @@ disposal to Argmax instead of removing the directory it is standing in:
 `git worktree remove` on your own working directory succeeds and then every
 later command in the turn fails, and a worktree removed behind the app's back
 leaves a sidebar row pointing at nothing. The archive is the app's own path:
-worktree removed, local branch deleted, row archived.
+checkout moved into the archive location with its files and branch retained,
+then the row archived. Settings exposes the archived-workspace directory.
 
 The archive is never forced. A workspace with uncommitted changes comes to rest
 as **kept** instead ([CONTEXT.md](../CONTEXT.md)), so an agent should report the
-archive as requested rather than done. `removesWorktree` says which kind of
-workspace it was: an isolated one loses its worktree and branch, a shared
-checkout only ends the chat, since that tree belongs to every other session
-pointing at it.
+archive as requested rather than done. The legacy `removesWorktree` result is
+now always false. An isolated checkout moves into recovery storage, while a
+shared checkout stays in place because other sessions may still use it.
 
 ## Observing another session
 

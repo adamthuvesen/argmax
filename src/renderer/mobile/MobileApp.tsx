@@ -507,30 +507,30 @@ export function MobileApp(): JSX.Element {
     setSelectedWorkspaceId(null);
   }, [closeReview, setSelectedSessionId, setSelectedWorkspaceId]);
 
-  // Same dirty-worktree rules as the desktop sidebar: confirm before a
-  // destructive force-archive, and re-prompt once when the backend's fresh
+  // Same dirty-worktree rules as the desktop sidebar: confirm before moving a
+  // dirty checkout to recovery, and re-prompt once when the backend's fresh
   // status check finds changes the cached snapshot missed ("kept" result).
   const archiveWorkspace = useCallback(
     async (workspace: WorkspaceSummary): Promise<void> => {
       if (!window.argmax) return;
-      const confirmDiscard = (taskLabel: string, changedFiles: number): boolean => {
+      const confirmArchive = (taskLabel: string, changedFiles: number): boolean => {
         const fileLabel = changedFiles === 1 ? "1 uncommitted change" : `${changedFiles} uncommitted changes`;
         return window.confirm(
-          `${taskLabel} has ${fileLabel}. Archiving will delete the worktree and discard these changes (the branch is preserved). Continue?`
+          `${taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
         );
       };
       let force = false;
       if (workspace.dirty && !workspace.sharedWorkspace) {
-        if (!confirmDiscard(workspace.taskLabel, workspace.changedFiles)) return;
+        if (!confirmArchive(workspace.taskLabel, workspace.changedFiles)) return;
         force = true;
       }
       try {
         let result = await window.argmax.workspaces.archive({ workspaceId: workspace.id, force });
-        if (result.state === "kept" && !force && !result.sharedWorkspace) {
-          if (!confirmDiscard(result.taskLabel, result.changedFiles)) return;
+        if (result.workspace.state === "kept" && !force && !result.workspace.sharedWorkspace) {
+          if (!confirmArchive(result.workspace.taskLabel, result.workspace.changedFiles)) return;
           result = await window.argmax.workspaces.archive({ workspaceId: workspace.id, force: true });
         }
-        if (result.state !== "archived") {
+        if (result.workspace.state !== "archived") {
           showToast({
             kind: "info",
             message: "Workspace has uncommitted changes — kept. Commit or discard, then retry archive."

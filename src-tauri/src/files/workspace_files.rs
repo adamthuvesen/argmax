@@ -7,10 +7,10 @@
 // doesn't ship megabytes of garbage to the renderer.
 
 use std::{
-    collections::BTreeSet,
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
+    collections::{BTreeSet, HashMap},
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, LazyLock, Mutex},
     time::{Duration, UNIX_EPOCH},
 };
 
@@ -26,6 +26,7 @@ use crate::git::exec::{run_git_text, run_git_text_with_allowed_exit_codes};
 use crate::persistence::database::Database;
 use crate::persistence::projects::require_project;
 use crate::persistence::workspaces::find_workspace_by_id;
+use crate::util::sync::LockOrRecover;
 use crate::util::workspace_paths::{resolve_inside, PathError};
 use crate::workspaces::WorkspaceTargetKind;
 
@@ -40,6 +41,13 @@ const BINARY_SNIFF_BYTES: usize = 4096;
 pub const MAX_WRITE_BYTES: usize = crate::ipc::validation::MAX_FILE_CONTENT_BYTES;
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
+
+// IPC constructs a short-lived service for each request, so file locks need
+// process lifetime rather than service lifetime. The key is the caller's
+// canonical root plus its validated relative path, which keeps project and
+// workspace views of the same checkout in one save order.
+static FILE_WRITE_LOCKS: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -270,79 +278,113 @@ async fn write_file_at_path(
             format!("content exceeds {MAX_WRITE_BYTES} bytes"),
         ));
     }
+    let lock_key = format!(
+        "{}\0{file_path}",
+        resolve_inside_or_err(repo_path, ".")?.display()
+    );
+    let lock = {
+        let mut locks = FILE_WRITE_LOCKS.lock_or_recover("workspace file write locks");
+        Arc::clone(
+            locks
+                .entry(lock_key.clone())
+                .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
+        )
+    };
+    let guard = lock.lock().await;
+
+    // Resolve and inspect only after acquiring the keyed lock. A queued save
+    // therefore compares its expected version to the file produced by the
+    // preceding save, rather than to a version observed before it queued.
     let resolved = resolve_inside_or_err(repo_path, file_path)?;
-    let metadata = tokio_fs::symlink_metadata(&resolved)
-        .await
-        .map_err(io_error)?;
+    let resolved_for_spawn = resolved.clone();
+    let repo_path = repo_path.to_owned();
+    let buf = content.as_bytes().to_vec();
+    let result = tokio::task::spawn_blocking(move || {
+        atomic_write_file(&repo_path, &resolved_for_spawn, &buf, expected_mtime_ms)
+    })
+    .await
+    .map_err(|error| {
+        ArgmaxError::service(
+            "WORKSPACE_FILE_JOIN_FAILED",
+            format!("write task panicked: {error}"),
+        )
+    })
+    .and_then(|result| result);
+    drop(guard);
+    let mut locks = FILE_WRITE_LOCKS.lock_or_recover("workspace file write locks");
+    if Arc::strong_count(&lock) == 2 {
+        locks.remove(&lock_key);
+    }
+    result
+}
+
+fn atomic_write_file(
+    repo_path: &str,
+    resolved: &Path,
+    content: &[u8],
+    expected_mtime_ms: Option<f64>,
+) -> ArgmaxResult<WorkspaceFileWriteResult> {
+    use std::io::Write;
+
+    let metadata = std::fs::symlink_metadata(resolved).map_err(io_error)?;
     if !metadata.file_type().is_file() {
         return Err(ArgmaxError::service(
             "WORKSPACE_FILE_NOT_REGULAR",
             "filePath does not point to a regular file",
         ));
     }
+    let current_mtime = mtime_ms(&metadata);
+    if let Some(expected) = expected_mtime_ms {
+        if (current_mtime - expected).abs() > f64::EPSILON {
+            return Ok(stale_write_result(&metadata));
+        }
+    }
 
-    // Verify the parent directory is still inside the repo realpath. The
-    // resolved path already passed the contains check, but a parent
-    // symlink swap between the check and the open could redirect us.
+    // Re-resolve the parent after lock acquisition. This catches a parent
+    // symlink swap before the temporary file is created outside the workspace.
     let parent = resolved
         .parent()
         .ok_or_else(|| ArgmaxError::service("WORKSPACE_FILE_NO_PARENT", "no parent directory"))?;
     let _ = resolve_inside_or_err(repo_path, parent_relative(repo_path, parent).as_str())?;
+    let mut staged = tempfile::NamedTempFile::new_in(parent).map_err(io_error)?;
+    staged
+        .as_file_mut()
+        .set_permissions(metadata.permissions())
+        .map_err(io_error)?;
+    staged.write_all(content).map_err(io_error)?;
+    staged.as_file_mut().sync_all().map_err(io_error)?;
 
-    let current_mtime = mtime_ms(&metadata);
-    if let Some(expected) = expected_mtime_ms {
-        if (current_mtime - expected).abs() > f64::EPSILON {
-            return Ok(WorkspaceFileWriteResult::Stale {
-                reason: WriteStaleReason::Stale,
-                current_mtime_ms: current_mtime,
-                size: metadata.len(),
-            });
-        }
+    // Atomic rename replaces an inode, so compare the current destination
+    // immediately before it. An external write or replacement becomes a
+    // conflict and leaves both the original and staged data intact.
+    let current = std::fs::symlink_metadata(resolved).map_err(io_error)?;
+    if !same_file_version(&metadata, &current) {
+        return Ok(stale_write_result(&current));
     }
+    staged
+        .persist(resolved)
+        .map_err(|error| io_error(error.error))?;
 
-    // O_NOFOLLOW guards against a symlink-swap between the metadata check
-    // and the open. Then we verify inode matches to close the TOCTOU
-    // window where the file was unlinked-and-replaced.
-    let resolved_for_spawn = resolved.clone();
-    let buf = content.as_bytes().to_vec();
-    let expected_ino = metadata.ino();
-    let (after_mtime, after_size) =
-        tokio::task::spawn_blocking(move || -> ArgmaxResult<(f64, u64)> {
-            use std::fs::OpenOptions;
-            use std::io::Write;
-            let mut options = OpenOptions::new();
-            options.read(true).write(true);
-            options.custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits());
-            let mut file = options.open(&resolved_for_spawn).map_err(io_error)?;
-            let opened_meta = file.metadata().map_err(io_error)?;
-            if opened_meta.ino() != expected_ino {
-                return Err(ArgmaxError::service(
-                    "WORKSPACE_FILE_INODE_CHANGED",
-                    "File changed while opening for write",
-                ));
-            }
-            file.set_len(0).map_err(io_error)?;
-            // Rewind to start before writing — set_len leaves the cursor where
-            // it was. With a fresh open it's at 0, but writing through Write
-            // after set_len doesn't move the cursor, so this is explicit.
-            use std::io::Seek;
-            file.seek(std::io::SeekFrom::Start(0)).map_err(io_error)?;
-            file.write_all(&buf).map_err(io_error)?;
-            let after = file.metadata().map_err(io_error)?;
-            Ok((mtime_ms(&after), after.len()))
-        })
-        .await
-        .map_err(|error| {
-            ArgmaxError::service(
-                "WORKSPACE_FILE_JOIN_FAILED",
-                format!("write task panicked: {error}"),
-            )
-        })??;
-
+    let after = std::fs::symlink_metadata(resolved).map_err(io_error)?;
     Ok(WorkspaceFileWriteResult::Ok {
-        mtime_ms: after_mtime,
-        size: after_size,
+        mtime_ms: mtime_ms(&after),
+        size: after.len(),
     })
+}
+
+fn stale_write_result(metadata: &std::fs::Metadata) -> WorkspaceFileWriteResult {
+    WorkspaceFileWriteResult::Stale {
+        reason: WriteStaleReason::Stale,
+        current_mtime_ms: mtime_ms(metadata),
+        size: metadata.len(),
+    }
+}
+
+fn same_file_version(before: &std::fs::Metadata, current: &std::fs::Metadata) -> bool {
+    before.dev() == current.dev()
+        && before.ino() == current.ino()
+        && before.len() == current.len()
+        && mtime_ms(before) == mtime_ms(current)
 }
 
 async fn grep_content_at_path(
@@ -628,6 +670,113 @@ mod tests {
         }
         let on_disk = std::fs::read_to_string(repo.path().join("README.md")).unwrap();
         assert_eq!(on_disk, "new content\n");
+    }
+
+    #[tokio::test]
+    async fn overlapping_writes_use_one_version_and_do_not_overwrite_the_winner() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path()).await;
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let svc = WorkspaceFilesService::new(database);
+        let expected = svc
+            .stat_file(WorkspaceTargetKind::Workspace, &workspace_id, "README.md")
+            .await
+            .unwrap()
+            .mtime_ms;
+
+        let first = svc.write_file(
+            WorkspaceTargetKind::Workspace,
+            &workspace_id,
+            "README.md",
+            "first save\n",
+            Some(expected),
+        );
+        let second = svc.write_file(
+            WorkspaceTargetKind::Workspace,
+            &workspace_id,
+            "README.md",
+            "second save\n",
+            Some(expected),
+        );
+        let (first, second) = tokio::join!(first, second);
+        let results = [first.unwrap(), second.unwrap()];
+        assert_eq!(
+            results
+                .iter()
+                .filter(|result| matches!(result, WorkspaceFileWriteResult::Ok { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            results
+                .iter()
+                .filter(|result| matches!(result, WorkspaceFileWriteResult::Stale { .. }))
+                .count(),
+            1
+        );
+        let on_disk = std::fs::read_to_string(repo.path().join("README.md")).unwrap();
+        assert!(on_disk == "first save\n" || on_disk == "second save\n");
+    }
+
+    #[tokio::test]
+    async fn external_change_returns_stale_and_preserves_external_content() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path()).await;
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let svc = WorkspaceFilesService::new(database);
+        let expected = svc
+            .stat_file(WorkspaceTargetKind::Workspace, &workspace_id, "README.md")
+            .await
+            .unwrap()
+            .mtime_ms;
+        tokio::time::sleep(Duration::from_millis(2)).await;
+        std::fs::write(repo.path().join("README.md"), "external edit\n").unwrap();
+
+        let result = svc
+            .write_file(
+                WorkspaceTargetKind::Workspace,
+                &workspace_id,
+                "README.md",
+                "editor edit\n",
+                Some(expected),
+            )
+            .await
+            .unwrap();
+        assert!(matches!(result, WorkspaceFileWriteResult::Stale { .. }));
+        assert_eq!(
+            std::fs::read_to_string(repo.path().join("README.md")).unwrap(),
+            "external edit\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn rejected_write_leaves_original_file_intact() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path()).await;
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let svc = WorkspaceFilesService::new(database);
+
+        let error = svc
+            .write_file(
+                WorkspaceTargetKind::Workspace,
+                &workspace_id,
+                "README.md",
+                &"x".repeat(MAX_WRITE_BYTES + 1),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("content exceeds"));
+        assert_eq!(
+            std::fs::read_to_string(repo.path().join("README.md")).unwrap(),
+            "hello\n"
+        );
     }
 
     #[tokio::test]

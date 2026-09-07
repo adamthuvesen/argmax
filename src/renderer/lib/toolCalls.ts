@@ -373,7 +373,6 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   headline: string;
   currentAction: string | null;
   status: ToolCall["status"];
-  hasErrors: boolean;
 } {
   const counts = new Map<FineBucket, number>();
   for (const tool of tools) {
@@ -388,26 +387,22 @@ export function summarizeToolGroup(tools: ToolCall[]): {
     clauses.push(clauseForBucket(bucket, n, first));
     first = false;
   }
-  let errorCount = 0;
   let allErrors = tools.length > 0;
   let latestRunning: ToolCall | null = null;
   for (const tool of tools) {
-    if (tool.status === "error") {
-      errorCount += 1;
-    } else {
+    if (tool.status !== "error") {
       allErrors = false;
       if (tool.status === "running") latestRunning = tool;
     }
   }
-  const activity = clauses.length > 0 ? clauses.join(", ") : "Used tools";
-  const headline = errorCount > 0 ? `${activity} · ${errorCount} failed` : activity;
+  const headline = clauses.length > 0 ? clauses.join(", ") : "Used tools";
   const status: ToolCall["status"] = allErrors ? "error" : latestRunning ? "running" : "done";
 
   // While the group is still running, surface the most recent live tool's
   // action so the collapsed header shows what the agent is doing right now.
   const currentAction = latestRunning ? describeToolAction(latestRunning) : null;
 
-  return { headline, currentAction, status, hasErrors: errorCount > 0 };
+  return { headline, currentAction, status };
 }
 
 export function extractToolUseId(payload: Record<string, unknown>): string | null {

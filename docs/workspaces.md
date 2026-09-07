@@ -13,8 +13,11 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
   - `worktree`: Isolated worktree (`create_isolated`), branched as `argmax/<slug>-<short-id>`.
 - **Setup commands:** For isolated worktrees, the project's configured setup command runs via `CheckService` after creation. Failures are recorded as check rows and do not block workspace creation.
 - **Archiving:**
+  - Successful archives quietly leave the active list. Recovery access lives in Settings, while notifications are reserved for failures or changes that need attention.
   - Shared checkouts mark `archived` immediately and drain child processes in the background.
-  - Isolated worktrees mark `archiving`, cancel child processes, expire pending approvals, evict warm Cursor ACP instances, remove the git worktree, and persist `archived`. Dirty worktrees return to `kept` unless `force: true` is passed.
+  - Isolated worktrees mark `archiving`, cancel child processes, expire pending approvals, evict warm Cursor ACP instances, and use `git worktree move` to retain the complete checkout under `local-state/workspace-archive/<workspace-id>`. The moved checkout stays registered with Git, so tracked, untracked, and ignored files remain available. Settings → Advanced → Diagnostics → Archived workspaces opens the recovery root.
+  - Dirty worktrees return to `kept` unless `force: true` is passed. An `archive-failed` retry never implies force. The renderer confirms against the current dirty state before retrying with force.
+  - Archive recovery has no automatic expiry. Repeating an archive after the row reaches `archived` returns the same recovery path. Startup recovery recognizes a checkout already moved into its deterministic recovery path and completes the interrupted archive without moving or deleting it again.
   - Archiving is also how a workspace is disposed of automatically. A project with `archive_on_merge` on (Settings → Projects) has each of its *isolated* workspaces archived by the gh poller once the PR on that workspace's branch merges, never forced — see [gh.md](gh.md).
   - An agent can ask for the same thing from inside: the `workspace_archive` MCP tool archives the caller's own workspace once its turn settles, which is how `ship`'s babysit mode disposes of a worktree it is standing in without pulling the floor out from under itself — see [agent-tools.md](agent-tools.md).
   - Stopping a chat within 10 seconds of launch is an undo of a mistaken start: the pane returns to the composer, and the workspace is force-archived so no cancelled row stays in the sidebar. Docked multitasks and details popups are excluded. See [earlyStop.ts](../src/renderer/lib/earlyStop.ts).
@@ -98,3 +101,5 @@ Images are the one file kind the text read can't carry: `workspace:read-file` re
 ## Git
 
 [src-tauri/src/git](../src-tauri/src/git) executes git commands via direct argv arguments for branching, commits, pushing, and pull request actions.
+
+Selected-file commits build and commit through a temporary index, leaving unrelated staged entries in the checkout index alone. If the follow-up reset of that real index is blocked, the commit still returns its new SHA with an `indexCleanupWarning`; the commit dialog keeps the successful result visible and asks the user to repair the index rather than reporting a false failure. Git writes from Argmax serialize per canonical checkout, including separate IPC-created service instances that target a shared workspace.

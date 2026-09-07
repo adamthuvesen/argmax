@@ -122,7 +122,6 @@ function ToolCallGroupBubbleInner({
     <div
       className="tool-call-group activity-summary-line"
       data-status={summary.status}
-      data-has-errors={summary.hasErrors ? "true" : undefined}
       data-expanded={directTool ? undefined : expanded}
     >
       {directTool ? (

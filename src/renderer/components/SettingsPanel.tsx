@@ -203,6 +203,15 @@ export function SettingsPanel({
     }
   }, [diagnostics]);
 
+  const openArchiveRecovery = useCallback(async (): Promise<void> => {
+    if (!window.argmax || !diagnostics) return;
+    try {
+      await window.argmax.system.openPath({ path: diagnostics.archiveRecoveryPath });
+    } catch (error) {
+      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not open archived workspaces.");
+    }
+  }, [diagnostics]);
+
   const vacuumDatabase = useCallback(async (): Promise<void> => {
     if (!window.argmax) return;
     setDiagnosticsStatus("Vacuuming…");
@@ -354,6 +363,7 @@ export function SettingsPanel({
             setDiagnosticsStatus={setDiagnosticsStatus}
             copyDiagnostics={copyDiagnostics}
             revealDatabase={revealDatabase}
+            openArchiveRecovery={openArchiveRecovery}
             vacuumDatabase={vacuumDatabase}
           />
         ) : null}

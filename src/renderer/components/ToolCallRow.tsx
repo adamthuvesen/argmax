@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { memo, useMemo, useState, type JSX } from "react";
 import { interpretFileChange, summarizeFileChanges, type FileChange } from "../lib/fileChange.js";
 import { shortenPathsInText } from "../lib/pathDisplay.js";
 import {
@@ -61,19 +61,6 @@ function ToolCallRowInner({
   // this row. That keeps the turn chip authoritative for single-tool rows
   // (including MCP calls) while preserving per-row overrides.
   const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
-  // Auto-expand on error so the failure is visible without a click. We only
-  // run this once per row — if the user manually collapses, we don't reopen.
-  const [autoExpandedOnError, setAutoExpandedOnError] = useState<boolean>(tool.status === "error");
-  const autoExpandedOnErrorRef = useRef<boolean>(tool.status === "error");
-
-  useEffect(() => {
-    const hasLocalOverride = userToggle?.defaultExpanded === defaultExpanded;
-    if (tool.status === "error" && !autoExpandedOnErrorRef.current && !hasLocalOverride) {
-      autoExpandedOnErrorRef.current = true;
-      setAutoExpandedOnError(true);
-    }
-  }, [defaultExpanded, tool.status, userToggle]);
-
   const localExpanded =
     userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
 
@@ -102,7 +89,7 @@ function ToolCallRowInner({
   const hasLeadingContent = Boolean(childTools && childTools.length > 0);
   const hasDetail = toolCallHasExpandableDetail(tool, { hasLeadingContent });
   const expanded =
-    hasDetail && (expandedOverride ?? localExpanded ?? (autoExpandedOnError || (defaultExpanded ?? false)));
+    hasDetail && (expandedOverride ?? localExpanded ?? defaultExpanded ?? false);
   const opensAgentPane = toolTypeBucket === "agent" && onOpenAgent !== undefined;
   const toggleExpanded = (): void => {
     if (!hasDetail) return;

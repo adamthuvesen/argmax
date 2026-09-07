@@ -24,6 +24,20 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
 }
 
 describe("ToolCallRow", () => {
+  it.each(["running", "error"] as const)("keeps %s tool failures collapsed until opened", (status) => {
+    const failed = tool({ status: "error", error: "Permission denied" });
+    const { rerender } = render(<ToolCallRow tool={tool({ status })} />);
+    rerender(<ToolCallRow tool={failed} />);
+
+    const row = screen.getByRole("button", { name: "Ran mkdir -p dist" });
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Permission denied")).not.toBeInTheDocument();
+    fireEvent.click(row);
+    expect(screen.getByText("Permission denied")).toBeInTheDocument();
+    fireEvent.click(row);
+    expect(screen.queryByText("Permission denied")).not.toBeInTheDocument();
+  });
+
   it("marks a built-in web row with the globe though it has no MCP server", () => {
     render(<ToolCallRow tool={tool({ name: "WebSearch", inputPreview: "tauri 2 webview" })} />);
 

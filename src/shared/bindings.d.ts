@@ -120,7 +120,7 @@ async workspacesKeep(input: WorkspacesKeepInput) : Promise<Result<WorkspaceSumma
     else return { status: "error", error: e  as any };
 }
 },
-async workspacesArchive(input: WorkspacesArchiveInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+async workspacesArchive(input: WorkspacesArchiveInput) : Promise<Result<WorkspaceArchiveResult, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspaces_archive", { input }) };
 } catch (e) {
@@ -1027,7 +1027,7 @@ export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutoche
  */
 export type DebugSnapshot = { generatedAt: string; ipcStats: IpcChannelStats[]; logs: LogEntry[] }
 export type DetectedIde = { id: IdeId; label: string; appPath: string; hasCli: boolean }
-export type DiagnosticsReport = { appVersion: string; sqliteVersion: string; databasePath: string; platform: string; arch: string; generatedAt: string; startupPhases: StartupPhaseRecord[]; databaseStats: DatabaseStats; ipcStats: IpcChannelStats[]; recentLogs: LogEntry[]; sqlitePragmas: SqlitePragmas; runtime: RuntimeDiagnostics }
+export type DiagnosticsReport = { appVersion: string; sqliteVersion: string; databasePath: string; archiveRecoveryPath: string; platform: string; arch: string; generatedAt: string; startupPhases: StartupPhaseRecord[]; databaseStats: DatabaseStats; ipcStats: IpcChannelStats[]; recentLogs: LogEntry[]; sqlitePragmas: SqlitePragmas; runtime: RuntimeDiagnostics }
 /**
  * Lines of unchanged context a review diff carries on each side of a hunk.
  * Absent means "let git use its default", which keeps the untouched request
@@ -1065,7 +1065,18 @@ prMergedAt: string | null;
 headRefName: string | null }
 export type GitCommitInput = { workspaceId: WorkspaceId; message: GitCommitMessage; selectedFiles: RelativePath[] | null }
 export type GitCommitMessage = string
-export type GitCommitResult = { commitSha: string; branch: string }
+export type GitCommitResult = { commitSha: string; branch: string;
+/**
+ * The commit reached HEAD, but resetting the real index after a
+ * selected-file commit failed. The user can repair the index without
+ * losing the completed commit.
+ */
+indexCleanupWarning?: string | null;
+/**
+ * The commit succeeded, but Argmax could not read follow-up metadata such
+ * as the full SHA or current branch.
+ */
+postCommitWarning?: string | null }
 export type GitCreateBranchInput = { workspaceId: WorkspaceId; branch: BranchName }
 export type GitCreateBranchResult = { branch: string }
 export type GitPushInput = { workspaceId: WorkspaceId }
@@ -1147,15 +1158,21 @@ tree: string;
 truncated: boolean }
 export type PageTable = { caption: string | null; headers: string[]; rows: string[][] }
 export type PageText = { tabId: string; url: string; title: string; text: string; truncated: boolean }
-export type PendingMessage = { id: string; sessionId: string; content: string; agentMode: string; modelLabel?: string | null; modelId?: string | null; reasoningEffort?: string | null; fastMode: boolean; attachments: ComposerAttachmentInput[]; agentReferences: AgentReference[]; origin?: MessageOrigin | null; queuedAt: string }
+export type PendingMessage = { id: string; sessionId: string; content: string; agentMode: string; modelLabel?: string | null; modelId?: string | null; reasoningEffort?: string | null; fastMode: boolean; attachments: ComposerAttachmentInput[]; agentReferences: AgentReference[]; origin?: MessageOrigin | null;
+/**
+ * Present only after startup recovery. Recovered messages stay visible
+ * but are excluded from automatic queue draining until the user chooses
+ * Send explicitly.
+ */
+recoveryStatus?: string | null; queuedAt: string }
 export type PermissionMode = "auto-approve" | "ask-each-time"
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
 export type ProjectId = string
 export type ProjectSettings = { worktreeLocation: string; setupCommand: string; checkCommands: string[];
 /**
- * Archive a workspace once the PR on its branch merges, which removes its
- * worktree and local branch. Off unless the project opts in.
+ * Archive a workspace once the PR on its branch merges, retaining its
+ * checkout and branch in recovery storage. Off unless the project opts in.
  */
 archiveOnMerge: boolean }
 export type ProjectSettingsInput = { worktreeLocation: NonEmptyString; setupCommand: string; checkCommands: string[];
@@ -1448,7 +1465,11 @@ export type UsagePlanKind = "subscription" | "enterprise" | "api_key" | "unavail
  * read as "up 100%".
  */
 export type UsagePreviousPeriod = { costUsd: number; tokens: UsageTokenTotals; sessions: number }
-export type UsageProviderRemaining = { provider: ProviderId; kind: UsagePlanKind; planLabel: string | null; windows: UsageLimitWindow[]; message: string | null }
+export type UsageProviderRemaining = { provider: ProviderId; kind: UsagePlanKind; planLabel: string | null; windows: UsageLimitWindow[]; message: string | null;
+/**
+ * When set, the renderer opens this URL from the message (e.g. Cursor Spending).
+ */
+messageUrl: string | null }
 export type UsageProviderSummary = { provider: ProviderId;
 /**
  * `false` when the provider has no local usage source (Cursor). Such a
@@ -1529,6 +1550,7 @@ provider?: ProviderId | null }
  */
 export type UsageTokenTotals = { inputUncached: number; cacheRead: number; cacheWrite: number; output: number; reasoning: number }
 export type UsageWindow = "24h" | "7d" | "30d"
+export type WorkspaceArchiveResult = { workspace: WorkspaceSummary; recoveryPath: string | null }
 export type WorkspaceContentSearchFile = { path: string; matches: WorkspaceContentSearchMatch[] }
 export type WorkspaceContentSearchMatch = { line: number; preview: string }
 export type WorkspaceContentSearchResult = { files: WorkspaceContentSearchFile[]; truncated: boolean }

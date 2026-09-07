@@ -120,6 +120,92 @@ describe("CommitDialog", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("reports a completed commit when Git index cleanup needs repair", async () => {
+    const result = {
+      commitSha: "abcdef1234567890",
+      branch: "argmax/review",
+      indexCleanupWarning: "index.lock already exists"
+    };
+    commitMock.mockResolvedValue(result);
+    const onClose = vi.fn();
+    const onCommitted = vi.fn();
+    render(
+      <CommitDialog
+        open
+        onClose={onClose}
+        workspaceId="workspace-1"
+        files={FILES}
+        defaultMessage="fix: preserve committed work"
+        onCommitted={onCommitted}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Commit" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Committed, but the Git index needs repair");
+    expect(onCommitted).toHaveBeenCalledWith(result);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Commit" })).toBeDisabled();
+  });
+
+  it("reports a completed commit when follow-up metadata cannot be verified", async () => {
+    commitMock.mockResolvedValue({
+      commitSha: "abcdef1",
+      branch: "argmax/review",
+      postCommitWarning: "could not read HEAD afterward"
+    });
+    const onClose = vi.fn();
+    render(
+      <CommitDialog
+        open
+        onClose={onClose}
+        workspaceId="workspace-1"
+        files={FILES}
+        defaultMessage="fix: preserve committed work"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Commit" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Committed, but post-commit verification needs attention"
+    );
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("does not let a pending commit close or update a reopened dialog", async () => {
+    let resolveCommit!: (result: GitCommitResult) => void;
+    commitMock.mockImplementationOnce(() => new Promise((resolve) => { resolveCommit = resolve; }));
+    const onClose = vi.fn();
+    const onCommitted = vi.fn();
+    const props = {
+      onClose,
+      workspaceId: "workspace-1",
+      files: FILES,
+      defaultMessage: "fix: preserve dialog lifecycle",
+      onCommitted
+    };
+    const { rerender } = render(<CommitDialog open {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Commit" }));
+    await waitFor(() => expect(commitMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Close commit dialog" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+
+    rerender(<CommitDialog open={false} {...props} />);
+    rerender(<CommitDialog open {...props} />);
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Commit selected changes" })).toBeInTheDocument());
+    resolveCommit({ commitSha: "abcdef1", branch: "argmax/review" });
+    await Promise.resolve();
+
+    expect(onCommitted).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Commit selected changes" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Commit" })).toBeEnabled());
+  });
+
   it("disables the Commit button when no files are staged", () => {
     render(
       <CommitDialog

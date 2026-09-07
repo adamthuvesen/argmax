@@ -22,6 +22,7 @@ export function AdvancedSettings({
   setDiagnosticsStatus,
   copyDiagnostics,
   revealDatabase,
+  openArchiveRecovery,
   vacuumDatabase
 }: {
   projects: ProjectSummary[];
@@ -30,6 +31,7 @@ export function AdvancedSettings({
   setDiagnosticsStatus: (status: string | null) => void;
   copyDiagnostics: () => Promise<void>;
   revealDatabase: () => Promise<void>;
+  openArchiveRecovery: () => Promise<void>;
   vacuumDatabase: () => Promise<void>;
 }): JSX.Element {
   const [performanceOpen, setPerformanceOpen] = useState(false);
@@ -89,6 +91,23 @@ export function AdvancedSettings({
               aria-label="Vacuum database"
             >
               Vacuum
+            </button>
+          }
+        />
+
+        <SettingRow
+          label="Archived workspaces"
+          description="Find files kept from archived workspaces."
+          control={
+            <button
+              type="button"
+              className="settings-button"
+              onClick={() => void openArchiveRecovery()}
+              disabled={!diagnostics}
+              aria-label="Open archived workspaces"
+            >
+              <FolderOpen size={13} aria-hidden="true" />
+              Open
             </button>
           }
         />

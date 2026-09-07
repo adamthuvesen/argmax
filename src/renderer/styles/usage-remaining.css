@@ -58,6 +58,18 @@
   color: var(--muted-strong);
 }
 
+.usage-remaining-link {
+  display: inline;
+  font: inherit;
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.usage-remaining-link:hover {
+  color: var(--ink);
+}
+
 .usage-remaining-windows {
   display: grid;
   gap: var(--space-2_5);

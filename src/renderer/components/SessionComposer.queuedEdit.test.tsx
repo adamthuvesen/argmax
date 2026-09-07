@@ -72,4 +72,27 @@ describe("SessionComposer queued follow-up editing", () => {
     // Restoring it anyway would send the same prompt twice.
     expect(prompt().value).toBe("");
   });
+
+  it("explains recovered and uncertain delivery without sending either", () => {
+    const onSendQueuedMessageNow = vi.fn().mockResolvedValue(undefined);
+    renderConversation(baseSession({ state: "complete" }), [], {
+      pendingMessages: [
+        { ...queued[0], recoveryStatus: "unsent" },
+        {
+          ...queued[0],
+          id: "pending-2",
+          content: "Check whether this launched",
+          recoveryStatus: "delivery-unknown"
+        }
+      ],
+      onCancelQueuedMessage: vi.fn().mockResolvedValue(undefined),
+      onSendQueuedMessageNow
+    });
+
+    expect(screen.getByText("Paused after interruption • not sent")).toBeInTheDocument();
+    expect(
+      screen.getByText("Delivery uncertain after restart • check the chat before sending again")
+    ).toBeInTheDocument();
+    expect(onSendQueuedMessageNow).not.toHaveBeenCalled();
+  });
 });

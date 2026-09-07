@@ -817,10 +817,6 @@
   border-radius: 0;
 }
 
-.tool-call-group[data-has-errors="true"] .tool-call-group-eyebrow-label {
-  color: var(--rose);
-}
-
 .tool-call-group-header {
   display: flex;
   align-items: center;
@@ -1084,12 +1080,6 @@ button.tool-call-row-button {
 .tool-call-row-button:hover .tool-call-row-target,
 .tool-call-group-header:hover .tool-call-group-eyebrow-detail {
   color: var(--muted-strong);
-}
-
-/* Errors move onto the verb now that there is no icon to tint — the left edge
-   stays put when a row fails, it just changes color. */
-.tool-call-row[data-status="error"] .tool-call-row-verb {
-  color: var(--rose);
 }
 
 /* Parked at the right edge, the same way the group header's spinner is, so a

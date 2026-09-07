@@ -965,6 +965,7 @@ pub fn run() {
                                 state.terminals.get().cloned(),
                                 Some(Arc::clone(&approvals)),
                                 Some(data_dir.join("side-chats")),
+                                Some(data_dir.join(workspaces::orchestration::ARCHIVE_RECOVERY_DIR)),
                             );
                             // Archive and project teardown evict the workspace's
                             // warm `cursor-agent acp` process; without the pool
@@ -1235,16 +1236,16 @@ async fn archive_merged_workspace(
         force: Some(false),
     };
     match workspaces.archive(input).await {
-        Ok(workspace) if workspace.state == "kept" => tracing::info!(
-            workspace_id = %workspace.id,
+        Ok(result) if result.workspace.state == "kept" => tracing::info!(
+            workspace_id = %result.workspace.id,
             pr_number = context.pr_number,
-            changed_files = workspace.changed_files,
+            changed_files = result.workspace.changed_files,
             "archive on merge: kept the workspace, its worktree has uncommitted changes",
         ),
-        Ok(workspace) => tracing::info!(
-            workspace_id = %workspace.id,
+        Ok(result) => tracing::info!(
+            workspace_id = %result.workspace.id,
             pr_number = context.pr_number,
-            state = %workspace.state,
+            state = %result.workspace.state,
             "archive on merge: archived the workspace, its PR merged",
         ),
         Err(error) => tracing::warn!(

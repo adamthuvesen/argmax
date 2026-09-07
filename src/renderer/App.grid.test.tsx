@@ -185,8 +185,8 @@ describe("App grid", () => {
       sessions: [...snapshot.sessions, secondSession]
     });
     archiveWorkspace.mockResolvedValue({
-      ...secondWorkspace,
-      state: "archived"
+      workspace: { ...secondWorkspace, state: "archived" },
+      recoveryPath: "/tmp/workspace-archive/workspace-2"
     });
 
     render(<App />);

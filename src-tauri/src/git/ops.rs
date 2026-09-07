@@ -2,7 +2,14 @@
 // stage+commit-all, push (with first-time `-u origin <branch>` upgrade),
 // create-and-checkout-branch, and the view-or-create PR flow.
 
-use std::{future::Future, path::Path, pin::Pin, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    future::Future,
+    path::{Path, PathBuf},
+    pin::Pin,
+    sync::{Arc, LazyLock, Mutex},
+    time::Duration,
+};
 
 use regex::Regex;
 use serde::Serialize;
@@ -19,8 +26,16 @@ use crate::persistence::projects::{get_project_remote, update_project_remote, Pr
 use crate::persistence::sessions::find_session_by_id;
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::util::gh_runner::{default_gh_runner, GhRunner};
+use crate::util::sync::LockOrRecover;
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(60);
+
+// IPC creates a GitOpsService for each request. Git's own lockfiles protect
+// correctness, but they turn concurrent in-app writes into avoidable failures.
+// Key by canonical checkout so all service instances for a shared workspace
+// wait in one order before invoking Git.
+static CHECKOUT_WRITE_LOCKS: LazyLock<Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GitCommitInput {
@@ -34,6 +49,15 @@ pub struct GitCommitInput {
 pub struct GitCommitResult {
     pub commit_sha: String,
     pub branch: String,
+    /// The commit reached HEAD, but resetting the real index after a
+    /// selected-file commit failed. The user can repair the index without
+    /// losing the completed commit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_cleanup_warning: Option<String>,
+    /// The commit succeeded, but Argmax could not read follow-up metadata such
+    /// as the full SHA or current branch.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_commit_warning: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -144,24 +168,57 @@ impl GitOpsService {
                 "Commit message cannot start with '-'",
             ));
         }
-        if selected.is_empty() {
+        let checkout_lock = checkout_write_lock(Path::new(&workspace.path)).await?;
+        let _checkout_guard = checkout_lock.lock().await;
+        // An all-files commit may create a repository's first commit, where
+        // HEAD has no revision yet. Still capture it when present so a normal
+        // commit cannot be reported as successful without moving HEAD.
+        let before_head = git_head(&workspace.path).await.ok();
+        let (commit_output, index_cleanup_warning) = if selected.is_empty() {
             run_git_text(&workspace.path, ["add", "-A"], GIT_TIMEOUT).await?;
-            run_git_text(&workspace.path, ["commit", "-m", message], GIT_TIMEOUT).await?;
+            (
+                run_git_text(&workspace.path, ["commit", "-m", message], GIT_TIMEOUT).await?,
+                None,
+            )
         } else {
-            commit_selected_files(Path::new(&workspace.path), &selected, message).await?;
+            commit_selected_files(Path::new(&workspace.path), &selected, message).await?
+        };
+        let (sha, mut post_commit_warnings) = match git_head(&workspace.path).await {
+            Ok(sha) => (sha, Vec::new()),
+            Err(error) => (
+                extract_commit_sha(&commit_output).unwrap_or_else(|| "unknown".to_string()),
+                vec![format!(
+                    "The commit succeeded, but Argmax could not read HEAD afterward: {error}"
+                )],
+            ),
+        };
+        if before_head.as_deref() == Some(sha.as_str()) {
+            return Err(ArgmaxError::service(
+                "GIT_COMMIT_HEAD_UNCHANGED",
+                "Git completed the commit command without advancing HEAD.",
+            ));
         }
-        let sha = run_git_text(&workspace.path, ["rev-parse", "HEAD"], GIT_TIMEOUT).await?;
-        let branch = run_git_text(&workspace.path, ["branch", "--show-current"], GIT_TIMEOUT)
-            .await?
-            .trim()
-            .to_string();
+        let branch = match run_git_text(&workspace.path, ["branch", "--show-current"], GIT_TIMEOUT)
+            .await
+        {
+            Ok(branch) => branch.trim().to_string(),
+            Err(error) => {
+                post_commit_warnings.push(format!(
+                    "The commit succeeded, but Argmax could not read the current branch afterward: {error}"
+                ));
+                workspace.branch.clone()
+            }
+        };
         Ok(GitCommitResult {
-            commit_sha: sha.trim().to_string(),
+            commit_sha: sha,
             branch: if branch.is_empty() {
                 workspace.branch
             } else {
                 branch
             },
+            index_cleanup_warning,
+            post_commit_warning: (!post_commit_warnings.is_empty())
+                .then(|| post_commit_warnings.join(" ")),
         })
     }
 
@@ -176,6 +233,8 @@ impl GitOpsService {
                 "Workspace has no path on disk yet.",
             ));
         }
+        let checkout_lock = checkout_write_lock(Path::new(&workspace.path)).await?;
+        let _checkout_guard = checkout_lock.lock().await;
         let branch = run_git_text(&workspace.path, ["branch", "--show-current"], GIT_TIMEOUT)
             .await?
             .trim()
@@ -223,6 +282,8 @@ impl GitOpsService {
                 "Workspace has no path on disk yet.",
             ));
         }
+        let checkout_lock = checkout_write_lock(Path::new(&workspace.path)).await?;
+        let _checkout_guard = checkout_lock.lock().await;
         run_git_text(
             &workspace.path,
             ["checkout", "-b", input.branch.as_str()],
@@ -402,7 +463,7 @@ async fn commit_selected_files(
     workspace_path: &Path,
     selected: &[&str],
     message: &str,
-) -> ArgmaxResult<()> {
+) -> ArgmaxResult<(String, Option<String>)> {
     let temp_dir = tempdir().map_err(|error| {
         ArgmaxError::service(
             "GIT_TEMP_INDEX_FAILED",
@@ -421,13 +482,54 @@ async fn commit_selected_files(
     let mut add_args: Vec<&str> = vec!["add", "--"];
     add_args.extend_from_slice(selected);
     run_git_text_with_options(workspace_path, add_args, opts()).await?;
-    run_git_text_with_options(workspace_path, ["commit", "-m", message], opts()).await?;
+    let commit_output =
+        run_git_text_with_options(workspace_path, ["commit", "-m", message], opts()).await?;
 
     let mut reset_args: Vec<&str> = vec!["reset", "-q", "--"];
     reset_args.extend_from_slice(selected);
-    run_git_text(workspace_path, reset_args, GIT_TIMEOUT)
+    match run_git_text(workspace_path, reset_args, GIT_TIMEOUT).await {
+        Ok(_) => Ok((commit_output, None)),
+        Err(error) => Ok((
+            commit_output,
+            Some(format!(
+            "The selected-file commit completed, but Git could not reset the real index: {error}"
+        )),
+        )),
+    }
+}
+
+fn extract_commit_sha(output: &str) -> Option<String> {
+    Regex::new(r"\[[^\]]+ ([0-9a-f]{7,64})\]")
+        .ok()?
+        .captures(output)?
+        .get(1)
+        .map(|sha| sha.as_str().to_string())
+}
+
+async fn git_head(workspace_path: &str) -> ArgmaxResult<String> {
+    Ok(
+        run_git_text(workspace_path, ["rev-parse", "HEAD"], GIT_TIMEOUT)
+            .await?
+            .trim()
+            .to_string(),
+    )
+}
+
+async fn checkout_write_lock(workspace_path: &Path) -> ArgmaxResult<Arc<tokio::sync::Mutex<()>>> {
+    let canonical_path = tokio::fs::canonicalize(workspace_path)
         .await
-        .map(|_| ())
+        .map_err(|error| {
+            ArgmaxError::service(
+                "GIT_WORKSPACE_PATH_INVALID",
+                format!("could not resolve workspace checkout: {error}"),
+            )
+        })?;
+    let mut locks = CHECKOUT_WRITE_LOCKS.lock_or_recover("git checkout write locks");
+    Ok(Arc::clone(
+        locks
+            .entry(canonical_path)
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
+    ))
 }
 
 fn is_missing_upstream_error(error: &ArgmaxError) -> bool {
@@ -702,6 +804,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn selected_file_commit_reports_index_cleanup_failure_after_head_advances() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path()).await;
+        std::fs::write(repo.path().join("README.md"), "staged edit\n").unwrap();
+        run_git(repo.path(), &["add", "README.md"]).await;
+        std::fs::write(repo.path().join("notes.txt"), "selected\n").unwrap();
+
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        // The alternate-index commit does not need the checkout index lock,
+        // while its best-effort reset does. This reproduces an external Git
+        // process taking the real index between the commit and cleanup.
+        let index_lock = repo.path().join(".git/index.lock");
+        std::fs::write(&index_lock, "external git owns this lock\n").unwrap();
+
+        let service = GitOpsService::new(database);
+        let result = service
+            .commit_all(GitCommitInput {
+                workspace_id,
+                message: "add selected notes".to_string(),
+                selected_files: vec!["notes.txt".to_string()],
+            })
+            .await
+            .expect("commit remains successful when cleanup fails");
+        assert_eq!(result.commit_sha.len(), 40);
+        assert!(result.index_cleanup_warning.is_some());
+        assert_eq!(
+            run_git(repo.path(), &["rev-list", "--count", "HEAD"])
+                .await
+                .trim(),
+            "2"
+        );
+        let committed = run_git(repo.path(), &["show", "--name-only", "--format=", "HEAD"]).await;
+        assert!(committed.lines().any(|line| line == "notes.txt"));
+
+        std::fs::remove_file(index_lock).unwrap();
+        let cached = run_git(repo.path(), &["diff", "--cached", "--name-only"]).await;
+        assert!(cached.lines().any(|line| line == "README.md"));
+    }
+
+    #[tokio::test]
+    async fn checkout_write_lock_is_shared_at_the_canonical_checkout_boundary() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path()).await;
+        let first = checkout_write_lock(repo.path()).await.unwrap();
+        let guard = first.lock().await;
+        let second = checkout_write_lock(repo.path()).await.unwrap();
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let waiting = tokio::spawn(async move {
+            let _guard = second.lock().await;
+            let _ = entered_tx.send(());
+        });
+        assert!(tokio::time::timeout(Duration::from_millis(25), entered_rx)
+            .await
+            .is_err());
+        drop(guard);
+        waiting.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn create_branch_checks_out_new_branch() {
         let repo = TempDir::new().unwrap();
         init_repo(repo.path()).await;
@@ -930,6 +1093,15 @@ mod tests {
             Some(42)
         );
         assert_eq!(extract_pr_number("https://github.com/menti/argmax"), None);
+    }
+
+    #[test]
+    fn extracts_short_sha_from_successful_commit_output() {
+        assert_eq!(
+            extract_commit_sha("[main abc1234] add selected notes\n 1 file changed\n"),
+            Some("abc1234".to_string())
+        );
+        assert_eq!(extract_commit_sha("commit succeeded"), None);
     }
 
     #[tokio::test]

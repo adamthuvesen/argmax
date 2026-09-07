@@ -4,7 +4,7 @@ use crate::{
     ipc::system::SystemOk,
     persistence::workspaces::WorkspaceSummary,
     state::AppState,
-    workspaces::WorkspaceService,
+    workspaces::{WorkspaceArchiveResult, WorkspaceService},
 };
 use std::sync::Arc;
 use tauri::State;
@@ -96,14 +96,14 @@ pub(crate) fn workspaces_keep_impl(
 pub async fn workspaces_archive(
     state: State<'_, AppState>,
     input: WorkspacesArchiveInput,
-) -> ArgmaxResult<WorkspaceSummary> {
+) -> ArgmaxResult<WorkspaceArchiveResult> {
     workspaces_archive_impl(&state, input).await
 }
 
 pub(crate) async fn workspaces_archive_impl(
     state: &AppState,
     input: WorkspacesArchiveInput,
-) -> ArgmaxResult<WorkspaceSummary> {
+) -> ArgmaxResult<WorkspaceArchiveResult> {
     live_workspaces(state)?.archive(input).await
 }
 

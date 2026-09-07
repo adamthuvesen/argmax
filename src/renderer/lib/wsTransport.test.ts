@@ -48,7 +48,7 @@ class FakeSocket implements RemoteSocket {
   /** Authed socket: open, then accept the token the client sends. */
   authenticate(): void {
     this.open();
-    this.deliver({ type: "auth-ok" });
+    this.deliver({ type: "auth-ok", operationReplay: true });
   }
 
   frames(): Record<string, unknown>[] {
@@ -86,7 +86,95 @@ describe("wsTransport", () => {
   }
 
   beforeEach(() => {
+    window.sessionStorage.removeItem("argmax.remote.unresolvedOperations");
     window.localStorage.setItem(TOKEN_KEY, "secret-token");
+  });
+
+  it("recovers an in-flight mutation with the same operation identity after reconnect", async () => {
+    vi.useFakeTimers();
+    const { connect, sockets } = fakeTransportSeam();
+    const transport = createWsTransport({ connect });
+    sockets[0].authenticate();
+    const sent = transport.invoke("providers:send-input", { sessionId: "chat", content: "hello" });
+    const original = sockets[0].requests()[0];
+    const identity = original.operation as { clientId: string; operationId: string };
+    expect(typeof identity.clientId).toBe("string");
+    expect(typeof identity.operationId).toBe("string");
+    sockets[0].close();
+    await vi.advanceTimersByTimeAsync(MAX_BACKOFF_MS);
+    sockets[1].authenticate();
+    expect(sockets[1].requests()[0]).toEqual(original);
+    sockets[1].deliver({ type: "response", id: original.id, ok: "sent", operationSettled: true });
+    await expect(sent).resolves.toBe("sent");
+    expect(JSON.parse(sessionStorage.getItem("argmax.remote.unresolvedOperations") ?? "[]")).toEqual([]);
+  });
+
+  it("gives two live identical terminal writes different operation identities", async () => {
+    const { connect, sockets } = fakeTransportSeam();
+    const transport = createWsTransport({ connect });
+    sockets[0].authenticate();
+    const input = { terminalId: "terminal", data: "a" };
+    const first = transport.invoke("terminal:write", input);
+    const second = transport.invoke("terminal:write", input);
+    const requests = sockets[0].requests();
+    expect(requests[0].operation).not.toEqual(requests[1].operation);
+    sockets[0].deliver({ type: "response", id: 1, ok: true, operationSettled: true });
+    sockets[0].deliver({ type: "response", id: 2, ok: true, operationSettled: true });
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+  });
+
+  it("requires an explicit decision before re-executing an action interrupted by a host crash", async () => {
+    const { connect, sockets } = fakeTransportSeam();
+    const transport = createWsTransport({ connect });
+    sockets[0].authenticate();
+    const input = { terminalId: "terminal", data: "a" };
+    const first = transport.invoke("terminal:write", input);
+    const oldIdentity = sockets[0].requests()[0].operation;
+    sockets[0].deliver({ type: "response", id: 1, error: { sub_code: "REMOTE_OUTCOME_UNKNOWN", message: "host interrupted" } });
+    await expect(first).rejects.toThrow("host interrupted");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await expect(transport.invoke("terminal:write", input)).rejects.toThrow("Nothing new was sent");
+    expect(sockets[0].requests()).toHaveLength(1);
+    confirm.mockReturnValue(true);
+    const retry = transport.invoke("terminal:write", input);
+    const request = sockets[0].requests()[1];
+    expect(request.operation).not.toEqual(oldIdentity);
+    sockets[0].deliver({ type: "response", id: request.id, ok: true, operationSettled: true });
+    await expect(retry).resolves.toBe(true);
+  });
+
+  it("retains uncertain mutations across page recreation and safely reuses their identity", async () => {
+    vi.useFakeTimers();
+    const first = fakeTransportSeam();
+    const transport = createWsTransport({ connect: first.connect });
+    first.sockets[0].authenticate();
+    const sent = transport.invoke("workspaces:archive", { workspaceId: "work" });
+    const failure = expect(sent).rejects.toThrow("outcome was confirmed");
+    const operation = first.sockets[0].requests()[0].operation;
+    first.sockets[0].close();
+    await vi.advanceTimersByTimeAsync(QUEUE_TIMEOUT_MS);
+    await failure;
+    const second = fakeTransportSeam();
+    const recreated = createWsTransport({ connect: second.connect });
+    second.sockets[0].authenticate();
+    const retry = recreated.invoke("workspaces:archive", { workspaceId: "work" });
+    expect(second.sockets[0].requests()[0].operation).toEqual(operation);
+    second.sockets[0].deliver({ type: "response", id: 1, ok: "archived", operationSettled: true });
+    await expect(retry).resolves.toBe("archived");
+  });
+
+  it("waits for a still-running operation instead of reporting failure or changing its ID", async () => {
+    vi.useFakeTimers();
+    const { connect, sockets } = fakeTransportSeam();
+    const transport = createWsTransport({ connect });
+    sockets[0].authenticate();
+    const sent = transport.invoke("git:commit", { workspaceId: "work", message: "change" });
+    const original = sockets[0].requests()[0];
+    sockets[0].deliver({ type: "response", id: 1, error: { sub_code: "REMOTE_OPERATION_PENDING", message: "running" } });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(sockets[0].requests()[1]).toEqual(original);
+    sockets[0].deliver({ type: "response", id: 1, ok: { hash: "abc" }, operationSettled: true });
+    await expect(sent).resolves.toEqual({ hash: "abc" });
   });
 
   afterEach(() => {

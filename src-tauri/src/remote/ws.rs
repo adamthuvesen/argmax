@@ -30,6 +30,7 @@ use tauri::Manager;
 use tokio::sync::{broadcast, mpsc, OwnedSemaphorePermit, Semaphore};
 
 use super::dispatch::dispatch;
+use super::operations::{self, OperationId};
 use super::server::RemoteBridge;
 use super::RemoteEvent;
 use crate::error::{ArgmaxError, InvalidInputIssue};
@@ -55,6 +56,7 @@ pub enum ClientMessage {
         id: i64,
         channel: String,
         input: Value,
+        operation: Option<OperationId>,
     },
     /// Heartbeat probe; answered with `pong` so the client can tell a live
     /// socket from one the network killed silently.
@@ -158,7 +160,12 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
             _ => continue,
         };
         match parse_client_frame(&text) {
-            ClientMessage::Request { id, channel, input } => {
+            ClientMessage::Request {
+                id,
+                channel,
+                input,
+                operation,
+            } => {
                 let request_slot = match reserve_request_slot(&request_slots) {
                     Ok(slot) => slot,
                     Err(error) => {
@@ -171,10 +178,35 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
                 tauri::async_runtime::spawn(async move {
                     let _request_slot = request_slot;
                     let state = app.state::<AppState>();
-                    let frame = match dispatch(&state, &channel, input).await {
-                        Ok(value) => response_ok_frame(id, value),
-                        Err(error) => response_error_frame(id, &error),
+                    let result = if operations::is_read(&channel) {
+                        Ok(operations::outcome(dispatch(&state, &channel, input).await))
+                    } else if let Some(operation) = operation {
+                        match state.db.get() {
+                            Some(db) => {
+                                operations::execute(db, &operation, &channel, &input, || {
+                                    dispatch(&state, &channel, input.clone())
+                                })
+                                .await
+                            }
+                            None => Err(ArgmaxError::service(
+                                "DATABASE_UNAVAILABLE",
+                                "The database is not available",
+                            )),
+                        }
+                    } else {
+                        Err(ArgmaxError::service(
+                            "REMOTE_OPERATION_REQUIRED",
+                            "Reload this page to safely send actions to the updated host",
+                        ))
                     };
+                    let settled = result.is_ok() && !operations::is_read(&channel);
+                    let mut reply = result.unwrap_or_else(|error| operations::outcome(Err(error)));
+                    if settled {
+                        reply["operationSettled"] = json!(true);
+                    }
+                    reply["type"] = json!("response");
+                    reply["id"] = json!(id);
+                    let frame = reply.to_string();
                     let _ = responses.send(frame).await;
                 });
             }
@@ -239,12 +271,26 @@ pub fn parse_client_frame(text: &str) -> ClientMessage {
         },
         Some("ping") => ClientMessage::Ping,
         Some("request") => {
+            let operation = match value.get("operation") {
+                None => None,
+                Some(raw) => match serde_json::from_value::<OperationId>(raw.clone()) {
+                    Ok(operation) => Some(operation),
+                    Err(_) => {
+                        return ClientMessage::Malformed {
+                            id,
+                            detail: "operation needs UUID clientId and operationId fields"
+                                .to_string(),
+                        }
+                    }
+                },
+            };
             let channel = value.get("channel").and_then(Value::as_str);
             match (id, channel) {
                 (Some(id), Some(channel)) => ClientMessage::Request {
                     id,
                     channel: channel.to_string(),
                     input: value.get("input").cloned().unwrap_or(Value::Null),
+                    operation,
                 },
                 _ => ClientMessage::Malformed {
                     id,
@@ -287,7 +333,7 @@ pub(crate) fn tokens_match(candidate: &str, expected: &str) -> bool {
 }
 
 pub fn auth_ok_frame() -> String {
-    json!({ "type": "auth-ok" }).to_string()
+    json!({ "type": "auth-ok", "operationReplay": true }).to_string()
 }
 
 pub fn auth_error_frame() -> String {
@@ -440,6 +486,7 @@ mod tests {
                 id: 7,
                 channel: "dashboard:list".to_string(),
                 input: Value::Null,
+                operation: None,
             }
         );
     }

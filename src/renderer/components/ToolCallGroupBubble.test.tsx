@@ -104,7 +104,7 @@ describe("ToolCallGroupBubble", () => {
     expect(screen.queryByText("Read second.ts")).toBeNull();
   });
 
-  it("keeps a compact singleton failure explicit while collapsed", () => {
+  it("keeps a compact singleton failure quiet while collapsed", () => {
     const failed = tool("failed", {
       name: "Bash",
       inputPreview: "npm test",
@@ -114,8 +114,9 @@ describe("ToolCallGroupBubble", () => {
     });
     render(<ToolCallGroupBubble compact group={buildToolCallGroup([failed])} />);
 
-    const header = screen.getByRole("button", { name: "Ran a command · 1 failed" });
-    expect(header.parentElement).toHaveAttribute("data-has-errors", "true");
+    const header = screen.getByRole("button", { name: "Ran a command" });
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Tests failed")).not.toBeInTheDocument();
     expect(screen.queryByText("npm test")).toBeNull();
   });
 
@@ -327,12 +328,14 @@ describe("ToolCallGroupBubble", () => {
     expect(screen.getByText("Contents of second")).toBeInTheDocument();
   });
 
-  it("reports mixed failures while collapsed and shows the failed output on expansion", () => {
+  it("keeps mixed failures quiet until their details are expanded", () => {
     const failed = tool("failed", { name: "Bash", inputPreview: "npm test", inputFull: { command: "npm test" }, status: "error", error: "Tests failed" });
     render(<ToolCallGroupBubble group={buildToolCallGroup([tool("first"), failed])} />);
-    const header = screen.getByRole("button", { name: "Read a file, ran a command · 1 failed" });
+    const header = screen.getByRole("button", { name: "Read a file, ran a command" });
     expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Tests failed")).not.toBeInTheDocument();
     fireEvent.click(header);
+    fireEvent.click(screen.getByRole("button", { name: "Ran npm test" }));
     expect(screen.getByText("Tests failed")).toBeInTheDocument();
   });
 

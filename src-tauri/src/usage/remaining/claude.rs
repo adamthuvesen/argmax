@@ -228,8 +228,43 @@ fn token_from_credentials_json(text: &str) -> Option<String> {
 pub fn parse_usage_windows(body: &Value) -> Vec<UsageLimitWindow> {
     let mut windows = Vec::new();
     push_named_window(&mut windows, body, "five_hour", "five_hour", "5-hour");
+    push_fable_weekly_window(&mut windows, body);
     push_named_window(&mut windows, body, "seven_day", "seven_day", "Weekly");
     windows
+}
+
+/// Fable's weekly cap lives in `limits[]` as `weekly_scoped`, not a top-level key.
+fn push_fable_weekly_window(windows: &mut Vec<UsageLimitWindow>, body: &Value) {
+    let Some(limits) = body.get("limits").and_then(|value| value.as_array()) else {
+        return;
+    };
+    let Some(entry) = limits.iter().find(|limit| {
+        limit.get("kind").and_then(|value| value.as_str()) == Some("weekly_scoped")
+            && limit
+                .pointer("/scope/model/display_name")
+                .and_then(|value| value.as_str())
+                == Some("Fable")
+    }) else {
+        return;
+    };
+    let used = entry
+        .get("percent")
+        .and_then(|value| value.as_f64())
+        .or_else(|| entry.get("utilization").and_then(|value| value.as_f64()))
+        .or_else(|| entry.get("used_percentage").and_then(|value| value.as_f64()))
+        .or_else(|| entry.get("usedPercentage").and_then(|value| value.as_f64()));
+    let Some(used) = used else {
+        return;
+    };
+    windows.push(UsageLimitWindow {
+        id: "seven_day_fable".to_string(),
+        label: "Weekly Fable".to_string(),
+        remaining_percent: remaining_from_used(used),
+        resets_at: entry
+            .get("resets_at")
+            .or_else(|| entry.get("resetsAt"))
+            .and_then(resets_at_from_iso),
+    });
 }
 
 fn push_named_window(
@@ -285,16 +320,27 @@ mod tests {
             json!({
                 "five_hour": { "utilization": 15.2, "resets_at": "2026-09-06T16:00:00Z" },
                 "seven_day": { "utilization": 42.0, "resets_at": "2026-09-13T00:00:00Z" },
-                "seven_day_sonnet": { "utilization": 80.0, "resets_at": "2026-09-10T00:00:00Z" }
+                "seven_day_sonnet": { "utilization": 80.0, "resets_at": "2026-09-10T00:00:00Z" },
+                "limits": [
+                    {
+                        "kind": "weekly_scoped",
+                        "percent": 46.0,
+                        "resets_at": "2026-09-10T00:00:00Z",
+                        "scope": { "model": { "display_name": "Fable" } }
+                    }
+                ]
             }),
         );
         let row = fetch(&source);
         assert_eq!(row.kind, UsagePlanKind::Subscription);
         assert_eq!(row.plan_label.as_deref(), Some("Max 20x"));
-        assert_eq!(row.windows.len(), 2);
+        assert_eq!(row.windows.len(), 3);
         assert_eq!(row.windows[0].id, "five_hour");
         assert!((row.windows[0].remaining_percent - 84.8).abs() < 0.01);
-        assert_eq!(row.windows[1].label, "Weekly");
+        assert_eq!(row.windows[1].id, "seven_day_fable");
+        assert_eq!(row.windows[1].label, "Weekly Fable");
+        assert!((row.windows[1].remaining_percent - 54.0).abs() < 0.01);
+        assert_eq!(row.windows[2].label, "Weekly");
     }
 
     #[test]

@@ -9,14 +9,18 @@ use super::{RemainingSource, UsageProviderRemaining};
 
 /// Every row points at the same place, since neither login exposes a number.
 const WHERE_IT_LIVES: &str = "Cursor remaining lives on the Spending dashboard.";
+const SPENDING_DASHBOARD_URL: &str = "https://cursor.com/dashboard/spending";
 
 pub fn fetch(source: &dyn RemainingSource) -> UsageProviderRemaining {
     if is_team_login(source.home()) {
         let mut row = UsageProviderRemaining::enterprise(ProviderId::Cursor, "Teams");
         row.message = Some(WHERE_IT_LIVES.to_string());
+        row.message_url = Some(SPENDING_DASHBOARD_URL.to_string());
         return row;
     }
-    UsageProviderRemaining::unavailable(ProviderId::Cursor, WHERE_IT_LIVES)
+    let mut row = UsageProviderRemaining::unavailable(ProviderId::Cursor, WHERE_IT_LIVES);
+    row.message_url = Some(SPENDING_DASHBOARD_URL.to_string());
+    row
 }
 
 fn is_team_login(home: &std::path::Path) -> bool {
@@ -56,6 +60,10 @@ mod tests {
         assert_eq!(row.kind, UsagePlanKind::Enterprise);
         assert_eq!(row.plan_label.as_deref(), Some("Teams"));
         assert!(row.windows.is_empty());
+        assert_eq!(
+            row.message_url.as_deref(),
+            Some(SPENDING_DASHBOARD_URL)
+        );
     }
 
     #[test]
@@ -65,5 +73,9 @@ mod tests {
         let row = fetch(&source);
         assert_eq!(row.kind, UsagePlanKind::Unavailable);
         assert!(row.message.as_deref().unwrap_or("").contains("Spending"));
+        assert_eq!(
+            row.message_url.as_deref(),
+            Some(SPENDING_DASHBOARD_URL)
+        );
     }
 }

@@ -1,5 +1,6 @@
 import type { JSX } from "react";
 import type { UsageLimitWindow, UsageProviderRemaining, UsageRemaining } from "../../../shared/types.js";
+import { WebLink } from "../WebLink.js";
 import { formatResetIn } from "./usageFormat.js";
 import { providerLabel } from "./usagePresentation.js";
 
@@ -56,6 +57,38 @@ function WindowMeter({ window, timeZone }: { window: UsageLimitWindow; timeZone:
   );
 }
 
+function RemainingDetail({
+  message,
+  messageUrl
+}: {
+  message: string;
+  messageUrl?: string | null;
+}): JSX.Element {
+  if (!messageUrl) {
+    return <p className="usage-remaining-detail">{message}</p>;
+  }
+  const linkText = "Spending dashboard";
+  const linkAt = message.indexOf(linkText);
+  if (linkAt < 0) {
+    return (
+      <p className="usage-remaining-detail">
+        <WebLink href={messageUrl} className="usage-remaining-link">
+          {message}
+        </WebLink>
+      </p>
+    );
+  }
+  return (
+    <p className="usage-remaining-detail">
+      {message.slice(0, linkAt)}
+      <WebLink href={messageUrl} className="usage-remaining-link">
+        {linkText}
+      </WebLink>
+      {message.slice(linkAt + linkText.length)}
+    </p>
+  );
+}
+
 function RemainingRow({
   row,
   timeZone
@@ -79,9 +112,11 @@ function RemainingRow({
           ))}
         </div>
       ) : (
-        <p className="usage-remaining-detail">{row.message ?? "No remaining usage to show."}</p>
+        <RemainingDetail message={row.message ?? "No remaining usage to show."} messageUrl={row.messageUrl} />
       )}
-      {showWindows && row.message ? <p className="usage-remaining-detail">{row.message}</p> : null}
+      {showWindows && row.message ? (
+        <RemainingDetail message={row.message} messageUrl={row.messageUrl} />
+      ) : null}
     </li>
   );
 }

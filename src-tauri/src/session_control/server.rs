@@ -44,8 +44,13 @@ pub struct SessionLaunchServer {
 }
 
 impl SessionLaunchServer {
+    /// `database` is where the registry keeps the disposals an agent has
+    /// scheduled for the end of its turn, so a promise made in one run is
+    /// still there in the next.
     #[cfg(unix)]
-    pub fn bind() -> Result<(Self, Arc<SessionLaunchRegistry>), SessionLaunchError> {
+    pub fn bind(
+        database: Arc<Database>,
+    ) -> Result<(Self, Arc<SessionLaunchRegistry>), SessionLaunchError> {
         use std::os::unix::fs::PermissionsExt;
 
         let temp_dir = tempfile::Builder::new()
@@ -68,6 +73,7 @@ impl SessionLaunchServer {
                 socket_path,
                 argmax_bin,
                 credentials: Mutex::new(CredentialState::default()),
+                database,
                 pending_after_turn: Mutex::new(HashMap::new()),
                 inbox: broadcast::channel(INBOX_BROADCAST_CAPACITY).0,
             }),
@@ -85,7 +91,9 @@ impl SessionLaunchServer {
     }
 
     #[cfg(not(unix))]
-    pub fn bind() -> Result<(Self, Arc<SessionLaunchRegistry>), SessionLaunchError> {
+    pub fn bind(
+        _database: Arc<Database>,
+    ) -> Result<(Self, Arc<SessionLaunchRegistry>), SessionLaunchError> {
         Err(SessionLaunchError::Unsupported)
     }
 

@@ -199,6 +199,16 @@ archive as requested rather than done. The legacy `removesWorktree` result is
 now always false. An isolated checkout moves into recovery storage, while a
 shared checkout stays in place because other sessions may still use it.
 
+Either promise survives a restart. `{scheduled: true}` is answered mid-turn and
+the agent reports to the user on that answer, so the request is written to
+`session_after_turn` ([data.md](data.md)) before the reply goes out. If Argmax
+quits or crashes before the turn settles, the next launch picks the row up
+after it has recovered orphaned sessions and repaired interrupted archives, and
+runs the disposal then — the turn ended with the process, so there is nothing
+left to wait for. It says so in the chat's timeline first. A promise with
+nothing left to do (the session is gone, the workspace is already archived, or
+the move already happened) is dropped instead of run again.
+
 ## Observing another session
 
 `session_read` returns the *normalized* timeline, not provider JSON. Every

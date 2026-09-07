@@ -8,10 +8,16 @@ use tokio::sync::{broadcast, oneshot};
 use uuid::Uuid;
 
 use super::{
-    protocol::SessionControlError, protocol_error, ARGMAX_BIN_ENV, SESSION_LAUNCH_SOCKET_ENV,
-    SESSION_LAUNCH_TOKEN_ENV,
+    argmax_protocol_error, protocol::SessionControlError, protocol_error, ARGMAX_BIN_ENV,
+    SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
 };
-use crate::providers::ProviderLaunchInput;
+use crate::{
+    persistence::{
+        after_turn::{delete_after_turn, find_after_turn, insert_after_turn, AfterTurnAction},
+        database::Database,
+    },
+    providers::ProviderLaunchInput,
+};
 
 #[derive(Clone)]
 pub struct SessionLaunchRegistry {
@@ -22,6 +28,12 @@ pub(super) struct RegistryInner {
     pub(super) socket_path: PathBuf,
     pub(super) argmax_bin: PathBuf,
     pub(super) credentials: Mutex<CredentialState>,
+    /// The durable copy of `pending_after_turn`. The registry is the only
+    /// mutator of the map, so it owns the row too — they are written and
+    /// cleared together, under the map's lock. Nothing takes a database
+    /// connection and then reaches for the registry, so that order is the
+    /// only one in the app and cannot invert.
+    pub(super) database: Arc<Database>,
     pub(super) pending_after_turn: Mutex<HashMap<String, PendingAfterTurn>>,
     /// Recipients of rows just written to `session_messages`. A blocked
     /// `session_wait` subscribes to this rather than polling the table.
@@ -36,6 +48,28 @@ pub(super) struct RegistryInner {
 pub enum AfterTurn {
     Move,
     Archive,
+}
+
+impl AfterTurn {
+    pub(super) fn of(action: &AfterTurnAction) -> Self {
+        match action {
+            AfterTurnAction::Move(_) => AfterTurn::Move,
+            AfterTurnAction::Archive(_) => AfterTurn::Archive,
+        }
+    }
+}
+
+fn already_pending(existing: AfterTurn) -> SessionControlError {
+    match existing {
+        AfterTurn::Move => protocol_error(
+            "MOVE_ALREADY_PENDING",
+            "A move is already scheduled for this session.",
+        ),
+        AfterTurn::Archive => protocol_error(
+            "ARCHIVE_ALREADY_PENDING",
+            "An archive is already scheduled for this session.",
+        ),
+    }
 }
 
 pub(super) struct PendingAfterTurn {
@@ -186,7 +220,48 @@ impl SessionLaunchRegistry {
             .cloned()
     }
 
+    /// Take the session's one disposal slot, durably. The row goes in first:
+    /// if it fails, the caller is told and neither half exists, which is the
+    /// only order that never answers `{scheduled: true}` for a promise the
+    /// next launch would not find.
     pub(super) fn schedule_after_turn(
+        &self,
+        session_id: &str,
+        action: &AfterTurnAction,
+        settled: oneshot::Sender<()>,
+    ) -> Result<(), SessionControlError> {
+        let kind = AfterTurn::of(action);
+        let mut pending = self
+            .inner
+            .pending_after_turn
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // The refusal names what is already scheduled, not what was asked for:
+        // an agent that asks to archive a chat that is already moving needs to
+        // know which one it is. The row is consulted alongside the map so an
+        // action promised before the last quit refuses a second one even
+        // before boot recovery has adopted it.
+        if let Some(existing) = self.occupied_by(&pending, session_id)? {
+            return Err(already_pending(existing));
+        }
+        {
+            let connection = self.inner.database.connection();
+            insert_after_turn(&connection, session_id, action).map_err(argmax_protocol_error)?;
+        }
+        pending.insert(
+            session_id.to_string(),
+            PendingAfterTurn {
+                action: kind,
+                settled: Some(settled),
+            },
+        );
+        Ok(())
+    }
+
+    /// Re-register a promise that already has its row — boot recovery, for a
+    /// session whose turn is somehow still running. Writing the row again
+    /// would only collide with the one being adopted.
+    pub(super) fn adopt_after_turn(
         &self,
         session_id: &str,
         action: AfterTurn,
@@ -197,20 +272,8 @@ impl SessionLaunchRegistry {
             .pending_after_turn
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        // The refusal names what is already scheduled, not what was asked for:
-        // an agent that asks to archive a chat that is already moving needs to
-        // know which one it is.
         if let Some(existing) = pending.get(session_id) {
-            return Err(match existing.action {
-                AfterTurn::Move => protocol_error(
-                    "MOVE_ALREADY_PENDING",
-                    "A move is already scheduled for this session.",
-                ),
-                AfterTurn::Archive => protocol_error(
-                    "ARCHIVE_ALREADY_PENDING",
-                    "An archive is already scheduled for this session.",
-                ),
-            });
+            return Err(already_pending(existing.action));
         }
         pending.insert(
             session_id.to_string(),
@@ -220,6 +283,22 @@ impl SessionLaunchRegistry {
             },
         );
         Ok(())
+    }
+
+    /// What already holds the session's slot, in memory or on disk.
+    fn occupied_by(
+        &self,
+        pending: &HashMap<String, PendingAfterTurn>,
+        session_id: &str,
+    ) -> Result<Option<AfterTurn>, SessionControlError> {
+        if let Some(existing) = pending.get(session_id) {
+            return Ok(Some(existing.action));
+        }
+        let recorded = {
+            let connection = self.inner.database.read_connection();
+            find_after_turn(&connection, session_id).map_err(argmax_protocol_error)?
+        };
+        Ok(recorded.map(|request| AfterTurn::of(&request.action)))
     }
 
     /// Announce a new row in `session_messages`. Called by whoever wrote it —
@@ -234,11 +313,7 @@ impl SessionLaunchRegistry {
     }
 
     pub fn cancel_after_turn(&self, session_id: &str) {
-        self.inner
-            .pending_after_turn
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .remove(session_id);
+        self.release_after_turn(session_id);
     }
 
     pub fn pending_after_turn(&self, session_id: &str) -> Option<AfterTurn> {
@@ -264,11 +339,28 @@ impl SessionLaunchRegistry {
     }
 
     pub(super) fn finish_after_turn(&self, session_id: &str) {
-        self.inner
+        self.release_after_turn(session_id);
+    }
+
+    /// Give the slot back, in memory and on disk. A row left behind here is
+    /// one the next launch would run a second time, so the delete is not
+    /// conditional on the map entry having been there.
+    fn release_after_turn(&self, session_id: &str) {
+        let mut pending = self
+            .inner
             .pending_after_turn
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .remove(session_id);
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let connection = self.inner.database.connection();
+        if let Err(error) = delete_after_turn(&connection, session_id) {
+            tracing::warn!(
+                ?error,
+                session_id,
+                "could not clear the scheduled after-turn action"
+            );
+        }
+        drop(connection);
+        pending.remove(session_id);
     }
 }
 
@@ -279,10 +371,105 @@ fn random_bearer_token() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::{
+        after_turn::{list_after_turn, ArchiveRequest, MoveDestinationRecord, MoveRequest},
+        projects::{persist_project, PersistProjectInput, ProjectSettings},
+        sessions::{persist_session, PersistSessionInput},
+        workspaces::{persist_workspace, PersistWorkspaceInput},
+    };
     use crate::providers::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
     use crate::session_control::server::SessionLaunchServer;
+    use crate::sessions::state::SessionState;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    /// A durable after-turn row references its session, so the registry's own
+    /// tests need a session to point at.
+    fn database_with_sessions(session_ids: &[&str]) -> Arc<Database> {
+        let database = Arc::new(Database::open_in_memory().expect("open db"));
+        let connection = database.connection();
+        persist_project(
+            &connection,
+            &PersistProjectInput {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                repo_path: "/tmp/repo".to_string(),
+                current_branch: "main".to_string(),
+                default_branch: Some("main".to_string()),
+                settings: ProjectSettings {
+                    worktree_location: "/tmp/worktrees".to_string(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                    archive_on_merge: false,
+                },
+            },
+        )
+        .expect("project");
+        for session_id in session_ids {
+            let workspace_id = format!("workspace-{session_id}");
+            persist_workspace(
+                &connection,
+                &PersistWorkspaceInput {
+                    id: workspace_id.clone(),
+                    project_id: "project-1".to_string(),
+                    task_label: "Task".to_string(),
+                    branch: "main".to_string(),
+                    base_ref: "main".to_string(),
+                    path: "/tmp/repo".to_string(),
+                    state: "running".to_string(),
+                    shared_workspace: true,
+                    kind: "git".to_string(),
+                    dirty: false,
+                    changed_files: 0,
+                },
+            )
+            .expect("workspace");
+            persist_session(
+                &connection,
+                &PersistSessionInput {
+                    id: (*session_id).to_string(),
+                    workspace_id,
+                    provider: "codex".to_string(),
+                    model_label: "GPT-5.6 Sol".to_string(),
+                    model_id: "gpt-5.6-sol".to_string(),
+                    reasoning_effort: None,
+                    permission_mode: Some("auto-approve".to_string()),
+                    agent_mode: Some("auto".to_string()),
+                    prompt: "Task".to_string(),
+                    state: SessionState::Running,
+                },
+            )
+            .expect("session");
+        }
+        drop(connection);
+        database
+    }
+
+    fn move_action() -> AfterTurnAction {
+        AfterTurnAction::Move(MoveRequest {
+            destination: MoveDestinationRecord::Project {
+                project_id: "project-2".to_string(),
+                worktree: false,
+            },
+            keep_source: false,
+            prompt: "Pick the work up here".to_string(),
+        })
+    }
+
+    fn archive_action(session_id: &str) -> AfterTurnAction {
+        AfterTurnAction::Archive(ArchiveRequest {
+            workspace_id: format!("workspace-{session_id}"),
+        })
+    }
+
+    fn scheduled_session_ids(database: &Database) -> Vec<String> {
+        let connection = database.read_connection();
+        list_after_turn(&connection)
+            .expect("list scheduled actions")
+            .into_iter()
+            .map(|request| request.session_id)
+            .collect()
+    }
 
     fn launch_input(session_id: &str) -> ProviderLaunchInput {
         ProviderLaunchInput {
@@ -306,7 +493,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn credentials_are_stable_per_session_and_redacted_from_debug() {
-        let (server, registry) = SessionLaunchServer::bind().unwrap();
+        let (server, registry) = SessionLaunchServer::bind(database_with_sessions(&[])).unwrap();
         let first = registry.issue(&launch_input("session-1"));
         let second = registry.issue(&launch_input("session-1"));
         let other = registry.issue(&launch_input("session-2"));
@@ -338,7 +525,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn revoked_session_token_stops_resolving() {
-        let (_server, registry) = SessionLaunchServer::bind().unwrap();
+        let (_server, registry) = SessionLaunchServer::bind(database_with_sessions(&[])).unwrap();
         let issued = registry.issue(&launch_input("session-1"));
         let token = issued.env_pairs()[1].1.clone();
         assert!(registry.resolve(&token).is_some());
@@ -354,15 +541,19 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn pending_move_stays_guarded_until_execution_finishes() {
-        let (_server, registry) = SessionLaunchServer::bind().unwrap();
+        let database = database_with_sessions(&["session-1"]);
+        let (_server, registry) = SessionLaunchServer::bind(Arc::clone(&database)).unwrap();
         let (settled_tx, mut settled_rx) = oneshot::channel();
         registry
-            .schedule_after_turn("session-1", AfterTurn::Move, settled_tx)
+            .schedule_after_turn("session-1", &move_action(), settled_tx)
             .unwrap();
         assert_eq!(
             registry.pending_after_turn("session-1"),
             Some(AfterTurn::Move)
         );
+        // The guard is only half of it: the promise is a row too, or a quit
+        // here would answer `scheduled` for a move nobody ever makes.
+        assert_eq!(scheduled_session_ids(&database), vec!["session-1"]);
         assert!(settled_rx.try_recv().is_err());
 
         registry.signal_turn_settled("session-1");
@@ -371,9 +562,58 @@ mod tests {
             registry.pending_after_turn("session-1"),
             Some(AfterTurn::Move)
         );
+        assert_eq!(scheduled_session_ids(&database), vec!["session-1"]);
 
         registry.finish_after_turn("session-1");
         assert_eq!(registry.pending_after_turn("session-1"), None);
+        assert!(scheduled_session_ids(&database).is_empty());
+    }
+
+    /// A cancelled disposal must leave nothing behind: a row that outlived its
+    /// cancellation would be run by the next launch.
+    #[cfg(unix)]
+    #[test]
+    fn cancelling_takes_the_durable_row_with_the_guard() {
+        let database = database_with_sessions(&["session-1"]);
+        let (_server, registry) = SessionLaunchServer::bind(Arc::clone(&database)).unwrap();
+        let (settled_tx, _settled_rx) = oneshot::channel();
+        registry
+            .schedule_after_turn("session-1", &archive_action("session-1"), settled_tx)
+            .unwrap();
+        assert_eq!(scheduled_session_ids(&database), vec!["session-1"]);
+
+        registry.cancel_after_turn("session-1");
+        assert_eq!(registry.pending_after_turn("session-1"), None);
+        assert!(scheduled_session_ids(&database).is_empty());
+    }
+
+    /// The slot survives the process that took it. A registry that has just
+    /// booted has an empty map, so only the row can refuse the second ask —
+    /// and it must, or an agent would be told an archive is scheduled twice.
+    #[cfg(unix)]
+    #[test]
+    fn a_row_from_an_earlier_run_still_refuses_a_second_action() {
+        let database = database_with_sessions(&["session-1"]);
+        let (first_server, first_registry) =
+            SessionLaunchServer::bind(Arc::clone(&database)).unwrap();
+        let (settled_tx, _settled_rx) = oneshot::channel();
+        first_registry
+            .schedule_after_turn("session-1", &archive_action("session-1"), settled_tx)
+            .unwrap();
+        drop(first_server);
+        drop(first_registry);
+
+        let (_server, registry) = SessionLaunchServer::bind(Arc::clone(&database)).unwrap();
+        assert_eq!(
+            registry.pending_after_turn("session-1"),
+            None,
+            "a fresh registry starts with an empty map"
+        );
+        let (second_tx, _second_rx) = oneshot::channel();
+        let error = registry
+            .schedule_after_turn("session-1", &move_action(), second_tx)
+            .expect_err("the archive promised before the restart still owns the slot");
+        assert_eq!(error.code, "ARCHIVE_ALREADY_PENDING");
     }
 
     /// One slot: a chat cannot be both moving and archiving, and the refusal
@@ -381,15 +621,16 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_second_after_turn_action_is_refused_by_the_pending_one() {
-        let (_server, registry) = SessionLaunchServer::bind().unwrap();
+        let database = database_with_sessions(&["session-1"]);
+        let (_server, registry) = SessionLaunchServer::bind(database).unwrap();
         let (settled_tx, _settled_rx) = oneshot::channel();
         registry
-            .schedule_after_turn("session-1", AfterTurn::Archive, settled_tx)
+            .schedule_after_turn("session-1", &archive_action("session-1"), settled_tx)
             .unwrap();
 
         let (second_tx, _second_rx) = oneshot::channel();
         let error = registry
-            .schedule_after_turn("session-1", AfterTurn::Move, second_tx)
+            .schedule_after_turn("session-1", &move_action(), second_tx)
             .expect_err("the archive already owns the slot");
         assert_eq!(error.code, "ARCHIVE_ALREADY_PENDING");
     }

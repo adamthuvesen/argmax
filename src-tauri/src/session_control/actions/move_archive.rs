@@ -21,6 +21,7 @@ use crate::{
         validation::{Prompt, SessionId, WorkspaceId},
     },
     persistence::{
+        after_turn::{AfterTurnAction, ArchiveRequest, MoveDestinationRecord, MoveRequest},
         database::Database,
         events::{count_move_arrivals, persist_timeline_event, PersistTimelineEventInput},
         projects::list_projects,
@@ -65,8 +66,15 @@ pub(super) async fn schedule_workspace_archive(
         ));
     }
 
+    // Validated here rather than inside the spawned task: the task runs after
+    // the reply is gone, with nowhere to report a malformed id.
+    WorkspaceId::try_from(workspace.id.clone()).map_err(invalid_input_error)?;
+    let scheduled = AfterTurnAction::Archive(ArchiveRequest {
+        workspace_id: workspace.id.clone(),
+    });
+
     let (settled_tx, settled_rx) = oneshot::channel();
-    registry.schedule_after_turn(&parent.session_id, AfterTurn::Archive, settled_tx)?;
+    registry.schedule_after_turn(&parent.session_id, &scheduled, settled_tx)?;
     if let Err(error) =
         providers.ensure_after_turn_schedulable(&parent.session_id, AfterTurn::Archive)
     {
@@ -74,10 +82,6 @@ pub(super) async fn schedule_workspace_archive(
         return Err(argmax_protocol_error(error));
     }
 
-    // Validated here rather than inside the spawned task: the task runs after
-    // the reply is gone, with nowhere to report a malformed id.
-    let archive_target =
-        WorkspaceId::try_from(workspace.id.clone()).map_err(invalid_input_error)?;
     // Retained for older tool clients. Archive relocates isolated checkouts
     // with their branch and files intact, and never removes shared checkouts.
     let removes_worktree = false;
@@ -115,38 +119,18 @@ pub(super) async fn schedule_workspace_archive(
 
     let session_id = parent.session_id.clone();
     let workspace_id = workspace.id.clone();
-    let archive_registry = Arc::clone(&registry);
-    let scheduled_workspace_id = workspace_id.clone();
     tauri::async_runtime::spawn(async move {
         if settled_rx.await.is_err() {
-            archive_registry.finish_after_turn(&session_id);
+            // Nothing to clean up. The sender only goes away with the entry
+            // that holds it, which is either a cancel that has already
+            // cleared the row or the registry going down with the app — and
+            // a promise made to the user has to survive that second one.
             return;
         }
-        let outcome = workspaces
-            .archive(WorkspacesArchiveInput {
-                workspace_id: archive_target,
-                force: Some(false),
-            })
-            .await;
-        archive_registry.finish_after_turn(&session_id);
-        match outcome {
-            // `kept` is the refusal, not a failure: the checkout had
-            // uncommitted work and stays live. Worth a line, because the agent
-            // that asked has already reported the workspace gone.
-            Ok(result) if result.workspace.state == "kept" => tracing::info!(
-                workspace_id = %scheduled_workspace_id,
-                "scheduled archive kept the workspace: it has uncommitted changes"
-            ),
-            Ok(_) => tracing::info!(
-                workspace_id = %scheduled_workspace_id,
-                "archived the workspace its agent asked to close"
-            ),
-            Err(error) => tracing::warn!(
-                ?error,
-                workspace_id = %scheduled_workspace_id,
-                "scheduled workspace archive failed"
-            ),
-        }
+        run_after_turn(
+            scheduled, session_id, database, workspaces, providers, registry,
+        )
+        .await;
     });
 
     Ok(SessionControlResponse::new(
@@ -228,8 +212,19 @@ pub(super) async fn schedule_session_move(
         ));
     }
 
+    let scheduled = AfterTurnAction::Move(MoveRequest {
+        destination: match checkout_path.clone() {
+            Some(path) => MoveDestinationRecord::Checkout { path },
+            None => MoveDestinationRecord::Project {
+                project_id: destination.id.clone(),
+                worktree: action.worktree,
+            },
+        },
+        keep_source: action.keep_source,
+        prompt: continuation.as_str().to_string(),
+    });
     let (settled_tx, settled_rx) = oneshot::channel();
-    registry.schedule_after_turn(&parent.session_id, AfterTurn::Move, settled_tx)?;
+    registry.schedule_after_turn(&parent.session_id, &scheduled, settled_tx)?;
     if let Err(error) = providers.ensure_after_turn_schedulable(&parent.session_id, AfterTurn::Move)
     {
         registry.cancel_after_turn(&parent.session_id);
@@ -270,54 +265,21 @@ pub(super) async fn schedule_session_move(
     let source_session_id = parent.session_id.clone();
     let destination_project_id = destination.id.clone();
     let destination_project_name = destination.name.clone();
-    let move_destination = match checkout_path.clone() {
-        Some(path) => MoveDestination::Checkout { path },
-        None => MoveDestination::Project {
-            project_id: destination_project_id.clone(),
-            worktree: action.worktree,
-        },
-    };
-    let move_registry = Arc::clone(&registry);
     tauri::async_runtime::spawn(async move {
+        // A cancelled or shut-down promise, as in the archive above: the row
+        // is either already gone or deliberately left for the next launch.
         if settled_rx.await.is_err() {
-            move_registry.finish_after_turn(&source_session_id);
             return;
         }
-        let result = workspaces
-            .move_session(&source_session_id, move_destination, action.keep_source)
-            .await;
-        // The pending-move guard belongs to the source and the move is over
-        // either way. Holding it across the destination's launch would refuse
-        // a follow-up in a kept source chat that is no longer going anywhere.
-        move_registry.finish_after_turn(&source_session_id);
-        match result {
-            Ok(moved) => {
-                continue_moved_session(
-                    &database,
-                    &workspaces,
-                    &providers,
-                    &moved.session.id,
-                    continuation,
-                )
-                .await
-            }
-            Err(error) => {
-                tracing::warn!(
-                    ?error,
-                    session_id = %source_session_id,
-                    "scheduled session move failed"
-                );
-                if let Err(record_error) =
-                    workspaces.record_session_move_failure(&source_session_id, &error)
-                {
-                    tracing::error!(
-                        ?record_error,
-                        session_id = %source_session_id,
-                        "failed to record session move failure"
-                    );
-                }
-            }
-        }
+        run_after_turn(
+            scheduled,
+            source_session_id,
+            database,
+            workspaces,
+            providers,
+            registry,
+        )
+        .await;
     });
 
     Ok(SessionControlResponse::new(
@@ -329,6 +291,155 @@ pub(super) async fn schedule_session_move(
             path: checkout_path,
         }),
     ))
+}
+
+/// Carry out a disposal whose turn is over. Both the task the scheduling call
+/// spawns and boot recovery come through here, so a promise kept a second
+/// after the turn ended and one kept a day later run the same code.
+pub(super) async fn run_after_turn(
+    action: AfterTurnAction,
+    session_id: String,
+    database: Arc<Database>,
+    workspaces: Arc<WorkspaceService>,
+    providers: Arc<ProviderSessionService>,
+    registry: Arc<SessionLaunchRegistry>,
+) {
+    match action {
+        AfterTurnAction::Archive(request) => {
+            run_archive(request, &session_id, &workspaces, &registry).await
+        }
+        AfterTurnAction::Move(request) => {
+            run_move(
+                request,
+                session_id,
+                &database,
+                &workspaces,
+                &providers,
+                &registry,
+            )
+            .await
+        }
+    }
+}
+
+async fn run_archive(
+    request: ArchiveRequest,
+    session_id: &str,
+    workspaces: &Arc<WorkspaceService>,
+    registry: &Arc<SessionLaunchRegistry>,
+) {
+    let workspace_id = request.workspace_id.clone();
+    let archive_target = match WorkspaceId::try_from(request.workspace_id) {
+        Ok(workspace_id) => workspace_id,
+        Err(error) => {
+            registry.finish_after_turn(session_id);
+            tracing::error!(
+                ?error,
+                %workspace_id,
+                "the scheduled archive names a workspace id that does not validate"
+            );
+            return;
+        }
+    };
+    let outcome = workspaces
+        .archive(WorkspacesArchiveInput {
+            workspace_id: archive_target,
+            force: Some(false),
+        })
+        .await;
+    registry.finish_after_turn(session_id);
+    match outcome {
+        // `kept` is the refusal, not a failure: the checkout had
+        // uncommitted work and stays live. Worth a line, because the agent
+        // that asked has already reported the workspace gone.
+        Ok(result) if result.workspace.state == "kept" => tracing::info!(
+            %workspace_id,
+            "scheduled archive kept the workspace: it has uncommitted changes"
+        ),
+        Ok(_) => tracing::info!(
+            %workspace_id,
+            "archived the workspace its agent asked to close"
+        ),
+        Err(error) => tracing::warn!(
+            ?error,
+            %workspace_id,
+            "scheduled workspace archive failed"
+        ),
+    }
+}
+
+async fn run_move(
+    request: MoveRequest,
+    source_session_id: String,
+    database: &Arc<Database>,
+    workspaces: &Arc<WorkspaceService>,
+    providers: &Arc<ProviderSessionService>,
+    registry: &Arc<SessionLaunchRegistry>,
+) {
+    let continuation = match Prompt::try_from(request.prompt) {
+        Ok(prompt) => prompt,
+        Err(error) => {
+            registry.finish_after_turn(&source_session_id);
+            tracing::error!(
+                ?error,
+                session_id = %source_session_id,
+                "the scheduled move carries a prompt that does not validate"
+            );
+            return;
+        }
+    };
+    let result = workspaces
+        .move_session(
+            &source_session_id,
+            move_destination(request.destination),
+            request.keep_source,
+        )
+        .await;
+    // The pending-move guard belongs to the source and the move is over
+    // either way. Holding it across the destination's launch would refuse
+    // a follow-up in a kept source chat that is no longer going anywhere.
+    registry.finish_after_turn(&source_session_id);
+    match result {
+        Ok(moved) => {
+            continue_moved_session(
+                database,
+                workspaces,
+                providers,
+                &moved.session.id,
+                continuation,
+            )
+            .await
+        }
+        Err(error) => {
+            tracing::warn!(
+                ?error,
+                session_id = %source_session_id,
+                "scheduled session move failed"
+            );
+            if let Err(record_error) =
+                workspaces.record_session_move_failure(&source_session_id, &error)
+            {
+                tracing::error!(
+                    ?record_error,
+                    session_id = %source_session_id,
+                    "failed to record session move failure"
+                );
+            }
+        }
+    }
+}
+
+fn move_destination(destination: MoveDestinationRecord) -> MoveDestination {
+    match destination {
+        MoveDestinationRecord::Project {
+            project_id,
+            worktree,
+        } => MoveDestination::Project {
+            project_id,
+            worktree,
+        },
+        MoveDestinationRecord::Checkout { path } => MoveDestination::Checkout { path },
+    }
 }
 
 /// The destination's first turn. A move always carries the transcript, and
@@ -418,6 +529,26 @@ fn record_move_continuation_note(
     session_id: &str,
     message: String,
 ) {
+    record_after_turn_note(
+        database,
+        workspaces,
+        session_id,
+        "session.move-continuation",
+        message,
+    );
+}
+
+/// One line in a chat's own timeline about the disposal it is carrying. The
+/// `error` kind is what the transcript already renders as a system line for
+/// this family of notes, so a disposal never speaks in a shape the chat
+/// surface would drop.
+pub(super) fn record_after_turn_note(
+    database: &Database,
+    workspaces: &Arc<WorkspaceService>,
+    session_id: &str,
+    operation: &str,
+    message: String,
+) {
     let recorded = (|| {
         let connection = database.connection();
         let session = find_session_by_id(&connection, session_id)?;
@@ -428,7 +559,7 @@ fn record_move_continuation_note(
                 session_id: session_id.to_string(),
                 r#type: "error".to_string(),
                 message,
-                payload: serde_json::json!({ "operation": "session.move-continuation" }),
+                payload: serde_json::json!({ "operation": operation }),
                 created_at: None,
             },
         )?;
@@ -439,7 +570,8 @@ fn record_move_continuation_note(
         Err(error) => tracing::warn!(
             ?error,
             session_id,
-            "could not record why the moved chat did not continue"
+            operation,
+            "could not record a note about this chat's scheduled disposal"
         ),
     }
 }

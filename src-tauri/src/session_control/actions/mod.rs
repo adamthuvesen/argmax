@@ -1,9 +1,11 @@
 mod launch;
 mod messaging;
 mod move_archive;
+mod resume;
 mod wait;
 
 pub(crate) use launch::{launch_with_spec, AlongsideCheckout, LaunchSpec};
+pub use resume::resume_after_turn_actions;
 
 use std::path::Path;
 use std::sync::Arc;

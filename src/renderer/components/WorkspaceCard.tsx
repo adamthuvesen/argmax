@@ -3,7 +3,10 @@ import {
   Files,
   GitBranch,
   GitCommitHorizontal,
+  GitMerge,
+  GitPullRequest,
   GitPullRequestArrow,
+  GitPullRequestClosed,
   Github,
   SquareTerminal,
   X
@@ -20,11 +23,6 @@ import { AgentEmblem } from "./AgentEmblem.js";
 import { WorkingNest } from "./WorkingNest.js";
 import { ChangeCount } from "./ChangeCount.js";
 import type { ComposerStatus } from "./SessionComposer.js";
-
-const PR_STATE_LABELS: Record<string, string> = {
-  CLOSED: "closed",
-  MERGED: "merged"
-};
 
 /** Avatars shown before the stack folds into a +N chip. Matches the reference
  *  density: four or five colored marks read as a team, more read as noise. */
@@ -80,6 +78,9 @@ export function WorkspaceCard({
   const hasPr = typeof workspace.prNumber === "number";
   const prState = workspace.prState ?? null;
   const prLabel = hasPr ? `PR #${workspace.prNumber}` : "Create pull request";
+  const prTitle = hasPr
+    ? `Open pull request #${workspace.prNumber} on GitHub${prState ? ` (${prState.toLowerCase()})` : ""}`
+    : "Create a pull request for this branch";
   const branchCopyTitle =
     branchCopyFlash === "copied"
       ? "Copied branch name"
@@ -194,19 +195,10 @@ export function WorkspaceCard({
           onClick={() => onOpenCommitDialog?.()}
         />
         <WorkspaceCardRow
-          icon={
-            hasPr ? <Github size={13} aria-hidden="true" /> : <GitPullRequestArrow size={13} aria-hidden="true" />
-          }
+          icon={hasPr ? <PrStateIcon state={prState} /> : <GitPullRequestArrow size={13} aria-hidden="true" />}
           label={prLabel}
-          meta={
-            prState && prState !== "OPEN" ? (
-              <span className="workspace-card-pr-state" data-pr-state={prState}>
-                {PR_STATE_LABELS[prState] ?? prState.toLowerCase()}
-              </span>
-            ) : null
-          }
           disabled={!session || isPrPending}
-          title={hasPr ? `Open pull request #${workspace.prNumber} on GitHub` : "Create a pull request for this branch"}
+          title={prTitle}
           onClick={openOrCreatePr}
         />
       </div>
@@ -290,6 +282,19 @@ function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster;
       )}
     </section>
   );
+}
+
+/** The PR row states itself in the icon GitHub uses for that state — sage open,
+ *  purple merged, a struck-through pull request closed — instead of spending row
+ *  width on the word. The row icon is `aria-hidden`, so the word still reaches a
+ *  screen reader through the row's title. A PR whose state we have not polled
+ *  yet keeps the plain GitHub mark rather than guessing at one. */
+function PrStateIcon({ state }: { state: string | null }): JSX.Element {
+  if (state !== "OPEN" && state !== "MERGED" && state !== "CLOSED") {
+    return <Github size={13} aria-hidden="true" />;
+  }
+  const Icon = state === "MERGED" ? GitMerge : state === "OPEN" ? GitPullRequest : GitPullRequestClosed;
+  return <Icon size={13} aria-hidden="true" className="workspace-card-pr-state" data-pr-state={state} />;
 }
 
 function WorkspaceCardRow({

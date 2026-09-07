@@ -207,8 +207,8 @@ describe("WorkspaceCard", () => {
     );
 
     const prRow = screen.getByRole("button", { name: "PR #1158" });
-    expect(prRow).toHaveTextContent("PR #1158");
-    expect(prRow).not.toHaveTextContent("open");
+    expect(prRow).toHaveTextContent(/^PR #1158$/);
+    expect(prRow).toHaveAccessibleDescription("Open pull request #1158 on GitHub (open)");
 
     fireEvent.click(prRow);
     await waitFor(() =>
@@ -232,7 +232,17 @@ describe("WorkspaceCard", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "PR #1158" })).toHaveTextContent("merged");
+    const mergedRow = screen.getByRole("button", { name: "PR #1158" });
+    expect(mergedRow).toHaveTextContent(/^PR #1158$/);
+    expect(mergedRow).toHaveAccessibleDescription("Open pull request #1158 on GitHub (merged)");
+  });
+
+  it("states a closed pull request without spending a word on it", () => {
+    renderCard({ workspace: { ...workspace, prNumber: 1158, prState: "CLOSED" } });
+
+    const prRow = screen.getByRole("button", { name: "PR #1158" });
+    expect(prRow).toHaveTextContent(/^PR #1158$/);
+    expect(prRow).toHaveAccessibleDescription("Open pull request #1158 on GitHub (closed)");
   });
 
   it("reports a failed pull-request call through the session status line", async () => {

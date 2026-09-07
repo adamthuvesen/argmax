@@ -12,6 +12,12 @@ argmax-icons.local.json
 maestro/
 COMPETITIVE_ANALYSIS.md
 
+# Secrets. Nothing in the repo reads a .env today; this is here so one
+# arriving later can't be staged by a `git add` that meant to catch a
+# neighbouring file.
+.env
+.env.*
+
 # Tauri / Rust port
 src-tauri/target/
 src-tauri/gen/

@@ -10,10 +10,15 @@ export type { TurnToolItem, TurnBodyChild };
 
 interface Bounds {
   startedAt: number;
+  // Null while any tool row is still open.
   endedAt: number | null;
+  // The latest timestamp seen across every row, open or not. A finished turn
+  // whose launch row never closes — a background agent the turn handed off to
+  // and then ended without — still worked for as long as its last event says.
+  lastSeenAt: number;
 }
 
-function readToolBounds(item: TurnToolItem): Bounds {
+function readToolBounds(item: TurnToolItem): Pick<Bounds, "startedAt" | "endedAt"> {
   const startedAt = Date.parse(item.tool.createdAt);
   const endedAt = item.tool.completedAt ? Date.parse(item.tool.completedAt) : null;
   return {
@@ -25,27 +30,32 @@ function readToolBounds(item: TurnToolItem): Bounds {
 function turnBounds(toolItems: TurnToolItem[], assistantTimestamps: number[]): Bounds {
   let startedAt = Number.POSITIVE_INFINITY;
   let endedAt: number | null = 0;
+  let lastSeenAt = 0;
   let sawAny = false;
 
   for (const item of toolItems) {
     sawAny = true;
     const b = readToolBounds(item);
     if (Number.isFinite(b.startedAt)) startedAt = Math.min(startedAt, b.startedAt);
+    lastSeenAt = Math.max(lastSeenAt, b.startedAt);
     if (b.endedAt === null) {
       endedAt = null;
-    } else if (endedAt !== null) {
-      endedAt = Math.max(endedAt, b.endedAt);
+    } else {
+      lastSeenAt = Math.max(lastSeenAt, b.endedAt);
+      if (endedAt !== null) endedAt = Math.max(endedAt, b.endedAt);
     }
   }
   for (const ts of assistantTimestamps) {
     if (!Number.isFinite(ts)) continue;
     sawAny = true;
     startedAt = Math.min(startedAt, ts);
+    lastSeenAt = Math.max(lastSeenAt, ts);
     if (endedAt !== null) endedAt = Math.max(endedAt, ts);
   }
   return {
     startedAt: sawAny && Number.isFinite(startedAt) ? startedAt : 0,
-    endedAt
+    endedAt,
+    lastSeenAt
   };
 }
 
@@ -132,8 +142,13 @@ export function TurnBlock({
     typeof turnStartedAtMs === "number" && turnStartedAtMs > 0 && Number.isFinite(turnStartedAtMs)
       ? turnStartedAtMs
       : bounds.startedAt;
+  // A turn that has ended has an end even when a row inside it never closed:
+  // Claude keeps a background agent's launch row open until the agent reports,
+  // and the launching turn can finish first. Fall back to the last event seen
+  // rather than read the open row as zero elapsed.
+  const endedAtMs = running ? bounds.endedAt : bounds.endedAt ?? bounds.lastSeenAt;
   const elapsedMs =
-    bounds.endedAt !== null && startedAtMs > 0 ? Math.max(0, bounds.endedAt - startedAtMs) : 0;
+    endedAtMs !== null && startedAtMs > 0 ? Math.max(0, endedAtMs - startedAtMs) : 0;
 
   // Tool-group expansion is owned by the parent (it builds the tool nodes), so
   // the chip and the per-group chevrons stay in sync. The chip just reflects it

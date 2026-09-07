@@ -109,9 +109,12 @@ export function isAgentToolName(name: string): boolean {
  * MCP servers namespace their tools on the wire, and the namespace carries
  * words the bucket matchers key on: `mcp__claude_ai_Notion__notion-fetch`
  * matched `fetch` and rendered as "Fetched URL", naming neither Notion nor the
- * page it read. These are two literal protocol shapes rather than a guess —
- * Claude and Cursor prefix with `mcp__`, OpenCode repeats the server, and the
- * backreference is what keeps ordinary snake_case names out.
+ * page it read. These are literal protocol shapes rather than a guess —
+ * Claude and Cursor prefix with `mcp__`, OpenCode prefixes with `<server>_`,
+ * and Codex Apps use `<server>.<tool>`. The OpenCode single-underscore shape
+ * is gated on known servers: the backreference on the repeated
+ * `notion_notion-fetch` shape is what keeps ordinary snake_case names out,
+ * and the allow-list below does the same job for the general shape.
  */
 // Argmax's own MCP tools, for the one provider that names them bare. Codex
 // rows carry `session_list` or `browser_open` with no namespace at all.
@@ -136,27 +139,74 @@ export function parseMcpToolName(name: string): { server: string; tool: string }
     /^mcp__(.+?)__(.+)$/.exec(name) ??
     /^([a-z0-9-]+)_\1-(.+)$/.exec(name) ??
     /^([a-z][a-z0-9-]*)\.(.+)$/.exec(name);
-  if (!match) return null;
-  const [, namespace, toolSegment] = match;
-  if (!namespace || !toolSegment) return null;
-  // `claude_ai_Notion` names the client before the server; the user connected
-  // to the last segment.
-  // Claude's hosted namespace adds a client prefix. Other underscores belong
-  // to the server (`browser_use`) and must survive.
-  let server = namespace.startsWith("claude_ai_")
-    ? namespace.slice("claude_ai_".length)
-    : namespace;
-  if (server.startsWith("plugin-")) {
-    const parts = server.slice("plugin-".length).split("-").filter(Boolean);
-    const half = parts.length / 2;
-    server =
-      Number.isInteger(half) &&
-      parts.slice(0, half).join("-") === parts.slice(half).join("-")
-        ? parts.slice(0, half).join(" ")
-        : parts.at(-1) ?? server;
-  } else {
-    server = server.replace(/[-_]/g, " ");
+  if (match) {
+    const [, namespace, toolSegment] = match;
+    if (!namespace || !toolSegment) return null;
+    // `claude_ai_Notion` names the client before the server; the user connected
+    // to the last segment.
+    // Claude's hosted namespace adds a client prefix. Other underscores belong
+    // to the server (`browser_use`) and must survive.
+    let server = namespace.startsWith("claude_ai_")
+      ? namespace.slice("claude_ai_".length)
+      : namespace;
+    if (server.startsWith("plugin-")) {
+      const parts = server.slice("plugin-".length).split("-").filter(Boolean);
+      const half = parts.length / 2;
+      server =
+        Number.isInteger(half) &&
+        parts.slice(0, half).join("-") === parts.slice(half).join("-")
+          ? parts.slice(0, half).join(" ")
+          : parts.at(-1) ?? server;
+    } else {
+      server = server.replace(/[-_]/g, " ");
+    }
+    const words = toolSegment.split(/[-_]+/).filter(Boolean);
+    if (words[0]?.toLowerCase() === server.toLowerCase()) words.shift();
+    if (words.length === 0) return null;
+    return { server, tool: words.join(" ") };
   }
+  return parseOpenCodeServerTool(name);
+}
+
+// OpenCode names every MCP tool `<server>_<tool>` (`engram_memory_stats`).
+// Notion's own tool is already `notion-fetch`, so that one surfaces as the
+// repeated `notion_notion-fetch` handled above; Engram's `memory_stats` has no
+// such prefix, so only this allow-listed shape catches it. Gated on known
+// servers so `send_message_to_thread` and `file_change` stay plain tools.
+// Keep in sync with `SERVER_ICONS` in serverIcons.ts plus the MCP servers
+// without a brand mark (they still deserve the plug and the `other` bucket).
+const OPENCODE_MCP_SERVERS = new Set([
+  "engram",
+  "trace",
+  "trace-hq",
+  "notion",
+  "linear",
+  "vercel",
+  "slack",
+  "github",
+  "snowflake",
+  "spotify",
+  "gmail",
+  "drive",
+  "gdrive",
+  "google-drive",
+  "calendar",
+  "gcal",
+  "google-calendar",
+  "shunt",
+  "context7",
+  "hex",
+  "profound",
+  "confidence-experiments"
+]);
+
+function parseOpenCodeServerTool(name: string): { server: string; tool: string } | null {
+  const openCode = /^([a-z][a-z0-9-]*)_([a-z][a-z0-9_-]*)$/i.exec(name);
+  if (!openCode) return null;
+  const [, rawServer, toolSegment] = openCode;
+  if (!rawServer || !toolSegment) return null;
+  if (!OPENCODE_MCP_SERVERS.has(rawServer.toLowerCase())) return null;
+  const server = rawServer.replace(/[-_]/g, " ");
   const words = toolSegment.split(/[-_]+/).filter(Boolean);
   if (words[0]?.toLowerCase() === server.toLowerCase()) words.shift();
   if (words.length === 0) return null;

@@ -751,7 +751,6 @@
    focus state and primary action picks up a soft warm glow instead of a
    crisp ring. Scoped tight so the effect feels intentional, not noisy. */
 :root[data-theme="dark"] .composer-submit:not(:disabled):hover,
-:root[data-theme="dark"] .question-card-submit:not(:disabled):hover,
 :root[data-theme="dark"] .project-actions-confirm-buttons .project-actions-destructive:hover {
   box-shadow: var(--shadow-1),
               0 0 28px -8px color-mix(in oklab, var(--accent) 55%, transparent);

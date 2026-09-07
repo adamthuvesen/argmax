@@ -8,18 +8,32 @@ export type QuestionCardProps = {
   onAnswer: (answerMarkdown: string) => void | Promise<boolean>;
 };
 
+function pickedLabels(question: Question, picks: number[]): string[] {
+  return picks
+    .map((index) => question.options[index]?.label)
+    .filter((label): label is string => typeof label === "string" && label.length > 0);
+}
+
 function formatAnswer(questions: Question[], selected: number[][]): string {
   return questions
-    .map((q, qi) => {
-      const picks = selected[qi] ?? [];
-      const labels = picks
-        .map((idx) => q.options[idx]?.label)
-        .filter((label): label is string => typeof label === "string" && label.length > 0);
-      const header = q.header || q.question;
+    .map((question, index) => {
+      const labels = pickedLabels(question, selected[index] ?? []);
+      const header = question.header || question.question;
       const value = labels.length > 0 ? labels.join(", ") : "(no selection)";
       return `**${header}**: ${value}`;
     })
     .join("\n\n");
+}
+
+/// What the answered row says in the scrollback. One question shows the answer
+/// itself, because that is the part worth re-reading; several show a count,
+/// because the labels would run past the row.
+function answerSummary(questions: Question[], selected: number[][]): string {
+  if (questions.length !== 1) return `${questions.length} answers sent`;
+  const only = questions[0];
+  if (!only) return "Answer sent";
+  const labels = pickedLabels(only, selected[0] ?? []);
+  return labels.length > 0 ? labels.join(", ") : "Answer sent";
 }
 
 function QuestionCardInner({ questions, onAnswer }: QuestionCardProps): JSX.Element {
@@ -145,21 +159,13 @@ function QuestionCardInner({ questions, onAnswer }: QuestionCardProps): JSX.Elem
   const isFocused = (qIdx: number, oIdx: number): boolean => activeIndexes[qIdx] === oIdx;
 
   if (collapsed) {
-    const label =
-      questions.length === 1
-        ? (questions[0]?.question ?? "Question")
-        : `${questions.length} questions answered`;
     return (
-      <article className="plan-card plan-card-collapsed question-card" aria-label="Question from agent">
-        <div className="plan-card-collapsed-row">
-          <span className="plan-card-eyebrow">
-            <span className="plan-card-eyebrow-dot" aria-hidden="true" />
-            Question
-          </span>
-          <span className="plan-card-collapsed-title">{label}</span>
+      <article className="question-ask is-answered" aria-label="Question from agent">
+        <div className="question-ask-answered">
+          <span className="question-ask-answered-text">{answerSummary(questions, selected)}</span>
           <button
             type="button"
-            className="plan-card-icon-btn"
+            className="question-ask-reveal"
             aria-label="Expand question"
             onClick={() => setCollapsed(false)}
           >
@@ -171,61 +177,72 @@ function QuestionCardInner({ questions, onAnswer }: QuestionCardProps): JSX.Elem
   }
 
   return (
-    <article className="plan-card question-card" aria-label="Question from agent">
-      <div className="plan-card-content">
-        {questions.map((q, qIdx) => (
-          <section key={qIdx} className="plan-card-action-block">
-            <p className="plan-card-action-q">{q.question}</p>
-            <ul
-              ref={(el) => {
-                optionsRefs.current[qIdx] = el;
-              }}
-              className="plan-card-options"
-              role="listbox"
-              aria-multiselectable={q.multiSelect}
-              aria-label={q.header || q.question}
-              tabIndex={0}
-              onKeyDown={handleKeyDown(qIdx)}
-            >
-              {q.options.map((option, oIdx) => {
-                const active = isActive(qIdx, oIdx);
-                const focused = isFocused(qIdx, oIdx);
-                return (
-                  <li
-                    key={oIdx}
-                    className={`plan-card-option${active ? " is-active" : ""}${focused ? " is-focused" : ""}`}
-                    role="option"
-                    aria-selected={active}
-                    onClick={() => toggleOption(qIdx, oIdx)}
-                  >
-                    <span className="plan-card-option-num">{oIdx + 1}</span>
-                    <span className="plan-card-option-label">
-                      {option.label}
-                      {option.description ? (
-                        <span className="question-card-option-desc"> — {option.description}</span>
-                      ) : null}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ))}
+    <article className="question-ask" aria-label="Question from agent">
+      {questions.map((q, qIdx) => (
+        <section key={qIdx} className="question-ask-block">
+          <p className="question-ask-prompt">{q.question}</p>
+          <ul
+            ref={(el) => {
+              optionsRefs.current[qIdx] = el;
+            }}
+            className="question-ask-options"
+            role="listbox"
+            aria-multiselectable={q.multiSelect}
+            aria-label={q.header || q.question}
+            tabIndex={0}
+            onKeyDown={handleKeyDown(qIdx)}
+          >
+            {q.options.map((option, oIdx) => {
+              const active = isActive(qIdx, oIdx);
+              const focused = isFocused(qIdx, oIdx);
+              return (
+                <li
+                  key={oIdx}
+                  className={`question-ask-option${active ? " is-active" : ""}${focused ? " is-focused" : ""}`}
+                  role="option"
+                  aria-selected={active}
+                  onClick={() => toggleOption(qIdx, oIdx)}
+                >
+                  <kbd className="question-ask-key" aria-hidden="true">
+                    {oIdx + 1}
+                  </kbd>
+                  <span className="question-ask-option-text">
+                    <span className="question-ask-option-label">{option.label}</span>
+                    {option.description ? (
+                      <span className="question-ask-option-desc">{option.description}</span>
+                    ) : null}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
 
-        <div className="plan-card-action-foot">
+      <div className="question-ask-foot">
+        <div className="question-ask-actions">
           <button
             type="button"
-            className="question-card-submit"
+            className="question-ask-send"
             onClick={submit}
             disabled={!canSubmit || submitted}
             aria-label={submitted ? "Answer sent" : "Submit answer"}
           >
-            {submitted ? "Sent" : "Submit"}
+            {submitted ? (
+              "Sent"
+            ) : (
+              <>
+                Send
+                <kbd className="question-ask-key" aria-hidden="true">
+                  ↵
+                </kbd>
+              </>
+            )}
           </button>
           {submitted ? (
             <button
               type="button"
-              className="plan-card-icon-btn"
+              className="question-ask-reveal"
               aria-label="Collapse question"
               onClick={() => setCollapsed(true)}
             >

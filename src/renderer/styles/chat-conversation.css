@@ -853,7 +853,8 @@
     .tool-call-row,
     .tool-call-detail,
     .file-change-card,
-    .plan-card
+    .plan-card,
+    .question-ask
   ) {
   animation-duration: 0s;
 }

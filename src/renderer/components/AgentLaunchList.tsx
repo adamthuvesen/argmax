@@ -97,7 +97,19 @@ function AgentLaunchRow({
     if (!hasDetail) return;
     setUserToggle({ value: !expanded, defaultExpanded });
   };
+  // The row's click opens the run in the pane's Agents view. A surface with no
+  // dock to host that view — the phone — keeps the row as a record of the
+  // delegated work: same mark, name and status, nothing to press.
   const opensAgentPane = onOpenAgent !== undefined;
+  const headline = (
+    <>
+      <span className="agent-launch-headline">
+        <span className="agent-launch-title">{title}</span>
+        {identity ? <span className="agent-launch-identity">{identity}</span> : null}
+      </span>
+      <span className="agent-launch-status">{agentStatusLabel(tool.status)}</span>
+    </>
+  );
 
   return (
     // The hue rides the row so the working nest lands in this agent's colour
@@ -109,19 +121,19 @@ function AgentLaunchRow({
     >
       <div className="agent-launch-row-main">
         <AgentLaunchMark status={tool.status} emblem={emblem} phaseKey={tool.toolUseId} />
-        <button
-          type="button"
-          className="agent-launch-row-button"
-          aria-label={action}
-          onClick={opensAgentPane ? () => onOpenAgent(tool) : toggleExpanded}
-        >
-          <span className="agent-launch-headline">
-            <span className="agent-launch-title">{title}</span>
-            {identity ? <span className="agent-launch-identity">{identity}</span> : null}
-          </span>
-          <span className="agent-launch-status">{agentStatusLabel(tool.status)}</span>
-        </button>
-        {hasDetail ? (
+        {opensAgentPane ? (
+          <button
+            type="button"
+            className="agent-launch-row-button"
+            aria-label={action}
+            onClick={() => onOpenAgent(tool)}
+          >
+            {headline}
+          </button>
+        ) : (
+          <div className="agent-launch-row-button">{headline}</div>
+        )}
+        {opensAgentPane && hasDetail ? (
           <button
             className="tool-call-row-disclosure"
             type="button"

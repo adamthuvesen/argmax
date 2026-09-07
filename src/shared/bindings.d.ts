@@ -1171,7 +1171,7 @@ export type PendingMessage = { id: string; sessionId: string; content: string; a
  * Send explicitly.
  */
 recoveryStatus?: string | null; queuedAt: string }
-export type PermissionMode = "auto-approve" | "ask-each-time"
+export type PermissionMode = "provider-defaults" | "auto-approve" | "ask-each-time"
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
 export type ProjectId = string
@@ -1432,7 +1432,7 @@ export type SystemOpenPathInput = { path: OpenPath; cwd: NonEmptyString | null }
  * preference and mirrors it here so the sessions Argmax starts on its own —
  * the PR check-failure fix chat — launch on the same model the user picked.
  */
-export type SystemSetDefaultAgentInput = { provider: ProviderId; modelLabel: NonEmptyString; modelId: NonEmptyString;
+export type SystemSetDefaultAgentInput = { provider: ProviderId; permissionMode: PermissionMode | null; modelLabel: NonEmptyString; modelId: NonEmptyString;
 /**
  * Absent for a fast model that has no effort control at all.
  */

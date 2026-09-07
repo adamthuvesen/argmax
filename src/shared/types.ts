@@ -384,8 +384,9 @@ export type SyncStatus = Retype<Bindings.SyncStatus, { config: SyncConfigInput }
  *  scheduler as a normal top-level session. Wire shape mirrors the Rust
  *  `Routine` record (see src-tauri/src/persistence/routines.rs).
  *
- *  There is no permission or agent mode here: nobody is watching a scheduled
- *  run, so they always launch auto-approve. The scheduler hardcodes it. */
+ *  Permission and agent modes are not stored per task. New scheduled chats
+ *  use the app-wide Tool permissions setting; follow-ups retain the existing
+ *  session's saved policy. */
 export type Routine = Retype<Bindings.Routine, { provider: ProviderId }>;
 
 export type RoutineUpsertInput = OptionalNullable<Bindings.RoutinesUpsertInput, "enabled">;
@@ -528,6 +529,7 @@ export interface ArgmaxApi {
     setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
     setDefaultAgent: (input: {
       provider: ProviderId;
+      permissionMode?: PermissionMode | null;
       modelLabel: string;
       modelId: string;
       reasoningEffort?: ReasoningEffort | null;

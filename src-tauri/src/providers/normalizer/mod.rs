@@ -50,7 +50,7 @@ use self::{
         normalize_event as normalize_opencode_event,
     },
 };
-use super::{adapters::get_provider_definition, ApprovalSupport, ProviderId};
+use super::ProviderId;
 use crate::persistence::events::PersistTimelineEventInput;
 
 /// Providers whose headless output is Claude Code's stream-json: a
@@ -600,34 +600,20 @@ fn normalize_json_payload(
                 );
             }
         }
-        let approval_support = get_provider_definition(provider).approval_support;
-        let event_type = if approval_support == ApprovalSupport::Respondable {
-            "approval.requested"
-        } else {
-            "permission.blocked"
-        };
+        // Respondable requests are consumed by the live transport and registered
+        // with ApprovalService. A stdout/trace observation has no response channel,
+        // even when this provider supports approvals on its native transport.
         events.push(timeline_event(
             event,
-            event_type,
-            gate.command.clone(),
+            "permission.blocked",
+            gate.command,
             gate_payload,
         ));
         return NormalizedProviderResult {
             events,
             usages,
-            approvals: if approval_support == ApprovalSupport::Respondable {
-                vec![NormalizedApprovalRequest {
-                    session_id: event.session_id.clone(),
-                    command: gate.command,
-                    cwd: gate.cwd.unwrap_or_default(),
-                    provider: provider.as_str().to_string(),
-                    risk_level: gate.risk_level.to_string(),
-                    provider_request_id: gate.provider_request_id,
-                }]
-            } else {
-                Vec::new()
-            },
-            permission_blocked: approval_support != ApprovalSupport::Respondable,
+            approvals: Vec::new(),
+            permission_blocked: true,
             provider_conversation_id,
         };
     }

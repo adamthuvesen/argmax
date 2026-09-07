@@ -386,7 +386,14 @@ describe("App settings", () => {
     await openSettings("Agents");
     await screen.findByRole("heading", { name: "Permissions" });
 
-    fireEvent.click(screen.getByRole("radio", { name: "Ask each time" }));
+    const permissionTrigger = screen.getByRole("button", { name: "Tool permissions" });
+    expect(permissionTrigger).toHaveTextContent("Provider defaults");
+    fireEvent.click(permissionTrigger);
+    fireEvent.click(
+      within(await screen.findByRole("listbox", { name: "Tool permissions" })).getByRole("button", {
+        name: "Ask for approval"
+      })
+    );
     await waitFor(() =>
       expect(window.localStorage.getItem("argmax.permissionMode")).toBe("ask-each-time")
     );
@@ -404,6 +411,38 @@ describe("App settings", () => {
         expect.objectContaining({ permissionMode: "ask-each-time" })
       )
     );
+  });
+
+  it("shows a failed host defaults save and retries the current preference", async () => {
+    const save = vi.mocked(window.argmax!.system.setDefaultAgent);
+    save.mockRejectedValueOnce(new Error("DEFAULT_AGENT_WRITE"));
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    await openSettings("Agents");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Scheduled and automatic chats still use the previous settings");
+    fireEvent.click(screen.getByRole("button", { name: "Retry saving defaults" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ permissionMode: "provider-defaults" }));
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it("serializes host defaults writes so an older preference cannot win", async () => {
+    const save = vi.mocked(window.argmax!.system.setDefaultAgent);
+    let finishFirst!: (result: { ok: true }) => void;
+    save.mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; }));
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    await openSettings("Agents");
+    fireEvent.click(screen.getByRole("button", { name: "Tool permissions" }));
+    fireEvent.click(
+      within(await screen.findByRole("listbox", { name: "Tool permissions" })).getByRole("button", {
+        name: "Full access"
+      })
+    );
+    expect(save).toHaveBeenCalledTimes(1);
+    finishFirst({ ok: true });
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ permissionMode: "auto-approve" }));
   });
 
   it("settings Fast mode defaults off, persists, and propagates through the next launch", async () => {
@@ -581,6 +620,7 @@ describe("App settings", () => {
       "aria-checked",
       "true"
     );
+    expect(within(accentPicker).getByRole("radio", { name: "Black" })).toBeTruthy();
 
     fireEvent.click(within(accentPicker).getByRole("radio", { name: "Orange" }));
     await waitFor(() =>

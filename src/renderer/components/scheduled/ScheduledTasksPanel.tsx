@@ -814,7 +814,9 @@ function ScheduledTaskEditor({
           ) : null}
 
           <footer className="sched-actions">
-            <p className="sched-actions-note">Scheduled runs are unattended and auto-approve.</p>
+            <p className="sched-actions-note">
+              Scheduled runs use your Tool permissions setting and may wait for approval.
+            </p>
             <div className="sched-actions-buttons">
               <button type="button" className="sched-button" onClick={onCancel}>
                 Cancel

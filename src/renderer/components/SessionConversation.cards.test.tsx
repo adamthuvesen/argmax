@@ -641,6 +641,7 @@ describe("SessionConversation — cards", () => {
         onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
         pendingMessages={[]}
         onToggleLog={vi.fn()}
+        onOpenAgent={vi.fn()}
         project={project}
         rawOutputs={[]}
         review={reviewStub()}

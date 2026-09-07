@@ -26,7 +26,7 @@ Isolated workspaces only. Archiving a shared checkout deletes nothing, so applyi
 
 ## PR Attribution
 
-Isolated workspaces show the latest PR on their branch within the same project. Shared checkouts show only PRs attributed to their own session. Moving a shared checkout onto another branch cannot assign that branch's PR to an old session.
+Isolated workspaces show the latest PR on their branch within the same project. An explicit reference to a PR on another branch stays in session history but cannot supply the workspace marker or its open-PR action. Automatic check-failure follow-ups and archive-on-merge also require the isolated workspace's selected PR. Shared checkouts show only PRs attributed to their own session. Moving a shared checkout onto another branch cannot assign that branch's PR to an old session.
 
 New sessions record their starting branch and the last branch observed while active. Shared-checkout discovery uses that saved branch after the session finishes. A new inferred association must match the saved branch. For a completed session, GitHub's PR creation time must be known and no later than completion. An association observed while active survives a later checkout change.
 

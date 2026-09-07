@@ -690,7 +690,61 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SESSION_PR_ATTRIBUTION_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 38,
+        name: "session_permission_provider_defaults",
+        up: SESSION_PERMISSION_PROVIDER_DEFAULTS,
+        affected_tables: &["sessions"],
+        expected_columns: &SESSION_PR_ATTRIBUTION_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
 ];
+
+// Widen permission choices without rewriting existing chats or migration history.
+const SESSION_PERMISSION_PROVIDER_DEFAULTS: &str = r#"
+CREATE TABLE sessions_rebuilt (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  model_label TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  state TEXT NOT NULL,
+  attention TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  last_activity_at TEXT NOT NULL,
+  provider_conversation_id TEXT,
+  model_id TEXT,
+  reasoning_effort TEXT,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  last_model_id TEXT,
+  permission_mode TEXT NOT NULL DEFAULT 'provider-defaults'
+    CHECK (permission_mode IN ('auto-approve', 'ask-each-time', 'provider-defaults')),
+  agent_mode TEXT NOT NULL DEFAULT 'auto'
+    CHECK (agent_mode IN ('auto', 'plan'))
+, context_tokens INTEGER NOT NULL DEFAULT 0, context_window INTEGER, attention_changed_at TEXT, resume_fork INTEGER NOT NULL DEFAULT 0, imported INTEGER NOT NULL DEFAULT 0, launched_by_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL, launch_depth INTEGER NOT NULL DEFAULT 0, launch_kind TEXT NOT NULL DEFAULT 'agent', wait_reported_at TEXT, pr_branch_at_start TEXT, pr_branch_last_active TEXT);
+INSERT INTO sessions_rebuilt (id, workspace_id, provider, model_label, prompt, state, attention, started_at, completed_at, last_activity_at, provider_conversation_id, model_id, reasoning_effort, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, last_model_id, permission_mode, agent_mode, context_tokens, context_window, attention_changed_at, resume_fork, imported, launched_by_session_id, launch_depth, launch_kind, wait_reported_at, pr_branch_at_start, pr_branch_last_active)
+SELECT id, workspace_id, provider, model_label, prompt, state, attention, started_at, completed_at, last_activity_at, provider_conversation_id, model_id, reasoning_effort, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, last_model_id, permission_mode, agent_mode, context_tokens, context_window, attention_changed_at, resume_fork, imported, launched_by_session_id, launch_depth, launch_kind, wait_reported_at, pr_branch_at_start, pr_branch_last_active FROM sessions;
+DROP TABLE sessions;
+ALTER TABLE sessions_rebuilt RENAME TO sessions;
+CREATE INDEX idx_sessions_workspace_id ON sessions(workspace_id);
+CREATE INDEX idx_sessions_last_activity_id
+  ON sessions(last_activity_at DESC, id DESC);
+CREATE INDEX idx_sessions_workspace_last_activity_id
+  ON sessions(workspace_id, last_activity_at DESC, id DESC);
+CREATE INDEX idx_sessions_state
+  ON sessions(state);
+CREATE INDEX idx_sessions_launched_by ON sessions(launched_by_session_id);
+CREATE TRIGGER session_changes_sessions_after_delete
+AFTER DELETE ON sessions BEGIN
+  DELETE FROM session_changes WHERE session_id = old.id;
+  DELETE FROM session_change_watermarks WHERE session_id = old.id;
+END;
+"#;
 
 // Post-v37 shapes: launched sessions retain the branch they started on and
 // the last branch observed while their turn was active. PR observations carry
@@ -1800,6 +1854,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn provider_defaults_upgrade_preserves_chats_and_session_triggers() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        run_migrations_with(&mut connection, &MIGRATIONS[..37]).unwrap();
+        seed_minimal_session(&connection);
+        connection.execute("UPDATE sessions SET provider_conversation_id = 'native-123', pr_branch_at_start = 'adam/test' WHERE id = 's1'", []).unwrap();
+        run_migrations(&mut connection).unwrap();
+        let row: (String, String, String) = connection.query_row("SELECT permission_mode, provider_conversation_id, pr_branch_at_start FROM sessions WHERE id = 's1'", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).unwrap();
+        assert_eq!(
+            row,
+            (
+                "auto-approve".into(),
+                "native-123".into(),
+                "adam/test".into()
+            )
+        );
+        connection
+            .execute(
+                "UPDATE sessions SET permission_mode = 'provider-defaults' WHERE id = 's1'",
+                [],
+            )
+            .unwrap();
+        assert!(connection
+            .execute(
+                "UPDATE sessions SET permission_mode = 'invented' WHERE id = 's1'",
+                []
+            )
+            .is_err());
+        let trigger_count: i64 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'session_changes_sessions_after_delete'", [], |row| row.get(0)).unwrap();
+        assert_eq!(trigger_count, 1);
+        let indexes: i64 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'sessions' AND name LIKE 'idx_sessions_%'", [], |row| row.get(0)).unwrap();
+        assert_eq!(indexes, 5);
+        run_migrations(&mut connection).unwrap();
+    }
+
+    #[test]
     fn initial_schema_migration_creates_head_tables_and_fts_sidecars() {
         let mut connection = Connection::open_in_memory().expect("open db");
         run_migrations(&mut connection).expect("migrate");
@@ -1901,6 +1990,10 @@ mod tests {
                 (35, compute_migration_checksum(SESSION_WAIT_REPORTED)),
                 (36, compute_migration_checksum(ROUTINE_RUN_TARGET)),
                 (37, compute_migration_checksum(SESSION_PR_ATTRIBUTION)),
+                (
+                    38,
+                    compute_migration_checksum(SESSION_PERMISSION_PROVIDER_DEFAULTS)
+                ),
             ]
         );
 

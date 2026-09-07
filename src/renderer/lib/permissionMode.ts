@@ -1,25 +1,26 @@
 /**
  * User preference for provider permission gating.
  *
+ * - `provider-defaults`: launch without Argmax bypass flags or an Argmax-owned
+ *   approval policy. Each provider follows its native CLI configuration. This
+ *   is the default for new installs.
  * - `auto-approve`: provider launches with the broad bypass flags
  *   (`bypassPermissions` / `--dangerously-bypass-approvals-and-sandbox` /
- *   `--force --trust`). This is the historical default for Argmax — a trusted
- *   single-user desktop app — but it removes the per-command confirmation
- *   gate that providers ship with.
- * - `ask-each-time`: drop the bypass flags. Each tool invocation goes through
- *   the provider's native approval gate, which Argmax surfaces as in-app
- *   Approve / Reject buttons (P8.02).
+ *   `--force --trust`). This legacy wire value is shown as “Full access”.
+ * - `ask-each-time`: drop the bypass flags. Native approval requests go through
+ *   the provider's native approval gate, which Argmax surfaces in-app when the
+ *   provider supports live replies.
  *
  * Persisted to localStorage. Reads tolerate missing/corrupt values by
  * returning the safe default.
  */
-export type PermissionMode = "auto-approve" | "ask-each-time";
+export type PermissionMode = "provider-defaults" | "auto-approve" | "ask-each-time";
 
 export const PERMISSION_MODE_KEY = "argmax.permissionMode";
-export const DEFAULT_PERMISSION_MODE: PermissionMode = "auto-approve";
+export const DEFAULT_PERMISSION_MODE: PermissionMode = "provider-defaults";
 
 export function isPermissionMode(value: unknown): value is PermissionMode {
-  return value === "auto-approve" || value === "ask-each-time";
+  return value === "provider-defaults" || value === "auto-approve" || value === "ask-each-time";
 }
 
 export function readStoredPermissionMode(): PermissionMode {

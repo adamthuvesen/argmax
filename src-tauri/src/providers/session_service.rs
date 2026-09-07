@@ -80,7 +80,6 @@ use crate::{
             SessionStateInput, SessionSummary, LAUNCH_KIND_MULTITASK,
         },
         time::now_iso,
-        usage::session_usage_since_conversation_start,
         workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
     },
     session_control::{AfterTurn, SessionLaunchRegistry},
@@ -119,7 +118,7 @@ fn ensure_permission_mode_supported(
         return Err(ArgmaxError::service(
             "PROVIDER_APPROVAL_UNSUPPORTED",
             format!(
-                "{} cannot answer live approval requests in this runtime. Choose Auto-approve or a provider with live approval support.",
+                "{} cannot answer live approval requests in this runtime. Update the provider CLI to a version with live approval support.",
                 get_provider_definition(provider).display_name
             ),
         ));
@@ -433,7 +432,9 @@ impl ProviderSessionService {
     ) -> ArgmaxResult<SessionSummary> {
         let session_id = Uuid::new_v4().to_string();
         let agent_mode = input.agent_mode.unwrap_or(AgentMode::Auto);
-        let permission_mode = input.permission_mode.unwrap_or(PermissionMode::AutoApprove);
+        let permission_mode = input
+            .permission_mode
+            .unwrap_or(PermissionMode::ProviderDefaults);
         let provider = input.provider;
         ensure_permission_mode_supported(provider, permission_mode)?;
         let admission = self.lifecycle.admit(input.workspace_id.as_str())?;
@@ -821,7 +822,7 @@ impl ProviderSessionService {
             });
         }
 
-        let (provider, launch_input, session_tokens, pending_results) = {
+        let (provider, launch_input, pending_results) = {
             let connection = self.database.connection();
             let mut session = find_session_by_id(&connection, &session_id)?;
             let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
@@ -997,13 +998,7 @@ impl ProviderSessionService {
                 cols: STRUCTURED_LAUNCH_COLS,
                 rows: STRUCTURED_LAUNCH_ROWS,
             };
-            // Not `session.tokens`: those counters run for the life of the
-            // session row and survive `/clear`, so seeding a resumed Codex
-            // thread from them bills $0 for every turn until the new thread
-            // passes the old lifetime total.
-            let conversation_tokens =
-                session_usage_since_conversation_start(&connection, &session_id)?;
-            (provider, launch_input, conversation_tokens, pending_results)
+            (provider, launch_input, pending_results)
         };
 
         let provider_invocation_id = Uuid::new_v4().to_string();
@@ -1021,24 +1016,16 @@ impl ProviderSessionService {
                     if provider == ProviderId::Codex
                         && launch_input.resume_conversation_id.is_some()
                     {
-                        // Only seed from usage we actually recorded. A session
-                        // that holds a resume id but no tokens — imported by
-                        // session sync, or a turn that died before its usage row
-                        // landed — must leave this `None` so the first
-                        // `turn.completed` establishes the baseline instead of
-                        // billing the whole pre-existing thread to one follow-up.
-                        let observed = session_tokens.input
-                            + session_tokens.cache_read
-                            + session_tokens.output
-                            > 0;
-                        let initial_usage = observed.then(|| CodexCumulativeUsage {
-                            input_tokens: (session_tokens.input + session_tokens.cache_read) as u64,
-                            cached_input_tokens: session_tokens.cache_read as u64,
-                            output_tokens: session_tokens.output as u64,
-                        });
+                        // A resumed thread gets a fresh app-server, whose token
+                        // counters start at zero like any other turn's, so the
+                        // baseline is zero too. Seeding it from what the session
+                        // has already spent — which the old CLI transport needed,
+                        // because there the totals really were thread-cumulative —
+                        // subtracts the whole conversation from one follow-up and
+                        // bills it as nothing.
                         context.resuming_codex(
                             launch_input.resume_conversation_id.clone(),
-                            initial_usage,
+                            Some(CodexCumulativeUsage::default()),
                         )
                     } else if launch_input.resume_conversation_id.is_some() {
                         context.resuming()
@@ -1263,6 +1250,14 @@ impl ProviderSessionService {
         entry: Option<HandleEntry>,
     ) -> ArgmaxResult<()> {
         let mut first_error = None;
+        // Release native permission waiters before waiting for provider cancel.
+        // ACP cannot finish session/cancel until pending requests are answered.
+        if let Some(approvals) = self.approvals.as_ref() {
+            if let Err(error) = approvals.cancel_session_pending(session_id) {
+                first_error = Some(error);
+            }
+        }
+
         match entry {
             Some(HandleEntry::Resolved(handle)) => {
                 // User-initiated cancel: flush buffered text but don't
@@ -3786,7 +3781,7 @@ mod tests {
     }
 
     #[test]
-    fn ask_each_time_is_rejected_without_a_live_provider_responder() {
+    fn all_provider_permission_modes_have_native_responders() {
         for provider in [
             ProviderId::Claude,
             ProviderId::Codex,
@@ -3794,13 +3789,10 @@ mod tests {
             ProviderId::Opencode,
             ProviderId::Grok,
         ] {
-            let error = ensure_permission_mode_supported(provider, PermissionMode::AskEachTime)
-                .expect_err("unsupported provider approval mode must fail closed");
-            assert!(matches!(
-                error,
-                ArgmaxError::ServiceError { sub_code, .. }
-                    if sub_code == "PROVIDER_APPROVAL_UNSUPPORTED"
-            ));
+            ensure_permission_mode_supported(provider, PermissionMode::AskEachTime)
+                .expect("native provider approval mode is supported");
+            ensure_permission_mode_supported(provider, PermissionMode::ProviderDefaults)
+                .expect("provider defaults is supported");
             ensure_permission_mode_supported(provider, PermissionMode::AutoApprove)
                 .expect("auto-approve remains supported");
         }

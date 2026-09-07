@@ -212,8 +212,6 @@ function SessionConversationTurnInner({
         <QuestionCard
           key={`question-${askUserQuestionTool.id}`}
           questions={askUserQuestionTool.questions}
-          createdAt={askUserQuestionTool.createdAt}
-          modelLabel={selectedModel.label}
           onAnswer={handleQuestionAnswer}
         />
       )

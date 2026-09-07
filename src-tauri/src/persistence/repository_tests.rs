@@ -128,7 +128,7 @@ fn project_workspace_and_session_repositories_round_trip() {
     );
 
     let session = persist_session(&connection, &session_input()).expect("persist session");
-    assert_eq!(session.permission_mode, "auto-approve");
+    assert_eq!(session.permission_mode, "provider-defaults");
     assert_eq!(session.agent_mode.as_deref(), Some("auto"));
 
     let modeled = update_session_model(

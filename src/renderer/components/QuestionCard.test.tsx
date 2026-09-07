@@ -17,7 +17,6 @@ describe("QuestionCard", () => {
             options: [{ label: "Runbooks" }, { label: "Examples" }]
           }
         ]}
-        createdAt="2026-05-17T19:00:00.000Z"
         onAnswer={onAnswer}
       />
     );

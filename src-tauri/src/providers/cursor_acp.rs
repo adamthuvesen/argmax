@@ -13,11 +13,9 @@
 //! `complete_cursor_turn_after_result` turn lifecycle — is unchanged.
 //!
 //! Scope and trade-offs (see docs/providers.md):
-//! - Only `composer-2.5` routes here. Other Cursor models encode reasoning
-//!   effort / fast serving in the one-shot `--model` id; ACP's `session/set_model`
-//!   accepts only the ids Cursor lists, so routing them here would silently
-//!   drop the chosen variant. Ineligible or failed launches fall back to the
-//!   one-shot PTY path.
+//! - Every Cursor model routes here when ACP advertises the exact requested
+//!   model, effort, and fast combination. A missing exact variant is an error,
+//!   never a silent downgrade.
 //! - Cursor's ACP stream never reports token usage, so ACP turns record no
 //!   usage/cost row.
 //! - The warm process is shared per workspace, so the per-session Argmax
@@ -36,22 +34,18 @@ use std::time::Duration;
 use serde_json::{json, Map, Value};
 use tokio::sync::watch;
 
-use super::acp::AcpClient;
+use super::acp::{AcpClient, AcpPermissionDecision, AcpPermissionHandler, AcpPermissionRequest};
 use super::environment::build_provider_environment;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-use super::{mcp_injection, AgentMode, ProviderId, ProviderLaunchInput};
+use super::{mcp_injection, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
+use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
 use crate::session_control::SessionLaunchProcessConfig;
 use crate::util::sync::LockOrRecover;
-
-/// The only model family routed through ACP today. Composer has no reasoning
-/// effort dimension, so the id Cursor lists for it is not a silent downgrade
-/// of anything the user picked.
-pub const ACP_MODEL_FAMILY: &str = "composer-2.5";
 
 /// How long `terminate` waits for a cancelled prompt to resolve before giving
 /// up. The warm process is never killed on turn termination.
@@ -68,11 +62,11 @@ fn acp_mode_id(agent_mode: AgentMode) -> &'static str {
 }
 
 pub fn is_acp_eligible(input: &ProviderLaunchInput) -> bool {
-    input.provider == ProviderId::Cursor && is_acp_model_id(&input.model_id)
+    input.provider == ProviderId::Cursor && !input.resume_fork
 }
 
 pub fn is_acp_model_id(model_id: &str) -> bool {
-    model_id == ACP_MODEL_FAMILY
+    !model_id.is_empty()
 }
 
 // ---------------------------------------------------------------------------
@@ -81,7 +75,24 @@ pub fn is_acp_model_id(model_id: &str) -> bool {
 
 #[derive(Default)]
 pub struct CursorAcpSessions {
-    workspaces: tokio::sync::Mutex<HashMap<PathBuf, Arc<WorkspaceSlot>>>,
+    workspaces: tokio::sync::Mutex<HashMap<(PathBuf, CursorProcessMode), Arc<WorkspaceSlot>>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum CursorProcessMode {
+    ProviderDefaults,
+    AskEachTime,
+    AutoApprove,
+}
+
+impl From<PermissionMode> for CursorProcessMode {
+    fn from(mode: PermissionMode) -> Self {
+        match mode {
+            PermissionMode::ProviderDefaults => Self::ProviderDefaults,
+            PermissionMode::AskEachTime => Self::AskEachTime,
+            PermissionMode::AutoApprove => Self::AutoApprove,
+        }
+    }
 }
 
 /// The pool entry for one workspace. `boot` serializes spawn plus the
@@ -97,6 +108,19 @@ struct AcpWorkspace {
     client: Arc<AcpClient>,
     /// ACP session ids created or loaded on this process during this app run.
     live_sessions: Mutex<HashSet<String>>,
+    available_models: Mutex<Vec<Value>>,
+    permission_contexts: PermissionContexts,
+}
+
+type PermissionContexts = Arc<Mutex<HashMap<String, CursorPermissionContext>>>;
+
+#[derive(Clone)]
+struct CursorPermissionContext {
+    argmax_session_id: String,
+    invocation_id: String,
+    cwd: String,
+    permission_mode: PermissionMode,
+    approvals: Option<Arc<ApprovalService>>,
 }
 
 impl CursorAcpSessions {
@@ -115,11 +139,23 @@ impl CursorAcpSessions {
         session_launch: Option<&SessionLaunchProcessConfig>,
         on_event: EventCallback,
     ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
+        self.launch_turn_with_approvals(binary_path, input, session_launch, None, on_event)
+            .await
+    }
+
+    pub async fn launch_turn_with_approvals(
+        &self,
+        binary_path: &str,
+        input: &ProviderLaunchInput,
+        session_launch: Option<&SessionLaunchProcessConfig>,
+        approvals: Option<Arc<ApprovalService>>,
+        on_event: EventCallback,
+    ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
         let mcp_servers = mcp_injection::acp_mcp_servers(session_launch);
         let workspace = self.workspace_client(binary_path, input).await?;
         let client = Arc::clone(&workspace.client);
 
-        let acp_session_id = match input.resume_conversation_id.as_deref() {
+        let session_response = match input.resume_conversation_id.as_deref() {
             Some(resume_id) => {
                 let known = workspace
                     .live_sessions
@@ -143,13 +179,14 @@ impl CursorAcpSessions {
                         .await;
                     while replay.try_recv().is_ok() {}
                     client.unsubscribe(resume_id, replay_token);
-                    load?;
+                    let response = load?;
+                    remember_available_models(&workspace, &response);
                     workspace
                         .live_sessions
                         .lock_or_recover("acp live sessions")
                         .insert(resume_id.to_string());
                 }
-                resume_id.to_string()
+                (resume_id.to_string(), None)
             }
             None => {
                 let response = client
@@ -165,14 +202,42 @@ impl CursorAcpSessions {
                         ArgmaxError::service("ACP_PROTOCOL", "session/new returned no sessionId")
                     })?
                     .to_string();
-                ensure_composer_model(&client, &session_id, &response).await?;
+                remember_available_models(&workspace, &response);
                 workspace
                     .live_sessions
                     .lock_or_recover("acp live sessions")
                     .insert(session_id.clone());
-                session_id
+                (session_id, Some(response))
             }
         };
+        let (acp_session_id, response) = session_response;
+        let models = response
+            .as_ref()
+            .and_then(|value| value.pointer("/models/availableModels"))
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_else(|| {
+                workspace
+                    .available_models
+                    .lock_or_recover("acp available models")
+                    .clone()
+            });
+        ensure_cursor_model(&client, &acp_session_id, input, &models).await?;
+
+        let invocation_id = uuid::Uuid::new_v4().to_string();
+        workspace
+            .permission_contexts
+            .lock_or_recover("cursor ACP permission contexts")
+            .insert(
+                acp_session_id.clone(),
+                CursorPermissionContext {
+                    argmax_session_id: input.session_id.clone(),
+                    invocation_id: invocation_id.clone(),
+                    cwd: input.workspace_path.to_string_lossy().into_owned(),
+                    permission_mode: input.permission_mode,
+                    approvals,
+                },
+            );
 
         // Apply this turn's mode on every turn, fresh or resumed. The ACP
         // session keeps whatever mode the previous turn left it in, so setting
@@ -188,7 +253,14 @@ impl CursorAcpSessions {
             )
             .await?;
 
-        Ok(spawn_turn(client, acp_session_id, input, on_event))
+        Ok(spawn_turn(
+            client,
+            acp_session_id,
+            invocation_id,
+            Arc::clone(&workspace.permission_contexts),
+            input,
+            on_event,
+        ))
     }
 
     async fn workspace_client(
@@ -198,9 +270,13 @@ impl CursorAcpSessions {
     ) -> ArgmaxResult<Arc<AcpWorkspace>> {
         let slot = {
             let mut workspaces = self.workspaces.lock().await;
+            let key = (
+                input.workspace_path.clone(),
+                CursorProcessMode::from(input.permission_mode),
+            );
             Arc::clone(
                 workspaces
-                    .entry(input.workspace_path.clone())
+                    .entry(key)
                     .or_insert_with(|| Arc::new(WorkspaceSlot::default())),
             )
         };
@@ -212,14 +288,23 @@ impl CursorAcpSessions {
                 return Ok(existing);
             }
         }
+        let permission_contexts = Arc::new(Mutex::new(HashMap::new()));
+        let arguments = match input.permission_mode {
+            PermissionMode::AutoApprove => &["--force", "acp"][..],
+            PermissionMode::AskEachTime | PermissionMode::ProviderDefaults => &["acp"][..],
+        };
         let client = AcpClient::spawn(
             binary_path,
+            arguments,
             &input.workspace_path,
             build_provider_environment([("NO_COLOR".to_string(), "1".to_string())]),
+            Some(cursor_permission_handler(Arc::clone(&permission_contexts))),
         )?;
         let workspace = Arc::new(AcpWorkspace {
             client,
             live_sessions: Mutex::new(HashSet::new()),
+            available_models: Mutex::new(Vec::new()),
+            permission_contexts,
         });
         // Publish before the handshake so app shutdown can still kill a child
         // that is only half-initialized.
@@ -250,14 +335,22 @@ impl CursorAcpSessions {
     /// (archived worktree, removed project) would leave its child running with
     /// its cwd on a deleted directory for the rest of the app's lifetime.
     pub async fn evict(&self, workspace_path: &Path) {
-        let slot = self.workspaces.lock().await.remove(workspace_path);
-        let Some(slot) = slot else {
-            return;
+        let slots: Vec<_> = {
+            let mut workspaces = self.workspaces.lock().await;
+            let keys: Vec<_> = workspaces
+                .keys()
+                .filter(|(path, _)| path == workspace_path)
+                .cloned()
+                .collect();
+            keys.into_iter()
+                .filter_map(|key| workspaces.remove(&key))
+                .collect()
         };
-        // Bound before the `if let` so the guard drops before `slot` does.
-        let current = slot.current.lock_or_recover("acp workspace").take();
-        if let Some(workspace) = current {
-            workspace.client.kill();
+        for slot in slots {
+            let current = slot.current.lock_or_recover("acp workspace").take();
+            if let Some(workspace) = current {
+                workspace.client.kill();
+            }
         }
     }
 
@@ -276,34 +369,42 @@ impl CursorAcpSessions {
     }
 }
 
-/// Verify the session runs composer, switching to Cursor's listed composer id
-/// when another model is current. `session/set_model` only accepts ids exactly
-/// as listed in `availableModels`, so an absent composer entry is a hard error
-/// (the caller falls back to the one-shot path, which passes `--model` freely).
-async fn ensure_composer_model(
+fn remember_available_models(workspace: &AcpWorkspace, response: &Value) {
+    let Some(models) = response
+        .pointer("/models/availableModels")
+        .and_then(Value::as_array)
+    else {
+        return;
+    };
+    *workspace
+        .available_models
+        .lock_or_recover("acp available models") = models.clone();
+}
+
+/// Select the advertised configuration of the family the user asked for.
+/// Cursor's ACP ids carry configuration in brackets
+/// (`grok-4.6[effort=high,fast=true]`), but it advertises exactly one variant
+/// per family, that variant does not follow the parameters saved in
+/// `cli-config.json`, and `session/set_model` rejects any id it did not list.
+/// The bracketed values are therefore Cursor's to pick, not ours to require:
+/// insisting on them rejected most of the catalog, the default model included.
+async fn ensure_cursor_model(
     client: &AcpClient,
     session_id: &str,
-    new_session_response: &Value,
+    input: &ProviderLaunchInput,
+    available_models: &[Value],
 ) -> ArgmaxResult<()> {
-    let models = new_session_response.get("models").unwrap_or(&Value::Null);
-    let current = models
-        .get("currentModelId")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    if model_family(current) == ACP_MODEL_FAMILY {
-        return Ok(());
-    }
-    let listed = models
-        .get("availableModels")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
+    let listed = available_models
+        .iter()
         .filter_map(|model| model.get("modelId").and_then(Value::as_str))
-        .find(|id| model_family(id) == ACP_MODEL_FAMILY)
+        .find(|id| cursor_model_matches(id, input))
         .ok_or_else(|| {
             ArgmaxError::service(
                 "ACP_MODEL_UNAVAILABLE",
-                "cursor ACP does not list a composer-2.5 model",
+                format!(
+                    "cursor ACP does not advertise the {} model family",
+                    input.model_id
+                ),
             )
         })?;
     client
@@ -315,9 +416,94 @@ async fn ensure_composer_model(
     Ok(())
 }
 
-/// `composer-2.5[fast=true]` → `composer-2.5`.
+fn cursor_model_matches(advertised: &str, input: &ProviderLaunchInput) -> bool {
+    cursor_acp_family(&input.model_id) == Some(model_family(advertised))
+}
+
+/// The catalog id a chat launches with, mapped to the family Cursor's ACP
+/// advertises. `auto-smart` keeps its bracket: the whole id is the family
+/// there, and Cursor advertises one `optimize_for` value regardless of which
+/// one the catalog entry names.
+fn cursor_acp_family(model_id: &str) -> Option<&str> {
+    match model_id {
+        "composer-2.5" => Some("composer-2.5"),
+        "cursor-grok-4.6-medium" => Some("grok-4.6"),
+        "cursor-grok-4.5-medium" => Some("grok-4.5"),
+        "gemini-3.8-flash-medium" => Some("gemini-3.8-flash"),
+        "gpt-5.6-sol-medium" => Some("gpt-5.6-sol"),
+        "gpt-5.6-terra-medium" => Some("gpt-5.6-terra"),
+        "gpt-5.6-luna-medium" => Some("gpt-5.6-luna"),
+        "claude-opus-5-thinking-medium" => Some("claude-opus-5"),
+        _ if model_id.starts_with("auto-smart[") => Some("auto-smart"),
+        _ => None,
+    }
+}
+
 fn model_family(model_id: &str) -> &str {
-    model_id.split('[').next().unwrap_or(model_id)
+    model_id
+        .split_once('[')
+        .map_or(model_id, |(family, _)| family)
+}
+
+fn cursor_permission_handler(contexts: PermissionContexts) -> AcpPermissionHandler {
+    Arc::new(move |request: AcpPermissionRequest| {
+        let context = request
+            .params
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .and_then(|session_id| {
+                contexts
+                    .lock_or_recover("cursor ACP permission contexts")
+                    .get(session_id)
+                    .cloned()
+            });
+        Box::pin(async move {
+            let Some(context) = context else {
+                return AcpPermissionDecision::Cancelled;
+            };
+            if context.permission_mode == PermissionMode::AutoApprove {
+                return AcpPermissionDecision::Allow;
+            }
+            let Some(approvals) = context.approvals else {
+                return AcpPermissionDecision::Cancelled;
+            };
+            let request_id = json_rpc_id(&request.request_id);
+            let command = cursor_permission_command(&request.params);
+            let cwd = request
+                .params
+                .pointer("/toolCall/rawInput/cwd")
+                .and_then(Value::as_str)
+                .unwrap_or(&context.cwd);
+            match approvals
+                .request_native(
+                    &context.argmax_session_id,
+                    &context.invocation_id,
+                    &request_id,
+                    &command,
+                    cwd,
+                    "cursor",
+                )
+                .await
+            {
+                Ok(true) => AcpPermissionDecision::Allow,
+                Ok(false) => AcpPermissionDecision::Reject,
+                Err(_) => AcpPermissionDecision::Cancelled,
+            }
+        })
+    })
+}
+
+fn json_rpc_id(id: &Value) -> String {
+    id.to_string()
+}
+
+fn cursor_permission_command(params: &Value) -> String {
+    params
+        .pointer("/toolCall/rawInput/command")
+        .and_then(Value::as_str)
+        .or_else(|| params.pointer("/toolCall/title").and_then(Value::as_str))
+        .unwrap_or("Cursor tool request")
+        .to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -327,6 +513,8 @@ fn model_family(model_id: &str) -> &str {
 fn spawn_turn(
     client: Arc<AcpClient>,
     acp_session_id: String,
+    invocation_id: String,
+    permission_contexts: PermissionContexts,
     input: &ProviderLaunchInput,
     on_event: EventCallback,
 ) -> Arc<dyn ProviderRuntimeHandle> {
@@ -341,7 +529,14 @@ fn spawn_turn(
     let session_id = input.session_id.clone();
     let prompt = input.prompt.clone();
     tokio::spawn(async move {
-        run_turn(client, acp_session_id, session_id, prompt, on_event).await;
+        run_turn(client, acp_session_id.clone(), session_id, prompt, on_event).await;
+        let mut contexts = permission_contexts.lock_or_recover("cursor ACP permission contexts");
+        if contexts
+            .get(&acp_session_id)
+            .is_some_and(|context| context.invocation_id == invocation_id)
+        {
+            contexts.remove(&acp_session_id);
+        }
         let _ = done_tx.send(true);
     });
     handle
@@ -744,6 +939,11 @@ mod tests {
     }
 
     #[test]
+    fn approval_ids_preserve_json_rpc_type() {
+        assert_ne!(json_rpc_id(&json!(42)), json_rpc_id(&json!("42")));
+    }
+
+    #[test]
     fn thought_chunks_become_thinking_deltas() {
         let mut translation = TurnTranslation::default();
         let lines = translation.translate(&update(json!({
@@ -951,7 +1151,7 @@ mod tests {
     }
 
     #[test]
-    fn eligibility_is_cursor_composer_only() {
+    fn eligibility_covers_all_cursor_models_except_forks() {
         let mut input = ProviderLaunchInput {
             provider: ProviderId::Cursor,
             session_id: "s".into(),
@@ -970,8 +1170,10 @@ mod tests {
         };
         assert!(is_acp_eligible(&input));
         input.model_id = "gpt-5.6-sol-medium".into();
+        assert!(is_acp_eligible(&input));
+        input.resume_fork = true;
         assert!(!is_acp_eligible(&input));
-        input.model_id = "composer-2.5".into();
+        input.resume_fork = false;
         input.provider = ProviderId::Claude;
         assert!(!is_acp_eligible(&input));
     }
@@ -985,8 +1187,68 @@ mod tests {
     }
 
     #[test]
-    fn model_family_strips_bracket_parameters() {
-        assert_eq!(model_family("composer-2.5[fast=true]"), "composer-2.5");
-        assert_eq!(model_family("composer-2.5"), "composer-2.5");
+    fn model_matching_ignores_the_configuration_cursor_advertises() {
+        let mut input = ProviderLaunchInput {
+            provider: ProviderId::Cursor,
+            session_id: "s".into(),
+            workspace_path: "/tmp".into(),
+            prompt: "p".into(),
+            model_label: "GPT-5.6 Sol (Cursor)".into(),
+            model_id: "gpt-5.6-sol-medium".into(),
+            reasoning_effort: None,
+            fast_mode: false,
+            resume_conversation_id: None,
+            resume_fork: false,
+            permission_mode: PermissionMode::AutoApprove,
+            agent_mode: AgentMode::Auto,
+            cols: 80,
+            rows: 24,
+        };
+        // Whatever effort and serving speed Cursor names for the family, that
+        // is the only variant it will accept, so all of these have to match.
+        for advertised in [
+            "gpt-5.6-sol[context=272k,reasoning=high,fast=false]",
+            "gpt-5.6-sol[context=272k,reasoning=medium,fast=true]",
+            "gpt-5.6-sol",
+        ] {
+            assert!(cursor_model_matches(advertised, &input), "{advertised}");
+        }
+        assert!(!cursor_model_matches(
+            "gpt-5.6-luna[context=272k,reasoning=medium,fast=false]",
+            &input
+        ));
+        input.model_id = "not-a-cursor-model".into();
+        assert!(!cursor_model_matches("gpt-5.6-sol", &input));
+    }
+
+    #[test]
+    fn model_matching_maps_cursor_aliases_to_advertised_families() {
+        let mut input = ProviderLaunchInput {
+            provider: ProviderId::Cursor,
+            session_id: "s".into(),
+            workspace_path: "/tmp".into(),
+            prompt: "p".into(),
+            model_label: "Grok 4.6 (Cursor)".into(),
+            model_id: "cursor-grok-4.6-medium".into(),
+            reasoning_effort: None,
+            fast_mode: false,
+            resume_conversation_id: None,
+            resume_fork: false,
+            permission_mode: PermissionMode::ProviderDefaults,
+            agent_mode: AgentMode::Auto,
+            cols: 80,
+            rows: 24,
+        };
+        assert!(cursor_model_matches(
+            "grok-4.6[effort=high,fast=true]",
+            &input
+        ));
+        // Every `auto-smart` entry maps onto the one variant Cursor lists,
+        // whichever `optimize_for` the catalog entry names.
+        input.model_id = "auto-smart[optimize_for=cost]".into();
+        assert!(cursor_model_matches(
+            "auto-smart[optimize_for=balanced]",
+            &input
+        ));
     }
 }

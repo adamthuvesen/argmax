@@ -153,7 +153,7 @@ pub async fn dispatch(
             // fix is not where you spend it.
             fast_mode: false,
             permission_mode: parse_json_enum(Some(parent.permission_mode.as_str()))
-                .unwrap_or(crate::providers::PermissionMode::AutoApprove),
+                .unwrap_or(crate::providers::PermissionMode::ProviderDefaults),
             agent_mode: parse_json_enum(parent.agent_mode.as_deref())
                 .unwrap_or(crate::providers::AgentMode::Auto),
             task_label: Some(label.clone()),

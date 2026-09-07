@@ -756,53 +756,35 @@ export function useDashboardSession(
     async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
       const token = (resolveApprovalTokens.current.get(approvalId) ?? 0) + 1;
       resolveApprovalTokens.current.set(approvalId, token);
-      // Use the ref so the callback's identity doesn't depend on `snapshot`;
-      // depending on snapshot would rebuild this callback on every dashboard
-      // delta, defeating memoization in every consumer that takes it as a
-      // prop.
-      const previousApproval = snapshotRef.current.approvals.find((approval) => approval.id === approvalId) ?? null;
-
-      // Optimistic update.
-      setSnapshot((current) => ({
-        ...current,
-        approvals: current.approvals.map((approval) =>
-          approval.id === approvalId && approval.status === "pending"
-            ? { ...approval, status, resolvedAt: new Date().toISOString() }
-            : approval
-        )
-      }));
 
       if (!window.argmax) {
         resolveApprovalTokens.current.delete(approvalId);
-        return;
+        throw new Error("Approvals are unavailable in preview mode.");
       }
 
       try {
-        await window.argmax.approvals.resolve({ approvalId, status });
+        const resolved = await window.argmax.approvals.resolve({ approvalId, status });
         if (token !== resolveApprovalTokens.current.get(approvalId)) {
           return;
         }
         resolveApprovalTokens.current.delete(approvalId);
+        // Keep the pending request visible until the backend acknowledges the
+        // decision. The returned row is authoritative and can update the card
+        // before the pending-list refresh removes it.
+        setSnapshot((current) => ({
+          ...current,
+          approvals: current.approvals.map((approval) =>
+            approval.id === approvalId ? resolved : approval
+          )
+        }));
         await refresh();
       } catch (error) {
         if (token !== resolveApprovalTokens.current.get(approvalId)) {
           return;
         }
         resolveApprovalTokens.current.delete(approvalId);
-        if (previousApproval) {
-          // Roll back only the optimistically-changed fields against the CURRENT
-          // row, so a concurrent delta that touched other fields mid-resolution
-          // isn't clobbered by the pre-optimistic snapshot.
-          setSnapshot((current) => ({
-            ...current,
-            approvals: current.approvals.map((approval) =>
-              approval.id === approvalId
-                ? { ...approval, status: previousApproval.status, resolvedAt: previousApproval.resolvedAt }
-                : approval
-            )
-          }));
-        }
         onErrorToastRef.current?.(errorMessage(error) || "Could not resolve approval.");
+        throw error;
       }
     },
     [refresh]

@@ -595,7 +595,7 @@ describe("App", () => {
       reasoningEffort: "medium",
       fastMode: false,
       agentMode: "auto",
-      permissionMode: "auto-approve",
+      permissionMode: "provider-defaults",
       cols: 120,
       rows: 32,
       attachments: null
@@ -1044,7 +1044,7 @@ describe("App", () => {
         reasoningEffort: "medium",
         fastMode: false,
         agentMode: "auto",
-        permissionMode: "auto-approve",
+        permissionMode: "provider-defaults",
         cols: 120,
         rows: 32,
         attachments: null

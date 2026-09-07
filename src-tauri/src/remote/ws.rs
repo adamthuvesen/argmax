@@ -29,7 +29,7 @@ use serde_json::{json, Value};
 use tauri::Manager;
 use tokio::sync::{broadcast, mpsc, OwnedSemaphorePermit, Semaphore};
 
-use super::dispatch::dispatch;
+use super::dispatch::dispatch_with_permission_mode;
 use super::operations::{self, OperationId};
 use super::server::RemoteBridge;
 use super::RemoteEvent;
@@ -178,13 +178,43 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
                 tauri::async_runtime::spawn(async move {
                     let _request_slot = request_slot;
                     let state = app.state::<AppState>();
+                    let default_permission_mode = if channel == "providers:launch" {
+                        match crate::util::data_dir::app_data_dir(&app) {
+                            Ok(app_data) => {
+                                crate::default_agent::read_default_agent(&app_data).permission_mode
+                            }
+                            Err(error) => {
+                                let error = ArgmaxError::service(
+                                    "APP_DATA_DIR",
+                                    format!("failed to read host settings: {error}"),
+                                );
+                                let _ = responses.send(response_error_frame(id, &error)).await;
+                                return;
+                            }
+                        }
+                    } else {
+                        crate::providers::PermissionMode::default()
+                    };
                     let result = if operations::is_read(&channel) {
-                        Ok(operations::outcome(dispatch(&state, &channel, input).await))
+                        Ok(operations::outcome(
+                            dispatch_with_permission_mode(
+                                &state,
+                                &channel,
+                                input,
+                                default_permission_mode,
+                            )
+                            .await,
+                        ))
                     } else if let Some(operation) = operation {
                         match state.db.get() {
                             Some(db) => {
                                 operations::execute(db, &operation, &channel, &input, || {
-                                    dispatch(&state, &channel, input.clone())
+                                    dispatch_with_permission_mode(
+                                        &state,
+                                        &channel,
+                                        input.clone(),
+                                        default_permission_mode,
+                                    )
                                 })
                                 .await
                             }

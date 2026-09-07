@@ -497,115 +497,243 @@
   line-height: 1;
 }
 
-.question-card-option-desc {
-  color: var(--muted);
-  font-weight: 400;
+/* ---------- Question ask -------------------------------------------------
+   An agent stopping to ask is not a document, so this is not a card. The
+   transcript around it is prose, and a bordered, shadowed, 20px-radius slab
+   dropped on top of prose is what made the old one read as heavy. What marks
+   the block instead is a single rule down its left edge, and that rule carries
+   state: accent while the turn is waiting on the reader, quiet once answered.
+
+   The other move is the number. The listbox already answered to 1–9, and
+   nothing on screen said so, so the reader went for the mouse. Drawn as a key
+   cap it stops being a list marker and starts being the instruction. That is
+   the one place this block spends any detail; everything else stays flat. */
+.question-ask {
+  width: 100%;
+  max-width: var(--chat-content-width, 780px);
+  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+  border-left: 2px solid var(--accent);
+  /* One measure for the whole block. `ch` resolves where it is used, so every
+     element that takes it also sets the reading size — prompt, options and the
+     answered line then stop at the same edge, and the column reads as a column
+     even though only its left rule is drawn. */
+  --question-ask-measure: 62ch;
+  font-family: var(--font-ui);
+  color: var(--text);
+  animation: question-ask-rise var(--motion-base) var(--ease-out);
 }
 
-/* Submit lives outside an action-block (one card may have several
-   questions), so we add the breathing room here that the action-block would
-   normally provide. */
-.question-card .plan-card-action-foot {
-  padding: 0 var(--space-6) var(--space-6);
+.question-ask.is-answered {
+  border-left-color: var(--line-strong);
 }
 
-/* Question card is denser than Plan card — multiple questions per card
-   stretch vertically fast otherwise. Scope every tweak to .question-card so
-   the Plan card stays unchanged. */
-.question-card .plan-card-action-block {
-  margin-top: 0;
-  padding: var(--space-4) var(--space-5);
-  border-top: 1px solid var(--line);
-  background: transparent;
+@keyframes question-ask-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 
-.question-card .plan-card-action-block:first-child {
-  border-top: 0;
+.question-ask-block + .question-ask-block {
+  margin-top: var(--space-4);
 }
 
-.question-card .plan-card-action-q {
-  font-size: var(--text-base);
-  line-height: 1.35;
-  margin: 0 0 var(--space-2_5);
-}
-
-.question-card .plan-card-options {
-  gap: 0;
-  margin: 0;
-}
-
-.question-card .plan-card-option {
-  padding: var(--space-1_5) var(--space-2_5) var(--space-1_5) var(--space-2_5);
-  margin-left: -10px;
-  grid-template-columns: 20px 1fr 12px;
-}
-
-.question-card .plan-card-option-num {
-  font-size: var(--text-xs);
-}
-
-.question-card .plan-card-option-label {
+.question-ask-prompt {
   font-size: var(--text-sm-plus);
-  line-height: 1.35;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text);
+  margin: 0 0 var(--space-2);
+  /* The prompt is a sentence, not a heading, so it wraps at reading width
+     rather than running the full column. */
+  max-width: var(--question-ask-measure);
 }
 
-.question-card .plan-card-option-arrow {
-  font-size: var(--text-xs);
+.question-ask-options {
+  list-style: none;
+  font-size: var(--text-sm-plus);
+  max-width: var(--question-ask-measure);
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  outline: none;
 }
 
-.question-card .question-card-option-desc {
-  font-size: var(--text-sm);
-}
-
-.question-card-submit {
-  display: inline-flex;
-  align-items: center;
+.question-ask-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
   gap: var(--space-2_5);
-  padding: 8px 14px;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: uppercase;
+  padding: var(--space-1_5) var(--space-2);
+  margin-inline: calc(-1 * var(--space-2));
   border-radius: var(--radius-md);
-  background: var(--ink);
-  color: var(--bubble-on-ink);
-  border: 1px solid var(--ink);
   cursor: pointer;
-  transition: opacity var(--motion-fast) ease;
+  transition: background var(--motion-fast) var(--ease-out);
 }
 
-.question-card-submit-key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 18px;
-  padding: 0 5px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-bottom-width: 2px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.08);
+/* Hover and keyboard focus share one quiet wash. Selection is not drawn here
+   at all — a filled row read as a header band, and with four options the
+   selected one looked like the title of the other three. */
+.question-ask-option:hover,
+.question-ask-option.is-focused {
+  background: var(--panel-sunken);
+}
+
+.question-ask-key {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
-  color: var(--bubble-on-ink);
   font-weight: 500;
-  letter-spacing: 0;
   line-height: 1;
+  color: var(--muted-strong);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  padding: 3px 5px;
+  min-width: 17px;
+  text-align: center;
+  transition: background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
 }
 
-.question-card-submit:disabled {
-  opacity: 0.35;
+/* The pick reads on the key, not the row: the cap fills the way a pressed key
+   would, and the label steps up one weight beside it. */
+.question-ask-option.is-active .question-ask-key {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bubble-on-ink);
+}
+
+.question-ask-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.question-ask-option-label {
+  font-size: var(--text-sm-plus);
+  font-weight: 450;
+  line-height: 1.45;
+  color: var(--text-soft);
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.question-ask-option.is-active .question-ask-option-label {
+  font-weight: 550;
+  color: var(--text);
+}
+
+/* The description used to ride the label behind an em dash, which pushed the
+   line past 90 characters and made the two read as one run-on. Stacked, the
+   labels stay scannable in a column. */
+.question-ask-option-desc {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* No key legend. Four caps reading 1 2 3 4 down the left already say the
+   numbers are live, and a "1–4 choose" caption under them repeated it on every
+   question forever. */
+.question-ask-foot {
+  display: flex;
+  align-items: center;
+  /* Left, with everything else. Sending sits at the end of the reading path
+     rather than across the column: this block is a question in a transcript,
+     and a bottom-right action is the one move that would make it a dialog. */
+  margin-top: var(--space-4);
+}
+
+.question-ask-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Send is an outline, not a pill: Enter already sends, so this is the mouse
+   path to the same action and must not outweigh the options above it. It
+   carried an inline ↵ cap for a while, which put a second key beside the four
+   that mean something — Enter to send is the composer's convention already, so
+   the reminder moved to the button's tooltip. */
+.question-ask-send {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.question-ask-send:hover:not(:disabled) {
+  background: var(--panel-sunken);
+  border-color: var(--line-strong);
+}
+
+.question-ask-send:disabled {
+  color: var(--muted);
+  border-color: var(--line);
   cursor: not-allowed;
 }
 
-.question-card-submit:hover:not(:disabled) {
-  opacity: 0.85;
-}
-
-.question-card-submit:focus-visible {
+.question-ask-send:focus-visible,
+.question-ask-reveal:focus-visible {
   outline: none;
   box-shadow: var(--ring);
+}
+
+.question-ask-answered {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm-plus);
+  max-width: var(--question-ask-measure);
+}
+
+/* Answered, the block keeps the answer rather than the question: in scrollback
+   what the reader chose is the part worth re-reading. */
+.question-ask-answered-text {
+  /* Shrink only when the answer is long enough to need it, so the chevron
+     stays beside the text instead of stranded at the far edge. */
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: var(--text-sm-plus);
+  font-weight: 450;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.question-ask-reveal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.question-ask-reveal:hover {
+  background: var(--panel-sunken);
+  color: var(--text);
 }
 
 /* Responsive adjustments */

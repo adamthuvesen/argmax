@@ -185,6 +185,47 @@ describe("BrowserPanel", () => {
     expect(browserStub.navigate).toHaveBeenCalledWith("https://example.com", activeTabId());
   });
 
+  it("navigates when Enter is pressed in the address bar", () => {
+    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    const address = screen.getByRole("textbox", { name: "Address" });
+    fireEvent.change(address, { target: { value: "example.com" } });
+    fireEvent.keyDown(address, { key: "Enter" });
+    expect(browserStub.navigate).toHaveBeenCalledWith("https://example.com", activeTabId());
+  });
+
+  it("reloads when the address bar submits the tab's current URL", () => {
+    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    const address = screen.getByRole("textbox", { name: "Address" });
+    fireEvent.keyDown(address, { key: "Enter" });
+    expect(browserStub.reload).toHaveBeenCalledWith(activeTabId());
+    expect(browserStub.navigate).not.toHaveBeenCalled();
+  });
+
+  it("goes on Enter while history suggestions are open", () => {
+    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    act(() =>
+      stateListener?.({ tabId: activeTabId(), url: "https://github.com", title: "GitHub", loading: false })
+    );
+    // A background tab's visit still feeds the omnibox; the active tab stays on GitHub.
+    act(() =>
+      stateListener?.({
+        tabId: "not-the-active-tab",
+        url: "https://example.com",
+        title: "Example",
+        loading: false
+      })
+    );
+
+    const address = screen.getByRole("textbox", { name: "Address" });
+    fireEvent.focus(address);
+    fireEvent.change(address, { target: { value: "example.com" } });
+    expect(screen.getByRole("dialog", { name: "History suggestions" })).toBeInTheDocument();
+
+    fireEvent.keyDown(address, { key: "Enter" });
+    expect(browserStub.navigate).toHaveBeenCalledWith("https://example.com", activeTabId());
+    expect(screen.queryByRole("dialog", { name: "History suggestions" })).not.toBeInTheDocument();
+  });
+
   it("turns non-URL address input into a Google search", () => {
     render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
     const address = screen.getByRole("textbox", { name: "Address" });

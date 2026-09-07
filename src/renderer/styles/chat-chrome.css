@@ -122,12 +122,14 @@
   gap: var(--space-1);
   /* Borderless, like `.session-input`: the --composer-surface fill and the
      quiet lift seat the field on the surface. The extra 1px absorbs the removed
-     border so the box keeps its size. */
+     border so the box keeps its size. --composer-edge rides in the shadow as an
+     inset ring rather than a real border, so drawing it costs no layout. */
   padding: 13px 15px 11px;
   border: 0;
   border-radius: var(--radius-2xl);
   background: var(--composer-surface);
-  box-shadow: 0 1px 2px rgba(31, 28, 24, 0.04), 0 8px 24px rgba(31, 28, 24, 0.05);
+  box-shadow: inset 0 0 0 1px var(--composer-edge),
+    0 1px 2px rgba(31, 28, 24, 0.04), 0 8px 24px rgba(31, 28, 24, 0.05);
   transition: box-shadow var(--duration-base) var(--ease);
 }
 
@@ -169,10 +171,11 @@
   transform: scale(1);
 }
 
-/* Focus lifts the card instead of ringing it — an accent ring reads as the
-   border this surface deliberately doesn't have. */
+/* Focus lifts the card instead of ringing it — an accent ring on top of the
+   hairline reads as a second border. */
 .launcher-surface .composer:focus-within {
-  box-shadow: 0 1px 2px rgba(31, 28, 24, 0.05), 0 10px 28px rgba(31, 28, 24, 0.07);
+  box-shadow: inset 0 0 0 1px var(--composer-edge),
+    0 1px 2px rgba(31, 28, 24, 0.05), 0 10px 28px rgba(31, 28, 24, 0.07);
 }
 
 /* The argmax field — an animated pixel canvas that fills the composer behind
@@ -423,7 +426,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--muted);
+  color: var(--chip-ink);
   cursor: pointer;
   font: inherit;
   font-size: var(--text-xs);
@@ -1267,6 +1270,21 @@
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-2);
   overflow: hidden;
+}
+
+.details-popup:has(.details-popup-approvals) {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.details-popup-approvals {
+  max-height: 240px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+
+.details-popup-approvals .approval-surface {
+  margin: 0;
+  padding: var(--space-3);
 }
 
 .details-popup .conversation-surface {

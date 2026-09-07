@@ -7,7 +7,7 @@ Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build throug
 - [adapters.rs](../src-tauri/src/providers/adapters.rs): Constructs CLI arguments and stdin for structured JSON modes. Centralizes auto-approve bypass flags.
 - [environment.rs](../src-tauri/src/providers/environment.rs): Hydrates user login shell environment and PATH for spawned processes.
 - [discovery.rs](../src-tauri/src/providers/discovery.rs): Detects installed provider binaries and versions.
-- [runtime.rs](../src-tauri/src/providers/runtime.rs): Manages PTY process execution.
+- [runtime.rs](../src-tauri/src/providers/runtime.rs): Selects native bidirectional transports for chats. Claude uses SDK control, Codex uses app-server, Cursor and Grok use ACP, and OpenCode uses HTTP/SSE. See [approval settings](approvals-checks.md). Legacy structured argument builders remain available for fixtures and restricted helper flows.
 - [session_service.rs](../src-tauri/src/providers/session_service.rs): Orchestrates launch, resume, user input, resize, cancellation, and orphan recovery.
 - [follow_up.rs](../src-tauri/src/providers/follow_up.rs): Composes the prompt a follow-up turn launches with. A session holding a native resume id sends the user's message alone because the CLI replays its own rollout. Without one, such as after a provider switch, the prompt carries a capped visible transcript: 12 messages, 12k chars, with child-agent rows excluded. A pending project handoff note rides along either way. Claude, Codex, OpenCode, and eligible Cursor native subagent references are resolved against the current parent conversation at delivery time.
 - [orphan_cleanup.rs](../src-tauri/src/providers/orphan_cleanup.rs): Terminates lingering provider processes during startup recovery.
@@ -65,7 +65,7 @@ An idle follow-up persists the user message and returns, then spawns the provide
 
 - **Startup cleanup:** Sessions left in `running`, `waiting`, or `blocked` states are marked failed on startup. Matching background provider processes are terminated and pending approvals cancelled.
 - **Follow-up prompts:** Follow-up turns use the provider resume ID when available, without repeating its transcript. A referenced Claude, Codex, OpenCode, or eligible Cursor dock name adds a validated name-to-child-ID mapping. Fresh conversations receive a capped transcript of visible `user.message`, `message.completed`, and `error` events. Hidden subagent rows are excluded.
-- **Native Claude, Codex, OpenCode, and one-shot Cursor subagents:** A persistent child stays addressable through its parent native conversation and can appear as multiple runs in one dock tab. Claude uses `SendMessage`. Codex uses `send_input`, with `resume_agent` when the child needs revival. OpenCode invokes its native `task` tool with the existing `task_id`. Cursor uses `taskToolCall` and the authoritative child id from the completed result. Composer 2.5 is excluded because it uses ACP. A successful delivery or `pending_init` state is not completion. An ordinary session launch remains an independent session. Grok keeps its existing subagent behavior.
+- **Native Claude, Codex, OpenCode, and Cursor subagents:** A persistent child stays addressable through its parent native conversation and can appear as multiple runs in one dock tab. Claude uses `SendMessage`. Codex uses `send_input`, with `resume_agent` when the child needs revival. OpenCode invokes its native `task` tool with the existing `task_id`. Cursor uses `taskToolCall` and the authoritative child id from the completed result. Composer 2.5 child references remain excluded until its native child identity is supported. A successful delivery or `pending_init` state is not completion. An ordinary session launch remains an independent session. Grok keeps its existing subagent behavior.
 - **Provider switching:** Changing the provider on an idle session clears `provider_conversation_id`, starts a new provider process with the capped transcript, and records a `session.provider-changed` marker.
 - **Clear:** `/clear` in the session composer drops `provider_conversation_id`, writes a `session.cleared` watermark, and hides the existing transcript. The next message starts a fresh provider conversation in the same workspace. A running session is stopped first. Headless provider CLIs do not honor `/clear` as a prompt, so Argmax owns the command for every provider.
 - **Forking:** `session:fork` creates a new session flagged with `resume_fork`. The next turn invokes the provider's fork flag (`--fork-session` for Claude and Grok, `exec fork` for Codex, `--fork` for OpenCode). Cursor does not support session forking.
@@ -110,7 +110,7 @@ reads continuously whichever side of the table a provider is on.
 
 The Cursor catalog starts with **Auto Cost (Cursor)**, **Auto Balance (Cursor)**,
 and **Auto Intelligence (Cursor)**, below the picker's shared recent-model prefix.
-They use the one-shot CLI with `auto-smart[optimize_for=cost]`,
+Their model IDs are `auto-smart[optimize_for=cost]`,
 `auto-smart[optimize_for=balanced]`, and `auto-smart[optimize_for=intelligence]`.
 These bracket parameters were verified with live CLI requests on 2026-09-07,
 even though `--list-models` only listed plain Auto. Auto has no manual reasoning
@@ -123,23 +123,22 @@ does not derive context tokens from them. The composer hides the context ring
 for all Cursor models, including sessions with previously saved context values.
 ACP provides no token usage or context occupancy.
 
-To avoid startup overhead, `composer-2.5` launches run over Agent Client Protocol (ACP) against a pooled `cursor-agent acp` process ([cursor_acp.rs](../src-tauri/src/providers/cursor_acp.rs)).
-- **Scope:** Restricted to `composer-2.5`. Other models with reasoning variants fall back to one-shot PTY execution.
+Chat launches run over Agent Client Protocol (ACP) against a pooled `cursor-agent acp` process ([cursor_acp.rs](../src-tauri/src/providers/cursor_acp.rs)).
+- **Scope:** All Cursor models use ACP. A launch takes the configuration Cursor advertises for the requested model's family, whatever effort and Fast state that carries. Cursor lists exactly one variant per family, it does not follow the parameters saved in `cli-config.json`, and `session/set_model` rejects any id it did not list — so requiring an exact match rejected most of the catalog, the default model included. A family Cursor does not advertise at all still returns an error rather than silently changing models.
 - **Turn lifecycle:** ACP notifications translate into standard Cursor stream events. Tool rows are named from `rawInput._toolName` to prevent sub-agents from collapsing into generic `other` tools.
-- **Permissions:** Auto-answered with allow, matching `--force --trust` one-shot semantics.
+- **Permissions:** Provider defaults preserves native permission rules. Full access launches a separate forced ACP pool and allows requests. Ask for approval forwards native requests to the chat, but Cursor actions already allowed by its rules may still run without prompting. A request whose options carry more than one `allow_once` is Cursor's question tool rather than a permission, and is declined instead of shown — see [approvals-checks.md](approvals-checks.md). Pools are isolated by permission mode.
 - **Agent tools:** The `argmax` MCP server rides in `session/new` and `session/load` as an `mcpServers` entry, so the warm shared process still hands each session its own credential ([agent-tools.md](agent-tools.md)).
 - **Cancellation & cleanup:** `terminate` cancels in-flight prompts. Workspace pool entries are evicted when isolated workspaces archive or are removed. The server runs in its own process group and teardown signals the group, so the MCP servers it started die with it.
 
 ## OpenCode
 
-OpenCode runs via `opencode run --dir <workspace> --format json --thinking -m <provider/model>`.
-- The `--dir` flag ensures tools execute in the workspace directory rather than the root directory.
+OpenCode chats use a dedicated authenticated localhost `opencode serve` process. Argmax subscribes to SSE before submitting the prompt and responds to native permissions through HTTP. Requests carry the workspace directory. The `run --format json` argument builder remains for restricted helper flows.
 - OpenCode uses a SQLite store at `~/.local/share/opencode/opencode.db`. Discovery probes and title generation use temporary `XDG_DATA_HOME` directories to prevent database lock contention with active sessions.
 - **Muse Spark 1.3 is free because it is a contributor SKU.** Meta trains on the prompts and completions it sees, which is what `-contributor-free` in its id means. Zen offers no non-contributor Muse 1.3. It is also the only free-tier model that takes `--variant`, so `opencode_variant_args` matches on the full id rather than the `opencode-go/` prefix; its ladder is low → xhigh (the CLI's `minimal` variant has no rung on Argmax's ladder, and Meta's `max` reasoning mode had not shipped as of the 2026-09-02 release).
 
 ## Grok Build
 
-Grok Build runs via `grok "--single=<prompt>" --cwd <workspace> --output-format streaming-messages-json --include-partial-messages`.
+Grok Build chats use a pooled `grok agent stdio` ACP process, isolated by workspace and permission mode. ACP updates translate into the existing Claude-shaped normalizer events. Restricted helper flows retain the one-shot CLI described below, and so does a fork: ACP can only `session/load` the conversation it was given, which would leave both sessions driving one Grok chat, so `resume_fork` falls through to the CLI's `--fork-session`.
 
 - **It speaks Claude Code's wire format.** `system/init`, Anthropic `stream_event` content blocks, whole `assistant` messages, and a closing `result` are the same envelopes as `claude --output-format stream-json`. Grok therefore has no normalizer of its own: `speaks_claude_stream_json` in [normalizer/mod.rs](../src-tauri/src/providers/normalizer/mod.rs) routes it down Claude's path. The envelopes match; the content arrays do not always. Claude typically emits `[thinking, text, tool_use]`. Grok often interleaves many tiny thinking/text pairs in one snapshot (and inserts `server_tool_use` / `web_search_tool_result` for built-in search). `extract_content_blocks` concatenates those runs and treats server search as a tool boundary so the chat does not render each phrase as its own paragraph. If Grok ever forks the envelope types, the fixture test in that file is what fails.
 - **The prompt must ride the `=` form.** `-p`/`--single` takes the prompt as a flag *value*, not the trailing positional Claude and Cursor use. Passed as two argv entries, the CLI rejects any prompt starting with `-` with a bare usage error — a pasted diff or a "- do this" bullet trips it. `--single=<prompt>` is the only form clap always reads as a value.

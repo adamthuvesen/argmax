@@ -508,7 +508,7 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_workspace_requires_explicit_evidence_for_an_off_branch_pr() {
+    fn dashboard_workspace_rejects_an_explicit_off_branch_pr() {
         let database = Database::open_in_memory().expect("open db");
         let connection = database.connection();
         seed_project(&connection);
@@ -548,8 +548,8 @@ mod tests {
             .find(|w| w.id == "w1")
             .expect("workspace present");
 
-        assert_eq!(workspace.pr_state.as_deref(), Some("OPEN"));
-        assert_eq!(workspace.pr_number, Some(568));
+        assert_eq!(workspace.pr_state, None);
+        assert_eq!(workspace.pr_number, None);
     }
 
     #[test]

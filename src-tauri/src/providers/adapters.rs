@@ -65,7 +65,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         structured_args: claude_structured_args,
         structured_resume_args: claude_structured_resume_args,
         structured_stdin: |_| None,
-        approval_support: ApprovalSupport::ObservableOnly,
+        approval_support: ApprovalSupport::Respondable,
         move_carries_conversation: true,
     },
     ProviderLaunchDefinition {
@@ -76,7 +76,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         structured_args: codex_structured_args,
         structured_resume_args: codex_structured_resume_args,
         structured_stdin: codex_structured_stdin,
-        approval_support: ApprovalSupport::ObservableOnly,
+        approval_support: ApprovalSupport::Respondable,
         move_carries_conversation: true,
     },
     ProviderLaunchDefinition {
@@ -87,7 +87,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         structured_args: cursor_structured_args,
         structured_resume_args: cursor_structured_resume_args,
         structured_stdin: |_| None,
-        approval_support: ApprovalSupport::Unsupported,
+        approval_support: ApprovalSupport::Respondable,
         move_carries_conversation: false,
     },
     ProviderLaunchDefinition {
@@ -98,7 +98,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         structured_args: opencode_structured_args,
         structured_resume_args: opencode_structured_resume_args,
         structured_stdin: |_| None,
-        approval_support: ApprovalSupport::Unsupported,
+        approval_support: ApprovalSupport::Respondable,
         move_carries_conversation: false,
     },
     ProviderLaunchDefinition {
@@ -111,7 +111,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         structured_args: grok_structured_args,
         structured_resume_args: grok_structured_resume_args,
         structured_stdin: |_| None,
-        approval_support: ApprovalSupport::ObservableOnly,
+        approval_support: ApprovalSupport::Respondable,
         move_carries_conversation: false,
     },
 ];

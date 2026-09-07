@@ -511,6 +511,14 @@ export function BrowserPanel({
       if (!destination) return;
       addressEditingRef.current = false;
       closeSuggestions();
+      // WKWebView's loadRequest is a no-op for the URL already on the tab, so
+      // Enter in the omnibox would look like it did nothing. Reload instead —
+      // the same "go" gesture Chrome and Safari use on the current URL.
+      const current = getBrowserTabs().find((tab) => tab.id === activeTabId)?.url;
+      if (current === destination) {
+        void browser.reload(activeTabId).catch(reportError);
+        return;
+      }
       void browser.navigate(destination, activeTabId).catch(reportError);
     },
     [activeTabId, browser, closeSuggestions, reportError]
@@ -522,6 +530,14 @@ export function BrowserPanel({
   };
 
   const handleAddressKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
+    // Don't rely on implicit form submission: the field has no submit button,
+    // and history suggestions (type="button") sit inside the form. Enter must
+    // "go" whether or not WebKit would submit on its own.
+    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      navigateTo(addressValue);
+      return;
+    }
     if (suggestions.length === 0) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();

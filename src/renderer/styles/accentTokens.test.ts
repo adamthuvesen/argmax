@@ -109,4 +109,49 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     expect(settings).toContain("--scroll-edge-fade-color: var(--bg);");
     expect(settings).toContain("pointer-events: none;");
   });
+
+  it("gates the workspace card on a gutter that actually fits it, per chat width", () => {
+    const conversation = readSource("src/renderer/styles/chat-conversation.css");
+    const card = readSource("src/renderer/styles/chat-workspace-card.css");
+    const cardBody = cssRuleBody(card, ".workspace-card");
+    const pixels = (body: string, property: string): number => {
+      const match = new RegExp(`${property}:\\s*(?<value>\\d+)px;`).exec(body);
+      expect(match?.groups?.value).toBeDefined();
+      return Number(match?.groups?.value);
+    };
+    // One card column on each side: the card itself, its inset from the pane
+    // edge, and the clearance that keeps it off the transcript.
+    const gutter = pixels(cardBody, "--workspace-card-width") + pixels(cardBody, "right") + 14;
+
+    const measure = (width: number, suffix: string): number => {
+      const body = cssRuleBody(conversation, `.app-shell[data-chat-width="${width}"]`);
+      return pixels(body, `--chat-content-width${suffix}`);
+    };
+    const suffixes: Record<string, string> = {
+      "": "",
+      " :is(.session-grid.review-open, .session-grid.log-open)": "-docked",
+      " .session-grid.review-open.log-open": "-tight"
+    };
+
+    const rules = [
+      ...card.matchAll(
+        /@container \(min-width: (?<threshold>\d+)px\) \{\s*(?<selector>[^{]*?)\s*\.workspace-card \{\s*display: flex;/g
+      )
+    ];
+    expect(rules).toHaveLength(15);
+
+    for (const rule of rules) {
+      const selector = rule.groups?.selector ?? "";
+      // A bare `.app-shell` reads as "the default width" but matches every
+      // shell, which would hand widths 4 and 5 width 3's lower threshold and
+      // drop the card onto the transcript.
+      const shell = /^\.app-shell\[data-chat-width="(?<width>\d)"\]/.exec(selector);
+      expect(shell?.groups?.width, selector).toBeDefined();
+      const width = Number(shell?.groups?.width);
+      const suffix = suffixes[selector.slice(shell?.[0].length)];
+      expect(suffix, selector).toBeDefined();
+
+      expect(Number(rule.groups?.threshold), selector).toBe(measure(width, suffix) + gutter * 2);
+    }
+  });
 });

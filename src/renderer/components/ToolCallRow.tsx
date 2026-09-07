@@ -91,7 +91,12 @@ function ToolCallRowInner({
   const hasDetail = toolCallHasExpandableDetail(tool, { hasLeadingContent });
   const expanded =
     hasDetail && (expandedOverride ?? localExpanded ?? defaultExpanded ?? false);
+  // An agent row exists to open its run in the pane's Agents view. A surface
+  // with no dock to host that view — the phone — keeps the row as a record:
+  // same icon, verb and target, no control, since expanding the launch input
+  // in place says nothing the line does not already.
   const opensAgentPane = toolTypeBucket === "agent" && onOpenAgent !== undefined;
+  const inertAgentRow = toolTypeBucket === "agent" && onOpenAgent === undefined;
   const toggleExpanded = (): void => {
     if (!hasDetail) return;
     setUserToggle({ value: !expanded, defaultExpanded });
@@ -122,7 +127,7 @@ function ToolCallRowInner({
         <span className="tool-call-row-target">{shortenPathsInText(target)}</span>
       ) : null}
       {counts ? <ActivityStat counts={counts} /> : null}
-      {opensAgentPane || !hasDetail ? null : (
+      {opensAgentPane || inertAgentRow || !hasDetail ? null : (
         <ChevronRight size={11} className="tool-call-row-chevron" aria-hidden="true" />
       )}
       {tool.status === "running" ? (
@@ -141,6 +146,8 @@ function ToolCallRowInner({
     >
       {rowContent}
     </button>
+  ) : inertAgentRow ? (
+    <div className="tool-call-row-button">{rowContent}</div>
   ) : hasDetail ? (
     <button
       className="tool-call-row-button"

@@ -20,6 +20,8 @@ pub struct DefaultAgent {
     pub model_label: String,
     pub model_id: String,
     pub reasoning_effort: Option<String>,
+    #[serde(default)]
+    pub permission_mode: crate::providers::PermissionMode,
 }
 
 impl DefaultAgent {
@@ -32,6 +34,7 @@ impl DefaultAgent {
             model_label: "Opus 5".to_string(),
             model_id: "claude-opus-5".to_string(),
             reasoning_effort: Some("medium".to_string()),
+            permission_mode: crate::providers::PermissionMode::ProviderDefaults,
         }
     }
 }
@@ -71,6 +74,7 @@ mod tests {
             model_label: "GPT-5.6 Sol".to_string(),
             model_id: "gpt-5.6-sol".to_string(),
             reasoning_effort: Some("xhigh".to_string()),
+            permission_mode: crate::providers::PermissionMode::AskEachTime,
         };
         std::fs::write(
             dir.path().join(DEFAULT_AGENT_FILE),
@@ -79,6 +83,18 @@ mod tests {
         .expect("write");
 
         assert_eq!(read_default_agent(dir.path()), agent);
+    }
+
+    #[test]
+    fn old_preference_keeps_model_and_inherits_provider_permissions() {
+        let dir = tempdir().expect("tempdir");
+        std::fs::write(dir.path().join(DEFAULT_AGENT_FILE), br#"{"provider":"codex","modelLabel":"Custom","modelId":"custom-model","reasoningEffort":"high"}"#).unwrap();
+        let agent = read_default_agent(dir.path());
+        assert_eq!(agent.model_id, "custom-model");
+        assert_eq!(
+            agent.permission_mode,
+            crate::providers::PermissionMode::ProviderDefaults
+        );
     }
 
     #[test]

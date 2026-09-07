@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type JSX, type PointerEvent as ReactPointerEvent } from "react";
 import type {
   AgentMode,
+  ApprovalRequest,
   ComposerAttachment,
   PendingMessage,
   ProjectSummary,
@@ -15,6 +16,7 @@ import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { useReviewState } from "../hooks/useReviewState.js";
 import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
+import { ApprovalSurface } from "./ApprovalSurface.js";
 import { SessionConversation } from "./SessionConversation.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 
@@ -35,6 +37,8 @@ const DEFAULT_HEIGHT = 520;
  * frame (fixed position, corner resize, close-and-discard) is popup-specific.
  */
 export function DetailsPopup({
+  approvals = [],
+  onResolveApproval,
   events = [],
   onAttachToChat,
   onCancelQueuedMessage,
@@ -52,6 +56,8 @@ export function DetailsPopup({
   session,
   workspace
 }: {
+  approvals?: ApprovalRequest[];
+  onResolveApproval?: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   events?: TimelineEvent[];
   /** Adds the explained excerpt to the originating session's composer. */
   onAttachToChat?: () => void;
@@ -209,6 +215,15 @@ export function DetailsPopup({
         workspaceCardEnabled={false}
         workspace={workspace}
       />
+      {onResolveApproval && approvals.some((approval) => approval.sessionId === sessionId && approval.status === "pending") ? (
+        <div className="details-popup-approvals">
+          <ApprovalSurface
+            approvals={approvals.filter((approval) => approval.sessionId === sessionId && approval.status === "pending")}
+            events={sessionEvents}
+            onResolveApproval={onResolveApproval}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

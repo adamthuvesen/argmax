@@ -303,7 +303,6 @@ export function NewSessionScreen({
           reasoningEffort: model.reasoningEffort ?? null,
           fastMode: false,
           agentMode: "auto",
-          permissionMode: "auto-approve",
           cols: 120,
           rows: 32,
           attachments: pendingAttachments.length > 0 ? pendingAttachments : null

@@ -28,6 +28,8 @@ describe("accent", () => {
     writeStoredAccent("orange");
     expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("orange");
     expect(readStoredAccent()).toBe("orange");
+    writeStoredAccent("black");
+    expect(readStoredAccent()).toBe("black");
   });
 
   it("applyAccentToDocument sets the data-accent attribute on <html>", () => {

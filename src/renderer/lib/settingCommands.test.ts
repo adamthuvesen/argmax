@@ -85,6 +85,7 @@ describe("buildSettingCommands", () => {
       searchPaletteItems(commands, query)[0]?.item.label;
     expect(top("dark")).toBe("Dark theme");
     expect(top("blue accent")).toBe("Blue accent");
+    expect(top("black accent")).toBe("Black accent");
     expect(top("chat detail 4")).toBe("Chat detail 4: Detailed");
     expect(top("verbosity 2")).toBe("Chat detail 2: Compact");
     expect(top("app font size 8")).toBe("App font size 8");

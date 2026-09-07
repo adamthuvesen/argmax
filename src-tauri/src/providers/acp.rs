@@ -10,10 +10,12 @@
 //! Inbound agent requests: `fs/*` and `terminal/*` never fire because
 //! `initialize` declares those capabilities false (the spec forbids the agent
 //! from calling undeclared capabilities). `session/request_permission` is
-//! answered automatically with the first allow option — the ACP launch path is
-//! only used for auto-approve sessions, matching the one-shot `--force` flags.
+//! delegated to the provider runtime so it can apply the launch's permission
+//! mode and, when required, wait for Argmax's native approval broker.
 
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -37,10 +39,27 @@ type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<ArgmaxResult<Value>>>>>
 /// displaced turn cannot unsubscribe the turn that replaced it.
 type UpdateSubscribers = Arc<Mutex<HashMap<String, (u64, mpsc::UnboundedSender<Value>)>>>;
 
+pub struct AcpPermissionRequest {
+    pub request_id: Value,
+    pub params: Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcpPermissionDecision {
+    Allow,
+    Reject,
+    Cancelled,
+}
+
+pub type AcpPermissionFuture = Pin<Box<dyn Future<Output = AcpPermissionDecision> + Send>>;
+pub type AcpPermissionHandler =
+    Arc<dyn Fn(AcpPermissionRequest) -> AcpPermissionFuture + Send + Sync>;
+
 pub struct AcpClient {
     writer_tx: mpsc::UnboundedSender<String>,
     pending: PendingMap,
     subscribers: UpdateSubscribers,
+    permission_handler: Option<AcpPermissionHandler>,
     next_id: AtomicU64,
     next_subscription: AtomicU64,
     dead: Arc<AtomicBool>,
@@ -52,12 +71,14 @@ impl AcpClient {
     /// the reader/writer tasks. Does not run the `initialize` handshake.
     pub fn spawn(
         binary_path: &str,
+        arguments: &[&str],
         cwd: &std::path::Path,
         environment: impl IntoIterator<Item = (String, String)>,
+        permission_handler: Option<AcpPermissionHandler>,
     ) -> ArgmaxResult<Arc<Self>> {
         let mut command = tokio::process::Command::new(binary_path);
         command
-            .arg("acp")
+            .args(arguments)
             .current_dir(cwd)
             .env_clear()
             .envs(environment)
@@ -92,6 +113,7 @@ impl AcpClient {
             writer_tx,
             pending: Arc::new(Mutex::new(HashMap::new())),
             subscribers: Arc::new(Mutex::new(HashMap::new())),
+            permission_handler,
             next_id: AtomicU64::new(0),
             next_subscription: AtomicU64::new(0),
             dead: Arc::new(AtomicBool::new(false)),
@@ -145,11 +167,14 @@ impl AcpClient {
             tracing::debug!(line = %&line[..line.len().min(200)], "ACP non-JSON line ignored");
             return;
         };
-        let id = message.get("id").and_then(Value::as_u64);
+        let id = message.get("id").cloned();
         let method = message.get("method").and_then(Value::as_str);
         match (id, method) {
             // Response to one of our requests.
-            (Some(id), None) => {
+            (Some(Value::Number(id)), None) => {
+                let Some(id) = id.as_u64() else {
+                    return;
+                };
                 let sender = self.pending.lock_or_recover("acp pending").remove(&id);
                 if let Some(sender) = sender {
                     let result = if let Some(error) = message.get("error") {
@@ -164,7 +189,14 @@ impl AcpClient {
                 }
             }
             // Agent-initiated request — answer inline.
-            (Some(id), Some(method)) => self.answer_agent_request(id, method, &message),
+            (Some(id @ (Value::String(_) | Value::Number(_))), Some(method)) => {
+                let client = Arc::clone(self);
+                let method = method.to_string();
+                let params = message.get("params").cloned().unwrap_or(Value::Null);
+                tokio::spawn(async move {
+                    client.answer_agent_request(id, &method, params).await;
+                });
+            }
             // Notification.
             (None, Some("session/update")) => {
                 let Some(params) = message.get("params") else {
@@ -178,40 +210,87 @@ impl AcpClient {
                     let _ = sender.send(params.clone());
                 }
             }
+            (Some(_), Some(method)) => {
+                tracing::warn!(method, "ACP request carried an invalid JSON-RPC id");
+                let _ = self.writer_tx.send(
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": Value::Null,
+                        "error": { "code": -32600, "message": "Invalid request id" }
+                    })
+                    .to_string(),
+                );
+            }
             _ => {}
         }
     }
 
-    fn answer_agent_request(&self, id: u64, method: &str, message: &Value) {
-        let result = if method == "session/request_permission" {
-            let options = message
-                .pointer("/params/options")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            let allow = options
-                .iter()
-                .find(|option| {
-                    option
-                        .get("kind")
-                        .and_then(Value::as_str)
-                        .is_some_and(|kind| kind.starts_with("allow"))
+    async fn answer_agent_request(&self, id: Value, method: &str, params: Value) {
+        if method != "session/request_permission" {
+            tracing::warn!(method, "unexpected ACP agent request rejected");
+            let _ = self.writer_tx.send(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": { "code": -32601, "message": "Method not supported by this client" }
                 })
-                .or_else(|| options.first())
-                .and_then(|option| option.get("optionId"))
-                .cloned();
-            match allow {
-                Some(option_id) => {
-                    json!({ "outcome": { "outcome": "selected", "optionId": option_id } })
+                .to_string(),
+            );
+            return;
+        }
+
+        let options = params
+            .get("options")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let structurally_valid = params.get("sessionId").and_then(Value::as_str).is_some()
+            && params.get("toolCall").is_some_and(Value::is_object)
+            && !options.is_empty();
+        // Cursor delivers its question tool down this method when the client
+        // does not implement `cursor/ask_question`, which this one does not:
+        // every answer arrives as an `allow_once` option beside a
+        // `__ask_question_skip__` reject. Two buttons cannot carry a
+        // multiple-choice question — "Approve" would select the first answer
+        // and report it to the model as the user's, which is the one thing an
+        // approval must never do. Decline it instead; the model asks again in
+        // prose, which the composer can answer.
+        let answers_a_question = options
+            .iter()
+            .filter(|option| option.get("kind").and_then(Value::as_str) == Some("allow_once"))
+            .count()
+            > 1;
+        let decision = if structurally_valid && !answers_a_question {
+            match self.permission_handler.as_ref() {
+                Some(handler) => {
+                    handler(AcpPermissionRequest {
+                        request_id: id.clone(),
+                        params: params.clone(),
+                    })
+                    .await
                 }
-                None => json!({ "outcome": { "outcome": "cancelled" } }),
+                None => AcpPermissionDecision::Cancelled,
             }
         } else {
-            // fs/* and terminal/* are capability-gated off at initialize, so
-            // anything else here is unexpected — answer with an empty result
-            // rather than stalling the agent on a request nobody will answer.
-            tracing::debug!(method, "unexpected ACP agent request; answering empty");
-            json!({})
+            AcpPermissionDecision::Cancelled
+        };
+        let wanted_kind = match decision {
+            AcpPermissionDecision::Allow => Some("allow_once"),
+            AcpPermissionDecision::Reject => Some("reject_once"),
+            AcpPermissionDecision::Cancelled => None,
+        };
+        let option_id = wanted_kind.and_then(|wanted_kind| {
+            options.iter().find_map(|option| {
+                (option.get("kind").and_then(Value::as_str) == Some(wanted_kind))
+                    .then(|| option.get("optionId").cloned())
+                    .flatten()
+            })
+        });
+        let result = match option_id {
+            Some(option_id) => {
+                json!({ "outcome": { "outcome": "selected", "optionId": option_id } })
+            }
+            None => json!({ "outcome": { "outcome": "cancelled" } }),
         };
         let _ = self
             .writer_tx
@@ -340,11 +419,18 @@ mod tests {
     use super::*;
 
     fn test_client() -> (Arc<AcpClient>, mpsc::UnboundedReceiver<String>) {
+        test_client_with_permission_handler(None)
+    }
+
+    fn test_client_with_permission_handler(
+        permission_handler: Option<AcpPermissionHandler>,
+    ) -> (Arc<AcpClient>, mpsc::UnboundedReceiver<String>) {
         let (writer_tx, writer_rx) = mpsc::unbounded_channel::<String>();
         let client = Arc::new(AcpClient {
             writer_tx,
             pending: Arc::new(Mutex::new(HashMap::new())),
             subscribers: Arc::new(Mutex::new(HashMap::new())),
+            permission_handler,
             next_id: AtomicU64::new(0),
             next_subscription: AtomicU64::new(0),
             dead: Arc::new(AtomicBool::new(false)),
@@ -403,20 +489,101 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn permission_request_is_answered_with_allow_option() {
-        let (client, mut writer_rx) = test_client();
+    async fn permission_request_waits_and_echoes_opaque_id_before_allowing_once() {
+        let (decision_tx, decision_rx) = oneshot::channel();
+        let decision_rx = Arc::new(Mutex::new(Some(decision_rx)));
+        let handler: AcpPermissionHandler = Arc::new(move |_| {
+            let receiver = decision_rx
+                .lock_or_recover("test permission")
+                .take()
+                .expect("called once");
+            Box::pin(async move {
+                if receiver.await.unwrap() {
+                    AcpPermissionDecision::Allow
+                } else {
+                    AcpPermissionDecision::Reject
+                }
+            })
+        });
+        let (client, mut writer_rx) = test_client_with_permission_handler(Some(handler));
         client.handle_line(
-            &json!({"jsonrpc": "2.0", "id": 7, "method": "session/request_permission",
-            "params": {"sessionId": "s1", "options": [
+            &json!({"jsonrpc": "2.0", "id": "permission-7", "method": "session/request_permission",
+            "params": {"sessionId": "s1", "toolCall": {"toolCallId": "tool-1", "title": "Run"}, "options": [
                 {"optionId": "reject", "kind": "reject_once"},
                 {"optionId": "allow", "kind": "allow_once"}
             ]}})
             .to_string(),
         );
+        assert!(
+            writer_rx.try_recv().is_err(),
+            "response must wait for the decision"
+        );
+        decision_tx.send(true).unwrap();
         let sent: Value = serde_json::from_str(&writer_rx.recv().await.unwrap()).unwrap();
-        assert_eq!(sent["id"], 7);
+        assert_eq!(sent["id"], "permission-7");
         assert_eq!(sent["result"]["outcome"]["outcome"], "selected");
         assert_eq!(sent["result"]["outcome"]["optionId"], "allow");
+    }
+
+    #[tokio::test]
+    async fn denied_and_malformed_permission_requests_fail_closed() {
+        let handler: AcpPermissionHandler =
+            Arc::new(|_| Box::pin(async { AcpPermissionDecision::Reject }));
+        let (client, mut writer_rx) = test_client_with_permission_handler(Some(handler));
+        client.handle_line(
+            &json!({"jsonrpc": "2.0", "id": 8, "method": "session/request_permission",
+            "params": {"sessionId": "s1", "toolCall": {"toolCallId": "tool-1", "title": "Run"}, "options": [
+                {"optionId": "always", "kind": "allow_always"},
+                {"optionId": "reject", "kind": "reject_once"}
+            ]}})
+            .to_string(),
+        );
+        let denied: Value = serde_json::from_str(&writer_rx.recv().await.unwrap()).unwrap();
+        assert_eq!(denied["result"]["outcome"]["optionId"], "reject");
+
+        client.handle_line(
+            &json!({"jsonrpc": "2.0", "id": "bad", "method": "session/request_permission",
+                "params": {"options": [{"optionId": "allow", "kind": "allow_once"}]}})
+            .to_string(),
+        );
+        let malformed: Value = serde_json::from_str(&writer_rx.recv().await.unwrap()).unwrap();
+        assert_eq!(malformed["result"]["outcome"]["outcome"], "cancelled");
+    }
+
+    /// Cursor's ACP fallback for its question tool tags every answer
+    /// `allow_once`, so an Approve/Reject row would answer the model's
+    /// multiple-choice question with option one.
+    #[tokio::test]
+    async fn a_permission_request_carrying_answers_is_declined_not_approved() {
+        let handler: AcpPermissionHandler = Arc::new(|_| {
+            panic!("a question must never reach the approval broker");
+        });
+        let (client, mut writer_rx) = test_client_with_permission_handler(Some(handler));
+        client.handle_line(
+            &json!({"jsonrpc": "2.0", "id": "ask-1", "method": "session/request_permission",
+            "params": {"sessionId": "s1", "toolCall": {"toolCallId": "ask_1_q0", "title": "Which path?"}, "options": [
+                {"optionId": "fast", "name": "Fast fix", "kind": "allow_once"},
+                {"optionId": "deep", "name": "Deeper cleanup", "kind": "allow_once"},
+                {"optionId": "__ask_question_skip__", "name": "Skip", "kind": "reject_once"}
+            ]}})
+            .to_string(),
+        );
+        let sent: Value = serde_json::from_str(&writer_rx.recv().await.unwrap()).unwrap();
+        assert_eq!(sent["id"], "ask-1");
+        assert_eq!(sent["result"]["outcome"]["outcome"], "cancelled");
+    }
+
+    #[tokio::test]
+    async fn unknown_agent_requests_return_method_not_found() {
+        let (client, mut writer_rx) = test_client();
+        client.handle_line(
+            &json!({"jsonrpc": "2.0", "id": "fs-1", "method": "fs/read_text_file",
+                "params": {"path": "/tmp/nope"}})
+            .to_string(),
+        );
+        let response: Value = serde_json::from_str(&writer_rx.recv().await.unwrap()).unwrap();
+        assert_eq!(response["id"], "fs-1");
+        assert_eq!(response["error"]["code"], -32601);
     }
 
     #[tokio::test]

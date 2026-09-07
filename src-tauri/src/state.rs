@@ -44,6 +44,7 @@ pub struct AppState {
     /// Warm `cursor-agent acp` process pool; the `RunEvent::Exit` callback
     /// kills it because boot orphan recovery cannot match acp argv.
     pub cursor_acp: OnceLock<Arc<CursorAcpSessions>>,
+    pub grok_acp: OnceLock<Arc<crate::providers::grok_acp::GrokAcpSessions>>,
     pub terminals: OnceLock<Arc<TerminalService>>,
     pub checks: OnceLock<Arc<CheckService>>,
     pub workspaces: OnceLock<Arc<WorkspaceService>>,
@@ -109,6 +110,7 @@ impl Default for AppState {
             session_launch_server: OnceLock::new(),
             provider_discovery: Arc::default(),
             cursor_acp: OnceLock::new(),
+            grok_acp: OnceLock::new(),
             terminals: OnceLock::new(),
             checks: OnceLock::new(),
             workspaces: OnceLock::new(),

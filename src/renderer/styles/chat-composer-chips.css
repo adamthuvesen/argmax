@@ -103,10 +103,10 @@
    so any fill on it stretches the width of the toolbar. */
 .composer-chips-model .effort-slider-chip,
 .composer-context-group--model .effort-slider-chip {
-  /* --muted against the model's --muted-strong: one step down the ladder both
-     themes already define. An alpha wash instead of a token read fine on
-     charcoal and dropped to ~2.4:1 on paper. */
-  color: var(--muted);
+  /* --chip-ink against the model's --muted-strong: one step down the ladder,
+     and the same ink the rest of the chip row carries. An alpha wash instead of
+     a token read fine on charcoal and dropped to ~2.4:1 on paper. */
+  color: var(--chip-ink);
 }
 
 .composer-chips-model .effort-slider-chip:hover,

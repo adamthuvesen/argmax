@@ -90,7 +90,7 @@ import {
   showOnlyPane
 } from "./state/paneGrid.js";
 import { setSidebarPeek, toggleSidebarCollapsed, useSidebarChrome } from "./state/sidebarChrome.js";
-import { dismissToast, showErrorToast, showInfoToast, showToast, useToast } from "./state/toast.js";
+import { dismissToast, showErrorToast, showInfoToast, showToast, toastSnapshot, useToast } from "./state/toast.js";
 import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange, type ThemeMode } from "./lib/theme.js";
 import type { AccentId } from "./lib/accent.js";
@@ -160,6 +160,8 @@ function widestGridRowColumnCount(rows: unknown[][]): number {
   return rows.reduce((max, row) => Math.max(max, row.length), 0);
 }
 
+const DEFAULT_AGENT_SAVE_ERROR = "Default settings could not be saved. Scheduled and automatic chats still use the previous settings. Retry in Settings → Agents.";
+
 export function App(): JSX.Element {
   const [defaultEffort, setDefaultEffort] = useState<ReasoningEffort>(() => readStoredDefaultEffort());
   const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(
@@ -224,23 +226,6 @@ export function App(): JSX.Element {
     if (!window.argmax?.system?.setKeepAwake) return;
     void window.argmax.system.setKeepAwake(keepAwakeEnabled);
   }, [keepAwakeEnabled]);
-  // Mirror the app-wide default agent to the backend, which has no window to
-  // ask: the chats Argmax starts on its own (the PR check-failure fix) launch
-  // on the same model and effort the launcher shows.
-  useEffect(() => {
-    if (!window.argmax?.system?.setDefaultAgent) return;
-    void window.argmax.system
-      .setDefaultAgent({
-        provider: launchModel.provider,
-        modelLabel: launchModel.label,
-        modelId: launchModel.modelId,
-        reasoningEffort: launchModel.reasoningEffort ?? null
-      })
-      .catch(() => {
-        // The remote bridge doesn't carry this channel, and a failed mirror
-        // only means an autonomous launch uses the built-in default.
-      });
-  }, [launchModel]);
   const handleLaunchModelChange = useCallback(
     (model: ModelPickerSelection): void => {
       setLaunchModel(model);
@@ -294,6 +279,39 @@ export function App(): JSX.Element {
     [setAccentId]
   );
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
+  const [defaultAgentSaveError, setDefaultAgentSaveError] = useState<string | null>(null);
+  const [isSavingDefaultAgent, setIsSavingDefaultAgent] = useState(false);
+  const [defaultAgentSaveAttempt, setDefaultAgentSaveAttempt] = useState(0);
+  const defaultAgentSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  // Serialize saves so a slow earlier write cannot replace the latest choice.
+  useEffect(() => {
+    if (!window.argmax?.system?.setDefaultAgent) return;
+    const api = window.argmax.system;
+    let cancelled = false;
+    setIsSavingDefaultAgent(true);
+    setDefaultAgentSaveError(null);
+    defaultAgentSaveQueue.current = defaultAgentSaveQueue.current.then(async () => {
+      if (cancelled) return;
+      try {
+        await api.setDefaultAgent({
+          provider: launchModel.provider,
+          modelLabel: launchModel.label,
+          modelId: launchModel.modelId,
+          reasoningEffort: launchModel.reasoningEffort ?? null,
+          permissionMode
+        });
+        if (!cancelled && toastSnapshot()?.message === DEFAULT_AGENT_SAVE_ERROR) dismissToast();
+      } catch {
+        if (!cancelled) {
+          setDefaultAgentSaveError(DEFAULT_AGENT_SAVE_ERROR);
+          showErrorToast(DEFAULT_AGENT_SAVE_ERROR);
+        }
+      } finally {
+        if (!cancelled) setIsSavingDefaultAgent(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [launchModel, permissionMode, defaultAgentSaveAttempt]);
   const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
   const [chatWidth, setChatWidth] = useState<ChatWidth>(() => readStoredChatWidth());
   const [reviewPanelSide, setReviewPanelSide] = useState<ReviewPanelSide>(() => readStoredReviewPanelSide());
@@ -1498,10 +1516,7 @@ export function App(): JSX.Element {
           reasoningEffort: launchModel.reasoningEffort ?? null,
           fastMode: fastModeEnabled && modelSupportsFastMode(launchModel),
           agentMode: "auto",
-          // The popup renders no approval surface, so a gated session would
-          // stall invisibly. It runs in an app-owned scratch dir; auto-approve
-          // is safe there regardless of the app-wide permission setting.
-          permissionMode: "auto-approve",
+          permissionMode,
           cols: 120,
           rows: 32,
           attachments: null
@@ -1531,7 +1546,7 @@ export function App(): JSX.Element {
       );
       setDetailsPopup(detailsPopupRef.current);
     },
-    [disposeDetailsSession, fastModeEnabled, launchModel, setSnapshot]
+    [disposeDetailsSession, fastModeEnabled, launchModel, permissionMode, setSnapshot]
   );
   useEffect(() => {
     if (loadState === "loading" || popupCreationsInFlight.current > 0 || !window.argmax) return;
@@ -1895,6 +1910,8 @@ export function App(): JSX.Element {
       <PerfOverlay />
       {detailsPopupWorkspace && detailsPopupSession ? (
         <DetailsPopup
+          approvals={snapshot.approvals}
+          onResolveApproval={resolveApproval}
           onAttachToChat={detailsPopup?.attachToChat}
           onCancelQueuedMessage={cancelQueuedMessage}
           onClose={closeDetailsPopup}
@@ -2016,6 +2033,9 @@ export function App(): JSX.Element {
                 detectedIdes={detectedIdes}
                 defaultIde={defaultIde}
                 onDefaultIdeChange={setDefaultIde}
+                defaultAgentSaveError={defaultAgentSaveError}
+                isSavingDefaultAgent={isSavingDefaultAgent}
+                onRetryDefaultAgentSave={() => setDefaultAgentSaveAttempt((attempt) => attempt + 1)}
                 permissionMode={permissionMode}
                 onPermissionModeChange={setPermissionMode}
                 newSessionMode={newSessionMode}

@@ -11,7 +11,10 @@
 //   node scripts/bridge.mjs logs [--after-seq N]
 //   node scripts/bridge.mjs chat --repo <path> --prompt '…' [--provider claude]
 //        [--worktree] [--timeout 600] [--model-id …] [--model-label …] [--effort …]
+//        [--permission-mode provider-defaults|auto-approve|ask-each-time]
+//        [--decide approve|reject]
 //   node scripts/bridge.mjs reply --session <id> --prompt '…' [--timeout 600]
+//        [--decide approve|reject]
 //   node scripts/bridge.mjs terminal --workspace <id> --run '<shell command>' [--seconds 10]
 //
 // Connection resolution, first match wins:
@@ -19,6 +22,12 @@
 //   --data-dir <dir>              that profile's remote.json
 //   $ARGMAX_DATA_DIR              same, via the environment
 //   the real app profile          ~/Library/Application Support/com.argmax.rs
+//
+// `--permission-mode ask-each-time` launches under the interactive permission
+// policy so the provider's own gate fires; `--decide` then answers every
+// approval that lands while the turn is followed, printing each request, so a
+// gated run can finish unattended. Without `--decide` a gated turn parks until
+// the timeout, which is itself the check that the gate is real.
 //
 // `chat` and `reply` exit codes: 0 session complete · 2 failed/cancelled · 3 timeout.
 // `reply` sends a follow-up turn to an existing session (the resume path) and
@@ -139,13 +148,20 @@ async function commandChat(bridge, flags) {
     reasoningEffort: flags.effort ?? defaults.reasoningEffort,
     fastMode: false,
     agentMode: null,
-    permissionMode: null,
+    permissionMode: flags["permission-mode"] ?? null,
     cols: 120,
     rows: 32,
     attachments: null
   });
   console.log(JSON.stringify({ launched: true, sessionId: session.id, workspaceId: workspace.id }));
-  await followSession(bridge, { sessionId: session.id, workspaceId: workspace.id, initialState: session.state, startedAt, timeoutMs });
+  await followSession(bridge, {
+    sessionId: session.id,
+    workspaceId: workspace.id,
+    initialState: session.state,
+    startedAt,
+    timeoutMs,
+    decide: approvalDecision(flags)
+  });
 }
 
 async function commandReply(bridge, flags) {
@@ -175,8 +191,36 @@ async function commandReply(bridge, flags) {
     startedAt,
     timeoutMs,
     eventCursor: before.eventCursor,
-    rawOutputCursor: before.rawOutputCursor
+    rawOutputCursor: before.rawOutputCursor,
+    decide: approvalDecision(flags)
   });
+}
+
+function approvalDecision(flags) {
+  const decide = flags.decide;
+  if (decide === undefined) return null;
+  if (decide !== "approve" && decide !== "reject") fail("--decide takes approve or reject");
+  return decide === "approve" ? "approved" : "rejected";
+}
+
+// Answer this session's pending approvals. Each one is printed before it is
+// resolved, so the transcript shows what the provider actually stopped on.
+async function decidePendingApprovals(bridge, sessionId, decision) {
+  const pending = await bridge.call("approvals:pending", {}).catch(() => []);
+  for (const request of pending) {
+    if (request.sessionId !== sessionId) continue;
+    console.log(
+      JSON.stringify({
+        approval: request.id,
+        provider: request.provider,
+        command: request.command,
+        cwd: request.cwd,
+        riskLevel: request.riskLevel,
+        decision
+      })
+    );
+    await bridge.call("approvals:resolve", { approvalId: request.id, status: decision });
+  }
 }
 
 // Stream a session's timeline as NDJSON until it reaches a terminal state,
@@ -184,7 +228,7 @@ async function commandReply(bridge, flags) {
 // dashboard:list because a session's terminal transition can land after its
 // last event.
 async function followSession(bridge, options) {
-  const { sessionId, workspaceId, startedAt, timeoutMs } = options;
+  const { sessionId, workspaceId, startedAt, timeoutMs, decide } = options;
   let eventCursor = options.eventCursor ?? null;
   let rawOutputCursor = options.rawOutputCursor ?? null;
   let eventCount = 0;
@@ -207,6 +251,7 @@ async function followSession(bridge, options) {
       const message = event.message.length > 2000 ? `${event.message.slice(0, 2000)}…` : event.message;
       console.log(JSON.stringify({ at: event.createdAt, type: event.type, message }));
     }
+    if (decide) await decidePendingApprovals(bridge, sessionId, decide);
     const dashboard = await bridge.call("dashboard:list", {});
     const live = dashboard.sessions.find((entry) => entry.id === sessionId);
     if (live) state = live.state;

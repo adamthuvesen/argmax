@@ -11,6 +11,7 @@ import {
 import { useEffect, useState, type JSX, type MouseEvent, type ReactNode } from "react";
 import { errorMessage } from "../../shared/error.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
+import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { agentStatusLabel } from "../lib/agentLaunch.js";
 import { openWebUrl } from "../lib/openWebUrl.js";
@@ -73,11 +74,18 @@ export function WorkspaceCard({
   workspace: WorkspaceSummary;
 }): JSX.Element {
   const [isPrPending, setIsPrPending] = useState(false);
+  const [branchCopyFlash, copyBranch] = useCopyToClipboard();
   const hasChanges = changeSummary !== null && changeSummary.fileCount > 0;
   const changesLabel = changesState === "error" ? "unavailable" : changesState === "ready" ? null : "…";
   const hasPr = typeof workspace.prNumber === "number";
   const prState = workspace.prState ?? null;
   const prLabel = hasPr ? `PR #${workspace.prNumber}` : "Create pull request";
+  const branchCopyTitle =
+    branchCopyFlash === "copied"
+      ? "Copied branch name"
+      : branchCopyFlash === "failed"
+        ? "Couldn't copy branch name"
+        : `Copy branch name ${workspace.branch}`;
 
   useEffect(() => {
     if (!session?.id || workspace.kind !== "git" || !window.argmax?.prs?.refresh) return;
@@ -114,7 +122,15 @@ export function WorkspaceCard({
       <div className="workspace-card-branch" title={`Branch ${workspace.branch} · from ${workspace.baseRef}`}>
         <GitBranch size={13} aria-hidden="true" />
         <div className="workspace-card-branch-text">
-          <span className="workspace-card-branch-name">{workspace.branch}</span>
+          <button
+            type="button"
+            className="workspace-card-branch-name"
+            aria-label={branchCopyTitle}
+            title={branchCopyTitle}
+            onClick={() => void copyBranch(workspace.branch)}
+          >
+            {workspace.branch}
+          </button>
           <span className="workspace-card-base">from {workspace.baseRef}</span>
         </div>
         <button

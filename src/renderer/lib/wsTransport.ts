@@ -270,7 +270,11 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     while (authed && socket && queued.length > 0) {
       const request = queued.shift();
       if (!request) return;
-      if (!request.sent) clearQueueTimer(request);
+      // A sent mutation gets this timer only while the connection is down.
+      // Once it has been replayed, its host-side operation may still be
+      // running, so letting the offline deadline fire would reject it and
+      // discard a later durable outcome.
+      clearQueueTimer(request);
       if (request.operation && !operationReplay) {
         if (!request.sent) settleRemoteOperation(request.operation);
         clearQueueTimer(request);

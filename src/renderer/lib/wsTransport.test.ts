@@ -109,6 +109,24 @@ describe("wsTransport", () => {
     expect(JSON.parse(sessionStorage.getItem("argmax.remote.unresolvedOperations") ?? "[]")).toEqual([]);
   });
 
+  it("keeps a replayed mutation alive after its offline deadline", async () => {
+    vi.useFakeTimers();
+    const { connect, sockets } = fakeTransportSeam();
+    const transport = createWsTransport({ connect });
+    sockets[0].authenticate();
+    const sent = transport.invoke("providers:send-input", { sessionId: "chat", content: "hello" });
+    const original = sockets[0].requests()[0];
+
+    sockets[0].close();
+    await vi.advanceTimersByTimeAsync(MAX_BACKOFF_MS);
+    sockets[1].authenticate();
+    expect(sockets[1].requests()[0]).toEqual(original);
+
+    await vi.advanceTimersByTimeAsync(QUEUE_TIMEOUT_MS);
+    sockets[1].deliver({ type: "response", id: original.id, ok: "sent", operationSettled: true });
+    await expect(sent).resolves.toBe("sent");
+  });
+
   it("gives two live identical terminal writes different operation identities", async () => {
     const { connect, sockets } = fakeTransportSeam();
     const transport = createWsTransport({ connect });

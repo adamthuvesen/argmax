@@ -24,7 +24,7 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `inbox_read` | — | `{messages: [{fromSessionId?, fromLabel?, kind, body, createdAt}]}` |
 | `session_wait` | `sessions?`, `timeoutS?` | `{timedOut, sessions: [{sessionId, taskLabel, state}], messages: […]}` |
 | `session_move` | `project?` \| `path?`, `prompt`, `worktree?`, `keepSource?` | `{scheduled, sourceSessionId, projectId, projectName, path?}` |
-| `workspace_archive` | — | `{scheduled, sessionId, workspaceId, removesWorktree}` |
+| `workspace_archive` | — | `{scheduled, sessionId, workspaceId}` |
 
 ### Browser
 
@@ -195,9 +195,10 @@ then the row archived. Settings exposes the archived-workspace directory.
 
 The archive is never forced. A workspace with uncommitted changes comes to rest
 as **kept** instead ([CONTEXT.md](../CONTEXT.md)), so an agent should report the
-archive as requested rather than done. The legacy `removesWorktree` result is
-now always false. An isolated checkout moves into recovery storage, while a
-shared checkout stays in place because other sessions may still use it.
+archive as requested rather than done. An isolated checkout moves into recovery
+storage, while a shared checkout stays in place because other sessions may
+still use it. Nothing the archive does removes a worktree, which is why the
+result no longer carries a `removesWorktree` flag that was only ever false.
 
 Either promise survives a restart. `{scheduled: true}` is answered mid-turn and
 the agent reports to the user on that answer, so the request is written to

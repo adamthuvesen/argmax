@@ -1592,8 +1592,12 @@ async fn archiving_a_workspace_is_scheduled_rather_than_immediate() {
     assert_eq!(archiving["scheduled"], true);
     assert_eq!(archiving["workspaceId"], "workspace-session-agent");
     // A shared checkout is every other session's tree too: archiving one ends
-    // the chat and never removes a directory.
-    assert_eq!(archiving["removesWorktree"], false);
+    // the chat and never removes a directory, so the result does not talk
+    // about removing one.
+    assert!(
+        archiving.get("removesWorktree").is_none(),
+        "archive result: {archiving}"
+    );
 
     {
         let connection = database.connection();

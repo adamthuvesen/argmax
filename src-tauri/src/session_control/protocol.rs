@@ -202,10 +202,6 @@ pub struct ScheduledArchive {
     pub scheduled: bool,
     pub session_id: String,
     pub workspace_id: String,
-    /// Always false, and kept for older tool clients. Archiving retains an
-    /// isolated checkout and its branch in the archive location and leaves a
-    /// shared checkout where it is, so nothing it does removes a worktree.
-    pub removes_worktree: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

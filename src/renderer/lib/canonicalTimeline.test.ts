@@ -123,15 +123,22 @@ describe("decodeTimelineEvent", () => {
       })
     );
     expect(attached).toMatchObject({ from: null, to: "feature", checkoutMode: "attached" });
+    // The payload rows written before the archive stopped reporting a removal
+    // still carry `removesWorktree`; an unknown payload key is ignored, not a
+    // row that fails to decode.
     expect(decodeTimelineEvent(event("session.archive-requested", {
       workspaceId: "workspace-1",
-      removesWorktree: true
+      retainsWorktree: true,
+      removesWorktree: false
     }))).toMatchObject({
       kind: "lifecycle",
       name: "archive-requested",
-      workspaceId: "workspace-1",
-      removesWorktree: true
+      workspaceId: "workspace-1"
     });
+    expect(decodeTimelineEvent(event("session.archive-requested", {
+      workspaceId: "workspace-1",
+      removesWorktree: false
+    }))).not.toHaveProperty("removesWorktree");
     expect(decodeTimelineEvent(event("multitask.finished", {
       childSessionId: "child",
       taskLabel: "Review",

@@ -477,7 +477,7 @@ describe("App settings", () => {
 
     const appFontSize = screen.getByRole("slider", { name: "App font size" });
     const chatFontSize = screen.getByRole("slider", { name: "Agent window font size" });
-    expect(chatFontSize).toHaveValue("6");
+    expect(chatFontSize).toHaveValue("8");
 
     fireEvent.change(chatFontSize, { target: { value: "7" } });
     await waitFor(() => expect(window.localStorage.getItem("argmax.font.scale.chat")).toBe("7"));

@@ -122,6 +122,7 @@ export const FONT_OPTIONS: readonly FontOption[] = [
 export const DEFAULT_FONT_ID: FontFamilyId = "geist-sans";
 export const FONT_STORAGE_KEY = "argmax.font.family";
 export const DEFAULT_FONT_SIZE: FontSize = 6;
+export const DEFAULT_CHAT_FONT_SIZE: FontSize = 8;
 /** App-chrome size: sidebar, titlebar, settings, global overlays. */
 export const FONT_SIZE_STORAGE_KEY = "argmax.font.scale";
 /** Agent-window size: conversations, composers, and agent activity panes. */
@@ -174,17 +175,22 @@ export function readStoredFontSize(): FontSize {
 }
 
 /**
- * Agent windows carry their own size. Before the split there was a single
- * stored size, so an upgrade with no chat key inherits the app value and
- * nothing jumps.
+ * Agent windows carry their own size. A first run uses the larger chat
+ * default, while an existing install with no chat key inherits its app value
+ * so an upgrade does not change the user's layout unexpectedly.
  */
 export function readStoredChatFontSize(): FontSize {
-  if (typeof window === "undefined") return DEFAULT_FONT_SIZE;
-  return (
-    toFontSize(window.localStorage.getItem(CHAT_FONT_SIZE_STORAGE_KEY)) ??
-    readLegacyFontSize(LEGACY_CHAT_FONT_SIZE_STORAGE_KEY) ??
-    readStoredFontSize()
-  );
+  if (typeof window === "undefined") return DEFAULT_CHAT_FONT_SIZE;
+  const storedChatSize = toFontSize(window.localStorage.getItem(CHAT_FONT_SIZE_STORAGE_KEY));
+  if (storedChatSize !== null) return storedChatSize;
+
+  const legacyChatSize = readLegacyFontSize(LEGACY_CHAT_FONT_SIZE_STORAGE_KEY);
+  if (legacyChatSize !== null) return legacyChatSize;
+
+  const hasStoredAppSize =
+    window.localStorage.getItem(FONT_SIZE_STORAGE_KEY) !== null ||
+    window.localStorage.getItem(LEGACY_FONT_SIZE_STORAGE_KEY) !== null;
+  return hasStoredAppSize ? readStoredFontSize() : DEFAULT_CHAT_FONT_SIZE;
 }
 
 export function applyFontToDocument(id: FontFamilyId): void {

@@ -96,8 +96,8 @@ export function AppearanceSettings({
     const width = toScaleLevel(raw);
     if (width) apply(width);
   };
-  // Font sizes ride a 1–10 slider: each level is 1px of body text, 8px at 1
-  // through 17px at 10, with the shipped 13px default at 6.
+  // Font sizes ride a 1–10 slider: each level is 1px of body text, 10px at 1
+  // through 19px at 10, with 15px app and 17px agent-window defaults.
   const pickFontSize = (raw: number, apply: (size: FontSize) => void): void => {
     const size = toFontSize(String(raw));
     if (size) apply(size);

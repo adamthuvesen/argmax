@@ -72,7 +72,8 @@ function SessionConversationTurnInner({
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
   defaultTurnChangesExpanded,
-  restoringTranscript = false
+  restoringTranscript = false,
+  questionIsDocked = false
 }: {
   item: TurnRenderItem;
   priorItem: RenderItem | null;
@@ -99,6 +100,8 @@ function SessionConversationTurnInner({
   defaultThinkingExpanded?: boolean;
   defaultTurnChangesExpanded?: boolean;
   restoringTranscript?: boolean;
+  /** The live question owns the composer slot, so this turn must not draw it too. */
+  questionIsDocked?: boolean;
 }): JSX.Element {
   const sessionIsLive = session?.state === "running";
   const isStreamingTurn = isLatestTurn && sessionIsLive;
@@ -207,7 +210,7 @@ function SessionConversationTurnInner({
       reportSendError
     );
   };
-  const questionCard: JSX.Element | null = askUserQuestionTool
+  const questionCard: JSX.Element | null = askUserQuestionTool && !questionIsDocked
     ? (
         <QuestionCard
           key={`question-${askUserQuestionTool.id}`}

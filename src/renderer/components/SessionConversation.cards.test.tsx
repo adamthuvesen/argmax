@@ -177,6 +177,111 @@ describe("SessionConversation — cards", () => {
     expect(screen.queryByText("Premature plan")).not.toBeInTheDocument();
   });
 
+  it("takes the composer's place while the question is live, and gives it back when the question is closed", () => {
+    render(
+      <SessionConversation
+        events={[
+          event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {}),
+          event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+            type: "tool_use",
+            id: "tu_q_dock",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Pick a direction",
+                  header: "Direction",
+                  multiSelect: false,
+                  options: [{ label: "Fix audit findings" }, { label: "General maintenance" }]
+                }
+              ]
+            }
+          })
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
+        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
+        pendingMessages={[]}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "claude", state: "complete" })}
+        workspace={workspace}
+      />
+    );
+
+    // There is nothing to type while the agent waits, so the panel owns the slot.
+    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Chat prompt")).not.toBeInTheDocument();
+
+    // Closing is not declining: the composer returns so the reader can answer
+    // in their own words.
+    fireEvent.click(screen.getByRole("button", { name: "Answer in your own words" }));
+    expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
+  });
+
+  it("pages through several questions instead of stacking them, and sends every answer at once", () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SessionConversation
+        events={[
+          event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {}),
+          event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+            type: "tool_use",
+            id: "tu_q_pager",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Pick a direction",
+                  header: "Direction",
+                  multiSelect: false,
+                  options: [{ label: "Fix audit findings" }, { label: "General maintenance" }]
+                },
+                {
+                  question: "How deep should it go?",
+                  header: "Depth",
+                  multiSelect: false,
+                  options: [{ label: "Just the blockers" }, { label: "Everything" }]
+                }
+              ]
+            }
+          })
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={onSend}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
+        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
+        pendingMessages={[]}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "claude", state: "complete" })}
+        workspace={workspace}
+      />
+    );
+
+    // One question on screen at a time, so the slot is the same height either way.
+    expect(screen.getByText("Pick a direction")).toBeInTheDocument();
+    expect(screen.queryByText("How deep should it go?")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit answer" })).toBeDisabled();
+
+    // A single-select pick settles its question, so the panel moves on by itself.
+    fireEvent.click(screen.getByRole("option", { name: /Fix audit findings/ }));
+    expect(screen.getByText("How deep should it go?")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("option", { name: /Just the blockers/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+
+    const call = onSend.mock.calls[0] as [string, string, unknown, string] | undefined;
+    expect(call?.[1]).toBe("**Direction**: Fix audit findings\n\n**Depth**: Just the blockers");
+  });
+
   it("renders a failed AskUserQuestion tool call as a QuestionCard and submits the chosen answer", () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(

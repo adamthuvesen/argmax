@@ -1,11 +1,11 @@
 # Chat Surface and Interactive Cards
 
-The chat surface renders assistant bubbles, tools, and interactive cards: **PlanCard** (Claude Code plan mode) and **QuestionCard** (Claude Code `AskUserQuestion`, Cursor `askQuestionToolCall`).
+The chat surface renders assistant bubbles, tools, and interactive cards: **PlanCard** (Claude Code plan mode) and the question surfaces for `AskUserQuestion` / Cursor's `askQuestionToolCall` — **QuestionDock** while the agent is waiting, **QuestionCard** for a question already in the scrollback.
 
 ## Components and Structure
 
 - **Conversation Shell:** [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) derives timeline projections, thinking states, turn models, and scroll anchoring.
-- **Turns & Cards:** [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx) renders individual turns, card containers, and card submission handlers via [PlanCard.tsx](../src/renderer/components/PlanCard.tsx) and [QuestionCard.tsx](../src/renderer/components/QuestionCard.tsx).
+- **Turns & Cards:** [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx) renders individual turns, card containers, and card submission handlers via [PlanCard.tsx](../src/renderer/components/PlanCard.tsx) and [QuestionCard.tsx](../src/renderer/components/QuestionCard.tsx). The *live* question is the exception: [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) hoists it into [QuestionDock.tsx](../src/renderer/components/QuestionDock.tsx) and passes `questionIsDocked` so the turn does not draw it twice.
 - **Timeline Logic:** [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts) decodes persisted rows into one typed event contract. [sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts) uses that contract for event filtering, raw transcript suppression checks, tool pairing, and last-significant-event selection.
 - **Composer:** [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx) handles prompt inputs, file attachments, model/mode chips, follow-up queues, send/stop, and `/clear`. The launcher composer in [LaunchSurface.tsx](../src/renderer/components/LaunchSurface.tsx) cycles Auto / Plan / Chat with Tab. Chat launches a scratch workspace with no repository attached, so the project picker hides and no longer offers a Chat row. The project chip is the source of truth while composing: Full-view new chat hides the grid without dropping it, and a dashboard delta must not retarget the picker back to that hidden session's repo. The last project the user picked is persisted ([launchProjectPreference.ts](../src/renderer/lib/launchProjectPreference.ts)) and survives leaving new chat to open a session: the next new chat shows that project, not the session they just viewed. Both the project picker and the model picker list recently chosen rows first. Stopping a just-launched chat within 10 seconds restores this composer with the prompt and target kept, and archives the workspace so the cancelled chat does not stay in the sidebar ([earlyStop.ts](../src/renderer/lib/earlyStop.ts)).
 - **Actions Menu:** [SessionActionsMenu.tsx](../src/renderer/components/SessionActionsMenu.tsx) handles workspace actions, PR refreshes, git shortcuts, and panel toggles.
@@ -105,25 +105,50 @@ Defined in [turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts
 | **Error rendering** | Both cards | Cards render even when tool status is `error` (standard behavior in non-interactive CLI modes). |
 | **Post-card text suppression** | Both cards | Assistant text with `createdAt > tool.createdAt` in the same turn is filtered out to avoid duplicate plans or speculative responses before user submission. |
 
+### The Question Dock
+
+While the agent is waiting on an answer there is nothing to type, so the
+question takes the composer's slot instead of sitting in the scrollback where a
+turn that keeps working would scroll it away. It wears `.session-input` — the
+composer's own surface, radius and lift — because it *is* the thing you act in
+right now; see [styling.md](styling.md).
+
+The live question can only be in the last turn (answering it sends a user
+message, which starts a new one), so `SessionConversation` reads it off the last
+render item and the turn stops drawing its card.
+
+- **Several questions page, they do not stack.** `‹ 1 of 3 ›` in the header, so
+  the slot is the same height whether the agent asked one thing or four. A
+  single-select pick settles its question and moves to the next by itself; the
+  `→` is drawn only on rows whose pick advances.
+- **Closing is not declining.** The `✕` ("Answer in your own words") puts the
+  composer back and leaves the question in the transcript as a QuestionCard, so
+  the reader can reply in prose instead of picking.
+- **Send is explicit.** It enables once every question is answered. Clicking an
+  option never submits on its own — a card answer terminates the running probe
+  (see Submission Flow), so a misclick would cut the turn short.
+
 ### Keyboard Navigation
 
-Component tests in [PlanCard.test.tsx](../src/renderer/components/PlanCard.test.tsx) and [QuestionCard.test.tsx](../src/renderer/components/QuestionCard.test.tsx).
+Component tests in [PlanCard.test.tsx](../src/renderer/components/PlanCard.test.tsx) and [QuestionCard.test.tsx](../src/renderer/components/QuestionCard.test.tsx); the dock is covered end to end in [SessionConversation.cards.test.tsx](../src/renderer/components/SessionConversation.cards.test.tsx).
 
 | Key | Action |
 |---|---|
-| `↑` / `↓` | Move selection between options |
-| `1`-`9` | Select option by number |
-| `Space` | Toggle checkbox (multi-select questions) |
-| `Enter` | Submit response |
-| `Escape` | No-op (cards require explicit selection or response) |
+| `↑` / `↓` | Move between options |
+| `←` / `→` | Previous / next question (dock only) |
+| `1`-`9` | Pick option by number |
+| `Space` | Pick the focused option |
+| `Enter` | Submit once answered, otherwise pick the focused option |
+| `Escape` | Dock: close and bring the composer back. Card: no-op. |
 
-After submission, cards collapse to a single-line summary with an expand chevron.
+A QuestionCard in the scrollback collapses to a single-line summary with an
+expand chevron after submission.
 
 ### Submission Flow
 
-When submitting a PlanCard or QuestionCard, `sendAfterTerminate` in [sessionConversationHelpers.ts](../src/renderer/components/sessionConversationHelpers.ts) terminates the running probe before sending the answer to prevent queuing behind trailing provider output.
+When submitting a PlanCard, a QuestionCard or the QuestionDock, `sendAfterTerminate` in [sessionConversationHelpers.ts](../src/renderer/components/sessionConversationHelpers.ts) terminates the running probe before sending the answer to prevent queuing behind trailing provider output.
 
-Question responses format as `**<header>**: <chosen label>` per question, joined with newlines.
+Question responses format as `**<header>**: <chosen label>` per question, joined with newlines. `formatAnswer` in [questions.ts](../src/renderer/lib/questions.ts) is the single source of that shape, so an answer reads the same whether it came from the dock or a card.
 
 ## Activity Rows
 

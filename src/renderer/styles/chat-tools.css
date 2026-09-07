@@ -600,6 +600,9 @@
   margin-top: var(--space-2_5);
 }
 
+/* The docked question wears this too — see `.question-dock` in
+   overlays-launcher-cards.css. It stands in the composer's slot, so it has to
+   be the same surface, not a lookalike. */
 .session-input {
   position: relative;
   z-index: 1;

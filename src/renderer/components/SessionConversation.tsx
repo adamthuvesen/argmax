@@ -69,11 +69,12 @@ import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
 import { SessionNote } from "./SessionNote.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
 import {
+  collectAskUserQuestionState,
   hasOutstandingCardAsk as sessionHasOutstandingCardAsk,
   isAskUserQuestionToolName,
   isExitPlanModeToolName
 } from "../lib/turnInteractiveCards.js";
-import { liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
+import { liveThoughtOwnsProgress, turnAgentModeFromPrior } from "../lib/sessionTurnView.js";
 import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import {
@@ -84,6 +85,7 @@ import {
 } from "../lib/composerAnnotations.js";
 import { buildDetailsSeed, buildSideChatSeed } from "../lib/sideChat.js";
 import { SelectionToolbar, type ChatSelection } from "./SelectionToolbar.js";
+import { QuestionDock } from "./QuestionDock.js";
 import { SessionComposer, type ComposerStatus, type NewSessionSeed } from "./SessionComposer.js";
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
@@ -91,7 +93,7 @@ import { ThinkingLabel } from "./ThinkingLabel.js";
 import { MultitaskRow } from "./MultitaskRow.js";
 import { recordChatCue, type ChatCueReason } from "../lib/chatCueLog.js";
 import { uuidV4 } from "../lib/uuid.js";
-import { parseUserMessageAttachments } from "./sessionConversationHelpers.js";
+import { parseUserMessageAttachments, sendAfterTerminate } from "./sessionConversationHelpers.js";
 import {
   SessionConversationTurn,
   SessionConversationUserMessage
@@ -1140,6 +1142,37 @@ export function SessionConversation({
 
   const { milestone: prMilestone, finish: finishPrMilestone } = usePrMilestone(workspace);
 
+  // The question the agent is waiting on right now. It can only be in the last
+  // turn — answering it sends a user message, which starts a new one — so the
+  // panel takes the composer's slot and that turn stops drawing its own card.
+  const liveQuestion = useMemo(() => {
+    const last = transcriptRenderItems[transcriptRenderItems.length - 1];
+    if (!last || last.kind !== "turn") return null;
+    const { tool } = collectAskUserQuestionState(last.toolItems);
+    if (!tool) return null;
+    return { tool, priorItem: transcriptRenderItems[transcriptRenderItems.length - 2] ?? null };
+  }, [transcriptRenderItems]);
+  // Closing the panel is not declining the question: the composer comes back so
+  // the reader can answer in their own words, and the question stays in the
+  // transcript as the card it was before.
+  const [dismissedQuestionId, setDismissedQuestionId] = useState<string | null>(null);
+  const questionDocked = liveQuestion !== null && liveQuestion.tool.id !== dismissedQuestionId;
+  const answerLiveQuestion = useCallback(
+    (answerMarkdown: string): Promise<boolean> => {
+      if (!session || !liveQuestion) return Promise.resolve(false);
+      shouldRefocusInput.current = true;
+      const mode: AgentMode = turnAgentModeFromPrior(liveQuestion.priorItem) === "plan" ? "plan" : "auto";
+      return sendAfterTerminate(
+        session.id,
+        session.state === "running",
+        onTerminateSession,
+        () => sendSessionInput(session.id, answerMarkdown, selectedModel, mode),
+        (message) => setStatus({ kind: "error", message })
+      );
+    },
+    [liveQuestion, onTerminateSession, selectedModel, sendSessionInput, session, setStatus]
+  );
+
   return (
     <section className="conversation-surface" aria-label="Conversation">
       <div className="section-heading" data-window-drag={floating ? undefined : true}>
@@ -1282,6 +1315,7 @@ export function SessionConversation({
                     defaultThinkingExpanded={defaultThinkingExpanded}
                     defaultTurnChangesExpanded={defaultTurnChangesExpanded}
                     restoringTranscript={restoringTranscript}
+                    questionIsDocked={questionDocked && index === transcriptRenderItems.length - 1}
                     onOpenDiff={review.openFile}
                     onOpenReview={review.openChangesPanel}
                   />
@@ -1363,6 +1397,16 @@ export function SessionConversation({
           })}
         </section>
       ) : null}
+      {questionDocked && liveQuestion ? (
+        <div className="session-composer-stack">
+          <QuestionDock
+            key={liveQuestion.tool.id}
+            questions={liveQuestion.tool.questions}
+            onAnswer={answerLiveQuestion}
+            onDismiss={() => setDismissedQuestionId(liveQuestion.tool.id)}
+          />
+        </div>
+      ) : (
       <SessionComposer
         agentMode={agentMode}
         canSend={canSend}
@@ -1395,6 +1439,7 @@ export function SessionConversation({
         status={status}
         workspace={workspace}
       />
+      )}
     </section>
   );
 }

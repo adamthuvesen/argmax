@@ -1,4 +1,4 @@
-import { chatCueLogSnapshot } from "./chatCueLog.js";
+import { rendererLogSnapshot } from "./rendererLogRing.js";
 
 export interface VerificationDiagnosticEntry {
   timestamp: string;
@@ -8,7 +8,7 @@ export interface VerificationDiagnosticEntry {
 
 export interface VerificationDiagnosticsSnapshot {
   entries: VerificationDiagnosticEntry[];
-  chatCues: ReturnType<typeof chatCueLogSnapshot>;
+  breadcrumbs: ReturnType<typeof rendererLogSnapshot>;
 }
 
 declare global {
@@ -63,6 +63,6 @@ export function installVerificationDiagnostics(): void {
   });
 
   window.__ARGMAX_VERIFICATION__ = {
-    snapshot: () => ({ entries: entries.slice(), chatCues: chatCueLogSnapshot() })
+    snapshot: () => ({ entries: entries.slice(), breadcrumbs: rendererLogSnapshot() })
   };
 }

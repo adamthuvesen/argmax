@@ -5,8 +5,6 @@ export type { Question, QuestionOption } from "../lib/questions.js";
 
 export type QuestionCardProps = {
   questions: Question[];
-  createdAt: string;
-  modelLabel?: string | null;
   onAnswer: (answerMarkdown: string) => void | Promise<boolean>;
 };
 
@@ -24,7 +22,7 @@ function formatAnswer(questions: Question[], selected: number[][]): string {
     .join("\n\n");
 }
 
-function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: QuestionCardProps): JSX.Element {
+function QuestionCardInner({ questions, onAnswer }: QuestionCardProps): JSX.Element {
   // Per-question selection. For single-select we keep at most one index;
   // for multi-select we keep the full set.
   const [selected, setSelected] = useState<number[][]>(() => questions.map(() => []));
@@ -174,29 +172,6 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
 
   return (
     <article className="plan-card question-card" aria-label="Question from agent">
-      <aside className="plan-card-rail">
-        <div className="plan-card-eyebrow-block">
-          <span className="plan-card-eyebrow">
-            <span className="plan-card-eyebrow-dot" aria-hidden="true" />
-            Question
-          </span>
-          <span className="plan-card-eyebrow-rule" aria-hidden="true" />
-        </div>
-        {modelLabel ? (
-          <div className="plan-card-meta-group">
-            <span className="plan-card-meta-label">Model</span>
-            <span className="plan-card-meta-value">{modelLabel}</span>
-          </div>
-        ) : null}
-        <div className="plan-card-meta-group">
-          <span className="plan-card-meta-label">Questions</span>
-          <span className="plan-card-meta-value">{questions.length}</span>
-        </div>
-        <div className="plan-card-rail-foot">
-          <time className="plan-card-folio">{new Date(createdAt).toLocaleString()}</time>
-        </div>
-      </aside>
-
       <div className="plan-card-content">
         {questions.map((q, qIdx) => (
           <section key={qIdx} className="plan-card-action-block">
@@ -206,7 +181,7 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
                 optionsRefs.current[qIdx] = el;
               }}
               className="plan-card-options"
-              role={q.multiSelect ? "listbox" : "listbox"}
+              role="listbox"
               aria-multiselectable={q.multiSelect}
               aria-label={q.header || q.question}
               tabIndex={0}
@@ -230,7 +205,6 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
                         <span className="question-card-option-desc"> — {option.description}</span>
                       ) : null}
                     </span>
-                    <span className="plan-card-option-arrow" aria-hidden="true">→</span>
                   </li>
                 );
               })}
@@ -239,15 +213,6 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
         ))}
 
         <div className="plan-card-action-foot">
-          <span className="plan-card-key-hint" aria-hidden="true">
-            <span className="plan-card-key-cap">↑↓</span> move
-          </span>
-          <span className="plan-card-key-hint" aria-hidden="true">
-            <span className="plan-card-key-cap">1–9</span> pick
-          </span>
-          <span className="plan-card-key-hint" aria-hidden="true">
-            <span className="plan-card-key-cap">␣</span> toggle (multi)
-          </span>
           <button
             type="button"
             className="question-card-submit"
@@ -256,7 +221,6 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
             aria-label={submitted ? "Answer sent" : "Submit answer"}
           >
             {submitted ? "Sent" : "Submit"}
-            <span className="question-card-submit-key" aria-hidden="true">↵</span>
           </button>
           {submitted ? (
             <button

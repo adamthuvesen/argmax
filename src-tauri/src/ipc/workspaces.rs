@@ -117,21 +117,23 @@ pub async fn workspaces_open_in_ide(
     state: State<'_, AppState>,
     input: WorkspacesOpenInIdeInput,
 ) -> ArgmaxResult<SystemOk> {
-    let workspaces = live_workspaces(&state)?;
+    workspaces_open_in_ide_impl(&state, input).await
+}
+
+/// Shared with the mobile bridge's dispatcher, which is async too: running the
+/// blocking `open -a` inline there would park one of its runtime workers for
+/// the length of a cold IDE launch.
+pub(crate) async fn workspaces_open_in_ide_impl(
+    state: &AppState,
+    input: WorkspacesOpenInIdeInput,
+) -> ArgmaxResult<SystemOk> {
+    let workspaces = live_workspaces(state)?;
     tauri::async_runtime::spawn_blocking(move || {
         workspaces.open_in_ide(input)?;
         Ok(SystemOk { ok: true })
     })
     .await
     .map_err(|error| ArgmaxError::service("WORKSPACES_OPEN_IN_IDE_JOIN", error.to_string()))?
-}
-
-pub(crate) fn workspaces_open_in_ide_impl(
-    state: &AppState,
-    input: WorkspacesOpenInIdeInput,
-) -> ArgmaxResult<SystemOk> {
-    live_workspaces(state)?.open_in_ide(input)?;
-    Ok(SystemOk { ok: true })
 }
 
 #[tauri::command(rename = "workspaces:autotitle")]

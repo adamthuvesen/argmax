@@ -972,10 +972,6 @@ pub fn run() {
                             // here that eviction is a no-op and the child
                             // outlives its removed worktree.
                             workspaces.set_cursor_acp(cursor_acp);
-                            if let Err(error) = workspaces.recover_interrupted_archives() {
-                                tracing::warn!(?error, "failed to recover interrupted workspace archives");
-                            }
-                            timer.mark("archives.recover");
                             let workspaces_for_watchers = Arc::clone(&workspaces);
                             if state.workspaces.set(workspaces).is_err() {
                                 tracing::warn!("workspace service state was already initialized");
@@ -1002,7 +998,25 @@ pub fn run() {
                             // Watcher refresh loops use tokio::spawn. Setup runs
                             // during the synchronous macOS launch callback, so
                             // defer restoration until Tauri's runtime is alive.
+                            let archive_timer = timer.clone();
                             tauri::async_runtime::spawn(async move {
+                                // Archive recovery runs up to five blocking git
+                                // calls per interrupted row, each with a 30s
+                                // bound, so it gets a blocking thread rather
+                                // than the launch callback — and it lands
+                                // before the watchers, which is the order setup
+                                // ran it in.
+                                let recovery = Arc::clone(&workspaces_for_watchers);
+                                match tauri::async_runtime::spawn_blocking(move || {
+                                    recovery.recover_interrupted_archives()
+                                })
+                                .await
+                                {
+                                    Ok(Ok(_)) => {}
+                                    Ok(Err(error)) => tracing::warn!(?error, "failed to recover interrupted workspace archives"),
+                                    Err(error) => tracing::warn!(?error, "archive recovery task failed to join"),
+                                }
+                                archive_timer.mark("archives.recover");
                                 match workspaces_for_watchers.start_open_watchers() {
                                     // Workspaces sharing a checkout share its
                                     // watch, so the two counts diverge sharply

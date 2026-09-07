@@ -165,7 +165,7 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
         }
         "workspaces:open-in-ide" => {
             let input: WorkspacesOpenInIdeInput = parse(channel, input)?;
-            encode(workspaces::workspaces_open_in_ide_impl(state, input)?)
+            encode(workspaces::workspaces_open_in_ide_impl(state, input).await?)
         }
         "workspaces:autotitle" => {
             let input: WorkspacesAutotitleInput = parse(channel, input)?;

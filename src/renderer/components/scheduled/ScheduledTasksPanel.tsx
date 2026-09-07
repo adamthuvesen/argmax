@@ -38,6 +38,9 @@ const SCHEDULER_TICK_MS = 30_000;
 const MAX_REFRESH_DELAY_MS = 24 * 60 * 60 * 1000;
 const STATUS_DISMISS_MS = 5_000;
 
+/** Where each firing lands. Matches `RoutineRunTarget` in routines.rs. */
+type RoutineRunTarget = "new_session" | "same_session" | "worktree";
+
 interface DraftState {
   routineId: string | null;
   name: string;
@@ -45,7 +48,7 @@ interface DraftState {
   provider: ProviderId;
   modelId: string;
   prompt: string;
-  worktree: boolean;
+  runTarget: RoutineRunTarget;
   enabled: boolean;
   kind: ScheduleKind;
   controls: ScheduleControls;
@@ -60,7 +63,7 @@ function newDraft(projectId: string): DraftState {
     provider,
     modelId: PROVIDER_MODEL_DEFAULTS[provider].modelId,
     prompt: "",
-    worktree: true,
+    runTarget: "worktree",
     enabled: true,
     kind: "daily",
     controls: { ...DEFAULT_SCHEDULE_CONTROLS }
@@ -76,7 +79,7 @@ function draftFromRoutine(routine: Routine): DraftState {
     provider: routine.provider,
     modelId: routine.modelId,
     prompt: routine.prompt,
-    worktree: routine.worktree,
+    runTarget: routine.runTarget,
     enabled: routine.enabled,
     kind,
     controls
@@ -91,12 +94,16 @@ const SCHEDULE_KIND_OPTIONS: ReadonlyArray<{ value: ScheduleKind; label: string 
   { value: "custom", label: "Custom" }
 ];
 
-/** A fresh worktree off the current branch, or the repository checkout itself.
- *  Named by where the run lands rather than by the boolean it sets. */
-const WORKTREE_OPTIONS = [
-  { value: "worktree", label: "Isolated worktree" },
-  { value: "checkout", label: "Current checkout" }
+/** Where each scheduled run lands. Named by outcome, not by the legacy boolean. */
+const RUN_TARGET_OPTIONS: ReadonlyArray<{ value: RoutineRunTarget; label: string }> = [
+  { value: "new_session", label: "New chat" },
+  { value: "same_session", label: "Same chat" },
+  { value: "worktree", label: "Isolated worktree" }
 ];
+
+function runTargetLabel(target: RoutineRunTarget): string {
+  return RUN_TARGET_OPTIONS.find((option) => option.value === target)?.label ?? target;
+}
 
 function formatTimestamp(value: string | null): string {
   if (!value) return "—";
@@ -116,7 +123,13 @@ function routineState(routine: Routine): "failed" | "paused" | "scheduled" {
   return routine.enabled ? "scheduled" : "paused";
 }
 
-export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }): JSX.Element {
+export function ScheduledTasksPanel({
+  projects,
+  onOpenSession
+}: {
+  projects: ProjectSummary[];
+  onOpenSession?: (sessionId: string) => void;
+}): JSX.Element {
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -234,7 +247,8 @@ export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }
           PROVIDER_MODELS[draft.provider].find((model) => model.modelId === draft.modelId)?.label ??
           PROVIDER_MODEL_DEFAULTS[draft.provider].label,
         modelId: draft.modelId,
-        worktree: draft.worktree,
+        worktree: draft.runTarget === "worktree",
+        runTarget: draft.runTarget,
         cronExpr: schedule.cronExpr,
         runOnceAt: schedule.runOnceAt,
         enabled: draft.enabled
@@ -293,6 +307,21 @@ export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }
         await reload();
       } catch (error) {
         setActionError(errorMessage(error, "Could not delete the task."));
+      }
+    },
+    [beginAction, reload]
+  );
+
+  const resetSharedChat = useCallback(
+    async (routine: Routine) => {
+      if (!window.argmax) return;
+      beginAction();
+      try {
+        await window.argmax.routines.resetSession(routine.id);
+        setStatus(`“${routine.name}” will start a fresh chat on its next run.`);
+        await reload();
+      } catch (error) {
+        setActionError(errorMessage(error, "Could not reset the shared chat."));
       }
     },
     [beginAction, reload]
@@ -380,6 +409,8 @@ export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }
                       <span className="sched-row-meta">
                         {projectName(routine.projectId)}
                         <span className="sched-dot" aria-hidden="true" />
+                        {runTargetLabel(routine.runTarget)}
+                        <span className="sched-dot" aria-hidden="true" />
                         {PROVIDER_DISPLAY_NAMES[routine.provider]} {routine.modelLabel}
                       </span>
                     </div>
@@ -404,6 +435,25 @@ export function ScheduledTasksPanel({ projects }: { projects: ProjectSummary[] }
                     </div>
 
                     <div className="sched-row-actions">
+                      {routine.runTarget === "same_session" && routine.lastSessionId && onOpenSession ? (
+                        <button
+                          type="button"
+                          className="sched-text-button"
+                          onClick={() => onOpenSession(routine.lastSessionId!)}
+                        >
+                          Open chat
+                        </button>
+                      ) : null}
+                      {routine.runTarget === "same_session" && routine.lastSessionId ? (
+                        <button
+                          type="button"
+                          className="sched-text-button"
+                          disabled={busy}
+                          onClick={() => void resetSharedChat(routine)}
+                        >
+                          Fresh chat next run
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className="sched-icon-button"
@@ -740,15 +790,21 @@ function ScheduledTaskEditor({
             <div className="sched-field sched-field-inline">
               <span className="sched-label">Run in</span>
               <div className="sched-picker">
-                <SettingsListPicker
+                <SettingsListPicker<RoutineRunTarget>
                   ariaLabel="Run in"
-                  value={draft.worktree ? "worktree" : "checkout"}
-                  onChange={(target) => patch({ worktree: target === "worktree" })}
-                  options={WORKTREE_OPTIONS}
+                  value={draft.runTarget}
+                  onChange={(runTarget) => patch({ runTarget })}
+                  options={RUN_TARGET_OPTIONS}
                   placement="above"
                 />
               </div>
             </div>
+            {draft.runTarget === "same_session" ? (
+              <p className="sched-help">
+                Every run sends the prompt as a follow-up in the same chat. A long-running schedule
+                keeps one growing conversation — pick New chat if you want a clean slate each time.
+              </p>
+            ) : null}
           </section>
 
           {saveError ? (

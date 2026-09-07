@@ -7,7 +7,7 @@ use super::{inputs::*, live_database};
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::persistence::routines::{
     self, find_routine_by_id, list_routines, set_routine_enabled, upsert_routine, Routine,
-    UpsertRoutineInput,
+    RoutineRunTarget, UpsertRoutineInput,
 };
 use crate::providers::session_service::ProviderSessionService;
 use crate::routines::{schedule, scheduler};
@@ -71,6 +71,15 @@ pub async fn routines_upsert(
         None
     };
     let connection = database.connection();
+    // Newer renderers send the target outright; older ones only know the
+    // boolean, which maps onto the two fresh-thread targets.
+    let run_target = input.run_target.unwrap_or({
+        if input.worktree {
+            RoutineRunTarget::Worktree
+        } else {
+            RoutineRunTarget::NewSession
+        }
+    });
     upsert_routine(
         &connection,
         &UpsertRoutineInput {
@@ -81,7 +90,7 @@ pub async fn routines_upsert(
             provider: input.provider.as_str().to_owned(),
             model_label: input.model_label.as_str().to_owned(),
             model_id: input.model_id.as_str().to_owned(),
-            worktree: input.worktree,
+            run_target,
             cron_expr,
             run_once_at,
             enabled: input.enabled.unwrap_or(true),
@@ -133,6 +142,26 @@ pub async fn routines_run_now(
     find_routine_by_id(&connection, input.id.as_str())
 }
 
+#[tauri::command(rename = "routines:reset-session")]
+#[specta::specta]
+pub fn routines_reset_session(
+    state: State<'_, AppState>,
+    input: RoutinesResetSessionInput,
+) -> ArgmaxResult<Routine> {
+    let database = live_database(&state)?;
+    let connection = database.connection();
+    let existing = find_routine_by_id(&connection, input.id.as_str())?;
+    if !matches!(existing.run_target, RoutineRunTarget::SameSession) {
+        return Err(ArgmaxError::invalid(InvalidInputIssue::at(
+            vec!["id".into()],
+            "RUN_TARGET_NOT_SAME_SESSION",
+            "only same-chat tasks can reset their shared chat pointer",
+        )));
+    }
+    routines::set_routine_last_session(&connection, input.id.as_str(), None)?;
+    find_routine_by_id(&connection, input.id.as_str())
+}
+
 /// The next stored `next_run_at` for a routine, recomputed from now. A
 /// one-shot keeps its own time (past times stay due so the scheduler fires
 /// them late-once); recurring schedules get their next future occurrence.
@@ -158,7 +187,8 @@ fn routine_launch_fields(routine: &Routine) -> crate::persistence::routines::Rou
         provider: routine.provider.clone(),
         model_label: routine.model_label.clone(),
         model_id: routine.model_id.clone(),
-        worktree: routine.worktree,
+        run_target: routine.run_target,
+        last_session_id: routine.last_session_id.clone(),
         cron_expr: routine.cron_expr.clone(),
         run_once_at: routine.run_once_at.clone(),
         enabled: routine.enabled,

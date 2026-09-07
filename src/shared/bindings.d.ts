@@ -832,6 +832,14 @@ async routinesRunNow(input: RoutinesRunNowInput) : Promise<Result<Routine, Argma
     else return { status: "error", error: e  as any };
 }
 },
+async routinesResetSession(input: RoutinesResetSessionInput) : Promise<Result<Routine, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("routines_reset_session", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async usageSummary(input: UsageSummaryInput) : Promise<Result<UsageSummary, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("usage_summary", { input }) };
@@ -1278,12 +1286,26 @@ export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTarg
  * git's default context so opening the review panel never pays for it.
  */
 contextLines?: DiffContextLines | null }
-export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdAt: string; updatedAt: string }
+export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdAt: string; updatedAt: string }
+/**
+ * Where one firing of a scheduled task lands. `NewSession` starts a fresh
+ * chat in the shared checkout, `SameSession` sends the prompt as a
+ * follow-up into the same chat every time (tracked by `last_session_id`),
+ * and `Worktree` starts a fresh chat in its own isolated worktree.
+ */
+export type RoutineRunTarget = "new_session" | "same_session" | "worktree"
 export type RoutinesDeleteInput = { id: NonEmptyString }
 export type RoutinesListInput = Record<string, never>
+export type RoutinesResetSessionInput = { id: NonEmptyString }
 export type RoutinesRunNowInput = { id: NonEmptyString }
 export type RoutinesSetEnabledInput = { id: NonEmptyString; enabled: boolean }
-export type RoutinesUpsertInput = { id: NonEmptyString; name: NonEmptyString; projectId: ProjectId; prompt: Prompt; provider: ProviderId; modelLabel: NonEmptyString; modelId: NonEmptyString; worktree: boolean; cronExpr: string | null; runOnceAt: string | null; enabled: boolean | null }
+export type RoutinesUpsertInput = { id: NonEmptyString; name: NonEmptyString; projectId: ProjectId; prompt: Prompt; provider: ProviderId; modelLabel: NonEmptyString; modelId: NonEmptyString; worktree: boolean;
+/**
+ * Where a run lands: a fresh chat, the same chat every time, or an
+ * isolated worktree. `None` keeps older renderers working and falls back
+ * to the `worktree` boolean.
+ */
+runTarget?: RoutineRunTarget | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean | null }
 export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; learnings: number; usageEvents: number }
 export type RuntimeDiagnostics = { rssBytes: number; openFileDescriptors: number; tokioTrackedTasks: number }
 export type SaveImageResult = { filePath: string; sizeBytes: number }

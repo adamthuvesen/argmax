@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::{review::git_review::ReviewComparison, workspaces::WorkspaceTargetKind};
+use crate::{
+    persistence::routines::RoutineRunTarget, review::git_review::ReviewComparison,
+    workspaces::WorkspaceTargetKind,
+};
 
 use super::validation::{
     AgentMode, AttachmentMimeType, AttachmentPath, Base64ImageData, BaseRef, BranchName,
@@ -1160,6 +1163,11 @@ pub struct RoutinesUpsertInput {
     pub model_label: NonEmptyString,
     pub model_id: NonEmptyString,
     pub worktree: bool,
+    /// Where a run lands: a fresh chat, the same chat every time, or an
+    /// isolated worktree. `None` keeps older renderers working and falls back
+    /// to the `worktree` boolean.
+    #[serde(default)]
+    pub run_target: Option<RoutineRunTarget>,
     pub cron_expr: Option<String>,
     pub run_once_at: Option<String>,
     pub enabled: Option<bool>,
@@ -1181,6 +1189,12 @@ pub struct RoutinesSetEnabledInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RoutinesRunNowInput {
+    pub id: NonEmptyString,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RoutinesResetSessionInput {
     pub id: NonEmptyString,
 }
 

@@ -12,7 +12,7 @@ Scheduled tasks ("routines") are stored prompts launched as top-level sessions o
 | Scheduler loop | [scheduler.rs](../src-tauri/src/routines/scheduler.rs) |
 | Cron parsing & calculations | [schedule.rs](../src-tauri/src/routines/schedule.rs) |
 | SQLite persistence | [routines.rs](../src-tauri/src/persistence/routines.rs) (table `routines`, migration v19) |
-| IPC channels | [ipc/routines.rs](../src-tauri/src/ipc/routines.rs) (`routines:list`, `routines:upsert`, `routines:delete`, `routines:set-enabled`, `routines:run-now`) |
+| IPC channels | [ipc/routines.rs](../src-tauri/src/ipc/routines.rs) (`routines:list`, `routines:upsert`, `routines:delete`, `routines:set-enabled`, `routines:run-now`, `routines:reset-session`) |
 
 The page is standalone. Opening it swaps the app sidebar for a back rail and uses the same content chrome as settings. The title sits in the column, not the window topbar.
 
@@ -23,4 +23,4 @@ The scheduler ticks every 30 seconds. Due tasks launch sequentially via `session
 - **Missed runs:** If the app was closed during scheduled run times, backlog collapses into a single run.
 - **Failures:** Recurring tasks back off by 15 minutes on launch failure. One-shot tasks are disabled with `last_error` recorded.
 - **Permissions:** Scheduled tasks always run in `auto-approve` / `auto` mode without interactive prompts.
-- **Targeting:** Isolated worktrees are the default target; scratch projects are rejected.
+- **Targeting:** Each task picks where a run lands — a fresh chat in the shared checkout (`new_session`), a follow-up in the same chat every time (`same_session`, tracked by `last_session_id`), or a fresh isolated worktree (`worktree`, the default). Same-chat tasks send follow-ups via `ProvidersSendInput`; if the chat is gone, the next run starts fresh and re-points the routine. Use `routines:reset-session` (or **Fresh chat next run** in the panel) to drop the pointer deliberately.

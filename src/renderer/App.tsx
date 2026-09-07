@@ -2034,7 +2034,7 @@ export function App(): JSX.Element {
             </Suspense>
           ) : isScheduledTasksOpen ? (
             <Suspense fallback={<SkeletonPane />}>
-              <ScheduledTasksPanel projects={realProjects} />
+              <ScheduledTasksPanel projects={realProjects} onOpenSession={openSessionById} />
             </Suspense>
           ) : isUsageOpen ? (
             <Suspense fallback={<SkeletonPane />}>

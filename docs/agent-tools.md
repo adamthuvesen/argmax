@@ -367,6 +367,18 @@ the useful shape is `session_launch` → `session_wait` → `session_read`. A
 watched session that is *already* settled returns at once rather than blocking,
 as does an inbox that already holds something.
 
+That form hands each finish over **once**. `sessions.wait_reported_at`
+([data.md](data.md)) records when the launcher was last told, and a child is
+reportable again only after a new turn moves its `last_activity_at` past that
+mark — the mark is stamped by the same write that takes the inbox messages, so
+a crash cannot mark a finish reported without also having handed it over.
+Without it a parent that launched two children and collected the first got that
+same child back the moment it asked about the second, forever, while the tool
+description told it to call again to keep waiting. Naming ids in `sessions`
+keeps the plain reading: the named settled sessions come back every time and
+nothing is marked, which is how a launcher re-reads a finish it already
+collected.
+
 Underneath, the handler subscribes to the provider service's in-process session
 state broadcast and to the inbox broadcast **before** its first database read,
 so an edge landing between subscribing and reading is queued rather than lost.

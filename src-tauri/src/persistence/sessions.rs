@@ -250,6 +250,44 @@ pub fn sessions_launched_by(
     Ok(rows)
 }
 
+/// Has this session settled since the argument-less `session_wait` last handed
+/// it to whoever launched it?
+///
+/// `wait_reported_at` is that hand-over's high-water mark. Every state write
+/// moves `last_activity_at` (`update_session_state` stamps it whether or not
+/// the caller supplied one), so a child that runs again passes the mark and is
+/// reported once more when it settles, while one that has been sitting
+/// finished since it was reported is not. The caller checks the state itself —
+/// this answers only "is this finish new to the launcher".
+pub fn wait_report_is_due(connection: &Connection, session_id: &str) -> ArgmaxResult<bool> {
+    connection
+        .prepare_cached(
+            "SELECT wait_reported_at IS NULL OR wait_reported_at < last_activity_at \
+             FROM sessions WHERE id = ?",
+        )
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| row.get::<_, i64>(0))
+        .map(|due| due != 0)
+        .map_err(sqlite_error)
+}
+
+/// Record that the launcher has now been handed these sessions' finishes.
+pub fn mark_wait_reported(
+    connection: &Connection,
+    session_ids: &[String],
+    reported_at: &str,
+) -> ArgmaxResult<()> {
+    let mut statement = connection
+        .prepare_cached("UPDATE sessions SET wait_reported_at = ? WHERE id = ?")
+        .map_err(sqlite_error)?;
+    for session_id in session_ids {
+        statement
+            .execute((reported_at, session_id))
+            .map_err(sqlite_error)?;
+    }
+    Ok(())
+}
+
 pub fn list_sessions_for_dashboard(
     connection: &Connection,
     workspace_ids: Option<&[String]>,

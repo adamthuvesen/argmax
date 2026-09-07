@@ -290,9 +290,11 @@ rather than repeating the whole task. You cannot stop yourself."
 you, then return what happened. With no arguments it watches every session you launched and waits \
 up to two minutes. It returns as soon as any watched session reaches complete, failed, or \
 cancelled — reporting each one's id and state — and/or with the messages that arrived, which it \
-also marks collected. A wait that runs out returns `{timed_out: true}`; call it again to keep \
-waiting. This is the tool that makes launching a session useful: launch, wait, then session_read \
-its answer."
+also marks collected. The argument-less form hands you each finish once, so calling it again \
+after collecting one child waits for the next one instead of repeating that child; name ids in \
+`sessions` to re-read a session you have already been told about. A wait that runs out returns \
+`{timed_out: true}`; call it again to keep waiting. This is the tool that makes launching a \
+session useful: launch, wait, then session_read its answer."
     )]
     async fn session_wait(
         &self,

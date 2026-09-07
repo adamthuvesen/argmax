@@ -19,9 +19,10 @@ use argmax_lib::{
             insert_session_message, NewSessionMessage, MAX_MESSAGE_BODY_CHARS, MESSAGE_KIND,
         },
         sessions::{
-            find_session_by_id, persist_session, record_session_launch, PersistSessionInput,
-            LAUNCH_KIND_AGENT,
+            find_session_by_id, persist_session, record_session_launch, update_session_state,
+            PersistSessionInput, SessionStateInput, LAUNCH_KIND_AGENT,
         },
+        time::now_iso,
         workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
     },
     providers::{
@@ -1457,6 +1458,100 @@ async fn a_completion_notice_queued_behind_a_running_turn_stays_collectable() {
         .as_str()
         .expect("body")
         .contains("finished with state cancelled"));
+}
+
+/// A parent that launched two children and collected the first one must not be
+/// handed that same child every time it asks about the second. The
+/// argument-less wait reports each finish once; naming ids reads a session
+/// again on purpose.
+#[tokio::test]
+async fn the_default_wait_hands_over_each_finished_session_once() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[
+            ("session-parent", "Parent", SessionState::Running),
+            ("session-first", "First", SessionState::Running),
+            ("session-second", "Second", SessionState::Running),
+        ],
+    );
+    {
+        let connection = database.connection();
+        for child in ["session-first", "session-second"] {
+            record_session_launch(&connection, child, "session-parent", 1, LAUNCH_KIND_AGENT)
+                .expect("record lineage");
+        }
+    }
+    let settle = |session_id: &'static str| {
+        let connection = database.connection();
+        update_session_state(
+            &connection,
+            session_id,
+            &SessionStateInput::transition(SessionState::Complete).finished_at(now_iso()),
+        )
+        .expect("settle session");
+    };
+
+    let launcher = Arc::new(RecordingLauncher::default());
+    let providers =
+        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
+    providers.set_session_control(Arc::clone(&registry));
+    let (socket, token) = credential(&registry, repo.path(), "session-parent");
+    let _server = server
+        .start(
+            None,
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            Arc::clone(&providers),
+        )
+        .expect("start control socket");
+    let wait = |action: serde_json::Value| {
+        let (socket, token) = (socket.clone(), token.clone());
+        async move {
+            serde_json::from_str::<serde_json::Value>(&ask_raw(socket, token, action).await)
+                .expect("response json")
+        }
+    };
+    let reported = |response: &serde_json::Value| {
+        response["waited"]["sessions"]
+            .as_array()
+            .expect("sessions")
+            .iter()
+            .map(|session| {
+                session["sessionId"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+    };
+
+    settle("session-first");
+    let first = wait(json!({ "wait": { "timeoutS": 1 } })).await;
+    assert_eq!(first["waited"]["timedOut"], false);
+    assert_eq!(reported(&first), vec!["session-first"]);
+
+    // The second child is still working, and the first has already been handed
+    // over — so this wait has nothing to say and blocks until it runs out.
+    let again = wait(json!({ "wait": { "timeoutS": 1 } })).await;
+    assert_eq!(again["waited"]["timedOut"], true, "second wait: {again}");
+    assert!(reported(&again).is_empty());
+
+    settle("session-second");
+    let second = wait(json!({ "wait": { "timeoutS": 1 } })).await;
+    assert_eq!(second["waited"]["timedOut"], false);
+    assert_eq!(reported(&second), vec!["session-second"]);
+
+    // Naming a session asks about that session, so a finish already collected
+    // is still readable.
+    let named = wait(json!({ "wait": { "sessions": ["session-first"], "timeoutS": 1 } })).await;
+    assert_eq!(named["waited"]["timedOut"], false);
+    assert_eq!(reported(&named), vec!["session-first"]);
 }
 
 /// Archiving stops every provider process in the workspace, and the agent that

@@ -17,7 +17,10 @@ use crate::{
     persistence::{
         database::Database,
         session_messages::{count_undelivered_messages, take_undelivered_messages},
-        sessions::{find_session_by_id, sessions_launched_by},
+        sessions::{
+            find_session_by_id, mark_wait_reported, sessions_launched_by, wait_report_is_due,
+        },
+        time::now_iso,
     },
     providers::session_service::ProviderSessionService,
 };
@@ -45,6 +48,10 @@ pub(super) async fn wait_for_sessions(
     let mut states = providers.subscribe_session_states();
     let mut inbox = registry.subscribe_inbox();
 
+    // Naming ids asks a question about those sessions; omitting them asks
+    // "what have my children done that I have not been told about". Only the
+    // second form keeps a high-water mark, so a named read is repeatable.
+    let report_once = action.sessions.is_none();
     let watched = {
         let connection = database.read_connection();
         match action.sessions {
@@ -76,7 +83,9 @@ pub(super) async fn wait_for_sessions(
 
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        if let Some(outcome) = collect_wait_outcome(&database, &parent.session_id, &watched)? {
+        if let Some(outcome) =
+            collect_wait_outcome(&database, &parent.session_id, &watched, report_once)?
+        {
             return Ok(SessionControlResponse::new(SessionControlResult::Waited(
                 outcome,
             )));
@@ -104,10 +113,15 @@ pub(super) async fn wait_for_sessions(
 }
 
 /// What the wait would report right now, or `None` while nothing has happened.
+///
+/// `report_once` is the argument-less form: a session it has already handed
+/// over is held back until that session runs again, so a parent waiting on its
+/// second child is not answered with its first one forever.
 fn collect_wait_outcome(
     database: &Database,
     caller_session_id: &str,
     watched: &[String],
+    report_once: bool,
 ) -> Result<Option<WaitOutcome>, SessionControlError> {
     let settled = {
         let connection = database.read_connection();
@@ -117,6 +131,11 @@ fn collect_wait_outcome(
                 continue;
             };
             if session.state.is_active() {
+                continue;
+            }
+            if report_once
+                && !wait_report_is_due(&connection, session_id).map_err(argmax_protocol_error)?
+            {
                 continue;
             }
             settled.push(WaitedSession {
@@ -135,8 +154,9 @@ fn collect_wait_outcome(
     if settled.is_empty() && !has_message {
         return Ok(None);
     }
-    // Taking the messages needs the writer, so it happens only once the wait
-    // is actually returning.
+    // Both writes need the writer, so they happen only once the wait is
+    // actually returning, and on the one connection: a crash cannot mark a
+    // finish reported without also having handed the messages over.
     let messages = {
         let mut connection = database.connection();
         let taken = take_undelivered_messages(
@@ -146,6 +166,14 @@ fn collect_wait_outcome(
             INBOX_READ_BYTE_BUDGET,
         )
         .map_err(argmax_protocol_error)?;
+        if report_once && !settled.is_empty() {
+            let reported = settled
+                .iter()
+                .map(|session| session.session_id.clone())
+                .collect::<Vec<_>>();
+            mark_wait_reported(&connection, &reported, &now_iso())
+                .map_err(argmax_protocol_error)?;
+        }
         to_inbox_messages(&connection, taken)
     };
     Ok(Some(WaitOutcome {

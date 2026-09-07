@@ -652,11 +652,42 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SESSION_AFTER_TURN_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 35,
+        name: "session_wait_reported",
+        up: SESSION_WAIT_REPORTED,
+        affected_tables: &["sessions"],
+        expected_columns: &SESSION_WAIT_REPORTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 static SESSION_AFTER_TURN_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "session_after_turn" => &["session_id", "action", "payload_json", "requested_at"],
 };
+
+// Post-v35 `sessions` shape: v26 plus the wait high-water mark.
+static SESSION_WAIT_REPORTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "imported", "input_tokens", "last_activity_at",
+        "last_model_id", "launch_depth", "launch_kind", "launched_by_session_id",
+        "model_id", "model_label", "output_tokens", "permission_mode", "prompt",
+        "provider", "provider_conversation_id", "reasoning_effort", "resume_fork",
+        "started_at", "state", "wait_reported_at", "workspace_id",
+    ] as &'static [&'static str],
+};
+
+// When the argument-less `session_wait` last handed this session's finish to
+// whoever launched it. NULL until that happens. Every state write moves
+// `last_activity_at`, so a child that runs again passes the mark and is
+// reported once more when it settles — and one that has not run again is not.
+// Without the mark, a parent watching two children got the first one back the
+// moment it asked about the second, forever.
+const SESSION_WAIT_REPORTED: &str = r#"
+ALTER TABLE sessions ADD COLUMN wait_reported_at TEXT;
+"#;
 
 // The disposal an agent asked for while its own turn was still running.
 // `session_move` and `workspace_archive` answer `{scheduled: true}` before
@@ -1709,7 +1740,7 @@ mod tests {
         // v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PROJECT_ARCHIVE_ON_MERGE_COLUMNS, "projects")
             .expect("projects");
-        verify_table_columns(&connection, &SESSION_LAUNCH_KIND_COLUMNS, "sessions")
+        verify_table_columns(&connection, &SESSION_WAIT_REPORTED_COLUMNS, "sessions")
             .expect("sessions");
         verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
             .expect("workspaces");
@@ -1795,6 +1826,7 @@ mod tests {
                 (32, compute_migration_checksum(PENDING_MESSAGES)),
                 (33, compute_migration_checksum(REMOTE_OPERATION_OUTCOMES)),
                 (34, compute_migration_checksum(SESSION_AFTER_TURN)),
+                (35, compute_migration_checksum(SESSION_WAIT_REPORTED)),
             ]
         );
 

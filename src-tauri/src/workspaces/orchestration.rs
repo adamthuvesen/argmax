@@ -2805,8 +2805,10 @@ async fn attached_checkout(
     Ok((path.to_string_lossy().into_owned(), branch.to_string()))
 }
 
-/// Whether `git worktree list` in `repo_path` reports `worktree_path`. True for
-/// the repository's main checkout as well as its added worktrees.
+/// Re-register a retained worktree with its repository before an archive is
+/// retried: it must be a linked worktree of `repo_path`, still on `branch`, and
+/// `git worktree repair` must leave it listed. Anything else is refused with
+/// the files left intact.
 fn repair_archived_worktree(
     repo_path: &Path,
     recovery_path: &Path,
@@ -2862,6 +2864,8 @@ async fn worktree_is_registered(repo_path: String, worktree_path: PathBuf) -> Ar
     .map_err(|error| ArgmaxError::service("WORKTREE_LIST_JOIN", error.to_string()))?
 }
 
+/// Whether `git worktree list` in `repo_path` reports `worktree_path`. True for
+/// the repository's main checkout as well as its added worktrees.
 fn worktree_is_registered_blocking(repo_path: &Path, worktree_path: &Path) -> ArgmaxResult<bool> {
     // Startup recovery runs before any runtime is available to await on.
     let stdout = run_git_text_blocking(

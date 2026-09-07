@@ -13,6 +13,7 @@ use rusqlite::Connection;
 use serde_json::{Map, Value};
 use walkdir::WalkDir;
 
+use super::grok_trust::grok_home;
 use super::normalizer::JSON_PARSE_LINE_CAP;
 use crate::{
     error::ArgmaxResult,
@@ -1822,19 +1823,6 @@ fn grok_session_dir(home: &Path, cwd: &str, session_id: &str) -> PathBuf {
         .join("sessions")
         .join(grok_percent_encode(cwd))
         .join(session_id)
-}
-
-/// `$GROK_HOME`, else `<home>/.grok` — the same resolution `grok_trust` uses
-/// for the trust store, so the two never disagree about where Grok lives.
-/// Under test the environment is ignored, exactly as it is there, so an
-/// injected `home` is the whole answer and no test can read a developer's own
-/// `$GROK_HOME`.
-fn grok_home(home: &Path) -> PathBuf {
-    #[cfg(not(test))]
-    if let Some(value) = std::env::var_os("GROK_HOME").filter(|value| !value.is_empty()) {
-        return PathBuf::from(value);
-    }
-    home.join(".grok")
 }
 
 fn list_grok_subagent_ids(home: &Path, context: &AgentTraceContext) -> Vec<String> {

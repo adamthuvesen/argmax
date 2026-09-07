@@ -188,5 +188,5 @@ const SERVER_ICONS: Record<string, ServerIcon> = {
 /** The brand mark for an MCP server name, or null when none is wired up. */
 export function serverIconFor(server: string): ServerIcon | null {
   const key = server.trim().toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ");
-  return SERVER_ICONS[key] ?? null;
+  return Object.hasOwn(SERVER_ICONS, key) ? SERVER_ICONS[key] : null;
 }

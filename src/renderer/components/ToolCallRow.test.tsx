@@ -1,7 +1,18 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ToolCall } from "../lib/toolCalls.js";
+import type * as CommandIcons from "../lib/commandIcons.js";
 import { ToolCallRow } from "./ToolCallRow.js";
+
+vi.mock("../lib/commandIcons.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof CommandIcons>();
+  return {
+    ...actual,
+    commandIconServer: (call: ToolCall) => actual.commandIconServer(call, [
+      { commandPattern: "^run_only_sql(?:\\s|$)", server: "snowflake" }
+    ])
+  };
+});
 
 afterEach(() => {
   cleanup();
@@ -98,6 +109,26 @@ describe("ToolCallRow", () => {
 
 describe("ToolCallRow server marks", () => {
   afterEach(() => cleanup());
+
+  it("shows a configured brand mark on a shell script row", () => {
+    render(<ToolCallRow tool={tool({ inputFull: { command: "run_only_sql" } })} />);
+    expect(screen.getByRole("img", { name: "Snowflake" })).toBeInTheDocument();
+  });
+
+  it("updates the mark when full input arrives with the same preview", () => {
+    const { rerender } = render(<ToolCallRow tool={tool()} />);
+    expect(screen.queryByRole("img", { name: "Snowflake" })).toBeNull();
+    rerender(<ToolCallRow tool={tool({ inputFull: { command: "run_only_sql" } })} />);
+    expect(screen.getByRole("img", { name: "Snowflake" })).toBeInTheDocument();
+  });
+
+  it("updates a nested mark when child input arrives with the same preview", () => {
+    const parent = tool({ id: "parent", name: "Task", inputPreview: "Query data" });
+    const { rerender } = render(<ToolCallRow tool={parent} childTools={[tool()]} defaultExpanded />);
+    expect(screen.queryByRole("img", { name: "Snowflake" })).toBeNull();
+    rerender(<ToolCallRow tool={parent} childTools={[tool({ inputFull: { command: "run_only_sql" } })]} defaultExpanded />);
+    expect(screen.getByRole("img", { name: "Snowflake" })).toBeInTheDocument();
+  });
 
   it("leads an MCP row with the server's brand mark", () => {
     render(

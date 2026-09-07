@@ -140,7 +140,7 @@ Tool activity renders as text, not chrome. One grammar covers every row and ever
 
 Rules this surface holds to:
 
-- **No icons.** The verb already names the action, and a glyph column competes with the one left edge. Summary verbs stay neutral even when tools fail. Collapsed groups omit failure counts, and failures do not automatically expand rows. Error labels and details remain available inside expanded tool rows.
+- **Service marks identify integrations.** MCP rows carry the server's brand mark, or a plug for an unknown server. Web tools use a globe. Shell rows can use personal command icon rules described below. Summary verbs stay neutral even when tools fail. Collapsed groups omit failure counts, and failures do not automatically expand rows. Error labels and details remain available inside expanded tool rows.
 - **Invocation-scoped identity.** Provider tool IDs can repeat across turns. `buildSessionToolCalls` scopes them with `providerInvocationId` and uses chronological unmatched pairs for historical rows that predate that field, so a tool stays in the turn that ran it.
 - **Verb/target contrast is a token step, not an opacity fade.** Fading `--muted` drops the file name to 2.4:1 in the light theme; `--muted-strong` over `--muted` measures 6.9:1 / 3.6:1 (light) and 8.0:1 / 5.1:1 (dark). Pinned by `accentTokens.test.ts`.
 - **Transport is never a row.** Codex's `wait`, `close_agent`, and `send_message_to_thread` name no work and carry only internal thread ids, so `foldCodexAgentControlTools` drops them unconditionally. Matching one to a spawn decides only whether its outcome settles that launch. When a name collides with a real tool, the Codex thread ids in the input are what identify the transport. Grok's `get_command_or_subagent_output` is the same poll for a spawned child and is hidden by `isHiddenToolName`. Leaving it visible split the parent sentence around "Get command or subagent output".
@@ -303,6 +303,32 @@ The turn chip controls disclosure across the turn. Per-group and per-row choices
 - **File links in answers:** Absolute paths inside the active workspace are reduced to workspace-relative paths before opening. [openableFile.ts](../src/renderer/lib/openableFile.ts) also recognizes the same repo-relative suffix when an answer names a file from another checkout. A real absolute path outside the workspace opens through the system instead of sending the Files panel a path it is not allowed to preview.
 - **Tail reserve & resize:** `.conversation-list` maintains constant bottom padding (`--space-8`). A `ResizeObserver` monitors the viewport and composer textarea to adjust scroll offsets dynamically as drafts expand. A width-driven reflow (the side review/log panel opening or closing) keeps a reader who was already at the bottom at the bottom instead of leaving the new bottom out of view; height-only growth below a detached reader still leaves them alone.
 - **Workspace card:** [WorkspaceCard.tsx](../src/renderer/components/WorkspaceCard.tsx) floats worktree status and a glanceable subagent roster in the right gutter when pane width allows. Each chip in that overlapping stack is the agent's emblem on a ring tinted from the same hue — one colour per agent, not a chip colour and a mark colour — and a multitask keeps its initial on its hashed tint. When the review or log panel is open, the card remains visible whenever the conversation column is wide enough to hold it beside the transcript without overlap. The PR row is the number (and merged/closed state when it is not open): clicking it creates a PR or opens the existing one with the same link-target preference as chat links.
+
+## Personal command icons
+
+Create `argmax-icons.local.json` at the checkout root to give shell commands a
+brand mark in your own builds. The file is Git-ignored and optional. For example:
+
+```json
+[
+  { "commandPattern": "^run_only_sql(?:\\s|$)", "server": "snowflake" }
+]
+```
+
+`commandPattern` is a JavaScript regular expression applied to the full command
+after shell launch wrappers such as `zsh -lc` are removed. Anchor it with `^` to
+avoid matching incidental mentions in arguments or SQL text. The first matching
+rule wins. `server` names an existing mark in
+[serverIcons.ts](../src/renderer/lib/serverIcons.ts). Invalid rules raise an
+explicit configuration error when the renderer loads. MCP server marks take
+precedence over command rules.
+
+Run `npm run tauri:build` after changing the file. Your mappings are bundled into
+that build, including its mobile renderer. Builds made without the file have no
+command mappings. Installing a public release replaces the customized build, so
+rebuild to restore the mappings. This is build customization, not a runtime
+Settings preference. Anyone receiving your custom binary also receives its
+mappings.
 
 ## Follow-up Queuing & Drafts
 

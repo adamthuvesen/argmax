@@ -21,6 +21,7 @@ import {
   snapshot,
   terminateProvider
 } from "../../test/appTestHarness.js";
+import { startedAgentName } from "../../test/agentRowName.js";
 import { MobileApp } from "./MobileApp.js";
 
 // The remote transport is a page singleton the component only observes, so the
@@ -242,6 +243,48 @@ describe("MobileApp", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Back to chats" }));
     expect(await screen.findByRole("region", { name: "Chat list" })).toBeInTheDocument();
+  });
+
+  it("shows a subagent launch as a record the phone cannot open", async () => {
+    // There is no dock here to host the Agents view, so the row names the
+    // delegated work and its state and stops being a control — pressing it
+    // used to slide the desktop review panel in as a dead strip.
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        ...snapshot.events,
+        {
+          id: "event-agent-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: {
+            id: "tu_agent",
+            name: "Task",
+            input: { description: "Audit the dashboard query", prompt: "Read it and report back." }
+          },
+          createdAt: "2026-05-08T15:54:01.000Z"
+        },
+        {
+          id: "event-agent-done",
+          sessionId: "session-1",
+          type: "command.completed",
+          message: "tool_result",
+          payload: { tool_use_id: "tu_agent", content: "No issues found." },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        }
+      ]
+    });
+    render(<MobileApp />);
+
+    const list = await screen.findByRole("region", { name: "Chat list" });
+    fireEvent.click(within(list).getByRole("button", { name: /Build dashboard/ }));
+    await screen.findByRole("region", { name: "Conversation" });
+
+    expect(await screen.findByText("Audit the dashboard query")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: startedAgentName("Audit the dashboard query") })
+    ).toBeNull();
   });
 
   it("keeps the chat list scrolled where it was after opening a session", async () => {

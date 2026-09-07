@@ -68,6 +68,7 @@ import { useConversationScroll } from "/src/renderer/hooks/useConversationScroll
 
 const h = React.createElement;
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+const afterPaint = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 let mountedRoot = null;
 let active = null;
 const browserErrors = [];
@@ -253,6 +254,19 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
             Math.abs(after.scrollHeight - firstSettled.scrollHeight) <= 1 &&
             Math.abs(after.contentHeight - firstSettled.contentHeight) <= 1
         };
+      },
+      resizeAroundPromptAcrossPaints: async (targetId, pixels) => {
+        const target = api.contentRef.current.querySelector('[data-block="' + targetId + '"]');
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const before = measureAnchor("latest-user");
+        const errorStart = browserErrors.length;
+        target.style.height = Math.max(20, target.getBoundingClientRect().height + pixels) + "px";
+        const frames = [];
+        for (let frame = 1; frame <= 4; frame += 1) {
+          await afterPaint();
+          frames.push({ frame, ...measureAnchor("latest-user") });
+        }
+        return { before, frames, errors: browserErrors.slice(errorStart) };
       },
       collapseThenRegrowBeforeReconcile: async (collapsePixels, regrowthPixels) => {
         const scroller = api.scrollRef.current;
@@ -618,6 +632,37 @@ async function runChecks() {
         tolerance: 1
       });
     }
+  }
+
+  for (const scenario of [
+    { targetId: "nested", pixels: -40, name: "above-prompt shrink" },
+    { targetId: "nested", pixels: 40, name: "above-prompt growth" },
+    { targetId: "live-output", pixels: -40, name: "below-prompt shrink control" },
+    { targetId: "live-output", pixels: 40, name: "below-prompt growth control" }
+  ]) {
+    await mount("main", { initialLiveHeight: 80 });
+    const paintedResize = await active.resizeAroundPromptAcrossPaints(
+      scenario.targetId,
+      scenario.pixels
+    );
+    const promptDrift = Math.max(...paintedResize.frames.map((frame) =>
+      Math.abs(frame.anchorTop - paintedResize.before.anchorTop)
+    ));
+    results.push({
+      name: "main: short anchored turn remains stable through painted " + scenario.name,
+      surface: "main",
+      before: paintedResize.before,
+      after: paintedResize.frames.at(-1),
+      frames: paintedResize.frames,
+      errors: paintedResize.errors,
+      movement: Math.round(promptDrift * 100) / 100,
+      extraOk:
+        paintedResize.errors.length === 0 &&
+        paintedResize.frames.every((frame) =>
+          frame.distanceFromBottom <= 1 && !frame.showFab
+        ),
+      tolerance: 1
+    });
   }
 
   await mount("main", { initialLiveHeight: 720 });

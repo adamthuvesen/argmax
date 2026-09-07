@@ -50,7 +50,6 @@ class ResizeObserverMock {
 
 function flushResize(): void {
   ResizeObserverMock.instances[0]?.fire();
-  vi.advanceTimersToNextFrame();
 }
 
 function Harness({
@@ -178,13 +177,11 @@ function touch(target: Element, type: string, clientY: number): void {
 
 describe("useConversationScroll", () => {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
     ResizeObserverMock.instances = [];
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -519,7 +516,7 @@ describe("useConversationScroll", () => {
     expect(controller.showScrollToBottom).toBe(false);
   });
 
-  it("uses one observer for the viewport, wrapper, and rows, then cleans up native resources", () => {
+  it("observes the viewport and rows without observing its own height reservation", () => {
     const view = render(<Harness items={["one"]} />);
     const geometry: Geometry = {
       viewportHeight: 500,
@@ -533,14 +530,11 @@ describe("useConversationScroll", () => {
     act(() => view.rerender(<Harness items={["one"]} />));
 
     expect(ResizeObserverMock.instances).toHaveLength(1);
-    expect(ResizeObserverMock.instances[0]?.targets).toEqual(new Set([scroll, content, turn]));
+    expect(ResizeObserverMock.instances[0]?.targets).toEqual(new Set([scroll, turn]));
 
-    ResizeObserverMock.instances[0]?.fire();
-    ResizeObserverMock.instances[0]?.fire();
-    expect(vi.getTimerCount()).toBe(1);
+    expect(ResizeObserverMock.instances[0]?.targets.has(content)).toBe(false);
 
     view.unmount();
     expect(ResizeObserverMock.instances[0]?.disconnected).toBe(true);
-    expect(vi.getTimerCount()).toBe(0);
   });
 });

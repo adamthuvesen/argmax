@@ -36,8 +36,10 @@ and then grow it again before a callback runs. Reserving the height prevents
 that temporary clamp from looking like an upward reader scroll. Each
 reconciliation releases the reservation before measuring, so a permanent
 collapse still removes excess space.
-ResizeObserver schedules that work for the next animation frame, keeping
-wrapper height changes outside the observer's delivery cycle.
+ResizeObserver watches the viewport and direct transcript rows, then reconciles
+before paint. The controller-owned wrapper is excluded so its height changes
+cannot feed back into the observer. Deferring correction by a frame lets an
+earlier row's reflow briefly move the visible prompt before it is restored.
 
 The chat content has a minimum height that lets the latest user message sit
 at the top of the viewport. Output fills that space naturally as the turn
@@ -49,7 +51,7 @@ below a collapsed turn until the reader resumes following.
 Detached layout changes preserve the visible anchor. Nested scroll areas use
 their outer box so scrolling a diff cannot look like a transcript layout
 change. CSS `overflow-anchor: none` keeps browser anchoring from competing
-with the controller. ResizeObserver watches both the content and viewport,
+with the controller. ResizeObserver watches the transcript rows and viewport,
 including composer, panel, and hidden-tab size changes.
 
 The design draws on [use-stick-to-bottom](https://github.com/stackblitz-labs/use-stick-to-bottom)'s

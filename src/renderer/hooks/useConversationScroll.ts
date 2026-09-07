@@ -340,7 +340,7 @@ export function useConversationScroll({
     const scroll = scrollRef.current;
     const content = contentRef.current;
     if (observer && scroll && content) {
-      const next = new Set<Element>([scroll, content, ...Array.from(content.children)]);
+      const next = new Set<Element>([scroll, ...Array.from(content.children)]);
       for (const element of next) {
         if (!observedElementsRef.current.has(element)) observer.observe(element);
       }
@@ -430,20 +430,13 @@ export function useConversationScroll({
     scroll.addEventListener("touchcancel", clearTouch, { passive: true });
     scroll.addEventListener("scroll", onScroll, { passive: true });
 
-    let resizeFrame: number | null = null;
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
-      // Releasing the height floor can resize an observed ancestor. Write in
-      // the next frame, outside ResizeObserver's current delivery cycle.
-      if (resizeFrame !== null) return;
-      resizeFrame = requestAnimationFrame(() => {
-        resizeFrame = null;
-        reconcile();
-      });
-    });
+    // Correct row reflow before paint. The wrapper's height is controlled by
+    // reconcile, so observing it would feed our own layout writes back into
+    // ResizeObserver. Its non-shrinking children report the content changes.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reconcile);
     resizeObserverRef.current = observer;
     const observed = new Set<Element>([scroll]);
     if (content) {
-      observed.add(content);
       for (const child of Array.from(content.children)) observed.add(child);
     }
     for (const element of observed) observer?.observe(element);
@@ -458,7 +451,6 @@ export function useConversationScroll({
       scroll.removeEventListener("touchcancel", clearTouch);
       scroll.removeEventListener("scroll", onScroll);
       observer?.disconnect();
-      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
       resizeObserverRef.current = null;
       observedElementsRef.current = new Set();
       clearTouch();

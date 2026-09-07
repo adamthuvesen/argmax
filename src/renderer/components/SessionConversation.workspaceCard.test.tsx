@@ -53,16 +53,16 @@ describe("SessionConversation workspace card", () => {
     expect(screen.getByRole("complementary", { name: "Workspace" })).toBeInTheDocument();
   });
 
-  it("steps aside for the review panel, which already shows what the card summarizes", () => {
+  it("keeps the card rendered when the review panel is open, leaving visibility to spacing", () => {
     renderPane({ review: reviewStub({ isPanelOpen: true }) });
 
-    expect(screen.queryByRole("complementary", { name: "Workspace" })).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Workspace" })).toBeInTheDocument();
   });
 
-  it("steps aside for the debug log panel too", () => {
+  it("keeps the card rendered when the debug log panel is open, leaving visibility to spacing", () => {
     renderPane({ isLogOpen: true });
 
-    expect(screen.queryByRole("complementary", { name: "Workspace" })).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Workspace" })).toBeInTheDocument();
   });
 
   it("stays hidden while the preference is off", () => {

@@ -163,8 +163,8 @@ export function SessionPane({
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
   session: SessionSummary | null;
-  /** User preference for the floating workspace card. The pane still hides it
-      whenever a right-hand panel is docked. */
+  /** User preference for the floating workspace card. Visible when enabled
+      and the conversation column is wide enough to hold it beside the transcript. */
   workspaceCardVisible?: boolean;
   onWorkspaceCardVisibleChange?: (visible: boolean) => void;
   workspace: WorkspaceSummary | null;

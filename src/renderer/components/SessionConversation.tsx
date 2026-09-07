@@ -89,6 +89,7 @@ import { WorkspaceCard } from "./WorkspaceCard.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
 import { MultitaskRow } from "./MultitaskRow.js";
 import { recordChatCue, type ChatCueReason } from "../lib/chatCueLog.js";
+import { uuidV4 } from "../lib/uuid.js";
 import { parseUserMessageAttachments } from "./sessionConversationHelpers.js";
 import {
   SessionConversationTurn,
@@ -203,8 +204,8 @@ export function SessionConversation({
   onHideWorkspaceCard?: () => void;
   onToggleTerminal?: () => void;
   onToggleWorkspaceCard?: () => void;
-  /** User preference for the workspace card. A docked right-hand panel still
-      wins over it. The card is the stand-in for exactly that panel. */
+  /** User preference for the workspace card. Visible when enabled and the
+      conversation column is wide enough to hold it beside the transcript. */
   workspaceCardEnabled?: boolean;
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
   onClose?: () => void;
@@ -629,9 +630,10 @@ export function SessionConversation({
     return null;
   }, [transcriptRenderItems]);
 
-  // The card is the ambient stand-in for a docked right-hand panel, so an open
-  // review or debug-log panel takes its place rather than sitting beside it.
-  const showWorkspaceCard = workspaceCardEnabled && !review.isPanelOpen && !isLogOpen;
+  // The card floats in the right gutter whenever the conversation column is
+  // wide enough to hold it without overlapping the transcript, regardless of
+  // whether a right-hand panel is docked.
+  const showWorkspaceCard = workspaceCardEnabled;
   const conversationScrollRef = useRef<HTMLDivElement | null>(null);
   // The width gate lives in CSS (chat-workspace-card.css keeps the card
   // `display: none` until the pane can hold it beside the transcript), so
@@ -643,7 +645,7 @@ export function SessionConversation({
     return (): void => {
       const enabling = !workspaceCardEnabled;
       onToggleWorkspaceCard();
-      if (!enabling || review.isPanelOpen || isLogOpen || !workspace) return;
+      if (!enabling || !workspace) return;
       requestAnimationFrame(() => {
         const card = conversationScrollRef.current?.querySelector('aside[aria-label="Workspace"]');
         if (!(card instanceof HTMLElement)) {
@@ -665,7 +667,7 @@ export function SessionConversation({
         }
       });
     };
-  }, [onToggleWorkspaceCard, workspaceCardEnabled, review.isPanelOpen, isLogOpen, workspace, setStatus]);
+  }, [onToggleWorkspaceCard, workspaceCardEnabled, workspace, setStatus]);
   const changeSummary = useMemo(() => {
     if (review.filesState !== "ready" || review.files.length === 0) {
       return null;
@@ -744,7 +746,7 @@ export function SessionConversation({
       mode: AgentMode,
       attachments?: ComposerAttachment[]
     ): Promise<void> => {
-      const optimisticId = `optimistic:${targetSessionId}:${crypto.randomUUID()}`;
+      const optimisticId = `optimistic:${targetSessionId}:${uuidV4()}`;
       if (sessionStateRef.current !== "running") {
         setOptimisticUserMessages((current) => [
           {

@@ -423,7 +423,7 @@ can still hand each session its own credential.
 Every provider now carries the same one-line instruction; the long
 shell-command preamble is gone. The `argmax session …` CLI it described is not
 — it is still the way to reach a session from a terminal, and
-[session_control.rs](../src-tauri/src/session_control.rs) dispatches it from
+[cli.rs](../src-tauri/src/session_control/cli.rs) dispatches it from
 exactly the same enum the tools do.
 
 [mcp_injection.rs](../src-tauri/src/providers/mcp_injection.rs) is the one place
@@ -503,7 +503,7 @@ not used — it would ungate the repo's hooks too.
 
 ## The wire underneath
 
-[session_control.rs](../src-tauri/src/session_control.rs) holds the whole
+[protocol.rs](../src-tauri/src/session_control/protocol.rs) holds the whole
 protocol: a `SessionControlRequest` with a token and one `SessionControlAction`,
 answered by a `SessionControlResponse` whose result is flattened
 (`{"version":1,"launched":{…}}`, `{"version":1,"listed":{…}}`, or

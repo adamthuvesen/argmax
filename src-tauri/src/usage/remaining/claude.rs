@@ -251,7 +251,11 @@ fn push_fable_weekly_window(windows: &mut Vec<UsageLimitWindow>, body: &Value) {
         .get("percent")
         .and_then(|value| value.as_f64())
         .or_else(|| entry.get("utilization").and_then(|value| value.as_f64()))
-        .or_else(|| entry.get("used_percentage").and_then(|value| value.as_f64()))
+        .or_else(|| {
+            entry
+                .get("used_percentage")
+                .and_then(|value| value.as_f64())
+        })
         .or_else(|| entry.get("usedPercentage").and_then(|value| value.as_f64()));
     let Some(used) = used else {
         return;

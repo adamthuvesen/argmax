@@ -60,10 +60,7 @@ mod tests {
         assert_eq!(row.kind, UsagePlanKind::Enterprise);
         assert_eq!(row.plan_label.as_deref(), Some("Teams"));
         assert!(row.windows.is_empty());
-        assert_eq!(
-            row.message_url.as_deref(),
-            Some(SPENDING_DASHBOARD_URL)
-        );
+        assert_eq!(row.message_url.as_deref(), Some(SPENDING_DASHBOARD_URL));
     }
 
     #[test]
@@ -73,9 +70,6 @@ mod tests {
         let row = fetch(&source);
         assert_eq!(row.kind, UsagePlanKind::Unavailable);
         assert!(row.message.as_deref().unwrap_or("").contains("Spending"));
-        assert_eq!(
-            row.message_url.as_deref(),
-            Some(SPENDING_DASHBOARD_URL)
-        );
+        assert_eq!(row.message_url.as_deref(), Some(SPENDING_DASHBOARD_URL));
     }
 }

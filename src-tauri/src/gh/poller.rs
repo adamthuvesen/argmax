@@ -268,8 +268,10 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
     let mut transitions: Vec<Transition> = Vec::new();
     for session_id in refreshed_sessions {
         let rows = inner.service.list_for_session(&session_id)?;
-        let Some(latest) = rows.last() else { continue };
-        if let Some(transition) = detect_transition(&inner, &session_id, latest) {
+        let Some(latest) = pr_for_workspace_transition(&inner.database, &session_id, &rows)? else {
+            continue;
+        };
+        if let Some(transition) = detect_transition(&inner, &session_id, &latest) {
             transitions.push(transition);
         }
     }
@@ -426,8 +428,8 @@ fn detect_transition(
         // ledger entry once resolution succeeds — otherwise a transient
         // lookup failure would dedupe the failure forever and the hook
         // would never fire on a later tick.
-        match resolve_workspace_id(&inner.database, session_id) {
-            Ok(workspace_id) => {
+        match resolve_workspace_id_for_pr_action(&inner.database, session_id, latest) {
+            Ok(Some(workspace_id)) => {
                 // Keyed by workspace, not session: every session in a checkout
                 // sees the same branch's PR, and the follow-up we launch joins
                 // them. A per-session key fires once per observer and doubles
@@ -443,6 +445,7 @@ fn detect_transition(
                     transition.is_failure = true;
                 }
             }
+            Ok(None) => {}
             Err(error) => {
                 tracing::warn!(
                     %session_id,
@@ -456,8 +459,8 @@ fn detect_transition(
     // A merged PR is the end of the workspace's job: for projects that opted
     // in, the worktree and its local branch go away with it.
     if is_merged && inner.on_pr_merged.is_some() {
-        match resolve_workspace_id(&inner.database, session_id) {
-            Ok(workspace_id) => {
+        match resolve_workspace_id_for_pr_action(&inner.database, session_id, latest) {
+            Ok(Some(workspace_id)) => {
                 // Keyed by workspace and PR, not by session or head_sha: every
                 // session in the checkout sees the same merge, and a merged PR
                 // keeps reporting the same commit on every later tick.
@@ -481,6 +484,7 @@ fn detect_transition(
                     }
                 }
             }
+            Ok(None) => {}
             Err(error) => {
                 tracing::warn!(
                     %session_id,
@@ -540,17 +544,52 @@ fn workspace_is_busy(inner: &Arc<PollerInner>, workspace_id: &str) -> bool {
     )
 }
 
-fn resolve_workspace_id(database: &Arc<Database>, session_id: &str) -> ArgmaxResult<String> {
+/// Isolated workspaces only act on the PR selected for their owned branch.
+/// A session can retain explicit references to other PRs as history, but
+/// those rows must not launch an agent or archive the session's worktree.
+/// Shared checkouts keep their session-scoped behavior.
+fn resolve_workspace_id_for_pr_action(
+    database: &Arc<Database>,
+    session_id: &str,
+    latest: &GhPrRecord,
+) -> ArgmaxResult<Option<String>> {
     let conn = database.connection();
     let session = crate::persistence::sessions::find_session_by_id(&conn, session_id)?;
-    Ok(session.workspace_id)
+    let workspace =
+        crate::persistence::workspaces::find_workspace_by_id(&conn, &session.workspace_id)?;
+    if workspace.shared_workspace || workspace.pr_number == Some(latest.pr_number) {
+        Ok(Some(workspace.id))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Shared checkouts keep the prior session-scoped choice of the highest PR
+/// number. Isolated workspaces follow the PR selected for their owned branch,
+/// even when the session also retains a higher-numbered explicit reference.
+fn pr_for_workspace_transition(
+    database: &Arc<Database>,
+    session_id: &str,
+    rows: &[GhPrRecord],
+) -> ArgmaxResult<Option<GhPrRecord>> {
+    let conn = database.connection();
+    let session = crate::persistence::sessions::find_session_by_id(&conn, session_id)?;
+    let workspace =
+        crate::persistence::workspaces::find_workspace_by_id(&conn, &session.workspace_id)?;
+    if workspace.shared_workspace {
+        return Ok(rows.last().cloned());
+    }
+    Ok(workspace
+        .pr_number
+        .and_then(|pr_number| rows.iter().find(|row| row.pr_number == pr_number).cloned())
+        .or_else(|| rows.last().cloned()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::error::ArgmaxError;
-    use crate::persistence::gh::upsert_gh_pr;
+    use crate::persistence::gh::{record_gh_pr_observation, upsert_gh_pr, PrAttribution};
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
     use crate::persistence::sessions::{persist_session, PersistSessionInput};
     use crate::persistence::time::now_iso;
@@ -673,6 +712,101 @@ mod tests {
             [],
         )
         .expect("enable archive on merge");
+    }
+
+    fn record_explicit_pr(
+        database: &Arc<Database>,
+        pr_number: i64,
+        pr_state: &str,
+        check_state: &str,
+        head_ref_name: &str,
+    ) -> GhPrRecord {
+        let record = GhPrRecord {
+            session_id: "s1".to_string(),
+            pr_number,
+            head_sha: "feedface".to_string(),
+            last_seen_check_state: check_state.to_string(),
+            updated_at: now_iso(),
+            pr_state: Some(pr_state.to_string()),
+            notified_at: None,
+            pr_created_at: Some("2026-09-07T10:00:00Z".to_string()),
+            pr_merged_at: (pr_state == "MERGED").then(|| "2026-09-07T11:00:00Z".to_string()),
+            head_ref_name: Some(head_ref_name.to_string()),
+        };
+        let conn = database.connection();
+        record_gh_pr_observation(&conn, &record, PrAttribution::Explicit)
+            .expect("record explicit PR")
+            .expect("associate explicit PR");
+        record
+    }
+
+    #[test]
+    fn isolated_workspace_actions_follow_the_selected_branch_pr() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        settle_session(&database, "s1");
+        enable_archive_on_merge(&database);
+        let stub = StubRunner::new(Vec::new());
+        let service = GhService::with_runner(Arc::clone(&database), stub.runner());
+        let merge_hook: MergedPrHook = Arc::new(|_| {});
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_pr_merged_hook(merge_hook),
+        );
+
+        record_explicit_pr(&database, 200, "OPEN", "failure", "feature/other");
+        let rows = poller.inner.service.list_for_session("s1").unwrap();
+        let fallback = pr_for_workspace_transition(&database, "s1", &rows)
+            .unwrap()
+            .unwrap();
+        let fallback_transition = detect_transition(&poller.inner, "s1", &fallback).unwrap();
+        assert!(fallback_transition.publish);
+        assert!(!fallback_transition.is_failure);
+
+        let matching_failure = record_explicit_pr(&database, 100, "OPEN", "failure", "feature/x");
+        let rows = poller.inner.service.list_for_session("s1").unwrap();
+        let selected = pr_for_workspace_transition(&database, "s1", &rows)
+            .unwrap()
+            .unwrap();
+        assert_eq!(selected.pr_number, 100);
+        assert!(
+            detect_transition(&poller.inner, "s1", &matching_failure)
+                .unwrap()
+                .is_failure
+        );
+
+        let matching_merge = record_explicit_pr(&database, 100, "MERGED", "success", "feature/x");
+        let off_branch_merge =
+            record_explicit_pr(&database, 200, "MERGED", "success", "feature/other");
+        assert!(detect_transition(&poller.inner, "s1", &off_branch_merge)
+            .unwrap()
+            .merged
+            .is_none());
+        assert_eq!(
+            detect_transition(&poller.inner, "s1", &matching_merge)
+                .unwrap()
+                .merged,
+            Some(MergedPrContext {
+                workspace_id: "w1".to_string(),
+                pr_number: 100,
+            })
+        );
+
+        let conn = database.connection();
+        conn.execute(
+            "UPDATE workspaces SET shared_workspace = 1 WHERE id = 'w1'",
+            [],
+        )
+        .expect("share workspace");
+        drop(conn);
+        let rows = poller.inner.service.list_for_session("s1").unwrap();
+        assert_eq!(
+            pr_for_workspace_transition(&database, "s1", &rows)
+                .unwrap()
+                .unwrap()
+                .pr_number,
+            200,
+            "shared checkouts retain the highest-numbered session PR"
+        );
     }
 
     // A worktree that's gone can't be polled: `gh pr view` fails every tick

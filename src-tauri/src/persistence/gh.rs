@@ -517,8 +517,9 @@ pub fn latest_pr_for_branch(
 }
 
 /// Sidebar marker for one workspace. Isolated workspaces resolve the PR on
-/// their owned branch. Shared checkouts resolve only PRs attributed to their
-/// own session, because another session may later move the checkout's HEAD.
+/// their owned branch, even when the session referenced other PRs. Shared
+/// checkouts resolve only PRs attributed to their own session, because another
+/// session may later move the checkout's HEAD.
 pub fn latest_pr_for_workspace(
     connection: &Connection,
     workspace_id: &str,
@@ -562,10 +563,6 @@ pub fn latest_pr_for_workspace(
               AND (
                 (?2 != '' AND gh_pr.head_ref_name = ?2)
                 OR (gh_pr.head_ref_name IS NULL AND observer_sessions.workspace_id = target_workspace.id)
-                OR (
-                  gh_pr.attribution = 'explicit'
-                  AND observer_sessions.workspace_id = target_workspace.id
-                )
               )
             )
           )
@@ -749,6 +746,45 @@ mod tests {
             pr_created_at: Some("2026-09-07T09:00:00.000Z".to_owned()),
             pr_merged_at: (state == "MERGED").then(|| "2026-09-07T09:30:00.000Z".to_owned()),
             head_ref_name: Some("feature/pr".to_owned()),
+        }
+    }
+
+    #[test]
+    fn isolated_workspace_marker_rejects_explicit_pr_on_another_branch() {
+        for state in ["OPEN", "CLOSED", "MERGED"] {
+            let database = Database::open_in_memory().expect("open db");
+            let connection = database.connection();
+            add_project(&connection, "p1");
+            add_session(&connection, "p1", "w1", "s1", "feature/work", false);
+            record_gh_pr_observation(
+                &connection,
+                &pr("s1", state, "sha1"),
+                PrAttribution::Explicit,
+            )
+            .expect("record explicit")
+            .expect("associated");
+            assert_eq!(list_gh_pr_for_session(&connection, "s1").unwrap().len(), 1);
+            assert!(
+                latest_pr_for_workspace(&connection, "w1", "p1", "feature/work")
+                    .unwrap()
+                    .is_none(),
+                "an unrelated {state} PR is session history, not this workspace's PR"
+            );
+
+            add_session(&connection, "p1", "w2", "s2", "feature/work", false);
+            let mut matching = pr("s2", "OPEN", "eight");
+            matching.pr_number = 8;
+            matching.head_ref_name = Some("feature/work".to_owned());
+            record_gh_pr_observation(&connection, &matching, PrAttribution::Inferred)
+                .expect("record matching PR")
+                .expect("associated");
+            assert_eq!(
+                latest_pr_for_workspace(&connection, "w1", "p1", "feature/work")
+                    .unwrap()
+                    .unwrap()
+                    .pr_number,
+                8
+            );
         }
     }
 

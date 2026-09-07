@@ -2,7 +2,7 @@
 
 GitHub PR and check status is managed in Rust under [src-tauri/src/gh](../src-tauri/src/gh).
 
-- [service.rs](../src-tauri/src/gh/service.rs): Runs `gh pr view <workspace.branch> --json …` and caches the result in SQLite. The row records the session that observed the PR and the PR's own head branch (`head_ref_name`).
+- [service.rs](../src-tauri/src/gh/service.rs): Resolves PRs from session branch context and explicit PR references, then caches the result in SQLite. GitHub state synchronizes across every cached row for the same project and PR number. Session attribution is recorded separately from that state.
 - [poller.rs](../src-tauri/src/gh/poller.rs): Polls running sessions, sessions that completed in the last two minutes, and sessions with an open PR. Its transition ledger includes the PR lifecycle state, so an `OPEN` to `MERGED` change emits `dashboard:delta` even when the head SHA and checks are unchanged. It also triggers desktop notifications on check failures, can launch automated follow-up sessions on failure using project defaults, and archives a workspace whose PR has merged when its project asks for it.
 - [src-tauri/src/util/gh_runner.rs](../src-tauri/src/util/gh_runner.rs): Subprocess runner interface for mocking in tests.
 
@@ -24,15 +24,23 @@ The archive is never forced. A worktree with uncommitted changes returns to `kep
 
 Isolated workspaces only. Archiving a shared checkout deletes nothing, so applying this there would not be cleanup — it would close a chat in a tree the user is still working in. The opt-in query excludes them ([projects.rs](../src-tauri/src/persistence/projects.rs)).
 
-A pull request belongs to its head branch, not to whichever session happened to be mid-turn when the poller looked. Sidebar markers therefore attach by branch: a workspace shows the latest PR in its project whose `head_ref_name` matches the workspace's current branch. Isolated worktrees each have their own branch, so the creating session is the one that shows the icon. Shared checkouts on the same branch share it. Rows recorded before the branch was stored still attach to the observing workspace so a merged PR does not lose its marker. When the current branch has no PR, the marker falls back to the latest OPEN PR this workspace's own sessions observed — that is how an agent that opened a PR from another checkout of the same repo (via `cd` or Claude's EnterWorktree, without `session_move`) still lights the row.
+## PR Attribution
 
-The poller discovers a PR by running `gh pr view <workspace.branch>` in `workspace.path`. That misses a PR the agent created on a different branch or in a different worktree. Two other paths close the gap: a GitHub PR URL in a `command.completed` event upserts that number via `gh pr view <n>` (the number is enough; `gh` talks to the repo remote, not the local HEAD), and each tick also re-views the session's already-cached OPEN rows by number — plus PR numbers recently mentioned in that session's command output — so a PR whose branch the checkout has left still advances to MERGED, and an already-created PR is backfilled without waiting for another `gh pr create`.
+Isolated workspaces show the latest PR on their branch within the same project. Shared checkouts show only PRs attributed to their own session. Moving a shared checkout onto another branch cannot assign that branch's PR to an old session.
 
-Creating or viewing a PR from a session refreshes that session's cache and publishes the workspace immediately, so the sidebar does not wait for the next poller tick. Agent `gh pr create` is the same: the command's stdout is enough to refresh without waiting for the poller.
+New sessions record their starting branch and the last branch observed while active. Shared-checkout discovery uses that saved branch after the session finishes. A new inferred association must match the saved branch. For a completed session, GitHub's PR creation time must be known and no later than completion. An association observed while active survives a later checkout change.
+
+A PR reference in the session's command output, or its explicit view/create action, establishes explicit attribution. This also covers a PR opened from another checkout. Refreshing an already cached PR by number preserves its attribution instead of treating the refresh as new evidence.
+
+Migration v37 leaves existing associations marked as legacy. Shared-checkout markers with only legacy evidence are hidden until an explicit reference confirms them. Historical branches cannot be reconstructed reliably from the checkout's current HEAD. Isolated workspaces retain branch lookup and their legacy session fallback.
+
+Every observation synchronizes GitHub-owned fields across existing rows for the same project and PR number. A late OPEN response cannot overwrite MERGED. Notification bookkeeping remains per session and resets when the head commit changes. Dashboard publication includes affected observers and isolated workspaces on the PR branch, so a merge repaints their markers together.
+
+The poller rechecks attributed open PRs by number after the checkout leaves their branch. Explicit PR observations and view/create actions refresh immediately and publish the affected workspace summaries.
 
 IPC channels:
 - `prs:list-for-session`
 - `prs:refresh`
 - `git:view-or-create-pr`
 
-The PR cache also retains GitHub's `createdAt` and `mergedAt` timestamps. Workspace summaries expose them as `prCreatedAt` and `prMergedAt` alongside the branch-matched PR number and state. The optional Appearance celebration uses those source timestamps to distinguish a new milestone from an old PR discovered after a delayed refresh. It defaults off and does not run on ordinary turn completion.
+The PR cache also retains GitHub's `createdAt` and `mergedAt` timestamps. Workspace summaries expose them as `prCreatedAt` and `prMergedAt` alongside the attributed PR number and state. The optional Appearance celebration uses those source timestamps to distinguish a new milestone from an old PR discovered after a delayed refresh. It defaults off and does not run on ordinary turn completion.

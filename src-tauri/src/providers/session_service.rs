@@ -1803,6 +1803,7 @@ impl ProviderSessionService {
             }
             return Ok(());
         }
+        self.capture_pr_branch(&event.session_id);
         let connection = self.database.connection();
         let succeeded =
             event.r#type == ProviderRuntimeEventType::Exit && event.exit_code == Some(0);
@@ -2124,6 +2125,7 @@ impl ProviderSessionService {
     }
 
     fn cancel_session(self: &Arc<Self>, session_id: &str) -> ArgmaxResult<()> {
+        self.capture_pr_branch(session_id);
         let connection = self.database.connection();
         let current = find_session_by_id(&connection, session_id)?;
         if !current.state.is_active() {
@@ -2657,6 +2659,7 @@ impl ProviderSessionService {
         // no exit synth here.
         self.flush_trailing(session_id, false)?;
 
+        self.capture_pr_branch(session_id);
         let completed_at = now_iso();
         let (session, workspace, projects) = {
             let connection = self.database.connection();
@@ -2809,8 +2812,32 @@ impl ProviderSessionService {
     /// the send path: the mark costs a few hundred milliseconds on a large
     /// repo, while the agent's first write is a model round-trip away.
     fn mark_turn_start(&self, session_id: &str, workspace_path: PathBuf) {
+        self.capture_pr_branch(session_id);
         let mark = self.measured_diffs.open_turn(session_id, workspace_path);
         tauri::async_runtime::spawn(capture_opening_mark(mark));
+    }
+
+    // Watcher delivery can lag behind the last checkout command of a turn.
+    // Reading symbolic HEAD is small local I/O and also handles linked worktrees.
+    fn capture_pr_branch(&self, session_id: &str) {
+        let result = (|| -> ArgmaxResult<()> {
+            let workspace_path = {
+                let connection = self.database.read_connection();
+                let session = find_session_by_id(&connection, session_id)?;
+                if !session.state.is_active() {
+                    return Ok(());
+                }
+                find_workspace_by_id(&connection, &session.workspace_id)?.path
+            };
+            let Some(branch) = checkout_head_branch(std::path::Path::new(&workspace_path)) else {
+                return Ok(());
+            };
+            let connection = self.database.connection();
+            crate::persistence::sessions::record_session_pr_branch(&connection, session_id, &branch)
+        })();
+        if let Err(error) = result {
+            tracing::warn!(%session_id, %error, "could not capture session PR branch");
+        }
     }
 
     /// When a tool's stdout contains a GitHub PR URL (typically `gh pr create`),
@@ -2835,33 +2862,19 @@ impl ProviderSessionService {
         let session_id = session_id.to_string();
         tauri::async_runtime::spawn(async move {
             let gh = GhService::new(Arc::clone(&service.database));
-            let known = gh.list_for_session(&session_id).unwrap_or_default();
-            let mut observed = false;
-            for number in numbers {
-                if known.iter().any(|row| row.pr_number == number) {
-                    continue;
-                }
-                match gh.refresh_pr_number(&session_id, number).await {
-                    Ok(_) => observed = true,
-                    Err(error) => tracing::warn!(
-                        %error,
-                        session_id,
-                        pr_number = number,
-                        "could not cache PR from command output"
-                    ),
-                }
-            }
-            if !observed {
+            // Refresh scans the persisted events with project identity intact.
+            // A bare PR number from another repository is not attribution.
+            if let Err(error) = gh.refresh(&session_id).await {
+                tracing::warn!(%error, %session_id, "could not cache PR from command output");
                 return;
             }
-            let workspace = {
+            let workspaces = {
                 let connection = service.database.connection();
-                find_session_by_id(&connection, &session_id)
-                    .and_then(|session| find_workspace_by_id(&connection, &session.workspace_id))
+                crate::gh::workspaces_for_pr_refresh(&connection, &session_id)
             };
-            match workspace {
-                Ok(workspace) => service.publish(DashboardDelta {
-                    workspaces: vec![workspace],
+            match workspaces {
+                Ok(workspaces) => service.publish(DashboardDelta {
+                    workspaces,
                     ..DashboardDelta::default()
                 }),
                 Err(error) => tracing::warn!(
@@ -3005,6 +3018,21 @@ impl ProviderSessionService {
 /// tracing-format output, per-item provider errors — and treating them as
 /// terminal ran a synchronous subagent-trace sweep on the PTY reader thread for
 /// every one. The real process-exit path reconciles unconditionally.
+fn checkout_head_branch(workspace_path: &std::path::Path) -> Option<String> {
+    let dot_git = workspace_path.join(".git");
+    let git_dir = if dot_git.is_dir() {
+        dot_git
+    } else {
+        let pointer = std::fs::read_to_string(dot_git).ok()?;
+        workspace_path.join(pointer.trim().strip_prefix("gitdir:")?.trim())
+    };
+    let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
+    head.trim()
+        .strip_prefix("ref: refs/heads/")
+        .filter(|branch| !branch.is_empty())
+        .map(str::to_owned)
+}
+
 fn delta_has_session_completed_event(delta: &DashboardDelta) -> bool {
     delta
         .events
@@ -3177,6 +3205,30 @@ pub struct SendInputResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pr_branch_capture_reads_checkout_and_linked_worktree_heads() {
+        let directory = tempfile::tempdir().unwrap();
+        let checkout = directory.path().join("checkout");
+        let linked = directory.path().join("linked");
+        let metadata = checkout.join(".git/worktrees/linked");
+        std::fs::create_dir_all(&metadata).unwrap();
+        std::fs::create_dir_all(&linked).unwrap();
+        std::fs::write(checkout.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(
+            linked.join(".git"),
+            "gitdir: ../checkout/.git/worktrees/linked\n",
+        )
+        .unwrap();
+        std::fs::write(metadata.join("HEAD"), "ref: refs/heads/feature/final\n").unwrap();
+        assert_eq!(checkout_head_branch(&checkout).as_deref(), Some("main"));
+        assert_eq!(
+            checkout_head_branch(&linked).as_deref(),
+            Some("feature/final")
+        );
+        std::fs::write(metadata.join("HEAD"), "0123456789abcdef\n").unwrap();
+        assert_eq!(checkout_head_branch(&linked), None);
+    }
 
     #[test]
     fn queued_follow_up_keeps_native_agent_references() {

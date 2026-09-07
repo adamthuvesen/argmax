@@ -175,23 +175,21 @@ pub(crate) fn live_database(state: &AppState) -> ArgmaxResult<Arc<Database>> {
     })
 }
 
-/// Re-read the session's workspace (PR fields included) and push it so the
-/// sidebar marker updates as soon as `gh_pr` does. Missing workspace service
+/// Push affected PR workspace summaries as soon as `gh_pr` changes. Missing workspace service
 /// is a no-op: boot has not finished installing publishers yet.
-pub(crate) fn publish_workspace_for_session(
+pub(crate) fn publish_pr_workspaces_for_session(
     state: &AppState,
     session_id: &str,
 ) -> ArgmaxResult<()> {
     let Some(workspaces) = state.workspaces.get().cloned() else {
         return Ok(());
     };
-    let workspace = {
+    let affected = {
         let database = live_database(state)?;
         let conn = database.connection();
-        let session = crate::persistence::sessions::find_session_by_id(&conn, session_id)?;
-        crate::persistence::workspaces::find_workspace_by_id(&conn, &session.workspace_id)?
+        crate::gh::workspaces_for_pr_refresh(&conn, session_id)?
     };
-    workspaces.publish_workspaces(vec![workspace]);
+    workspaces.publish_workspaces(affected);
     Ok(())
 }
 

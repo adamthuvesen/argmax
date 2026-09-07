@@ -8,9 +8,13 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::git::ops::{extract_pr_number, extract_pr_url};
+use crate::git::ops::{extract_github_remote_from_url, extract_pr_number, extract_pr_url};
 use crate::persistence::database::Database;
-use crate::persistence::gh::{list_gh_pr_for_session, upsert_gh_pr, GhPrRecord};
+use crate::persistence::gh::{
+    list_gh_pr_for_session, pr_branch_for_session, record_gh_pr_observation, GhPrRecord,
+    PrAttribution,
+};
+use crate::persistence::projects::{get_project_remote, ProjectRemote};
 use crate::persistence::sessions::find_session_by_id;
 use crate::persistence::time::now_iso;
 use crate::persistence::workspaces::find_workspace_by_id;
@@ -70,11 +74,13 @@ impl GhService {
                 .filter(|row| !matches!(row.pr_state.as_deref(), Some("MERGED") | Some("CLOSED")))
                 .map(|row| row.pr_number)
                 .collect::<Vec<_>>();
-            let mentioned_numbers = command_pr_numbers_from_db(&conn, session_id)?;
+            let mentioned_numbers =
+                command_pr_numbers_from_db(&conn, session_id, &workspace.project_id)?;
+            let branch = pr_branch_for_session(&conn, session_id)?;
             (
                 workspace.project_id,
                 workspace.path,
-                workspace.branch,
+                branch,
                 open_numbers,
                 mentioned_numbers,
             )
@@ -87,22 +93,37 @@ impl GhService {
         }
 
         let mut viewed = HashSet::new();
-        // Pass the workspace's own branch so a shared checkout that has since
-        // moved still resolves the PR this session is sitting on — `gh pr view`
-        // with no ref uses whatever HEAD the directory currently has.
-        if let Some(parsed) = self
-            .view_pr(&workspace_path, Some(branch.as_str()), session_id)
-            .await
-        {
-            if let Some(pr_number) = parsed.number {
-                viewed.insert(pr_number);
+        let mentioned_set = mentioned_numbers.iter().copied().collect::<HashSet<_>>();
+        // A shared checkout's live branch can change after the session ends.
+        // Persistence only returns a branch captured while it was trustworthy
+        // for this session.
+        if let Some(branch) = branch {
+            if let Some(parsed) = self
+                .view_pr(&workspace_path, Some(branch.as_str()), session_id)
+                .await
+            {
+                let attribution = parsed
+                    .number
+                    .filter(|number| mentioned_set.contains(number))
+                    .map_or(PrAttribution::Inferred, |_| PrAttribution::Explicit);
+                if let Some(pr_number) = parsed.number {
+                    viewed.insert(pr_number);
+                }
+                self.record_view(session_id, &workspace_project_id, parsed, attribution)?;
             }
-            self.upsert_view(session_id, &workspace_project_id, parsed)?;
         }
 
-        for pr_number in open_numbers
+        // Command output is direct evidence that this session touched the PR.
+        // Process it before cached rows so a legacy inferred association is
+        // promoted even when both sources name the same number.
+        for (pr_number, attribution) in mentioned_numbers
             .into_iter()
-            .chain(mentioned_numbers)
+            .map(|number| (number, PrAttribution::Explicit))
+            .chain(
+                open_numbers
+                    .into_iter()
+                    .map(|number| (number, PrAttribution::Inferred)),
+            )
             .take(MAX_OPEN_PR_NUMBER_VIEWS)
         {
             if !viewed.insert(pr_number) {
@@ -112,7 +133,7 @@ impl GhService {
                 .view_pr(&workspace_path, Some(&pr_number.to_string()), session_id)
                 .await
             {
-                self.upsert_view(session_id, &workspace_project_id, parsed)?;
+                self.record_view(session_id, &workspace_project_id, parsed, attribution)?;
             }
         }
 
@@ -141,7 +162,12 @@ impl GhService {
             .view_pr(&workspace_path, Some(&pr_number.to_string()), session_id)
             .await
         {
-            self.upsert_view(session_id, &workspace_project_id, parsed)?;
+            self.record_view(
+                session_id,
+                &workspace_project_id,
+                parsed,
+                PrAttribution::Explicit,
+            )?;
         }
         self.list_for_session(session_id)
     }
@@ -182,11 +208,12 @@ impl GhService {
         serde_json::from_str(stdout.trim()).ok()
     }
 
-    fn upsert_view(
+    fn record_view(
         &self,
         session_id: &str,
         workspace_project_id: &str,
         parsed: PrViewResponse,
+        attribution: PrAttribution,
     ) -> ArgmaxResult<()> {
         let Some(pr_number) = parsed.number else {
             return Ok(());
@@ -208,7 +235,7 @@ impl GhService {
             head_ref_name: parsed.head_ref_name.filter(|name| !name.is_empty()),
         };
         let conn = self.database.connection();
-        upsert_gh_pr(&conn, &record)?;
+        record_gh_pr_observation(&conn, &record, attribution)?;
         if let Some(url) = parsed.url.as_deref() {
             if let Some(remote) = crate::git::ops::extract_github_remote_from_url(url) {
                 let _ = crate::persistence::projects::update_project_remote(
@@ -226,6 +253,18 @@ impl GhService {
 /// notice `gh pr create` (and similar) without waiting for the poller, which
 /// only views `workspace.branch`.
 pub fn pr_numbers_from_command_event(event_type: &str, message: &str, payload: &Value) -> Vec<i64> {
+    let mut numbers = Vec::new();
+    for url in pr_urls_from_command_event(event_type, message, payload) {
+        if let Some(number) = extract_pr_number(&url) {
+            if !numbers.contains(&number) {
+                numbers.push(number);
+            }
+        }
+    }
+    numbers
+}
+
+fn pr_urls_from_command_event(event_type: &str, message: &str, payload: &Value) -> Vec<String> {
     if event_type != "command.completed" {
         return Vec::new();
     }
@@ -238,20 +277,18 @@ pub fn pr_numbers_from_command_event(event_type: &str, message: &str, payload: &
         push_scan_text(&mut text, output);
     }
     let scan = tail_str(&text, COMMAND_EVENT_SCAN_TAIL);
-    let mut numbers = Vec::new();
+    let mut urls = Vec::new();
     let mut rest = scan;
     while let Some(url) = extract_pr_url(rest) {
-        if let Some(number) = extract_pr_number(&url) {
-            if !numbers.contains(&number) {
-                numbers.push(number);
-            }
+        if !urls.contains(&url) {
+            urls.push(url.clone());
         }
         let Some(next) = rest.find(&url).map(|at| at + url.len()) else {
             break;
         };
         rest = &rest[next..];
     }
-    numbers
+    urls
 }
 
 fn push_scan_text(into: &mut String, chunk: &str) {
@@ -267,7 +304,9 @@ fn push_scan_text(into: &mut String, chunk: &str) {
 fn command_pr_numbers_from_db(
     connection: &rusqlite::Connection,
     session_id: &str,
+    project_id: &str,
 ) -> ArgmaxResult<Vec<i64>> {
+    let project_remote = get_project_remote(connection, project_id)?;
     let mut statement = connection
         .prepare_cached(
             r#"
@@ -289,13 +328,27 @@ fn command_pr_numbers_from_db(
         let message: String = row.get(0).map_err(crate::persistence::sqlite_error)?;
         let payload_json: String = row.get(1).map_err(crate::persistence::sqlite_error)?;
         let payload: Value = serde_json::from_str(&payload_json).unwrap_or(Value::Null);
-        for number in pr_numbers_from_command_event("command.completed", &message, &payload) {
-            if !numbers.contains(&number) {
-                numbers.push(number);
+        for url in pr_urls_from_command_event("command.completed", &message, &payload) {
+            if url_matches_project_remote(&url, project_remote.as_ref()) {
+                if let Some(number) = extract_pr_number(&url) {
+                    if !numbers.contains(&number) {
+                        numbers.push(number);
+                    }
+                }
             }
         }
     }
     Ok(numbers)
+}
+
+fn url_matches_project_remote(url: &str, expected: Option<&ProjectRemote>) -> bool {
+    let Some(expected) = expected else {
+        return false;
+    };
+    extract_github_remote_from_url(url).is_some_and(|actual| {
+        actual.owner.eq_ignore_ascii_case(&expected.owner)
+            && actual.name.eq_ignore_ascii_case(&expected.name)
+    })
 }
 
 fn tail_str(text: &str, max_bytes: usize) -> &str {
@@ -605,7 +658,7 @@ mod tests {
         // Pre-seed an existing row so list_for_session has something to read.
         {
             let conn = database.connection();
-            upsert_gh_pr(
+            record_gh_pr_observation(
                 &conn,
                 &GhPrRecord {
                     session_id: session_id.clone(),
@@ -619,6 +672,7 @@ mod tests {
                     pr_merged_at: None,
                     head_ref_name: None,
                 },
+                PrAttribution::Explicit,
             )
             .expect("seed gh_pr");
         }
@@ -711,7 +765,7 @@ mod tests {
         // "nuked the cache".
         {
             let conn = database.connection();
-            upsert_gh_pr(
+            record_gh_pr_observation(
                 &conn,
                 &GhPrRecord {
                     session_id: session_id.clone(),
@@ -725,6 +779,7 @@ mod tests {
                     pr_merged_at: None,
                     head_ref_name: None,
                 },
+                PrAttribution::Explicit,
             )
             .expect("seed gh_pr");
         }
@@ -749,7 +804,7 @@ mod tests {
         let (session_id, _) = fixture(&database, "/tmp/argmax-gh-number");
         {
             let conn = database.connection();
-            upsert_gh_pr(
+            record_gh_pr_observation(
                 &conn,
                 &GhPrRecord {
                     session_id: session_id.clone(),
@@ -763,6 +818,7 @@ mod tests {
                     pr_merged_at: None,
                     head_ref_name: Some("fix/other-worktree".to_string()),
                 },
+                PrAttribution::Explicit,
             )
             .expect("seed gh_pr");
         }
@@ -799,6 +855,101 @@ mod tests {
                 "number,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt,url",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn refresh_updates_known_shared_pr_after_checkout_branch_changes() {
+        let (_dir, database) = open_db();
+        let (session_id, _) = fixture(&database, "/tmp/argmax-gh-shared-known");
+        {
+            let conn = database.connection();
+            conn.execute(
+                "UPDATE workspaces SET shared_workspace = 1 WHERE id = 'w1'",
+                [],
+            )
+            .expect("mark workspace shared");
+            conn.execute(
+                "UPDATE sessions SET pr_branch_at_start = 'feature/x', pr_branch_last_active = 'feature/x' WHERE id = 's1'",
+                [],
+            )
+            .expect("capture session branch");
+            record_gh_pr_observation(
+                &conn,
+                &GhPrRecord {
+                    session_id: session_id.clone(),
+                    pr_number: 568,
+                    head_sha: "oldsha".to_string(),
+                    last_seen_check_state: "pending".to_string(),
+                    updated_at: now_iso(),
+                    pr_state: Some("OPEN".to_string()),
+                    notified_at: None,
+                    pr_created_at: Some("2026-05-24T08:00:00Z".to_string()),
+                    pr_merged_at: None,
+                    head_ref_name: Some("feature/x".to_string()),
+                },
+                PrAttribution::Inferred,
+            )
+            .expect("seed inferred PR");
+            conn.execute(
+                "UPDATE sessions SET state = 'complete', completed_at = '2026-05-24T09:00:00Z' WHERE id = 's1'",
+                [],
+            )
+            .expect("complete session");
+            conn.execute(
+                "UPDATE workspaces SET branch = 'unrelated/later' WHERE id = 'w1'",
+                [],
+            )
+            .expect("move shared checkout");
+        }
+
+        let stub = StubRunner::new(vec![
+            Err(ArgmaxError::service(
+                "GH_NON_ZERO_EXIT",
+                "no pull requests found for branch feature/x",
+            )),
+            Ok(r#"{
+                "number": 568,
+                "headRefOid": "newsha",
+                "headRefName": "feature/x",
+                "state": "MERGED",
+                "mergedAt": "2026-05-24T10:00:00Z",
+                "statusCheckRollup": [{"conclusion": "success"}]
+            }"#
+            .to_string()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let rows = service.refresh(&session_id).await.expect("refresh");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].head_sha, "newsha");
+        assert_eq!(rows[0].pr_state.as_deref(), Some("MERGED"));
+        assert_eq!(stub.call_count(), 2);
+        assert_eq!(stub.last_args()[2], "568");
+    }
+
+    #[tokio::test]
+    async fn completed_shared_session_does_not_view_an_unknown_later_branch() {
+        let (_dir, database) = open_db();
+        let (session_id, _) = fixture(&database, "/tmp/argmax-gh-shared-later");
+        {
+            let conn = database.connection();
+            conn.execute(
+                "UPDATE workspaces SET shared_workspace = 1, branch = 'later/pr-branch' WHERE id = 'w1'",
+                [],
+            )
+            .expect("move shared checkout");
+            conn.execute(
+                "UPDATE sessions SET state = 'complete', completed_at = '2026-05-24T09:00:00Z', pr_branch_at_start = NULL, pr_branch_last_active = NULL WHERE id = 's1'",
+                [],
+            )
+            .expect("complete session without branch evidence");
+        }
+        let stub = StubRunner::new(vec![Ok(success_payload(184, "later", "success"))]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let rows = service.refresh(&session_id).await.expect("refresh");
+        assert!(rows.is_empty());
+        assert_eq!(stub.call_count(), 0);
     }
 
     #[tokio::test]
@@ -843,6 +994,25 @@ mod tests {
         let (session_id, _) = fixture(&database, "/tmp/argmax-gh-from-command");
         {
             let conn = database.connection();
+            crate::persistence::projects::update_project_remote(
+                &conn,
+                "p1",
+                Some(&ProjectRemote {
+                    owner: "mentimeter".to_string(),
+                    name: "revops-backoffice".to_string(),
+                }),
+            )
+            .expect("project remote");
+            conn.execute(
+                "UPDATE workspaces SET shared_workspace = 1, branch = 'later/branch' WHERE id = 'w1'",
+                [],
+            )
+            .expect("mark workspace shared");
+            conn.execute(
+                "UPDATE sessions SET state = 'complete', completed_at = '2026-05-24T09:00:00Z', pr_branch_at_start = NULL, pr_branch_last_active = NULL WHERE id = 's1'",
+                [],
+            )
+            .expect("complete session without branch evidence");
             persist_timeline_event(
                 &conn,
                 &PersistTimelineEventInput {
@@ -858,20 +1028,14 @@ mod tests {
             )
             .expect("command event");
         }
-        let stub = StubRunner::new(vec![
-            Err(ArgmaxError::service(
-                "GH_NON_ZERO_EXIT",
-                "no pull requests found for branch feature/x",
-            )),
-            Ok(r#"{
+        let stub = StubRunner::new(vec![Ok(r#"{
                 "number": 568,
                 "headRefOid": "head568",
                 "headRefName": "fix/ai-discoverability-headline-metric",
                 "state": "OPEN",
                 "statusCheckRollup": [{"conclusion": "pending"}]
             }"#
-            .to_string()),
-        ]);
+        .to_string())]);
         let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
         let rows = service.refresh(&session_id).await.expect("refresh");
         assert_eq!(rows.len(), 1);
@@ -881,7 +1045,63 @@ mod tests {
             Some("fix/ai-discoverability-headline-metric")
         );
         assert_eq!(rows[0].pr_state.as_deref(), Some("OPEN"));
-        assert_eq!(stub.call_count(), 2);
+        assert_eq!(stub.call_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn refresh_ignores_command_pr_url_for_another_project() {
+        let (_dir, database) = open_db();
+        let (session_id, _) = fixture(&database, "/tmp/argmax-gh-foreign-command");
+        {
+            let conn = database.connection();
+            crate::persistence::projects::update_project_remote(
+                &conn,
+                "p1",
+                Some(&ProjectRemote {
+                    owner: "menti".to_string(),
+                    name: "argmax".to_string(),
+                }),
+            )
+            .expect("project remote");
+            conn.execute(
+                "UPDATE workspaces SET shared_workspace = 1 WHERE id = 'w1'",
+                [],
+            )
+            .expect("mark workspace shared");
+            conn.execute(
+                "UPDATE sessions SET state = 'complete', completed_at = '2026-05-24T09:00:00Z', pr_branch_at_start = NULL, pr_branch_last_active = NULL WHERE id = 's1'",
+                [],
+            )
+            .expect("complete session without branch evidence");
+            persist_timeline_event(
+                &conn,
+                &PersistTimelineEventInput {
+                    id: "e-foreign".to_string(),
+                    session_id: session_id.clone(),
+                    r#type: "command.completed".to_string(),
+                    message: "tool_result".to_string(),
+                    payload: serde_json::json!({
+                        "content": "https://github.com/other/repository/pull/184"
+                    }),
+                    created_at: None,
+                },
+            )
+            .expect("command event");
+        }
+        let stub = StubRunner::new(Vec::new());
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let rows = service.refresh(&session_id).await.expect("refresh");
+        assert!(rows.is_empty());
+        assert_eq!(stub.call_count(), 0);
+    }
+
+    #[test]
+    fn unknown_project_remote_rejects_command_pr_url() {
+        assert!(!url_matches_project_remote(
+            "https://github.com/other/repository/pull/184",
+            None,
+        ));
     }
 
     #[test]

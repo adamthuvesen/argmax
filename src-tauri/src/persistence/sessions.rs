@@ -355,11 +355,13 @@ pub fn persist_session(
         INSERT INTO sessions (
           id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode,
           provider_conversation_id, prompt, state, attention, attention_changed_at,
-          started_at, completed_at, last_activity_at
+          started_at, completed_at, last_activity_at, pr_branch_at_start, pr_branch_last_active
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?,
           NULL, ?, ?, ?, ?,
-          ?, NULL, ?
+          ?, NULL, ?,
+          (SELECT NULLIF(branch, '') FROM workspaces WHERE id = ?),
+          (SELECT NULLIF(branch, '') FROM workspaces WHERE id = ?)
         )
         "#,
     )
@@ -380,6 +382,8 @@ pub fn persist_session(
             timestamp.as_str(),
             timestamp.as_str(),
             timestamp.as_str(),
+            input.workspace_id.as_str(),
+            input.workspace_id.as_str(),
         ))
         .map_err(sqlite_error)?;
     find_session_by_id(connection, &input.id)
@@ -559,7 +563,15 @@ pub fn update_session_state(
         UPDATE sessions
         SET state = ?1, completed_at = ?2, last_activity_at = ?3,
             attention_changed_at = CASE WHEN attention = ?4 THEN attention_changed_at ELSE ?3 END,
-            attention = ?4
+            attention = ?4,
+            pr_branch_last_active = CASE
+              WHEN ?1 IN ('running', 'waiting', 'blocked')
+                THEN COALESCE(
+                  (SELECT NULLIF(branch, '') FROM workspaces WHERE id = sessions.workspace_id),
+                  pr_branch_last_active
+                )
+              ELSE pr_branch_last_active
+            END
         WHERE id = ?5
         "#,
         )
@@ -660,7 +672,21 @@ pub fn update_session_last_activity(
     last_activity_at: &str,
 ) -> ArgmaxResult<SessionSummary> {
     let mut statement = connection
-        .prepare_cached("UPDATE sessions SET last_activity_at = ? WHERE id = ?")
+        .prepare_cached(
+            r#"
+            UPDATE sessions
+            SET last_activity_at = ?,
+                pr_branch_last_active = CASE
+                  WHEN state IN ('running', 'waiting', 'blocked')
+                    THEN COALESCE(
+                      (SELECT NULLIF(branch, '') FROM workspaces WHERE id = sessions.workspace_id),
+                      pr_branch_last_active
+                    )
+                  ELSE pr_branch_last_active
+                END
+            WHERE id = ?
+            "#,
+        )
         .map_err(sqlite_error)?;
     let changes = statement
         .execute((last_activity_at, session_id))
@@ -669,6 +695,40 @@ pub fn update_session_last_activity(
         return Err(ArgmaxError::record_not_found("session", session_id));
     }
     find_session_by_id(connection, session_id)
+}
+
+/// Store a branch read directly from the session's checkout. Callers take the
+/// snapshot before a terminal state write; after that write this becomes a
+/// no-op, so later activity in a shared checkout cannot rewrite history.
+pub fn record_session_pr_branch(
+    connection: &Connection,
+    session_id: &str,
+    branch: &str,
+) -> ArgmaxResult<()> {
+    let changes = connection
+        .prepare_cached(
+            r#"
+            UPDATE sessions
+            SET pr_branch_at_start = COALESCE(pr_branch_at_start, NULLIF(?1, '')),
+                pr_branch_last_active = NULLIF(?1, '')
+            WHERE id = ?2
+              AND state IN ('running', 'waiting', 'blocked')
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((branch, session_id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        let exists = connection
+            .prepare_cached("SELECT 1 FROM sessions WHERE id = ?")
+            .map_err(sqlite_error)?
+            .exists([session_id])
+            .map_err(sqlite_error)?;
+        if !exists {
+            return Err(ArgmaxError::record_not_found("session", session_id));
+        }
+    }
+    Ok(())
 }
 
 pub fn list_session_ids_for_workspace(

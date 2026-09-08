@@ -17,8 +17,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { tryFit } from "./xtermFit.js";
 import { resolveMonoFontStack, resolveTerminalFontSize } from "./fonts.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
-import { getXtermTheme, readActiveXtermTheme } from "./xtermTheme.js";
-import { themeAppearance } from "./theme.js";
+import { readActiveXtermTheme } from "./xtermTheme.js";
 import { errorMessage } from "../../shared/error.js";
 import { registerTerminalTabDisposer } from "./terminalTabs.js";
 import "@xterm/xterm/css/xterm.css";
@@ -43,8 +42,7 @@ function boundedDimension(value: number, min: number, max: number, fallback: num
 }
 
 function syncTerminalAppearance(term: Terminal): void {
-  const attr = document.documentElement.getAttribute("data-theme");
-  term.options.theme = getXtermTheme(themeAppearance(attr));
+  term.options.theme = readActiveXtermTheme();
   term.options.fontFamily = resolveMonoFontStack();
   term.options.fontSize = resolveTerminalFontSize();
 }
@@ -114,6 +112,13 @@ export function attachTerminalTab(
     fontFamily: resolveMonoFontStack(),
     fontSize: resolveTerminalFontSize(),
     lineHeight: 1.2,
+    // A block cursor fills the whole cell, and at lineHeight 1.2 that is a
+    // slab taller than the glyphs beside it. A 2px bar marks the same spot
+    // without covering the character under it; unfocused falls back to
+    // xterm's hollow outline, which reads as "input lands here, elsewhere".
+    cursorStyle: "bar",
+    cursorWidth: 2,
+    cursorInactiveStyle: "outline",
     cursorBlink: true,
     theme: readActiveXtermTheme(),
     // Shell prompts often emit truecolor picked for another terminal's
@@ -139,11 +144,11 @@ export function attachTerminalTab(
   };
   runtimes.set(tabId, entry);
 
-  // Watch <html data-theme="..."> so the terminal palette flips live when
-  // the user toggles theme in Settings. data-font/data-font-size also feed
-  // xterm because it renders text outside normal CSS inheritance. The
-  // observer belongs to the runtime, not the component, so a detached
-  // terminal picks up theme changes too.
+  // Watch <html data-theme="..."> so the terminal palette flips live when the
+  // user toggles theme in Settings, and data-accent so the caret follows the
+  // chosen accent. data-font/data-font-size also feed xterm because it renders
+  // text outside normal CSS inheritance. The observer belongs to the runtime,
+  // not the component, so a detached terminal picks up theme changes too.
   const appearanceObserver = new MutationObserver(() => {
     syncTerminalAppearance(term);
     tryFit(fit);
@@ -151,7 +156,7 @@ export function attachTerminalTab(
   });
   appearanceObserver.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["data-theme", "data-font", "data-font-size"]
+    attributeFilter: ["data-theme", "data-accent", "data-font", "data-font-size"]
   });
   entry.cleanups.push(() => appearanceObserver.disconnect());
 

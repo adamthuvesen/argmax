@@ -34,6 +34,7 @@ Terminal state persists across session switches:
 - **xterm runtime:** [src/renderer/lib/terminalRuntime.ts](../src/renderer/lib/terminalRuntime.ts) manages lazy xterm instances and PTY event listeners. Each instance attaches to a host `<div>` that reparents when panes mount or unmount.
 - **Resource limits:** Scrollback is capped at 5,000 lines. At most 6 workspaces (`MAX_TERMINAL_WORKSPACES`) retain running terminals; exceeding this evicts the least recently used unmounted workspace.
 - **Contrast:** The xterm theme sets `minimumContrastRatio: 4.5` ([terminalRuntime.ts](../src/renderer/lib/terminalRuntime.ts)) to ensure prompt readability.
+- **Caret:** A 2px bar in the user's `--accent`, not xterm's default block — a block fills the whole cell, and at `lineHeight: 1.2` that is a slab taller than the glyphs beside it, covering the character it sits on. Unfocused falls back to xterm's hollow outline. The caret is the one terminal color that isn't shell output, so [xtermTheme.ts](../src/renderer/lib/xtermTheme.ts) reads `--accent` live and the appearance observer watches `data-accent` alongside `data-theme`. A shell that sets its own shape (DECSCUSR, vi-mode, a TUI) still wins.
 
 Panes are keyed by session, so the review panel's mode dies on every session switch. The `showing` flag in the store is what survives it: [useReviewState.ts](../src/renderer/hooks/useReviewState.ts) seeds its initial mode from that flag and writes back what the panel shows. Nothing else reads it.
 

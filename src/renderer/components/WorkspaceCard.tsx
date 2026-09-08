@@ -11,7 +11,7 @@ import {
   SquareTerminal,
   X
 } from "lucide-react";
-import { useEffect, useState, type JSX, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type JSX, type MouseEvent, type ReactNode } from "react";
 import { errorMessage } from "../../shared/error.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
@@ -121,7 +121,9 @@ export function WorkspaceCard({
       aria-label="Workspace"
     >
       <div className="workspace-card-branch" title={`Branch ${workspace.branch} · from ${workspace.baseRef}`}>
-        <GitBranch size={13} aria-hidden="true" />
+        <span className="workspace-card-row-icon" aria-hidden="true">
+          <GitBranch size={13} />
+        </span>
         <div className="workspace-card-branch-text">
           <button
             type="button"
@@ -130,19 +132,21 @@ export function WorkspaceCard({
             title={branchCopyTitle}
             onClick={() => void copyBranch(workspace.branch)}
           >
-            {workspace.branch}
+            {branchWithBreakOpportunities(workspace.branch)}
           </button>
-          <span className="workspace-card-base">from {workspace.baseRef}</span>
+          <div className="workspace-card-branch-base">
+            <span className="workspace-card-base">from {workspace.baseRef}</span>
+            <button
+              type="button"
+              className="workspace-card-hide"
+              title="Hide workspace card"
+              aria-label="Hide workspace card"
+              onClick={onHide}
+            >
+              <X size={12} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          className="workspace-card-hide"
-          title="Hide workspace card"
-          aria-label="Hide workspace card"
-          onClick={onHide}
-        >
-          <X size={12} aria-hidden="true" />
-        </button>
       </div>
 
       <div className="workspace-card-rows">
@@ -282,6 +286,22 @@ function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster;
       )}
     </section>
   );
+}
+
+/** A branch name may run to two lines in the header. Left to itself the
+ *  browser would break it mid-word wherever the line ran out; a `<wbr>` after
+ *  each slash and hyphen lets it fold at the seams a branch name already has
+ *  (`adam/` then `feat-approvals-and-chat`). `overflow-wrap: anywhere` in the
+ *  CSS still catches a single segment longer than the line. */
+function branchWithBreakOpportunities(branch: string): ReactNode {
+  const segments = branch.split(/(?<=[/-])/);
+  if (segments.length === 1) return branch;
+  return segments.map((segment, index) => (
+    <Fragment key={index}>
+      {segment}
+      {index < segments.length - 1 ? <wbr /> : null}
+    </Fragment>
+  ));
 }
 
 /** The PR row states itself in the icon GitHub uses for that state — sage open,

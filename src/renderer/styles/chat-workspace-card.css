@@ -5,8 +5,14 @@
 
 .workspace-card {
   --workspace-card-width: 224px;
-  --workspace-card-inset: 8px;
+  --workspace-card-inset: 10px;
   --workspace-card-row-gap: 10px;
+  /* One fixed icon column, sized to the widest mark in it (the 18px subagent
+     chip). Every 13px row icon and the header's branch mark center in the
+     same column, so the labels, the base ref and the chip stack all start
+     on one x. */
+  --workspace-card-icon-slot: 18px;
+  --workspace-card-row-inset: var(--space-2);
   position: absolute;
   top: 2px;
   /* Same inset as the header's action cluster (`.section-heading` runs a 20px
@@ -21,7 +27,7 @@
   padding: var(--workspace-card-inset);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-2);
   animation: surface-in var(--motion-base) var(--ease-out);
 }
@@ -133,40 +139,41 @@
   }
 }
 
-/* Header: branch identity. The icon sits on the first line; the base ref
-   tucks under the branch name (not under the icon), so the two lines read
-   as one left-aligned block. The hairline below runs edge to edge, which
-   is what frames the header as a header rather than a first row. */
+/* Header: branch identity. The branch mark sits in the icon column; the name
+   and the base ref stack beside it as one left-aligned block. The name may
+   run to two lines (folding at the `<wbr>`s WorkspaceCard plants after each
+   slash and hyphen) before it ellipsizes, so a normal-length branch is
+   readable in full instead of ending in `…` after twenty characters. The
+   hairline below runs edge to edge: it is the one full-bleed rule in the
+   card, and it is what frames the header as a header rather than a first
+   row. The dividers inside the body stay inset. */
 .workspace-card-branch {
   display: flex;
   align-items: flex-start;
-  /* Same gap and inline inset as the rows below (8px card inset + 8px row
-     padding), and a 13px icon to match theirs, so the branch name and the
-     row labels start on the same x. */
-  gap: var(--space-2);
-  margin: 0 calc(-1 * var(--workspace-card-inset)) var(--space-2);
-  padding: 4px calc(var(--workspace-card-inset) + var(--space-2)) var(--space-2);
+  gap: var(--workspace-card-row-gap);
+  margin: 0 calc(-1 * var(--workspace-card-inset)) var(--space-1_5);
+  padding: var(--space-1) calc(var(--workspace-card-inset) + var(--workspace-card-row-inset)) var(--space-2_5);
   color: var(--text);
   border-bottom: 1px solid var(--line-soft);
   font-size: var(--text-xs);
+  line-height: 1.4;
 }
 
-.workspace-card-branch > svg {
-  flex: none;
-  margin-top: 2px;
-  color: var(--muted);
+/* The mark centers on the first text line: (line box - icon) / 2 at 11px × 1.4. */
+.workspace-card-branch > .workspace-card-row-icon {
+  height: calc(var(--text-xs) * 1.4);
 }
 
 .workspace-card-branch-text {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
 }
 
 .workspace-card-branch-name {
-  display: block;
+  display: -webkit-box;
   width: 100%;
   min-width: 0;
   padding: 0;
@@ -180,8 +187,9 @@
   font-weight: 500;
   line-height: inherit;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   cursor: pointer;
   transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
 }
@@ -195,14 +203,27 @@
   box-shadow: var(--ring);
 }
 
+/* The base ref and the dismiss control share the header's second line. The
+   branch name is the one thing in the card that needs every pixel of width,
+   so the × lives beside "from main" (which never does) instead of taking a
+   slot out of the name's line. */
+.workspace-card-branch-base {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
 /* The dismiss control keeps its slot at rest so revealing it never reflows the
-   branch line. It fades in with the card, not into it. */
+   line. It fades in with the card, not into it. */
 .workspace-card-hide {
   display: grid;
   flex: none;
   place-items: center;
   width: 16px;
   height: 16px;
+  margin: -1px -2px;
   padding: 0;
   color: var(--muted);
   border: 0;
@@ -225,6 +246,7 @@
 }
 
 .workspace-card-base {
+  min-width: 0;
   color: var(--muted);
   font-size: var(--text-2xs);
   overflow: hidden;
@@ -232,47 +254,38 @@
   white-space: nowrap;
 }
 
-/* Two groups: where the work is (changes / files / terminal) and what happens
-   to it next (commit / PR). The rule between them runs edge to edge, matching
-   the header's, so the card reads as framed sections. */
+/* Body: where the work is (changes / files / terminal), what happens to it
+   next (commit / PR), then who is working alongside. The groups are divided
+   by inset hairlines with even air on both sides, so they read as one list
+   with pauses in it rather than three boxes stacked. */
 .workspace-card-rows {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
 .workspace-card-rows + .workspace-card-rows,
 .workspace-card-rows + .workspace-card-section {
-  margin-inline: calc(-1 * var(--workspace-card-inset));
-  padding-inline: var(--workspace-card-inset);
-}
-
-.workspace-card-rows + .workspace-card-rows {
-  margin-top: var(--workspace-card-inset);
-  padding-top: var(--workspace-card-inset);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
   border-top: 1px solid var(--line-soft);
 }
 
-/* The Subagents group (WorkspaceCard's SubagentsSection) follows the same
-   framed-section rhythm as the row groups: hairline above, label, then its
-   one quiet row. */
 .workspace-card-section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
 }
 
-.workspace-card-rows + .workspace-card-section {
-  margin-top: var(--workspace-card-inset);
-  padding-top: var(--workspace-card-inset);
-  border-top: 1px solid var(--line-soft);
-}
-
+/* An eyebrow over the roster: small caps and a little tracking, in the same
+   column as the row labels' icons. */
 .workspace-card-section-label {
-  padding: 2px var(--space-2) 0;
+  padding: var(--space-1) var(--workspace-card-row-inset) 0;
   color: var(--muted);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.04em;
+  font-size: var(--text-3xs);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .workspace-card-row {
@@ -280,8 +293,8 @@
   align-items: center;
   gap: var(--workspace-card-row-gap);
   width: 100%;
-  min-height: 30px;
-  padding: 5px var(--space-2);
+  min-height: 32px;
+  padding: var(--space-1_5) var(--workspace-card-row-inset);
   color: var(--text-soft);
   border: 0;
   border-radius: var(--radius-md);
@@ -311,13 +324,11 @@
   box-shadow: var(--ring);
 }
 
-.workspace-card-row:disabled {
-  cursor: default;
-}
-
+.workspace-card-row:disabled,
 .workspace-card-row:disabled:hover {
-  color: var(--text-soft);
+  color: var(--muted);
   background: transparent;
+  cursor: default;
 }
 
 .workspace-card-row:disabled:hover .workspace-card-row-icon {
@@ -328,6 +339,7 @@
   display: grid;
   flex: none;
   place-items: center;
+  width: var(--workspace-card-icon-slot);
   color: var(--muted);
   transition: color var(--motion-fast) var(--ease-out);
 }
@@ -342,7 +354,7 @@
 
 .workspace-card-row-meta {
   flex: none;
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -382,9 +394,9 @@
 .workspace-card-subagents {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  min-height: 30px;
-  padding: 5px var(--space-2);
+  gap: var(--workspace-card-row-gap);
+  min-height: 32px;
+  padding: var(--space-1_5) var(--workspace-card-row-inset);
   border: 0;
   color: inherit;
   background: transparent;

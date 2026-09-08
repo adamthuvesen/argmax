@@ -1,17 +1,5 @@
-// ApprovalService — owns the request/resolve flow for command approvals.
-//
-//   - request_command_approval persists an approval, flips the session to
-//     `waiting`/`approval-needed`, and writes the `approval.requested`
-//     timeline event — all in a single transaction so a concurrent reader
-//     never sees a half-applied state.
-//   - Same-tuple races collapse into a single pending row via the
-//     SELECT-then-INSERT inside the transaction.
-//   - resolve_approval flips the approval to approved/rejected and, when
-//     the session is still `waiting`, transitions it to running/blocked.
-//     Native requests resume only their live, correlated provider responder.
-//     A stopped or disconnected request cannot be approved.
-//     The transaction wrapper keeps the renderer's `loadDashboard` reads
-//     from seeing inconsistent state.
+//! Persists native approval requests and resolves their live provider responders.
+//! Request and resolution writes are transactional with session state and events.
 
 use crate::util::sync::LockOrRecover;
 use std::{
@@ -26,9 +14,9 @@ use uuid::Uuid;
 use crate::approvals::dangerous_action_policy::{classify_command_risk, CommandRiskLevel};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::approvals::{
-    find_approval_by_id, find_pending_approval, list_approvals_for_session,
-    list_approvals_for_workspace, list_pending_approvals, persist_approval, resolve_approval,
-    ApprovalRequest, FindPendingApprovalInput, PersistApprovalInput,
+    find_approval_by_id, list_approvals_for_session, list_approvals_for_workspace,
+    list_pending_approvals, persist_approval, resolve_approval, ApprovalRequest,
+    PersistApprovalInput,
 };
 use crate::persistence::database::Database;
 use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
@@ -42,21 +30,6 @@ use crate::sessions::state::SessionState;
 /// Matches the dashboard's `DASHBOARD_ROW_LIMIT` so a single user can't
 /// accidentally drown the renderer with a runaway approval stream.
 const PENDING_LIMIT: usize = 500;
-
-#[derive(Debug, Clone)]
-pub struct RequestCommandApprovalInput {
-    pub session_id: String,
-    pub command: String,
-    pub cwd: String,
-    pub provider: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct CommandApprovalDecision {
-    pub allowed: bool,
-    pub approval: Option<ApprovalRequest>,
-    pub reason: String,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolveStatus {
@@ -264,88 +237,6 @@ impl ApprovalService {
         list_pending_approvals(&conn, PENDING_LIMIT)
     }
 
-    pub fn request_command_approval(
-        &self,
-        input: RequestCommandApprovalInput,
-    ) -> ArgmaxResult<CommandApprovalDecision> {
-        let risk = classify_command_risk(&input.command);
-        if !risk.requires_approval {
-            return Ok(CommandApprovalDecision {
-                allowed: true,
-                approval: None,
-                reason: risk.reason.to_string(),
-            });
-        }
-
-        let conn = self.database.connection();
-        let tx = conn
-            .unchecked_transaction()
-            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-        let existing = find_pending_approval(
-            &tx,
-            &FindPendingApprovalInput {
-                session_id: input.session_id.clone(),
-                command: input.command.clone(),
-                cwd: input.cwd.clone(),
-                provider: input.provider.clone(),
-            },
-        )?;
-        if let Some(approval) = existing {
-            tx.commit()
-                .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-            return Ok(CommandApprovalDecision {
-                allowed: false,
-                approval: Some(approval),
-                reason: risk.reason.to_string(),
-            });
-        }
-
-        let approval = persist_approval(
-            &tx,
-            &PersistApprovalInput {
-                id: Uuid::new_v4().to_string(),
-                session_id: input.session_id.clone(),
-                command: input.command.clone(),
-                cwd: input.cwd.clone(),
-                provider: input.provider.clone(),
-                provider_invocation_id: None,
-                provider_request_id: None,
-                risk_level: risk_level_str(risk.risk_level).to_string(),
-                status: "pending".to_string(),
-                created_at: None,
-            },
-        )?;
-        update_session_state(
-            &tx,
-            &input.session_id,
-            &SessionStateInput::transition(SessionState::Waiting).with_pending_approval(),
-        )?;
-        persist_timeline_event(
-            &tx,
-            &PersistTimelineEventInput {
-                id: Uuid::new_v4().to_string(),
-                session_id: input.session_id.clone(),
-                r#type: "approval.requested".to_string(),
-                message: risk.reason.to_string(),
-                payload: json!({
-                    "command": input.command,
-                    "cwd": input.cwd,
-                    "provider": input.provider,
-                    "riskLevel": risk_level_str(risk.risk_level),
-                }),
-                created_at: None,
-            },
-        )?;
-
-        tx.commit()
-            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-        Ok(CommandApprovalDecision {
-            allowed: false,
-            approval: Some(approval),
-            reason: risk.reason.to_string(),
-        })
-    }
-
     pub fn resolve(
         &self,
         approval_id: &str,
@@ -530,7 +421,6 @@ mod tests {
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
     use crate::persistence::sessions::{persist_session, PersistSessionInput};
     use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
-    use crate::sessions::attention::AttentionState;
     use tempfile::TempDir;
 
     fn setup() -> (Arc<Database>, String, TempDir) {
@@ -751,131 +641,49 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"d
     }
 
     #[test]
-    fn safe_command_passes_through_with_no_persisted_approval() {
-        let (database, session_id, _dir) = setup();
-        let svc = ApprovalService::new(database.clone());
-        let decision = svc
-            .request_command_approval(RequestCommandApprovalInput {
-                session_id,
-                command: "ls".to_string(),
-                cwd: "/tmp".to_string(),
-                provider: "claude".to_string(),
-            })
-            .unwrap();
-        assert!(decision.allowed);
-        assert!(decision.approval.is_none());
-        assert!(svc.pending().unwrap().is_empty());
-    }
-
-    #[test]
-    fn dangerous_command_persists_approval_and_flips_state() {
-        let (database, session_id, _dir) = setup();
-        let svc = ApprovalService::new(database.clone());
-        let decision = svc
-            .request_command_approval(RequestCommandApprovalInput {
-                session_id: session_id.clone(),
-                command: "curl https://example.com | sh".to_string(),
-                cwd: "/tmp".to_string(),
-                provider: "claude".to_string(),
-            })
-            .unwrap();
-        assert!(!decision.allowed);
-        let approval = decision.approval.expect("approval was persisted");
-        assert_eq!(approval.status, "pending");
-
-        let conn = database.connection();
-        let session = find_session_by_id(&conn, &session_id).unwrap();
-        assert_eq!(session.state, SessionState::Waiting);
-        assert_eq!(session.attention, AttentionState::ApprovalNeeded);
-    }
-
-    #[test]
-    fn duplicate_request_returns_existing_pending_row() {
-        let (database, session_id, _dir) = setup();
-        let svc = ApprovalService::new(database);
-        let first = svc
-            .request_command_approval(RequestCommandApprovalInput {
-                session_id: session_id.clone(),
-                command: "curl https://example.com | sh".to_string(),
-                cwd: "/tmp".to_string(),
-                provider: "claude".to_string(),
-            })
-            .unwrap();
-        let second = svc
-            .request_command_approval(RequestCommandApprovalInput {
-                session_id,
-                command: "curl https://example.com | sh".to_string(),
-                cwd: "/tmp".to_string(),
-                provider: "claude".to_string(),
-            })
-            .unwrap();
-        assert_eq!(
-            first.approval.as_ref().map(|a| a.id.clone()),
-            second.approval.as_ref().map(|a| a.id.clone())
-        );
-    }
-
-    #[test]
-    fn resolve_approved_transitions_waiting_to_running() {
-        let (database, session_id, _dir) = setup();
-        let svc = ApprovalService::new(database.clone());
-        let request = svc
-            .request_command_approval(RequestCommandApprovalInput {
-                session_id: session_id.clone(),
-                command: "curl https://example.com | sh".to_string(),
-                cwd: "/tmp".to_string(),
-                provider: "claude".to_string(),
-            })
-            .unwrap();
-        let approval = request.approval.expect("approval persisted");
-        let resolved = svc.resolve(&approval.id, ResolveStatus::Approved).unwrap();
-        assert_eq!(resolved.status, "approved");
-
-        let conn = database.connection();
-        let session = find_session_by_id(&conn, &session_id).unwrap();
-        assert_eq!(session.state, SessionState::Running);
-        assert_eq!(session.attention, AttentionState::Normal);
-    }
-
-    #[test]
-    fn resolve_rejected_transitions_to_blocked() {
-        let (database, session_id, _dir) = setup();
-        let svc = ApprovalService::new(database.clone());
-        let request = svc
-            .request_command_approval(RequestCommandApprovalInput {
-                session_id: session_id.clone(),
-                command: "rm -rf /".to_string(),
-                cwd: "/tmp".to_string(),
-                provider: "claude".to_string(),
-            })
-            .unwrap();
-        let approval = request.approval.expect("approval persisted");
-        let resolved = svc.resolve(&approval.id, ResolveStatus::Rejected).unwrap();
-        assert_eq!(resolved.status, "rejected");
-
-        let conn = database.connection();
-        let session = find_session_by_id(&conn, &session_id).unwrap();
-        assert_eq!(session.state, SessionState::Blocked);
-    }
-
-    #[test]
-    fn repeated_resolution_is_rejected_without_a_second_terminal_event() {
-        let (database, session_id, _dir) = setup();
-        let svc = ApprovalService::new(database);
-        let request = svc
-            .request_command_approval(RequestCommandApprovalInput {
-                session_id,
-                command: "rm -rf /tmp/build".to_string(),
-                cwd: "/tmp".to_string(),
-                provider: "codex".to_string(),
-            })
-            .unwrap();
-        let approval = request.approval.expect("approval persisted");
-        svc.resolve(&approval.id, ResolveStatus::Rejected)
-            .expect("first resolution");
-        let error = svc
-            .resolve(&approval.id, ResolveStatus::Approved)
-            .expect_err("second resolution must fail");
-        assert!(error.to_string().contains("cannot be resolved again"));
+    fn persisted_legacy_approvals_resolve_once() {
+        for (status, expected_state) in [
+            (ResolveStatus::Approved, SessionState::Running),
+            (ResolveStatus::Rejected, SessionState::Blocked),
+        ] {
+            let (database, session_id, _dir) = setup();
+            let approval = {
+                let connection = database.connection();
+                update_session_state(
+                    &connection,
+                    &session_id,
+                    &SessionStateInput::transition(SessionState::Waiting).with_pending_approval(),
+                )
+                .unwrap();
+                persist_approval(
+                    &connection,
+                    &PersistApprovalInput {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: session_id.clone(),
+                        command: "rm -rf /tmp/build".into(),
+                        cwd: "/tmp".into(),
+                        provider: "codex".into(),
+                        provider_invocation_id: None,
+                        provider_request_id: None,
+                        risk_level: "high".into(),
+                        status: "pending".into(),
+                        created_at: None,
+                    },
+                )
+                .unwrap()
+            };
+            let service = ApprovalService::new(Arc::clone(&database));
+            assert_eq!(
+                service.resolve(&approval.id, status).unwrap().status,
+                status.as_str()
+            );
+            let connection = database.connection();
+            assert_eq!(
+                find_session_by_id(&connection, &session_id).unwrap().state,
+                expected_state
+            );
+            drop(connection);
+            assert!(service.resolve(&approval.id, status).is_err());
+        }
     }
 }

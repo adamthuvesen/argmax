@@ -278,7 +278,13 @@ export function foldRenderItems(
     ) {
       flush();
       out.push({ kind: "user-message", event: item.event });
-      activeTurnId = `turn-${item.event.id}`;
+      // A steer stays visible where it happened without ending the native
+      // turn. The next rendered fragment gets a unique key, while the tool
+      // already running above it keeps its existing component and timer.
+      activeTurnId =
+        canonical.delivery === "steer"
+          ? `turn-after-steer-${item.event.id}`
+          : `turn-${item.event.id}`;
       continue;
     }
     if (item.kind === "tool") registerLaunch(item.tool);

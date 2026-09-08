@@ -63,9 +63,25 @@ Argmax adds one server of its own per launch — `argmax`, the agent tools — t
 
 An idle follow-up persists the user message and returns, then spawns the provider in the background. The PTY/CLI spawn does not block the send IPC.
 
+While a turn is running, ordinary input stays queued. A queued follow-up has
+**Steer** for Codex and Claude and **Stop and send** for explicit interruption.
+Both use `providers:send-queued-message-now`, with optional `delivery: "steer"`
+selecting guidance for the existing turn. Omitting delivery preserves interruption.
+Codex uses app-server `turn/steer` with `expectedTurnId`. Claude writes a user
+envelope to its existing stream-json connection and waits for the
+`--replay-user-messages` echo. Neither operation starts a replacement process.
+
+Steering inherits the running turn's settings. A queued change to model, reasoning
+effort, or agent mode must wait for another turn. Accepted guidance is persisted
+as `user.message` with `payload.delivery: "steer"`, without resetting turn timing
+or provider normalization. Failures restore the queued message in a paused state.
+An uncertain acknowledgement is marked delivery-unknown and must not automatically
+retry. Stop can still cancel the running provider while steering is pending.
+
 - **Startup cleanup:** Sessions left in `running`, `waiting`, or `blocked` states are marked failed on startup. Matching background provider processes are terminated and pending approvals cancelled.
+- **Stop wins over an in-flight send:** Each send captures a per-session generation before its database work. Stop advances that generation before teardown, so a send that began earlier cannot persist a new user turn or spawn a replacement process after cancellation finishes.
 - **Follow-up prompts:** Follow-up turns use the provider resume ID when available, without repeating its transcript. A referenced Claude, Codex, OpenCode, or eligible Cursor dock name adds a validated name-to-child-ID mapping. Fresh conversations receive a capped transcript of visible `user.message`, `message.completed`, and `error` events. Hidden subagent rows are excluded.
-- **Native Claude, Codex, OpenCode, and Cursor subagents:** A persistent child stays addressable through its parent native conversation and can appear as multiple runs in one dock tab. Claude uses `SendMessage`. Codex uses `send_input`, with `resume_agent` when the child needs revival. OpenCode invokes its native `task` tool with the existing `task_id`. Cursor uses `taskToolCall` and the authoritative child id from the completed result. Composer 2.5 child references remain excluded until its native child identity is supported. A successful delivery or `pending_init` state is not completion. An ordinary session launch remains an independent session. Grok keeps its existing subagent behavior.
+- **Native Claude, Codex, OpenCode, and Cursor subagents:** A persistent child stays addressable through its parent native conversation and can appear as multiple runs in one dock tab. Claude uses `SendMessage`. Codex uses `send_input`, with `resume_agent` when the child needs revival. OpenCode invokes its native `task` tool with the existing `task_id`. Cursor uses ACP `task` events and the authoritative child id from the completed result. Composer 2.5 child references remain excluded until its native child identity is supported. A successful delivery or `pending_init` state is not completion. An ordinary session launch remains an independent session. Grok keeps its existing subagent behavior.
 - **Provider switching:** Changing the provider on an idle session clears `provider_conversation_id`, starts a new provider process with the capped transcript, and records a `session.provider-changed` marker.
 - **Clear:** `/clear` in the session composer drops `provider_conversation_id`, writes a `session.cleared` watermark, and hides the existing transcript. The next message starts a fresh provider conversation in the same workspace. A running session is stopped first. Headless provider CLIs do not honor `/clear` as a prompt, so Argmax owns the command for every provider.
 - **Forking:** `session:fork` creates a new session flagged with `resume_fork`. The next turn invokes the provider's fork flag (`--fork-session` for Claude and Grok, `exec fork` for Codex, `--fork` for OpenCode). Cursor does not support session forking.
@@ -125,7 +141,7 @@ ACP provides no token usage or context occupancy.
 
 Chat launches run over Agent Client Protocol (ACP) against a pooled `cursor-agent acp` process ([cursor_acp.rs](../src-tauri/src/providers/cursor_acp.rs)).
 - **Scope:** All Cursor models use ACP. A launch takes the configuration Cursor advertises for the requested model's family, whatever effort and Fast state that carries. Cursor lists exactly one variant per family, it does not follow the parameters saved in `cli-config.json`, and `session/set_model` rejects any id it did not list — so requiring an exact match rejected most of the catalog, the default model included. A family Cursor does not advertise at all still returns an error rather than silently changing models.
-- **Turn lifecycle:** ACP notifications translate into standard Cursor stream events. Tool rows are named from `rawInput._toolName` to prevent sub-agents from collapsing into generic `other` tools.
+- **Turn lifecycle:** ACP notifications translate into standard Cursor stream events. Each translated line carries the native ACP session id, which lets completed task rows link child-agent runs to their provider parent. Tool rows are named from `rawInput._toolName` to prevent sub-agents from collapsing into generic `other` tools.
 - **Permissions:** Provider defaults preserves native permission rules. Full access launches a separate forced ACP pool and allows requests. Ask for approval forwards native requests to the chat, but Cursor actions already allowed by its rules may still run without prompting. A request whose options carry more than one `allow_once` is Cursor's question tool rather than a permission, and is declined instead of shown — see [approvals-checks.md](approvals-checks.md). Pools are isolated by permission mode.
 - **Agent tools:** The `argmax` MCP server rides in `session/new` and `session/load` as an `mcpServers` entry, so the warm shared process still hands each session its own credential ([agent-tools.md](agent-tools.md)).
 - **Cancellation & cleanup:** `terminate` cancels in-flight prompts. Workspace pool entries are evicted when isolated workspaces archive or are removed. The server runs in its own process group and teardown signals the group, so the MCP servers it started die with it.
@@ -151,10 +167,10 @@ Grok Build chats use a pooled `grok agent stdio` ACP process, isolated by worksp
 
 ## Subagent Activity
 
-Subagent tool calls (`Task`, `spawn_agent`, `taskToolCall`) open an activity pane:
+Subagent tool calls (`Task`, `spawn_agent`, `task`) open an activity pane:
 - **Claude:** Emits child events directly in the stdout stream with `parent_tool_use_id`. Tool calls are forwarded by default; a subagent's text and thinking blocks arrive only with `--forward-subagent-text` (Claude Code 2.1.258+), which the adapter passes on launch and resume, so a subagent that only writes still streams into the pane. Native Claude child identity is scoped by both the parent native conversation and child session id. A later `SendMessage` continuation is a separate run in the same dock, with lifecycle `task_started` and `task_notification` events kept separate from the delivery message. Claude also emits those lifecycle subtypes for background Bash jobs, so Argmax ignores starts explicitly typed as non-agent tasks and remembers their ids to reject the untyped notifications. Print mode runs with `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0`. This removes Claude's ten-minute wait ceiling for background children, while the user's Stop action still terminates the provider process and its process group.
 - **Codex:** Reads child JSONL traces from `~/.codex/sessions/YYYY/MM/DD` or `~/.codex/archived_sessions`. A child `session_meta.parent_thread_id` can recover a launch omitted from structured stdout.
-- **Cursor:** Reads transcripts from `~/.cursor/projects/*/agent-transcripts/<agentId>/`. One-shot Cursor models support persistent native task references. The ACP-only `composer-2.5` path is intentionally excluded from native reference forwarding, even when a fallback would otherwise be available. Cursor's task result carries the authoritative child `agentId`; initial task arguments can contain a different id.
+- **Cursor:** Reads transcripts from `~/.cursor/projects/*/agent-transcripts/<agentId>/`. Cursor ACP supports persistent native task references. The `composer-2.5` model remains explicitly excluded from native reference forwarding. Cursor's task result carries the authoritative child `agentId`; initial task arguments can contain a different id.
 - **OpenCode:** Emits the `task` launch through structured stdout. Argmax has no separate OpenCode child-trace source.
 - **Grok:** Does not stream child events on the parent PTY. `spawn_subagent` returns a launch receipt (`Subagent started in background` wrapped as `{"type":"Text","text":"..."}`); the child writes its own session under `~/.grok/sessions/<percent-encoded cwd>/<child-id>/chat_history.jsonl` (or under `$GROK_HOME` when set; Argmax resolves both the trust store and the session store through the same `grok_home`), linked from the parent's `subagents/<id>/meta.json`. Argmax imports that transcript on demand the same way it imports Codex and Cursor traces. The receipt is launch metadata, not the agent's answer.
 

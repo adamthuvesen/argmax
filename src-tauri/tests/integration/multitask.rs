@@ -2,7 +2,7 @@
 //! turn, in the same checkout, and reports back without interrupting.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -11,10 +11,13 @@ use crate::support::git_repo::seed_git_repo;
 use argmax_lib::sessions::state::SessionState;
 use argmax_lib::{
     error::{ArgmaxError, ArgmaxResult},
-    multitask::{dispatch, MultitaskRequest, FINISHED_EVENT, LAUNCHED_EVENT, MULTITASK_KIND},
+    multitask::{
+        dispatch, dispatch_queued, MultitaskRequest, FINISHED_EVENT, LAUNCHED_EVENT, MULTITASK_KIND,
+    },
     persistence::{
         database::Database,
         events::list_session_events_since,
+        pending_messages::{list_session_pending_messages, replace_session_queue},
         projects::{persist_project, PersistProjectInput, ProjectSettings},
         session_messages::list_undelivered_messages_of_kind,
         sessions::{
@@ -25,6 +28,7 @@ use argmax_lib::{
         workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
     },
     providers::{
+        flush_queue::PendingMessage,
         normalizer::ProviderOutputStream,
         runtime::{
             BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeEvent,
@@ -546,6 +550,138 @@ async fn a_multitask_that_cannot_start_still_reports_back() {
         .expect("a finish row in the parent");
     assert_eq!(finished.payload["state"], "failed");
     assert_eq!(finished.payload["childSessionId"], child_id);
+}
+
+#[tokio::test]
+async fn queued_multitask_uses_the_claimed_prompt_and_deletes_its_queue_row() {
+    let fixture = fixture();
+    let message = PendingMessage {
+        id: "pending-1".to_string(),
+        session_id: "session-parent".to_string(),
+        content: "Use the queued prompt".to_string(),
+        agent_mode: "auto".to_string(),
+        model_label: None,
+        model_id: None,
+        reasoning_effort: None,
+        fast_mode: false,
+        attachments: Vec::new(),
+        agent_references: Vec::new(),
+        origin: None,
+        recovery_status: None,
+        queued_at: now_iso(),
+    };
+    {
+        let mut connection = fixture.database.connection();
+        replace_session_queue(
+            &mut connection,
+            "session-parent",
+            &VecDeque::from([message]),
+        )
+        .expect("persist queue");
+    }
+    let providers = ProviderSessionService::with_launcher(
+        Arc::clone(&fixture.database),
+        fixture.launcher.clone(),
+        |_| {},
+    );
+
+    let launched = dispatch_queued(
+        MultitaskRequest {
+            parent_session_id: "session-parent".to_string(),
+            prompt: "stale renderer copy".to_string(),
+            worktree: false,
+            task_label: None,
+        },
+        "pending-1",
+        Arc::clone(&fixture.database),
+        Arc::clone(&fixture.workspaces),
+        providers,
+    )
+    .await
+    .expect("dispatch queued multitask");
+    wait_for_launch(&fixture.launcher, &launched.session_id).await;
+    assert!(fixture
+        .launcher
+        .prompt_for(&launched.session_id)
+        .ends_with("Use the queued prompt"));
+    let connection = fixture.database.connection();
+    assert!(
+        list_session_pending_messages(&connection, "session-parent")
+            .expect("queue after launch")
+            .is_empty(),
+        "successful dispatch removes the hidden claim"
+    );
+}
+
+#[tokio::test]
+async fn queued_multitask_restores_its_claim_when_dispatch_is_refused() {
+    let fixture = fixture();
+    let message = PendingMessage {
+        id: "pending-1".to_string(),
+        session_id: "session-parent".to_string(),
+        content: "Keep this queued".to_string(),
+        agent_mode: "auto".to_string(),
+        model_label: None,
+        model_id: None,
+        reasoning_effort: None,
+        fast_mode: false,
+        attachments: Vec::new(),
+        agent_references: Vec::new(),
+        origin: None,
+        recovery_status: None,
+        queued_at: now_iso(),
+    };
+    {
+        let mut connection = fixture.database.connection();
+        replace_session_queue(
+            &mut connection,
+            "session-parent",
+            &VecDeque::from([message]),
+        )
+        .expect("persist queue");
+        connection
+            .execute(
+                "UPDATE workspaces SET state = 'archiving' WHERE id = 'workspace-parent'",
+                [],
+            )
+            .expect("archive workspace");
+    }
+    let providers = ProviderSessionService::with_launcher(
+        Arc::clone(&fixture.database),
+        fixture.launcher.clone(),
+        |_| {},
+    );
+
+    let error = dispatch_queued(
+        MultitaskRequest {
+            parent_session_id: "session-parent".to_string(),
+            prompt: "Keep this queued".to_string(),
+            worktree: false,
+            task_label: None,
+        },
+        "pending-1",
+        Arc::clone(&fixture.database),
+        Arc::clone(&fixture.workspaces),
+        Arc::clone(&providers),
+    )
+    .await
+    .expect_err("archived workspace rejects dispatch");
+    assert!(matches!(
+        error,
+        ArgmaxError::ServiceError { ref sub_code, .. }
+            if sub_code == "MULTITASK_WORKSPACE_ARCHIVED"
+    ));
+    assert_eq!(
+        providers.pending_messages_snapshot()["session-parent"][0].content,
+        "Keep this queued"
+    );
+    let connection = fixture.database.connection();
+    assert_eq!(
+        list_session_pending_messages(&connection, "session-parent")
+            .expect("restored queue")
+            .len(),
+        1
+    );
 }
 
 #[tokio::test]

@@ -7,7 +7,7 @@ A multitask is a chat dispatched from inside another chat while its agent is mid
 Two paths, both in the composer ([SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx)):
 
 - `/multitask <prompt>` — typed straight into the composer, also reachable from the slash menu.
-- **Multitask** on a queued follow-up — promotes a message waiting behind the running turn. It leaves the queue (it is running now) and, unlike "Send now", never interrupts the turn.
+- **Multitask** on a queued follow-up — promotes a message waiting behind the running turn. The dispatch claims the queue row before launching the sibling, restores it if dispatch fails, and deletes the hidden claim after success. This keeps the prompt from later draining as a duplicate turn. Unlike "Send now", it never interrupts the turn.
 
 Both call `session:multitask` ([ipc/session.rs](../src-tauri/src/ipc/session.rs)), which lands in [multitask.rs](../src-tauri/src/multitask.rs).
 

@@ -1234,10 +1234,11 @@ export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
  * model metadata is dropped with it.
  */
 provider?: ProviderId | null; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null; agentReferences?: AgentReference[] | null }
-export type ProvidersSendQueuedMessageNowInput = { sessionId: SessionId; messageId: NonEmptyString }
+export type ProvidersSendQueuedMessageNowInput = { sessionId: SessionId; messageId: NonEmptyString; delivery?: QueuedMessageDelivery | null }
 export type ProvidersTerminateInput = { sessionId: SessionId }
 export type PrsListForSessionInput = { sessionId: SessionId }
 export type PrsRefreshInput = { sessionId: SessionId }
+export type QueuedMessageDelivery = "interrupt" | "steer"
 export type RawProviderOutput = { id: string; sessionId: string; stream: string; content: string; createdAt: string; rowCursor: number | null }
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
 export type RelativePath = string
@@ -1335,6 +1336,11 @@ export type SessionId = string
  * for its own.
  */
 export type SessionMultitaskInput = { sessionId: SessionId; prompt: Prompt;
+/**
+ * When dispatching a queued follow-up, claim and remove this row as part
+ * of the same operation so it cannot later drain as a duplicate turn.
+ */
+pendingMessageId?: NonEmptyString | null;
 /**
  * Defaults to false: the point of a multitask is a fix on the side of the
  * work you are already doing, in the tree you are already in.

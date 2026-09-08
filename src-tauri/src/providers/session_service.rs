@@ -52,7 +52,7 @@ use crate::{
     ipc::inputs::{
         ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
         ProvidersResizeInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
-        ProvidersTerminateInput, SessionClearInput,
+        ProvidersTerminateInput, QueuedMessageDelivery, SessionClearInput,
     },
     ipc::validation::{NonEmptyString, Prompt, SessionId},
     persistence::{
@@ -196,6 +196,11 @@ pub struct ProviderSessionService {
     /// the user-initiated `cancelled` state isn't overwritten by the
     /// wait-thread's `failed`/`complete` after the kill lands.
     terminating: Arc<Mutex<HashSet<String>>>,
+    /// Monotonic Stop generation per session. A send captures this before any
+    /// send-side persistence and must still own the same generation when it
+    /// queues, writes a user turn, or claims a launch handle. Unlike the
+    /// transient termination markers, this survives a fast completed Stop.
+    send_generations: Arc<Mutex<HashMap<String, u64>>>,
     /// Owned termination jobs. A caller may stop waiting when an archive
     /// bound expires, but the job itself continues until the provider handle
     /// is disposed and the cancelled state is persisted.
@@ -208,6 +213,15 @@ pub struct ProviderSessionService {
     measured_diffs: Arc<MeasuredDiffs>,
     /// Every session state this service writes, for `session_wait`.
     session_states: broadcast::Sender<SessionStateChange>,
+    #[cfg(test)]
+    send_input_test_gate: Arc<Mutex<Option<Arc<SendInputTestGate>>>>,
+}
+
+#[cfg(test)]
+#[derive(Default)]
+struct SendInputTestGate {
+    reached: tokio::sync::Notify,
+    release: tokio::sync::Notify,
 }
 
 /// The result slot a termination job publishes to; `None` while the job runs.
@@ -301,12 +315,15 @@ impl ProviderSessionService {
             idle_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
             subagent_reconciliations: Arc::new(Mutex::new(HashMap::new())),
             terminating: Arc::new(Mutex::new(HashSet::new())),
+            send_generations: Arc::new(Mutex::new(HashMap::new())),
             termination_jobs: Arc::new(Mutex::new(HashMap::new())),
             lifecycle,
             approvals,
             session_control: OnceLock::new(),
             measured_diffs: Arc::new(MeasuredDiffs::default()),
             session_states: broadcast::channel(SESSION_STATE_BROADCAST_CAPACITY).0,
+            #[cfg(test)]
+            send_input_test_gate: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -686,9 +703,16 @@ impl ProviderSessionService {
                 queued: false,
             });
         }
+        let send_generation = self
+            .send_generations
+            .lock_or_recover("send generations")
+            .get(&session_id)
+            .copied()
+            .unwrap_or(0);
         self.ensure_no_pending_after_turn(&session_id)?;
 
         let (workspace_id, session_provider, session_permission_mode) = {
+            let _send_generation = self.lock_send_generation(&session_id, send_generation)?;
             let connection = self.database.connection();
             let session = find_session_by_id(&connection, &session_id)?;
             let target_provider = input.provider.unwrap_or(parse_provider(&session.provider)?);
@@ -733,6 +757,16 @@ impl ProviderSessionService {
                 "Provider chat is being terminated; wait for cancellation to finish.",
             ));
         }
+        #[cfg(test)]
+        let test_gate = self
+            .send_input_test_gate
+            .lock_or_recover("send input test gate")
+            .clone();
+        #[cfg(test)]
+        if let Some(gate) = test_gate {
+            gate.reached.notify_one();
+            gate.release.notified().await;
+        }
         ensure_permission_mode_supported(session_provider, session_permission_mode)?;
         let admission = self.lifecycle.admit(&workspace_id)?;
         let workspace_path = {
@@ -750,6 +784,7 @@ impl ProviderSessionService {
             PathBuf::from(workspace.path)
         };
 
+        let send_generation_guard = self.lock_send_generation(&session_id, send_generation)?;
         if let Some(handle) = self.live_handle(&session_id) {
             if !handle.accepts_input() {
                 self.enqueue_pending_message(
@@ -759,6 +794,7 @@ impl ProviderSessionService {
                     &input,
                     origin,
                 )?;
+                drop(send_generation_guard);
                 drop(admission);
                 self.drain_queue_if_turn_ended(&session_id);
                 return Ok(SendInputResult {
@@ -787,6 +823,7 @@ impl ProviderSessionService {
                 input.attachments.as_deref(),
                 origin.as_ref(),
             )?;
+            drop(send_generation_guard);
             drop(admission);
             return Ok(SendInputResult {
                 ok: true,
@@ -814,6 +851,7 @@ impl ProviderSessionService {
                 &input,
                 origin,
             )?;
+            drop(send_generation_guard);
             drop(admission);
             self.drain_queue_if_turn_ended(&session_id);
             return Ok(SendInputResult {
@@ -821,7 +859,9 @@ impl ProviderSessionService {
                 queued: true,
             });
         }
+        drop(send_generation_guard);
 
+        let send_generation_guard = self.lock_send_generation(&session_id, send_generation)?;
         let (provider, launch_input, pending_results) = {
             let connection = self.database.connection();
             let mut session = find_session_by_id(&connection, &session_id)?;
@@ -1035,14 +1075,9 @@ impl ProviderSessionService {
                 },
             );
         self.mark_turn_start(&session_id, workspace_path);
-        // Stop can have landed since the check above, while this relaunch was
-        // reading the database: `start_termination` has then already taken the
-        // old handle away, so nothing here would stop a fresh process coming up
-        // under the row cancellation is about to write. Claim the entry while
-        // holding the termination markers, in the same order `start_termination`
-        // takes them, so exactly one of the two wins: either terminate finds
-        // this Pending entry and the spawn disposes the child, or the relaunch
-        // is refused here.
+        // Claim the entry before releasing this send's generation. Stop either
+        // invalidates the generation before the database writes above, or waits
+        // and then finds this Pending entry so the spawn disposes its child.
         {
             let jobs = self.termination_jobs.lock_or_recover("termination jobs");
             let terminating = self.terminating.lock_or_recover("terminating");
@@ -1056,6 +1091,7 @@ impl ProviderSessionService {
                 .lock_or_recover("handles")
                 .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
         }
+        drop(send_generation_guard);
         // Same background spawn as `launch`: the user.message and running
         // state are already persisted and broadcast, so the composer can
         // clear as soon as this returns. Waiting on the PTY/CLI here is
@@ -1209,20 +1245,33 @@ impl ProviderSessionService {
         session_id: String,
         preserve_queue: bool,
     ) -> ArgmaxResult<watch::Receiver<Option<ArgmaxResult<()>>>> {
+        let mut jobs = {
+            let mut generations = self.send_generations.lock_or_recover("send generations");
+            let generation = generations.entry(session_id.clone()).or_default();
+            *generation = generation.wrapping_add(1);
+            let jobs = self.termination_jobs.lock_or_recover("termination jobs");
+            if let Some(done) = jobs.get(&session_id) {
+                return Ok(done.clone());
+            }
+            // Publish the transient marker before releasing the generation.
+            // A send that starts during Stop then sees either this marker or a
+            // later generation mismatch, including after the marker clears.
+            self.terminating
+                .lock_or_recover("terminating")
+                .insert(session_id.clone());
+            jobs
+        };
         self.cancel_idle_flush(&session_id);
         if !preserve_queue {
-            self.clear_queue(&session_id)?;
+            if let Err(error) = self.clear_queue(&session_id) {
+                self.terminating
+                    .lock_or_recover("terminating")
+                    .remove(&session_id);
+                return Err(error);
+            }
         }
-        let mut jobs = self.termination_jobs.lock_or_recover("termination jobs");
-        if let Some(done) = jobs.get(&session_id) {
-            return Ok(done.clone());
-        }
-
-        // Mark before transferring the handle so a wait-thread exit event
-        // arriving mid-terminate skips its own terminal-state write.
-        self.terminating
-            .lock_or_recover("terminating")
-            .insert(session_id.clone());
+        // The marker was set with the generation before any teardown work, so
+        // a wait-thread exit event cannot clobber the cancellation state.
         let entry = self.handles.lock_or_recover("handles").remove(&session_id);
         let (done_tx, done_rx) = watch::channel::<Option<ArgmaxResult<()>>>(None);
         jobs.insert(session_id.clone(), done_rx.clone());
@@ -1325,6 +1374,132 @@ impl ProviderSessionService {
         Ok(())
     }
 
+    /// Claim a queued follow-up before dispatching it as a multitask. The
+    /// promotion guard stays active across the sibling launch so the ordinary
+    /// turn-end drain cannot race the prompt into the parent session.
+    pub(crate) fn claim_queued_message_for_multitask(
+        &self,
+        session_id: &str,
+        message_id: &str,
+    ) -> ArgmaxResult<PendingMessage> {
+        if !self
+            .queue_promotions
+            .lock_or_recover("queue promotions")
+            .insert(session_id.to_string())
+        {
+            return Err(ArgmaxError::service(
+                "QUEUED_MESSAGE_SEND_IN_PROGRESS",
+                "Another queued follow-up is already being sent. Wait for it to finish.",
+            ));
+        }
+        let claimed = (|| {
+            let connection = self.database.connection();
+            let mut queues = self.queues.lock_or_recover("queues");
+            let queue = queues.get_mut(session_id).ok_or_else(|| {
+                ArgmaxError::service(
+                    "QUEUED_MESSAGE_NOT_FOUND",
+                    "Queued follow-up no longer exists.",
+                )
+            })?;
+            let index = queue
+                .iter()
+                .position(|message| message.id == message_id)
+                .ok_or_else(|| {
+                    ArgmaxError::service(
+                        "QUEUED_MESSAGE_NOT_FOUND",
+                        "Queued follow-up no longer exists.",
+                    )
+                })?;
+            mark_message_launching(&connection, session_id, message_id)?;
+            let message = queue
+                .remove(index)
+                .expect("queued message index must exist");
+            if queue.is_empty() {
+                queues.remove(session_id);
+            }
+            Ok(message)
+        })();
+        let message = match claimed {
+            Ok(message) => message,
+            Err(error) => {
+                self.queue_promotions
+                    .lock_or_recover("queue promotions")
+                    .remove(session_id);
+                return Err(error);
+            }
+        };
+        if origin_row_is_delivered(self, &message) {
+            let delete_result = {
+                let connection = self.database.connection();
+                delete_pending_message(&connection, session_id, message_id)
+            };
+            self.queue_promotions
+                .lock_or_recover("queue promotions")
+                .remove(session_id);
+            delete_result?;
+            self.publish_pending_messages(session_id);
+            return Err(ArgmaxError::service(
+                "QUEUED_MESSAGE_ALREADY_DELIVERED",
+                "This follow-up was already collected from the chat inbox.",
+            ));
+        }
+        self.publish_pending_messages(session_id);
+        Ok(message)
+    }
+
+    /// Return a cleanly failed multitask dispatch to its durable queue slot.
+    /// Reload from SQLite before releasing the promotion guard so concurrent
+    /// edits are retained and the turn-end drain cannot claim the row early.
+    pub(crate) fn restore_queued_message_multitask(
+        &self,
+        session_id: &str,
+        message: PendingMessage,
+    ) -> ArgmaxResult<()> {
+        let result = (|| {
+            let connection = self.database.connection();
+            restore_launching_message(
+                &connection,
+                session_id,
+                &message.id,
+                message.recovery_status.as_deref(),
+            )?;
+            let queue = list_session_pending_messages(&connection, session_id)?;
+            self.queues
+                .lock_or_recover("queues")
+                .insert(session_id.to_string(), queue);
+            Ok(())
+        })();
+        self.queue_promotions
+            .lock_or_recover("queue promotions")
+            .remove(session_id);
+        if result.is_ok() {
+            self.publish_pending_messages(session_id);
+        }
+        result
+    }
+
+    /// Finish a successful queued-message multitask promotion. Even if SQLite
+    /// cleanup fails, the in-memory row stays absent and the guard is released;
+    /// the durable `launching` row then recovers as delivery-uncertain after a
+    /// restart instead of becoming runnable again in this process.
+    pub(crate) fn finish_queued_message_multitask(
+        &self,
+        session_id: &str,
+        message_id: &str,
+    ) -> ArgmaxResult<()> {
+        let result = {
+            let connection = self.database.connection();
+            delete_pending_message(&connection, session_id, message_id)
+        };
+        self.queue_promotions
+            .lock_or_recover("queue promotions")
+            .remove(session_id);
+        if result.is_ok() {
+            self.publish_pending_messages(session_id);
+        }
+        result
+    }
+
     pub async fn send_queued_message_now(
         self: &Arc<Self>,
         input: ProvidersSendQueuedMessageNowInput,
@@ -1415,6 +1590,32 @@ impl ProviderSessionService {
             Ok(())
         };
 
+        if input.delivery == Some(QueuedMessageDelivery::Steer) {
+            let result = self.steer_queued_message(&session_id, &message).await;
+            if let Err(error) = &result {
+                let mut message = message;
+                message.recovery_status = Some(
+                    if matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "STEER_DELIVERY_UNKNOWN") {
+                        "delivery-unknown"
+                    } else {
+                        "unsent"
+                    }
+                    .to_string(),
+                );
+                // An unsuccessful steer must never auto-drain as a new turn.
+                // Stop may have explicitly discarded this row during delivery.
+                if let Err(restore_error) = restore(self, message) {
+                    tracing::warn!(session_id, error = %restore_error, "could not restore steered follow-up");
+                }
+            }
+            self.queue_promotions
+                .lock_or_recover("queue promotions")
+                .remove(&session_id);
+            self.publish_pending_messages(&session_id);
+            self.drain_queue_if_turn_ended(&session_id);
+            return result;
+        }
+
         let done = match self.start_termination(session_id.clone(), true) {
             Ok(done) => done,
             Err(error) => {
@@ -1502,6 +1703,123 @@ impl ProviderSessionService {
             ));
         }
         Ok(result)
+    }
+
+    async fn steer_queued_message(
+        &self,
+        session_id: &str,
+        message: &PendingMessage,
+    ) -> ArgmaxResult<SendInputResult> {
+        self.ensure_no_pending_after_turn(session_id)?;
+        let (handle, prompt, agent_mode, _admission) = {
+            let connection = self.database.connection();
+            let session = find_session_by_id(&connection, session_id)?;
+            if session.state != SessionState::Running {
+                return Err(ArgmaxError::service(
+                    "STEER_NOT_RUNNING",
+                    "The turn has finished. This follow-up is still queued.",
+                ));
+            }
+            let handle = self.live_handle(session_id).ok_or_else(|| {
+                ArgmaxError::service("STEER_NOT_RUNNING", "The agent is not ready for steering.")
+            })?;
+            if !handle.supports_steering() {
+                return Err(ArgmaxError::service(
+                    "STEER_UNSUPPORTED",
+                    "This provider does not support steering the running turn.",
+                ));
+            }
+            if message
+                .model_id
+                .as_deref()
+                .is_some_and(|id| id != session.model_id)
+                || message
+                    .reasoning_effort
+                    .as_deref()
+                    .is_some_and(|effort| Some(effort) != session.reasoning_effort.as_deref())
+                || message.agent_mode != session.agent_mode.as_deref().unwrap_or("auto")
+            {
+                return Err(ArgmaxError::service(
+                    "STEER_SETTINGS_CHANGED",
+                    "Steering uses the running turn's model, effort and mode. Queue this follow-up or use Stop and send to change them.",
+                ));
+            }
+            let agent_mode = parse_agent_mode(&message.agent_mode).ok_or_else(|| {
+                ArgmaxError::service(
+                    "STEER_INVALID_MODE",
+                    "The queued follow-up has an invalid mode.",
+                )
+            })?;
+            let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
+            if matches!(
+                workspace.state.as_str(),
+                "archiving" | "archive-failed" | "archived"
+            ) {
+                return Err(ArgmaxError::service(
+                    "WORKSPACE_ARCHIVING",
+                    "Workspace archive is in progress; no new provider input can be sent.",
+                ));
+            }
+            let admission = self.lifecycle.admit(&session.workspace_id)?;
+            ensure_agent_references_supported(
+                &session.provider,
+                &session.model_id,
+                &message.agent_references,
+            )?;
+            let prompt = agent_reference_prompt(
+                &connection,
+                session_id,
+                &message.content,
+                &message.agent_references,
+            )?;
+            (handle, prompt, agent_mode, admission)
+        };
+        let created_at = now_iso();
+        handle
+            .steer(&prompt_for_agent_mode(&prompt, agent_mode))
+            .await?;
+
+        // Delivery and the local journal cannot share a transaction. Once the
+        // provider acknowledges, any local commit failure is delivery-unknown.
+        let persist = || -> ArgmaxResult<TimelineEvent> {
+            let mut connection = self.database.connection();
+            let transaction = connection.transaction().map_err(sqlite_error)?;
+            let mut payload = composer_payload(agent_mode, Some(&message.attachments));
+            payload["delivery"] = json!("steer");
+            if let Some(origin) = &message.origin {
+                payload["origin"] =
+                    serde_json::to_value(origin).map_err(crate::persistence::json_error)?;
+                if let Some(id) = &origin.message_id {
+                    mark_message_delivered(&transaction, id)?;
+                }
+            }
+            let event = persist_timeline_event(
+                &transaction,
+                &PersistTimelineEventInput {
+                    id: Uuid::new_v4().to_string(),
+                    session_id: session_id.to_string(),
+                    r#type: "user.message".to_string(),
+                    message: message.content.clone(),
+                    payload,
+                    created_at: Some(created_at),
+                },
+            )?;
+            delete_pending_message(&transaction, session_id, &message.id)?;
+            transaction.commit().map_err(sqlite_error)?;
+            Ok(event)
+        };
+        let event = persist().map_err(|error| ArgmaxError::service(
+            "STEER_DELIVERY_UNKNOWN",
+            format!("The agent accepted the guidance, but it could not be saved: {error}. Check the chat before sending again."),
+        ))?;
+        self.publish(DashboardDelta {
+            events: vec![event],
+            ..DashboardDelta::default()
+        });
+        Ok(SendInputResult {
+            ok: true,
+            queued: false,
+        })
     }
 
     pub fn recover_orphaned_sessions(&self) -> ArgmaxResult<usize> {
@@ -2170,6 +2488,21 @@ impl ProviderSessionService {
             Some(HandleEntry::Resolved(handle)) if !handle.disposed() => Some(Arc::clone(handle)),
             _ => None,
         }
+    }
+
+    fn lock_send_generation(
+        &self,
+        session_id: &str,
+        expected: u64,
+    ) -> ArgmaxResult<std::sync::MutexGuard<'_, HashMap<String, u64>>> {
+        let generations = self.send_generations.lock_or_recover("send generations");
+        if generations.get(session_id).copied().unwrap_or(0) != expected {
+            return Err(ArgmaxError::service(
+                "PROVIDER_SEND_CANCELLED",
+                "Provider chat was stopped before this message could be sent.",
+            ));
+        }
+        Ok(generations)
     }
 
     async fn apply_op(
@@ -3199,7 +3532,97 @@ pub struct SendInputResult {
 
 #[cfg(test)]
 mod tests {
+    mod steering {
+        include!("session_service_steering_tests.rs");
+    }
+
     use super::*;
+    use crate::providers::runtime::{BoxFuture, EventCallback};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Default)]
+    struct CountingFailureLauncher {
+        launches: AtomicUsize,
+    }
+
+    impl ProviderProcessLauncher for CountingFailureLauncher {
+        fn launch<'a>(
+            &'a self,
+            _input: ProviderLaunchInput,
+            _on_event: EventCallback,
+        ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+            self.launches.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async {
+                Err(ArgmaxError::service(
+                    "UNEXPECTED_TEST_LAUNCH",
+                    "send raced past Stop",
+                ))
+            })
+        }
+    }
+
+    fn database_with_running_session() -> Arc<Database> {
+        use crate::persistence::{
+            projects::{persist_project, PersistProjectInput, ProjectSettings},
+            workspaces::{persist_workspace, PersistWorkspaceInput},
+        };
+
+        let database = Arc::new(Database::open_in_memory().expect("open db"));
+        {
+            let connection = database.connection();
+            persist_project(
+                &connection,
+                &PersistProjectInput {
+                    id: "project-1".to_string(),
+                    name: "argmax-test".to_string(),
+                    repo_path: "/tmp/repo".to_string(),
+                    current_branch: "main".to_string(),
+                    default_branch: Some("main".to_string()),
+                    settings: ProjectSettings {
+                        archive_on_merge: false,
+                        worktree_location: "/tmp/worktrees".to_string(),
+                        setup_command: String::new(),
+                        check_commands: Vec::new(),
+                    },
+                },
+            )
+            .expect("persist project");
+            persist_workspace(
+                &connection,
+                &PersistWorkspaceInput {
+                    id: "workspace-1".to_string(),
+                    project_id: "project-1".to_string(),
+                    task_label: "test workspace".to_string(),
+                    branch: "feature/test".to_string(),
+                    base_ref: "main".to_string(),
+                    path: "/tmp/repo".to_string(),
+                    state: "running".to_string(),
+                    shared_workspace: false,
+                    kind: "git".to_string(),
+                    dirty: false,
+                    changed_files: 0,
+                },
+            )
+            .expect("persist workspace");
+            persist_session(
+                &connection,
+                &PersistSessionInput {
+                    id: "session-1".to_string(),
+                    workspace_id: "workspace-1".to_string(),
+                    provider: "claude".to_string(),
+                    model_label: "Sonnet 5".to_string(),
+                    model_id: "claude-sonnet-5".to_string(),
+                    reasoning_effort: None,
+                    permission_mode: Some("auto-approve".to_string()),
+                    agent_mode: Some("auto".to_string()),
+                    prompt: "hello".to_string(),
+                    state: SessionState::Running,
+                },
+            )
+            .expect("persist session");
+        }
+        database
+    }
 
     #[test]
     fn pr_branch_capture_reads_checkout_and_linked_worktree_heads() {
@@ -3485,6 +3908,7 @@ mod tests {
             .insert("session-1".to_string());
         let concurrent = service
             .send_queued_message_now(ProvidersSendQueuedMessageNowInput {
+                delivery: None,
                 session_id: SessionId::try_from("session-1".to_string()).unwrap(),
                 message_id: NonEmptyString::try_from(message_id.clone()).unwrap(),
             })
@@ -3504,6 +3928,7 @@ mod tests {
 
         let error = service
             .send_queued_message_now(ProvidersSendQueuedMessageNowInput {
+                delivery: None,
                 session_id: SessionId::try_from("session-1".to_string()).expect("session id"),
                 message_id: NonEmptyString::try_from(message_id.clone()).expect("message id"),
             })
@@ -3752,6 +4177,7 @@ mod tests {
 
         let cancelled = service
             .send_queued_message_now(ProvidersSendQueuedMessageNowInput {
+                delivery: None,
                 session_id: SessionId::try_from("session-1".to_string()).expect("session id"),
                 message_id: NonEmptyString::try_from(message_id.clone()).expect("message id"),
             })
@@ -3778,6 +4204,135 @@ mod tests {
         .expect("durable queue");
         assert_eq!(durable.len(), 1, "the row is visible to the composer again");
         assert_eq!(durable[0].content, "stopped mid-promotion");
+    }
+
+    #[test]
+    fn multitask_claim_blocks_the_turn_end_drain_until_it_is_resolved() {
+        let database = database_with_running_session();
+        let service = ProviderSessionService::new(database);
+        let pending = |id: &str, content: &str| PendingMessage {
+            id: id.to_string(),
+            session_id: "session-1".to_string(),
+            content: content.to_string(),
+            agent_mode: AgentMode::Auto.as_str().to_string(),
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            attachments: Vec::new(),
+            agent_references: Vec::new(),
+            origin: None,
+            recovery_status: None,
+            queued_at: now_iso(),
+        };
+        let queue = VecDeque::from([
+            pending("pending-1", "run alongside"),
+            pending("pending-2", "send after the turn"),
+        ]);
+        {
+            let mut connection = service.database.connection();
+            replace_session_queue(&mut connection, "session-1", &queue).expect("persist queue");
+        }
+        service
+            .queues
+            .lock_or_recover("queues")
+            .insert("session-1".to_string(), queue);
+
+        let claimed = service
+            .claim_queued_message_for_multitask("session-1", "pending-1")
+            .expect("claim multitask");
+        assert!(
+            service
+                .pop_next_undelivered("session-1")
+                .expect("attempt drain")
+                .is_none(),
+            "turn-end drain must stay parked while sibling dispatch is unresolved"
+        );
+        service
+            .restore_queued_message_multitask("session-1", claimed)
+            .expect("restore failed dispatch");
+        assert_eq!(
+            service.pending_messages_snapshot()["session-1"]
+                .iter()
+                .map(|message| message.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["pending-1", "pending-2"]
+        );
+
+        let claimed = service
+            .claim_queued_message_for_multitask("session-1", "pending-1")
+            .expect("claim successful multitask");
+        service
+            .finish_queued_message_multitask("session-1", &claimed.id)
+            .expect("finish multitask");
+        let (_, drained) = service
+            .pop_next_undelivered("session-1")
+            .expect("drain after promotion")
+            .expect("second follow-up remains runnable");
+        assert_eq!(drained.id, "pending-2");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stop_permanently_invalidates_a_send_that_passed_the_initial_check() {
+        let database = database_with_running_session();
+        let launcher = Arc::new(CountingFailureLauncher::default());
+        let service =
+            ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+        let gate = Arc::new(SendInputTestGate::default());
+        *service
+            .send_input_test_gate
+            .lock_or_recover("send input test gate") = Some(Arc::clone(&gate));
+        let send = {
+            let service = Arc::clone(&service);
+            tokio::spawn(async move {
+                service
+                    .send_input(ProvidersSendInput {
+                        agent_references: None,
+                        session_id: SessionId::try_from("session-1".to_string())
+                            .expect("session id"),
+                        input: Prompt::try_from("must not launch".to_string()).expect("prompt"),
+                        provider: None,
+                        model_label: None,
+                        model_id: None,
+                        reasoning_effort: None,
+                        fast_mode: false,
+                        agent_mode: None,
+                        attachments: None,
+                    })
+                    .await
+            })
+        };
+
+        gate.reached.notified().await;
+        service
+            .terminate(ProvidersTerminateInput {
+                session_id: SessionId::try_from("session-1".to_string()).expect("session id"),
+            })
+            .await
+            .expect("Stop completes");
+        gate.release.notify_one();
+
+        let error = send
+            .await
+            .expect("send task")
+            .expect_err("pre-Stop send stays cancelled after markers clear");
+        assert!(matches!(
+            error,
+            ArgmaxError::ServiceError { ref sub_code, .. }
+                if sub_code == "PROVIDER_SEND_CANCELLED"
+        ));
+        tokio::task::yield_now().await;
+        assert_eq!(launcher.launches.load(Ordering::SeqCst), 0);
+        assert_eq!(service.open_handle_count(), 0);
+        let connection = database.connection();
+        let session = find_session_by_id(&connection, "session-1").expect("session");
+        assert_eq!(session.state, SessionState::Cancelled);
+        let events = list_session_events_since(&connection, "session-1", None, None)
+            .expect("events")
+            .events;
+        assert!(!events
+            .iter()
+            .any(|event| { event.r#type == "user.message" && event.message == "must not launch" }));
     }
 
     #[test]

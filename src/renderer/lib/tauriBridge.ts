@@ -325,6 +325,7 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       multitask: (input) =>
         invokeCommand<MultitaskLaunched>("session:multitask", {
           ...input,
+          pendingMessageId: input.pendingMessageId ?? null,
           worktree: input.worktree ?? false,
           taskLabel: input.taskLabel ?? null
         }),

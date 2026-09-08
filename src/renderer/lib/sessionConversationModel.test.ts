@@ -136,6 +136,23 @@ describe("buildConversationEvents", () => {
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "delta", "follow-up"]);
   });
 
+  it("keeps a steer in the active turn without treating it as a new boundary", () => {
+    const events = [
+      event("done", "message.completed", "2026-05-12T15:00:04.000Z", "Final answer"),
+      event("steer", "user.message", "2026-05-12T15:00:03.000Z", "Use the existing helper", {
+        delivery: "steer"
+      }),
+      event("delta", "message.delta", "2026-05-12T15:00:02.000Z", "Final "),
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+    ];
+
+    expect(buildConversationEvents(events).map((event) => event.id)).toEqual([
+      "user",
+      "steer",
+      "done"
+    ]);
+  });
+
   it("keeps pre-tool narration when a later completed answer lands", () => {
     const events = [
       event("done", "message.completed", "2026-05-12T15:00:05.000Z", "Final answer"),

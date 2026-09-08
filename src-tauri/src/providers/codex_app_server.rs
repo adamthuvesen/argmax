@@ -155,7 +155,10 @@ pub async fn launch_turn(
     let (thread_id, turn_id) = match initialized {
         Ok(ids) => ids,
         Err(error) => {
-            let _ = child.lock().await.kill().await;
+            let _ = crate::util::process_control::terminate_process_group_with_escalation(
+                &mut *child.lock().await,
+            )
+            .await;
             return Err(error);
         }
     };
@@ -189,6 +192,9 @@ pub async fn launch_turn(
         cancel: cancel_tx,
         disposed: AtomicBool::new(false),
         done_rx,
+        rpc: Arc::clone(&rpc),
+        thread_id: thread_id.clone(),
+        turn_id: turn_id.clone(),
     });
     let session_id = input.session_id.clone();
     let invocation_id = Uuid::new_v4().to_string();
@@ -1032,6 +1038,9 @@ struct CodexTurnHandle {
     cancel: watch::Sender<bool>,
     disposed: AtomicBool,
     done_rx: watch::Receiver<bool>,
+    rpc: Arc<RpcPeer>,
+    thread_id: String,
+    turn_id: String,
 }
 
 impl ProviderRuntimeHandle for CodexTurnHandle {
@@ -1039,11 +1048,51 @@ impl ProviderRuntimeHandle for CodexTurnHandle {
         false
     }
 
+    fn supports_steering(&self) -> bool {
+        true
+    }
+
     fn disposed(&self) -> bool {
         self.disposed.load(Ordering::SeqCst)
     }
 
     fn send_input(&self, _input: &str) {}
+
+    fn steer<'a>(&'a self, prompt: &'a str) -> BoxFuture<'a, ArgmaxResult<()>> {
+        Box::pin(async move {
+            if self.disposed() || *self.done_rx.borrow() {
+                return Err(ArgmaxError::service(
+                    "STEER_NOT_RUNNING",
+                    "The Codex turn is no longer running",
+                ));
+            }
+
+            let result = self
+                .rpc
+                .request(
+                    "turn/steer",
+                    json!({
+                        "threadId": self.thread_id,
+                        "expectedTurnId": self.turn_id,
+                        "input": [{"type": "text", "text": prompt}],
+                    }),
+                )
+                .await;
+
+            match result {
+                Ok(_) => Ok(()),
+                Err(ArgmaxError::ServiceError { sub_code, message })
+                    if sub_code == "CODEX_APP_SERVER_RPC" =>
+                {
+                    Err(ArgmaxError::service("STEER_REJECTED", message))
+                }
+                Err(error) => Err(ArgmaxError::service(
+                    "STEER_DELIVERY_UNKNOWN",
+                    format!("Codex steering acknowledgement was not received: {error}"),
+                )),
+            }
+        })
+    }
 
     fn resize(&self, _cols: u16, _rows: u16) {}
 

@@ -676,7 +676,8 @@ export function lastSignificantSessionEvent(
       const canonical = decodeTimelineEvent(event);
       return (
         isParentVisibleEvent(event, childToolUseIds) &&
-        (canonical.kind === "message" ||
+        ((canonical.kind === "message" &&
+          !(canonical.role === "user" && canonical.delivery === "steer")) ||
           (canonical.kind === "tool" && canonical.phase !== "output"))
       );
     }

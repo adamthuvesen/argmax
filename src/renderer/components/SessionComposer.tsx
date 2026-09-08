@@ -14,6 +14,7 @@ import {
   Pencil,
   Play,
   Plus,
+  Quote,
   Send,
   Square,
   Trash2,
@@ -38,6 +39,7 @@ import type {
   ComposerAttachment,
   PendingMessage,
   ProviderId,
+  QueuedMessageDelivery,
   SessionSummary,
   WorkspaceSummary
 } from "../../shared/types.js";
@@ -150,11 +152,20 @@ export function SessionComposer({
   isQueueing: boolean;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
-  onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
+  onSendQueuedMessageNow?: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery
+  ) => Promise<void>;
   /** Dispatch a prompt as a multitask: a sibling chat in this checkout that
    *  runs alongside the current turn instead of waiting behind it. It inherits
    *  this chat's provider, which is why the call carries it. */
-  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
+  onMultitask?: (
+    sessionId: string,
+    prompt: string,
+    provider: ProviderId,
+    pendingMessageId?: string
+  ) => Promise<void>;
   /** For a chat that lives inside a panel (a multitask in the Agents dock):
    *  promote it to the pane it is docked beside. Absent in a pane, which is
    *  already the full chat. */
@@ -607,12 +618,14 @@ export function SessionComposer({
                 setStatus({ kind: "error", message: error instanceof Error ? error.message : "Could not cancel this follow-up." });
               });
             };
-            const sendQueuedNow = async (): Promise<void> => {
+            const sendQueuedNow = async (
+              delivery: QueuedMessageDelivery = "interrupt"
+            ): Promise<void> => {
               if (!session || !onSendQueuedMessageNow || sendingQueuedMessageId) return;
               setSendingQueuedMessageId(entry.id);
               setStatus(null);
               try {
-                await onSendQueuedMessageNow(session.id, entry.id);
+                await onSendQueuedMessageNow(session.id, entry.id, delivery);
               } catch (error) {
                 setStatus({
                   kind: "error",
@@ -632,29 +645,12 @@ export function SessionComposer({
               setSendingQueuedMessageId(id);
               setStatus(null);
               try {
-                await onMultitask(session.id, content, session.provider);
+                await onMultitask(session.id, content, session.provider, id);
               } catch (error) {
                 setStatus({
                   kind: "error",
                   message:
                     error instanceof Error ? error.message : "Could not start the multitask."
-                });
-                setSendingQueuedMessageId(null);
-                return;
-              }
-              try {
-                // The multitask is already running, so a dequeue that fails is
-                // not a failed multitask — it is a message that would run the
-                // same prompt a second time when the queue drains, which is
-                // what this says.
-                await onCancelQueuedMessage?.(session.id, id);
-              } catch (error) {
-                setStatus({
-                  kind: "error",
-                  message:
-                    error instanceof Error
-                      ? error.message
-                      : "The multitask started, but the queued message could not be removed."
                 });
               } finally {
                 setSendingQueuedMessageId(null);
@@ -725,16 +721,35 @@ export function SessionComposer({
                     </span>
                   ) : null}
                 </span>
+                {session.state === "running" &&
+                (session.provider === "codex" || session.provider === "claude") &&
+                (entry.modelId === null || entry.modelId === undefined || entry.modelId === session.modelId) &&
+                (entry.reasoningEffort === null ||
+                  entry.reasoningEffort === undefined ||
+                  entry.reasoningEffort === session.reasoningEffort) &&
+                entry.agentMode === (session.agentMode ?? "auto") ? (
+                  <button
+                    type="button"
+                    className="composer-queued-chip-action"
+                    aria-label={`Steer queued follow-up: ${entry.content}`}
+                    title="Steer the current turn without stopping it"
+                    disabled={sendingQueuedMessageId !== null}
+                    onClick={() => void sendQueuedNow("steer")}
+                  >
+                    <Send size={13} aria-hidden="true" />
+                    <span>Steer</span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="composer-queued-chip-action"
-                  aria-label={`Send queued follow-up: ${entry.content}`}
-                  title="Send, interrupting the current turn"
+                  aria-label={`Stop and send queued follow-up: ${entry.content}`}
+                  title="Stop the current turn and send this follow-up"
                   disabled={sendingQueuedMessageId !== null}
-                  onClick={() => void sendQueuedNow()}
+                  onClick={() => void sendQueuedNow("interrupt")}
                 >
                   <Send size={13} aria-hidden="true" />
-                  <span>Send</span>
+                  <span>Stop &amp; send</span>
                 </button>
                 {onMultitask ? (
                   <button
@@ -789,6 +804,7 @@ export function SessionComposer({
               title={openFilePaths.join("\n")}
               aria-label={`Attached context: ${openFilesChipLabel(openFilePaths)}`}
             >
+              <FolderOpen size={14} className="composer-annotation-icon" aria-hidden="true" />
               <span className="composer-annotation-chip-label">{openFilesChipLabel(openFilePaths)}</span>
               <button
                 type="button"
@@ -797,7 +813,7 @@ export function SessionComposer({
                 title="Don't attach open files"
                 onClick={() => setDismissedOpenFilesKey(openFilesKey)}
               >
-                <X size={12} />
+                <X size={13} aria-hidden="true" />
               </button>
             </div>
           ) : null}
@@ -809,6 +825,11 @@ export function SessionComposer({
               title={annotationChipLabel(annotation)}
               aria-label={`Annotation: ${annotationChipLabel(annotation)}`}
             >
+              {annotation.kind === "excerpt" ? (
+                <Quote size={14} className="composer-annotation-icon" aria-hidden="true" />
+              ) : (
+                <FileDiff size={14} className="composer-annotation-icon" aria-hidden="true" />
+              )}
               <span className="composer-annotation-chip-label">{annotationChipLabel(annotation)}</span>
               <button
                 type="button"
@@ -817,7 +838,7 @@ export function SessionComposer({
                 title="Remove annotation"
                 onClick={() => onRemoveAnnotation?.(annotation.id)}
               >
-                <X size={12} />
+                <X size={13} aria-hidden="true" />
               </button>
             </div>
           ))}
@@ -854,7 +875,7 @@ export function SessionComposer({
           <div className="composer-highlight-backdrop" aria-hidden="true" ref={highlightBackdropRef}>
             {skillHighlight.map((segment, index) =>
               segment.skill ? (
-                <span key={index} className="composer-skill-token">
+                <span key={index} className="skill-token">
                   {segment.text}
                 </span>
               ) : (

@@ -11,6 +11,7 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
+import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
@@ -64,8 +65,17 @@ export function DetailsPopup({
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onClose: () => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
-  onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
+  onSendQueuedMessageNow: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery
+  ) => Promise<void>;
+  onMultitask?: (
+    sessionId: string,
+    prompt: string,
+    provider: ProviderId,
+    pendingMessageId?: string
+  ) => Promise<void>;
   /** The popup has no dock, so a multitask dispatched from it opens as a full
    *  chat — the same fallback the phone uses. Without it the row is a button
    *  that goes nowhere, and the chat has no sidebar row either. */

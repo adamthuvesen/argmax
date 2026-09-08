@@ -124,6 +124,8 @@ export type AgentReference = Bindings.AgentReference;
 export type NativeAgentIdentity = Pick<AgentReference, "providerParentConversationId" | "providerChildSessionId">;
 export type ProvidersCancelQueuedMessageInput = Bindings.ProvidersCancelQueuedMessageInput;
 export type ProvidersSendQueuedMessageNowInput = Bindings.ProvidersSendQueuedMessageNowInput;
+/** How a pending message reaches an active provider turn. */
+export type QueuedMessageDelivery = NonNullable<ProvidersSendQueuedMessageNowInput["delivery"]>;
 export type ProviderSessionResizeInput = Bindings.ProvidersResizeInput;
 export type ComposerAttachment = Bindings.ComposerAttachmentInput;
 export type AttachmentSaveImageInput = Bindings.AttachmentsSaveImageInput;
@@ -468,6 +470,7 @@ export interface ArgmaxApi {
     multitask: (input: {
       sessionId: string;
       prompt: string;
+      pendingMessageId?: string;
       worktree?: boolean;
       taskLabel?: string | null;
     }) => Promise<MultitaskLaunched>;

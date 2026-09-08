@@ -17,6 +17,9 @@ pub struct SyncedSessionRecord {
     pub external_id: String,
     pub source_path: String,
     pub byte_cursor: u64,
+    /// `None` identifies a pre-v40 row whose `byte_cursor` still contains a
+    /// line index. The next changed sweep converts both coordinates together.
+    pub line_cursor: Option<u64>,
     pub source_mtime_ms: i64,
     pub adopted: bool,
     pub started_at: String,
@@ -30,12 +33,13 @@ pub fn upsert_synced_session(
         .prepare_cached(
             r#"
             INSERT INTO synced_sessions (
-              session_id, provider, external_id, source_path, byte_cursor,
+              session_id, provider, external_id, source_path, byte_cursor, line_cursor,
               source_mtime_ms, adopted, started_at, last_synced_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(session_id) DO UPDATE SET
               source_path = excluded.source_path,
               byte_cursor = excluded.byte_cursor,
+              line_cursor = excluded.line_cursor,
               source_mtime_ms = excluded.source_mtime_ms,
               last_synced_at = excluded.last_synced_at
             "#,
@@ -47,6 +51,7 @@ pub fn upsert_synced_session(
             record.external_id.as_str(),
             record.source_path.as_str(),
             record.byte_cursor as i64,
+            record.line_cursor.map(|cursor| cursor as i64),
             record.source_mtime_ms,
             i64::from(record.adopted),
             record.started_at.as_str(),
@@ -63,7 +68,7 @@ pub fn list_synced_sessions(
 ) -> ArgmaxResult<Vec<SyncedSessionRecord>> {
     let mut statement = connection
         .prepare_cached(
-            "SELECT session_id, provider, external_id, source_path, byte_cursor,
+            "SELECT session_id, provider, external_id, source_path, byte_cursor, line_cursor,
                     source_mtime_ms, adopted, started_at
              FROM synced_sessions WHERE provider = ? ORDER BY started_at DESC",
         )
@@ -76,6 +81,9 @@ pub fn list_synced_sessions(
                 external_id: row.get("external_id")?,
                 source_path: row.get("source_path")?,
                 byte_cursor: row.get::<_, i64>("byte_cursor")?.max(0) as u64,
+                line_cursor: row
+                    .get::<_, Option<i64>>("line_cursor")?
+                    .map(|cursor| cursor.max(0) as u64),
                 source_mtime_ms: row.get("source_mtime_ms")?,
                 adopted: row.get::<_, i64>("adopted")? != 0,
                 started_at: row.get("started_at")?,

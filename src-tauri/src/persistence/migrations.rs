@@ -167,6 +167,16 @@ pub static SYNCED_SESSIONS_COLUMNS: phf::Map<&'static str, &'static [&'static st
     ] as &'static [&'static str],
 };
 
+// Post-v40 sync shape: byte_cursor finally stores a real seek offset, while
+// line_cursor preserves the absolute transcript row used in deterministic
+// event ids. NULL marks a v18-v39 row awaiting one legacy line-based read.
+pub static SYNC_BYTE_AND_LINE_CURSOR_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "synced_sessions" => &[
+        "adopted", "byte_cursor", "external_id", "last_synced_at", "line_cursor",
+        "provider", "session_id", "source_mtime_ms", "source_path", "started_at",
+    ] as &'static [&'static str],
+};
+
 // Post-v23 `sessions` shape: adds the lineage an agent-launched session
 // carries — who launched it, and how deep the chain already is.
 pub static SESSION_LAUNCH_LINEAGE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -218,6 +228,22 @@ pub static USAGE_SCAN_COLUMNS: phf::Map<&'static str, &'static [&'static str]> =
     ] as &'static [&'static str],
     "usage_dedupe_keys" => &["hour_utc", "key", "source_path"] as &'static [&'static str],
     "usage_scan_meta" => &["key", "value"] as &'static [&'static str],
+};
+
+// Post-v39 usage scan shape: parser state makes tail parsing equivalent to a
+// cold parse, while source-local contributions let repeated calls elect a
+// replacement when the previous winning transcript disappears or improves.
+pub static USAGE_CONTRIBUTIONS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "usage_scan_files" => &[
+        "cursor_offset", "guard_hash", "mtime_ms", "parser_state", "path", "provider",
+        "scanned_at", "session_id", "size",
+    ] as &'static [&'static str],
+    "usage_contributions" => &[
+        "at_ms", "billed_call_key", "cache_read", "cache_write_1h",
+        "cache_write_5m", "hour_utc", "input_uncached", "model_id", "output",
+        "processed_tokens", "provider", "reasoning", "reported_cost_usd",
+        "session_id", "source_path",
+    ] as &'static [&'static str],
 };
 
 pub static SESSION_CHANGE_FEED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -698,6 +724,22 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SESSION_PR_ATTRIBUTION_COLUMNS,
         requires_foreign_keys_off: true,
     },
+    Migration {
+        version: 39,
+        name: "usage_source_contributions",
+        up: USAGE_SOURCE_CONTRIBUTIONS,
+        affected_tables: &["usage_scan_files", "usage_contributions"],
+        expected_columns: &USAGE_CONTRIBUTIONS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 40,
+        name: "sync_byte_and_line_cursor",
+        up: SYNC_BYTE_AND_LINE_CURSOR,
+        affected_tables: &["synced_sessions"],
+        expected_columns: &SYNC_BYTE_AND_LINE_CURSOR_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 // Widen permission choices without rewriting existing chats or migration history.
@@ -1102,6 +1144,34 @@ CREATE TABLE usage_scan_meta (
 );
 "#;
 
+const USAGE_SOURCE_CONTRIBUTIONS: &str = r#"
+ALTER TABLE usage_scan_files ADD COLUMN parser_state TEXT;
+
+CREATE TABLE usage_contributions (
+  source_path TEXT NOT NULL,
+  billed_call_key TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  at_ms INTEGER NOT NULL,
+  hour_utc INTEGER NOT NULL,
+  input_uncached INTEGER NOT NULL DEFAULT 0,
+  cache_read INTEGER NOT NULL DEFAULT 0,
+  cache_write_5m INTEGER NOT NULL DEFAULT 0,
+  cache_write_1h INTEGER NOT NULL DEFAULT 0,
+  output INTEGER NOT NULL DEFAULT 0,
+  reasoning INTEGER NOT NULL DEFAULT 0,
+  reported_cost_usd REAL,
+  processed_tokens INTEGER NOT NULL,
+  PRIMARY KEY (source_path, billed_call_key)
+);
+CREATE INDEX idx_usage_contributions_key_winner
+  ON usage_contributions(billed_call_key, processed_tokens DESC, source_path);
+CREATE INDEX idx_usage_contributions_bucket
+  ON usage_contributions(provider, model_id, session_id, source_path, hour_utc);
+CREATE INDEX idx_usage_contributions_hour ON usage_contributions(hour_utc);
+"#;
+
 // The branch a PR was opened from, so a workspace can find the PR for the
 // branch it is on rather than the PRs its own sessions happened to watch.
 const GH_PR_HEAD_REF_NAME: &str = r#"
@@ -1170,6 +1240,10 @@ CREATE UNIQUE INDEX idx_synced_sessions_provider_external
   ON synced_sessions(provider, external_id);
 CREATE INDEX idx_synced_sessions_provider_adopted
   ON synced_sessions(provider, adopted);
+"#;
+
+const SYNC_BYTE_AND_LINE_CURSOR: &str = r#"
+ALTER TABLE synced_sessions ADD COLUMN line_cursor INTEGER;
 "#;
 
 // Scheduled tasks ("routines"): a stored prompt plus schedule that the
@@ -1994,6 +2068,8 @@ mod tests {
                     38,
                     compute_migration_checksum(SESSION_PERMISSION_PROVIDER_DEFAULTS)
                 ),
+                (39, compute_migration_checksum(USAGE_SOURCE_CONTRIBUTIONS)),
+                (40, compute_migration_checksum(SYNC_BYTE_AND_LINE_CURSOR)),
             ]
         );
 

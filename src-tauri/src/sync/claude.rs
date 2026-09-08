@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use super::DiscoveredSession;
+use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::providers::normalizer::claude::{transcript_user_row, TranscriptUserRow};
 
 /// Cheap prefix read for metadata: enough lines to find `cwd` and the first
@@ -163,32 +164,109 @@ pub struct TimelineLine {
     pub timestamp: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TranscriptCursor {
+    pub byte_offset: u64,
+    pub line_index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimelineBatch {
+    pub lines: Vec<TimelineLine>,
+    pub cursor: TranscriptCursor,
+}
+
 /// Transcript lines the normalizer should read, in order, starting at
-/// `from_line`. Only lines this reader cannot hand over are dropped: what is
+/// `cursor`. Only lines this reader cannot hand over are dropped: what is
 /// not a JSON object, what is too large to parse, and sidechain (subagent)
 /// chatter, which belongs to a child agent rather than this conversation.
 /// Whether a line means anything on the timeline is the normalizer's call.
 ///
-/// Read line by line rather than whole: a long-running session's transcript
-/// runs to tens of megabytes and every sweep re-reads it from `from_line`.
-pub fn timeline_lines(path: &Path, from_line: usize) -> Vec<TimelineLine> {
-    use std::io::{BufRead, BufReader};
-    let Ok(file) = std::fs::File::open(path) else {
-        return Vec::new();
-    };
+/// Both coordinates are persisted. The byte offset makes an append an actual
+/// tail read, while the absolute line index keeps deterministic event ids
+/// compatible with imports created before byte seeking was introduced.
+pub fn timeline_lines(path: &Path, cursor: TranscriptCursor) -> ArgmaxResult<TimelineBatch> {
+    read_timeline_lines(path, cursor, None)
+}
+
+/// Upgrade path for records created when the database's `byte_cursor` column
+/// accidentally held a line index. This scans from the head once, then hands
+/// back a real byte offset and line index for every later sweep.
+pub fn timeline_lines_from_legacy_line(
+    path: &Path,
+    from_line: usize,
+) -> ArgmaxResult<TimelineBatch> {
+    read_timeline_lines(path, TranscriptCursor::default(), Some(from_line))
+}
+
+fn read_timeline_lines(
+    path: &Path,
+    mut cursor: TranscriptCursor,
+    skip_before_line: Option<usize>,
+) -> ArgmaxResult<TimelineBatch> {
+    use std::io::{BufReader, Seek, SeekFrom};
+
+    let file = std::fs::File::open(path).map_err(|error| transcript_read_error(path, error))?;
+    let file_len = file
+        .metadata()
+        .map_err(|error| transcript_read_error(path, error))?
+        .len();
+    if cursor.byte_offset > file_len {
+        cursor = TranscriptCursor::default();
+    }
+    let mut reader = BufReader::new(file);
+    reader
+        .seek(SeekFrom::Start(cursor.byte_offset))
+        .map_err(|error| transcript_read_error(path, error))?;
+
     let mut lines = Vec::new();
-    for (index, line) in BufReader::new(file)
-        .lines()
-        .map_while(Result::ok)
-        .enumerate()
-    {
-        if index < from_line || line.is_empty() || line.len() > MAX_LINE_BYTES {
+    loop {
+        let Some(TranscriptRow {
+            mut raw,
+            bytes_read,
+            terminated,
+            oversized,
+        }) =
+            read_transcript_row(&mut reader).map_err(|error| transcript_read_error(path, error))?
+        else {
+            return Ok(TimelineBatch { lines, cursor });
+        };
+
+        let index = cursor.line_index;
+        if terminated {
+            raw.pop();
+            if raw.last() == Some(&b'\r') {
+                raw.pop();
+            }
+            cursor.byte_offset += bytes_read as u64;
+            cursor.line_index += 1;
+        }
+
+        if skip_before_line.is_some_and(|from_line| index < from_line)
+            || raw.is_empty()
+            || oversized
+        {
+            if !terminated {
+                break;
+            }
             continue;
         }
+        let Ok(line) = String::from_utf8(raw) else {
+            if !terminated {
+                break;
+            }
+            continue;
+        };
         let Ok(value) = serde_json::from_str::<Value>(&line) else {
+            if !terminated {
+                break;
+            }
             continue;
         };
         if !value.is_object() || is_sidechain(&value) {
+            if !terminated {
+                break;
+            }
             continue;
         }
         lines.push(TimelineLine {
@@ -199,8 +277,63 @@ pub fn timeline_lines(path: &Path, from_line: usize) -> Vec<TimelineLine> {
                 .and_then(Value::as_str)
                 .map(str::to_string),
         });
+        // A syntactically complete final row is safe to show, but without its
+        // newline it is not safe to checkpoint. The next append replays the
+        // same deterministic id and then advances once the row is terminated.
+        if !terminated {
+            break;
+        }
     }
-    lines
+    Ok(TimelineBatch { lines, cursor })
+}
+
+fn transcript_read_error(path: &Path, error: std::io::Error) -> ArgmaxError {
+    ArgmaxError::service(
+        "SYNC_TRANSCRIPT_READ",
+        format!("failed to read {}: {error}", path.display()),
+    )
+}
+
+struct TranscriptRow {
+    raw: Vec<u8>,
+    bytes_read: usize,
+    terminated: bool,
+    oversized: bool,
+}
+
+/// Read one JSONL row while retaining at most the configured maximum. Claude
+/// transcripts can contain arbitrarily large tool payloads, and allocating a
+/// whole rejected row would defeat the size guard precisely when it matters.
+fn read_transcript_row(
+    reader: &mut impl std::io::BufRead,
+) -> std::io::Result<Option<TranscriptRow>> {
+    let mut raw = Vec::new();
+    let mut bytes_read = 0;
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            return Ok((bytes_read > 0).then_some(TranscriptRow {
+                raw,
+                bytes_read,
+                terminated: false,
+                oversized: bytes_read > MAX_LINE_BYTES,
+            }));
+        }
+        let newline = available.iter().position(|byte| *byte == b'\n');
+        let consumed = newline.map_or(available.len(), |position| position + 1);
+        let retained = (MAX_LINE_BYTES + 1).saturating_sub(raw.len());
+        raw.extend_from_slice(&available[..consumed.min(retained)]);
+        bytes_read += consumed;
+        reader.consume(consumed);
+        if newline.is_some() {
+            return Ok(Some(TranscriptRow {
+                raw,
+                bytes_read,
+                terminated: true,
+                oversized: bytes_read.saturating_sub(1) > MAX_LINE_BYTES,
+            }));
+        }
+    }
 }
 
 fn is_sidechain(value: &Value) -> bool {
@@ -420,27 +553,81 @@ mod tests {
 
         // What a row means is the normalizer's call, so the reader keeps the
         // CLI's own bookkeeping rows too — only the subagent's is dropped.
-        let lines = timeline_lines(&path, 0);
-        assert_eq!(lines.len(), 3);
+        let batch = timeline_lines(&path, TranscriptCursor::default()).expect("timeline");
+        assert_eq!(batch.lines.len(), 3);
         // Line indexes are absolute, so a resumed read picks up where it left off.
         assert_eq!(
-            lines.iter().map(|line| line.index).collect::<Vec<_>>(),
+            batch
+                .lines
+                .iter()
+                .map(|line| line.index)
+                .collect::<Vec<_>>(),
             vec![0, 1, 3]
         );
-        assert!(lines
+        assert!(batch
+            .lines
             .iter()
             .all(|line| !line.raw.contains("subagent chatter")));
         // The row's own timestamp rides along; the file mtime is one instant
         // for the whole batch.
         assert_eq!(
-            lines[1].timestamp.as_deref(),
+            batch.lines[1].timestamp.as_deref(),
             Some("2026-08-30T10:00:00.000Z")
         );
 
-        // Resuming past the first rows yields only the later one.
-        let resumed = timeline_lines(&path, 2);
-        assert_eq!(resumed.len(), 1);
-        assert_eq!(resumed[0].index, 3);
+        // A pre-byte-cursor record resumes by line once, preserving the old
+        // event identities while producing a byte cursor for the next sweep.
+        let resumed = timeline_lines_from_legacy_line(&path, 2).expect("legacy timeline");
+        assert_eq!(resumed.lines.len(), 1);
+        assert_eq!(resumed.lines[0].index, 3);
+    }
+
+    #[test]
+    fn byte_cursor_reads_only_appended_rows_and_retains_a_partial_tail() {
+        use std::io::Write;
+
+        let home = tempfile::tempdir().expect("tempdir");
+        let path = write_transcript(home.path(), "-repo-app", "sess-1", &[USER_LINE]);
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .expect("open transcript")
+            .write_all(b"\n")
+            .expect("terminate first row");
+
+        let first = timeline_lines(&path, TranscriptCursor::default()).expect("first read");
+        assert_eq!(first.lines.len(), 1);
+        assert_eq!(first.cursor.line_index, 1);
+        assert_eq!(
+            first.cursor.byte_offset,
+            std::fs::metadata(&path).unwrap().len()
+        );
+
+        let split = ASSISTANT_LINE.len() / 2;
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .expect("append transcript");
+        file.write_all(&ASSISTANT_LINE.as_bytes()[..split])
+            .expect("write partial row");
+        let partial = timeline_lines(&path, first.cursor).expect("partial read");
+        assert!(partial.lines.is_empty());
+        assert_eq!(partial.cursor, first.cursor, "partial row must be retried");
+
+        file.write_all(&ASSISTANT_LINE.as_bytes()[split..])
+            .expect("complete row");
+        file.write_all(b"\n").expect("terminate row");
+        drop(file);
+
+        let appended = timeline_lines(&path, partial.cursor).expect("appended read");
+        assert_eq!(appended.lines.len(), 1);
+        assert_eq!(appended.lines[0].index, 1);
+        assert!(appended.lines[0].raw.contains("On it."));
+        assert_eq!(appended.cursor.line_index, 2);
+        assert!(timeline_lines(&path, appended.cursor)
+            .expect("empty tail")
+            .lines
+            .is_empty());
     }
 
     #[test]
@@ -461,7 +648,23 @@ mod tests {
             "sess-1",
             &["{ not json at all", USER_LINE, "", ASSISTANT_LINE],
         );
-        assert_eq!(timeline_lines(&path, 0).len(), 2);
+        assert_eq!(
+            timeline_lines(&path, TranscriptCursor::default())
+                .expect("timeline")
+                .lines
+                .len(),
+            2
+        );
         assert_eq!(discover(home.path(), 0).len(), 1);
+    }
+
+    #[test]
+    fn transcript_io_failures_are_not_reported_as_an_empty_success() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let missing = home.path().join("missing.jsonl");
+
+        let error = timeline_lines(&missing, TranscriptCursor::default())
+            .expect_err("missing transcript must fail the sweep");
+        assert!(error.to_string().contains("missing.jsonl"));
     }
 }

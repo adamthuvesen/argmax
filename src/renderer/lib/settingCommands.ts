@@ -33,7 +33,7 @@ const FONT_SIZE_LEVELS: FontSize[] = Array.from(
   (_, index) => (FONT_SIZE_MIN + index) as FontSize
 );
 
-const CHAT_VERBOSITY_LEVELS: ChatVerbosity[] = [1, 2, 3, 4, 5];
+const CHAT_VERBOSITY_LEVELS: ChatVerbosity[] = [1, 2, 3, 4];
 
 /**
  * Rows for one 1–10 type-size slider: a step in each direction, then every
@@ -100,7 +100,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
     label: `Chat detail ${level}: ${CHAT_VERBOSITY_LABELS[level]}`,
     // The panel calls this "Chat detail & verbosity"; the label carries one
     // word and the subtitle the other, so either finds the row.
-    subtitle: `Verbosity ${level} of 5 · ${CHAT_VERBOSITY_HINTS[level]}`,
+    subtitle: `Verbosity ${level} of 4 · ${CHAT_VERBOSITY_HINTS[level]}`,
     group: "Settings",
     icon: level === input.chatVerbosity ? Check : ListTree,
     run: () => input.onChatVerbosityChange(level)

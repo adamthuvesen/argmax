@@ -27,16 +27,18 @@ describe("buildSettingCommands", () => {
 
     byId.get("setting:theme:light")!.run();
     byId.get("setting:accent:blue")!.run();
-    byId.get("setting:chat-verbosity:5")!.run();
+    byId.get("setting:chat-verbosity:4")!.run();
     byId.get("setting:font-size:9")!.run();
     byId.get("setting:chat-font-size:2")!.run();
 
     expect(input.onThemeModeChange).toHaveBeenCalledWith("light");
     expect(input.onAccentChange).toHaveBeenCalledWith("blue");
-    expect(input.onChatVerbosityChange).toHaveBeenCalledWith(5);
+    expect(input.onChatVerbosityChange).toHaveBeenCalledWith(4);
     expect(input.onFontSizeChange).toHaveBeenCalledWith(9);
     expect(input.onChatFontSizeChange).toHaveBeenCalledWith(2);
     expect(commands.every((command) => command.group === "Settings")).toBe(true);
+    expect(byId.has("setting:chat-verbosity:5")).toBe(false);
+    expect(byId.get("setting:chat-verbosity:4")?.subtitle).toContain("Verbosity 4 of 4");
   });
 
   it("marks only the current value of each setting with a check", () => {

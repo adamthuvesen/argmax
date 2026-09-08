@@ -1,9 +1,10 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect, useState, type JSX, type ReactNode } from "react";
 import { formatThoughtLabel } from "../formatElapsed.js";
+import type { ThinkingDisplay } from "../lib/uiPreferences.js";
 
 /**
- * Collapsible "Thought" block for Claude's extended-thinking (reasoning).
+ * Provider-visible reasoning, inline or behind a "Thought" disclosure.
  * The normalizer surfaces thinking as a message.delta with
  * payload.thinking === true; the turn folder routes those groups here instead
  * of rendering them as inline answer text.
@@ -30,12 +31,14 @@ type UserToggle = {
 
 export function ThoughtBlock({
   children,
+  display = "collapsed",
   defaultExpanded = false,
   live = false,
   holdOpen = false,
   durationMs
 }: {
   children: ReactNode;
+  display?: ThinkingDisplay;
   defaultExpanded?: boolean;
   live?: boolean;
   /** Keep a block that opened itself while live open after `live` ends. */
@@ -57,6 +60,16 @@ export function ThoughtBlock({
   const expanded = userToggle?.autoExpanded === autoExpanded ? userToggle.value : autoExpanded;
   const label = formatThoughtLabel(live, durationMs);
   const titleVerb = live ? "thinking" : "thought";
+  // Inline thoughts remain part of the transcript, including when the reader
+  // folds tool activity or a newer turn arrives.
+  if (display === "inline") {
+    return (
+      <div className="thought-block" data-live={live ? "true" : undefined} data-display="inline">
+        <span className="thought-block-eyebrow-label">{label}</span>
+        <div className="thought-block-body">{children}</div>
+      </div>
+    );
+  }
   return (
     <div
       className="thought-block"

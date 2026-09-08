@@ -12,7 +12,9 @@ export type ComposerAnnotation =
       kind: "diff-note";
       filePath: string;
       line: number | null;
+      endLine?: number;
       side: DiffNoteSide;
+      endSide?: DiffNoteSide;
       lineText: string;
       comment: string;
       base: string;
@@ -23,7 +25,7 @@ export type ComposerAnnotation =
 export type DiffNoteSide = ParsedDiffLine["kind"];
 
 /**
- * A note the user wrote on one diff line in the review panel. Not a GitHub
+ * A note the user wrote on a diff line or range in the review panel. Not a GitHub
  * review comment: it never leaves this machine, and the agent addresses it by
  * editing the worktree. `base` names the comparison the diff was taken
  * against, because that is the tree the line number belongs to.
@@ -31,7 +33,9 @@ export type DiffNoteSide = ParsedDiffLine["kind"];
 export interface DiffNoteInput {
   filePath: string;
   line: number | null;
+  endLine?: number;
   side: DiffNoteSide;
+  endSide?: DiffNoteSide;
   lineText: string;
   comment: string;
   base: string;
@@ -59,7 +63,19 @@ export function createDiffNoteAnnotation(input: DiffNoteInput): ComposerAnnotati
 type DiffNoteAnnotation = Extract<ComposerAnnotation, { kind: "diff-note" }>;
 
 function diffNoteLocation(annotation: DiffNoteAnnotation): string {
-  return annotation.line === null ? annotation.filePath : `${annotation.filePath}:${annotation.line}`;
+  if (annotation.line === null) return annotation.filePath;
+  if (annotation.endLine === undefined) return `${annotation.filePath}:${annotation.line}`;
+
+  const endSide = annotation.endSide ?? annotation.side;
+  const crossesCoordinateSpaces =
+    (annotation.side === "deletion") !== (endSide === "deletion");
+  if (!crossesCoordinateSpaces) {
+    return `${annotation.filePath}:${annotation.line}-${annotation.endLine}`;
+  }
+
+  const startLabel = SIDE_WORDS[annotation.side];
+  const endLabel = SIDE_WORDS[endSide];
+  return `${annotation.filePath}:${annotation.line} (${startLabel})-${annotation.endLine} (${endLabel})`;
 }
 
 /** Short text for the annotation chip above the composer. Named so the user
@@ -93,7 +109,9 @@ function diffNoteBlock(annotation: DiffNoteAnnotation): string {
   const attributes = [
     `file="${annotation.filePath}"`,
     annotation.line === null ? null : `line="${annotation.line}"`,
+    annotation.endLine === undefined ? null : `end-line="${annotation.endLine}"`,
     `side="${SIDE_WORDS[annotation.side]}"`,
+    annotation.endSide === undefined ? null : `end-side="${SIDE_WORDS[annotation.endSide]}"`,
     `base="${annotation.base}"`
   ]
     .filter((attribute): attribute is string => attribute !== null)
@@ -112,6 +130,19 @@ const DIFF_NOTE_HEADERS = {
     "Notes the user left on diff lines in Argmax's review panel. They are about the local " +
     "changes in this worktree, not comments on a GitHub pull request — address them here; " +
     "there is nothing to reply to on GitHub. The quoted line is each note's anchor: line " +
+    "numbers move as you edit."
+} as const;
+
+const DIFF_NOTE_RANGE_HEADERS = {
+  one:
+    "A note the user left on a diff range in Argmax's review panel. It is about the local " +
+    "changes in this worktree. Address it here. There is nothing to reply to on GitHub. " +
+    "The quoted range includes diff markers and is the anchor: line numbers " +
+    "move as you edit.",
+  many:
+    "Notes the user left on diff lines or ranges in Argmax's review panel. They are about the local " +
+    "changes in this worktree. Address them here. There is nothing to reply to on GitHub. " +
+    "Quoted ranges include diff markers. The quoted code is each note's anchor: line " +
     "numbers move as you edit."
 } as const;
 
@@ -138,7 +169,9 @@ export function prependAnnotationsToPrompt(
     sections.push(`${header}\n\n${excerpts.map((a) => quoteBlock(a.excerpt)).join("\n\n")}`);
   }
   if (notes.length > 0) {
-    const header = notes.length === 1 ? DIFF_NOTE_HEADERS.one : DIFF_NOTE_HEADERS.many;
+    const includesRange = notes.some((note) => note.endLine !== undefined);
+    const headers = includesRange ? DIFF_NOTE_RANGE_HEADERS : DIFF_NOTE_HEADERS;
+    const header = notes.length === 1 ? headers.one : headers.many;
     sections.push(`${header}\n\n${notes.map(diffNoteBlock).join("\n\n")}`);
   }
   const attached = sections.join("\n\n");

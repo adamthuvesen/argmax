@@ -39,6 +39,16 @@ function useHighlightThemeAppearance(): "light" | "dark" {
   return useSyncExternalStore(subscribeToThemeAttribute, readThemeAppearance, () => "light");
 }
 
+type DiffHunk = Extract<ParsedDiffBlock, { kind: "hunk" }>;
+
+interface CommentSelection {
+  block: DiffHunk;
+  filePath: string;
+  anchor: number;
+  focus: number;
+  dragging: boolean;
+}
+
 /**
  * Memoized: every `dashboard:delta` re-renders the review panel with a fresh
  * events array, and each render re-runs shiki's tokenizer over every diff line
@@ -67,16 +77,41 @@ export const DiffBlocks = memo(function DiffBlocks({
   // shiki bundle finishes loading, swapping in highlighted tokens without
   // blocking the initial paint.
   const ready = useHighlighterReady();
-  useHighlightThemeAppearance();
+  const appearance = useHighlightThemeAppearance();
   const lang = useMemo(() => langFromPath(filePath ?? null), [filePath]);
   const effectiveLang = ready ? lang : null;
-  // One open comment form across all hunks, keyed `${block.id}-${index}`.
-  const [activeCommentKey, setActiveCommentKey] = useState<string | null>(null);
+  const [selection, setSelection] = useState<CommentSelection | null>(null);
+  // A refreshed diff can reuse hunk ids and line numbers for different code.
+  const activeSelection = selection && selection.filePath === filePath && blocks.includes(selection.block)
+    ? selection
+    : null;
+  const dragging = activeSelection?.dragging === true;
+  useEffect(() => {
+    if (!dragging) return;
+    const finish = (): void => {
+      setSelection((current) => current ? { ...current, dragging: false } : null);
+    };
+    const cancel = (): void => setSelection(null);
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancel();
+      }
+    };
+    window.addEventListener("mouseup", finish);
+    window.addEventListener("blur", cancel);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mouseup", finish);
+      window.removeEventListener("blur", cancel);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [dragging]);
   // A truncated diff already dropped content, so asking git for more context
   // would only drop more. Show the gaps, but stop advertising the action.
   const truncated = blocks.some((block) => block.kind === "truncated");
   return (
-    <div className="diff-blocks">
+    <div className="diff-blocks" data-selecting={dragging || undefined}>
       {blocks.map((block) => {
         switch (block.kind) {
           case "hunk":
@@ -85,10 +120,11 @@ export const DiffBlocks = memo(function DiffBlocks({
                 key={block.id}
                 block={block}
                 lang={effectiveLang}
+                appearance={appearance}
                 filePath={filePath ?? null}
                 onAddComment={onAddComment}
-                activeCommentKey={activeCommentKey}
-                onActiveCommentKeyChange={setActiveCommentKey}
+                selection={activeSelection?.block === block ? activeSelection : null}
+                onSelectionChange={setSelection}
               />
             );
           case "omitted":
@@ -156,18 +192,33 @@ function OmittedLines({
 function UnifiedHunk({
   block,
   lang,
+  appearance,
   filePath,
   onAddComment,
-  activeCommentKey,
-  onActiveCommentKeyChange
+  selection,
+  onSelectionChange
 }: {
-  block: Extract<ParsedDiffBlock, { kind: "hunk" }>;
+  block: DiffHunk;
   lang: string | null;
+  appearance: "light" | "dark";
   filePath: string | null;
   onAddComment?: (input: DiffNoteAnchor) => void;
-  activeCommentKey: string | null;
-  onActiveCommentKeyChange: (key: string | null) => void;
+  selection: CommentSelection | null;
+  onSelectionChange: (selection: CommentSelection | null) => void;
 }): JSX.Element {
+  const start = selection ? Math.min(selection.anchor, selection.focus) : -1;
+  const end = selection ? Math.max(selection.anchor, selection.focus) : -1;
+  const selectedLines = selection ? block.lines.slice(start, end + 1) : [];
+  const firstLine = selectedLines[0];
+  const lastLine = selectedLines.at(-1);
+  const startLine = firstLine?.newLineNumber ?? firstLine?.oldLineNumber;
+  const endLine = lastLine?.newLineNumber ?? lastLine?.oldLineNumber;
+  const range = start !== end;
+  const crossesSides = firstLine && lastLine
+    && (firstLine.kind === "deletion") !== (lastLine.kind === "deletion");
+  const location = crossesSides
+    ? `${filePath}:${startLine} (${firstLine.kind === "deletion" ? "removed" : firstLine.kind === "addition" ? "added" : "unchanged"})-${endLine} (${lastLine.kind === "deletion" ? "removed" : lastLine.kind === "addition" ? "added" : "unchanged"})`
+    : `${filePath}:${startLine}${range ? `-${endLine}` : ""}`;
   return (
     <div className="diff-hunk">
       <div className="diff-hunk-header">{block.header}</div>
@@ -177,7 +228,15 @@ function UnifiedHunk({
         const commentable = onAddComment !== undefined && filePath !== null && lineNumber !== null;
         return (
           <div key={key}>
-            <div className={`diff-line ${line.kind}`}>
+            <div
+              className={`diff-line ${line.kind}`}
+              data-selected={index >= start && index <= end || undefined}
+              onMouseEnter={() => {
+                if (selection?.dragging && lineNumber !== null) {
+                  onSelectionChange({ ...selection, focus: index });
+                }
+              }}
+            >
               <span className="diff-line-number">
                 {lineNumber ?? ""}
                 {commentable ? (
@@ -188,33 +247,52 @@ function UnifiedHunk({
                     // stop per diff line would bury everything after the panel.
                     tabIndex={-1}
                     aria-label={`Comment on line ${lineNumber} of ${filePath}`}
-                    title="Add a comment for this line"
-                    onClick={() => onActiveCommentKeyChange(activeCommentKey === key ? null : key)}
+                    aria-pressed={index >= start && index <= end}
+                    title="Click to comment, or drag to select multiple lines"
+                    onMouseDown={(event) => {
+                      if (event.button !== 0) return;
+                      event.preventDefault();
+                      onSelectionChange({ block, filePath, anchor: index, focus: index, dragging: true });
+                    }}
+                    onClick={(event) => {
+                      // Mouse selection finishes on mouseup. Its following
+                      // click must not collapse the range back to one line.
+                      if (event.detail !== 0) return;
+                      onSelectionChange(selection && start === index && end === index
+                        ? null
+                        : { block, filePath, anchor: index, focus: index, dragging: false });
+                    }}
                   >
                     <Plus size={12} aria-hidden="true" />
                   </button>
                 ) : null}
               </span>
               <code>
-                <DiffLineContent content={line.content || " "} lang={lang} />
+                <DiffLineContent content={line.content || " "} lang={lang} appearance={appearance} />
               </code>
             </div>
-            {commentable && activeCommentKey === key ? (
+            {commentable && selection && !selection.dragging && index === end && firstLine && lastLine ? (
               <DiffCommentForm
-                location={`${filePath}:${lineNumber}`}
-                onCancel={() => onActiveCommentKeyChange(null)}
+                key={`${start}-${end}`}
+                location={location}
+                onCancel={() => onSelectionChange(null)}
                 onSubmit={(comment) => {
                   onAddComment({
                     filePath,
-                    line: lineNumber,
+                    line: startLine ?? null,
+                    ...(range ? { endLine: endLine ?? undefined, endSide: lastLine.kind } : {}),
                     // A deletion's number is the pre-change one, so the side
                     // travels with it: the agent needs to know that line is
                     // not in the file on disk.
-                    side: line.kind,
-                    lineText: line.content,
+                    side: firstLine.kind,
+                    lineText: selectedLines.map((selected) => {
+                      if (!range) return selected.content;
+                      const prefix = selected.kind === "addition" ? "+" : selected.kind === "deletion" ? "-" : " ";
+                      return `${prefix}${selected.content}`;
+                    }).join("\n"),
                     comment
                   });
-                  onActiveCommentKeyChange(null);
+                  onSelectionChange(null);
                 }}
               />
             ) : null}
@@ -284,7 +362,13 @@ function DiffCommentForm({
   );
 }
 
-function DiffLineContent({ content, lang }: { content: string; lang: string | null }): JSX.Element {
+// Selection changes must not tokenize unchanged code again. Appearance stays
+// in the memo's props because the highlighter reads the theme from the DOM.
+const DiffLineContent = memo(function DiffLineContent({ content, lang }: {
+  content: string;
+  lang: string | null;
+  appearance: "light" | "dark";
+}): JSX.Element {
   if (!lang) {
     return <>{content}</>;
   }
@@ -307,4 +391,4 @@ function DiffLineContent({ content, lang }: { content: string; lang: string | nu
       ))}
     </>
   );
-}
+});

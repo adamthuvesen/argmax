@@ -81,6 +81,12 @@ The session review panel remembers its open/closed state per session in localSto
 
 Base ref resolution checks `workspace.base_ref`, then `origin/<default>`, then local `<default>`.
 
+### Diff Notes
+
+To add a diff note, click the line-number gutter or drag it across multiple lines within a hunk. The selected lines highlight as you drag, and releasing opens the comment form below the range. Dragging upward works too. Escape cancels a selection or an open form. Expand omitted context first to select across a gap.
+
+The composer chip and submitted note retain the range. Quoted ranges include diff markers so removed and added code remain distinguishable, with both endpoint sides recorded when the range crosses between them.
+
 ### Diff Context
 
 Diffs carry git's default three lines of context. `parseUnifiedDiff` ([src/renderer/lib/diff.ts](../src/renderer/lib/diff.ts)) turns each between-hunk gap into an `omitted` block, which `DiffBlocks` renders as an "N unmodified lines" button. Clicking it re-requests the file with `contextLines` on `review:load-diff`, which becomes `git diff -U<n>`, climbing `DIFF_CONTEXT_STEPS` (25, then the whole file) until every gap is closed.

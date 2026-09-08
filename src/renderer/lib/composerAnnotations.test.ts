@@ -69,6 +69,37 @@ describe("prependAnnotationsToPrompt", () => {
     expect(prompt.endsWith("</argmax-diff-note>\n\nthen rerun tests")).toBe(true);
   });
 
+  it("serializes and quotes a diff range", () => {
+    const prompt = prependAnnotationsToPrompt("", [
+      createDiffNoteAnnotation(
+        diffNote({
+          line: 8,
+          endLine: 11,
+          side: "deletion",
+          endSide: "addition",
+          lineText: "-const oldValue = 1;\n unchanged();\n+const newValue = 2;",
+          comment: "keep the old name"
+        })
+      )
+    ]);
+    expect(prompt).toBe(
+      "A note the user left on a diff range in Argmax's review panel. It is about the local " +
+        "changes in this worktree. Address it here. There is nothing to reply to on GitHub. " +
+        "The quoted range includes diff markers and is the anchor: line numbers " +
+        "move as you edit.\n\n" +
+        '<argmax-diff-note file="src/x.ts" line="8" end-line="11" side="removed" end-side="added" base="working tree vs HEAD">\n' +
+        "> -const oldValue = 1;\n>  unchanged();\n> +const newValue = 2;\nkeep the old name\n</argmax-diff-note>"
+    );
+  });
+
+  it("omits end-side when a range stays on one diff side", () => {
+    const prompt = prependAnnotationsToPrompt("", [
+      createDiffNoteAnnotation(diffNote({ endLine: 15, lineText: "+first\n+second" }))
+    ]);
+    expect(prompt).toContain('line="12" end-line="15" side="added" base=');
+    expect(prompt).not.toContain("end-side=");
+  });
+
   it("names the comparison the line number belongs to", () => {
     const prompt = prependAnnotationsToPrompt("", [
       createDiffNoteAnnotation(diffNote({ base: "the whole branch vs origin/main" }))
@@ -119,5 +150,44 @@ describe("annotationChipLabel", () => {
         createDiffNoteAnnotation(diffNote({ line: 7, comment: "tighten this" }))
       )
     ).toBe("Diff note · src/x.ts:7 — tighten this");
+  });
+
+  it("shows a compact line span for a range on one diff side", () => {
+    expect(
+      annotationChipLabel(
+        createDiffNoteAnnotation(diffNote({ endLine: 15, comment: "tighten these" }))
+      )
+    ).toBe("Diff note · src/x.ts:12-15 — tighten these");
+    expect(
+      annotationChipLabel(
+        createDiffNoteAnnotation(
+          diffNote({ endLine: 15, endSide: "addition", comment: "tighten these" })
+        )
+      )
+    ).toBe("Diff note · src/x.ts:12-15 — tighten these");
+  });
+
+  it("labels endpoints when a range crosses old and new file coordinates", () => {
+    expect(
+      annotationChipLabel(
+        createDiffNoteAnnotation(
+          diffNote({
+            line: 10,
+            endLine: 14,
+            side: "deletion",
+            endSide: "addition",
+            comment: "replace this hunk"
+          })
+        )
+      )
+    ).toBe("Diff note · src/x.ts:10 (removed)-14 (added) — replace this hunk");
+  });
+
+  it.each([
+    ["deletion", "context", "removed", "unchanged"],
+    ["context", "deletion", "unchanged", "removed"]
+  ] as const)("labels %s to %s endpoints accurately", (side, endSide, startLabel, endLabel) => {
+    const annotation = createDiffNoteAnnotation(diffNote({ side, endSide, endLine: 15 }));
+    expect(annotationChipLabel(annotation)).toContain(`12 (${startLabel})-15 (${endLabel})`);
   });
 });

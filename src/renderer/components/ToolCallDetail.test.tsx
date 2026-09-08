@@ -233,6 +233,43 @@ describe("ToolCallDetail", () => {
     expect(screen.queryByRole("button", { name: "Show all" })).toBeNull();
   });
 
+  it("keeps distinct diagnostic output alongside an explicit error", () => {
+    const diagnostics = Array.from({ length: 400 }, (_, i) => `diagnostic ${i}`).join("\n");
+    render(
+      <ToolCallDetail
+        tool={tool({
+          name: "Bash",
+          inputFull: { command: "npm test" },
+          output: diagnostics,
+          status: "error",
+          error: "Command failed with exit code 1"
+        })}
+      />
+    );
+
+    expect(screen.getByText("Error")).toBeInTheDocument();
+    expect(screen.getByText("Command failed with exit code 1")).toBeInTheDocument();
+    expect(screen.getByText(/diagnostic 0/).textContent).not.toBe(diagnostics);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show all" }));
+
+    expect(screen.getByText(/diagnostic 399/)).toBeInTheDocument();
+  });
+
+  it("does not repeat output that is identical to the explicit error", () => {
+    render(
+      <ToolCallDetail
+        tool={tool({
+          output: "Permission denied\n",
+          status: "error",
+          error: "Permission denied"
+        })}
+      />
+    );
+
+    expect(screen.getAllByText("Permission denied")).toHaveLength(1);
+  });
+
   it("renders nothing for a bash call that printed nothing", () => {
     const { container } = render(
       <ToolCallDetail

@@ -37,6 +37,7 @@ import { ImageFilePreview } from "./ImageFilePreview.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
 import { MarkdownTable } from "./MarkdownTable.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
+import { WebLink } from "./WebLink.js";
 import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
 
@@ -287,6 +288,14 @@ export function FilePreview({
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
             components={{
+              a: ({ href, title, children }) =>
+                href && (/^https?:/i.test(href) || href.startsWith("//")) ? (
+                  <WebLink href={href.startsWith("//") ? `https:${href}` : href} title={title}>
+                    {children}
+                  </WebLink>
+                ) : (
+                  <a href={href} title={title}>{children}</a>
+                ),
               table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
               img: ({ src, alt, ...rest }) => {
                 const resolved = resolveMarkdownImageSrc(

@@ -5,6 +5,8 @@ import { dirname, resolve } from "node:path";
 import { readBundledCss } from "../styles/readBundledCss.js";
 import { FilePreview } from "./FilePreview.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
+import { getBrowserRequest, subscribeBrowserRequest } from "../lib/browserPanel.js";
+import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
 
@@ -44,6 +46,50 @@ function makeState(overrides: Partial<WorkspaceFilesState> = {}): WorkspaceFiles
 }
 
 describe("FilePreview", () => {
+  it.each([
+    ["https://example.com/docs", "system", {}, "system"],
+    ["http://example.com/docs", "argmax", {}, "argmax"],
+    ["HTTPS://example.com/docs", "system", { metaKey: true }, "argmax"],
+    ["//example.com/docs", "system", { ctrlKey: true }, "argmax"],
+    ["https://example.com/docs", "argmax", { metaKey: true }, "system"],
+    ["https://example.com/docs", "argmax", { ctrlKey: true }, "system"]
+  ])("routes preview link %s with preference %s and modifiers %j to %s", (href, preference, modifiers, destination) => {
+    const originalApi = Object.getOwnPropertyDescriptor(window, "argmax");
+    const originalPreference = localStorage.getItem(LINK_TARGET_KEY);
+    const openPath = vi.fn().mockResolvedValue({ ok: true });
+    Object.defineProperty(window, "argmax", { configurable: true, value: { system: { openPath } } });
+    localStorage.setItem(LINK_TARGET_KEY, preference);
+    const opened: string[] = [];
+    const unsubscribe = subscribeBrowserRequest(() => {
+      const request = getBrowserRequest();
+      if (request) opened.push(request.url);
+    });
+    try {
+      const content = `[docs](${href})`;
+      render(<FilePreview state={makeState({
+        selectedPath: "README.md",
+        buffer: content,
+        preview: { kind: "text", content, size: content.length, mtimeMs: 1 }
+      })} />);
+      const link = screen.getByRole("link", { name: "docs" });
+      expect(fireEvent.click(link, modifiers)).toBe(false);
+      const expectedUrl = href.startsWith("//") ? `https:${href}` : href;
+      if (destination === "system") {
+        expect(openPath).toHaveBeenCalledExactlyOnceWith({ path: expectedUrl });
+        expect(opened).toEqual([]);
+      } else {
+        expect(opened).toEqual([expectedUrl]);
+        expect(openPath).not.toHaveBeenCalled();
+      }
+    } finally {
+      unsubscribe();
+      if (originalApi) Object.defineProperty(window, "argmax", originalApi);
+      else Reflect.deleteProperty(window, "argmax");
+      if (originalPreference === null) localStorage.removeItem(LINK_TARGET_KEY);
+      else localStorage.setItem(LINK_TARGET_KEY, originalPreference);
+    }
+  });
+
   it("renders the editor for text files", () => {
     render(<FilePreview state={makeState()} />);
     expect(screen.getByLabelText("Editor for src/index.ts")).toBeInTheDocument();

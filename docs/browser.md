@@ -2,6 +2,8 @@
 
 Argmax has one native browser and two places that show it.
 
+Web links in rendered file previews use the same browser preference as chat links. A plain click opens the configured destination, and ⌘/Ctrl-click opens the other browser without navigating the app's main view.
+
 **Browser page.** The left rail's Browser item (and ⌘K → Open Browser) fills the workspace with the tab strip and address bar. The session sidebar stays. Click a chat, New chat, or Esc to leave. The page remembers it was showing across a restart (`argmax.browser.pageOpen`). There is no dedicated shortcut; `⌘B` still toggles the right sidebar.
 
 **Review panel.** In a chat, Browser is one of the review-panel modes, beside Changes, Files, Agents, and [Terminal](terminal.md). The session actions menu has an "Open browser" item. This is the sidebar next to a transcript, for watching a session browse.

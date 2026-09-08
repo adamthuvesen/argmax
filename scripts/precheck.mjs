@@ -18,6 +18,7 @@
 
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // `git push` exports GIT_DIR / GIT_INDEX_FILE into the hook. Cargo tests that
 // seed a temp repo with `git init` then inherit those and lock this checkout's
@@ -34,7 +35,7 @@ for (const key of [
   delete process.env[key];
 }
 
-const ROOT = resolve(new URL("..", import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const CARGO_MANIFEST = "src-tauri/Cargo.toml";
 
 const args = process.argv.slice(2);
@@ -48,34 +49,42 @@ if (baseIndex >= 0 && !requestedBase) {
 
 function git(...gitArgs) {
   const run = spawnSync("git", gitArgs, { cwd: ROOT, encoding: "utf8" });
-  return run.status === 0 ? run.stdout.trim() : null;
+  return run.status === 0 ? run.stdout : null;
 }
 
 function mergeBase() {
   const candidates = requestedBase ? [requestedBase] : ["origin/main", "main"];
   for (const candidate of candidates) {
     const base = git("merge-base", "HEAD", candidate);
-    if (base) return { ref: candidate, sha: base };
+    if (base) return { ref: candidate, sha: base.trim() };
+  }
+  if (requestedBase) {
+    console.error(`error: cannot find a merge base with ${requestedBase}`);
+    process.exit(2);
   }
   return null;
 }
 
 function changedFiles(base) {
-  const tracked = git("diff", "--name-only", base.sha) ?? "";
-  const untracked = git("ls-files", "--others", "--exclude-standard") ?? "";
-  return new Set(`${tracked}\n${untracked}`.split("\n").filter(Boolean));
+  const tracked = git("diff", "--name-only", "-z", base.sha);
+  const untracked = git("ls-files", "--others", "--exclude-standard", "-z");
+  if (tracked === null || untracked === null) {
+    console.error("error: cannot determine changed files");
+    process.exit(1);
+  }
+  return new Set(`${tracked}${untracked}`.split("\0").filter(Boolean));
 }
 
-const RUST_PATHS = [/^src-tauri\/(?!target\/)/, /^rust-toolchain\.toml$/];
+const RUST_PATHS = [/^src-tauri\/(?!target\/)/, /^rust-toolchain\.toml$/, /^\.github\/workflows\//];
 const JS_PATHS = [
   /^src\//,
   /^package(-lock)?\.json$/,
   /^tsconfig\.json$/,
   /^vite(st)?(\.[\w-]+)?\.config\.ts$/,
   /^eslint\.config\.js$/,
-  /^scripts\//
+  /^scripts\//,
+  /^\.github\/workflows\//
 ];
-const RENDERER_SOURCE = /^src\/(?!.*\.test\.tsx?$)/;
 
 function touches(files, patterns) {
   for (const file of files) {
@@ -96,7 +105,7 @@ function decideScope() {
   return {
     rust: touches(files, RUST_PATHS),
     js: touches(files, JS_PATHS),
-    bundle: touches(files, [RENDERER_SOURCE]),
+    bundle: touches(files, JS_PATHS),
     reason: `${files.size} file(s) differ from ${base.ref}`
   };
 }
@@ -104,15 +113,7 @@ function decideScope() {
 function step(label, command, commandArgs) {
   const started = Date.now();
   process.stdout.write(`\n▶ ${label}\n`);
-  // `git push` exports GIT_DIR / GIT_WORK_TREE into this process. cargo tests
-  // that shell out to `git init` in a temp dir then hit Argmax's repo instead
-  // of the fixture. Strip the hook vars for child steps. The `git()` helper
-  // above still sees them, so merge-base against this repo keeps working.
-  const env = { ...process.env };
-  for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY"]) {
-    delete env[key];
-  }
-  const run = spawnSync(command, commandArgs, { cwd: ROOT, env, stdio: "inherit" });
+  const run = spawnSync(command, commandArgs, { cwd: ROOT, stdio: "inherit" });
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   if (run.status !== 0) {
     console.error(`\nerror: ${label} failed after ${seconds}s (${command} ${commandArgs.join(" ")})`);

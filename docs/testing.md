@@ -37,7 +37,10 @@ touches:
 | anything | `check:tauri-bridge`, `check:main-thread` |
 | `src/**`, package or tool config, `scripts/**` | eslint, tsc, `vitest run --changed <merge-base>`, perf budgets |
 | `src-tauri/**` | `cargo fmt --check`, `cargo test`, `cargo clippy -D warnings` |
-| renderer sources | `vite build` + the bundle budget |
+| any JS lane change | `vite build` + the bundle budget |
+
+Workflow changes run both language lanes. Paths are read from Git without quoting,
+so spaces and non-ASCII filenames cannot hide a change.
 
 CI runs the same lanes with the same path filter, so a push that passes the
 hook should not be failed by CI for a reason the hook could have caught.

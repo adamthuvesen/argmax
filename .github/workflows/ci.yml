@@ -215,6 +215,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     needs:
+      - changes
       - rust
       - js-static
       - js-tests

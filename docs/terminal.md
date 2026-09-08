@@ -13,6 +13,13 @@ Integrated terminal instances run independently from provider PTYs under [src-ta
 
 The backend uses `portable-pty` for process execution and event chunk emission. Subscriptions require `core:event:default` in `src-tauri/capabilities/default.json`.
 
+The backend prepares the PTY reader and writer before starting the shell, so a
+setup failure cannot leave an untracked child. Closing a live terminal signals
+every process group still in the shell's PTY session, then escalates from
+`SIGTERM` to `SIGKILL` after one shared grace period. Natural shell exit cleans
+up ordinary background jobs from that session too. Processes that deliberately
+create a new session keep their independent lifecycle.
+
 ## Where It Lives
 
 The terminal is a mode of the review panel — the fifth, beside Changes, Files, Agents, and [Browser](browser.md) — so shells sit in the same dock as the diff and the files they act on. The tab is shown only where a workspace backs the panel: the launcher's project-backed panel has no worktree to run in, and the mobile remote has no terminal at all.

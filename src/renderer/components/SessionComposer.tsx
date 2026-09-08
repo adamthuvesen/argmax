@@ -2,6 +2,7 @@ import {
   Bot,
   Columns2,
   CornerDownLeft,
+  CornerUpRight,
   Eraser,
   FileDiff,
   Folder,
@@ -724,8 +725,8 @@ export function SessionComposer({
                       data-recovery-status={entry.recoveryStatus}
                     >
                       {entry.recoveryStatus === "delivery-unknown"
-                        ? "Delivery uncertain after restart • check the chat before sending again"
-                        : "Paused after interruption • not sent"}
+                        ? "Delivery uncertain • check the chat before sending again"
+                        : "Paused • not sent"}
                     </span>
                   ) : null}
                 </span>
@@ -738,7 +739,7 @@ export function SessionComposer({
                     disabled={sendingQueuedMessageId !== null}
                     onClick={() => void sendQueuedNow("steer")}
                   >
-                    <Send size={13} aria-hidden="true" />
+                    <CornerUpRight size={13} aria-hidden="true" />
                     <span>Steer</span>
                   </button>
                 ) : null}

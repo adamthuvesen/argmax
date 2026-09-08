@@ -1589,4 +1589,178 @@ done
             Some((ProviderRuntimeEventType::Exit, Some(0)))
         );
     }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn fake_app_server_steers_the_active_turn_without_interrupting_it() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let server = temp.path().join("fake-codex-steer");
+        fs::write(
+            &server,
+            r#"#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"initialize"'*)
+      printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"codexHome":"/tmp/codex","platformFamily":"unix","platformOs":"test","userAgent":"fake"}}'
+      ;;
+    *'"method":"thread/start"'*)
+      printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"thread-1"},"model":"gpt-6-astra","modelProvider":"openai","cwd":"/tmp/project","approvalPolicy":"on-request","approvalsReviewer":"user","sandbox":{"type":"workspaceWrite"}}}'
+      ;;
+    *'"method":"turn/start"'*)
+      printf '%s\n' '{"jsonrpc":"2.0","id":3,"result":{"turn":{"id":"turn-1","status":"inProgress","items":[]}}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress","items":[]}}}'
+      ;;
+    *'"method":"turn/steer"'*)
+      printf '%s\n' "$line" > steer-request.json
+      printf '%s\n' '{"jsonrpc":"2.0","id":4,"result":{"turnId":"turn-1"}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","completedAtMs":1,"item":{"id":"message-1","type":"agentMessage","text":"original task complete with steer-token"}}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed","items":[]}}}'
+      ;;
+    *'"method":"turn/interrupt"'*)
+      : > interrupted
+      ;;
+  esac
+done
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let database = Arc::new(Database::open(temp.path().join("argmax.sqlite")).unwrap());
+        let approvals = ApprovalService::new(database);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| {
+            captured.lock().unwrap().push(event);
+        });
+        let mut launch_input = input(PermissionMode::ProviderDefaults);
+        launch_input.workspace_path = temp.path().to_path_buf();
+        launch_input.prompt = "original task".into();
+        let handle = launch_turn(
+            server.to_str().unwrap(),
+            &launch_input,
+            None,
+            approvals,
+            callback,
+        )
+        .await
+        .unwrap();
+
+        assert!(handle.supports_steering());
+        handle.steer("steer-token").await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !events
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|event| event.r#type == ProviderRuntimeEventType::Exit)
+            {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("steered fake Codex turn completed");
+
+        let request: Value = serde_json::from_str(
+            &fs::read_to_string(temp.path().join("steer-request.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(request["method"], "turn/steer");
+        assert_eq!(request["params"]["threadId"], "thread-1");
+        assert_eq!(request["params"]["expectedTurnId"], "turn-1");
+        assert_eq!(request["params"]["input"][0]["text"], "steer-token");
+        assert!(!temp.path().join("interrupted").exists());
+
+        let events = events.lock().unwrap();
+        assert!(events.iter().any(|event| {
+            event
+                .message
+                .contains("original task complete with steer-token")
+                && event.message.contains("agent_message")
+        }));
+        assert_eq!(
+            events.last().map(|event| (event.r#type, event.exit_code)),
+            Some((ProviderRuntimeEventType::Exit, Some(0)))
+        );
+    }
+
+    #[ignore = "uses the installed Codex CLI and the developer account"]
+    #[tokio::test]
+    async fn live_codex_turn_consumes_steering_without_cancellation() {
+        let binary = std::env::var("ARGMAX_LIVE_CODEX_BIN")
+            .expect("set ARGMAX_LIVE_CODEX_BIN to the installed Codex CLI");
+        let temp = tempfile::tempdir().unwrap();
+        let status = std::process::Command::new("git")
+            .arg("init")
+            .arg("--quiet")
+            .arg(temp.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let original_token = format!("ORIGINAL-{}", Uuid::new_v4());
+        let steer_token = format!("STEER-{}", Uuid::new_v4());
+        let database = Arc::new(Database::open(temp.path().join("argmax.sqlite")).unwrap());
+        let approvals = ApprovalService::new(database);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| {
+            captured.lock().unwrap().push(event);
+        });
+        let mut launch_input = input(PermissionMode::AutoApprove);
+        launch_input.session_id = Uuid::new_v4().to_string();
+        launch_input.workspace_path = temp.path().to_path_buf();
+        launch_input.model_label = "GPT-5.6 Luna".into();
+        launch_input.model_id = "gpt-5.6-luna".into();
+        launch_input.reasoning_effort = Some(ReasoningEffort::Low);
+        launch_input.prompt = format!(
+            "Use the shell to run sleep 5, then finish the original task by including this exact token in your final response: {original_token}"
+        );
+        let handle = launch_turn(&binary, &launch_input, None, approvals, callback)
+            .await
+            .unwrap();
+        handle
+            .steer(&format!(
+                "Also include this exact token in the same final response: {steer_token}"
+            ))
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(90), async {
+            loop {
+                if events.lock().unwrap().iter().any(|event| {
+                    matches!(
+                        event.r#type,
+                        ProviderRuntimeEventType::Exit | ProviderRuntimeEventType::Error
+                    )
+                }) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("live Codex steering probe completed");
+
+        let events = events.lock().unwrap();
+        let output = events
+            .iter()
+            .map(|event| event.message.as_str())
+            .collect::<String>();
+        assert!(
+            output.contains(&original_token),
+            "missing original token: {output}"
+        );
+        assert!(
+            output.contains(&steer_token),
+            "missing steering token: {output}"
+        );
+        assert!(events.iter().any(|event| {
+            event.r#type == ProviderRuntimeEventType::Exit && event.exit_code == Some(0)
+        }));
+        assert!(!output.contains("turn cancelled"));
+    }
 }

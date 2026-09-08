@@ -54,10 +54,10 @@ Attachments, agent references, model choices, fast mode, and cross-session
 message origin travel with the journal row.
 
 Startup restores every journal row to the composer but never drains recovered
-work automatically. A row that was merely waiting is labeled **Paused
-after interruption • not sent**. Provider launch and runtime failures also
+work automatically. A row that was merely waiting is labeled **Paused • not sent**.
+Provider launch and runtime failures also
 pause unsent messages instead of deleting them. A row that had entered `launching` is labeled
-**Delivery uncertain after restart • check the chat before sending again**,
+**Delivery uncertain • check the chat before sending again**,
 because the provider may have accepted it before the app stopped. Both require
 an explicit **Send** action. New follow-ups queued during the current process
 may drain past paused recovered rows, so reviewing old work does not stall new

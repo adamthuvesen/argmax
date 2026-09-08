@@ -156,10 +156,7 @@ pub async fn launch_turn(
     let writer = tokio::spawn(async move {
         while let Some(request) = write_rx.recv().await {
             if let Some(user_echo) = request.user_echo {
-                writer_pending_user_echoes
-                    .lock()
-                    .await
-                    .push_back(user_echo);
+                writer_pending_user_echoes.lock().await.push_back(user_echo);
             }
             stdin
                 .write_all(format!("{}\n", request.message).as_bytes())
@@ -254,7 +251,7 @@ pub async fn launch_turn(
                         }
                         _ => {
                             if message.get("type").and_then(Value::as_str) == Some("user") {
-                                if let Some(prompt) = replayed_user_prompt(&message) {
+                                let acknowledgement = if let Some(prompt) = replayed_user_prompt(&message) {
                                     let acknowledgement = {
                                         let mut pending = pending_user_echoes.lock().await;
                                         if pending.front().is_some_and(|pending| pending.prompt == prompt) {
@@ -263,25 +260,31 @@ pub async fn launch_turn(
                                             None
                                         }
                                     };
-                                    match acknowledgement {
-                                        Some(UserEcho::Initial) => { let _ = ready_tx.send(true); }
-                                        Some(UserEcho::Steer(sender)) => { let _ = sender.send(()); }
-                                        None => {}
+                                    acknowledgement
+                                } else {
+                                    None
+                                };
+                                match acknowledgement {
+                                    Some(UserEcho::Initial) => {
+                                        let _ = ready_tx.send(true);
+                                        continue;
                                     }
+                                    Some(UserEcho::Steer(sender)) => {
+                                        let _ = sender.send(());
+                                        continue;
+                                    }
+                                    None => {}
                                 }
-                                // `--replay-user-messages` exists only as an input
-                                // acknowledgement. The user message is already in
-                                // Argmax's timeline, so forwarding the echo duplicates it.
-                                continue;
                             }
-                            emit_event(&emit,&input,ProviderRuntimeEventType::Output,format!("{line}\n"),None);
                             if message.get("type").and_then(Value::as_str) == Some("result") {
                                 if !pending_user_echoes.lock().await.is_empty() {
                                     continue;
                                 }
                                 if message.get("is_error").and_then(Value::as_bool) == Some(true) { code=1; }
+                                emit_event(&emit,&input,ProviderRuntimeEventType::Output,format!("{line}\n"),None);
                                 break;
                             }
+                            emit_event(&emit,&input,ProviderRuntimeEventType::Output,format!("{line}\n"),None);
                         }
                     }
                 }
@@ -387,14 +390,18 @@ impl ProviderRuntimeHandle for ControlHandle {
                     }
                 })
                 .await
-                .map_err(|_| ArgmaxError::service(
-                    "STEER_DELIVERY_UNKNOWN",
-                    "Claude did not acknowledge its initial input before steering",
-                ))?
-                .map_err(|_| ArgmaxError::service(
-                    "STEER_NOT_RUNNING",
-                    "The Claude turn closed before steering",
-                ))?;
+                .map_err(|_| {
+                    ArgmaxError::service(
+                        "STEER_DELIVERY_UNKNOWN",
+                        "Claude did not acknowledge its initial input before steering",
+                    )
+                })?
+                .map_err(|_| {
+                    ArgmaxError::service(
+                        "STEER_NOT_RUNNING",
+                        "The Claude turn closed before steering",
+                    )
+                })?;
                 if !*ready.borrow() {
                     return Err(ArgmaxError::service(
                         "STEER_NOT_RUNNING",
@@ -550,6 +557,7 @@ while IFS= read -r line; do
       else
         printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"original task checkpoint"}'
         printf '%s\n' "$line"
+        printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-1","content":"tool completed"}]}}'
         printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"original complete with steer-token"}]}}'
         printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"original complete with steer-token"}'
         exit 0
@@ -569,19 +577,16 @@ done
         let callback: EventCallback = Arc::new(move |event| {
             captured.lock().unwrap().push(event);
         });
-        let mut input = launch_input(PermissionMode::ProviderDefaults, super::super::AgentMode::Auto);
+        let mut input = launch_input(
+            PermissionMode::ProviderDefaults,
+            super::super::AgentMode::Auto,
+        );
         input.workspace_path = temp.path().to_path_buf();
         input.prompt = "original task".into();
 
-        let handle = launch_turn(
-            server.to_str().unwrap(),
-            &input,
-            None,
-            approvals,
-            callback,
-        )
-        .await
-        .unwrap();
+        let handle = launch_turn(server.to_str().unwrap(), &input, None, approvals, callback)
+            .await
+            .unwrap();
         assert!(handle.supports_steering());
         handle.steer("steer-token").await.unwrap();
 
@@ -599,7 +604,16 @@ done
             .any(|event| event.message.contains("original complete with steer-token")));
         assert!(!events
             .iter()
-            .any(|event| event.message.contains("\"type\":\"user\"")));
+            .any(|event| event.message.contains("original task checkpoint")));
+        assert!(events
+            .iter()
+            .any(|event| event.message.contains("\"type\":\"tool_result\"")));
+        assert!(!events.iter().any(|event| {
+            serde_json::from_str::<Value>(&event.message)
+                .ok()
+                .and_then(|message| replayed_user_prompt(&message).map(str::to_string))
+                .is_some_and(|prompt| prompt == "original task" || prompt == "steer-token")
+        }));
         assert_eq!(
             events
                 .iter()
@@ -608,5 +622,100 @@ done
             1
         );
         assert_eq!(events.last().and_then(|event| event.exit_code), Some(0));
+    }
+
+    #[ignore = "uses the installed Claude CLI and the developer account"]
+    #[tokio::test]
+    async fn live_claude_turn_consumes_steering_without_cancellation() {
+        use std::sync::Mutex;
+
+        let binary = std::env::var("ARGMAX_LIVE_CLAUDE_BIN")
+            .expect("set ARGMAX_LIVE_CLAUDE_BIN to the installed Claude CLI");
+        let temp = tempfile::tempdir().unwrap();
+        let status = std::process::Command::new("git")
+            .arg("init")
+            .arg("--quiet")
+            .arg(temp.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let original_token = format!("ORIGINAL-{}", uuid::Uuid::new_v4());
+        let steer_token = format!("STEER-{}", uuid::Uuid::new_v4());
+        let database = Arc::new(Database::open_in_memory().unwrap());
+        let approvals = ApprovalService::new(database);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| {
+            captured.lock().unwrap().push(event);
+        });
+        let mut input = launch_input(PermissionMode::AutoApprove, super::super::AgentMode::Auto);
+        input.session_id = uuid::Uuid::new_v4().to_string();
+        input.workspace_path = temp.path().to_path_buf();
+        input.model_label = "Haiku 4.5".into();
+        input.model_id = "claude-haiku-4-5".into();
+        input.prompt = format!(
+            "Use the Bash tool to run sleep 5, then finish the original task by including this exact token in your final response: {original_token}"
+        );
+        let handle = launch_turn(&binary, &input, None, approvals, callback)
+            .await
+            .unwrap();
+        let steer_prompt =
+            format!("Also include this exact token in the same final response: {steer_token}");
+        handle.steer(&steer_prompt).await.unwrap();
+
+        tokio::time::timeout(Duration::from_secs(90), async {
+            loop {
+                if events.lock().unwrap().iter().any(|event| {
+                    matches!(
+                        event.r#type,
+                        ProviderRuntimeEventType::Exit | ProviderRuntimeEventType::Error
+                    )
+                }) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("live Claude steering probe completed");
+
+        let events = events.lock().unwrap();
+        let output = events
+            .iter()
+            .map(|event| event.message.as_str())
+            .collect::<String>();
+        assert!(
+            output.contains(&original_token),
+            "missing original token: {output}"
+        );
+        assert!(
+            output.contains(&steer_token),
+            "missing steering token: {output}"
+        );
+        assert!(!events.iter().any(|event| {
+            serde_json::from_str::<Value>(&event.message)
+                .ok()
+                .and_then(|message| replayed_user_prompt(&message).map(str::to_string))
+                .is_some_and(|prompt| prompt == input.prompt || prompt == steer_prompt)
+        }));
+        assert!(events.iter().any(|event| {
+            serde_json::from_str::<Value>(&event.message)
+                .ok()
+                .and_then(|message| {
+                    message
+                        .pointer("/message/content")
+                        .and_then(Value::as_array)
+                        .map(|content| {
+                            content.iter().any(|block| {
+                                block.get("type").and_then(Value::as_str) == Some("tool_result")
+                            })
+                        })
+                })
+                == Some(true)
+        }));
+        assert!(events.iter().any(|event| {
+            event.r#type == ProviderRuntimeEventType::Exit && event.exit_code == Some(0)
+        }));
     }
 }

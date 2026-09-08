@@ -101,7 +101,7 @@ pub fn mark_message_delivered(connection: &Connection, id: &str) -> ArgmaxResult
 /// `inbox` line with a low `age_ms` is a message that reached a working agent
 /// at its next tool call, and a `turn` line with a high one is a message that
 /// sat until the recipient's turn ended.
-fn log_handover(path: &str, id: &str, created_at: &str) {
+pub(crate) fn log_handover(path: &str, id: &str, created_at: &str) {
     let Ok(created) = chrono::DateTime::parse_from_rfc3339(created_at) else {
         return;
     };

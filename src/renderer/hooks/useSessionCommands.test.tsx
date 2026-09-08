@@ -10,6 +10,7 @@ describe("useSessionCommands", () => {
   const terminateMock = vi.fn().mockResolvedValue({ ok: true });
   const archiveMock = vi.fn().mockResolvedValue({ state: "archived" });
   const sendInputMock = vi.fn().mockResolvedValue({ ok: true, queued: false });
+  const sendQueuedMessageNowMock = vi.fn().mockResolvedValue({ ok: true, queued: false });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -17,10 +18,12 @@ describe("useSessionCommands", () => {
     terminateMock.mockResolvedValue({ ok: true });
     archiveMock.mockResolvedValue({ state: "archived" });
     sendInputMock.mockResolvedValue({ ok: true, queued: false });
+    sendQueuedMessageNowMock.mockResolvedValue({ ok: true, queued: false });
     (window as unknown as { argmax: unknown }).argmax = {
       providers: {
         terminate: terminateMock,
-        sendInput: sendInputMock
+        sendInput: sendInputMock,
+        sendQueuedMessageNow: sendQueuedMessageNowMock
       },
       workspaces: {
         archive: archiveMock
@@ -181,6 +184,30 @@ describe("useSessionCommands", () => {
     expect(refreshDashboardStatus).toHaveBeenCalled();
     expect(loadSessionEvents).toHaveBeenCalledWith("session-1");
     resolveRefresh?.();
+  });
+
+  it("passes steering delivery through to the queued-message IPC", async () => {
+    refreshDashboardStatus.mockResolvedValue(undefined);
+    loadSessionEvents.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useSessionCommands({
+        refreshDashboardStatus,
+        loadSessionEvents,
+        setToast,
+        fastMode: false,
+        onEarlyStop
+      })
+    );
+
+    await act(async () => {
+      await result.current.sendQueuedMessageNow("session-1", "message-1", "steer");
+    });
+
+    expect(sendQueuedMessageNowMock).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      messageId: "message-1",
+      delivery: "steer"
+    });
   });
 
   it("does not wait on dashboard catch-up for a queued follow-up", async () => {

@@ -17,6 +17,7 @@ use std::{
 };
 
 use crate::util::sync::LockOrRecover;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
@@ -1591,10 +1592,19 @@ impl ProviderSessionService {
         };
 
         if input.delivery == Some(QueuedMessageDelivery::Steer) {
-            let result = self.steer_queued_message(&session_id, &message).await;
+            let mut result = self.steer_queued_message(&session_id, &message).await;
             if let Err(error) = &result {
                 let mut message = message;
-                message.recovery_status = Some(
+                if matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "QUEUED_MESSAGE_ALREADY_DELIVERED")
+                {
+                    let connection = self.database.connection();
+                    if let Err(error) =
+                        delete_pending_message(&connection, &session_id, &message.id)
+                    {
+                        result = Err(error);
+                    }
+                } else {
+                    message.recovery_status = Some(
                     if matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "STEER_DELIVERY_UNKNOWN") {
                         "delivery-unknown"
                     } else {
@@ -1602,10 +1612,11 @@ impl ProviderSessionService {
                     }
                     .to_string(),
                 );
-                // An unsuccessful steer must never auto-drain as a new turn.
-                // Stop may have explicitly discarded this row during delivery.
-                if let Err(restore_error) = restore(self, message) {
-                    tracing::warn!(session_id, error = %restore_error, "could not restore steered follow-up");
+                    // An unsuccessful steer must never auto-drain as a new turn.
+                    // Stop may have explicitly discarded this row during delivery.
+                    if let Err(restore_error) = restore(self, message) {
+                        tracing::warn!(session_id, error = %restore_error, "could not restore steered follow-up");
+                    }
                 }
             }
             self.queue_promotions
@@ -1710,6 +1721,12 @@ impl ProviderSessionService {
         session_id: &str,
         message: &PendingMessage,
     ) -> ArgmaxResult<SendInputResult> {
+        let send_generation = self
+            .send_generations
+            .lock_or_recover("send generations")
+            .get(session_id)
+            .copied()
+            .unwrap_or(0);
         self.ensure_no_pending_after_turn(session_id)?;
         let (handle, prompt, agent_mode, _admission) = {
             let connection = self.database.connection();
@@ -1775,9 +1792,54 @@ impl ProviderSessionService {
             (handle, prompt, agent_mode, admission)
         };
         let created_at = now_iso();
-        handle
+        let inbox_id = message
+            .origin
+            .as_ref()
+            .and_then(|origin| origin.message_id.as_deref());
+        let inbox_created_at: Option<String> = if let Some(id) = inbox_id {
+            // Claim the route atomically before touching the provider. Otherwise
+            // inbox_read can deliver the same message while we await its echo.
+            let claimed = self.database.connection().query_row(
+                "UPDATE session_messages SET delivered_at = ? WHERE id = ? AND delivered_at IS NULL RETURNING created_at",
+                (&created_at, id),
+                |row| row.get(0),
+            ).optional().map_err(sqlite_error)?;
+            if claimed.is_none() {
+                return Err(ArgmaxError::service(
+                    "QUEUED_MESSAGE_ALREADY_DELIVERED",
+                    "This follow-up was already collected from the chat inbox.",
+                ));
+            }
+            claimed
+        } else {
+            None
+        };
+        if let Err(error) = handle
             .steer(&prompt_for_agent_mode(&prompt, agent_mode))
-            .await?;
+            .await
+        {
+            if !matches!(&error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "STEER_DELIVERY_UNKNOWN")
+            {
+                if let Some(id) = inbox_id {
+                    self.database.connection().execute(
+                        "UPDATE session_messages SET delivered_at = NULL WHERE id = ? AND delivered_at = ?",
+                        (id, &created_at),
+                    ).map_err(sqlite_error)?;
+                }
+            }
+            return Err(error);
+        }
+
+        // Stop/clear may have completed while the acknowledgement was in flight.
+        // Do not append guidance from the old invocation to a fresh conversation.
+        let _send_generation = self
+            .lock_send_generation(session_id, send_generation)
+            .map_err(|_| {
+                ArgmaxError::service(
+                    "STEER_DELIVERY_UNKNOWN",
+                    "Stop interrupted guidance delivery. Check the chat before sending it again.",
+                )
+            })?;
 
         // Delivery and the local journal cannot share a transaction. Once the
         // provider acknowledges, any local commit failure is delivery-unknown.
@@ -1789,9 +1851,6 @@ impl ProviderSessionService {
             if let Some(origin) = &message.origin {
                 payload["origin"] =
                     serde_json::to_value(origin).map_err(crate::persistence::json_error)?;
-                if let Some(id) = &origin.message_id {
-                    mark_message_delivered(&transaction, id)?;
-                }
             }
             let event = persist_timeline_event(
                 &transaction,
@@ -1812,6 +1871,9 @@ impl ProviderSessionService {
             "STEER_DELIVERY_UNKNOWN",
             format!("The agent accepted the guidance, but it could not be saved: {error}. Check the chat before sending again."),
         ))?;
+        if let (Some(id), Some(created_at)) = (inbox_id, inbox_created_at) {
+            crate::persistence::session_messages::log_handover("steer", id, &created_at);
+        }
         self.publish(DashboardDelta {
             events: vec![event],
             ..DashboardDelta::default()

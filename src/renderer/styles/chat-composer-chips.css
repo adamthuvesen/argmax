@@ -666,6 +666,7 @@ button.composer-compact-context-row:hover,
 .composer-queued-chip-action {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 5px;
   height: 28px;
   padding: 0 var(--space-2);

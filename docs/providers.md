@@ -77,6 +77,16 @@ as `user.message` with `payload.delivery: "steer"`, without resetting turn timin
 or provider normalization. Failures restore the queued message in a paused state.
 An uncertain acknowledgement is marked delivery-unknown and must not automatically
 retry. Stop can still cancel the running provider while steering is pending.
+An inbox-backed message is claimed before steering so `inbox_read` cannot deliver
+it again while acknowledgement is pending. Definite rejection releases that claim.
+
+The ignored `live_codex_turn_consumes_steering_without_cancellation` and
+`live_claude_turn_consumes_steering_without_cancellation` Rust tests verify the
+installed CLIs. Each sends guidance during a tool call and checks that the same
+process consumes it. Run them explicitly with `cargo test --manifest-path
+src-tauri/Cargo.toml --lib live_codex_turn_consumes_steering -- --ignored` (substitute
+`live_claude_turn_consumes_steering` for Claude). They use the developer's provider
+account and a temporary project.
 
 - **Startup cleanup:** Sessions left in `running`, `waiting`, or `blocked` states are marked failed on startup. Matching background provider processes are terminated and pending approvals cancelled.
 - **Stop wins over an in-flight send:** Each send captures a per-session generation before its database work. Stop advances that generation before teardown, so a send that began earlier cannot persist a new user turn or spawn a replacement process after cancellation finishes.

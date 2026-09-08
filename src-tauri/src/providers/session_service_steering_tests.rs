@@ -7,6 +7,9 @@ use crate::ipc::inputs::{ProvidersSendQueuedMessageNowInput, QueuedMessageDelive
 use crate::ipc::validation::{NonEmptyString, SessionId};
 use crate::persistence::events::list_session_events_since;
 use crate::persistence::pending_messages::{list_session_pending_messages, replace_session_queue};
+use crate::persistence::session_messages::{
+    insert_session_message, take_undelivered_messages, NewSessionMessage,
+};
 use crate::persistence::sessions::{find_session_by_id, update_session_state, SessionStateInput};
 use crate::providers::runtime::{BoxFuture, ProviderRuntimeHandle};
 use crate::sessions::state::SessionState;
@@ -60,6 +63,7 @@ impl ProviderRuntimeHandle for SteerRecordingHandle {
         self.steer_calls.fetch_add(1, Ordering::SeqCst);
         let error = self.config.steer_error.clone();
         Box::pin(async move {
+            tokio::task::yield_now().await;
             if let Some(error) = error {
                 Err(error)
             } else {
@@ -212,6 +216,103 @@ async fn rejected_steer_restores_unsent_without_side_effects() {
             .iter()
             .any(|event| event.r#type == "user.message")
     );
+}
+
+#[tokio::test]
+async fn steer_ack_after_stop_does_not_append_to_the_new_conversation() {
+    let (service, handle, launcher) = steer_service(SteerHandleConfig {
+        supports_steering: true,
+        steer_error: None,
+    });
+    let id = seed_queue(&service, pending("late-ack", "old guidance"));
+    let stop = async {
+        while handle.steer_calls.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+        *service
+            .send_generations
+            .lock_or_recover("send generations")
+            .entry("session-1".to_string())
+            .or_default() += 1;
+    };
+    let (result, ()) = tokio::join!(steer_now(&service, &id), stop);
+    assert!(
+        matches!(result, Err(ArgmaxError::ServiceError { sub_code, .. })
+        if sub_code == "STEER_DELIVERY_UNKNOWN")
+    );
+    assert_eq!(launcher.launches.load(Ordering::SeqCst), 0);
+    assert!(
+        list_session_events_since(&service.database.connection(), "session-1", None, None)
+            .unwrap()
+            .events
+            .is_empty()
+    );
+    assert_eq!(
+        service.pending_messages_snapshot()["session-1"][0]
+            .recovery_status
+            .as_deref(),
+        Some("delivery-unknown")
+    );
+}
+
+#[tokio::test]
+async fn inbox_cannot_collect_a_message_while_steering_owns_delivery() {
+    for error_code in [None, Some("STEER_REJECTED"), Some("STEER_DELIVERY_UNKNOWN")] {
+        let (service, handle, _) = steer_service(SteerHandleConfig {
+            supports_steering: true,
+            steer_error: error_code.map(|code| ArgmaxError::service(code, "probe outcome")),
+        });
+        insert_session_message(
+            &service.database.connection(),
+            &NewSessionMessage {
+                id: "inbox-message".to_string(),
+                from_session_id: None,
+                to_session_id: "session-1".to_string(),
+                body: "guidance".to_string(),
+                kind: "message".to_string(),
+            },
+        )
+        .unwrap();
+        let mut message = pending("origin", "guidance");
+        message.origin = Some(super::super::MessageOrigin {
+            session_id: "sender".to_string(),
+            label: "Sender".to_string(),
+            kind: "message".to_string(),
+            message_id: Some("inbox-message".to_string()),
+        });
+        let id = seed_queue(&service, message);
+        let inbox_read = async {
+            while handle.steer_calls.load(Ordering::SeqCst) == 0 {
+                tokio::task::yield_now().await;
+            }
+            take_undelivered_messages(&mut service.database.connection(), "session-1", 10, 1000)
+                .unwrap()
+        };
+        let (sent, during_delivery) = tokio::join!(steer_now(&service, &id), inbox_read);
+        assert!(
+            during_delivery.is_empty(),
+            "inbox must not duplicate in-flight guidance"
+        );
+        assert_eq!(sent.is_err(), error_code.is_some());
+        let after_delivery =
+            take_undelivered_messages(&mut service.database.connection(), "session-1", 10, 1000)
+                .unwrap();
+        assert_eq!(
+            after_delivery.len(),
+            usize::from(error_code == Some("STEER_REJECTED")),
+            "only a definite rejection releases guidance back to the inbox"
+        );
+        let rows =
+            list_session_events_since(&service.database.connection(), "session-1", None, None)
+                .unwrap();
+        assert_eq!(
+            rows.events
+                .iter()
+                .filter(|row| row.r#type == "user.message")
+                .count(),
+            usize::from(error_code.is_none())
+        );
+    }
 }
 
 #[tokio::test]

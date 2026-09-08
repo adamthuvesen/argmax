@@ -16,6 +16,7 @@ import {
   suggestBrowserHistory,
   type BrowserHistoryEntry
 } from "../lib/browserHistory.js";
+import { useBrowserTabDrag } from "../hooks/useBrowserTabDrag.js";
 import {
   activateBrowserTab,
   createBrowserTab,
@@ -28,6 +29,7 @@ import {
   popRecentlyClosedBrowserTab,
   rememberBrowserUrl,
   resolveBrowserInput,
+  moveBrowserTab,
   removeBrowserTab,
   setBrowserTabLoading,
   subscribeBrowserTabs,
@@ -36,6 +38,7 @@ import {
   type BrowserTab
 } from "../lib/browserPanel.js";
 import { WorkingNest } from "./WorkingNest.js";
+import { sidebarChromeSnapshot, subscribeSidebarChrome } from "../state/sidebarChrome.js";
 
 interface BrowserPanelProps {
   /** Normalized http(s) URL the browser should show. */
@@ -97,7 +100,7 @@ function TabFavicon({ url }: { url: string }): JSX.Element {
  * `.browser-panel-surface` via `browser:set-bounds`; only the active tab's
  * webview is visible, the rest stay hidden but alive. Native webviews always
  * paint above the renderer DOM, so this component hides the active one
- * whenever a `[role="dialog"]` overlay actually overlaps the surface.
+ * while the collapsed sidebar peeks or a dialog overlaps the surface.
  *
  * Only the review panel that owns the browser surface mounts this, so moving
  * the browser between panes is a plain unmount/mount: the unmount effect hides
@@ -147,10 +150,11 @@ export function BrowserPanel({
     return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
   }, []);
 
-  /** True when a `[role="dialog"]` overlay's box overlaps `bounds`. Only those
-   *  need the webview out of the way — a dialog scoped to a session pane sits
-   *  in another column and never covers the page. */
+  /** The peeked sidebar must receive clicks above native content. Dialogs
+   *  scoped to other panes only hide the webview when their boxes overlap. */
   const overlaysSurface = useCallback((bounds: BrowserBounds): boolean => {
+    const { collapsed, peeking } = sidebarChromeSnapshot();
+    if (collapsed && peeking) return true;
     const right = bounds.x + bounds.width;
     const bottom = bounds.y + bounds.height;
     if (bounds.width <= 0 || bounds.height <= 0) return false;
@@ -229,6 +233,8 @@ export function BrowserPanel({
     },
     [hideTabWebview, showTabWebview]
   );
+
+  const tabDrag = useBrowserTabDrag(switchToTab);
 
   const cycleTab = useCallback(
     (step: 1 | -1): void => {
@@ -344,6 +350,10 @@ export function BrowserPanel({
   useEffect(() => {
     if (!browser) return;
     const subscription = browser.onPageCommand((event) => {
+      if (event.command === "reload") {
+        void browser.reload(event.tabId).catch(reportError);
+        return;
+      }
       if (event.command === "back") {
         goBack(event.tabId);
         return;
@@ -366,7 +376,7 @@ export function BrowserPanel({
       }
     });
     return () => subscription();
-  }, [addTab, browser, closeTab, goBack, goForward]);
+  }, [addTab, browser, closeTab, goBack, goForward, reportError]);
 
   // Mouse thumb buttons over the pane chrome (toolbar, tab strip). Clicks
   // landing on the page itself go to the native webview instead and come back
@@ -423,6 +433,10 @@ export function BrowserPanel({
       window.removeEventListener("resize", syncBounds);
     };
   }, [syncBounds]);
+
+  // Peeking changes chrome state without resizing the browser surface or
+  // inserting a dialog, so the existing observers would not hide the webview.
+  useEffect(() => subscribeSidebarChrome(syncBounds), [syncBounds]);
 
   // Yield to renderer overlays: the native webview covers dropdowns and
   // dialogs otherwise. Only overlays whose box reaches the surface hide it.
@@ -555,7 +569,7 @@ export function BrowserPanel({
 
   // Panel-wide shortcuts. ⌘L and ⌘T work from anywhere while the panel is
   // open (the app claims neither); ⌘W/⌘R only fire while focus is inside the
-  // panel chrome, so they never shadow the app's Close Window and Reload.
+  // panel chrome, so typing in a chat does not close or reload a browser tab.
   // Keys pressed inside a page land in the native webview instead — the
   // init-script intercept relays those as browser:page-command events.
   useEffect(() => {
@@ -623,19 +637,40 @@ export function BrowserPanel({
 
   return (
     <div className="browser-panel" role="group" aria-label="Browser" ref={panelRef}>
-      <div className="browser-tab-strip" role="tablist" aria-label="Browser tabs">
-        {tabs.map((tab) => (
+      <div
+        className="browser-tab-strip"
+        role="tablist"
+        aria-label="Browser tabs"
+        ref={tabDrag.stripRef}
+        data-dragging={tabDrag.carrying || undefined}
+      >
+        {tabs.map((tab, index) => (
           <div
             key={tab.id}
             className="browser-tab"
             role="tab"
             aria-selected={tab.id === activeTabId}
             title={tab.url}
+            data-drag={tabDrag.phaseOf(index)}
+            style={tabDrag.styleOf(index)}
+            onPointerDown={(event) => tabDrag.begin(event, tab.id)}
           >
             <button
               type="button"
               className="browser-tab-label"
-              onClick={() => switchToTab(tab.id)}
+              onClick={() => {
+                // The click a finished carry synthesizes is not a tab switch.
+                if (tabDrag.consumeClick()) return;
+                switchToTab(tab.id);
+              }}
+              onKeyDown={(event) => {
+                // ⌥←/→ moves the focused tab, the keyboard's way to reorder.
+                if (!event.altKey || event.metaKey || event.ctrlKey) return;
+                const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+                if (step === 0) return;
+                event.preventDefault();
+                moveBrowserTab(tab.id, index + step);
+              }}
             >
               {tab.loading ? (
                 <WorkingNest active size={14} />
@@ -661,6 +696,8 @@ export function BrowserPanel({
               type="button"
               className="browser-tab-close"
               aria-label={`Close tab ${tabLabel(tab)}`}
+              // The ✕ is a target of its own, not a handle to carry the tab by.
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={() => closeTab(tab.id)}
             >
               <X size={12} strokeWidth={1.75} />

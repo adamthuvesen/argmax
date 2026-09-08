@@ -89,9 +89,9 @@ describe("SessionComposer queued follow-up editing", () => {
       onSendQueuedMessageNow
     });
 
-    expect(screen.getByText("Paused after interruption • not sent")).toBeInTheDocument();
+    expect(screen.getByText("Paused • not sent")).toBeInTheDocument();
     expect(
-      screen.getByText("Delivery uncertain after restart • check the chat before sending again")
+      screen.getByText("Delivery uncertain • check the chat before sending again")
     ).toBeInTheDocument();
     expect(onSendQueuedMessageNow).not.toHaveBeenCalled();
   });

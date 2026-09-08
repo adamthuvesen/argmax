@@ -18,18 +18,22 @@ Per provider, each sweep:
 1. Prunes un-adopted sessions if disabled or outside the activity window (based on file mtime).
 2. Scans for transcripts modified within the window.
 3. Filters paths to registered project directories.
-4. Imports new entries, appends changes to growing files (publishing live summary deltas), and prunes missing files.
+4. Imports new entries, appends changes to growing files (publishing live summary deltas), and prunes missing files. Creating an import commits its session, timeline events, and sync bookkeeping in one SQLite transaction. A failed import also removes the workspace allocated for it, so the next sweep can retry cleanly.
 
 Events use deterministic IDs (`sync:<provider>:<external id>:<line>:<index>`) with insert-if-absent to prevent duplicate timeline rows.
 
+Growing Claude transcripts are read from the last committed byte offset instead of rescanned from the beginning. The matching absolute line cursor is stored separately because it remains part of the deterministic event ID. Databases created before migration v40 carry a line number in the old `byte_cursor`; the first changed sweep reads that transcript by line once and records both coordinates. An unterminated final JSONL row may be displayed when it is already valid JSON, but its cursor is held at the row start until the newline arrives, so a partially written row is never skipped.
+
+Transcript open, metadata, seek, and read errors fail the sweep without advancing its cursor or source mtime. Invalid JSON, oversized rows, and ordinary end-of-file remain consumable transcript content, so a later successful sweep retries I/O failures without getting stuck on rows the importer intentionally ignores.
+
 ## Provider Support
 
-- **Claude Code:** Supported ([sync/claude.rs](../src-tauri/src/sync/claude.rs)). Reads `~/.claude/projects/<slug>/<sessionId>.jsonl`. The `cwd` is parsed from the JSON lines rather than decoded from the directory slug. The sweep classifies nothing itself: `sync/claude.rs` decides only which lines to hand over (everything but sidechain rows, non-object lines, and oversized ones), and each one goes through the same Claude normalizer the live stdout path uses, stamped with the transcript line's own timestamp. The sweep runs it with `NormalizerSessionContext::for_transcript_replay`, and that flag is the only difference from a live launch: replay mode reads a `type:"user"` line as the human's prompt (`user.message`, payload `{ "source": "sync" }`), because on live stdout such a line only ever carries a tool result — the prompt goes in via argv. Compaction comes from the `system/compact_boundary` row exactly as it does live; the `isCompactSummary` body beside it is written for the model and stays hidden.
+- **Claude Code:** Supported ([sync/claude.rs](../src-tauri/src/sync/claude.rs)). Reads `~/.claude/projects/<slug>/<sessionId>.jsonl`. The `cwd` is parsed from the JSON lines rather than decoded from the directory slug. The sweep classifies nothing itself: `sync/claude.rs` decides only which lines to hand over (everything but sidechain rows, non-object lines, and oversized ones), and each one goes through the same Claude normalizer the live stdout path uses, stamped with the transcript line's own timestamp. The sweep runs it with `NormalizerSessionContext::for_transcript_replay`, and that flag is the only difference from a live launch: replay mode reads a `type:"user"` line as the human's prompt (`user.message`, payload `{ "source": "sync" }`). Live prompts are recorded before submission through stdin, so user envelopes on stdout are interpreted as tool results. Compaction comes from the `system/compact_boundary` row exactly as it does live; the `isCompactSummary` body beside it is written for the model and stays hidden.
 - **Codex, Cursor, OpenCode, Grok Build:** Currently unsupported in transcript sync.
 
 ## Data Storage
 
 - `sync.json`: Sync preferences stored in the app data folder.
-- `synced_sessions`: Tracking table with provider, external ID, source path, byte cursor, mtime, and adoption state (migration v18).
+- `synced_sessions`: Tracking table with provider, external ID, source path, byte and line cursors, mtime, and adoption state (migrations v18 and v40).
 - `sessions.imported`: Display flag for sidebar indicators.
 - `DashboardDelta`: Includes `removedSessionIds` and `removedWorkspaceIds` so the UI prunes deleted imports without full page reloads.

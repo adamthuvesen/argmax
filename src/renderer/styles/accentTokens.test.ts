@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
+import { DEFAULT_INK_STRENGTH } from "../lib/inkStrength.js";
 
 function readSource(path: string): string {
   return readFileSync(resolve(process.cwd(), path), "utf8");
@@ -12,6 +13,35 @@ function cssRuleBody(source: string, selector: string): string {
   const match = new RegExp(`(?:^|\\n)\\s*${escapedSelector}\\s*\\{(?<body>[^}]+)\\}`, "i").exec(source);
   expect(match?.groups?.body).toBeDefined();
   return match?.groups?.body ?? "";
+}
+
+/**
+ * The first hex in a token's value. Ink tokens declare theirs inside a
+ * `color-mix()` that the ink-strength ladder drives, and that hex is still the
+ * shipped color — the default rung mixes 0%.
+ */
+function readHex(rule: string, token: string): string {
+  const match = new RegExp(`--${token}:[^;]*?(?<hex>#[0-9a-f]{6})`, "i").exec(rule);
+  expect(match?.groups?.hex).toBeDefined();
+  return match?.groups?.hex ?? "";
+}
+
+function luminance(hex: string): number {
+  return [1, 3, 5]
+    .map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
+    .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
+    .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+}
+
+function contrast(foreground: string, background: string): number {
+  const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+  return (values[0] + 0.05) / (values[1] + 0.05);
+}
+
+function fontWeight(rule: string): number {
+  const match = /font-weight:\s*(?<weight>\d+);/.exec(rule);
+  expect(match?.groups?.weight).toBeDefined();
+  return Number(match?.groups?.weight ?? 0);
 }
 
 describe("CSS contracts that cannot be exercised in jsdom", () => {
@@ -25,20 +55,6 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
 
   it("keeps body text above the browser contrast floor", () => {
     const tokens = readSource("src/renderer/styles/tokens.css");
-    const readHex = (rule: string, token: string): string => {
-      const match = new RegExp(`--${token}:\\s*(?<hex>#[0-9a-f]{6});`, "i").exec(rule);
-      expect(match?.groups?.hex).toBeDefined();
-      return match?.groups?.hex ?? "";
-    };
-    const luminance = (hex: string): number =>
-      [1, 3, 5]
-        .map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
-        .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
-        .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
-    const contrast = (foreground: string, background: string): number => {
-      const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
-      return (values[0] + 0.05) / (values[1] + 0.05);
-    };
     const light = cssRuleBody(tokens, ":root");
     const dark = cssRuleBody(tokens, ':root[data-theme="dark"]');
 
@@ -46,6 +62,53 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     expect(contrast(readHex(light, "text-soft"), readHex(light, "bg"))).toBeGreaterThan(7);
     expect(contrast(readHex(dark, "text"), readHex(dark, "bg"))).toBeGreaterThan(10);
     expect(contrast(readHex(dark, "text-soft"), readHex(dark, "bg"))).toBeGreaterThan(7);
+  });
+
+  it("keeps the markdown ink and weight ladder monotonic", () => {
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    const conversation = readSource("src/renderer/styles/chat-conversation.css");
+    const dark = cssRuleBody(tokens, ':root[data-theme="dark"]');
+
+    // Emphasis has to sit on the far side of body ink from the page, or bold
+    // prose reads dimmer than the body it emphasises.
+    const ink = luminance(readHex(dark, "prose-ink"));
+    const inkStrong = luminance(readHex(dark, "prose-ink-strong"));
+    const page = luminance(readHex(dark, "bg"));
+    expect(inkStrong).toBeGreaterThan(ink);
+    expect(ink).toBeGreaterThan(page);
+    // Neither may land on paper-white: at that luminance emphasis glares on
+    // charcoal. #ffffff is 1.0, and the shipped pair sits a step under it.
+    expect(inkStrong).toBeLessThan(0.94);
+
+    // Geist Sans ships 400/500/700 statics and CSS resolves a request above
+    // 500 upward, so anything past 500 renders the same face as the headings
+    // and the emphasis step disappears.
+    const strong = fontWeight(cssRuleBody(conversation, ".markdown strong"));
+    expect(strong).toBeLessThanOrEqual(500);
+    for (const heading of [".markdown h1", ".markdown h2", ".markdown h3"]) {
+      expect(fontWeight(cssRuleBody(conversation, heading))).toBeGreaterThan(strong);
+    }
+  });
+
+  it("leaves the shipped ink alone at the default strength", () => {
+    const tokens = readSource("src/renderer/styles/tokens.css");
+
+    // Level 7 owns no rule: the :root defaults are its rung, and they mix 0%,
+    // so every ink token resolves to the hex declared beside it. A ladder
+    // retune that moved the default would be invisible without this.
+    expect(DEFAULT_INK_STRENGTH).toBe(7);
+    expect(tokens).not.toMatch(/\[data-ink-strength="7"\]/);
+    expect(tokens).toContain("--ink-toward: var(--bg);");
+    expect(tokens).toContain("--ink-pull: 0%;");
+
+    // Every ink token has to ride the ladder, or a level would move some of
+    // the app's text and leave the rest behind.
+    const dark = cssRuleBody(tokens, ':root[data-theme="dark"]');
+    for (const token of ["text", "text-soft", "muted", "muted-strong", "prose-ink", "prose-ink-strong"]) {
+      expect(dark).toMatch(
+        new RegExp(`--${token}: color-mix\\(in oklab, #[0-9a-f]{6}, var\\(--ink-toward\\)`)
+      );
+    }
   });
 
   it("keeps review scope menus below their trigger", () => {

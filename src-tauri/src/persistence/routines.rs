@@ -1,3 +1,4 @@
+use chrono::{DateTime, Duration, SecondsFormat};
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -74,6 +75,10 @@ pub struct RoutineLaunchFields {
     /// The row's enabled state before the attempt. `routines:run-now` fires
     /// paused routines too, and recording that run must not resume them.
     pub enabled: bool,
+    /// Optimistic concurrency token for settlement after the launch awaits.
+    /// Routine mutations advance it monotonically, including a no-op pointer
+    /// reset, so a completed run cannot overwrite a user's in-flight edit.
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -99,6 +104,24 @@ pub struct Routine {
     pub updated_at: String,
 }
 
+pub(crate) fn routine_launch_fields(routine: &Routine) -> RoutineLaunchFields {
+    RoutineLaunchFields {
+        id: routine.id.clone(),
+        name: routine.name.clone(),
+        project_id: routine.project_id.clone(),
+        prompt: routine.prompt.clone(),
+        provider: routine.provider.clone(),
+        model_label: routine.model_label.clone(),
+        model_id: routine.model_id.clone(),
+        run_target: routine.run_target,
+        last_session_id: routine.last_session_id.clone(),
+        cron_expr: routine.cron_expr.clone(),
+        run_once_at: routine.run_once_at.clone(),
+        enabled: routine.enabled,
+        updated_at: routine.updated_at.clone(),
+    }
+}
+
 pub fn list_routines(connection: &Connection) -> ArgmaxResult<Vec<Routine>> {
     let mut statement = connection
         .prepare_cached(
@@ -121,7 +144,7 @@ pub fn upsert_routine(
     input: &UpsertRoutineInput,
     next_run_at: Option<String>,
 ) -> ArgmaxResult<Routine> {
-    let now = now_iso();
+    let now = next_routine_updated_at(connection, &input.id)?;
     // `worktree` is a derived copy of the target: only the isolated-worktree
     // target runs outside the shared checkout. Readers still on the boolean
     // keep working; `run_target` is the source of truth.
@@ -202,11 +225,12 @@ pub fn set_routine_enabled(
             "UPDATE routines SET enabled = ?, next_run_at = ?, last_error = NULL, updated_at = ? WHERE id = ?",
         )
         .map_err(sqlite_error)?;
+    let updated_at = next_routine_updated_at(connection, id)?;
     let changes = statement
         .execute((
             bool_to_i64(enabled),
             next_run_at.as_deref(),
-            now_iso().as_str(),
+            updated_at.as_str(),
             id,
         ))
         .map_err(sqlite_error)?;
@@ -251,18 +275,28 @@ pub fn find_routine_by_id(connection: &Connection, id: &str) -> ArgmaxResult<Rou
 
 /// Records the outcome of a launch attempt. `next_run_at` is always provided
 /// by the caller (the next occurrence, or a retry backoff) so a failure can
-/// never leave a row due on every future tick.
+/// never leave a row due on every future tick. Settlement applies only while
+/// the routine still has the snapshot's update token, preserving edits made
+/// while provider or workspace launch work was awaiting.
 pub fn mark_routine_run(
     connection: &Connection,
-    id: &str,
+    fields: &RoutineLaunchFields,
     last_run_at: &str,
     next_run_at: Option<&str>,
     last_error: Option<&str>,
     enabled: bool,
-) -> ArgmaxResult<()> {
+    launched_session_id: Option<&str>,
+) -> ArgmaxResult<bool> {
+    let updated_at = next_routine_updated_at(connection, &fields.id)?;
     let mut statement = connection
         .prepare_cached(
-            "UPDATE routines SET last_run_at = ?, next_run_at = ?, last_error = ?, enabled = ?, updated_at = ? WHERE id = ?",
+            r#"
+            UPDATE routines
+            SET last_run_at = ?, next_run_at = ?, last_error = ?, enabled = ?,
+                last_session_id = CASE WHEN ? IS NULL THEN last_session_id ELSE ? END,
+                updated_at = ?
+            WHERE id = ? AND updated_at = ?
+            "#,
         )
         .map_err(sqlite_error)?;
     let changes = statement
@@ -271,14 +305,14 @@ pub fn mark_routine_run(
             next_run_at,
             last_error,
             bool_to_i64(enabled),
-            now_iso().as_str(),
-            id,
+            launched_session_id,
+            launched_session_id,
+            updated_at.as_str(),
+            fields.id.as_str(),
+            fields.updated_at.as_str(),
         ))
         .map_err(sqlite_error)?;
-    if changes == 0 {
-        return Err(ArgmaxError::record_not_found("routine", id));
-    }
-    Ok(())
+    Ok(changes > 0)
 }
 
 fn row_to_routine(row: &Row<'_>) -> rusqlite::Result<Routine> {
@@ -324,6 +358,7 @@ fn row_to_launch_fields(row: &Row<'_>) -> rusqlite::Result<RoutineLaunchFields> 
         cron_expr: row.get("cron_expr")?,
         run_once_at: row.get("run_once_at")?,
         enabled: row.get::<_, i64>("enabled")? == 1,
+        updated_at: row.get("updated_at")?,
     })
 }
 
@@ -337,13 +372,34 @@ pub fn set_routine_last_session(
     let mut statement = connection
         .prepare_cached("UPDATE routines SET last_session_id = ?, updated_at = ? WHERE id = ?")
         .map_err(sqlite_error)?;
+    let updated_at = next_routine_updated_at(connection, id)?;
     let changes = statement
-        .execute((session_id, now_iso().as_str(), id))
+        .execute((session_id, updated_at.as_str(), id))
         .map_err(sqlite_error)?;
     if changes == 0 {
         return Err(ArgmaxError::record_not_found("routine", id));
     }
     Ok(())
+}
+
+fn next_routine_updated_at(connection: &Connection, id: &str) -> ArgmaxResult<String> {
+    let now = now_iso();
+    let current = match connection.query_row(
+        "SELECT updated_at FROM routines WHERE id = ?",
+        [id],
+        |row| row.get::<_, String>(0),
+    ) {
+        Ok(value) => Some(value),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(error) => return Err(sqlite_error(error)),
+    };
+    let Some(current) = current.filter(|current| current >= &now) else {
+        return Ok(now);
+    };
+    let Ok(current) = DateTime::parse_from_rfc3339(&current) else {
+        return Ok(now);
+    };
+    Ok((current + Duration::milliseconds(1)).to_rfc3339_opts(SecondsFormat::Millis, true))
 }
 
 #[cfg(test)]
@@ -443,15 +499,17 @@ mod tests {
             Some("2026-01-01T09:00:00.000Z".into()),
         )
         .unwrap();
-        mark_routine_run(
+        let fields = routine_launch_fields(&find_routine_by_id(&connection, "r1").unwrap());
+        assert!(mark_routine_run(
             &connection,
-            "r1",
+            &fields,
             "2026-01-01T09:00:00.000Z",
             None,
             Some("launch failed"),
             false,
+            None,
         )
-        .unwrap();
+        .unwrap());
         let routine = find_routine_by_id(&connection, "r1").unwrap();
         assert!(!routine.enabled);
         assert_eq!(routine.last_error.as_deref(), Some("launch failed"));
@@ -476,6 +534,115 @@ mod tests {
         set_routine_enabled(&connection, "r1", false, None).unwrap();
         let paused = find_routine_by_id(&connection, "r1").unwrap();
         assert!(!paused.enabled);
+    }
+
+    #[test]
+    fn run_settlement_preserves_pause_and_reschedule_edits_made_during_launch() {
+        let database = database_with_project();
+        let connection = database.connection();
+        for id in ["paused", "rescheduled"] {
+            upsert_routine(
+                &connection,
+                &input(id),
+                Some("2026-01-01T09:00:00.000Z".into()),
+            )
+            .unwrap();
+        }
+
+        let paused = routine_launch_fields(&find_routine_by_id(&connection, "paused").unwrap());
+        set_routine_enabled(&connection, "paused", false, None).unwrap();
+        assert!(!mark_routine_run(
+            &connection,
+            &paused,
+            "2026-01-01T09:00:00.000Z",
+            Some("2026-01-02T09:00:00.000Z"),
+            None,
+            true,
+            None,
+        )
+        .unwrap());
+        let current = find_routine_by_id(&connection, "paused").unwrap();
+        assert!(!current.enabled);
+        assert_eq!(current.next_run_at, None);
+
+        let rescheduled =
+            routine_launch_fields(&find_routine_by_id(&connection, "rescheduled").unwrap());
+        let mut edited = input("rescheduled");
+        edited.cron_expr = Some("0 0 15 * * *".to_string());
+        upsert_routine(
+            &connection,
+            &edited,
+            Some("2026-01-01T15:00:00.000Z".into()),
+        )
+        .unwrap();
+        assert!(!mark_routine_run(
+            &connection,
+            &rescheduled,
+            "2026-01-01T09:00:00.000Z",
+            Some("2026-01-02T09:00:00.000Z"),
+            None,
+            true,
+            None,
+        )
+        .unwrap());
+        let current = find_routine_by_id(&connection, "rescheduled").unwrap();
+        assert_eq!(current.cron_expr.as_deref(), Some("0 0 15 * * *"));
+        assert_eq!(
+            current.next_run_at.as_deref(),
+            Some("2026-01-01T15:00:00.000Z")
+        );
+    }
+
+    #[test]
+    fn run_settlement_preserves_target_and_pointer_reset_edits_made_during_launch() {
+        let database = database_with_project();
+        let connection = database.connection();
+
+        let mut same_session = input("target");
+        same_session.run_target = RoutineRunTarget::SameSession;
+        upsert_routine(&connection, &same_session, None).unwrap();
+        let target = routine_launch_fields(&find_routine_by_id(&connection, "target").unwrap());
+        let mut worktree = input("target");
+        worktree.run_target = RoutineRunTarget::Worktree;
+        upsert_routine(&connection, &worktree, None).unwrap();
+        assert!(!mark_routine_run(
+            &connection,
+            &target,
+            "2026-01-01T09:00:00.000Z",
+            None,
+            None,
+            true,
+            Some("launched-session"),
+        )
+        .unwrap());
+        let current = find_routine_by_id(&connection, "target").unwrap();
+        assert_eq!(current.run_target, RoutineRunTarget::Worktree);
+        assert_eq!(current.last_session_id, None);
+
+        let mut reset = input("reset");
+        reset.run_target = RoutineRunTarget::SameSession;
+        upsert_routine(&connection, &reset, None).unwrap();
+        let reset = routine_launch_fields(&find_routine_by_id(&connection, "reset").unwrap());
+        // Resetting an already-empty pointer is still a user decision. Its
+        // monotonic update token prevents this in-flight child from becoming
+        // the shared chat after the reset.
+        set_routine_last_session(&connection, "reset", None).unwrap();
+        assert!(!mark_routine_run(
+            &connection,
+            &reset,
+            "2026-01-01T09:00:00.000Z",
+            None,
+            None,
+            true,
+            Some("launched-session"),
+        )
+        .unwrap());
+        assert_eq!(
+            find_routine_by_id(&connection, "reset")
+                .unwrap()
+                .last_session_id,
+            None
+        );
     }
 
     #[test]

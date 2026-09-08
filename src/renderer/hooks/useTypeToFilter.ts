@@ -38,8 +38,18 @@ function rankByLabel<T>(items: readonly T[], toLabel: (item: T) => string, query
     if (bucket) bucket.push(item);
     else byLabel.set(label, [item]);
   });
-  // Items sharing a label rank together, at the best of their positions.
-  return ranked.flatMap((label) => byLabel.get(label) ?? []);
+  // Items sharing a label rank together, at the best of their positions. The
+  // haystack carries one string per row, so a recent duplicate and its catalog
+  // twin both match the same label — dedupe the ranked labels before expanding
+  // or every match would emit the whole bucket again.
+  const seen = new Set<string>();
+  const uniqueRanked: string[] = [];
+  for (const label of ranked) {
+    if (seen.has(label)) continue;
+    seen.add(label);
+    uniqueRanked.push(label);
+  }
+  return uniqueRanked.flatMap((label) => byLabel.get(label) ?? []);
 }
 
 /**

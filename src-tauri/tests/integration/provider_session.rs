@@ -1297,6 +1297,7 @@ async fn send_queued_message_now_interrupts_without_dropping_the_rest_of_the_que
 
     let result = service
         .send_queued_message_now(ProvidersSendQueuedMessageNowInput {
+            delivery: None,
             session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
             message_id: NonEmptyString::try_from(first_message_id).expect("message id valid"),
         })

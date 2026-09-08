@@ -564,6 +564,7 @@ async fn run_turn(
         });
     };
     let emit_line = |line: Value| {
+        let line = with_acp_session_id(line, &acp_session_id);
         emit(ProviderRuntimeEventType::Output, format!("{line}\n"), None);
     };
 
@@ -653,6 +654,19 @@ async fn run_turn(
             Some(1),
         ),
     }
+}
+
+/// ACP updates do not repeat their parent session id. Cursor's stream
+/// normalizer needs that native id on task completions to link a child agent
+/// to its provider parent, so attach it at the shared output boundary.
+fn with_acp_session_id(mut line: Value, acp_session_id: &str) -> Value {
+    if let Some(payload) = line.as_object_mut() {
+        payload.insert(
+            "session_id".to_string(),
+            Value::String(acp_session_id.to_string()),
+        );
+    }
+    line
 }
 
 // ---------------------------------------------------------------------------
@@ -933,6 +947,9 @@ impl ProviderRuntimeHandle for AcpTurnHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::normalizer::{
+        normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent,
+    };
 
     fn update(value: Value) -> Value {
         json!({ "sessionId": "acp-1", "update": value })
@@ -1114,6 +1131,64 @@ mod tests {
             completed[0]["tool_call"]["task"]["result"]["success"],
             json!(true)
         );
+    }
+
+    #[test]
+    fn translated_acp_task_completion_normalizes_into_agent_lifecycle() {
+        let mut translation = TurnTranslation::default();
+        let started = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "call-acp",
+            "kind": "other",
+            "status": "pending",
+            "rawInput": {
+                "_toolName": "task",
+                "description": "Review ACP",
+                "prompt": "Inspect the adapter",
+            },
+        })));
+        let started = with_acp_session_id(started.into_iter().next().unwrap(), "native-parent");
+        assert_eq!(started["session_id"], "native-parent");
+
+        let completed = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "call-acp",
+            "status": "completed",
+            "rawOutput": { "success": {
+                "agentId": "native-child",
+                "conversationSteps": [{
+                    "assistantMessage": { "text": "Adapter reviewed" }
+                }]
+            }},
+        })));
+        let completed = with_acp_session_id(completed.into_iter().next().unwrap(), "native-parent");
+        let mut context = NormalizerSessionContext::default();
+        let output = ProviderOutputEvent {
+            session_id: "argmax-session".to_string(),
+            stream: ProviderOutputStream::Stdout,
+            message: completed.to_string(),
+            created_at: "2026-09-07T12:00:00.000Z".to_string(),
+        };
+        let normalized = normalize_provider_event(ProviderId::Cursor, &output, &mut context);
+
+        let lifecycle = normalized
+            .events
+            .iter()
+            .filter(|event| event.r#type.starts_with("agent."))
+            .collect::<Vec<_>>();
+        assert_eq!(lifecycle.len(), 2);
+        assert_eq!(lifecycle[0].r#type, "agent.started");
+        assert_eq!(
+            lifecycle[0].payload["providerParentConversationId"],
+            "native-parent"
+        );
+        assert_eq!(
+            lifecycle[0].payload["providerChildSessionId"],
+            "native-child"
+        );
+        assert_eq!(lifecycle[0].payload["agentRunId"], "call-acp");
+        assert_eq!(lifecycle[1].r#type, "agent.completed");
+        assert_eq!(lifecycle[1].message, "Adapter reviewed");
     }
 
     #[test]

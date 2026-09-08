@@ -21,6 +21,32 @@ function assistantEvent(
 }
 
 describe("coalesceAssistantGroups", () => {
+  it.each([
+    "## Fix\n\nUse the cached result.",
+    "```ts\nconst fixed = true;\n```",
+    "- First item\n- Second item",
+    "1. First item\n2. Second item"
+  ])("preserves an independent Markdown block: %s", (markdown) => {
+    const groups = coalesceAssistantGroups([
+      assistantEvent("a1", "message.completed", "Found the issue", "2026-05-12T15:00:01.000Z"),
+      assistantEvent("a2", "message.completed", markdown, "2026-05-12T15:00:02.000Z")
+    ]);
+
+    expect(groups.map((group) => group.text)).toEqual(["Found the issue", markdown]);
+  });
+
+  it.each(["message.delta", "error"] as const)("keeps an answer that matches prior %s text", (type) => {
+    const groups = coalesceAssistantGroups([
+      assistantEvent("t1", type, "Done.", "2026-05-12T15:00:01.000Z", type === "message.delta" ? { thinking: true } : {}),
+      assistantEvent("a1", "message.completed", "Done.", "2026-05-12T15:00:02.000Z")
+    ]);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toMatchObject(type === "message.delta" ? { thinking: true } : { error: true });
+    expect(groups[1]?.text).toBe("Done.");
+    expect(groups[1]?.thinking).toBeFalsy();
+  });
+
   it("drops a duplicate message.completed with the same text as the prior group", () => {
     const groups = coalesceAssistantGroups([
       assistantEvent("a1", "message.completed", "Hey!", "2026-05-12T15:00:01.000Z"),

@@ -627,6 +627,15 @@ pub struct ProvidersCancelQueuedMessageInput {
 pub struct ProvidersSendQueuedMessageNowInput {
     pub session_id: SessionId,
     pub message_id: NonEmptyString,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<QueuedMessageDelivery>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum QueuedMessageDelivery {
+    Interrupt,
+    Steer,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -722,6 +731,10 @@ pub struct SessionForkInput {
 pub struct SessionMultitaskInput {
     pub session_id: SessionId,
     pub prompt: Prompt,
+    /// When dispatching a queued follow-up, claim and remove this row as part
+    /// of the same operation so it cannot later drain as a duplicate turn.
+    #[serde(default)]
+    pub pending_message_id: Option<NonEmptyString>,
     /// Defaults to false: the point of a multitask is a fix on the side of the
     /// work you are already doing, in the tree you are already in.
     #[serde(default)]

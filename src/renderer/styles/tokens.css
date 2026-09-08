@@ -21,7 +21,7 @@
      author: a pytest banner's run of `=` fuses into one solid bar, and a
      diff's `--` / `==` do the same, so output reads as struck through. Every
      code font offered here ligates, just through different features: Geist
-     Mono via `liga`, Fira Code / JetBrains Mono / Lilex via `calt`.
+     Mono via `liga`, Fira Code / JetBrains Mono via `calt`.
      `font-variant-ligatures: none` cannot do this job alone — the root sets
      `font-feature-settings: "calt", …` for the UI sans, and that property is
      step 5 of CSS font feature resolution against font-variant's step 3, so
@@ -70,10 +70,18 @@
      — see the dark block. */
   --composer-edge: var(--line);
 
-  --text: #1c1b18;
-  --text-soft: #3a3833;
-  --muted: #8a857b;
-  --muted-strong: #5d594f;
+  /* Ink-strength ladder. Level 7 is what Argmax ships: --ink-pull is 0% and
+     each token resolves to the hex beside it. Below 7 the endpoint is the
+     page; above 7 it is the theme extreme (black on paper, white on charcoal).
+     Only <html> carries data-ink-strength — no nested override. See
+     docs/design/ink-strength/ and inkStrength.ts. */
+  --ink-toward: var(--bg);
+  --ink-pull: 0%;
+
+  --text: color-mix(in oklab, #1c1b18, var(--ink-toward) var(--ink-pull));
+  --text-soft: color-mix(in oklab, #3a3833, var(--ink-toward) var(--ink-pull));
+  --muted: color-mix(in oklab, #8a857b, var(--ink-toward) var(--ink-pull));
+  --muted-strong: color-mix(in oklab, #5d594f, var(--ink-toward) var(--ink-pull));
   /* Ink for the composers' secondary chips — project, branch, permission mode,
      workspace mode, effort. --muted is 3.6:1 on paper, under AA at chip size,
      so they take a step toward --muted-strong while staying clearly below the
@@ -87,8 +95,8 @@
      dark block. --prose-ink-strong is the emphasis step for bold and inline
      headings, and has to stay on the far side of --prose-ink from the page in
      both themes or bold prose reads dimmer than the body it emphasizes. */
-  --prose-ink: color-mix(in oklab, var(--text) 91%, var(--text-soft) 9%);
-  --prose-ink-strong: color-mix(in oklab, var(--text) 96%, var(--text-soft) 4%);
+  --prose-ink: color-mix(in oklab, #1f1e1a, var(--ink-toward) var(--ink-pull));
+  --prose-ink-strong: color-mix(in oklab, #1d1c19, var(--ink-toward) var(--ink-pull));
 
   /* Text weight. The default Geist Sans ships static weights (the browser
      clamps to the nearest), while Inter Variable exposes a `wght` axis, so
@@ -461,19 +469,27 @@
   /* Ink pulled back off paper-white: #f4f2ec bloomed on dark charcoal and read
      as bold at regular weight. Chrome labels sit on --text-soft, so the gap
      between the two stays the selection signal. */
-  --text: #e3e0d8;
-  --text-soft: #c5c1b8;
-  --muted: #8a857b;
-  --muted-strong: #aeaaa1;
+  --text: color-mix(in oklab, #e3e0d8, var(--ink-toward) var(--ink-pull));
+  --text-soft: color-mix(in oklab, #c5c1b8, var(--ink-toward) var(--ink-pull));
+  --muted: color-mix(in oklab, #8a857b, var(--ink-toward) var(--ink-pull));
+  --muted-strong: color-mix(in oklab, #aeaaa1, var(--ink-toward) var(--ink-pull));
   --chip-ink: var(--muted);
 
   /* Prose runs brighter than chrome ink in dark, not softer. The bloom that
      rules out paper-white for labels is a weight problem at small sizes, and
-     rendered prose already pays for it with --weight-prose plus a 1.9 line
+     rendered prose already pays for it with --weight-prose plus an open line
      box, so it can afford the extra luminance a wall of text wants. Kept a
-     hair warm so it stays in family with the charcoal ground. */
-  --prose-ink: #f1efe9;
-  --prose-ink-strong: #fbf9f5;
+     hair warm (OKLCH C 0.008 / H 90) so it stays in family with the charcoal
+     ground — a neutral gray of the same lightness reads as a foreign patch on
+     this background.
+
+     Both are one step off paper-white rather than at it. The previous pair
+     (#f1efe9 / #fbf9f5) put emphasis within two percent of #ffffff, which
+     glared on charcoal at the weight bold actually renders — see the ladder
+     comment in chat-conversation.css. Levels were compared side by side in
+     docs/design/prose-ink. */
+  --prose-ink: color-mix(in oklab, #ebe9e4, var(--ink-toward) var(--ink-pull));
+  --prose-ink-strong: color-mix(in oklab, #f5f3ed, var(--ink-toward) var(--ink-pull));
 
   --weight-ui: 380;
   --weight-prose: 390;
@@ -604,6 +620,43 @@
   --row-selected: var(--panel-soft);
 }
 
+/* Ink-strength rungs. Level 7 owns no rule — :root defaults are its rung.
+   The travel is lopsided: six steps toward the page, three toward the extreme,
+   because both themes already run their ink close to the readable maximum. */
+:root[data-ink-strength="1"] { --ink-pull: 48%; }
+:root[data-ink-strength="2"] { --ink-pull: 38%; }
+:root[data-ink-strength="3"] { --ink-pull: 29%; }
+:root[data-ink-strength="4"] { --ink-pull: 21%; }
+:root[data-ink-strength="5"] { --ink-pull: 14%; }
+:root[data-ink-strength="6"] { --ink-pull: 7%; }
+
+:root[data-ink-strength="8"] {
+  --ink-toward: #000000;
+  --ink-pull: 9%;
+}
+
+:root[data-ink-strength="9"] {
+  --ink-toward: #000000;
+  --ink-pull: 18%;
+}
+
+:root[data-ink-strength="10"] {
+  --ink-toward: #000000;
+  --ink-pull: 28%;
+}
+
+:root[data-theme="dark"][data-ink-strength="8"] {
+  --ink-toward: #ffffff;
+}
+
+:root[data-theme="dark"][data-ink-strength="9"] {
+  --ink-toward: #ffffff;
+}
+
+:root[data-theme="dark"][data-ink-strength="10"] {
+  --ink-toward: #ffffff;
+}
+
 /* Configurable chrome accent. These tokens are for brand/decorative tint:
    focus rings, selection, picker states, command palette affordances, launcher
    ornament, transcript metadata, and the live-work marks (sidebar working nest,
@@ -624,9 +677,9 @@
 }
 
 :root[data-accent="orange"] {
-  --accent: #a85c43;
-  --accent-soft: #f8e9e1;
-  --accent-deep: #874a36;
+  --accent: #bd580f;
+  --accent-soft: #fff0e3;
+  --accent-deep: #9c450b;
 }
 
 :root[data-accent="blue"] {
@@ -678,10 +731,10 @@
 }
 
 :root[data-theme="dark"][data-accent="orange"] {
-  --accent: #d97757;
-  --accent-soft: rgba(217, 119, 87, 0.16);
-  --accent-deep: #ec9878;
-  --user-message-bg: #89442e;
+  --accent: #e88845;
+  --accent-soft: rgba(232, 136, 69, 0.16);
+  --accent-deep: #f2a56c;
+  --user-message-bg: #98470f;
   --user-message-fg: #ffffff;
 }
 
@@ -774,11 +827,6 @@
     --duration-fast: 0ms;
     --duration-base: 0ms;
   }
-}
-
-:root[data-font="lilex"] {
-  --font-ui: "Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
-  --font-mono: "Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
 
 :root[data-font="system-mono"] {

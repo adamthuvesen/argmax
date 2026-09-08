@@ -131,7 +131,7 @@ function foxHeadIcon(): ServerIcon {
 
 const ARGMAX = foxHeadIcon();
 
-// Engram and Trace are local tools with no brand mark, so they get matched
+// Engram, Shunt and Trace are local tools with no brand mark, so they get matched
 // lettermarks: the same badge silhouette as Linear's, a hue each, and a
 // letterform with no counters to close up at 12px.
 const BADGE = "M5.5 0h13A5.5 5.5 0 0 1 24 5.5v13a5.5 5.5 0 0 1-5.5 5.5h-13A5.5 5.5 0 0 1 0 18.5v-13A5.5 5.5 0 0 1 5.5 0Z";
@@ -142,6 +142,15 @@ const ENGRAM: ServerIcon = {
   layers: [
     { fill: "#6E56CF", path: BADGE },
     { fill: "#FFFFFF", path: "M7 4.5h10v3.4H7zM7 4.5h3.4v15H7zM7 10.3h8.4v3.4H7zM7 16.1h10v3.4H7z" }
+  ]
+};
+
+const SHUNT: ServerIcon = {
+  title: "Shunt",
+  viewBox: "0 0 24 24",
+  layers: [
+    { fill: "#0F766E", path: BADGE },
+    { fill: "#FFFFFF", path: "M17.5 4.5h-11v9.2h7.6v2.4H6.5v3.4h11v-9.2H9.9V7.9h7.6z" }
   ]
 };
 
@@ -181,6 +190,7 @@ const SERVER_ICONS: Record<string, ServerIcon> = {
   github: fromSimpleIcon(siGithub),
   vercel: fromSimpleIcon(siVercel),
   engram: ENGRAM,
+  shunt: SHUNT,
   trace: TRACE,
   "trace hq": TRACE
 };

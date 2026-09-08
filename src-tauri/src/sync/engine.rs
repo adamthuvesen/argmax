@@ -14,7 +14,9 @@ use uuid::Uuid;
 
 use super::{claude, DiscoveredSession, SyncConfig};
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::events::{persist_timeline_event_if_absent, TimelineEvent};
+use crate::persistence::events::{
+    persist_timeline_event_if_absent, PersistTimelineEventInput, TimelineEvent,
+};
 use crate::persistence::projects::list_projects;
 use crate::persistence::sessions::{
     delete_session, persist_imported_session, touch_imported_session, PersistImportedSessionInput,
@@ -154,41 +156,70 @@ fn import(
     project_id: &str,
     session: &DiscoveredSession,
 ) -> ArgmaxResult<()> {
+    let session_id = Uuid::new_v4().to_string();
+    // Transcript I/O and normalization can be substantial. Do it before the
+    // write transaction so a large first import does not block dashboard
+    // writers while it reads the provider file.
+    let (cursor, events) = normalize_events(provider, &session_id, session, 0, Some(0))?;
     // One workspace per imported session, at the project's own checkout —
     // the same shape Argmax uses for its own current-checkout sessions, so
     // the sidebar lists them as ordinary rows.
     let workspace = workspaces.create_current_for_import(project_id, &session.prompt)?;
 
-    let connection = database.connection();
-    let summary = persist_imported_session(
-        &connection,
-        &PersistImportedSessionInput {
-            id: Uuid::new_v4().to_string(),
-            workspace_id: workspace.id.clone(),
-            provider: provider.to_string(),
-            model_label: model_label(session, provider),
-            model_id: model_id(session, provider),
-            provider_conversation_id: session.external_id.clone(),
-            prompt: session.prompt.clone(),
-            started_at: session.started_at.clone(),
-            last_activity_at: session.last_activity_at.clone(),
-        },
-    )?;
-    let (written, _) = write_events(&connection, provider, &summary.id, session, 0)?;
-    upsert_synced_session(
-        &connection,
-        &SyncedSessionRecord {
-            session_id: summary.id.clone(),
-            provider: provider.to_string(),
-            external_id: session.external_id.clone(),
-            source_path: session.source_path.to_string_lossy().to_string(),
-            byte_cursor: written as u64,
-            source_mtime_ms: session.source_mtime_ms,
-            adopted: false,
-            started_at: session.started_at.clone(),
-        },
-    )?;
-    drop(connection);
+    let persisted = (|| -> ArgmaxResult<_> {
+        let connection = database.connection();
+        let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+        let summary = persist_imported_session(
+            &transaction,
+            &PersistImportedSessionInput {
+                id: session_id,
+                workspace_id: workspace.id.clone(),
+                provider: provider.to_string(),
+                model_label: model_label(session, provider),
+                model_id: model_id(session, provider),
+                provider_conversation_id: session.external_id.clone(),
+                prompt: session.prompt.clone(),
+                started_at: session.started_at.clone(),
+                last_activity_at: session.last_activity_at.clone(),
+            },
+        )?;
+        persist_events(&transaction, events)?;
+        upsert_synced_session(
+            &transaction,
+            &SyncedSessionRecord {
+                session_id: summary.id.clone(),
+                provider: provider.to_string(),
+                external_id: session.external_id.clone(),
+                source_path: session.source_path.to_string_lossy().to_string(),
+                byte_cursor: cursor.byte_offset,
+                line_cursor: Some(cursor.line_index as u64),
+                source_mtime_ms: session.source_mtime_ms,
+                adopted: false,
+                started_at: session.started_at.clone(),
+            },
+        )?;
+        transaction.commit().map_err(sqlite_error)?;
+        Ok(summary)
+    })();
+    let summary = match persisted {
+        Ok(summary) => summary,
+        Err(error) => {
+            // Workspace creation has to inspect the project before this
+            // transaction starts. If any import row fails, remove that sole
+            // out-of-transaction artifact so a retry cannot leave ghosts.
+            let connection = database.connection();
+            if let Err(cleanup_error) =
+                crate::persistence::workspaces::delete_workspace(&connection, &workspace.id)
+            {
+                tracing::warn!(
+                    workspace_id = %workspace.id,
+                    ?cleanup_error,
+                    "failed to clean up workspace after sync import rollback"
+                );
+            }
+            return Err(error);
+        }
+    };
 
     workspaces.publish_imported(workspace, summary);
     Ok(())
@@ -203,69 +234,81 @@ fn extend(
     record: &SyncedSessionRecord,
     session: &DiscoveredSession,
 ) -> ArgmaxResult<bool> {
-    let connection = database.connection();
-    let (written, events) = write_events(
-        &connection,
+    let (cursor, events) = normalize_events(
         &record.provider,
         &record.session_id,
         session,
-        record.byte_cursor as usize,
+        record.byte_cursor,
+        record.line_cursor,
     )?;
+    let connection = database.connection();
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let inserted = persist_events(&transaction, events)?;
     let summary =
-        touch_imported_session(&connection, &record.session_id, &session.last_activity_at)?;
+        touch_imported_session(&transaction, &record.session_id, &session.last_activity_at)?;
     upsert_synced_session(
-        &connection,
+        &transaction,
         &SyncedSessionRecord {
-            // `write_events` returns an absolute line index, not a count:
-            // adding the old cursor to it would make the cursor run away and
-            // skip every line after the second sweep.
-            byte_cursor: written as u64,
+            byte_cursor: cursor.byte_offset,
+            line_cursor: Some(cursor.line_index as u64),
             source_mtime_ms: session.source_mtime_ms,
             source_path: session.source_path.to_string_lossy().to_string(),
             ..record.clone()
         },
     )?;
-    drop(connection);
+    transaction.commit().map_err(sqlite_error)?;
 
-    if events.is_empty() {
+    if inserted.is_empty() {
         return Ok(false);
     }
     // Publish the fresh events with the summary, so an open conversation view
     // shows the external continuation live instead of only after a reopen.
-    workspaces.publish_session_with_events(summary, events);
+    workspaces.publish_session_with_events(summary, inserted);
     Ok(true)
 }
 
 /// Normalize transcript lines into timeline events. Every line goes through
 /// the same normalizer the live stdout stream uses, in replay mode — the sweep
 /// reads no line itself, so an imported conversation and a launched one are
-/// built by one piece of code. Returns how many lines were consumed (the next
-/// read's starting point) and the events that were actually inserted —
-/// duplicates from a re-read come back as nothing.
-fn write_events(
-    connection: &rusqlite::Connection,
+/// built by one piece of code. Returns the next byte-and-line cursor and the
+/// normalized events ready for the caller's transaction.
+fn normalize_events(
     provider: &str,
     session_id: &str,
     session: &DiscoveredSession,
-    from_line: usize,
-) -> ArgmaxResult<(usize, Vec<TimelineEvent>)> {
+    byte_cursor: u64,
+    line_cursor: Option<u64>,
+) -> ArgmaxResult<(claude::TranscriptCursor, Vec<PersistTimelineEventInput>)> {
     let provider_id = match provider {
         "claude" => crate::ipc::validation::ProviderId::Claude,
-        _ => return Ok((from_line, Vec::new())),
+        _ => {
+            return Ok((
+                claude::TranscriptCursor {
+                    byte_offset: byte_cursor,
+                    line_index: line_cursor.unwrap_or(byte_cursor) as usize,
+                },
+                Vec::new(),
+            ))
+        }
     };
-    let lines = claude::timeline_lines(&session.source_path, from_line);
+    let batch = match line_cursor {
+        Some(line_index) => claude::timeline_lines(
+            &session.source_path,
+            claude::TranscriptCursor {
+                byte_offset: byte_cursor,
+                line_index: line_index as usize,
+            },
+        )?,
+        None => {
+            claude::timeline_lines_from_legacy_line(&session.source_path, byte_cursor as usize)?
+        }
+    };
     // Replay mode: a transcript carries rows a live launch never sends, above
     // all the human's own prompts.
     let mut context = NormalizerSessionContext::for_transcript_replay();
-    let mut highest_line = from_line;
-    let mut inserted = Vec::new();
+    let mut events = Vec::new();
 
-    // One commit for the whole batch. Importing a long transcript is thousands
-    // of inserts, and each one on its own transaction is a separate fsync and a
-    // separate FTS trigger run while every reader waits on the writer.
-    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-    for line in lines {
-        highest_line = line.index + 1;
+    for line in batch.lines {
         // The row's own timestamp, not the file's mtime: stamping one sweep
         // time on every event of a batch collapses a whole conversation into a
         // single instant.
@@ -286,13 +329,23 @@ fn write_events(
                 "sync:{provider}:{}:{}:{index}",
                 session.external_id, line.index
             );
-            if let Some(persisted) = persist_timeline_event_if_absent(&transaction, &event)? {
-                inserted.push(persisted);
-            }
+            events.push(event);
         }
     }
-    transaction.commit().map_err(sqlite_error)?;
-    Ok((highest_line, inserted))
+    Ok((batch.cursor, events))
+}
+
+fn persist_events(
+    connection: &rusqlite::Connection,
+    events: Vec<PersistTimelineEventInput>,
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    let mut inserted = Vec::new();
+    for event in events {
+        if let Some(persisted) = persist_timeline_event_if_absent(connection, &event)? {
+            inserted.push(persisted);
+        }
+    }
+    Ok(inserted)
 }
 
 fn prune(

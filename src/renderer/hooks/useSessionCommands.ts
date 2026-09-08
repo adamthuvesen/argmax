@@ -4,7 +4,8 @@ import type {
   AgentMode,
   AgentReference,
   ComposerAttachment,
-  ProviderId
+  ProviderId,
+  QueuedMessageDelivery
 } from "../../shared/types.js";
 import { modelSupportsFastMode, type ModelPickerSelection } from "../lib/models.js";
 import { withToast, type ToastMessage } from "../lib/withToast.js";
@@ -36,7 +37,11 @@ export interface SessionCommands {
     agentReferences?: AgentReference[]
   ) => Promise<void>;
   cancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
-  sendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
+  sendQueuedMessageNow: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery
+  ) => Promise<void>;
   /** Dispatch a prompt as a sibling chat that runs alongside this session's
    *  turn, in the same checkout. `provider` is this session's, which the
    *  sibling inherits: it picks the cheap model that names the new chat. */
@@ -102,11 +107,15 @@ export function useSessionCommands({
   }, []);
 
   const sendQueuedMessageNow = useCallback(
-    async (sessionId: string, messageId: string): Promise<void> => {
+    async (
+      sessionId: string,
+      messageId: string,
+      delivery: QueuedMessageDelivery = "interrupt"
+    ): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to send a queued follow-up.");
       }
-      await window.argmax.providers.sendQueuedMessageNow({ sessionId, messageId });
+      await window.argmax.providers.sendQueuedMessageNow({ sessionId, messageId, delivery });
       await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
     [refreshDashboardStatus, loadSessionEvents]
@@ -116,11 +125,20 @@ export function useSessionCommands({
   // and this session's own turn is untouched. The dashboard refresh is what
   // brings its sidebar row and the parent's card in.
   const multitask = useCallback(
-    async (sessionId: string, prompt: string, provider: ProviderId): Promise<void> => {
+    async (
+      sessionId: string,
+      prompt: string,
+      provider: ProviderId,
+      pendingMessageId?: string
+    ): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to run a multitask.");
       }
-      const launched = await window.argmax.session.multitask({ sessionId, prompt });
+      const launched = await window.argmax.session.multitask({
+        sessionId,
+        prompt,
+        ...(pendingMessageId ? { pendingMessageId } : {})
+      });
       // A multitask is named in as many places as a session is — the row above
       // the composer, the dock tab, the workspace card, the finish notice —
       // and all of them read the workspace's label. So it gets the same short

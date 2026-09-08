@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-font-size="5" data-accent="green">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Argmax — picker mockups</title>
+
+    <!-- The real thing: app tokens, the real picker rules, the real fonts. The
+         "Shipped" column uses the app's class names untouched; the variants
+         use their own classes (.pk-*) so the cascade cannot bleed either way. -->
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-700.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/settings-controls.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/chat-chrome.css" />
+
+    <style>
+      html { background: var(--bg); }
+      body {
+        margin: 0;
+        background: var(--bg);
+        font-family: var(--font-ui);
+        font-weight: var(--weight-ui);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+      }
+      svg { display: block; }
+
+      /* ---- page chrome (dim, so it never competes with the samples) ---- */
+      .page-head {
+        position: sticky; top: 0; z-index: 60;
+        display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;
+        padding: 12px 28px;
+        background: color-mix(in oklab, var(--bg) 92%, transparent);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
+      }
+      .page-head h1 { font-size: var(--text-sm); font-weight: 500; margin: 0; color: var(--text-soft); }
+      .page-head label { font-size: var(--text-xs); color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+      .page-head select {
+        font: inherit; font-size: var(--text-xs);
+        background: var(--panel); color: var(--text);
+        border: 1px solid var(--line); border-radius: var(--radius-sm);
+        padding: 3px 6px;
+      }
+      section { padding: 36px 28px 8px; }
+      section > h2 {
+        font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em;
+        font-weight: 500; color: var(--muted); margin: 0 0 4px;
+      }
+      section > .lede { font-size: var(--text-xs); color: var(--muted); margin: 0 0 22px; max-width: 70ch; line-height: 1.6; }
+      .lede a { color: var(--text-soft); }
+      .tag {
+        font-family: var(--font-mono); font-size: var(--text-2xs);
+        color: var(--muted); letter-spacing: 0.02em;
+        display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 10px;
+      }
+      .tag .name { color: var(--text-soft); }
+
+      /* Each sample: a slice of composer with the menu open below its chip. */
+      /* Fixed columns with room to the right: the branch menu hangs off the last chip. */
+      .row { display: grid; grid-template-columns: repeat(4, 360px); gap: 24px; align-items: start; padding-right: 200px; }
+      .sample { min-height: 560px; }
+      .sample[data-kind="settings"] { min-height: 300px; }
+      .stage {
+        position: relative;
+        padding: 14px 14px;
+        background: var(--composer-surface);
+        border-radius: var(--radius-2xl);
+        box-shadow: var(--shadow-1), inset 0 0 0 1px var(--composer-edge);
+      }
+      .stage .composer-context { padding: 0; min-height: 30px; }
+      /* Same anchor as the launcher; the menu drops below the chip. */
+      .stage .model-picker-flyout { position: absolute; top: calc(100% + 6px); left: 0; }
+      .stage .project-picker-anchor > .pk,
+      .stage .project-picker-anchor > .project-picker-popover { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; }
+
+      /* Settings sample: one real SettingRow shape. */
+      .srow {
+        display: flex; align-items: center; gap: 16px; justify-content: space-between;
+        padding: 12px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-lg);
+        position: relative;
+      }
+      .srow .lbl { font-size: var(--text-sm); color: var(--text); }
+      .srow .desc { font-size: var(--text-xs); color: var(--muted); margin-top: 2px; }
+      .srow .settings-picker { position: relative; }
+      .srow .settings-picker > .pk { position: absolute; top: calc(100% + 6px); right: 0; left: auto; z-index: 30; }
+      .settings-picker-trigger svg { width: 14px; height: 14px; }
+
+      /* ==================================================================
+         Variants. A shared base, then what each letter changes.
+         ================================================================== */
+      :root { --pk-row: 28px; }
+
+      .pk {
+        margin: 0; padding: 5px; list-style: none;
+        min-width: 260px; max-height: min(440px, 60dvh); overflow-y: auto; overscroll-behavior-y: contain;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-3);
+      }
+      .pk-row { list-style: none; }
+      .pk-item {
+        display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; column-gap: 8px;
+        width: 100%; min-height: var(--pk-row); padding: 0 9px 0 7px;
+        border: 0; border-radius: var(--radius-md); background: transparent;
+        color: var(--text-soft); cursor: pointer; text-align: left;
+        font: inherit; font-size: var(--text-sm); line-height: 1.3;
+      }
+      .pk-item:hover, .pk-row[data-active] > .pk-item { background: var(--panel-soft); color: var(--text); }
+      .pk-row[aria-selected="true"] > .pk-item { color: var(--text); font-weight: 500; }
+      .pk-lead { width: 16px; height: 16px; display: grid; place-items: center; color: var(--muted); }
+      .pk-lead svg { width: 13px; height: 13px; }
+      .pk-row[aria-selected="true"] .pk-lead { color: var(--text); }
+      .pk-row[aria-selected="true"] .pk-lead svg.i-check { color: var(--accent); }
+      .pk-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .pk-meta {
+        color: var(--muted); font-size: var(--text-2xs-plus); font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
+        white-space: nowrap;
+      }
+      .pk-meta[data-tone="warn"] { color: var(--amber); }
+      .pk-row[data-disabled] > .pk-item { opacity: 0.5; cursor: not-allowed; }
+      .pk-row[data-disabled] > .pk-item:hover { background: transparent; }
+      .pk-sub { display: none; }
+      /* Same grid as a row, so the group name sits on the name column and the dot in the lead cell. */
+      .pk-group {
+        display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 8px; align-items: center;
+        padding: 9px 9px 3px 7px; list-style: none;
+        color: var(--muted); font-size: var(--text-2xs); font-weight: 500; line-height: 1.2;
+        letter-spacing: 0.06em; text-transform: uppercase;
+      }
+      .pk-group:first-child { padding-top: 4px; }
+      .pk-dot { display: none; width: 6px; height: 6px; border-radius: 50%; background: var(--pk-series, var(--muted)); justify-self: center; }
+      .pk-group[data-provider=""] .pk-dot { visibility: hidden; }
+      /* Shipped rows: lucide renders at 13px in the app; a bare <use> has no size of its own. */
+      .project-picker-item > span > svg { width: 13px; height: 13px; }
+      .picker-filter svg { width: 11px; height: 11px; }
+      .pk-divider { height: 1px; margin: 4px 6px; background: var(--line-soft); list-style: none; }
+      .pk-filter {
+        position: sticky; top: -5px; z-index: 1; margin: -5px -5px 4px; padding: 8px 10px 6px;
+        display: flex; align-items: center; gap: 6px; list-style: none;
+        background: var(--panel); border-bottom: 1px solid var(--line-soft);
+        color: var(--muted); font-size: var(--text-2xs);
+      }
+      .pk-filter svg { width: 11px; height: 11px; }
+      .pk-filter-q { flex: 1; color: var(--text); font-size: var(--text-xs); }
+      .pk-filter-n { font-variant-numeric: tabular-nums; }
+      .pk-action > .pk-item { color: var(--muted-strong); }
+
+      /* A · Tune. Only the base. Group labels are text; no meta column; no sub lines. */
+      [data-variant="a"] .pk-meta:not([data-tone]) { display: none; }
+      [data-variant="a"] .pk[data-kind="model"] { min-width: 250px; }
+
+      /* B · Two lines. A second, quieter line where data exists: provider + context + price on
+         models, the path on projects. Group headers carry the provider's series dot. */
+      [data-variant="b"] .pk { min-width: 300px; }
+      [data-variant="b"] .pk-item { grid-template-columns: 16px minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; min-height: calc(var(--pk-row) + 16px); padding-block: 5px; row-gap: 1px; }
+      [data-variant="b"] .pk-lead { grid-row: 1 / 3; }
+      [data-variant="b"] .pk-sub { display: block; grid-column: 2; grid-row: 2; color: var(--muted); font-size: var(--text-2xs-plus); font-weight: 400; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      [data-variant="b"] .pk-row:not(:has(.pk-sub)) > .pk-item { min-height: var(--pk-row); padding-block: 0; }
+      [data-variant="b"] .pk-meta:not([data-tone]) { display: none; }
+      [data-variant="b"] .pk-meta[data-tone] { grid-row: 1 / 3; }
+      [data-variant="b"] .pk-dot { display: block; }
+
+      /* C · Ledger. One line, a right-hand meta column (context window, or the annotation),
+         provider headers with the series dot that stay put while the list scrolls. */
+      [data-variant="c"] .pk { min-width: 290px; }
+      [data-variant="c"] .pk-item { min-height: calc(var(--pk-row) + 2px); }
+      [data-variant="c"] .pk-dot { display: block; }
+      [data-variant="c"] .pk-group { position: sticky; top: -5px; z-index: 1; margin: 0 -5px; padding-inline: 12px 14px; background: color-mix(in oklab, var(--panel) 94%, transparent); backdrop-filter: blur(6px); }
+      [data-variant="c"] .pk-group:first-child { top: -5px; }
+      [data-variant="c"] .pk-filter + .pk-group { top: 24px; }
+
+      /* Series dots read the Usage page's provider colours, so a provider looks the same here and there. */
+      .pk-group[data-provider="claude"]   { --pk-series: var(--usage-claude); }
+      .pk-group[data-provider="codex"]    { --pk-series: var(--usage-codex); }
+      .pk-group[data-provider="cursor"]   { --pk-series: var(--usage-cursor); }
+      .pk-group[data-provider="opencode"] { --pk-series: var(--usage-opencode); }
+      .pk-group[data-provider="grok"]     { --pk-series: var(--usage-grok); }
+
+      /* Settings trigger in the variants: one step up from shipped (26 → 28px, 11 → 12px). */
+      .pk[data-kind="settings"] { min-width: 100%; }
+      [data-variant] .settings-picker-trigger { min-height: 28px; font-size: var(--text-sm); padding-inline: 10px 8px; border-radius: var(--radius-md); }
+
+      /* ---- 13-inch frame ---- */
+      .frame {
+        position: relative; width: 1280px; height: 832px; overflow: hidden;
+        background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+        display: grid; grid-template-columns: 272px 1fr;
+      }
+      .frame .side { border-right: 1px solid var(--line); background: var(--sidebar); padding: 60px 20px; color: var(--muted); font-size: var(--text-sm); }
+      .frame .side div { padding: 6px 0; }
+      .frame .side div:first-child { color: var(--text); }
+      .frame .main { position: relative; }
+      .frame .hero { position: absolute; left: 0; right: 0; top: 300px; text-align: center; font-size: var(--text-display); color: var(--text); }
+      .frame .stage { position: absolute; left: 50%; top: 358px; width: 760px; transform: translateX(-50%); padding: 18px 20px; }
+      .frame .prompt { color: var(--muted); font-size: var(--text-md); margin-bottom: 22px; }
+      body[data-frame-only] > :not(.frame-only) { display: none !important; }
+      body[data-frame-only] .frame-only > :not(.frame) { display: none; }
+      body[data-frame-only] .frame-only { padding: 0; }
+      body[data-frame-only] .frame { border: 0; border-radius: 0; width: 100vw; height: 100vh; }
+      /* The launcher composer sits mid-window, so Floating UI flips the menu upward and
+         clamps it to the room above (useAnchoredPopover: flip + size). Mirror that here. */
+      .frame .model-picker-flyout, .frame .project-picker-anchor > .pk { top: auto; bottom: calc(100% + 6px); }
+      .frame .pk { max-height: 336px; }
+      .frame-links { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 14px; font-size: var(--text-xs); }
+      .frame-links a { color: var(--text-soft); }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+        <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+        <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+        <symbol id="i-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+        <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+      </defs>
+    </svg>
+
+    <header class="page-head">
+      <h1>Pickers — shipped vs. A / B / C</h1>
+      <label>Theme <select id="theme"><option value="dark">Dark</option><option value="light">Light</option></select></label>
+      <label>App font size <select id="size"><option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option></select></label>
+      <label>Row height <select id="rowh"><option value="26">26 compact</option><option value="28" selected>28</option><option value="30">30</option><option value="32">32 comfortable</option></select></label>
+      <label>Accent <select id="accent"><option>green</option><option>purple</option><option>neutral</option><option>black</option><option>orange</option><option>blue</option><option>coral</option></select></label>
+      <label>Filter typed <input id="filter" type="checkbox" /></label>
+    </header>
+
+    <section>
+      <h2>1 · Model</h2>
+      <p class="lede">35 models across five providers, opened from the launcher's model chip. Shipped is the real CSS. Scroll each list: the question is whether you know where you are in it.</p>
+      <div class="row" data-kind="model"></div>
+    </section>
+
+    <section>
+      <h2>2 · Project</h2>
+      <p class="lede">Six repositories plus the folder action. Shipped caps the menu at 22% of the window height, which on a 13-inch screen is about seven rows.</p>
+      <div class="row" data-kind="project"></div>
+    </section>
+
+    <section>
+      <h2>3 · Branch</h2>
+      <p class="lede">Fourteen branches. Same primitive as the project menu.</p>
+      <div class="row" data-kind="branch"></div>
+    </section>
+
+    <section>
+      <h2>4 · Settings list picker</h2>
+      <p class="lede">The same list, dropped from a settings row's trigger and aligned to its right edge.</p>
+      <div class="row" data-kind="settings"></div>
+    </section>
+
+    <section class="frame-only">
+      <h2>5 · At 13 inches</h2>
+      <p class="lede">1280 × 832, the MacBook Air "more space" setting — the smallest logical size this has to work at. Real max-heights; the menu opens below the chip like in the app.</p>
+      <p class="frame-links">
+        <a href="?frame=shipped">shipped</a><a href="?frame=a">A</a><a href="?frame=b">B</a><a href="?frame=c">C</a>
+        <span style="color: var(--muted)">— each link renders the frame alone at viewport size, for capture.</span>
+      </p>
+      <div class="frame" id="frame"></div>
+    </section>
+
+    <script>
+      const VARIANTS = [
+        { id: "shipped", name: "Shipped", note: "11.5px rows · 25px tall · dividers only · 320px cap" },
+        { id: "a", name: "A · Tune", note: "12px · 28px rows · check column · named groups · 440px cap" },
+        { id: "b", name: "B · Two lines", note: "sub line where data exists · provider dot · 44px model rows" },
+        { id: "c", name: "C · Ledger", note: "one line · context column · sticky provider headers" }
+      ];
+
+      const ctx = (n) => (n >= 1_000_000 ? `${Math.round(n / 1_000_000)}M` : `${Math.round(n / 1000)}K`);
+      const price = (i, o) => (i === 0 ? "in plan" : `$${i} · $${o} / M`);
+      const M = (label, c, i, o) => ({ label, ctx: c ? ctx(c) : "", price: price(i, o) });
+      const MODELS = [
+        { group: "Recent", items: [ { ...M("Opus 5", 1_000_000, 5, 25), sub: "Claude", selected: true }, { ...M("GPT-5.6 Sol", 258_400, 5, 30), sub: "Codex" } ] },
+        { group: "Claude", provider: "claude", items: [ M("Fable 5.1", 1_000_000, 10, 50), M("Sonnet 5", 200_000, 3, 15), M("Haiku 4.5", 200_000, 1, 5) ] },
+        { group: "Codex", provider: "codex", items: [ M("GPT-6 Astra", 272_000, 10, 50), M("GPT-5.6 Terra", 258_400, 2, 12), M("GPT-5.6 Luna", 258_400, 0.2, 1.2) ] },
+        { group: "Cursor", provider: "cursor", items: [ M("Auto Cost", 0, 0, 0), M("Auto Balance", 0, 0, 0), M("Auto Intelligence", 0, 0, 0), M("Composer 2.5", 1_000_000, 0, 0), M("Grok 4.6", 1_000_000, 0, 0), M("Gemini 3.8 Flash", 1_000_000, 0, 0), M("GPT-5.6 Sol", 1_000_000, 0, 0), M("GPT-5.6 Terra", 1_000_000, 0, 0), M("GPT-5.6 Luna", 1_000_000, 0, 0), M("Claude Opus 5", 1_000_000, 0, 0) ] },
+        { group: "OpenCode", provider: "opencode", annotation: "not installed", disabled: true, items: [ M("Big Pickle", 200_000, 0, 0), M("Hy3 Free", 190_000, 0, 0), M("MiMo V2.5 Free", 200_000, 0, 0), M("Nemotron 3.5 Lightning Free", 262_144, 0, 0), M("Nemotron 3 Ultra Free", 1_000_000, 0, 0), M("Muse Spark 1.3 Free", 1_048_576, 0, 0), M("GLM-5.3-Flash", 1_000_000, 0.075, 0.25), M("GLM-5.3", 1_000_000, 1.4, 4.4), M("Kimi K3", 1_048_576, 3, 15), M("Qwen3.8 Max", 1_000_000, 2, 6), M("Qwen3.8 Flash", 1_000_000, 0.15, 0.47), M("DeepSeek V4 Pro", 1_000_000, 0.66, 1.98), M("DeepSeek V4 Flash", 1_000_000, 0.22, 0.66) ] },
+        { group: "Grok Build", provider: "grok", annotation: "needs login", items: [ M("Grok 4.6", 500_000, 0.34, 1.02), M("Grok 4.5", 500_000, 0.68, 2.04) ] }
+      ];
+      // Cursor rows in the catalog carry a "(Cursor)" suffix; shipped shows it, the variants
+      // drop it because the group header already says so.
+      const PROJECTS = [
+        { label: "Argmax", sub: "~/dev/menti/argmax", selected: true },
+        { label: "product-analytics-tools", sub: "~/dev/menti/product-analytics-tools" },
+        { label: "dbt-transform", sub: "~/dev/menti/dbt-transform" },
+        { label: "revops-backoffice", sub: "~/dev/menti/revops-backoffice" },
+        { label: "dotfiles", sub: "~/dotfiles" },
+        { label: "alfred", sub: "~/dev/alfred" }
+      ];
+      const BRANCHES = ["main", "adam/feat-picker-redesign", "adam/fix-question-dock-hole", "adam/chore-ci-cost", "adam/feat-approvals-and-chat", "adam/docs-verification", "adam/fix-scroll-clamp", "adam/feat-usage-page", "release/0.5", "release/0.4", "spike/cef-browser", "spike/child-webviews", "codex/grid-perf", "cursor/composer-pool"].map((b, i) => ({ label: b, selected: i === 0 }));
+      const IDES = ["Ask each time", "Cursor", "VS Code", "Zed", "Xcode", "Terminal"].map((l, i) => ({ label: l, selected: i === 0 }));
+
+      const icon = (id, cls = "") => `<svg class="${cls} ${id}" aria-hidden="true"><use href="#${id}"/></svg>`;
+      const filterOn = () => document.getElementById("filter").checked;
+
+      /* ---------- Shipped: the app's own class names, so the real CSS paints it ---------- */
+      function shippedList(kind) {
+        const filter = filterOn() ? `<li class="picker-filter">${icon("i-search")}<span class="picker-filter-query">gpt</span><span class="picker-filter-count">7 of 35</span></li>` : "";
+        if (kind === "model") {
+          let out = "";
+          MODELS.forEach((g, gi) => {
+            if (gi > 0) out += `<li class="model-picker-divider" role="separator"></li>`;
+            g.items.forEach((m) => {
+              const label = g.provider === "cursor" ? `${m.label} (Cursor)` : m.label;
+              out += `<li role="option" class="model-picker-row" aria-selected="${!!m.selected}" ${g.disabled ? "data-disabled" : ""}><button type="button" class="project-picker-item model-picker-item" aria-pressed="${!!m.selected}" ${g.disabled ? "disabled" : ""}><span class="model-picker-name">${label}</span>${g.annotation ? `<span class="model-picker-annotation">${g.annotation}</span>` : ""}</button></li>`;
+            });
+          });
+          out += `<li class="model-picker-divider" role="separator"></li><li role="presentation" class="model-picker-row model-picker-speed-row"><button type="button" class="project-picker-item model-picker-item model-picker-submenu-trigger"><span class="model-picker-name">Speed</span><svg class="model-picker-submenu-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button></li>`;
+          return `<div class="model-picker-flyout" data-type-scale="chrome"><ul class="project-picker-popover model-picker-popover" role="listbox">${filter}${out}</ul></div>`;
+        }
+        const items = kind === "project" ? PROJECTS : kind === "branch" ? BRANCHES : IDES;
+        const glyph = kind === "project" ? icon("i-folder") : kind === "branch" ? icon("i-branch") : "";
+        let out = items.map((p) => `<li role="option" aria-selected="${!!p.selected}"><button type="button" class="project-picker-item" aria-pressed="${!!p.selected}">${glyph ? `<span style="display:inline-grid;width:13px;height:13px">${glyph}</span>` : ""}${p.label}</button></li>`).join("");
+        if (kind === "project") out += `<li class="project-picker-divider" role="separator"></li><li role="option"><button type="button" class="project-picker-item"><span style="display:inline-grid;width:13px;height:13px">${icon("i-plus")}</span>Browse folder…</button></li>`;
+        const cls = kind === "settings" ? "project-picker-popover settings-picker-popover" : "project-picker-popover";
+        return `<ul class="${cls}" role="listbox" data-placement="below">${filter}${out}</ul>`;
+      }
+
+      /* ---------- Variants: .pk-* classes, one markup, three stylesheets ---------- */
+      function pkRow(item, { lead = "", group } = {}) {
+        const selected = !!item.selected;
+        const leadHtml = selected ? icon("i-check", "") : lead;
+        const meta = group?.annotation
+          ? `<span class="pk-meta" data-tone="warn">${group.annotation}</span>`
+          : item.ctx ? `<span class="pk-meta">${item.ctx}</span>` : "";
+        const subText = item.sub ?? (item.ctx || item.price ? [item.ctx && `${item.ctx} context`, item.price].filter(Boolean).join(" · ") : "");
+        const sub = subText ? `<span class="pk-sub">${subText}</span>` : "";
+        return `<li class="pk-row" role="option" aria-selected="${selected}" ${group?.disabled ? "data-disabled" : ""}><button type="button" class="pk-item"><span class="pk-lead">${leadHtml}</span><span class="pk-name">${item.label}</span>${meta}${sub}</button></li>`;
+      }
+      function pkList(kind) {
+        const filter = filterOn() ? `<li class="pk-filter">${icon("i-search")}<span class="pk-filter-q">gpt</span><span class="pk-filter-n">7 of 35</span></li>` : "";
+        if (kind === "model") {
+          let out = "";
+          MODELS.forEach((g) => {
+            out += `<li class="pk-group" data-provider="${g.provider ?? ""}"><span class="pk-dot"></span>${g.group}</li>`;
+            g.items.forEach((m) => { out += pkRow({ ...m, sub: m.sub ? `${m.sub} · ${m.ctx} context · ${m.price}` : undefined }, { group: g }); });
+          });
+          out += `<li class="pk-divider" role="separator"></li><li class="pk-row pk-action" role="presentation"><button type="button" class="pk-item"><span class="pk-lead"></span><span class="pk-name">Speed</span><span class="pk-meta">Standard ›</span></button></li>`;
+          return `<ul class="pk" data-kind="model" role="listbox">${filter}${out}</ul>`;
+        }
+        if (kind === "project") {
+          let out = PROJECTS.map((p) => pkRow(p, { lead: icon("i-folder") })).join("");
+          out += `<li class="pk-divider" role="separator"></li>${pkRow({ label: "Browse folder…" }, { lead: icon("i-plus") }).replace('class="pk-row"', 'class="pk-row pk-action"')}`;
+          return `<ul class="pk" data-kind="project" role="listbox">${filter}${out}</ul>`;
+        }
+        if (kind === "branch") {
+          return `<ul class="pk" data-kind="branch" role="listbox">${filter}${BRANCHES.map((b) => pkRow(b, { lead: icon("i-branch") })).join("")}</ul>`;
+        }
+        return `<ul class="pk" data-kind="settings" role="listbox">${IDES.map((b) => pkRow(b)).join("")}</ul>`;
+      }
+
+      /* ---------- Stages ---------- */
+      const chip = (label, glyph = "", extra = "") => `<button type="button" class="composer-context-chip ${extra}" aria-expanded="true">${glyph}<span class="composer-context-chip-label">${label}</span><svg class="composer-context-caret" width="11" height="11"><use href="#i-down"/></svg></button>`;
+      const chipRow = (kind, open) => `
+        <div class="composer-context">
+          <div class="composer-context-group composer-context-group--model">
+            <div class="project-picker-anchor model-picker-anchor">${chip(`Opus 5 <span style="color: var(--chip-ink)">Medium</span>`)}${kind === "model" ? open : ""}</div>
+          </div>
+          <div class="composer-context-group composer-context-group--workspace">
+            <div class="project-picker-anchor">${chip("Argmax", `<svg width="14" height="14" style="color:var(--muted)"><use href="#i-folder"/></svg>`)}${kind === "project" ? open : ""}</div>
+            <div class="project-picker-anchor">${chip("main", `<svg width="14" height="14" style="color:var(--muted)"><use href="#i-branch"/></svg>`, "branch-chip")}${kind === "branch" ? open : ""}</div>
+          </div>
+        </div>`;
+      function settingsStage(open) {
+        return `<div class="srow"><div><div class="lbl">Default IDE</div><div class="desc">Opens when you click Open in IDE on a chat.</div></div>
+          <div class="settings-picker settings-list-picker"><button type="button" class="settings-picker-trigger" aria-expanded="true"><span class="settings-picker-trigger-label">Ask each time</span><svg><use href="#i-down"/></svg></button>${open}</div></div>`;
+      }
+      function sample(variant, kind) {
+        const open = variant.id === "shipped" ? shippedList(kind) : pkList(kind);
+        const body = kind === "settings" ? settingsStage(open) : `<div class="stage">${chipRow(kind, open)}</div>`;
+        return `<div class="sample" data-kind="${kind}" data-variant="${variant.id}"><div class="tag"><span class="name">${variant.name}</span><span>${variant.note}</span></div>${body}</div>`;
+      }
+      function frame(variantId) {
+        const v = VARIANTS.find((x) => x.id === variantId) ?? VARIANTS[1];
+        const open = v.id === "shipped" ? shippedList("model") : pkList("model");
+        return `<div class="side"><div>New chat</div><div>Search</div><div>Schedule</div><div>Usage</div><div>Customize</div><div style="margin-top:28px">Priority</div><div>Projects</div><div>Side chats</div></div>
+          <div class="main" data-variant="${v.id}"><div class="hero">What are we building?</div>
+          <div class="stage"><div class="prompt">Ask your agent to inspect, build, or fix something</div>${chipRow("model", open)}</div></div>`;
+      }
+
+      function render() {
+        for (const row of document.querySelectorAll(".row")) {
+          row.innerHTML = VARIANTS.map((v) => sample(v, row.dataset.kind)).join("");
+        }
+        document.getElementById("frame").innerHTML = frame(new URLSearchParams(location.search).get("frame") ?? "a");
+      }
+
+      const params = new URLSearchParams(location.search);
+      const root = document.documentElement;
+      const bind = (id, attr, fallback) => {
+        const el = document.getElementById(id);
+        el.value = params.get(id) ?? fallback;
+        const apply = () => { if (attr === "--pk-row") root.style.setProperty(attr, `${el.value}px`); else root.setAttribute(attr, el.value); };
+        apply(); el.addEventListener("change", apply);
+      };
+      bind("theme", "data-theme", "dark");
+      bind("size", "data-font-size", "5");
+      bind("rowh", "--pk-row", "28");
+      bind("accent", "data-accent", "green");
+      document.getElementById("filter").checked = params.get("filter") === "1";
+      document.getElementById("filter").addEventListener("change", render);
+      if (params.has("frame")) document.body.dataset.frameOnly = "";
+      render();
+    </script>
+  </body>
+</html>

@@ -23,6 +23,13 @@ import {
   type FontFamilyId,
   type FontSize
 } from "../../lib/fonts.js";
+import {
+  INK_STRENGTH_HINTS,
+  INK_STRENGTH_MAX,
+  INK_STRENGTH_MIN,
+  toInkStrength,
+  type InkStrength
+} from "../../lib/inkStrength.js";
 import { toScaleLevel } from "../../lib/scaleLevel.js";
 import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
@@ -64,7 +71,9 @@ export function AppearanceSettings({
   fontSize,
   onFontSizeChange,
   chatFontSize,
-  onChatFontSizeChange
+  onChatFontSizeChange,
+  inkStrength,
+  onInkStrengthChange
 }: {
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
@@ -72,6 +81,8 @@ export function AppearanceSettings({
   onFontSizeChange: (size: FontSize) => void;
   chatFontSize: FontSize;
   onChatFontSizeChange: (size: FontSize) => void;
+  inkStrength: InkStrength;
+  onInkStrengthChange: (strength: InkStrength) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
@@ -101,6 +112,12 @@ export function AppearanceSettings({
   const pickFontSize = (raw: number, apply: (size: FontSize) => void): void => {
     const size = toFontSize(String(raw));
     if (size) apply(size);
+  };
+  // Ink rides a 1–10 slider: 7 is the shipped ink, below it text fades toward
+  // the page, above it toward black on paper and white on charcoal.
+  const pickInkStrength = (raw: number): void => {
+    const strength = toInkStrength(raw);
+    if (strength) onInkStrengthChange(strength);
   };
   const fontStack = FONT_OPTIONS.find((option) => option.id === fontFamily)?.stack;
   // Straight from the store rather than through props: every running mark in
@@ -210,6 +227,20 @@ export function AppearanceSettings({
               value={chatFontSize}
               valueLabel={`${fontSizeBasePx(chatFontSize)}px`}
               onChange={(v) => pickFontSize(v, onChatFontSizeChange)}
+            />
+          }
+        />
+        <SettingRow
+          label="Ink strength"
+          description={`How hard text sits against the page, everywhere in the app. ${INK_STRENGTH_HINTS[inkStrength]}`}
+          control={
+            <Slider
+              ariaLabel="Ink strength"
+              min={INK_STRENGTH_MIN}
+              max={INK_STRENGTH_MAX}
+              value={inkStrength}
+              valueLabel={String(inkStrength)}
+              onChange={pickInkStrength}
             />
           }
         />

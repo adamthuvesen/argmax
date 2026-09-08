@@ -102,7 +102,7 @@ import {
   readStoredDefaultEffort,
   readStoredLaunchModel
 } from "./lib/launchModelPreference.js";
-import { launchProjectIdFrom, persistLaunchProjectId } from "./lib/launchProjectPreference.js";
+import { persistLaunchProjectId, useLaunchProjectId } from "./lib/launchProjectPreference.js";
 import { factoryLaunchModel, modelPickerSelectionFromSession, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
@@ -149,7 +149,7 @@ import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
 import { useStandaloneBrowserLinks } from "./hooks/useStandaloneBrowserLinks.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
-import { isTauriRuntime } from "./lib/tauriBridge.js";
+import { isRemoteBridge, isTauriRuntime } from "./lib/tauriBridge.js";
 
 import { withToast } from "./lib/withToast.js";
 
@@ -185,7 +185,7 @@ export function App(): JSX.Element {
   const workspaceRef = useRef<HTMLElement | null>(null);
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [chatVerbosity, setChatVerbosity] = useChatVerbosityPreference();
-  const { toolCallsDisplay, toolCallGroupsExpanded, thinkingExpanded } = useMemo(
+  const { toolCallsDisplay, toolCallGroupsExpanded, thinkingDisplay } = useMemo(
     () => resolveChatVerbosity(chatVerbosity),
     [chatVerbosity]
   );
@@ -258,6 +258,8 @@ export function App(): JSX.Element {
     setFontSize,
     chatFontSize,
     setChatFontSize,
+    inkStrength,
+    setInkStrength,
     defaultIde,
     setDefaultIde,
     detectedIdes
@@ -285,7 +287,7 @@ export function App(): JSX.Element {
   const defaultAgentSaveQueue = useRef<Promise<void>>(Promise.resolve());
   // Serialize saves so a slow earlier write cannot replace the latest choice.
   useEffect(() => {
-    if (!window.argmax?.system?.setDefaultAgent) return;
+    if (isRemoteBridge() || !window.argmax?.system?.setDefaultAgent) return;
     const api = window.argmax.system;
     let cancelled = false;
     setIsSavingDefaultAgent(true);
@@ -1174,7 +1176,7 @@ export function App(): JSX.Element {
     () => snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
     [snapshot.projects]
   );
-  const storedLaunchProjectId = launchProjectIdFrom(realProjects);
+  const storedLaunchProjectId = useLaunchProjectId(realProjects);
   const launcherProject =
     (storedLaunchProjectId
       ? realProjects.find((project) => project.id === storedLaunchProjectId)
@@ -1182,6 +1184,9 @@ export function App(): JSX.Element {
     (selectedProject && selectedProject.id !== SCRATCH_PROJECT_ID ? selectedProject : null) ??
     realProjects[0] ??
     null;
+  const sidebarProject = !isBrowserPageOpen && (isFullLauncherOpen || grid.rows.length === 0)
+    ? (launcherSideChatMode ? null : launcherProject)
+    : selectedProject;
 
   // "New session here" from a pane menu skips openLauncherSurface, so it
   // resets chat mode itself before opening the in-grid launcher cell.
@@ -1614,6 +1619,8 @@ export function App(): JSX.Element {
           onFontSizeChange: setFontSize,
           chatFontSize,
           onChatFontSizeChange: setChatFontSize,
+          inkStrength,
+          onInkStrengthChange: setInkStrength,
           chatVerbosity,
           onChatVerbosityChange: setChatVerbosity
         },
@@ -1647,6 +1654,8 @@ export function App(): JSX.Element {
       setFontSize,
       chatFontSize,
       setChatFontSize,
+      inkStrength,
+      setInkStrength,
       chatVerbosity,
       setChatVerbosity
     ]
@@ -1959,7 +1968,7 @@ export function App(): JSX.Element {
           onOpenProject={onOpenProjectRow}
           onOpenWorkspaceChat={onOpenWorkspaceChatRow}
           onResizeMouseDown={onResizeMouseDown}
-          selectedProjectId={selectedProject?.id ?? null}
+          selectedProjectId={sidebarProject?.id ?? null}
           selectedWorkspaceId={
             isFullLauncherOpen || isBrowserPageOpen ? null : (selectedWorkspace?.id ?? null)
           }
@@ -2021,6 +2030,8 @@ export function App(): JSX.Element {
                 onFontSizeChange={setFontSize}
                 chatFontSize={chatFontSize}
                 onChatFontSizeChange={setChatFontSize}
+                inkStrength={inkStrength}
+                onInkStrengthChange={setInkStrength}
                 themeMode={themeMode}
                 onThemeModeChange={handleThemeModeChange}
                 accentId={accentId}
@@ -2076,7 +2087,7 @@ export function App(): JSX.Element {
               multitasksByParent={multitasksByParent}
               defaultToolCallsDisplay={toolCallsDisplay}
               defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
-              defaultThinkingExpanded={thinkingExpanded}
+              thinkingDisplay={thinkingDisplay}
               defaultTurnChangesExpanded={turnChangesExpanded}
               fastModeEnabled={fastModeEnabled}
               workspaceCardVisible={workspaceCardVisible}

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-ink-strength="7">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Argmax — ink strength ladder</title>
+    <!--
+      The real thing: app tokens and the real chat prose rules, nothing
+      re-implemented. The page only flips `data-ink-strength` on <html>, which
+      is the one place the ladder can act — see the comment in tokens.css.
+
+      Serve the repo root (`python3 -m http.server 8123`) and open
+      /docs/design/ink-strength/. Use ← / → to step levels in place: a
+      lightness move this small is only judgable as a flicker-compare, never
+      as two blocks side by side.
+    -->
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-700.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/chat-conversation.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        font-family: var(--font-ui);
+        font-weight: var(--weight-ui);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+      }
+      main {
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 24px 20px 80px;
+      }
+      .head {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        display: flex;
+        gap: var(--space-4);
+        align-items: baseline;
+        padding: 14px 20px;
+        background: color-mix(in oklab, var(--bg) 92%, transparent);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--line);
+        font-size: var(--text-xs);
+        color: var(--muted);
+      }
+      .head strong {
+        color: var(--text-soft);
+        font-weight: 500;
+      }
+      button {
+        font: inherit;
+        color: var(--text);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 3px 9px;
+      }
+      .chrome {
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+        margin: 22px 0;
+        font-size: var(--text-xs);
+      }
+      .chrome span:nth-child(1) { color: var(--text); }
+      .chrome span:nth-child(2) { color: var(--text-soft); }
+      .chrome span:nth-child(3) { color: var(--muted-strong); }
+      .chrome span:nth-child(4) { color: var(--muted); }
+      .chrome span:nth-child(5) { color: var(--chip-ink); }
+      table {
+        width: 100%;
+        margin-top: 28px;
+        border-collapse: collapse;
+        font-family: var(--font-mono);
+        font-size: var(--text-2xs);
+      }
+      th,
+      td {
+        padding: 3px 8px 3px 0;
+        text-align: left;
+        border-bottom: 1px solid var(--line-soft);
+        color: var(--muted-strong);
+        white-space: nowrap;
+      }
+      th { color: var(--text-soft); }
+      tr[data-current] td { color: var(--text); }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <strong>Ink strength <span id="level">7</span>/10</strong>
+      <span>← / → to step · 7 is what ships</span>
+      <button id="theme">Toggle theme</button>
+    </div>
+    <main>
+      <div class="chrome">
+        <span>--text primary label</span>
+        <span>--text-soft secondary</span>
+        <span>--muted-strong hover</span>
+        <span>--muted caption</span>
+        <span>--chip-ink chip</span>
+      </div>
+      <div class="markdown">
+        <h2>What the setting actually moves</h2>
+        <p>
+          Every ink token is declared as a <code>color-mix</code> against one endpoint the
+          ladder picks. Below level 7 the endpoint is the page, so each token fades in
+          proportion to its own distance from it and the gap between body text and a
+          caption survives. Above level 7 the endpoint is the theme's extreme — pure black
+          on paper, pure white on charcoal.
+        </p>
+        <p>
+          <strong>Emphasis rides <code>--prose-ink-strong</code></strong> and body prose rides
+          <code>--prose-ink</code>, so the two move together and bold never falls behind the
+          paragraph it emphasises.
+        </p>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>lvl</th>
+            <th>--text</th>
+            <th>--text-soft</th>
+            <th>--muted</th>
+            <th>--prose-ink</th>
+            <th>--prose-ink-strong</th>
+          </tr>
+        </thead>
+        <tbody id="readback"></tbody>
+      </table>
+    </main>
+    <script type="module">
+      const root = document.documentElement;
+      const TOKENS = ["text", "text-soft", "muted", "prose-ink", "prose-ink-strong"];
+      const paint = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+
+      // Computed color-mix serializes differently per engine (color(srgb …) in
+      // Chromium, oklab(…) in WebKit). Painting it is the only readback that
+      // matches what lands on screen in both.
+      function pixel(value) {
+        // Magenta sentinel: an unparsable value leaves fillStyle here rather
+        // than quietly reading as black, which is a plausible ink color.
+        paint.fillStyle = "#ff00ff";
+        paint.fillStyle = value;
+        paint.fillRect(0, 0, 1, 1);
+        const [r, g, b] = paint.getImageData(0, 0, 1, 1).data;
+        return { hex: "#" + [r, g, b].map((c) => c.toString(16).padStart(2, "0")).join(""), r, g, b };
+      }
+
+      function relativeLuminance({ r, g, b }) {
+        return [r, g, b]
+          .map((c) => c / 255)
+          .map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+          .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+      }
+
+      function contrast(a, b) {
+        const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+        return ((hi + 0.05) / (lo + 0.05)).toFixed(1);
+      }
+
+      function render() {
+        const current = root.dataset.inkStrength;
+        document.getElementById("level").textContent = current;
+        const rows = [];
+        for (let level = 1; level <= 10; level += 1) {
+          root.dataset.inkStrength = String(level);
+          const style = getComputedStyle(root);
+          const page = pixel(style.getPropertyValue("--bg"));
+          const cells = TOKENS.map((token) => {
+            const ink = pixel(style.getPropertyValue(`--${token}`));
+            return `<td>${ink.hex} ${contrast(ink, page)}</td>`;
+          });
+          rows.push(
+            `<tr${level === Number(current) ? " data-current" : ""}><td>${level}</td>${cells.join("")}</tr>`
+          );
+        }
+        root.dataset.inkStrength = current;
+        document.getElementById("readback").innerHTML = rows.join("");
+      }
+
+      function step(by) {
+        const next = Math.min(10, Math.max(1, Number(root.dataset.inkStrength) + by));
+        root.dataset.inkStrength = String(next);
+        render();
+      }
+
+      addEventListener("keydown", (event) => {
+        if (event.key === "ArrowRight") step(1);
+        if (event.key === "ArrowLeft") step(-1);
+      });
+      document.getElementById("theme").addEventListener("click", () => {
+        root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+        render();
+      });
+      // The linked stylesheets are not always applied by the time a module
+      // script runs, and an unresolved token reads back as an empty string.
+      if (document.readyState === "complete") render();
+      else addEventListener("load", render);
+    </script>
+  </body>
+</html>

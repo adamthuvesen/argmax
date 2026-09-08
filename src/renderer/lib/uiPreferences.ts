@@ -71,43 +71,42 @@ export type ToolCallsDisplay = "expanded" | "collapsed" | "single-line";
 
 const TOOL_CALLS_DISPLAY_VALUES: readonly ToolCallsDisplay[] = ["expanded", "collapsed", "single-line"];
 
-/** 1–5 scale governing default tool calls, groups, and thinking detail. */
-export type ChatVerbosity = 1 | 2 | 3 | 4 | 5;
+/** Whether thought content uses a disclosure row or stays visible inline. */
+export type ThinkingDisplay = "collapsed" | "inline";
+
+/** 1–4 scale governing default tool calls, groups, and thinking detail. */
+export type ChatVerbosity = 1 | 2 | 3 | 4;
 
 export interface ResolvedVerbosity {
   toolCallsDisplay: ToolCallsDisplay;
   toolCallGroupsExpanded: boolean;
-  thinkingExpanded: boolean;
+  thinkingDisplay: ThinkingDisplay;
 }
 
 export const CHAT_VERBOSITY_LABELS: Record<ChatVerbosity, string> = {
   1: "Minimal",
   2: "Compact",
   3: "Balanced",
-  4: "Detailed",
-  5: "Full trace"
+  4: "Detailed"
 };
 
 export const CHAT_VERBOSITY_HINTS: Record<ChatVerbosity, string> = {
   1: "Activity summaries while working. Finished turns keep the answer and failures. Click Worked for to inspect the work.",
   2: "One short activity summary between messages. Expand to see commands, files, and agent activity.",
-  3: "The latest turn expands grouped tool rows while reasoning stays collapsed.",
-  4: "Tool calls and groups open on the latest turn while reasoning stays collapsed.",
-  5: "Tool calls open on the latest turn, and reasoning blocks stay expanded."
+  3: "One short activity summary between messages, with thoughts always shown inline.",
+  4: "Tool calls and groups open on the latest turn, with thoughts always shown inline."
 };
 
 export function resolveChatVerbosity(verbosity: ChatVerbosity): ResolvedVerbosity {
   switch (verbosity) {
     case 1:
-      return { toolCallsDisplay: "single-line", toolCallGroupsExpanded: false, thinkingExpanded: false };
+      return { toolCallsDisplay: "single-line", toolCallGroupsExpanded: false, thinkingDisplay: "collapsed" };
     case 2:
-      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingExpanded: false };
+      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "collapsed" };
     case 3:
-      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: true, thinkingExpanded: false };
+      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "inline" };
     case 4:
-      return { toolCallsDisplay: "expanded", toolCallGroupsExpanded: true, thinkingExpanded: false };
-    case 5:
-      return { toolCallsDisplay: "expanded", toolCallGroupsExpanded: true, thinkingExpanded: true };
+      return { toolCallsDisplay: "expanded", toolCallGroupsExpanded: true, thinkingDisplay: "inline" };
   }
 }
 
@@ -116,15 +115,21 @@ function readChatVerbosity(): ChatVerbosity {
   const raw = window.localStorage.getItem(CHAT_VERBOSITY_KEY);
   if (raw !== null) {
     const parsed = Number.parseInt(raw, 10);
-    if (parsed >= 1 && parsed <= 5) return parsed as ChatVerbosity;
+    if (parsed >= 1 && parsed <= 4) return parsed as ChatVerbosity;
+    if (parsed === 5) {
+      try {
+        window.localStorage.setItem(CHAT_VERBOSITY_KEY, "4");
+      } catch {
+        // A storage failure must not prevent the saved setting from resolving.
+      }
+      return 4;
+    }
   }
   // Migrate legacy granular preferences if present
   const legacyDisplay = readToolCallsDisplay();
   if (legacyDisplay === "single-line") return 1;
   const legacyGroups = window.localStorage.getItem(TOOL_CALL_GROUPS_EXPANDED_KEY);
   if (legacyDisplay === "collapsed") return legacyGroups === "true" ? 3 : 2;
-  const legacyThinking = window.localStorage.getItem(THINKING_EXPANDED_KEY);
-  if (legacyDisplay === "expanded" && legacyThinking === "true") return 5;
   if (legacyDisplay === "expanded") return 4;
   return 2;
 }

@@ -322,14 +322,14 @@ const markdownComponents: Components = {
         </a>
       );
     }
-    if (/^https?:/.test(href)) {
+    if (/^https?:/i.test(href) || href.startsWith("//")) {
       return (
-        <WebLink href={href} {...rest}>
+        <WebLink href={href.startsWith("//") ? `https:${href}` : href} {...rest}>
           {children}
         </WebLink>
       );
     }
-    if (/^mailto:/.test(href)) {
+    if (/^mailto:/i.test(href)) {
       return (
         <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
           {children}

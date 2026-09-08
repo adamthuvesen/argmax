@@ -573,12 +573,14 @@
   transition: background var(--motion-fast) var(--ease-out);
 }
 
-/* Hover and keyboard focus share one quiet wash. Selection is not drawn here
-   at all — a filled row read as a header band, and with four options the
-   selected one looked like the title of the other three. */
+/* Hover and keyboard focus share one quiet wash — the app's own selected-row
+   fill (see tokens.css), not --panel-sunken, which in dark is darker than the
+   page the card sits on and reads as a hole. Selection is not drawn here at
+   all: a filled row read as a header band, and with four options the selected
+   one looked like the title of the other three. */
 .question-ask-option:hover,
 .question-ask-option.is-focused {
-  background: var(--panel-sunken);
+  background: var(--row-selected);
 }
 
 .question-ask-key {
@@ -677,7 +679,7 @@
 }
 
 .question-ask-send:hover:not(:disabled) {
-  background: var(--panel-sunken);
+  background: var(--row-selected);
   border-color: var(--line-strong);
 }
 
@@ -732,7 +734,7 @@
 }
 
 .question-ask-reveal:hover {
-  background: var(--panel-sunken);
+  background: var(--row-selected);
   color: var(--text);
 }
 
@@ -753,4 +755,241 @@
   .plan-card-action-block {
     padding: var(--space-4) var(--space-3);
   }
+}
+
+/* The docked question — the live AskUserQuestion, sitting where the composer
+   would be. It wears `.session-input` (see chat-tools.css) for its surface,
+   radius and lift, because it *is* the thing you act in while the agent waits;
+   everything below only lays out its contents.
+
+   The panel pages rather than stacks: whether the agent asked one thing or
+   four, it is the same height, and the composer slot does not grow into the
+   transcript. */
+.question-dock {
+  /* One quiet step off the ground the rows sit on, which is the relationship
+     --row-selected encodes everywhere else in the app. It cannot be that token
+     directly: --row-selected is tuned for rows on --panel, and the composer
+     surface is already a step above --panel, so in dark the two land one value
+     apart (#212121 on #202020) and the selection disappears. Measuring from
+     --composer-surface gets the same step in both themes. */
+  --question-dock-row: color-mix(in oklab, var(--composer-surface) 92%, var(--text));
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  animation: question-dock-rise var(--motion-base) var(--ease-out);
+}
+
+@keyframes question-dock-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.question-dock-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.question-dock-prompt {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-sm-plus);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.question-dock-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  /* Pulled up and out so the controls optically align with the prompt's cap
+     height and the panel's padding, not with their own generous hit areas. */
+  margin: -3px -5px 0 0;
+}
+
+.question-dock-count {
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  padding-inline: var(--space-1);
+}
+
+.question-dock-page,
+.question-dock-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.question-dock-page:hover:not(:disabled),
+.question-dock-close:hover {
+  background: var(--question-dock-row);
+  color: var(--text);
+}
+
+.question-dock-page:disabled {
+  color: var(--line-strong);
+  cursor: default;
+}
+
+.question-dock-page:focus-visible,
+.question-dock-close:focus-visible,
+.question-dock-send:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.question-dock-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  outline: none;
+}
+
+.question-dock-option {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: var(--space-2_5);
+  padding: var(--space-2_5) var(--space-3);
+  /* The gauge every other option list in the app uses — the slash menu, the
+     file popover. A row here is the same kind of thing they hold. */
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+/* Two levels, because on a multi-select question several rows are picked while
+   exactly one holds the caret: pointing at a row is a half-step, choosing it is
+   the full one. */
+.question-dock-option:hover,
+.question-dock-option.is-focused {
+  background: color-mix(in oklab, var(--question-dock-row) 55%, transparent);
+}
+
+.question-dock-option.is-active,
+.question-dock-option.is-active:hover {
+  background: var(--question-dock-row);
+}
+
+.question-dock-key {
+  font-family: var(--font-mono);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  line-height: 1;
+  color: var(--muted-strong);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 3px 5px;
+  min-width: 18px;
+  text-align: center;
+  transition: background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.question-dock-option.is-active .question-dock-key {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bubble-on-ink);
+}
+
+.question-dock-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.question-dock-option-label {
+  font-size: var(--text-sm-plus);
+  font-weight: 450;
+  line-height: 1.45;
+  color: var(--text-soft);
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.question-dock-option.is-active .question-dock-option-label {
+  font-weight: 550;
+  color: var(--text);
+}
+
+.question-dock-option-desc {
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* Only drawn on rows whose pick moves to the next question, and only once the
+   row is under the cursor or the caret — an arrow on every row would promise
+   the same thing four times. */
+.question-dock-go {
+  align-self: center;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.question-dock-option:hover .question-dock-go,
+.question-dock-option.is-focused .question-dock-go {
+  opacity: 1;
+}
+
+.question-dock-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  min-height: 28px;
+}
+
+.question-dock-hint {
+  margin-right: auto;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+/* The composer's own send: filled, because in this slot it is the one thing
+   that moves the conversation forward. */
+.question-dock-send {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 16px;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 550;
+  color: var(--bubble-on-ink);
+  background: var(--ink);
+  border: 0;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.question-dock-send:hover:not(:disabled) {
+  background: var(--ink-soft);
+}
+
+.question-dock-send:disabled {
+  color: var(--muted);
+  background: var(--question-dock-row);
+  cursor: not-allowed;
 }

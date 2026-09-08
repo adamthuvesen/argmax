@@ -289,9 +289,9 @@ instead of looking complete, and one that emptied the inbox says nothing at all.
 This is the difference between a peer that answers and a queue the user watches
 pile up, and it is bounded by exactly one thing: an agent that touches no
 `argmax` tool for the rest of its turn is not reached, and gets the message the
-old way when the turn ends. Steering a provider process mid-turn — Claude's
-`--input-format stream-json`, Codex's `turn/steer` — is the next build, not this
-one.
+old way when the turn ends. The user can explicitly choose **Steer** on a queued
+message for Claude or Codex to deliver it through the running provider connection.
+Automatic inbox delivery still follows the tool-result flag and turn-end queue.
 
 ### Delivered once, whichever path wins
 

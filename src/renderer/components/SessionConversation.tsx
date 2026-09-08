@@ -25,6 +25,7 @@ import type {
   PendingMessage,
   ProjectSummary,
   ProviderId,
+  QueuedMessageDelivery,
   RawProviderOutput,
   SessionSummary,
   TimelineEvent,
@@ -69,12 +70,13 @@ import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
 import { SessionNote } from "./SessionNote.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
 import {
+  collectAskUserQuestionState,
   hasOutstandingCardAsk as sessionHasOutstandingCardAsk,
   isAskUserQuestionToolName,
   isExitPlanModeToolName
 } from "../lib/turnInteractiveCards.js";
-import { liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
-import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
+import { liveThoughtOwnsProgress, turnAgentModeFromPrior } from "../lib/sessionTurnView.js";
+import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import {
   createAnnotation,
@@ -84,6 +86,7 @@ import {
 } from "../lib/composerAnnotations.js";
 import { buildDetailsSeed, buildSideChatSeed } from "../lib/sideChat.js";
 import { SelectionToolbar, type ChatSelection } from "./SelectionToolbar.js";
+import { QuestionDock } from "./QuestionDock.js";
 import { SessionComposer, type ComposerStatus, type NewSessionSeed } from "./SessionComposer.js";
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
@@ -91,7 +94,7 @@ import { ThinkingLabel } from "./ThinkingLabel.js";
 import { MultitaskRow } from "./MultitaskRow.js";
 import { recordChatCue, type ChatCueReason } from "../lib/chatCueLog.js";
 import { uuidV4 } from "../lib/uuid.js";
-import { parseUserMessageAttachments } from "./sessionConversationHelpers.js";
+import { parseUserMessageAttachments, sendAfterTerminate } from "./sessionConversationHelpers.js";
 import {
   SessionConversationTurn,
   SessionConversationUserMessage
@@ -141,7 +144,7 @@ export function SessionConversation({
   checks,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
-  defaultThinkingExpanded,
+  thinkingDisplay,
   defaultTurnChangesExpanded,
   events,
   eventsBackfilled = true,
@@ -190,7 +193,7 @@ export function SessionConversation({
   checks?: CheckRun[];
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
-  defaultThinkingExpanded?: boolean;
+  thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
   events: TimelineEvent[];
   /** The pane's backfill of this session's timeline has settled. Until it has,
@@ -253,8 +256,17 @@ export function SessionConversation({
       chips above the composer; cleared from the parent as the queue drains. */
   pendingMessages?: PendingMessage[];
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
-  onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
+  onSendQueuedMessageNow?: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery
+  ) => Promise<void>;
+  onMultitask?: (
+    sessionId: string,
+    prompt: string,
+    provider: ProviderId,
+    pendingMessageId?: string
+  ) => Promise<void>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
@@ -1140,6 +1152,37 @@ export function SessionConversation({
 
   const { milestone: prMilestone, finish: finishPrMilestone } = usePrMilestone(workspace);
 
+  // The question the agent is waiting on right now. It can only be in the last
+  // turn — answering it sends a user message, which starts a new one — so the
+  // panel takes the composer's slot and that turn stops drawing its own card.
+  const liveQuestion = useMemo(() => {
+    const last = transcriptRenderItems[transcriptRenderItems.length - 1];
+    if (!last || last.kind !== "turn") return null;
+    const { tool } = collectAskUserQuestionState(last.toolItems);
+    if (!tool) return null;
+    return { tool, priorItem: transcriptRenderItems[transcriptRenderItems.length - 2] ?? null };
+  }, [transcriptRenderItems]);
+  // Closing the panel is not declining the question: the composer comes back so
+  // the reader can answer in their own words, and the question stays in the
+  // transcript as the card it was before.
+  const [dismissedQuestionId, setDismissedQuestionId] = useState<string | null>(null);
+  const questionDocked = liveQuestion !== null && liveQuestion.tool.id !== dismissedQuestionId;
+  const answerLiveQuestion = useCallback(
+    (answerMarkdown: string): Promise<boolean> => {
+      if (!session || !liveQuestion) return Promise.resolve(false);
+      shouldRefocusInput.current = true;
+      const mode: AgentMode = turnAgentModeFromPrior(liveQuestion.priorItem) === "plan" ? "plan" : "auto";
+      return sendAfterTerminate(
+        session.id,
+        session.state === "running",
+        onTerminateSession,
+        () => sendSessionInput(session.id, answerMarkdown, selectedModel, mode),
+        (message) => setStatus({ kind: "error", message })
+      );
+    },
+    [liveQuestion, onTerminateSession, selectedModel, sendSessionInput, session, setStatus]
+  );
+
   return (
     <section className="conversation-surface" aria-label="Conversation">
       <div className="section-heading" data-window-drag={floating ? undefined : true}>
@@ -1279,9 +1322,10 @@ export function SessionConversation({
                     setAgentMode={setAgentMode}
                     defaultToolCallsDisplay={defaultToolCallsDisplay}
                     defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
-                    defaultThinkingExpanded={defaultThinkingExpanded}
+                    thinkingDisplay={thinkingDisplay}
                     defaultTurnChangesExpanded={defaultTurnChangesExpanded}
                     restoringTranscript={restoringTranscript}
+                    questionIsDocked={questionDocked && index === transcriptRenderItems.length - 1}
                     onOpenDiff={review.openFile}
                     onOpenReview={review.openChangesPanel}
                   />
@@ -1363,6 +1407,16 @@ export function SessionConversation({
           })}
         </section>
       ) : null}
+      {questionDocked && liveQuestion ? (
+        <div className="session-composer-stack">
+          <QuestionDock
+            key={liveQuestion.tool.id}
+            questions={liveQuestion.tool.questions}
+            onAnswer={answerLiveQuestion}
+            onDismiss={() => setDismissedQuestionId(liveQuestion.tool.id)}
+          />
+        </div>
+      ) : (
       <SessionComposer
         agentMode={agentMode}
         canSend={canSend}
@@ -1395,6 +1449,7 @@ export function SessionConversation({
         status={status}
         workspace={workspace}
       />
+      )}
     </section>
   );
 }

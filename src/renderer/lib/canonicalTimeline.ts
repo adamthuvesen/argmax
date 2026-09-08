@@ -42,6 +42,8 @@ type CanonicalCommon = {
 export type CanonicalMessageEvent = CanonicalCommon & {
   kind: "message";
   role: "user" | "assistant";
+  /** A mid-turn user message accepted without ending the provider turn. */
+  delivery: "steer" | null;
   phase: "delta" | "completed";
   content: "answer" | "thinking";
   childProse: boolean;
@@ -257,6 +259,7 @@ function decodeMessage(raw: TimelineEvent, payload: Record<string, unknown>): Ca
     ...shared,
     kind: "message" as const,
     role: raw.type === "user.message" ? "user" as const : "assistant" as const,
+    delivery: raw.type === "user.message" && payload.delivery === "steer" ? "steer" : null,
     phase: raw.type === "message.delta" ? "delta" as const : "completed" as const,
     content: raw.type === "message.delta" && payload.thinking === true
       ? "thinking" as const

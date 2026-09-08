@@ -4,6 +4,7 @@ import type { NativeAgentIdentity, SessionSummary, TimelineEvent, WorkspaceSumma
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import { buildAgentActivity, persistentAgentRuns, type AgentActivity as AgentActivityModel, type AgentModel } from "../lib/agentActivity.js";
+import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import { emblemForCodename } from "../lib/agentEmblems.js";
 import { fallbackCodename } from "../lib/agentNames.js";
 import { foldConversationItems } from "../lib/foldConversation.js";
@@ -18,7 +19,7 @@ import { buildToolCallGroup, isAgentToolName, type ToolCall, type TurnToolItem }
 import { collectTurnFileChanges } from "../lib/turnFileChanges.js";
 import { foldToolRunsToSummaries, type TurnBodyChild } from "../lib/turnChildren.js";
 import { foldTurnToolItems, latestToolCreatedAt } from "../lib/turnToolItems.js";
-import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
+import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
 import { AgentEmblem } from "./AgentEmblem.js";
 import { ChatBubble } from "./ChatBubble.js";
@@ -103,6 +104,7 @@ function renderAssistantGroup({
   group,
   thinkingLive,
   thoughtExpanded,
+  thinkingDisplay,
   holdThoughtOpen,
   agentKey,
   workspace,
@@ -111,7 +113,8 @@ function renderAssistantGroup({
 }: {
   group: AssistantGroup;
   thinkingLive: boolean;
-  /** Saved thinking default, or the pane chip's explicit override. */
+  thinkingDisplay: ThinkingDisplay | undefined;
+  /** The pane chip's explicit disclosure override. */
   thoughtExpanded: boolean | undefined;
   holdThoughtOpen: boolean;
   /** Namespaces this pane's group ids, which only count within one agent run. */
@@ -124,6 +127,7 @@ function renderAssistantGroup({
     return (
       <ThoughtBlock
         key={group.id}
+        display={thinkingDisplay}
         defaultExpanded={thoughtExpanded}
         live={thinkingLive}
         // The newest burst never folds in place: the pane follows its own
@@ -194,7 +198,7 @@ function AgentActivityRun({
   codename,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
-  defaultThinkingExpanded,
+  thinkingDisplay,
   isFocused,
   onLoadAgentEvents,
   onLoadSessionEvents,
@@ -217,7 +221,7 @@ function AgentActivityRun({
    *  run is as quiet or as detailed as the chat that launched it. */
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
-  defaultThinkingExpanded?: boolean;
+  thinkingDisplay?: ThinkingDisplay;
   isFocused?: boolean;
   onLoadAgentEvents?: (
     sessionId: string,
@@ -291,7 +295,7 @@ function AgentActivityRun({
     !minimalActivity && (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded");
   const [activityExpandOverride, setActivityExpandOverride] = useState<boolean | null>(null);
   const activityExpanded = activityExpandOverride ?? activityExpandedDefault;
-  // Individual rows open one level above the groups: Detailed and up. A nested
+  // Detailed opens individual rows as well as groups. A nested
   // launch row follows that rather than the group level, because what its
   // chevron reveals is the raw launch receipt, not the grandchild's work.
   const toolRowsExpanded =
@@ -308,10 +312,11 @@ function AgentActivityRun({
   // first, and the whole run then animated and typed itself out as if it had
   // just happened.
   const restoringTranscript = useRestoreWithoutMotion(historyHydrated ?? !initialAgentEventsLoadPending);
-  const { activityChildren, toolItems, assistantTimestamps } = useMemo((): {
+  const { activityChildren, toolItems, assistantTimestamps, silentSinceMs } = useMemo((): {
     activityChildren: TurnBodyChild[];
     toolItems: TurnToolItem[];
     assistantTimestamps: number[];
+    silentSinceMs: number | null;
   } => {
     const assistantEvents = activity.items.flatMap((item) =>
       item.kind === "message" ? [item.event] : []
@@ -331,6 +336,32 @@ function AgentActivityRun({
       (group) => !group.thinking && assistantGroupHasVisibleChat(group)
     );
     const thinkingLive = streaming && !hasAnswerText;
+    const latestGroup = assistantGroups.at(-1);
+    const latestToolAt = tools.reduce(
+      (latest, tool) => Math.max(latest, Date.parse(tool.completedAt ?? tool.createdAt)),
+      0
+    );
+    const latestAssistantEvent = assistantEvents.reduce<TimelineEvent | undefined>(
+      (latest, event) => !latest || event.createdAt >= latest.createdAt ? event : latest,
+      undefined
+    );
+    const latestMessage = latestAssistantEvent ? decodeTimelineEvent(latestAssistantEvent) : null;
+    // Groups keep `streaming` for the text reveal after message.completed.
+    // Only incoming answer deltas own the live progress cue.
+    const answerStreaming = latestMessage?.kind === "message" &&
+      latestMessage.content === "answer" && latestMessage.phase === "delta" &&
+      Date.parse(latestMessage.raw.createdAt) >= latestToolAt;
+    // A settled Thought is transcript history, not a live progress cue. Once
+    // narration has handed progress back, keep the same ticking label as chat
+    // through later reasoning bursts. Anchor at the burst's start so incoming
+    // reasoning deltas cannot reset its counter.
+    const silentSinceMs = streaming && !answerStreaming &&
+      !tools.some((tool) => tool.status === "running" && !tool.backgroundLaunch) &&
+      !(thinkingLive && assistantGroups.some((group) => group.thinking))
+      ? Math.max(latestToolAt, latestGroup ? Date.parse(
+          latestGroup.thinking ? latestGroup.createdAt : latestGroup.lastActivityAt
+        ) : 0)
+      : null;
     // Only the run's newest reasoning burst is live: tool boundaries flush a
     // fresh thinking group, so a run that never narrates holds one per call and
     // a turn-wide flag opened every one of them at once. See
@@ -354,7 +385,8 @@ function AgentActivityRun({
       const node = renderAssistantGroup({
         group,
         thinkingLive: groupLive,
-        thoughtExpanded: activityExpandOverride ?? defaultThinkingExpanded,
+        thoughtExpanded: activityExpandOverride ?? false,
+        thinkingDisplay,
         // Keyed on the group, not on `groupLive`: the hold has to outlast live
         // so the newest block is still open when the answer lands under it.
         holdThoughtOpen: activityExpandOverride !== false && group.id === liveThoughtGroupId,
@@ -418,6 +450,7 @@ function AgentActivityRun({
     return {
       activityChildren: bodySource.map(({ kind, id, node, hasErrors }) => ({ kind, id, node, hasErrors })),
       toolItems: folded,
+      silentSinceMs,
       assistantTimestamps: assistantEvents
         .map((event) => Date.parse(event.createdAt))
         .filter((ms) => Number.isFinite(ms))
@@ -428,7 +461,7 @@ function AgentActivityRun({
     activityExpanded,
     compactActivity,
     agentKey,
-    defaultThinkingExpanded,
+    thinkingDisplay,
     finalOutput,
     minimalActivity,
     onOpenAgent,
@@ -504,12 +537,13 @@ function AgentActivityRun({
     (parentSession?.state === "running" || activity.status === "running") &&
     activity.limited
   );
+  const showLoadFailureNotice = failedAgentKey === agentKey;
   const showAgentActivityThinking = (
     (loadingAgentKey === agentKey || initialAgentEventsLoadPending || waitingForRunningAgentActivity) &&
-    !hasRenderedActivity
+    !hasRenderedActivity &&
+    !showLoadFailureNotice
   );
-  const showLimitedNotice = activity.limited && !showAgentActivityThinking;
-  const showLoadFailureNotice = failedAgentKey === agentKey && !showAgentActivityThinking;
+  const showLimitedNotice = activity.limited && !showAgentActivityThinking && !showLoadFailureNotice;
   const runChanges = useMemo(() => collectTurnFileChanges(toolItems), [toolItems]);
 
   return (
@@ -572,7 +606,7 @@ function AgentActivityRun({
 
             {showAgentActivityThinking ? (
               <div className="agent-activity-empty" role="status">
-                <ThinkingLabel phaseKey={parentToolUseId} startedAtMs={launchedAtMs ?? undefined} />
+                <ThinkingLabel phaseKey={agentKey ?? parentToolUseId} startedAtMs={launchedAtMs ?? undefined} />
               </div>
             ) : null}
 
@@ -610,6 +644,14 @@ function AgentActivityRun({
               <div className="agent-activity-empty" role="status">
                 Waiting for agent activity.
               </div>
+            ) : null}
+
+            {hasRenderedActivity && silentSinceMs !== null ? (
+              <ThinkingLabel
+                key={`${agentKey}:${silentSinceMs}`}
+                phaseKey={agentKey ?? parentToolUseId}
+                startedAtMs={Math.max(silentSinceMs, launchedAtMs ?? 0) || undefined}
+              />
             ) : null}
 
             {finalOutput !== null ? (

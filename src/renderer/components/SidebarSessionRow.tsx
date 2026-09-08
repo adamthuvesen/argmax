@@ -87,6 +87,7 @@ type SidebarSessionRowProps = {
    *  work in the checkout does not stop being work because a sibling is doing
    *  it (lib/priority.ts). */
   isWorking?: boolean;
+  hasUnreadResponse?: boolean;
   /** Priority rows only — right-click "Done" drops the row back to its group. */
   onRemoveFromPriority?: (workspaceId: string) => void;
   /** Non-priority rows — right-click "Add to priority" floats the row manually. */
@@ -222,6 +223,7 @@ function SidebarSessionRowInner({
   launchedByLabel,
   priorityAttention,
   isWorking,
+  hasUnreadResponse,
   onRemoveFromPriority,
   onAddToPriority,
   onSetIcon,
@@ -305,7 +307,10 @@ function SidebarSessionRowInner({
         ? ` — open pull request #${workspace.prNumber}`
         : "";
   const priorityTitle = priorityAttention ? ` — ${PRIORITY_TITLE[priorityAttention]}` : "";
-  const title = `${displayLabel} — ${workspace.state}${priorityTitle}${prTitle}${isOpenInGrid ? " — in view" : ""}`;
+  // A turn in flight takes the marker cell; unread waits until it ends.
+  const working = isWorking ?? workspace.state === "running";
+  const unread = Boolean(hasUnreadResponse) && !working;
+  const title = `${displayLabel} — ${workspace.state}${priorityTitle}${prTitle}${isOpenInGrid ? " — in view" : ""}${unread ? " — unread response" : ""}`;
 
   // "Sync now" only makes sense on a row imported from a provider store —
   // Argmax-owned sessions have nothing to re-read.
@@ -415,13 +420,14 @@ function SidebarSessionRowInner({
     allLinks[nextIndex]?.focus();
   };
 
-  // A custom icon replaces the status marker. The remaining live state moves to
-  // its overlay dot. While the turn runs the working nest takes the cell back,
-  // so the animation stands alone and the icon returns the moment it ends.
-  // Without a custom icon, a calm row stays text-only and only a live signal
-  // (running, awaiting input, failed, open or merged PR) earns a glyph. The
-  // marker column stays reserved either way so every title lines up.
-  const working = isWorking ?? workspace.state === "running";
+  // Unread (a response landed while this row wasn't open) replaces every
+  // leading glyph except a turn in flight: the working nest stays so live
+  // activity still reads, and the accent dot takes the cell the moment it
+  // ends. Opening the chat clears unread and the icon or status marker
+  // returns. Without a custom icon, a calm row stays text-only and only a
+  // live signal (running, awaiting input, failed, open or merged PR) earns
+  // a glyph. The marker column stays reserved either way so every title
+  // lines up.
   const statusOverlay = statusOverlayFor({
     working,
     state: workspace.state,
@@ -430,7 +436,9 @@ function SidebarSessionRowInner({
   });
   const hasCustomIcon = workspace.icon ? resolveSessionIcon(workspace.icon) !== null : false;
   const leadingGlyph =
-    workspace.icon && hasCustomIcon && statusOverlay !== "working" ? (
+    unread ? (
+      <span className="session-unread-marker" aria-hidden="true" />
+    ) : workspace.icon && hasCustomIcon && statusOverlay !== "working" ? (
       <CustomIconMarker
         icon={workspace.icon}
         iconColor={workspace.iconColor}
@@ -733,6 +741,7 @@ export function sidebarSessionRowEqual(
   if (prev.launchedByLabel !== next.launchedByLabel) return false;
   if (prev.priorityAttention !== next.priorityAttention) return false;
   if (prev.isWorking !== next.isWorking) return false;
+  if (prev.hasUnreadResponse !== next.hasUnreadResponse) return false;
   if (prev.onRemoveFromPriority !== next.onRemoveFromPriority) return false;
   if (prev.onAddToPriority !== next.onAddToPriority) return false;
   if (prev.onSetIcon !== next.onSetIcon) return false;

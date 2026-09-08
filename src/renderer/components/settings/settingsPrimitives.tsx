@@ -11,6 +11,7 @@ import {
 import { FONT_OPTIONS, type FontFamilyId, type FontOption } from "../../lib/fonts.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import { readFirstContentMeasure } from "../../lib/paintTimings.js";
+import { PickerLead } from "../PickerLead.js";
 import { WorkingNest } from "../WorkingNest.js";
 import { useDismissOnOutsideOrEscape } from "../../hooks/useDismissOnOutsideOrEscape.js";
 
@@ -357,7 +358,7 @@ export function SettingsListPicker<T extends string>({
                     setOpen(false);
                   }}
                 >
-                  {option.icon}
+                  <PickerLead selected={isSelected}>{option.icon}</PickerLead>
                   {option.label}
                 </button>
               </li>

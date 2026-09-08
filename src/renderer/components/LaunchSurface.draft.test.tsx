@@ -1,6 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { optionName } from "../../test/optionName.js";
 import { App } from "../App.js";
+import { persistLaunchProjectId } from "../lib/launchProjectPreference.js";
 import {
   dashboardDeltaListener,
   mockDashboardSnapshot,
@@ -63,6 +65,22 @@ describe("launcher prompt across context changes", () => {
     expect(screen.getByLabelText("Task prompt")).toHaveValue("Refactor the auth guard");
   });
 
+  it.each(["picker", "sidebar"])("selects the dashboard's current repo from the %s when the launcher remembers another", async (entry) => {
+    persistLaunchProjectId(secondProject().id);
+    renderWithTwoProjects();
+    expect(await screen.findByRole("button", { name: "Switch project" })).toHaveTextContent("Dotfiles");
+
+    // Dashboard selection is already Argmax, so picking it cannot depend on
+    // that unrelated state changing to repaint the remembered launcher repo.
+    if (entry === "picker") {
+      await pickProject("Argmax");
+    } else {
+      fireEvent.click(screen.getByRole("button", { name: "Argmax" }));
+    }
+
+    expect(screen.getByRole("button", { name: "Switch project" })).toHaveTextContent("Argmax");
+  });
+
   it("keeps the picked repo after typing and a dashboard delta from a hidden session", async () => {
     // Default new-chat mode is Full view: ⌘N hides the grid but leaves its
     // focused session in selection state. A later dashboard:delta used to
@@ -113,7 +131,7 @@ describe("launcher prompt across context changes", () => {
     const picker = screen.getByRole("listbox", { name: "Select project" });
     const names = within(picker)
       .getAllByRole("option")
-      .map((option) => option.textContent?.trim())
+      .map((option) => optionName(option))
       .filter((name) => name && name !== "Browse folder…");
     expect(names[0]).toBe("Dotfiles");
     fireEvent.mouseDown(document.querySelector(".picker-dismiss-layer") as Element);

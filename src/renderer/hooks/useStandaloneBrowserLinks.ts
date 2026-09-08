@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { getBrowserRequest, subscribeBrowserRequest } from "../lib/browserPanel.js";
+import { activateBrowserTab, getBrowserRequest, subscribeBrowserRequest } from "../lib/browserPanel.js";
 import { readStoredLinkTarget } from "../lib/linkTarget.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
 
@@ -23,7 +23,8 @@ export function useStandaloneBrowserLinks(options: {
     if (isRemoteBridge()) return;
 
     const url = pendingBrowserRequest.url;
-    if (readStoredLinkTarget() === "argmax") {
+    if (pendingBrowserRequest.tabId || readStoredLinkTarget() === "argmax") {
+      if (pendingBrowserRequest.tabId) activateBrowserTab(pendingBrowserRequest.tabId);
       onOpenInAppBrowser(url);
       return;
     }

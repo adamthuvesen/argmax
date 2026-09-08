@@ -1,5 +1,5 @@
 import { Check, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import type { Learning, ProjectSummary } from "../../shared/types.js";
 import { SettingRow, SettingsListPicker } from "./settings/settingsPrimitives.js";
 
@@ -8,29 +8,32 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
   const [learnings, setLearnings] = useState<Learning[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draftSummaries, setDraftSummaries] = useState<Record<string, string>>({});
-
-  const refresh = useCallback(async (): Promise<void> => {
-    if (!window.argmax || !selectedProjectId) {
-      setLearnings([]);
-      return;
-    }
-    try {
-      const result = await window.argmax.learnings.list({ projectId: selectedProjectId });
-      setLearnings(result);
-      setLoadError(null);
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "Could not load project knowledge.");
-    }
-  }, [selectedProjectId]);
+  const projectGeneration = useRef(0);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    const generation = ++projectGeneration.current;
+    setLearnings([]);
+    setDraftSummaries({});
+    setLoadError(null);
+    if (window.argmax && selectedProjectId) {
+      void window.argmax.learnings.list({ projectId: selectedProjectId }).then(
+        (result) => {
+          if (projectGeneration.current === generation) setLearnings(result);
+        },
+        (error: unknown) => {
+          if (projectGeneration.current === generation) {
+            setLoadError(error instanceof Error ? error.message : "Could not load project knowledge.");
+          }
+        }
+      );
+    }
+    return () => { projectGeneration.current += 1; };
+  }, [selectedProjectId]);
 
   // Keep the project picker pointed at something valid when the prop changes.
   useEffect(() => {
-    if (!projects.some((project) => project.id === selectedProjectId) && projects[0]) {
-      setSelectedProjectId(projects[0].id);
+    if (!projects.some((project) => project.id === selectedProjectId)) {
+      setSelectedProjectId(projects[0]?.id ?? "");
     }
   }, [projects, selectedProjectId]);
 
@@ -54,30 +57,38 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
       return;
     }
     if (!window.argmax) return;
+    const generation = projectGeneration.current;
     try {
       const updated = await window.argmax.learnings.update({ id: learning.id, summary: trimmed });
+      if (projectGeneration.current !== generation) return;
       setLearnings((current) => current.map((item) => (item.id === learning.id ? updated : item)));
     } catch (error) {
+      if (projectGeneration.current !== generation) return;
       setLoadError(error instanceof Error ? error.message : "Could not update learning.");
     } finally {
-      setDraftSummaries((current) => {
-        const next = { ...current };
-        delete next[learning.id];
-        return next;
-      });
+      if (projectGeneration.current === generation) {
+        setDraftSummaries((current) => {
+          const next = { ...current };
+          delete next[learning.id];
+          return next;
+        });
+      }
     }
   };
 
   const handleVerifiedToggle = async (learning: Learning): Promise<void> => {
     if (!window.argmax) return;
+    const generation = projectGeneration.current;
     const nextVerified = !learning.verified;
     setLearnings((current) =>
       current.map((item) => (item.id === learning.id ? { ...item, verified: nextVerified } : item))
     );
     try {
       const updated = await window.argmax.learnings.update({ id: learning.id, verified: nextVerified });
+      if (projectGeneration.current !== generation) return;
       setLearnings((current) => current.map((item) => (item.id === learning.id ? updated : item)));
     } catch (error) {
+      if (projectGeneration.current !== generation) return;
       // Roll back on failure.
       setLearnings((current) =>
         current.map((item) => (item.id === learning.id ? { ...item, verified: learning.verified } : item))
@@ -88,11 +99,13 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
 
   const handleDelete = async (learning: Learning): Promise<void> => {
     if (!window.argmax) return;
+    const generation = projectGeneration.current;
     // Optimistic remove so the row disappears immediately.
     setLearnings((current) => current.filter((item) => item.id !== learning.id));
     try {
       await window.argmax.learnings.delete(learning.id);
     } catch (error) {
+      if (projectGeneration.current !== generation) return;
       // Restore on failure.
       setLearnings((current) => [...current, learning]);
       setLoadError(error instanceof Error ? error.message : "Could not delete learning.");

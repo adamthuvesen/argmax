@@ -99,6 +99,10 @@ _Avoid_: Status, state, urgency
 **Priority**:
 The sidebar section holding workspaces that need attention, plus any the user pinned there manually. A dismissal is spent as soon as attention changes again.
 
+**Unread response**:
+A sidebar mark that a chat has produced a response the user has not opened yet. An accent-colored dot replaces the row's leading icon until the chat is viewed.
+_Avoid_: Badge, notification, unseen
+
 **Pending message**:
 A follow-up the user composed while the agent was mid-turn. Saved durably and normally sent after the current turn. Messages recovered after a restart wait for an explicit send, with uncertain delivery called out.
 _Avoid_: Queued message, draft
@@ -156,7 +160,7 @@ The baseline a diff is taken against: `workingTree` (uncommitted changes vs `HEA
 _Avoid_: Diff mode, comparison
 
 **Diff note**:
-A note the user wrote on one line of a diff in the review panel. It attaches to the composer as an annotation and is serialized into the prompt as an `<argmax-diff-note>` block naming the file, line, side, and review comparison. Local to this machine — an agent addresses it by editing the worktree. GitHub's review comments are a different thing entirely, and calling this one a review comment is what sends an agent looking for a pull request.
+A note the user wrote on a line or range of a diff in the review panel. It attaches to the composer as an annotation and is serialized into the prompt as an `<argmax-diff-note>` block naming the file, line or range, side, and review comparison. Local to this machine, an agent addresses it by editing the worktree. GitHub's review comments are a different thing entirely, and calling this one a review comment is what sends an agent looking for a pull request.
 _Avoid_: Review comment, line comment, inline comment
 
 **Checkpoint**:

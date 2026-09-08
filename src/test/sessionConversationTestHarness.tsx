@@ -1,3 +1,4 @@
+import type { ThinkingDisplay } from "../renderer/lib/uiPreferences.js";
 import { render, type RenderResult } from "@testing-library/react";
 import type { JSX } from "react";
 import { vi } from "vitest";
@@ -109,7 +110,7 @@ export function cursorAssistantPayload(text: string): Record<string, unknown> {
 type ConversationProps = Parameters<typeof SessionConversation>[0];
 
 type ConversationOptions = {
-  defaultThinkingExpanded?: boolean;
+  thinkingDisplay?: ThinkingDisplay;
   defaultToolCallsDisplay?: "expanded" | "collapsed" | "single-line";
   defaultToolCallGroupsExpanded?: boolean;
   pendingMessages?: PendingMessage[];
@@ -152,7 +153,7 @@ function conversationElement(
       onSendQueuedMessageNow={options.onSendQueuedMessageNow ?? vi.fn(() => Promise.resolve())}
       pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}
-      {...(options.defaultThinkingExpanded !== undefined ? { defaultThinkingExpanded: options.defaultThinkingExpanded } : {})}
+      {...(options.thinkingDisplay !== undefined ? { thinkingDisplay: options.thinkingDisplay } : {})}
       {...(options.defaultToolCallsDisplay !== undefined ? { defaultToolCallsDisplay: options.defaultToolCallsDisplay } : {})}
       {...(options.defaultToolCallGroupsExpanded !== undefined ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded } : {})}
       {...(options.onMultitask ? { onMultitask: options.onMultitask } : {})}

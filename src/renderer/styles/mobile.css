@@ -24,6 +24,9 @@ html:has(.mobile-shell) body {
 }
 
 .mobile-shell {
+  /* Only reserve the home-indicator area still inside the visual viewport.
+     WebKit can retain its safe-area inset while the keyboard covers it. */
+  --mobile-bottom-inset: max(0px, calc(env(safe-area-inset-bottom, 0px) - var(--mobile-keyboard-inset, 0px)));
   position: fixed;
   inset: 0;
   top: var(--mobile-viewport-offset, 0px);
@@ -306,7 +309,7 @@ html:has(.mobile-shell) body {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2_5) var(--space-4) calc(var(--space-2_5) + env(safe-area-inset-bottom));
+  padding: var(--space-2_5) var(--space-4) var(--mobile-bottom-inset);
   border-top: 1px solid var(--line-soft);
   background: var(--bg);
 }
@@ -456,18 +459,15 @@ html:has(.mobile-shell) body {
   min-height: 0;
 }
 
-/* The desktop surface pads 14px/24px around the grid, and the phone's own
-   bottom gap is the home-indicator inset — stacked, that floated the composer
-   ~75px above the bottom edge. The card now stands a small, fixed step above
-   the home indicator: on the indicator line itself it read as sitting too
-   low. */
+/* The composer ends at the usable viewport edge. Do not stack desktop or
+   decorative bottom padding on top of the home-indicator clearance. */
 .mobile-session-screen .conversation-surface {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   padding-top: var(--space-2);
-  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  padding-bottom: var(--mobile-bottom-inset);
 }
 
 /* The composer is the screen's floor, not a card floating on it, so the
@@ -586,7 +586,7 @@ html:has(.mobile-shell) body {
      height itself, so there is nothing left to distribute. */
   justify-content: flex-end;
   gap: var(--space-2_5);
-  padding: 8px 16px calc(12px + env(safe-area-inset-bottom));
+  padding: 8px 16px var(--mobile-bottom-inset);
 }
 
 .mobile-new-hero {
@@ -849,7 +849,7 @@ html:has(.mobile-shell) body {
 }
 
 .mobile-accent-chip[data-accent-id="orange"] {
-  --accent-swatch-color: #a85c43;
+  --accent-swatch-color: #bd580f;
 }
 
 .mobile-accent-chip[data-accent-id="blue"] {

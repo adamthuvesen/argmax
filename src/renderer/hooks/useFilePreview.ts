@@ -73,6 +73,8 @@ export function useFilePreview(args: {
 
   const workspaceReadSeq = useRef(0);
   const workspaceReadTokens = useRef(new Map<string, number>());
+  const workspaceStatSeq = useRef(0);
+  const workspaceStatTokens = useRef(new Map<string, number>());
   const workspaceSaveSeq = useRef(0);
   const workspaceSaveTokens = useRef(new Map<string, number>());
   const workspaceSaveQueues = useRef(new Map<string, Promise<SaveOutcome>>());
@@ -136,6 +138,7 @@ export function useFilePreview(args: {
     setActiveTabPath(null);
     setDirtyClosePath(null);
     workspaceReadTokens.current.clear();
+    workspaceStatTokens.current.clear();
     workspaceSaveTokens.current.clear();
     workspaceSaveQueues.current.clear();
     workspaceSaveMtimes.current.clear();
@@ -159,6 +162,7 @@ export function useFilePreview(args: {
       if (!ipc) return;
       const token = ++workspaceReadSeq.current;
       workspaceReadTokens.current.set(filePath, token);
+      workspaceStatTokens.current.delete(filePath);
       updateTab(filePath, (tab) => ({
         ...tab,
         previewState: "loading",
@@ -169,6 +173,7 @@ export function useFilePreview(args: {
         .readFile(filePath)
         .then((preview) => {
           if (workspaceReadTokens.current.get(filePath) !== token) return;
+          workspaceStatTokens.current.delete(filePath);
           workspaceSaveMtimes.current.set(filePath, preview.kind === "text" ? preview.mtimeMs : null);
           updateTab(filePath, (tab) => ({
             ...tab,
@@ -260,6 +265,7 @@ export function useFilePreview(args: {
     });
     setDirtyClosePath((promptPath) => (promptPath === filePath ? null : promptPath));
     workspaceReadTokens.current.delete(filePath);
+    workspaceStatTokens.current.delete(filePath);
     workspaceSaveTokens.current.delete(filePath);
     workspaceSaveQueues.current.delete(filePath);
     workspaceSaveMtimes.current.delete(filePath);
@@ -308,6 +314,8 @@ export function useFilePreview(args: {
     const filePath = listenerStateRef.current.workspaceActiveFilePath;
     if (!id || !kind || !filePath) return;
     const ipc = dispatchRef.current;
+    const token = ++workspaceStatSeq.current;
+    workspaceStatTokens.current.set(filePath, token);
     const statPromise = ipc?.statFile(filePath);
     if (!statPromise) {
       updateTab(filePath, (tab) => ({ ...tab, externalChange: false }));
@@ -315,6 +323,8 @@ export function useFilePreview(args: {
     }
     void statPromise
       .then((latest) => {
+        if (workspaceStatTokens.current.get(filePath) !== token) return;
+        workspaceSaveMtimes.current.set(filePath, latest.mtimeMs);
         updateTab(filePath, (tab) => ({
           ...tab,
           diskMtimeMs: latest.mtimeMs,
@@ -322,6 +332,7 @@ export function useFilePreview(args: {
         }));
       })
       .catch(() => {
+        if (workspaceStatTokens.current.get(filePath) !== token) return;
         updateTab(filePath, (tab) => ({ ...tab, externalChange: false }));
       });
   }, [updateTab]);
@@ -344,6 +355,7 @@ export function useFilePreview(args: {
       if (!id || !kind || !tab || !listenerStateRef.current.canEdit) return "aborted";
       const token = ++workspaceSaveSeq.current;
       workspaceSaveTokens.current.set(filePath, token);
+      workspaceStatTokens.current.delete(filePath);
       updateTab(filePath, (current) => ({
         ...current,
         saveState: "saving",
@@ -372,6 +384,7 @@ export function useFilePreview(args: {
           return "stale";
         }
         workspaceSaveMtimes.current.set(filePath, result.mtimeMs);
+        workspaceStatTokens.current.delete(filePath);
         updateTab(filePath, (current) => ({
           ...current,
           original: contentToSave,
@@ -468,10 +481,13 @@ export function useFilePreview(args: {
     // re-allocates the tab array and re-renders the pane.
     if (listenerStateRef.current.workspaceActiveExternalChange) return;
     const ipc = dispatchRef.current;
+    const token = ++workspaceStatSeq.current;
+    workspaceStatTokens.current.set(filePath, token);
     const statPromise = ipc?.statFile(filePath);
     if (!statPromise) return;
     void statPromise
       .then((latest) => {
+        if (workspaceStatTokens.current.get(filePath) !== token) return;
         if (latest.mtimeMs > baseline) {
           updateTab(filePath, (tab) => ({ ...tab, externalChange: true }));
         }

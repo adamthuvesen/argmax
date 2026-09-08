@@ -1360,6 +1360,20 @@
 
 /* ---- Diff line comments (review panel) ---- */
 
+.diff-blocks[data-selecting] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.diff-line[data-selected] code {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.diff-line[data-selected] .diff-line-number {
+  box-shadow: inset 3px 0 var(--accent);
+}
+
 /* The hover "+" covers the sticky line-number gutter, Codex-style: the number
    fades out and the affordance takes its cell, so nothing shifts. */
 .diff-comment-add {

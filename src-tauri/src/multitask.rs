@@ -206,6 +206,43 @@ pub async fn dispatch(
     })
 }
 
+/// Promote one queued follow-up into a multitask without leaving a runnable
+/// copy behind in the parent. The provider service owns the queue claim while
+/// `dispatch` owns the sibling launch; this seam keeps both outcomes paired.
+pub async fn dispatch_queued(
+    mut request: MultitaskRequest,
+    pending_message_id: &str,
+    database: Arc<Database>,
+    workspaces: Arc<WorkspaceService>,
+    providers: Arc<ProviderSessionService>,
+) -> ArgmaxResult<MultitaskLaunched> {
+    let message = providers
+        .claim_queued_message_for_multitask(&request.parent_session_id, pending_message_id)?;
+    request.prompt = message.content.clone();
+    match dispatch(request, database, workspaces, Arc::clone(&providers)).await {
+        Ok(launched) => {
+            if let Err(error) =
+                providers.finish_queued_message_multitask(&message.session_id, &message.id)
+            {
+                // The child is already running. Keep the claimed row hidden;
+                // restoring it here would allow the same prompt to run again.
+                tracing::error!(
+                    session_id = %message.session_id,
+                    message_id = %message.id,
+                    ?error,
+                    "failed to delete queued follow-up after multitask launch"
+                );
+            }
+            Ok(launched)
+        }
+        Err(error) => {
+            let session_id = message.session_id.clone();
+            providers.restore_queued_message_multitask(&session_id, message)?;
+            Err(error)
+        }
+    }
+}
+
 /// The instructions ahead of the user's prompt.
 ///
 /// A multitask shares a working tree with an agent that is mid-edit, and the

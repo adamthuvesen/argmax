@@ -1,8 +1,25 @@
-import { AArrowDown, AArrowUp, Check, ListTree, Monitor, Moon, Palette, Sun, Type } from "lucide-react";
+import {
+  AArrowDown,
+  AArrowUp,
+  Check,
+  Contrast,
+  ListTree,
+  Monitor,
+  Moon,
+  Palette,
+  Sun,
+  Type
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { PaletteItem } from "./paletteSearch.js";
 import { ACCENT_OPTIONS, type AccentId } from "./accent.js";
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, fontSizeBasePx, type FontSize } from "./fonts.js";
+import {
+  INK_STRENGTH_HINTS,
+  INK_STRENGTH_MAX,
+  INK_STRENGTH_MIN,
+  type InkStrength
+} from "./inkStrength.js";
 import { THEME_OPTIONS, type ThemeMode } from "./theme.js";
 import { CHAT_VERBOSITY_HINTS, CHAT_VERBOSITY_LABELS, type ChatVerbosity } from "./uiPreferences.js";
 
@@ -24,6 +41,8 @@ export type SettingCommandsInput = {
   onChatFontSizeChange: (size: FontSize) => void;
   chatVerbosity: ChatVerbosity;
   onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
+  inkStrength: InkStrength;
+  onInkStrengthChange: (strength: InkStrength) => void;
 };
 
 const THEME_ICON: Record<ThemeMode, LucideIcon> = { light: Sun, dark: Moon, system: Monitor };
@@ -33,7 +52,12 @@ const FONT_SIZE_LEVELS: FontSize[] = Array.from(
   (_, index) => (FONT_SIZE_MIN + index) as FontSize
 );
 
-const CHAT_VERBOSITY_LEVELS: ChatVerbosity[] = [1, 2, 3, 4, 5];
+const CHAT_VERBOSITY_LEVELS: ChatVerbosity[] = [1, 2, 3, 4];
+
+const INK_STRENGTH_LEVELS: InkStrength[] = Array.from(
+  { length: INK_STRENGTH_MAX - INK_STRENGTH_MIN + 1 },
+  (_, index) => (INK_STRENGTH_MIN + index) as InkStrength
+);
 
 /**
  * Rows for one 1–10 type-size slider: a step in each direction, then every
@@ -76,6 +100,43 @@ function fontSizeCommands(
   return [stepRow("larger"), stepRow("smaller"), ...levels];
 }
 
+/**
+ * Rows for the ink slider, shaped like the type-size ones: a step each way
+ * that keeps the palette open, then every level. Ink is tuned by eye against
+ * whatever is on screen, so the steps matter more here than the level rows.
+ */
+function inkStrengthCommands(
+  current: InkStrength,
+  onChange: (strength: InkStrength) => void
+): PaletteItem[] {
+  const stepRow = (direction: "stronger" | "softer"): PaletteItem => {
+    const next = direction === "stronger" ? current + 1 : current - 1;
+    const inRange = next >= INK_STRENGTH_MIN && next <= INK_STRENGTH_MAX;
+    return {
+      id: `setting:ink-strength:${direction}`,
+      label: `Ink strength: ${direction}`,
+      subtitle: inRange
+        ? `Text contrast · now level ${current}`
+        : `Text contrast · already the ${direction === "stronger" ? "strongest" : "softest"} ink`,
+      group: "Settings",
+      icon: Contrast,
+      keepOpen: true,
+      run: () => {
+        if (inRange) onChange(next as InkStrength);
+      }
+    };
+  };
+  const levels: PaletteItem[] = INK_STRENGTH_LEVELS.map((level) => ({
+    id: `setting:ink-strength:${level}`,
+    label: `Ink strength ${level}`,
+    subtitle: `Text contrast · ${INK_STRENGTH_HINTS[level]}`,
+    group: "Settings",
+    icon: level === current ? Check : Contrast,
+    run: () => onChange(level)
+  }));
+  return [stepRow("stronger"), stepRow("softer"), ...levels];
+}
+
 export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[] {
   const themes: PaletteItem[] = THEME_OPTIONS.map((option) => ({
     id: `setting:theme:${option.id}`,
@@ -100,7 +161,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
     label: `Chat detail ${level}: ${CHAT_VERBOSITY_LABELS[level]}`,
     // The panel calls this "Chat detail & verbosity"; the label carries one
     // word and the subtitle the other, so either finds the row.
-    subtitle: `Verbosity ${level} of 5 · ${CHAT_VERBOSITY_HINTS[level]}`,
+    subtitle: `Verbosity ${level} of 4 · ${CHAT_VERBOSITY_HINTS[level]}`,
     group: "Settings",
     icon: level === input.chatVerbosity ? Check : ListTree,
     run: () => input.onChatVerbosityChange(level)
@@ -125,6 +186,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       "Agent windows, composers, activity",
       input.chatFontSize,
       input.onChatFontSizeChange
-    )
+    ),
+    ...inkStrengthCommands(input.inkStrength, input.onInkStrengthChange)
   ];
 }

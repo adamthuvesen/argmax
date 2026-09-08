@@ -4,6 +4,7 @@ import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
 import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
+import { LAUNCH_MODEL_KEY } from "./lib/launchModelPreference.js";
 import {
   CHAT_VERBOSITY_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
@@ -12,6 +13,7 @@ import {
   RANDOM_SESSION_ICON_KEY
 } from "./lib/uiPreferences.js";
 import { USER_BUBBLE_TINT_STORAGE_KEY } from "./lib/userBubbleTint.js";
+import * as tauriBridge from "./lib/tauriBridge.js";
 import { APP_VERSION_LABEL } from "../shared/appVersion.js";
 import {
   diagnosticsStub,
@@ -207,6 +209,7 @@ describe("App settings", () => {
 
     const verbosity = await screen.findByRole("slider", { name: "Chat detail & verbosity" });
     expect(verbosity).toHaveValue("2");
+    expect(verbosity).toHaveAttribute("max", "4");
     fireEvent.change(verbosity, { target: { value: "1" } });
 
     await waitFor(() =>
@@ -413,6 +416,19 @@ describe("App settings", () => {
     );
   });
 
+  it("keeps browser preferences local instead of trying to save desktop defaults", async () => {
+    const remote = vi.spyOn(tauriBridge, "isRemoteBridge").mockReturnValue(true);
+    try {
+      render(<App />);
+      await screen.findByRole("button", { name: "Build dashboard" });
+      expect(window.argmax!.system.setDefaultAgent).not.toHaveBeenCalled();
+      expect(screen.queryByRole("alert")).toBeNull();
+    } finally {
+      cleanup();
+      remote.mockRestore();
+    }
+  });
+
   it("shows a failed host defaults save and retries the current preference", async () => {
     const save = vi.mocked(window.argmax!.system.setDefaultAgent);
     save.mockRejectedValueOnce(new Error("DEFAULT_AGENT_WRITE"));
@@ -445,14 +461,18 @@ describe("App settings", () => {
     expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ permissionMode: "auto-approve" }));
   });
 
-  it("settings Fast mode defaults off, persists, and propagates through the next launch", async () => {
+  it.each([
+    ["codex", "gpt-5.6-sol", true],
+    ["claude", "claude-opus-5", false]
+  ] as const)("settings Fast mode persists and gates the next %s launch", async (provider, modelId, fastMode) => {
+    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider, modelId }));
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
     await openSettings("Agents");
     await screen.findByRole("heading", { name: "Defaults" });
 
-    const toggle = screen.getByRole("checkbox", { name: "Fast mode for Claude and Codex" });
+    const toggle = screen.getByRole("checkbox", { name: "Fast mode" });
     expect(toggle).not.toBeChecked();
 
     fireEvent.click(toggle);
@@ -465,7 +485,7 @@ describe("App settings", () => {
     fireEvent.click(screen.getByTitle("Start agent"));
 
     await waitFor(() =>
-      expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ fastMode: true }))
+      expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ provider, modelId, fastMode }))
     );
   });
 
@@ -671,8 +691,7 @@ describe("App settings", () => {
     for (const [label, id] of [
       ["System Mono", "system-mono"],
       ["Menlo", "menlo"],
-      ["Monaco", "monaco"],
-      ["Lilex", "lilex"]
+      ["Monaco", "monaco"]
     ] as const) {
       fireEvent.click(screen.getByRole("button", { name: "Font family" }));
       fireEvent.click(screen.getByRole("button", { name: label }));

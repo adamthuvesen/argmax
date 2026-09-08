@@ -7,6 +7,7 @@
  */
 
 import { themeAppearance } from "./theme.js";
+import { readColorToken } from "./pixelField.js";
 
 export const LIGHT_XTERM_THEME = {
   background: "#fbfbfa",
@@ -95,12 +96,24 @@ export function getXtermTheme(resolved: "light" | "dark"): XtermThemeObject {
 }
 
 /**
- * Convenience: read the current resolved theme from the document attribute set
- * by `lib/theme.ts`. xterm consumers reach for this on construction; the live
- * theme-switch path uses `term.options.theme = getXtermTheme(...)` directly.
+ * The caret is the only color in the terminal that isn't shell output, so it
+ * follows the user's chosen accent the way focus rings and the live-work marks
+ * do. Read live from `--accent` because that token moves with `data-accent`,
+ * not just with the theme. Falls back to the palette's own cursor color.
+ */
+function readCaretColor(fallback: string): string {
+  if (!document.body) return fallback;
+  const { r, g, b } = readColorToken("--accent", document.body);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/**
+ * Read the current theme from the document attributes set by `lib/theme.ts`
+ * and `lib/accent.ts`. Both the construction and the live appearance-change
+ * path go through here, so the caret tracks an accent switch too.
  */
 export function readActiveXtermTheme(): XtermThemeObject {
   if (typeof document === "undefined") return LIGHT_XTERM_THEME;
-  const attr = document.documentElement.getAttribute("data-theme");
-  return getXtermTheme(themeAppearance(attr));
+  const base = getXtermTheme(themeAppearance(document.documentElement.getAttribute("data-theme")));
+  return { ...base, cursor: readCaretColor(base.cursor) };
 }

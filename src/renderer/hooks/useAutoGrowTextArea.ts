@@ -52,7 +52,17 @@ export function useAutoGrowTextArea(
 
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!el || supportsFieldSizing) return;
-    syncTextAreaHeight(el, maxHeightPx);
+    if (!el) return;
+    if (!supportsFieldSizing) syncTextAreaHeight(el, maxHeightPx);
+    // Native caret reveal can leave the last line box and bottom padding
+    // clipped at the height cap. Follow end-of-draft edits after sizing, but
+    // leave selections and edits earlier in the draft at their own position.
+    if (
+      document.activeElement === el &&
+      el.selectionStart === value.length &&
+      el.selectionEnd === value.length
+    ) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [ref, value, maxHeightPx]);
 }

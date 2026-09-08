@@ -12,6 +12,7 @@ npm run doctor
 npm run verify -- --scenario chat-resume
 npm run verify -- --scenario persistent-subagent --native off
 npm run verify -- --scenario persistent-codex-subagent --native off
+npm run verify -- --scenario persistent-opencode-subagent --native off
 npm run verify -- --scenario persistent-cursor-subagent --native off
 npm run verify -- --scenario cancellation
 npm run verify -- --scenario provider-error
@@ -36,25 +37,25 @@ restarts the scratch backend. This fixture does not establish provider support.
 Also run a live Claude exchange through the scratch app, restart it, and verify
 that `SendMessage` continues the same native child with its earlier context.
 
-`persistent-codex-subagent --native off` exercises Codex's `spawn_agent`,
-`send_input`, and `wait` events through the same restart and dock checks. It
+`persistent-codex-subagent --native off` exercises Codex app-server's
+`spawnAgent`, `sendInput`, and `wait` events through the same restart and dock checks. It
 requires persisted lifecycle rows for both assignments. A successful `wait`
 reporting `pending_init` must leave the child running. Verify provider support
 separately with a live Codex exchange through the scratch app, then restart and
 continue the same child with `send_input` and `resume_agent` when needed.
 
-`persistent-opencode-subagent --native off` exercises OpenCode's native `task`
-tool, including a continuation with the same `task_id`, persisted lifecycle
-rows across a scratch backend restart, and the Agents pane in light and dark
-browser renders. OpenCode emits the child result in the parent `tool_use`
-envelope, so this fixture verifies native identity and dock history rather than
-child transcript streaming.
+`persistent-opencode-subagent --native off` exercises OpenCode's native HTTP
+and SSE protocol for the `task` tool, including a continuation with the same
+`task_id`, persisted lifecycle rows across a scratch backend restart, and the
+Agents pane in light and dark browser renders. OpenCode emits the child result
+in the parent's completed task part, so this fixture verifies native identity
+and dock history rather than child transcript streaming.
 
-`persistent-cursor-subagent --native off` exercises Cursor's one-shot native
-`taskToolCall` through a backend restart. It checks the authoritative child id
-from the completed task result, a fresh invocation id on resume, two completed
-dock runs, and both light and dark browser renders. Composer 2.5 is excluded
-because it uses the ACP path.
+`persistent-cursor-subagent --native off` exercises Cursor's ACP task lifecycle
+through a backend restart. It checks the translation from pending `rawInput` to
+completed `rawOutput`, the authoritative child id from the completed task
+result, a fresh invocation id on resume, two completed dock runs, and both
+light and dark browser renders.
 
 Each run prints a JSON result with its evidence location. Failures retain the
 diagnostics needed to reproduce the assertion. `--out <dir>` selects the

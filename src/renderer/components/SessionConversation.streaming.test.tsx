@@ -442,7 +442,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByRole("button", { name: "Thought 5s" })).toBeInTheDocument();
   });
 
-  it("renders completed extended-thinking expanded when the default says to show it", () => {
+  it("renders restored thoughts inline without a disclosure in Balanced", () => {
     const thinking = "I should inspect the settings plumbing before touching the UI.";
     const answer = "Settings are wired.";
 
@@ -453,14 +453,47 @@ describe("SessionConversation — streaming & composer", () => {
         event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true }),
         event("m1", "message.completed", answer, "2026-05-12T15:00:02.000Z")
       ],
-      { defaultThinkingExpanded: true }
+      { thinkingDisplay: "inline", defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false }
     );
 
-    const toggle = screen.getByRole("button", { name: "Thought" });
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(toggle.textContent).toContain("Thought");
+    expect(screen.queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
+    expect(screen.getByText("Thought")).toBeInTheDocument();
     expect(screen.getByText(thinking)).toBeTruthy();
     expect(screen.getByText(answer)).toBeTruthy();
+  });
+
+  it("keeps streamed inline thoughts through a new turn and switches back to Compact", () => {
+    const thinking = "Weighing both designs before I answer.";
+    const session = baseSession({ state: "running" });
+    const events = [
+      event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
+      event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true })
+    ];
+    const options = {
+      thinkingDisplay: "inline" as const,
+      defaultToolCallsDisplay: "collapsed" as const,
+      defaultToolCallGroupsExpanded: false
+    };
+    const { rerender } = renderConversation(session, events, options);
+    expect(screen.getByText(thinking)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Thinking" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
+
+    const history = [
+      ...events,
+      event("a1", "message.completed", "Here we go", "2026-05-12T15:00:02.000Z"),
+      event("u2", "user.message", "continue", "2026-05-12T15:00:03.000Z")
+    ];
+    rerenderConversation(rerender, session, history, options);
+    expect(screen.getByText(thinking)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
+
+    rerenderConversation(rerender, session, history, { ...options, thinkingDisplay: "collapsed" });
+    expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(thinking)).not.toBeInTheDocument();
+
+    rerenderConversation(rerender, session, history, options);
+    expect(screen.getByText(thinking)).toBeInTheDocument();
   });
 
   it("shows extended-thinking expanded and labelled 'Thinking' while the turn is live", () => {
@@ -657,7 +690,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.queryByText(thinking)).toBeNull();
   });
 
-  it("collapses the Thought block when the turn chip collapses the turn", () => {
+  it("keeps inline thoughts visible when Detailed tool activity is folded", () => {
     const thinking = "Mapping the modules before I touch anything.";
     renderConversation(
       baseSession({ state: "complete" }),
@@ -673,20 +706,20 @@ describe("SessionConversation — streaming & composer", () => {
         event("m1", "message.completed", "Done.", "2026-05-12T15:00:04.000Z")
       ],
       {
-        defaultThinkingExpanded: true,
+        thinkingDisplay: "inline",
         defaultToolCallsDisplay: "expanded",
         defaultToolCallGroupsExpanded: true
       }
     );
 
-    expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
     expect(screen.getByText(thinking)).toBeTruthy();
 
-    // The turn chip folds the whole turn — tool groups AND the Thought block.
+    // Inline thoughts are transcript prose, independent of tool disclosure.
     fireEvent.click(screen.getByRole("button", { name: /Worked/ }));
 
-    expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText(thinking)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
+    expect(screen.getByText(thinking)).toBeInTheDocument();
   });
 
   it("expands the Thought block when the turn chip expands the turn", () => {
@@ -705,7 +738,7 @@ describe("SessionConversation — streaming & composer", () => {
         event("m1", "message.completed", "Done.", "2026-05-12T15:00:04.000Z")
       ],
       {
-        defaultThinkingExpanded: false,
+        thinkingDisplay: "collapsed",
         defaultToolCallsDisplay: "collapsed",
         defaultToolCallGroupsExpanded: false
       }
@@ -2097,7 +2130,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(onCancel).toHaveBeenCalledWith("session-a", "queued-1");
   });
 
-  it("sends a queued follow-up immediately from its queue row", async () => {
+  it("stops and sends a queued follow-up immediately from its queue row", async () => {
     let resolveSend: (() => void) | undefined;
     const onSendQueuedMessageNow = vi.fn(
       () =>
@@ -2127,12 +2160,156 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     await waitFor(() =>
-      expect(onSendQueuedMessageNow).toHaveBeenCalledWith("session-a", "queued-1")
+      expect(onSendQueuedMessageNow).toHaveBeenCalledWith("session-a", "queued-1", "interrupt")
     );
     expect(screen.getByRole("button", { name: "Stop chat" })).toBeDisabled();
 
     resolveSend?.();
     await waitFor(() => expect(screen.getByRole("button", { name: "Stop chat" })).toBeEnabled());
+  });
+
+  it("steers an eligible queued follow-up without stopping its Codex turn", async () => {
+    const onSendQueuedMessageNow = vi.fn().mockResolvedValue(undefined);
+    const pending: PendingMessage[] = [
+      {
+        id: "queued-1",
+        sessionId: "session-a",
+        content: "Focus on the smallest change",
+        agentMode: "auto",
+        queuedAt: "2026-05-12T15:30:30.000Z"
+      }
+    ];
+
+    renderConversation(baseSession({ state: "running" }), [], {
+      pendingMessages: pending,
+      onSendQueuedMessageNow
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Steer queued follow-up: Focus on the smallest change"
+      })
+    );
+
+    await waitFor(() =>
+      expect(onSendQueuedMessageNow).toHaveBeenCalledWith("session-a", "queued-1", "steer")
+    );
+    expect(screen.getByRole("button", { name: "Stop chat" })).toBeEnabled();
+  });
+
+  it("offers Steer for a compatible Claude follow-up", () => {
+    renderConversation(
+      baseSession({
+        provider: "claude",
+        modelId: "claude-sonnet-5",
+        reasoningEffort: "high",
+        agentMode: "plan",
+        state: "running"
+      }),
+      [],
+      {
+        pendingMessages: [
+          {
+            id: "queued-1",
+            sessionId: "session-a",
+            content: "Keep the current tool running",
+            modelId: "claude-sonnet-5",
+            reasoningEffort: "high",
+            agentMode: "plan",
+            queuedAt: "2026-05-12T15:30:30.000Z"
+          }
+        ]
+      }
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Steer queued follow-up: Keep the current tool running"
+      })
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["model", { modelId: "gpt-5.5" }],
+    ["reasoning effort", { reasoningEffort: "high" as const }],
+    ["agent mode", { agentMode: "plan" as const }]
+  ])("hides Steer when the queued %s does not match the active turn", (_field, override) => {
+    renderConversation(baseSession({ state: "running" }), [], {
+      pendingMessages: [
+        {
+          id: "queued-1",
+          sessionId: "session-a",
+          content: "Use the existing helper",
+          agentMode: "auto",
+          queuedAt: "2026-05-12T15:30:30.000Z",
+          ...override
+        }
+      ]
+    });
+
+    expect(
+      screen.queryByRole("button", {
+        name: "Steer queued follow-up: Use the existing helper"
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides Steer when the running provider cannot accept it", () => {
+    renderConversation(baseSession({ provider: "cursor", state: "running" }), [], {
+      pendingMessages: [
+        {
+          id: "queued-1",
+          sessionId: "session-a",
+          content: "Use the existing helper",
+          agentMode: "auto",
+          queuedAt: "2026-05-12T15:30:30.000Z"
+        }
+      ]
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "Steer queued follow-up: Use the existing helper" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a queued follow-up visible after a failed steer", async () => {
+    renderConversation(baseSession({ state: "running" }), [], {
+      pendingMessages: [
+        {
+          id: "queued-1",
+          sessionId: "session-a",
+          content: "Keep the tool running",
+          agentMode: "auto",
+          queuedAt: "2026-05-12T15:30:30.000Z"
+        }
+      ],
+      onSendQueuedMessageNow: vi.fn().mockRejectedValue(new Error("turn already completed"))
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Steer queued follow-up: Keep the tool running" })
+    );
+
+    await waitFor(() => expect(screen.getByText("turn already completed")).toBeInTheDocument());
+    expect(screen.getByLabelText("Queued follow-up: Keep the tool running")).toBeInTheDocument();
+  });
+
+  it("labels the queued send action Send regardless of session state", () => {
+    renderConversation(baseSession({ state: "complete" }), [], {
+      pendingMessages: [
+        {
+          id: "queued-1",
+          sessionId: "session-a",
+          content: "Run the final check",
+          agentMode: "auto",
+          queuedAt: "2026-05-12T15:30:30.000Z"
+        }
+      ]
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Send queued follow-up: Run the final check" })
+    ).toHaveTextContent("Send");
   });
 
   it("queued chips are keyboard-focusable and Backspace/Delete cancels them", () => {

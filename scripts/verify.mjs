@@ -332,7 +332,7 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
       assertRecordIncludes(first.records, `\"sessionId\":\"${subagent.id}\"`, "persistent OpenCode child identity");
       assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent OpenCode child first response");
     } else if (isCursor) {
-      assertRecordIncludes(first.records, `\"message\":\"taskToolCall\"`, "persistent Cursor child task");
+      assertRecordIncludes(first.records, `\"message\":\"task\"`, "persistent Cursor ACP child task");
       assertRecordIncludes(first.records, `\"agentId\":\"${subagent.id}\"`, "persistent Cursor authoritative child identity");
       assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent Cursor child first response");
     } else {

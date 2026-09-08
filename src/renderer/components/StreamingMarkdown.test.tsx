@@ -456,7 +456,11 @@ describe("<StreamingMarkdown />", () => {
     expect(container.querySelector("code")).toBe(code);
   });
 
-  it("opens web links in the system browser by default, in the pane on ⌘-click", () => {
+  it.each([
+    ["https://example.com/docs", "https://example.com/docs"],
+    ["HTTPS://example.com/docs", "HTTPS://example.com/docs"],
+    ["//example.com/docs", "https://example.com/docs"]
+  ])("routes web link %s through the configured browser", (href, expectedUrl) => {
     const openPath = vi.fn().mockResolvedValue({ ok: true });
     (window as unknown as { argmax: unknown }).argmax = { system: { openPath } };
     const opened: string[] = [];
@@ -465,18 +469,18 @@ describe("<StreamingMarkdown />", () => {
       if (request) opened.push(request.url);
     });
 
-    render(<StreamingMarkdown text="See [docs](https://example.com/docs)." streaming={false} />);
+    render(<StreamingMarkdown text={`See [docs](${href}).`} streaming={false} />);
     const link = screen.getByRole("link", { name: "docs" });
     expect(link).toHaveAttribute("target", "_blank");
 
     // Plain click routes through system:open-path — the Tauri webview
     // swallows target="_blank", so the handler must open explicitly.
     fireEvent.click(link);
-    expect(openPath).toHaveBeenCalledWith({ path: "https://example.com/docs" });
+    expect(openPath).toHaveBeenCalledWith({ path: expectedUrl });
     expect(opened).toHaveLength(0);
 
     fireEvent.click(link, { metaKey: true });
-    expect(opened).toEqual(["https://example.com/docs"]);
+    expect(opened).toEqual([expectedUrl]);
     expect(openPath).toHaveBeenCalledTimes(1);
     unsubscribe();
     delete (window as { argmax?: unknown }).argmax;
@@ -564,15 +568,17 @@ describe("<StreamingMarkdown />", () => {
     expect(katexDisplays[1]?.textContent).toContain("E=mc");
   });
 
-  it("renders LaTeX inline equations from \\( ... \\) and $ ... $ spans", async () => {
-    const text = "\\(\\tau\\) is the threshold and $x + y = z$ is the sum.";
-
+  it.each([
+    ["\\(\\tau\\) is the threshold and $x + y = z$ is the sum.", 2, "τ"],
+    ["Price $50 ($2x + 1$ after adjustment).", 1, "$50"],
+    ["Price $50 ($x$ after adjustment).", 1, "$50"]
+  ])("renders inline equations alongside prose: %s", async (text, count, prose) => {
     const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
 
     await waitFor(() => {
-      expect(container.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(2);
+      expect(container.querySelectorAll(".katex").length).toBe(count);
     });
-    expect(container.textContent).toContain("τ");
+    expect(container.textContent).toContain(prose);
   });
 
   it("safely handles currency amounts without breaking into math mode", () => {

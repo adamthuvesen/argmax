@@ -525,21 +525,30 @@
   z-index: 25;
 }
 
+/* ---- Picker menus ----
+   One primitive under every dropdown in the app: the launcher's model, project
+   and branch menus, the settings list pickers, the review scope menu, and the
+   action menus (chat actions, git actions, sidebar sort, project actions,
+   identity, right-click). Rows are 28px at `--text-sm`; a 5px inset inside a
+   10px corner keeps the 6px row corner concentric with the panel's. Chosen
+   rows carry a check in the 16px lead cell (`.picker-lead`) instead of a fill,
+   so every label sits on the same column whether or not its row has a glyph.
+   Mockups and the decision: docs/design/pickers. */
 .project-picker-popover {
   position: absolute;
   bottom: calc(100% + 6px);
   left: 0;
   z-index: 30;
-  min-width: 200px;
-  max-height: 260px;
+  min-width: 220px;
+  max-height: min(440px, 60dvh);
   margin: 0;
   padding: 5px;
   list-style: none;
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
 }
 
 .project-picker-popover.settings-picker-popover {
@@ -557,26 +566,17 @@
   bottom: auto;
   /* Keep the menu within the viewport so it isn’t clipped by .work-scroll; otherwise the ul’s
      scrollbar sits in the clipped region / wheel scroll hits the outer scroller instead. */
-  max-height: min(260px, 22dvh, calc(100dvh - 96px));
+  min-width: 260px;
+  max-height: min(440px, calc(100dvh - 96px));
   overflow-y: auto;
   overscroll-behavior-y: contain;
 }
 
-.model-picker-popover .project-picker-item {
-  white-space: nowrap;
-  gap: var(--space-2);
-}
-
+/* The model list is the one that always scrolls (35 rows), so it is the widest
+   and carries a trailing context-window column. */
 .model-picker-popover {
-  min-width: 220px;
-  /* Keep the growing provider catalog compact; the list scrolls within the
-     popover instead of stretching across most of the workspace. */
-  max-height: 320px;
-}
-
-/* Launcher opens downward, so keep the compact cap inside the viewport. */
-.composer-context .model-picker-popover {
-  max-height: min(320px, calc(100dvh - 96px));
+  min-width: 290px;
+  max-height: min(440px, calc(100dvh - 96px));
 }
 
 /* Two-panel model picker: a flat model list plus a Speed submenu opened by the
@@ -585,6 +585,10 @@
    own row — so neither side nor offset is set here. */
 .model-picker-flyout {
   z-index: 30;
+  /* A column so the list can shrink to the inline max-height `useAnchoredPopover`
+     writes on the flyout when the window is short. */
+  display: flex;
+  flex-direction: column;
 }
 
 /* The list fills the flyout; the flyout is what carries the position. Scoped to
@@ -593,81 +597,54 @@
   position: static;
   top: auto;
   bottom: auto;
+  flex: 0 1 auto;
+  min-height: 0;
 }
 
 .model-speed-popover {
-  min-width: 230px;
+  min-width: 200px;
+}
+
+/* Provider headers stay put while the catalog scrolls, so the list always says
+   which CLI the row under the cursor belongs to. Bled to the panel edge so the
+   scrolling rows pass under a full-width band, not a floating label. */
+.model-picker-popover .project-picker-group-label {
+  position: sticky;
+  top: -5px;
+  z-index: 1;
+  margin: 0 -5px;
+  padding-inline: 12px 14px;
+  background: color-mix(in oklab, var(--panel) 94%, transparent);
+  backdrop-filter: blur(6px);
 }
 
 .model-picker-row {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   position: relative;
-  transition: background var(--duration-fast) var(--ease);
-}
-
-.model-picker-row:hover {
-  background: var(--panel-soft);
-}
-
-.model-picker-row[aria-selected="true"] {
-  background: var(--row-selected);
-}
-
-.model-picker-divider {
-  height: 1px;
-  margin: 5px 8px;
-  background: var(--line);
 }
 
 .model-picker-item {
   flex: 1 1 auto;
   min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.model-picker-item:hover,
-.model-picker-item[aria-pressed="true"] {
-  background: transparent !important;
-}
-
-.model-picker-row[aria-selected="true"] .model-picker-item {
-  color: var(--text);
-  font-weight: 500;
 }
 
 .model-picker-name {
   flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.model-picker-item.model-picker-submenu-trigger {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: var(--space-2);
-}
-
 .model-picker-submenu-caret {
-  justify-self: end;
+  flex: 0 0 auto;
+  margin-left: auto;
   color: var(--muted);
 }
 
 .model-picker-speed-icon {
   color: var(--accent-deep);
-}
-
-/* Advisory annotation ("not installed" / "needs login") trailing a model name. */
-.model-picker-annotation {
-  flex: none;
-  color: var(--amber);
-  font-size: var(--text-sm);
-  font-weight: 400;
-  letter-spacing: 0.02em;
 }
 
 /* A disabled row = provider CLI not installed. Dim it and block the pointer;
@@ -679,10 +656,6 @@
 
 .model-picker-row[data-disabled] .model-picker-name {
   color: var(--muted);
-}
-
-.model-effort-item {
-  justify-content: space-between;
 }
 
 /* ---- Model + effort cluster ----
@@ -865,18 +838,31 @@
 .project-picker-item {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   width: 100%;
-  padding: 5px 9px;
+  min-height: 28px;
+  padding: 0 9px 0 7px;
   color: var(--text-soft);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
-  font-size: var(--text-xs-plus);
-  line-height: 1.35;
+  font-size: var(--text-sm);
+  line-height: 1.3;
   text-align: left;
+  white-space: nowrap;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+/* A row's own glyph (action menus put a lucide icon first) sits in the same
+   16px cell as `.picker-lead`, so labels line up across every menu. */
+.project-picker-item > svg:first-child {
+  flex: 0 0 auto;
+  box-sizing: content-box;
+  width: 14px;
+  height: 14px;
+  padding-inline: 1px;
+  color: var(--muted);
 }
 
 .project-picker-item:hover {
@@ -884,8 +870,14 @@
   color: var(--text);
 }
 
-.project-picker-item[aria-pressed="true"] {
-  background: var(--panel-sunken);
+.project-picker-item:hover > svg:first-child {
+  color: var(--text-soft);
+}
+
+/* The chosen row is marked by weight and its check, not a fill: a fill is what
+   hover and the keyboard cursor use, and the two must not look alike. */
+.project-picker-item[aria-pressed="true"],
+.project-picker-item[aria-checked="true"] {
   color: var(--text);
   font-weight: 500;
 }
@@ -902,10 +894,54 @@
   color: var(--text-soft);
 }
 
+/* Lead cell: the row's glyph, or a check once the row is chosen. */
+.picker-lead {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+
+.project-picker-item:hover .picker-lead {
+  color: var(--text-soft);
+}
+
+.project-picker-item[aria-pressed="true"] .picker-lead,
+.project-picker-item[aria-checked="true"] .picker-lead {
+  color: var(--accent);
+}
+
+/* Label span for rows that must ellipsize (a bare text node in a flex row
+   cannot). */
+.picker-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Trailing column: a context window, a path, or an advisory ("needs login"). */
+.picker-meta {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-2xs-plus);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.picker-meta[data-tone="warn"] {
+  color: var(--amber);
+}
+
 .project-picker-divider {
   height: 1px;
   background: var(--line-soft);
-  margin: 3px 6px;
+  margin: 4px 6px;
 }
 
 /* Type-to-filter (see useTypeToFilter). An open picker holds focus so plain
@@ -923,12 +959,14 @@
 .picker-filter {
   position: sticky;
   top: -5px;
-  z-index: 1;
+  /* Above the model picker's sticky provider headers: the query is the more
+     important of the two while both are pinned. */
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: var(--space-1_5);
-  margin: -5px -5px 3px;
-  padding: 7px 9px 5px;
+  margin: -5px -5px 4px;
+  padding: 8px 10px 6px;
   color: var(--muted);
   font-size: var(--text-2xs);
   background: var(--panel);
@@ -960,7 +998,7 @@
 }
 
 .project-picker-empty {
-  padding: 6px 9px;
+  padding: 6px 9px 6px 31px;
   color: var(--muted);
   font-size: var(--text-sm);
   list-style: none;
@@ -976,32 +1014,6 @@
   right: 0;
   min-width: 180px;
   list-style: none;
-}
-
-.rail-sort-check {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  color: var(--text);
-  flex: 0 0 auto;
-}
-
-/* Section header inside the sidebar view menu ("Group by", "Sort projects"). */
-.rail-sort-group-label {
-  padding: 6px 10px 2px;
-  color: var(--muted);
-  font-size: var(--text-2xs);
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.rail-sort-divider {
-  height: 1px;
-  margin: var(--space-1) 0;
-  background: var(--line);
 }
 
 /* Session actions menu — replaces the row of header icons. Sized to fit short
@@ -1189,8 +1201,15 @@
   font-style: italic;
 }
 
+/* Group header ("Recent", a provider, "Group by"). The `::before` cell keeps the
+   name on the same column as the rows below; in the model picker it also
+   draws the provider's Usage-page dot, so a provider looks the same here and
+   there. */
 .project-picker-group-label {
-  padding: 3px 9px 1px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 9px 9px 3px 7px;
   color: var(--muted);
   font-size: var(--text-2xs);
   font-weight: 500;
@@ -1199,6 +1218,24 @@
   text-transform: uppercase;
   list-style: none;
 }
+
+.project-picker-group-label:first-child {
+  padding-top: 4px;
+}
+
+.project-picker-group-label::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  background: radial-gradient(circle, var(--picker-group-dot, transparent) 3px, transparent 3.5px);
+}
+
+.project-picker-group-label[data-provider="claude"] { --picker-group-dot: var(--usage-claude); }
+.project-picker-group-label[data-provider="codex"] { --picker-group-dot: var(--usage-codex); }
+.project-picker-group-label[data-provider="cursor"] { --picker-group-dot: var(--usage-cursor); }
+.project-picker-group-label[data-provider="opencode"] { --picker-group-dot: var(--usage-opencode); }
+.project-picker-group-label[data-provider="grok"] { --picker-group-dot: var(--usage-grok); }
 
 .composer-status {
   /* Float above the composer instead of taking a layout row — otherwise

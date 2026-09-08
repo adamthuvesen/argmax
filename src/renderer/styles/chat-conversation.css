@@ -1002,8 +1002,13 @@
   margin-bottom: var(--space-2);
 }
 
+/* 500, not 520. The app bundles Geist Sans as 400/500/700 statics, and CSS
+   resolves a request above 500 by searching upward first — so 520 rendered
+   Geist 700, the same face as the headings, and every bold lead-in in an
+   answer landed with heading weight. 500 asks for the medium that is actually
+   in the bundle. */
 .markdown strong {
-  font-weight: 520;
+  font-weight: 500;
   color: var(--prose-ink-strong);
 }
 
@@ -1162,10 +1167,16 @@
 }
 
 /* The ink ladder has to stay monotonic: h1-h3 on --prose-ink-strong, `strong`
-   at 520 one step under them, body on --prose-ink. Painting headings from
+   at 500 one step under them, body on --prose-ink. Painting headings from
    --text-soft/--muted put them *behind* the paragraphs they introduce and let
    bold body text win the page, which is what made a heading-heavy answer read
    as one flat river.
+
+   The weights below all resolve to Geist 700 — the bundle carries 400/500/700
+   statics, and 570-600 rounds up. That is the intent (headings are the top of
+   the ladder), but it is also why `strong` has to sit at 500 rather than at a
+   number that merely *looks* lower: anything past 500 lands on the same face
+   the headings use and the step disappears.
 
    Size does little of the work here — the range is one token wider than the
    body, so an answer full of `##` never shouts inside a 780px prose column.
@@ -1614,38 +1625,6 @@
 
 .chat-bubble.user .markdown code {
   color: var(--user-message-fg);
-}
-
-/* Leading `/skill` invocation rendered as a marked chip inside the user
-   bubble, so a skill run reads at a glance as "ran a skill", not prose. The
-   bubble itself is the accent slab, so the chip rides the bubble fg instead
-   of the accent it used to borrow. */
-.user-skill-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  vertical-align: baseline;
-  color: var(--user-message-fg);
-  font-weight: 600;
-  /* Label-sized, not prose-sized: the chip is a marker ("ran a skill"), so it
-     sits at the agent view's label size rather than inheriting bubble prose. */
-  font-size: var(--text-sm);
-}
-
-.user-skill-chip svg {
-  flex: 0 0 auto;
-  translate: 0 1px;
-}
-
-/* A `/skill` token further into the message keeps its slash and prose size —
-   it is a word in a sentence, not the header of one — and is marked with a
-   tinted slab instead. The mark rides the bubble fg for the same reason the
-   chip does: `--accent` is the bubble's own background. */
-.user-skill-token {
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--user-message-fg) 14%, transparent);
-  font-weight: 600;
 }
 
 /* A long paste (multi-paragraph message) would otherwise grow the bubble to the

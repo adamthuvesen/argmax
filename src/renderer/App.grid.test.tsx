@@ -893,6 +893,7 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: /^Agent activity: / });
+    fireEvent.click(within(pane).getByRole("button", { name: "Read a file" }));
     expect(within(pane).getByRole("button", { name: "Read App.tsx" })).toBeInTheDocument();
     expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
   });

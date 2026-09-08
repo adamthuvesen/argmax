@@ -10,6 +10,7 @@ describe("useSessionCommands", () => {
   const terminateMock = vi.fn().mockResolvedValue({ ok: true });
   const archiveMock = vi.fn().mockResolvedValue({ state: "archived" });
   const sendInputMock = vi.fn().mockResolvedValue({ ok: true, queued: false });
+  const sendQueuedMessageNowMock = vi.fn().mockResolvedValue({ ok: true, queued: false });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -17,15 +18,54 @@ describe("useSessionCommands", () => {
     terminateMock.mockResolvedValue({ ok: true });
     archiveMock.mockResolvedValue({ state: "archived" });
     sendInputMock.mockResolvedValue({ ok: true, queued: false });
+    sendQueuedMessageNowMock.mockResolvedValue({ ok: true, queued: false });
     (window as unknown as { argmax: unknown }).argmax = {
       providers: {
         terminate: terminateMock,
-        sendInput: sendInputMock
+        sendInput: sendInputMock,
+        sendQueuedMessageNow: sendQueuedMessageNowMock
       },
       workspaces: {
         archive: archiveMock
       }
     };
+  });
+
+  it.each([
+    ["codex", "gpt-6-astra", true],
+    ["codex", "gpt-5.6-sol", true],
+    ["codex", "gpt-5.6-terra", true],
+    ["codex", "gpt-5.6-luna", true],
+    ["codex", "unknown", false],
+    ["claude", "claude-fable-5-1", false],
+    ["claude", "claude-opus-5", false],
+    ["claude", "claude-sonnet-5", false],
+    ["claude", "claude-haiku-4-5", false],
+    ["cursor", "gpt-5.6-sol-medium", false],
+    ["cursor", "composer-2.5", false],
+    ["grok", "grok-4.6", false],
+    ["opencode", "opencode/big-pickle", false]
+  ] as const)("gates the saved Fast preference for %s/%s", async (provider, modelId, supported) => {
+    const { result, rerender } = renderHook(
+      ({ fastMode }) => useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode }),
+      { initialProps: { fastMode: false } }
+    );
+    const model = { provider, label: modelId, modelId };
+
+    await act(async () => {
+      await result.current.sendSessionInput("session-1", "continue", model, "auto");
+    });
+    expect(sendInputMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ provider, modelId, fastMode: false })
+    );
+
+    rerender({ fastMode: true });
+    await act(async () => {
+      await result.current.sendSessionInput("session-1", "continue", model, "auto");
+    });
+    expect(sendInputMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ provider, modelId, fastMode: supported })
+    );
   });
 
   it("calls onEarlyStop by default on terminateSession", async () => {
@@ -144,6 +184,30 @@ describe("useSessionCommands", () => {
     expect(refreshDashboardStatus).toHaveBeenCalled();
     expect(loadSessionEvents).toHaveBeenCalledWith("session-1");
     resolveRefresh?.();
+  });
+
+  it("passes steering delivery through to the queued-message IPC", async () => {
+    refreshDashboardStatus.mockResolvedValue(undefined);
+    loadSessionEvents.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useSessionCommands({
+        refreshDashboardStatus,
+        loadSessionEvents,
+        setToast,
+        fastMode: false,
+        onEarlyStop
+      })
+    );
+
+    await act(async () => {
+      await result.current.sendQueuedMessageNow("session-1", "message-1", "steer");
+    });
+
+    expect(sendQueuedMessageNowMock).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      messageId: "message-1",
+      delivery: "steer"
+    });
   });
 
   it("does not wait on dashboard catch-up for a queued follow-up", async () => {

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const highlightLineMock = vi.hoisted(() =>
@@ -69,6 +69,23 @@ const TRUNCATED: ParsedDiffBlock = {
   droppedBytes: 4096
 };
 
+const RANGE_HUNK: Extract<ParsedDiffBlock, { kind: "hunk" }> = {
+  id: "range-hunk",
+  kind: "hunk",
+  header: "@@ -10,3 +20,4 @@",
+  lines: [
+    { kind: "context", content: "before", oldLineNumber: 10, newLineNumber: 20 },
+    { kind: "deletion", content: "old", oldLineNumber: 11, newLineNumber: null },
+    { kind: "addition", content: "first", oldLineNumber: null, newLineNumber: 21 },
+    { kind: "addition", content: "second", oldLineNumber: null, newLineNumber: 22 },
+    { kind: "context", content: "after", oldLineNumber: 12, newLineNumber: 23 }
+  ]
+};
+
+function lineCommentButton(line: number): HTMLElement {
+  return screen.getByRole("button", { name: `Comment on line ${line} of src/x.ts` });
+}
+
 describe("DiffBlocks", () => {
   beforeEach(() => {
     highlightLineMock.mockClear();
@@ -77,6 +94,7 @@ describe("DiffBlocks", () => {
 
   afterEach(() => {
     cleanup();
+    document.documentElement.removeAttribute("data-theme");
   });
 
   it("renders syntax-highlighted token spans for a recognized language", () => {
@@ -110,6 +128,14 @@ describe("DiffBlocks", () => {
     expect(document.querySelector("span.hl-token")).toBeNull();
     expect(screen.getByText("const x = 42;")).toBeInTheDocument();
     expect(highlightLineMock).not.toHaveBeenCalled();
+  });
+
+  it("refreshes memoized highlighting when the theme changes", async () => {
+    document.documentElement.setAttribute("data-theme", "light");
+    render(<DiffBlocks blocks={[TS_HUNK]} filePath="src/x.ts" />);
+    highlightLineMock.mockClear();
+    document.documentElement.setAttribute("data-theme", "dark");
+    await waitFor(() => expect(highlightLineMock).toHaveBeenCalled());
   });
 
   it("offers no comment affordance without an onAddComment handler", () => {
@@ -149,6 +175,91 @@ describe("DiffBlocks", () => {
 
     expect(screen.queryByRole("form", { name: "Comment on src/x.ts:1" })).toBeNull();
     expect(onAddComment).not.toHaveBeenCalled();
+  });
+
+  it.each([[21, 23], [23, 21]])("submits a range dragged from %i to %i", (from, to) => {
+    const onAddComment = vi.fn();
+    render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />);
+    highlightLineMock.mockClear();
+    fireEvent.mouseDown(lineCommentButton(from), { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(lineCommentButton(to), { buttons: 1 });
+    expect(screen.queryByRole("form")).toBeNull();
+    expect(screen.getAllByRole("button", { pressed: true })).toHaveLength(3);
+    fireEvent.mouseUp(window, { button: 0 });
+    fireEvent.click(lineCommentButton(from), { detail: 1 });
+    expect(screen.getByRole("form", { name: "Comment on src/x.ts:21-23" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Comment text")).toHaveFocus();
+    expect(highlightLineMock).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Comment text"), { target: { value: "range note" } });
+    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+    expect(onAddComment).toHaveBeenCalledWith({
+      filePath: "src/x.ts", line: 21, endLine: 23, side: "addition", endSide: "context",
+      lineText: "+first\n+second\n after", comment: "range note"
+    });
+    expect(screen.queryByRole("form")).toBeNull();
+    expect(screen.queryByRole("button", { pressed: true })).toBeNull();
+  });
+
+  it("preserves removed and added code in a mixed range", () => {
+    const onAddComment = vi.fn();
+    render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />);
+    fireEvent.mouseDown(lineCommentButton(11), { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(lineCommentButton(22), { buttons: 1 });
+    fireEvent.mouseUp(window);
+    expect(screen.getByRole("form", { name: "Comment on src/x.ts:11 (removed)-22 (added)" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Comment text"), { target: { value: "mixed range" } });
+    fireEvent.keyDown(screen.getByLabelText("Comment text"), { key: "Enter" });
+    expect(onAddComment).toHaveBeenCalledWith({
+      filePath: "src/x.ts", line: 11, endLine: 22, side: "deletion", endSide: "addition",
+      lineText: "-old\n+first\n+second", comment: "mixed range"
+    });
+  });
+
+  it.each(["Escape", "blur"])("cancels an unfinished drag on %s", (action) => {
+    render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={vi.fn()} />);
+    fireEvent.mouseDown(lineCommentButton(21), { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(lineCommentButton(23), { buttons: 1 });
+    if (action === "Escape") fireEvent.keyDown(window, { key: "Escape" });
+    else fireEvent.blur(window);
+    fireEvent.mouseUp(window);
+    expect(screen.queryByRole("form")).toBeNull();
+    expect(screen.queryByRole("button", { pressed: true })).toBeNull();
+  });
+
+  it.each([
+    [11, 23, "11 (removed)-23 (unchanged)"],
+    [20, 11, "20 (unchanged)-11 (removed)"]
+  ] as const)("labels unchanged endpoints for %i to %i", (from, to, location) => {
+    render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={vi.fn()} />);
+    fireEvent.mouseDown(lineCommentButton(from), { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(lineCommentButton(to), { buttons: 1 });
+    fireEvent.mouseUp(window);
+    expect(screen.getByRole("form", { name: `Comment on src/x.ts:${location}` })).toBeInTheDocument();
+  });
+
+  it.each(["file", "diff"])("clears a comment when the %s changes", (change) => {
+    const onAddComment = vi.fn();
+    const { rerender } = render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />);
+    fireEvent.click(lineCommentButton(21));
+    expect(screen.getByRole("form")).toBeInTheDocument();
+    rerender(<DiffBlocks
+      blocks={change === "diff" ? [{ ...RANGE_HUNK, lines: [] }] : [RANGE_HUNK]}
+      filePath={change === "file" ? "src/y.ts" : "src/x.ts"}
+      onAddComment={onAddComment}
+    />);
+    expect(screen.queryByRole("form")).toBeNull();
+    expect(screen.queryByRole("button", { pressed: true })).toBeNull();
+  });
+
+  it("leaves code text selection and right clicks alone", () => {
+    render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={vi.fn()} />);
+    fireEvent.mouseDown(screen.getByText("first"), { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(lineCommentButton(23), { buttons: 1 });
+    fireEvent.mouseUp(window);
+    fireEvent.mouseDown(lineCommentButton(21), { button: 2, buttons: 2 });
+    fireEvent.mouseUp(window);
+    expect(screen.queryByRole("form")).toBeNull();
+    expect(screen.queryByRole("button", { pressed: true })).toBeNull();
   });
 
   it("turns a between-hunk gap into an expand control", () => {

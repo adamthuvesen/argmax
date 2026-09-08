@@ -36,6 +36,8 @@ use std::{
 
 #[cfg(unix)]
 use std::os::fd::{AsFd, OwnedFd};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 #[cfg(unix)]
 use nix::{
@@ -99,8 +101,19 @@ pub enum ProviderRuntimeEventType {
 
 pub trait ProviderRuntimeHandle: Send + Sync {
     fn accepts_input(&self) -> bool;
+    fn supports_steering(&self) -> bool {
+        false
+    }
     fn disposed(&self) -> bool;
     fn send_input(&self, input: &str);
+    fn steer<'a>(&'a self, _prompt: &'a str) -> BoxFuture<'a, ArgmaxResult<()>> {
+        Box::pin(async {
+            Err(ArgmaxError::service(
+                "STEER_UNSUPPORTED",
+                "This provider does not support steering an active turn",
+            ))
+        })
+    }
     fn resize(&self, cols: u16, rows: u16);
     fn terminate<'a>(&'a self) -> BoxFuture<'a, ArgmaxResult<()>>;
 }
@@ -415,6 +428,7 @@ fn launch_structured_via_pty(
         .stdin(Stdio::piped())
         .stdout(Stdio::from(stdout_fd))
         .stderr(Stdio::from(stderr_fd))
+        .process_group(0)
         .spawn()
         .map_err(|error| {
             ArgmaxError::service(
@@ -440,7 +454,7 @@ fn launch_structured_via_pty(
                 write = child_stdin.write_all(b"\n");
             }
             if let Err(error) = write.and_then(|()| child_stdin.flush()) {
-                let _ = child.kill();
+                signal_process_group(child.id(), SignalKind::Kill);
                 let _ = child.wait();
                 return Err(io_error(error));
             }
@@ -476,6 +490,9 @@ fn launch_structured_via_pty(
     let drain_session_id = input.session_id.clone();
     thread::spawn(move || {
         let status = child.wait();
+        // The leader can exit while a tool still holds the PTY open. Clean up
+        // its group before publishing the reap and releasing launch resources.
+        signal_process_group(pid, SignalKind::Kill);
         mcp_scratch.restore();
         wait_reaped.store(true, Ordering::SeqCst);
         let _ = exit_tx.send(());
@@ -600,7 +617,7 @@ impl ProviderRuntimeHandle for ProviderSessionHandle {
             if self.reaped.load(Ordering::SeqCst) {
                 return Ok(());
             }
-            signal_process(self.pid, SignalKind::Term);
+            signal_process_group(self.pid, SignalKind::Term);
             let receiver = self.exit_rx.lock_or_recover("exit receiver").take();
             if let Some(receiver) = receiver {
                 let pid = self.pid;
@@ -609,7 +626,7 @@ impl ProviderRuntimeHandle for ProviderSessionHandle {
                     if receiver.recv_timeout(Duration::from_millis(1500)).is_err()
                         && !reaped.load(Ordering::SeqCst)
                     {
-                        signal_process(pid, SignalKind::Kill);
+                        signal_process_group(pid, SignalKind::Kill);
                     }
                 })
                 .await
@@ -635,8 +652,8 @@ impl Drop for ProviderSessionHandle {
         if self.reaped.load(Ordering::SeqCst) {
             return;
         }
-        signal_process(self.pid, SignalKind::Term);
-        signal_process(self.pid, SignalKind::Kill);
+        signal_process_group(self.pid, SignalKind::Term);
+        signal_process_group(self.pid, SignalKind::Kill);
     }
 }
 
@@ -784,6 +801,22 @@ pub(super) enum SignalKind {
 }
 
 #[cfg(unix)]
+fn signal_process_group(pid: u32, signal: SignalKind) {
+    use crate::util::process_control::{signal_target, SignalTarget};
+    use nix::sys::signal::Signal;
+    signal_target(
+        SignalTarget::ProcessGroup(pid),
+        match signal {
+            SignalKind::Term => Signal::SIGTERM,
+            SignalKind::Kill => Signal::SIGKILL,
+        },
+    );
+}
+
+#[cfg(not(unix))]
+fn signal_process_group(_pid: u32, _signal: SignalKind) {}
+
+#[cfg(unix)]
 pub(super) fn signal_process(pid: u32, signal: SignalKind) {
     use nix::{
         sys::signal::{kill, Signal},
@@ -829,6 +862,102 @@ impl PermissionMode {
             PermissionMode::AskEachTime => "ask-each-time",
             PermissionMode::ProviderDefaults => "provider-defaults",
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod process_tests {
+    use super::*;
+    use nix::unistd::{getpgid, Pid};
+    use std::{
+        fs,
+        time::{Duration, Instant},
+    };
+
+    fn process_gone(pid: u32) -> bool {
+        let output = Command::new("ps")
+            .args(["-o", "state=", "-p", &pid.to_string()])
+            .output()
+            .unwrap();
+        let state = String::from_utf8_lossy(&output.stdout);
+        state.trim().is_empty() || state.trim().starts_with('Z')
+    }
+
+    struct DescendantGuard(u32);
+    impl Drop for DescendantGuard {
+        fn drop(&mut self) {
+            signal_process(self.0, SignalKind::Kill);
+        }
+    }
+
+    #[tokio::test]
+    async fn terminate_kills_process_group_descendants() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace_path = directory.path().to_path_buf();
+        let leader_file = workspace_path.join("leader.pid");
+        let child_file = workspace_path.join("child.pid");
+        let script = "echo $$ > leader.pid; ( trap \"\" TERM; sleep 60 ) & echo $! > child.pending; mv child.pending child.pid; wait";
+        let input = ProviderLaunchInput {
+            provider: ProviderId::Grok,
+            session_id: uuid::Uuid::new_v4().to_string(),
+            workspace_path: workspace_path.clone(),
+            prompt: String::new(),
+            model_label: "Grok".to_string(),
+            model_id: "grok".to_string(),
+            reasoning_effort: None,
+            fast_mode: false,
+            resume_conversation_id: None,
+            resume_fork: false,
+            permission_mode: PermissionMode::AutoApprove,
+            agent_mode: AgentMode::Auto,
+            cols: 120,
+            rows: 32,
+        };
+        let on_event: EventCallback = Arc::new(|_| {});
+        let handle = launch_structured_via_pty(
+            "/bin/sh",
+            "sh",
+            vec!["-c".to_string(), script.to_string()],
+            &input,
+            on_event,
+            None,
+        )
+        .expect("launch sh process-group fixture");
+        let handshake_deadline = Instant::now() + Duration::from_secs(5);
+        while !leader_file.is_file() || !child_file.is_file() {
+            assert!(
+                Instant::now() < handshake_deadline,
+                "process-group fixture handshake timed out"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let leader_pid: u32 = fs::read_to_string(&leader_file)
+            .expect("read leader.pid")
+            .trim()
+            .parse()
+            .expect("parse leader pid");
+        let child_pid: u32 = fs::read_to_string(&child_file)
+            .expect("read child.pid")
+            .trim()
+            .parse()
+            .expect("parse child pid");
+        let guard = DescendantGuard(child_pid);
+        let leader_pgid = getpgid(Some(Pid::from_raw(leader_pid as i32))).expect("getpgid leader");
+        assert_eq!(
+            leader_pgid.as_raw() as u32,
+            leader_pid,
+            "provider spawn should create a dedicated process group"
+        );
+        handle.terminate().await.expect("terminate provider handle");
+        let gone_deadline = Instant::now() + Duration::from_secs(3);
+        while !process_gone(child_pid) {
+            assert!(
+                Instant::now() < gone_deadline,
+                "TERM-ignoring descendant still running after terminate"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        std::mem::forget(guard);
     }
 }
 
@@ -883,7 +1012,11 @@ mod verification_tests {
             .expect("verification child configuration");
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
         runtime.block_on(async {
-            let launcher = RealProviderProcessLauncher::new();
+            let database = Arc::new(
+                crate::persistence::Database::open_in_memory().expect("verification database"),
+            );
+            let launcher = RealProviderProcessLauncher::new()
+                .with_approvals(crate::approvals::service::ApprovalService::new(database));
             let first =
                 launch_and_collect(&launcher, "[argmax-verification:chat-resume:first]", None)
                     .await;

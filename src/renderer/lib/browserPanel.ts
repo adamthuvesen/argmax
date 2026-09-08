@@ -33,9 +33,11 @@ export interface BrowserOpenRequest {
 let openRequest: BrowserOpenRequest | null = null;
 const requestListeners = new Set<() => void>();
 
-export function openInBrowserPanel(url: string): void {
+export function openInBrowserPanel(url: string, options?: { newTab?: boolean }): void {
+  const tab = options?.newTab ? createBrowserTab(url, false) : null;
   lastUrl = url;
   openRequest = { url, seq: (openRequest?.seq ?? 0) + 1 };
+  if (tab) openRequest.tabId = tab.id;
   for (const listener of requestListeners) listener();
 }
 
@@ -279,6 +281,22 @@ export function createBrowserTab(url: string, activate = true): BrowserTab {
 export function activateBrowserTab(id: string): void {
   if (activeTabId === id || !tabs.some((tab) => tab.id === id)) return;
   activeTabId = id;
+  notifyTabListeners();
+}
+
+/** Moves a tab to another slot. Order is the user's alone — the registry's
+ *  pushes never touch it — so a carried tab keeps its new place across a
+ *  restart through the persisted list. */
+export function moveBrowserTab(id: string, toIndex: number): void {
+  const from = tabs.findIndex((tab) => tab.id === id);
+  const moved = tabs[from];
+  if (!moved) return;
+  const to = Math.max(0, Math.min(toIndex, tabs.length - 1));
+  if (to === from) return;
+  const next = [...tabs];
+  next.splice(from, 1);
+  next.splice(to, 0, moved);
+  tabs = next;
   notifyTabListeners();
 }
 

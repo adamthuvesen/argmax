@@ -53,10 +53,16 @@ describe("SessionComposer multitask", () => {
     );
 
     await waitFor(() =>
-      expect(onMultitask).toHaveBeenCalledWith("session-a", "Fix the README typo", "codex")
+      expect(onMultitask).toHaveBeenCalledWith(
+        "session-a",
+        "Fix the README typo",
+        "codex",
+        "pending-1"
+      )
     );
-    // It leaves the queue, because it is running now.
-    await waitFor(() => expect(onCancelQueuedMessage).toHaveBeenCalledWith("session-a", "pending-1"));
+    // The backend claims the queue row as part of the launch, so the renderer
+    // never issues a second request that could fail after the child starts.
+    expect(onCancelQueuedMessage).not.toHaveBeenCalled();
     // And unlike "Send now", it never stops the turn in flight.
     expect(onSendQueuedMessageNow).not.toHaveBeenCalled();
   });

@@ -78,7 +78,13 @@ export function advanceTurnBoundary(
       ? { kind: "tool", completedText: previous.completedText }
       : previous;
   }
-  if (canonical.kind === "message" && canonical.role === "user") return { kind: "user" };
+  if (
+    canonical.kind === "message" &&
+    canonical.role === "user" &&
+    canonical.delivery !== "steer"
+  ) {
+    return { kind: "user" };
+  }
   return previous;
 }
 

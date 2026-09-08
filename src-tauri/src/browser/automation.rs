@@ -793,18 +793,8 @@ async fn wait_for(
     let deadline = Instant::now() + budget;
     let script = format!("window.__argmax.waitFor({}, {})", json!(wait_id), spec);
     loop {
-        // A navigation mid-wait tears the page down, and the eval racing it
-        // fails; that is a state to keep waiting through, not to report.
-        match call(app, tab_id, &script, ACTION_TIMEOUT).await {
-            Ok(value) => {
-                if value.get("pending").and_then(Value::as_bool) != Some(true) {
-                    return Ok(outcome(tab_id.to_string(), &value));
-                }
-            }
-            Err(error) if Instant::now() >= deadline => return Err(error),
-            Err(_) => {}
-        }
-        if Instant::now() >= deadline {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
             return Err(ArgmaxError::service(
                 "BROWSER_WAIT_TIMEOUT",
                 format!(
@@ -814,7 +804,21 @@ async fn wait_for(
                 ),
             ));
         }
-        tokio::time::sleep(WAIT_POLL_INTERVAL).await;
+        // A navigation mid-wait tears the page down, and the eval racing it
+        // fails; that is a state to keep waiting through, not to report.
+        match call(app, tab_id, &script, remaining.min(ACTION_TIMEOUT)).await {
+            Ok(value) => {
+                if value.get("pending").and_then(Value::as_bool) != Some(true) {
+                    return Ok(outcome(tab_id.to_string(), &value));
+                }
+            }
+            Err(error) if Instant::now() >= deadline => return Err(error),
+            Err(_) => {}
+        }
+        tokio::time::sleep(
+            WAIT_POLL_INTERVAL.min(deadline.saturating_duration_since(Instant::now())),
+        )
+        .await;
     }
 }
 

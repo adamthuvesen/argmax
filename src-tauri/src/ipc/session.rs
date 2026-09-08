@@ -198,18 +198,25 @@ pub(crate) async fn session_multitask_impl(
             "provider service is not initialized",
         )
     })?;
-    crate::multitask::dispatch(
-        crate::multitask::MultitaskRequest {
-            parent_session_id: input.session_id.into_string(),
-            prompt: input.prompt.into_string(),
-            worktree: input.worktree,
-            task_label: input.task_label.map(|label| label.into_string()),
-        },
-        database,
-        workspaces,
-        providers,
-    )
-    .await
+    let request = crate::multitask::MultitaskRequest {
+        parent_session_id: input.session_id.into_string(),
+        prompt: input.prompt.into_string(),
+        worktree: input.worktree,
+        task_label: input.task_label.map(|label| label.into_string()),
+    };
+    match input.pending_message_id {
+        Some(message_id) => {
+            crate::multitask::dispatch_queued(
+                request,
+                message_id.as_str(),
+                database,
+                workspaces,
+                providers,
+            )
+            .await
+        }
+        None => crate::multitask::dispatch(request, database, workspaces, providers).await,
+    }
 }
 
 pub(crate) fn session_fork_impl(

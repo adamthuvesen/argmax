@@ -277,7 +277,10 @@ export function ToolCallDetail({
   }
 
   const outputBody = output.body;
-  const truncated = outputBody.length > MAX_OUTPUT_CHARS;
+  const showOutput =
+    hasVisibleToolOutput(outputBody) &&
+    (!tool.error || outputBody.trim() !== tool.error.trim());
+  const truncated = showOutput && outputBody.length > MAX_OUTPUT_CHARS;
   const shownOutput = truncated && !showFullOutput ? `${outputBody.slice(0, MAX_OUTPUT_CHARS)}\n…` : outputBody;
 
   const parts: (ReactNode | null)[] = [
@@ -312,7 +315,7 @@ export function ToolCallDetail({
     ) : null,
     // No "Output" label: it sat alone over a box as the only thing it could
     // possibly be labelling. Position and type say it instead.
-    hasVisibleToolOutput(tool.output) && !tool.error ? (
+    showOutput ? (
       <pre className="tool-call-code">{shownOutput}</pre>
     ) : null
   ];
@@ -327,7 +330,7 @@ export function ToolCallDetail({
     <ToolCallFoot
       args={footerArgs}
       notes={outputNotes}
-      output={hasVisibleToolOutput(tool.output) && !tool.error ? outputBody : null}
+      output={showOutput ? outputBody : null}
       truncated={truncated && !showFullOutput}
       onShowAll={() => setShowFullOutput(true)}
       duration={formatDuration(tool.createdAt, tool.completedAt)}

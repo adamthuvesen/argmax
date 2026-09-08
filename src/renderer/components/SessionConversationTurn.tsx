@@ -1,9 +1,8 @@
 import { Fragment, memo, useMemo, useState, type JSX, type MutableRefObject, type ReactNode } from "react";
-import { Sparkles } from "lucide-react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
 import { splitLinkSegments } from "../lib/messageLinks.js";
-import { leadingSkillInvocation, splitSkillTokens } from "../lib/slashHighlight.js";
+import { splitSkillTokens } from "../lib/slashHighlight.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { parsePlan } from "../lib/parsePlan.js";
@@ -19,7 +18,7 @@ import {
 } from "../lib/sessionTurnView.js";
 import { foldToolRunsToSummaries } from "../lib/turnChildren.js";
 import { buildToolCallGroup, isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
-import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
+import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { codenameForTool } from "../lib/agentNames.js";
 import { latestToolCreatedAt, visibleTurnToolItem } from "../lib/turnToolItems.js";
 import { collectTurnFileChanges } from "../lib/turnFileChanges.js";
@@ -70,9 +69,10 @@ function SessionConversationTurnInner({
   setAgentMode,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
-  defaultThinkingExpanded,
+  thinkingDisplay,
   defaultTurnChangesExpanded,
-  restoringTranscript = false
+  restoringTranscript = false,
+  questionIsDocked = false
 }: {
   item: TurnRenderItem;
   priorItem: RenderItem | null;
@@ -96,9 +96,11 @@ function SessionConversationTurnInner({
   setAgentMode: (mode: AgentMode) => void;
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
-  defaultThinkingExpanded?: boolean;
+  thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
   restoringTranscript?: boolean;
+  /** The live question owns the composer slot, so this turn must not draw it too. */
+  questionIsDocked?: boolean;
 }): JSX.Element {
   const sessionIsLive = session?.state === "running";
   const isStreamingTurn = isLatestTurn && sessionIsLive;
@@ -134,9 +136,8 @@ function SessionConversationTurnInner({
   // the body stays open (`holdOpen`) for as long as this is the newest turn:
   // folding it right then would drop the whole reasoning out of a transcript
   // pinned to the bottom at the exact moment the answer starts arriving. An
-  // explicit fold from the turn chip still wins, and the turn falls back to the
-  // saved expanded-by-default setting for quiet, persistent "Thought" history
-  // as soon as a newer turn starts.
+  // explicit fold from the turn chip still wins in Compact. Balanced and
+  // Detailed keep thoughts inline regardless of tool disclosure or turn age.
   //
   // The beat belongs to the turn's newest reasoning burst, never to every burst
   // in it: tool boundaries flush a fresh thinking group, so this flag read
@@ -155,8 +156,8 @@ function SessionConversationTurnInner({
   // work, and it stays open through completion so nothing collapses out from
   // under the answer) and collapse to headers for older turns. The turn chip
   // toggles this for the whole turn; collapsing folds the tool groups to their
-  // headers AND the Thought block, so one control governs the turn's reasoning
-  // and its tools. A per-row chevron still overrides an individual group or the
+  // headers and any collapsible Thought blocks. Inline thoughts stay visible.
+  // A per-row chevron still overrides an individual group or the
   // Thought block. "Tool call groups" still wins over "Tool calls in chat" when
   // it is set, so groups can open while the tool rows stay collapsed.
   // Single-line (Minimal) never expands groups: tool runs render as one
@@ -170,7 +171,7 @@ function SessionConversationTurnInner({
       : false;
   const [toolsExpandOverride, setToolsExpandOverride] = useState<boolean | null>(null);
   const toolsExpanded = toolsExpandOverride ?? toolsExpandedDefault;
-  // Individual rows open one level above the groups: Detailed and up. An agent
+  // Detailed opens individual rows as well as groups. An agent
   // launch row follows that rather than the group level, because what its
   // chevron reveals is the raw launch receipt — at Balanced the row names the
   // delegated work and the subagent's pane holds the rest.
@@ -207,7 +208,7 @@ function SessionConversationTurnInner({
       reportSendError
     );
   };
-  const questionCard: JSX.Element | null = askUserQuestionTool
+  const questionCard: JSX.Element | null = askUserQuestionTool && !questionIsDocked
     ? (
         <QuestionCard
           key={`question-${askUserQuestionTool.id}`}
@@ -290,7 +291,8 @@ function SessionConversationTurnInner({
         const node = (
           <ThoughtBlock
             key={group.id}
-            defaultExpanded={toolsExpandOverride ?? defaultThinkingExpanded}
+            display={thinkingDisplay}
+            defaultExpanded={toolsExpandOverride ?? false}
             live={groupLive}
             holdOpen={
               isLatestTurn && toolsExpandOverride !== false && group.id === liveThoughtGroupId
@@ -533,36 +535,10 @@ function SessionConversationTurnInner({
 export const SessionConversationTurn = memo(SessionConversationTurnInner);
 
 /**
- * Mark up a sent message the way the composer showed it while it was typed:
- * `/skill` invocations tinted, and pasted URLs clickable.
- *
- * A leading invocation names the whole message and keeps the icon chip; every
- * other token is only tinted. Shape is the whole guard — the transcript has no
- * skills list to check against — so the worst a false positive costs here is
- * one tinted word, never a chip that claims a skill ran.
+ * Preserve the typed prompt while marking skills and linking URLs. Resolve
+ * links first so URL path segments never render as skill invocations.
  */
-function markUserMessage(message: string): ReactNode {
-  const leading = leadingSkillInvocation(message);
-  const rest = leading ? leading.rest : message;
-  const body = markLinks(rest);
-  if (!leading) return body;
-  const label = leading.name.charAt(0).toUpperCase() + leading.name.slice(1);
-  return (
-    <>
-      <span className="user-skill-chip" title={`/${leading.name}`}>
-        <Sparkles size={12} aria-hidden />
-        {label}
-      </span>
-      {leading.rest ? <> {body}</> : null}
-    </>
-  );
-}
-
-/**
- * A URL is linked before its text is scanned for skill tokens, so a path
- * segment inside `https://host/plan` never renders as an invocation.
- */
-function markLinks(text: string): ReactNode {
+function markUserMessage(text: string): ReactNode {
   const segments = splitLinkSegments(text);
   if (!segments) return markSkillTokens(text);
   return segments.map((segment, index) =>
@@ -581,7 +557,7 @@ function markSkillTokens(text: string): ReactNode {
   if (!segments) return text;
   return segments.map((segment, index) =>
     segment.skill ? (
-      <span key={index} className="user-skill-token">
+      <span key={index} className="skill-token" title={`Skill: ${segment.text}`}>
         {segment.text}
       </span>
     ) : (

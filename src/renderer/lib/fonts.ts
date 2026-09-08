@@ -1,5 +1,4 @@
 export type FontFamilyId =
-  | "lilex"
   | "system-mono"
   | "menlo"
   | "monaco"
@@ -42,15 +41,9 @@ export function toFontSize(raw: string | null | undefined): FontSize | null {
     : null;
 }
 
-const SYSTEM_MONO_FALLBACK = '"Lilex Nerd Font", ui-monospace, "SFMono-Regular", Consolas, monospace';
+const SYSTEM_MONO_FALLBACK = 'ui-monospace, "SFMono-Regular", Consolas, monospace';
 
 export const FONT_OPTIONS: readonly FontOption[] = [
-  {
-    id: "lilex",
-    label: "Lilex",
-    hint: "Original Argmax mono. Nerd-Font-patched so terminal-style glyphs still render.",
-    stack: `"Lilex Nerd Font", "Lilex Nerd Font Mono", ${SYSTEM_MONO_FALLBACK}`
-  },
   {
     id: "system-mono",
     label: "System Mono",
@@ -210,12 +203,12 @@ export function applyFontSizeToDocument(size: FontSize): void {
  */
 export function resolveMonoFontStack(): string {
   if (typeof document === "undefined") {
-    return '"Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, monospace';
+    return SYSTEM_MONO_FALLBACK;
   }
   const computed = getComputedStyle(document.documentElement)
     .getPropertyValue("--font-mono")
     .trim();
-  return computed || '"Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, monospace';
+  return computed || SYSTEM_MONO_FALLBACK;
 }
 
 export function resolveCssPxVariable(name: string, fallback: number): number {
@@ -230,7 +223,7 @@ export function resolveTerminalFontSize(): number {
   return resolveCssPxVariable("--text-terminal", 13);
 }
 
-// Per-font CSS loaders. Lilex + system fonts (system-mono, menlo, monaco)
+// Per-font CSS loaders. The system fonts (system-mono, menlo, monaco)
 // need no JS-loaded assets; the rest pull in @fontsource bundles only when
 // actually applied (ralph B6 — defers CSS-embedded font URLs from cold
 // launch). Geist Sans is the default, so its bundle loads on cold launch;

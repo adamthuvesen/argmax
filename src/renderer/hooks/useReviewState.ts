@@ -255,10 +255,9 @@ export function useReviewState(
   const panelOpenKey = options?.sessionId && options.initiallyOpen === undefined
     ? `argmax.reviewPanel.open.${options.sessionId}`
     : null;
-  // A pane dies on every session switch, so the panel's mode cannot remember
-  // that the reader had the terminal up. The workspace-keyed store can, and
-  // seeding from it here is what brings them back to the shell they left
-  // running rather than to the Changes default.
+  const panelModeKey = panelOpenKey ? `argmax.reviewPanel.mode.${options?.sessionId}` : null;
+  // Session panes remount on navigation. Restore both visibility and mode,
+  // falling back to the workspace terminal state for sessions without a preference.
   const [isPanelOpen, setIsPanelOpen] = useState(() => {
     if (panelOpenKey) {
       try {
@@ -278,18 +277,38 @@ export function useReviewState(
       // Quota or private-mode failures are non-fatal for appearance prefs.
     }
   }, [panelOpenKey, isPanelOpen]);
-  const [mode, setMode] = useState<ReviewPanelMode>(() =>
-    getWorkspaceTerminalState(terminalWorkspaceId).showing ? "terminal" : "changes"
-  );
+  const [mode, setMode] = useState<ReviewPanelMode>(() => {
+    if (panelModeKey) {
+      try {
+        const stored = window.localStorage.getItem(panelModeKey);
+        if (stored === "changes" || stored === "files" || stored === "agents" || stored === "browser" || stored === "terminal") {
+          return stored;
+        }
+      } catch {
+        // Appearance preferences are optional when storage is unavailable.
+      }
+    }
+    return getWorkspaceTerminalState(terminalWorkspaceId).showing ? "terminal" : "changes";
+  });
+  useEffect(() => {
+    if (!panelModeKey) return;
+    try {
+      window.localStorage.setItem(panelModeKey, mode);
+    } catch {
+      // Quota or private-mode failures are non-fatal for appearance prefs.
+    }
+  }, [panelModeKey, mode]);
   const [storedScope, setChangesScope] = useState<ReviewChangesScope>(readStoredScope);
   usePersistedSetting(SCOPE_KEY, storedScope);
-  const previousSourceId = useRef<string | null>(null);
+  const previousSourceId = useRef<string | null>(sourceId);
 
   // --- Browser mode -------------------------------------------------------
   // One native browser surface exists, so one panel shows it at a time. This
   // id identifies the panel to the surface-ownership store.
   const panelId = useId();
-  const [browserRequest, setBrowserRequest] = useState<BrowserOpenRequest | null>(null);
+  const [browserRequest, setBrowserRequest] = useState<BrowserOpenRequest | null>(() =>
+    mode === "browser" ? { url: lastBrowsedUrl(), seq: 0 } : null
+  );
   const browserOwner = useSyncExternalStore(subscribeBrowserOwner, getBrowserOwnerId) === panelId;
 
   const openBrowserAt = useCallback(
@@ -333,7 +352,7 @@ export function useReviewState(
     if (!pendingBrowserRequest || pendingBrowserRequest.seq === handledBrowserSeq.current) return;
     handledBrowserSeq.current = pendingBrowserRequest.seq;
     if (!claimsBrowserRequests.current) return;
-    openBrowserAt(pendingBrowserRequest.url);
+    openBrowserAt(pendingBrowserRequest.url, pendingBrowserRequest.tabId);
   }, [openBrowserAt, pendingBrowserRequest]);
 
   // A tab this panel's session opened: show it here, so the user watches the

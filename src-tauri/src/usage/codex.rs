@@ -4,6 +4,7 @@
 //! under `payload.info.last_token_usage`. `total_token_usage` on the same line
 //! is the session running total and summing it would bill every turn again.
 
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::ipc::validation::ProviderId;
@@ -24,7 +25,15 @@ const UNKNOWN_MODEL: &str = "unknown";
 
 /// Turns one Codex rollout (or the tail of one) into usage records.
 pub fn parse_codex_rollout(text: &str, ctx: &TranscriptContext) -> Vec<UsageRecord> {
-    let mut state = RolloutState::new(ctx);
+    parse_codex_rollout_with_state(text, RolloutState::new(ctx)).0
+}
+
+/// Parse a tail while preserving every decision that depends on earlier
+/// lines. The scanner stores the returned state beside the byte cursor.
+pub(crate) fn parse_codex_rollout_with_state(
+    text: &str,
+    mut state: RolloutState,
+) -> (Vec<UsageRecord>, RolloutState) {
     let mut records = Vec::new();
 
     for line in text.lines() {
@@ -78,7 +87,7 @@ pub fn parse_codex_rollout(text: &str, ctx: &TranscriptContext) -> Vec<UsageReco
         });
     }
 
-    records
+    (records, state)
 }
 
 /// `payload.info.last_token_usage` of a `token_count` event, if this row is
@@ -123,7 +132,8 @@ fn tokens_from_signature(signature: UsageSignature) -> UsageRecordTokens {
     }
 }
 
-struct RolloutState {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct RolloutState {
     session_id: String,
     cwd: Option<String>,
     session_model: Option<String>,
@@ -139,7 +149,7 @@ struct RolloutState {
 }
 
 impl RolloutState {
-    fn new(ctx: &TranscriptContext) -> Self {
+    pub(crate) fn new(ctx: &TranscriptContext) -> Self {
         Self {
             session_id: ctx
                 .session_id_hint
@@ -155,6 +165,14 @@ impl RolloutState {
             previous_at_ms: None,
             last_signature: None,
         }
+    }
+
+    pub(crate) fn from_json(value: &str) -> Option<Self> {
+        serde_json::from_str(value).ok()
+    }
+
+    pub(crate) fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
     }
 
     /// Records this line's timestamp and reports whether the line is still

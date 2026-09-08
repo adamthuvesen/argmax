@@ -71,6 +71,22 @@
   width: 16px;
 }
 
+.session-unread-marker {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.session-unread-marker::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 .session-link-text {
   display: grid;
   gap: 2px;

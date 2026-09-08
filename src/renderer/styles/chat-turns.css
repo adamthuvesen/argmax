@@ -274,6 +274,12 @@
   font-size: var(--text-base);
 }
 
+/* Inline thoughts are persistent prose, so use the stronger secondary ink
+   that stays readable on both paper and dark backgrounds. */
+.thought-block[data-display="inline"] .thought-block-body {
+  color: var(--muted-strong);
+}
+
 /* The reasoning renders through `.markdown`, which sets its own near-black
    `--text` color and would otherwise override the muted body color above.
    Inherit it so the thought stream reads as the quieter, lighter-gray
@@ -1245,7 +1251,7 @@ button.tool-call-row-button {
 }
 
 .agent-launch-row-button:focus-visible {
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
 }
 
 /* A running launch uses the shared working nest (styles/working-nest.css); a

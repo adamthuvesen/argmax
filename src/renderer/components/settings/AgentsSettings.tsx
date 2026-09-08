@@ -106,11 +106,11 @@ export function AgentsSettings({
           }
         />
         <SettingRow
-          label="Fast mode for Claude and Codex"
-          description="Launch Claude Code with fast mode and run Codex on the priority service tier."
+          label="Fast mode"
+          description="Request faster responses for supported Codex models, with increased usage. Availability depends on your account."
           control={
             <Toggle
-              ariaLabel="Fast mode for Claude and Codex"
+              ariaLabel="Fast mode"
               checked={fastModeEnabled}
               onChange={onFastModeEnabledChange}
             />
@@ -184,7 +184,7 @@ export function AgentsSettings({
             <Slider
               ariaLabel="Chat detail & verbosity"
               min={1}
-              max={5}
+              max={4}
               value={chatVerbosity}
               valueLabel={CHAT_VERBOSITY_LABELS[chatVerbosity]}
               onChange={(v) => onChatVerbosityChange(v as ChatVerbosity)}

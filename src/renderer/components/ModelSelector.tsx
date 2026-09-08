@@ -14,6 +14,7 @@ import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscap
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { EffortPixelField } from "./EffortPixelField.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
+import { PickerLead } from "./PickerLead.js";
 import {
   LAUNCH_MODEL_RECENCY_KEY,
   readLaunchModelRecency
@@ -36,6 +37,23 @@ const PROVIDER_GROUP_LABEL: Record<ProviderId, string> = {
   opencode: "OpenCode",
   grok: "Grok Build"
 };
+
+/** The header the recently used rows sit under, above the provider groups. */
+const RECENT_GROUP_LABEL = "Recent";
+
+/** A catalog label that names its provider ("Grok 4.6 (Cursor)") repeats the
+ *  group header it sits under; the row drops the suffix, the chip keeps it. */
+function rowLabel(label: string, provider: ProviderId): string {
+  const suffix = ` (${PROVIDER_GROUP_LABEL[provider]})`;
+  return label.endsWith(suffix) ? label.slice(0, -suffix.length) : label;
+}
+
+/** "1M" / "200K": the trailing column of a model row. */
+function contextWindowLabel(provider: ProviderId, modelId: string): string | undefined {
+  const tokens = PROVIDER_MODELS[provider].find((model) => model.modelId === modelId)?.contextWindow;
+  if (!tokens) return undefined;
+  return tokens >= 1_000_000 ? `${Math.round(tokens / 1_000_000)}M` : `${Math.round(tokens / 1000)}K`;
+}
 
 /** Per-provider install/auth state for picker gating. */
 export interface ProviderAvailabilityEntry {
@@ -72,8 +90,16 @@ type ChipModelOption<T> = {
   recencyKey?: string;
   /** Base model label, without any effort suffix. */
   label: string;
+  /** Accessible name when the row shows a shortened label ("GPT-5.6 Sol" under
+   *  the Cursor header): the catalog label, so two providers' same-named
+   *  models stay distinct to assistive tech and to `getByRole`. */
+  fullLabel?: string;
   value: T;
   group?: string;
+  /** Provider behind `group`, for the header's dot. Unset on "Recent". */
+  groupProvider?: ProviderId;
+  /** Trailing column ("1M" context). The annotation takes its place when set. */
+  meta?: string;
   supportsReasoningEffort: boolean;
   /** Provider CLI not installed — row is shown disabled. */
   disabled?: boolean;
@@ -87,27 +113,26 @@ function optionRecencyKey<T>(option: ChipModelOption<T>): string {
   return option.recencyKey ?? option.key;
 }
 
-/** Recently used models first, then the catalog in its original order. */
+/** Recent picks duplicated under a "Recent" header, then the full catalog. */
 function orderOptionsByRecency<T>(options: Array<ChipModelOption<T>>): Array<ChipModelOption<T>> {
   const recency = readLaunchModelRecency();
   if (recency.length === 0) return options;
-  const optionKeys = new Set(options.map(optionRecencyKey));
-  const recentKeys = [...new Set(recency.filter((id) => optionKeys.has(id)))].slice(0, MAX_RECENT_MODELS);
-  const rank = new Map(recentKeys.map((id, index) => [id, index]));
-  const recent: Array<ChipModelOption<T>> = [];
-  const rest: Array<ChipModelOption<T>> = [];
-  for (const option of options) {
-    if (rank.has(optionRecencyKey(option))) recent.push(option);
-    else rest.push(option);
-  }
-  if (recent.length === 0) return options;
-  recent.sort(
-    (left, right) => (rank.get(optionRecencyKey(left)) ?? 0) - (rank.get(optionRecencyKey(right)) ?? 0)
-  );
-  // Drop groups on the recent prefix so mixed providers don't draw a divider
-  // between every row. The first catalog row still has its group, so one
-  // divider separates recent from the rest.
-  return [...recent.map((option) => ({ ...option, group: undefined })), ...rest];
+  const optionByKey = new Map(options.map((option) => [optionRecencyKey(option), option]));
+  const recentKeys = [...new Set(recency.filter((id) => optionByKey.has(id)))].slice(0, MAX_RECENT_MODELS);
+  if (recentKeys.length === 0) return options;
+  // The recent prefix sits under one "Recent" header rather than each row's
+  // provider, so mixed providers don't draw a header between every row.
+  // Catalog rows keep their provider group — a recent model can appear twice.
+  const recent = recentKeys.map((id) => {
+    const option = optionByKey.get(id)!;
+    return {
+      ...option,
+      key: `${option.key}:recent`,
+      group: RECENT_GROUP_LABEL,
+      groupProvider: undefined
+    };
+  });
+  return [...recent, ...options];
 }
 
 export function ModelSelector({
@@ -130,7 +155,9 @@ export function ModelSelector({
   const options: Array<ChipModelOption<ProviderModelSelection>> = PROVIDER_MODELS[provider].map((model) => ({
     key: modelKey(model),
     recencyKey: providerModelKey({ provider, modelId: model.modelId }),
-    label: model.label,
+    label: rowLabel(model.label, provider),
+    fullLabel: model.label,
+    meta: contextWindowLabel(provider, model.modelId),
     supportsReasoningEffort: Boolean(model.supportsReasoningEffort),
     value: {
       label: model.label,
@@ -188,8 +215,11 @@ export function LaunchModelSelector({
 }): JSX.Element {
   const options: Array<ChipModelOption<ModelPickerSelection>> = allModelOptions.map((model) => ({
     key: providerModelKey(model),
-    label: model.label,
+    label: rowLabel(model.label, model.provider),
+    fullLabel: model.label,
     group: PROVIDER_GROUP_LABEL[model.provider],
+    groupProvider: model.provider,
+    meta: contextWindowLabel(model.provider, model.modelId),
     supportsReasoningEffort: model.supportsReasoningEffort,
     ...availabilityAnnotation(availability, model.provider),
     value: {
@@ -631,13 +661,24 @@ function ChipModelPicker<T extends ProviderModelSelection>({
               const previousGroup = index > 0 ? modelFilter.matches[index - 1]?.group : null;
               return (
                 <Fragment key={option.key}>
-                  {option.group && index > 0 && option.group !== previousGroup ? (
-                    <li className="model-picker-divider" role="separator" />
+                  {option.group && option.group !== previousGroup ? (
+                    <li
+                      className="project-picker-group-label"
+                      role="presentation"
+                      data-provider={option.groupProvider}
+                    >
+                      {option.group}
+                    </li>
                   ) : null}
                   <li
                     role="option"
                     aria-selected={selected}
                     aria-disabled={option.disabled || undefined}
+                    // Name-from-content on the option ignores the button's
+                    // aria-label, so the full label goes on both.
+                    aria-label={
+                      option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined
+                    }
                     className="model-picker-row"
                     data-disabled={option.disabled || undefined}
                     data-active={index === modelFilter.activeIndex ? "true" : undefined}
@@ -646,13 +687,23 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                       type="button"
                       className="project-picker-item model-picker-item"
                       aria-pressed={selected}
+                      aria-label={
+                        option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined
+                      }
                       disabled={option.disabled}
                       title={option.disabled ? `${option.label} — provider CLI not installed` : undefined}
                       onClick={() => selectModel(option)}
                     >
+                      <PickerLead selected={selected} />
                       <span className="model-picker-name">{option.label}</span>
                       {option.annotation ? (
-                        <span className="model-picker-annotation">{option.annotation}</span>
+                        <span className="picker-meta" data-tone="warn">
+                          {option.annotation}
+                        </span>
+                      ) : option.meta ? (
+                        <span className="picker-meta" aria-hidden="true">
+                          {option.meta}
+                        </span>
                       ) : null}
                     </button>
                   </li>
@@ -666,7 +717,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
             ) : null}
             {canChangeFastMode ? (
               <>
-                <li className="model-picker-divider" role="separator" />
+                <li className="project-picker-divider" role="separator" />
                 <li role="presentation" className="model-picker-row model-picker-speed-row">
                   <button
                     type="button"
@@ -675,6 +726,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                     aria-expanded={fastModeMenuOpen}
                     onClick={() => setFastModeMenuOpen((menuOpen) => !menuOpen)}
                   >
+                    <PickerLead />
                     <span className="model-picker-name">Speed</span>
                     <ChevronRight size={14} aria-hidden="true" className="model-picker-submenu-caret" />
                   </button>
@@ -700,6 +752,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                   aria-pressed={!fastModeEnabled}
                   onClick={() => setFastMode(false)}
                 >
+                  <PickerLead selected={!fastModeEnabled} />
                   <span>Standard</span>
                 </button>
               </li>
@@ -711,6 +764,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                   title="Faster responses, increased usage"
                   onClick={() => setFastMode(true)}
                 >
+                  <PickerLead selected={fastModeEnabled} />
                   <span>Fast</span>
                 </button>
               </li>

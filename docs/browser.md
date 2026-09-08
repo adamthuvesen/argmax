@@ -2,9 +2,13 @@
 
 Argmax has one native browser and two places that show it.
 
+Web links in rendered file previews use the same browser preference as chat links. A plain click opens the configured destination, and ⌘/Ctrl-click opens the other browser without navigating the app's main view. Links routed to Argmax open a new tab on every click, preserving existing tabs.
+
 **Browser page.** The left rail's Browser item (and ⌘K → Open Browser) fills the workspace with the tab strip and address bar. The session sidebar stays. Click a chat, New chat, or Esc to leave. The page remembers it was showing across a restart (`argmax.browser.pageOpen`). There is no dedicated shortcut; `⌘B` still toggles the right sidebar.
 
 **Review panel.** In a chat, Browser is one of the review-panel modes, beside Changes, Files, Agents, and [Terminal](terminal.md). The session actions menu has an "Open browser" item. This is the sidebar next to a transcript, for watching a session browse.
+
+Each chat remembers the panel's visibility and selected mode across navigation and restarts. Returning to a chat with Browser open restores Browser and claims the native surface again.
 
 Links from chat open in the system browser by default; Settings → General → "Web links from chat" can route them to the in-app browser (⌘-click toggles the alternate target). Both the page and the review-panel tab are shown only where the desktop bridge provides `window.argmax.browser` — the mobile remote has none, so they are hidden there.
 
@@ -16,19 +20,29 @@ Focus still routes new open requests: a chat link or the menu item opens Browser
 
 ## Architecture
 
-- **Renderer UI:** [BrowserPanel.tsx](../src/renderer/components/BrowserPanel.tsx) fills the review panel's body with a tab strip on top and, under it, navigation controls, the address bar with search fallback, and the 1Password autofill button. Tabs share the strip evenly up to a cap and ellipsize past it; only the active one lifts to a ringed pill, matching the Files strip. The strip in [browserPanel.ts](../src/renderer/lib/browserPanel.ts) *mirrors* the app's registry (below) rather than owning it; its `localStorage` copy only remembers URLs across a restart. Browsing history persists separately via [browserHistory.ts](../src/renderer/lib/browserHistory.ts).
+- **Renderer UI:** [BrowserPanel.tsx](../src/renderer/components/BrowserPanel.tsx) fills the review panel's body with a tab strip on top and, under it, navigation controls, the address bar with search fallback, and the 1Password autofill button. Tabs share the strip evenly up to a cap and ellipsize past it; only the active one lifts to a ringed pill, matching the Files strip. Dragging a tab moves it (below). The strip in [browserPanel.ts](../src/renderer/lib/browserPanel.ts) *mirrors* the app's registry (below) rather than owning it; its `localStorage` copy only remembers URLs across a restart. Browsing history persists separately via [browserHistory.ts](../src/renderer/lib/browserHistory.ts).
 - **Native WebViews:** [src-tauri/src/ipc/browser.rs](../src-tauri/src/ipc/browser.rs) creates one child webview per tab (`browser-<tabId>`) on the main window using Tauri's `Window::add_child` API (`unstable` cargo feature).
 - **Positioning:** The renderer measures `.browser-panel-surface` and calls `browser:set-bounds` for the active tab. Inactive tabs are hidden. The review panel's own resizer and side preference need no browser-specific handling — a ResizeObserver on the surface re-glues the webview whenever the panel's width changes.
 
 ## Z-Order and Overlays
 
-Native child webviews render on top of DOM elements. [BrowserPanel.tsx](../src/renderer/components/BrowserPanel.tsx) checks for open `[role="dialog"]` modals intersecting the surface bounds and sets `visible: false` while an overlay covers the panel area.
+Native child webviews render on top of DOM elements. [BrowserPanel.tsx](../src/renderer/components/BrowserPanel.tsx) hides the active webview while the collapsed sidebar peeks, so its navigation buttons receive clicks. It also checks for open `[role="dialog"]` modals intersecting the surface bounds and sets `visible: false` while an overlay covers the panel area. The webview returns when the sidebar and overlapping dialogs are dismissed, preserving the current tab.
 
 ## The Tab Registry
 
 [registry.rs](../src-tauri/src/browser/registry.rs) holds `{ tabId, ownerSessionId, url, title, loading, group }` for every live child webview, in `AppState`. It is the source of truth, because an agent can open a tab with no pane on screen to ask. Every change pushes the whole list as `browser:tabs`, and `applyBrowserTabs` in the renderer folds it into the strip: tabs the app reports are added (and marked live in this run, since their webview already exists), and a tab the registry has reported before and then stops reporting has been closed. A tab the registry has *never* reported is left alone — that is either a URL restored from a previous run or a local tab whose `browser:open` is still in flight.
 
-`ownerSessionId` is set for tabs a session opened and null for the user's own. `group` is a label a session put on a set of related tabs, and only an owned tab can carry one — so the label *replaces* the "agent" badge rather than crowding beside it, since the chip already says the tab is not the user's. Grouping is a per-tab attribute, not a position: `applyBrowserTabs` folds it in without touching the strip's order, which is why there is no reorder verb. An agent addresses tabs by id, so order would only ever be for the human, and adopting the registry's order would move tabs under their cursor. An owned tab shows that badge in the strip, and `browser:agent-open` (`{ sessionId, tabId, url }`) asks the pane showing that session to enter Browser mode on it — the same addressed-request shape the terminal's ⌘J uses, because the pane may not be mounted. Nobody answering is a valid outcome: the tab is still in the strip.
+`ownerSessionId` is set for tabs a session opened and null for the user's own. `group` is a label a session put on a set of related tabs, and only an owned tab can carry one — so the label *replaces* the "agent" badge rather than crowding beside it, since the chip already says the tab is not the user's. Grouping is a per-tab attribute, not a position: `applyBrowserTabs` folds it in without touching the strip's order, which is why there is no reorder verb. The strip's order is the user's — theirs to drag, and never the registry's to adopt, which would move tabs under their cursor. An agent addresses tabs by id, so it has nothing to say about where they sit. An owned tab shows that badge in the strip, and `browser:agent-open` (`{ sessionId, tabId, url }`) asks the pane showing that session to enter Browser mode on it — the same addressed-request shape the terminal's ⌘J uses, because the pane may not be mounted. Nobody answering is a valid outcome: the tab is still in the strip.
+
+## Carrying a Tab
+
+Tabs reorder by drag, in [useBrowserTabDrag.ts](../src/renderer/hooks/useBrowserTabDrag.ts). Pointer events, not HTML5 drag and drop: the strip wants the tab under the cursor from the first pixel and its neighbours sliding out of the way, which a drag image and `dragover` cannot give — and drag and drop is the one input path in this app that wedges after hours of use ([dragLog.ts](../src/renderer/lib/dragLog.ts)), so a reorder that never opens a WebKit drag session is one fewer way to lose the strip.
+
+Nothing reorders until the drop lands. The press measures every tab's slot once, in the strip's *content* coordinates (client x plus `scrollLeft`, so carrying into the edge band can scroll an overflowing strip without moving the geometry out from under the pointer). The carried tab then rides a transform, and the tabs whose middles it has passed slide one slot the other way — the list itself never renumbers under the cursor, so a `browser:tabs` push mid-carry cannot fight the measurement. The landing slot is addressed by the tab it displaces rather than by an index, because that push can add or drop tabs while a carry is in flight.
+
+The drop rides the last stretch into the slot, then commits at the end of that ride — where the list's own layout already puts the tab, so the commit is invisible. Its length is the strip's own `--duration-fast`, read off the element: the CSS transition and the settle cannot drift, and "reduce motion", which zeroes that token, drops the tab into place at once. The transform transition hangs off the strip's `[data-dragging]` rather than off `.browser-tab`, so the render that commits takes the transitions away in the same breath as the transforms — left in the after-change style, every tab would animate from the slot it just left to the layout it is already sitting in.
+
+Order is the user's and it persists: `browserPanel.ts` writes the strip's array to `localStorage`, so a carried tab keeps its place across a restart.
 
 ## Agent Automation
 
@@ -90,8 +104,9 @@ Both are async commands with a deadline. WebKit answers on the main queue and th
 - Enter in the address bar: go to the URL. Reloads when it's already the current page — WKWebView does not navigate to the URL it is already showing.
 - `⌘T`: New tab.
 - `⌘⇧T`: Reopen last closed tab.
-- `⌘R`: Reload (when focused in the browser chrome).
+- `⌘R`: Reload the tab when focused in the page or browser chrome. In development builds, app reload stays available in View → Reload and via `⌘⇧R`.
 - `⌃Tab` / `⌃⇧Tab`: Next / previous tab.
+- `⌥←` / `⌥→` with a tab focused: move that tab one slot, the keyboard's way to reorder.
 - `⌘W`: Closes the active browser tab whenever the browser is mounted. The menu command tries the browser first, then the review panel's file tabs, then the focused pane — `requestCloseActiveBrowserTab()` reports whether a mounted browser consumed it.
 - Mouse thumb buttons: back (button 3) / forward (button 4), both over the browser chrome and inside a page.
 

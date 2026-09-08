@@ -1,7 +1,18 @@
-import { FileText, Folder } from "lucide-react";
+import { FileIcon, FolderIcon } from "@react-symbols/icons/utils";
 import { useEffect, useRef, type JSX, type RefObject } from "react";
-import type { FileAutocompleteState } from "../hooks/useFileAutocomplete.js";
+import type { FileAutocompleteEntry, FileAutocompleteState } from "../hooks/useFileAutocomplete.js";
 import { scrollChildIntoNearest } from "../lib/scrollChildIntoNearest.js";
+import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
+import { PickerLead } from "./PickerLead.js";
+
+/** The row's two halves: the entry's own name, and the folder it sits in. */
+function splitEntryPath(entry: FileAutocompleteEntry): { name: string; folder: string } {
+  const slash = entry.path.lastIndexOf("/");
+  return {
+    name: entry.path.slice(slash + 1),
+    folder: slash < 0 ? "" : entry.path.slice(0, slash)
+  };
+}
 
 export function FilePopover({
   state,
@@ -49,8 +60,8 @@ export function FilePopover({
       onWheel={(event) => event.stopPropagation()}
     >
       {state.filteredEntries.map((entry, index) => {
-        const Icon = entry.kind === "dir" ? Folder : FileText;
-        const display = entry.kind === "dir" ? `${entry.path}/` : entry.path;
+        const { name, folder } = splitEntryPath(entry);
+        const label = entry.kind === "dir" ? `${name}/` : name;
         const key = `${entry.kind}:${entry.path}`;
         return (
           <li
@@ -58,6 +69,10 @@ export function FilePopover({
             ref={index === state.selectionIndex ? selectedOptionRef : undefined}
             role="option"
             aria-selected={index === state.selectionIndex}
+            // The folder is aria-hidden so the row's visible name stays short;
+            // the full path is the accessible name so two `mod.rs` rows differ.
+            aria-label={folder ? `${folder}/${label}` : label}
+            data-kind={entry.kind}
             className={`file-popover-item${index === state.selectionIndex ? " is-selected" : ""}`}
             // Hover highlights the row by moving the shared selection index, so
             // pointer and arrow-key navigation light up the same row. Use
@@ -77,8 +92,25 @@ export function FilePopover({
               inputRef.current?.focus();
             }}
           >
-            <Icon className="file-popover-icon" size={13} aria-hidden="true" />
-            <span className="file-popover-path">{display}</span>
+            <PickerLead>
+              {entry.kind === "dir" ? (
+                <FolderIcon folderName={name} width={14} height={14} />
+              ) : (
+                <FileIcon
+                  fileName={name}
+                  autoAssign
+                  editFileNameData={SPECIAL_FILE_ICONS}
+                  width={14}
+                  height={14}
+                />
+              )}
+            </PickerLead>
+            <span className="file-popover-name">{label}</span>
+            {folder ? (
+              <span className="file-popover-dir" aria-hidden="true">
+                {folder}
+              </span>
+            ) : null}
           </li>
         );
       })}

@@ -15,6 +15,7 @@ use argmax_lib::persistence::{
     projects::{persist_project, PersistProjectInput, ProjectSettings},
     sessions::{find_session_by_id, list_sessions_for_dashboard},
     synced::{list_synced_sessions, mark_synced_session_adopted},
+    workspaces::list_workspaces,
 };
 use argmax_lib::providers::flush_queue::DashboardDelta;
 use argmax_lib::providers::normalizer::{
@@ -368,6 +369,74 @@ fn re_running_sync_neither_duplicates_sessions_nor_events() {
     assert_eq!(second_outcome.extended, 0);
 }
 
+fn assert_failed_import_rolls_back_and_retries(trigger_name: &str, trigger_sql: &str) {
+    let harness = harness();
+    harness.seed_session("sess-retry", "Retry me");
+    {
+        let connection = harness.database.connection();
+        connection
+            .execute_batch(trigger_sql)
+            .expect("install failure trigger");
+    }
+
+    let error = run_sync(
+        &harness.database,
+        &harness.workspaces,
+        &claude_enabled(),
+        harness.home.path(),
+        chrono::Utc::now().timestamp_millis(),
+    )
+    .expect_err("forced import failure");
+    assert!(error.to_string().contains("forced sync failure"));
+    {
+        let connection = harness.database.connection();
+        assert!(list_sessions_for_dashboard(&connection, None, 100)
+            .expect("sessions")
+            .is_empty());
+        assert!(list_synced_sessions(&connection, "claude")
+            .expect("synced sessions")
+            .is_empty());
+        assert!(
+            list_workspaces(&connection, None, 100)
+                .expect("workspaces")
+                .is_empty(),
+            "the workspace created before the transaction must be cleaned up"
+        );
+        connection
+            .execute_batch(&format!("DROP TRIGGER {trigger_name}"))
+            .expect("remove failure trigger");
+    }
+
+    assert_eq!(harness.sync(&claude_enabled()).imported, 1);
+    assert_eq!(harness.sessions().len(), 1);
+    let connection = harness.database.connection();
+    assert_eq!(
+        list_synced_sessions(&connection, "claude")
+            .expect("synced sessions")
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn an_event_failure_leaves_no_partial_import_and_the_next_sweep_retries() {
+    assert_failed_import_rolls_back_and_retries(
+        "fail_sync_event",
+        "CREATE TRIGGER fail_sync_event BEFORE INSERT ON events
+         WHEN NEW.id LIKE 'sync:%'
+         BEGIN SELECT RAISE(ABORT, 'forced sync failure'); END;",
+    );
+}
+
+#[test]
+fn a_bookkeeping_failure_leaves_no_partial_import_and_the_next_sweep_retries() {
+    assert_failed_import_rolls_back_and_retries(
+        "fail_sync_bookkeeping",
+        "CREATE TRIGGER fail_sync_bookkeeping BEFORE INSERT ON synced_sessions
+         BEGIN SELECT RAISE(ABORT, 'forced sync failure'); END;",
+    );
+}
+
 #[test]
 fn a_growing_transcript_extends_the_imported_session() {
     let harness = harness();
@@ -441,6 +510,77 @@ fn a_growing_transcript_extends_the_imported_session() {
             .count(),
         1
     );
+}
+
+#[test]
+fn a_legacy_line_cursor_upgrades_to_bytes_without_changing_event_ids() {
+    use std::io::Write;
+
+    let harness = harness();
+    harness.seed_session("sess-legacy", "Start");
+    assert_eq!(harness.sync(&claude_enabled()).imported, 1);
+    let session_id = harness.sessions()[0].id.clone();
+    {
+        let connection = harness.database.connection();
+        connection
+            .execute(
+                "UPDATE synced_sessions SET byte_cursor = 2, line_cursor = NULL WHERE session_id = ?",
+                [&session_id],
+            )
+            .expect("restore legacy cursor");
+    }
+
+    write_transcript(
+        harness.home.path(),
+        &harness.repo_path,
+        "sess-legacy",
+        &[
+            user_line(
+                &harness.repo_path,
+                "sess-legacy",
+                "2026-08-30T10:00:00.000Z",
+                "Start",
+            ),
+            assistant_line(
+                &harness.repo_path,
+                "sess-legacy",
+                "2026-08-30T10:00:05.000Z",
+                "On it.",
+            ),
+            user_line(
+                &harness.repo_path,
+                "sess-legacy",
+                "2026-08-30T10:05:00.000Z",
+                "Again",
+            ),
+            assistant_line(
+                &harness.repo_path,
+                "sess-legacy",
+                "2026-08-30T10:05:05.000Z",
+                "Legacy answer",
+            ),
+        ],
+    );
+    let path = harness.transcript_path("sess-legacy");
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .expect("open transcript")
+        .write_all(b"\n")
+        .expect("terminate transcript");
+    bump_mtime(&path, 5);
+
+    assert_eq!(harness.sync(&claude_enabled()).extended, 1);
+    let connection = harness.database.connection();
+    let record = &list_synced_sessions(&connection, "claude").expect("synced")[0];
+    assert_eq!(record.byte_cursor, std::fs::metadata(&path).unwrap().len());
+    assert_eq!(record.line_cursor, Some(4));
+    let events = list_session_events_since(&connection, &session_id, None, None)
+        .expect("events")
+        .events;
+    assert!(events.iter().any(|event| {
+        event.id == "sync:claude:sess-legacy:3:0" && event.message.contains("Legacy answer")
+    }));
 }
 
 #[test]
@@ -768,7 +908,13 @@ fn smoke_test_against_the_real_claude_store() {
     let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     for session in discovered.iter().take(20) {
         let mut context = NormalizerSessionContext::for_transcript_replay();
-        for line in argmax_lib::sync::claude::timeline_lines(&session.source_path, 0) {
+        for line in argmax_lib::sync::claude::timeline_lines(
+            &session.source_path,
+            argmax_lib::sync::claude::TranscriptCursor::default(),
+        )
+        .expect("read transcript")
+        .lines
+        {
             let output = ProviderOutputEvent {
                 session_id: "smoke".to_string(),
                 stream: ProviderOutputStream::Stdout,

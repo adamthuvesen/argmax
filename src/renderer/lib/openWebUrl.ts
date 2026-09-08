@@ -15,7 +15,7 @@ export function openWebUrl(url: string, options?: { flip?: boolean }): void {
   }
   const flip = options?.flip === true;
   if ((readStoredLinkTarget() === "argmax") !== flip) {
-    openInBrowserPanel(url);
+    openInBrowserPanel(url, { newTab: true });
     return;
   }
   if (!window.argmax) {

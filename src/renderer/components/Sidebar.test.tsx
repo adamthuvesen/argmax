@@ -9,6 +9,7 @@ import {
   projectSortModeStorageKey,
   sidebarViewModeStorageKey
 } from "../lib/projects.js";
+import { resetSessionUnreadForTests } from "../lib/sessionUnread.js";
 import { Sidebar } from "./Sidebar.js";
 
 const projectSettings = {
@@ -1911,5 +1912,90 @@ describe("Sidebar — Side Chats section", () => {
   it("hides the section entirely without side chats or a launch handler", () => {
     render(<Sidebar {...baseProps} snapshot={snapshot} />);
     expect(screen.queryByText("Side Chats")).toBeNull();
+  });
+});
+
+describe("Sidebar — unread response mark", () => {
+  const earlier = "2026-05-12T15:54:00.000Z";
+  const later = "2026-05-12T16:10:00.000Z";
+  const baseWorkspace = snapshot.workspaces[0];
+  if (!baseWorkspace) throw new Error("snapshot fixture missing workspace");
+
+  const unreadWorkspace = {
+    ...baseWorkspace,
+    id: "workspace-unread",
+    taskLabel: "Background reply",
+    state: "complete" as const,
+    lastActivityAt: earlier,
+    icon: "Brain",
+    iconColor: "violet"
+  };
+
+  const unreadSnapshot = (activityAt: string): DashboardSnapshot => ({
+    ...snapshot,
+    workspaces: [{ ...unreadWorkspace, lastActivityAt: activityAt }],
+    sessions: [
+      {
+        id: "session-unread",
+        workspaceId: "workspace-unread",
+        provider: "codex",
+        modelLabel: "GPT-5.3 Codex",
+        modelId: "gpt-5.5",
+        permissionMode: "auto-approve",
+        agentMode: "auto",
+        providerConversationId: null,
+        state: "complete",
+        attention: "normal",
+        startedAt: earlier,
+        completedAt: activityAt,
+        lastActivityAt: activityAt,
+        prompt: "Do the thing",
+        costUsd: 0,
+        tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextTokens: 0,
+        imported: false,
+        launchKind: "agent"
+      }
+    ]
+  });
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem(bootGroupCollapseSeedKey, "1");
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    resetSessionUnreadForTests();
+  });
+
+  afterEach(() => {
+    cleanup();
+    resetSessionUnreadForTests();
+  });
+
+  it("dots a chat that responded while it was not open, then restores the icon when opened", () => {
+    const { rerender } = render(
+      <Sidebar {...baseProps} snapshot={unreadSnapshot(earlier)} selectedWorkspaceId={null} />
+    );
+
+    const first = screen.getByRole("button", { name: "Background reply" });
+    expect(first.getAttribute("title")).toBe("Background reply — complete");
+    expect(first.querySelector(".session-unread-marker")).toBeNull();
+    expect(first.querySelector(".session-custom-icon")).not.toBeNull();
+
+    rerender(
+      <Sidebar {...baseProps} snapshot={unreadSnapshot(later)} selectedWorkspaceId={null} />
+    );
+    const unread = screen.getByRole("button", { name: "Background reply" });
+    expect(unread.getAttribute("title")).toBe("Background reply — complete — unread response");
+    expect(unread.querySelector(".session-unread-marker")).not.toBeNull();
+    expect(unread.querySelector(".session-custom-icon")).toBeNull();
+
+    rerender(
+      <Sidebar {...baseProps} snapshot={unreadSnapshot(later)} selectedWorkspaceId="workspace-unread" />
+    );
+    const viewed = screen.getByRole("button", { name: "Background reply" });
+    expect(viewed.getAttribute("title")).toBe("Background reply — complete");
+    expect(viewed.querySelector(".session-unread-marker")).toBeNull();
+    expect(viewed.querySelector(".session-custom-icon")).not.toBeNull();
   });
 });

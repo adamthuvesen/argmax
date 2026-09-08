@@ -1,29 +1,12 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
-import type { Question } from "../lib/questions.js";
+import { formatAnswer, pickedLabels, type Question } from "../lib/questions.js";
 export type { Question, QuestionOption } from "../lib/questions.js";
 
 export type QuestionCardProps = {
   questions: Question[];
   onAnswer: (answerMarkdown: string) => void | Promise<boolean>;
 };
-
-function pickedLabels(question: Question, picks: number[]): string[] {
-  return picks
-    .map((index) => question.options[index]?.label)
-    .filter((label): label is string => typeof label === "string" && label.length > 0);
-}
-
-function formatAnswer(questions: Question[], selected: number[][]): string {
-  return questions
-    .map((question, index) => {
-      const labels = pickedLabels(question, selected[index] ?? []);
-      const header = question.header || question.question;
-      const value = labels.length > 0 ? labels.join(", ") : "(no selection)";
-      return `**${header}**: ${value}`;
-    })
-    .join("\n\n");
-}
 
 /// What the answered row says in the scrollback. One question shows the answer
 /// itself, because that is the part worth re-reading; several show a count,

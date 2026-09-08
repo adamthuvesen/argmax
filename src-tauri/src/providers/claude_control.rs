@@ -18,6 +18,7 @@ use crate::{
 };
 use serde_json::{json, Value};
 use std::{
+    collections::VecDeque,
     process::Stdio,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -27,9 +28,60 @@ use std::{
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    sync::{mpsc, watch},
+    sync::{mpsc, oneshot, watch},
     task::JoinSet,
 };
+
+const STEER_ACK_TIMEOUT: Duration = Duration::from_secs(20);
+
+enum UserEcho {
+    Initial,
+    Steer(oneshot::Sender<()>),
+}
+
+struct PendingUserEcho {
+    prompt: String,
+    acknowledgement: UserEcho,
+}
+
+struct WriteRequest {
+    message: Value,
+    user_echo: Option<PendingUserEcho>,
+}
+
+impl WriteRequest {
+    fn control(message: Value) -> Self {
+        Self {
+            message,
+            user_echo: None,
+        }
+    }
+
+    fn user(session_id: &str, prompt: &str, acknowledgement: UserEcho) -> Self {
+        Self {
+            message: user_message(session_id, prompt),
+            user_echo: Some(PendingUserEcho {
+                prompt: prompt.to_string(),
+                acknowledgement,
+            }),
+        }
+    }
+}
+
+fn user_message(session_id: &str, prompt: &str) -> Value {
+    json!({
+        "type": "user",
+        "session_id": session_id,
+        "message": { "role": "user", "content": prompt },
+        "parent_tool_use_id": null,
+    })
+}
+
+fn replayed_user_prompt(message: &Value) -> Option<&str> {
+    (message.get("type").and_then(Value::as_str) == Some("user"))
+        .then(|| message.pointer("/message/content").and_then(Value::as_str))
+        .flatten()
+}
 
 pub async fn launch_turn(
     binary: &str,
@@ -52,6 +104,7 @@ pub async fn launch_turn(
         [
             "--input-format",
             "stream-json",
+            "--replay-user-messages",
             "--permission-prompt-tool",
             "stdio",
         ]
@@ -97,22 +150,40 @@ pub async fn launch_turn(
         .stderr
         .take()
         .ok_or_else(|| io_error("Missing Claude stderr"))?;
-    let (write_tx, mut write_rx) = mpsc::unbounded_channel::<Value>();
+    let pending_user_echoes = Arc::new(tokio::sync::Mutex::new(VecDeque::new()));
+    let writer_pending_user_echoes = Arc::clone(&pending_user_echoes);
+    let (write_tx, mut write_rx) = mpsc::unbounded_channel::<WriteRequest>();
     let writer = tokio::spawn(async move {
-        while let Some(message) = write_rx.recv().await {
-            stdin.write_all(format!("{message}\n").as_bytes()).await?;
+        while let Some(request) = write_rx.recv().await {
+            if let Some(user_echo) = request.user_echo {
+                writer_pending_user_echoes.lock().await.push_back(user_echo);
+            }
+            stdin
+                .write_all(format!("{}\n", request.message).as_bytes())
+                .await?;
             stdin.flush().await?;
         }
         Ok::<(), std::io::Error>(())
     });
-    write_tx.send(json!({"type":"control_request", "request_id":"argmax-initialize", "request":{"subtype":"initialize","hooks":null}})).map_err(io_error)?;
+    write_tx
+        .send(WriteRequest::control(json!({"type":"control_request", "request_id":"argmax-initialize", "request":{"subtype":"initialize","hooks":null}})))
+        .map_err(io_error)?;
     let (cancel, mut cancelled) = watch::channel(false);
     let (done_tx, done) = watch::channel(false);
+    let (ready_tx, ready) = watch::channel(false);
     let disposed = Arc::new(AtomicBool::new(false));
+    let provider_session_id = input
+        .resume_conversation_id
+        .as_deref()
+        .unwrap_or(&input.session_id)
+        .to_string();
     let handle = Arc::new(ControlHandle {
         cancel,
         done,
         disposed: disposed.clone(),
+        writer: write_tx.clone(),
+        ready,
+        provider_session_id: provider_session_id.clone(),
     });
     let input = input.clone();
     tokio::spawn(async move {
@@ -140,13 +211,17 @@ pub async fn launch_turn(
                         Some("control_response") if message.pointer("/response/request_id").and_then(Value::as_str) == Some("argmax-initialize") => {
                             if message.pointer("/response/subtype").and_then(Value::as_str) != Some("success") { emit_event(&emit,&input,ProviderRuntimeEventType::Error,message.to_string(),None);code=1;break; }
                             initialized = true;
-                            let _ = write_tx.send(json!({"type":"user","session_id":input.resume_conversation_id.as_deref().unwrap_or(&input.session_id),"message":{"role":"user","content":input.prompt},"parent_tool_use_id":null}));
+                            let _ = write_tx.send(WriteRequest::user(
+                                &provider_session_id,
+                                &input.prompt,
+                                UserEcho::Initial,
+                            ));
                             emit_event(&emit,&input,ProviderRuntimeEventType::StreamStarted,String::new(),None);
                         }
                         Some("control_request") => {
                             let Some(id) = message.get("request_id").and_then(Value::as_str).map(str::to_string) else { continue; };
                             if message.pointer("/request/subtype").and_then(Value::as_str) != Some("can_use_tool") {
-                                let _ = write_tx.send(json!({"type":"control_response","response":{"subtype":"error","request_id":id,"error":"Unsupported host request"}})); continue;
+                                let _ = write_tx.send(WriteRequest::control(json!({"type":"control_response","response":{"subtype":"error","request_id":id,"error":"Unsupported host request"}}))); continue;
                             }
                             let broker = approvals.clone(); let request_input = input.clone(); let invocation = invocation.clone(); let writer = write_tx.clone(); let request_id = id.clone();
                             let task = requests.spawn(async move {
@@ -156,7 +231,7 @@ pub async fn launch_turn(
                                     &request_input,
                                     message.pointer("/request/tool_name").and_then(Value::as_str),
                                 ) {
-                                    let _ = writer.send(permission_response(&request_id, true, tool_input));
+                                    let _ = writer.send(WriteRequest::control(permission_response(&request_id, true, tool_input)));
                                     return;
                                 }
                                 let allowed = broker.request_native(&request_input.session_id,&invocation,&request_id,&command,&request_input.workspace_path.to_string_lossy(),"claude").await;
@@ -164,7 +239,7 @@ pub async fn launch_turn(
                                     Ok(allowed) => permission_response(&request_id, allowed, tool_input),
                                     Err(error) => json!({"type":"control_response","response":{"subtype":"error","request_id":request_id,"error":error.to_string()}}),
                                 };
-                                let _ = writer.send(response);
+                                let _ = writer.send(WriteRequest::control(response));
                             });
                             request_tasks.insert(id, task);
                         }
@@ -175,8 +250,41 @@ pub async fn launch_turn(
                             }
                         }
                         _ => {
+                            if message.get("type").and_then(Value::as_str) == Some("user") {
+                                let acknowledgement = if let Some(prompt) = replayed_user_prompt(&message) {
+                                    let acknowledgement = {
+                                        let mut pending = pending_user_echoes.lock().await;
+                                        if pending.front().is_some_and(|pending| pending.prompt == prompt) {
+                                            pending.pop_front().map(|pending| pending.acknowledgement)
+                                        } else {
+                                            None
+                                        }
+                                    };
+                                    acknowledgement
+                                } else {
+                                    None
+                                };
+                                match acknowledgement {
+                                    Some(UserEcho::Initial) => {
+                                        let _ = ready_tx.send(true);
+                                        continue;
+                                    }
+                                    Some(UserEcho::Steer(sender)) => {
+                                        let _ = sender.send(());
+                                        continue;
+                                    }
+                                    None => {}
+                                }
+                            }
+                            if message.get("type").and_then(Value::as_str) == Some("result") {
+                                if !pending_user_echoes.lock().await.is_empty() {
+                                    continue;
+                                }
+                                if message.get("is_error").and_then(Value::as_bool) == Some(true) { code=1; }
+                                emit_event(&emit,&input,ProviderRuntimeEventType::Output,format!("{line}\n"),None);
+                                break;
+                            }
                             emit_event(&emit,&input,ProviderRuntimeEventType::Output,format!("{line}\n"),None);
-                            if message.get("type").and_then(Value::as_str) == Some("result") { if message.get("is_error").and_then(Value::as_bool) == Some(true) { code=1; } break; }
                         }
                     }
                 }
@@ -248,15 +356,94 @@ struct ControlHandle {
     cancel: watch::Sender<bool>,
     done: watch::Receiver<bool>,
     disposed: Arc<AtomicBool>,
+    writer: mpsc::UnboundedSender<WriteRequest>,
+    ready: watch::Receiver<bool>,
+    provider_session_id: String,
 }
 impl ProviderRuntimeHandle for ControlHandle {
     fn accepts_input(&self) -> bool {
         false
     }
+    fn supports_steering(&self) -> bool {
+        true
+    }
     fn disposed(&self) -> bool {
         self.disposed.load(Ordering::SeqCst)
     }
     fn send_input(&self, _: &str) {}
+    fn steer<'a>(&'a self, prompt: &'a str) -> BoxFuture<'a, ArgmaxResult<()>> {
+        Box::pin(async move {
+            if self.disposed() || *self.done.borrow() {
+                return Err(ArgmaxError::service(
+                    "STEER_NOT_RUNNING",
+                    "The Claude turn is no longer running",
+                ));
+            }
+
+            let mut ready = self.ready.clone();
+            if !*ready.borrow() {
+                let mut done = self.done.clone();
+                tokio::time::timeout(STEER_ACK_TIMEOUT, async {
+                    tokio::select! {
+                        result = ready.wait_for(|ready| *ready) => result.map(|_| ()),
+                        result = done.wait_for(|done| *done) => result.map(|_| ()),
+                    }
+                })
+                .await
+                .map_err(|_| {
+                    ArgmaxError::service(
+                        "STEER_DELIVERY_UNKNOWN",
+                        "Claude did not acknowledge its initial input before steering",
+                    )
+                })?
+                .map_err(|_| {
+                    ArgmaxError::service(
+                        "STEER_NOT_RUNNING",
+                        "The Claude turn closed before steering",
+                    )
+                })?;
+                if !*ready.borrow() {
+                    return Err(ArgmaxError::service(
+                        "STEER_NOT_RUNNING",
+                        "The Claude turn completed before steering",
+                    ));
+                }
+            }
+
+            let (acknowledgement, delivered) = oneshot::channel();
+            self.writer
+                .send(WriteRequest::user(
+                    &self.provider_session_id,
+                    prompt,
+                    UserEcho::Steer(acknowledgement),
+                ))
+                .map_err(|_| {
+                    ArgmaxError::service(
+                        "STEER_NOT_RUNNING",
+                        "The Claude turn closed before steering could be sent",
+                    )
+                })?;
+
+            let mut done = self.done.clone();
+            tokio::select! {
+                result = tokio::time::timeout(STEER_ACK_TIMEOUT, delivered) => match result {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(_)) => Err(ArgmaxError::service(
+                        "STEER_DELIVERY_UNKNOWN",
+                        "Claude closed before acknowledging the steering message",
+                    )),
+                    Err(_) => Err(ArgmaxError::service(
+                        "STEER_DELIVERY_UNKNOWN",
+                        "Claude did not acknowledge the steering message",
+                    )),
+                },
+                _ = done.wait_for(|done| *done) => Err(ArgmaxError::service(
+                    "STEER_DELIVERY_UNKNOWN",
+                    "Claude completed before acknowledging the steering message",
+                )),
+            }
+        })
+    }
     fn resize(&self, _: u16, _: u16) {}
     fn terminate(&self) -> BoxFuture<'_, ArgmaxResult<()>> {
         Box::pin(async move {
@@ -280,6 +467,7 @@ impl Drop for ControlHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::database::Database;
     fn launch_input(
         permission_mode: PermissionMode,
         agent_mode: super::super::AgentMode,
@@ -333,5 +521,201 @@ mod tests {
             permission_response("request-43", false, json!({}))["response"]["response"]["behavior"],
             "deny"
         );
+    }
+
+    #[test]
+    fn user_messages_have_the_sdk_envelope_and_echo_text_is_recoverable() {
+        let message = user_message("provider-session", "steer-token");
+        assert_eq!(message["type"], "user");
+        assert_eq!(message["session_id"], "provider-session");
+        assert_eq!(message["message"]["role"], "user");
+        assert_eq!(replayed_user_prompt(&message), Some("steer-token"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn fake_stream_json_process_acknowledges_steering_without_ending_the_turn() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        use std::sync::Mutex;
+
+        let temp = tempfile::tempdir().unwrap();
+        let server = temp.path().join("fake-claude");
+        fs::write(
+            &server,
+            r#"#!/bin/sh
+user_count=0
+while IFS= read -r line; do
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"argmax-initialize","response":{}}}'
+      ;;
+    *'"type":"user"'*)
+      user_count=$((user_count + 1))
+      if [ "$user_count" -eq 1 ]; then
+        printf '%s\n' "$line"
+      else
+        printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"original task checkpoint"}'
+        printf '%s\n' "$line"
+        printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-1","content":"tool completed"}]}}'
+        printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"original complete with steer-token"}]}}'
+        printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"original complete with steer-token"}'
+        exit 0
+      fi
+      ;;
+  esac
+done
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let database = Arc::new(Database::open_in_memory().unwrap());
+        let approvals = ApprovalService::new(database);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| {
+            captured.lock().unwrap().push(event);
+        });
+        let mut input = launch_input(
+            PermissionMode::ProviderDefaults,
+            super::super::AgentMode::Auto,
+        );
+        input.workspace_path = temp.path().to_path_buf();
+        input.prompt = "original task".into();
+
+        let handle = launch_turn(server.to_str().unwrap(), &input, None, approvals, callback)
+            .await
+            .unwrap();
+        assert!(handle.supports_steering());
+        handle.steer("steer-token").await.unwrap();
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !handle.disposed() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("fake Claude turn completed");
+
+        let events = events.lock().unwrap();
+        assert!(events
+            .iter()
+            .any(|event| event.message.contains("original complete with steer-token")));
+        assert!(!events
+            .iter()
+            .any(|event| event.message.contains("original task checkpoint")));
+        assert!(events
+            .iter()
+            .any(|event| event.message.contains("\"type\":\"tool_result\"")));
+        assert!(!events.iter().any(|event| {
+            serde_json::from_str::<Value>(&event.message)
+                .ok()
+                .and_then(|message| replayed_user_prompt(&message).map(str::to_string))
+                .is_some_and(|prompt| prompt == "original task" || prompt == "steer-token")
+        }));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.r#type == ProviderRuntimeEventType::Exit)
+                .count(),
+            1
+        );
+        assert_eq!(events.last().and_then(|event| event.exit_code), Some(0));
+    }
+
+    #[ignore = "uses the installed Claude CLI and the developer account"]
+    #[tokio::test]
+    async fn live_claude_turn_consumes_steering_without_cancellation() {
+        use std::sync::Mutex;
+
+        let binary = std::env::var("ARGMAX_LIVE_CLAUDE_BIN")
+            .expect("set ARGMAX_LIVE_CLAUDE_BIN to the installed Claude CLI");
+        let temp = tempfile::tempdir().unwrap();
+        let status = std::process::Command::new("git")
+            .arg("init")
+            .arg("--quiet")
+            .arg(temp.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let original_token = format!("ORIGINAL-{}", uuid::Uuid::new_v4());
+        let steer_token = format!("STEER-{}", uuid::Uuid::new_v4());
+        let database = Arc::new(Database::open_in_memory().unwrap());
+        let approvals = ApprovalService::new(database);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| {
+            captured.lock().unwrap().push(event);
+        });
+        let mut input = launch_input(PermissionMode::AutoApprove, super::super::AgentMode::Auto);
+        input.session_id = uuid::Uuid::new_v4().to_string();
+        input.workspace_path = temp.path().to_path_buf();
+        input.model_label = "Haiku 4.5".into();
+        input.model_id = "claude-haiku-4-5".into();
+        input.prompt = format!(
+            "Use the Bash tool to run sleep 5, then finish the original task by including this exact token in your final response: {original_token}"
+        );
+        let handle = launch_turn(&binary, &input, None, approvals, callback)
+            .await
+            .unwrap();
+        let steer_prompt =
+            format!("Also include this exact token in the same final response: {steer_token}");
+        handle.steer(&steer_prompt).await.unwrap();
+
+        tokio::time::timeout(Duration::from_secs(90), async {
+            loop {
+                if events.lock().unwrap().iter().any(|event| {
+                    matches!(
+                        event.r#type,
+                        ProviderRuntimeEventType::Exit | ProviderRuntimeEventType::Error
+                    )
+                }) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("live Claude steering probe completed");
+
+        let events = events.lock().unwrap();
+        let output = events
+            .iter()
+            .map(|event| event.message.as_str())
+            .collect::<String>();
+        assert!(
+            output.contains(&original_token),
+            "missing original token: {output}"
+        );
+        assert!(
+            output.contains(&steer_token),
+            "missing steering token: {output}"
+        );
+        assert!(!events.iter().any(|event| {
+            serde_json::from_str::<Value>(&event.message)
+                .ok()
+                .and_then(|message| replayed_user_prompt(&message).map(str::to_string))
+                .is_some_and(|prompt| prompt == input.prompt || prompt == steer_prompt)
+        }));
+        assert!(events.iter().any(|event| {
+            serde_json::from_str::<Value>(&event.message)
+                .ok()
+                .and_then(|message| {
+                    message
+                        .pointer("/message/content")
+                        .and_then(Value::as_array)
+                        .map(|content| {
+                            content.iter().any(|block| {
+                                block.get("type").and_then(Value::as_str) == Some("tool_result")
+                            })
+                        })
+                })
+                == Some(true)
+        }));
+        assert!(events.iter().any(|event| {
+            event.r#type == ProviderRuntimeEventType::Exit && event.exit_code == Some(0)
+        }));
     }
 }

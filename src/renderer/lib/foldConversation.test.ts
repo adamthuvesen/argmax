@@ -113,6 +113,58 @@ describe("foldRenderItems", () => {
     expect(cappedTurn?.id).toBe(firstTurn?.id);
   });
 
+  it("keeps active tool progress in its stable turn when steering adds guidance", () => {
+    const user: ConversationItem = {
+      kind: "message",
+      event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Implement it")
+    };
+    const reading = {
+      ...tool("read", "Read", "2026-05-12T15:00:02.000Z"),
+      status: "running" as const,
+      completedAt: null
+    };
+    const beforeSteer = foldRenderItems(
+      foldConversationItems(
+        [user.event, event("intro", "message.delta", "2026-05-12T15:00:01.000Z", "Reading first")],
+        [reading]
+      ),
+      null
+    );
+    const afterSteer = foldRenderItems(
+      foldConversationItems(
+        [
+          user.event,
+          event("intro", "message.delta", "2026-05-12T15:00:01.000Z", "Reading first"),
+          event("steer", "user.message", "2026-05-12T15:00:03.000Z", "Use the existing helper", {
+            delivery: "steer"
+          }),
+          event("answer", "message.delta", "2026-05-12T15:00:04.000Z", "Got it")
+        ],
+        [reading]
+      ),
+      null
+    );
+
+    const turnBeforeSteer = beforeSteer.find((item) => item.kind === "turn");
+    const turnsAfterSteer = afterSteer.filter((item) => item.kind === "turn");
+    expect(afterSteer.map((item) => item.kind)).toEqual([
+      "user-message",
+      "turn",
+      "user-message",
+      "turn"
+    ]);
+    expect(turnsAfterSteer[0]?.id).toBe(turnBeforeSteer?.id);
+    expect(topLevelToolIds(turnsAfterSteer[0])).toEqual(["read"]);
+    expect(turnsAfterSteer[0]?.kind === "turn" ? turnsAfterSteer[0].toolItems[0]?.tool.status : null)
+      .toBe("running");
+    expect(
+      afterSteer.find(
+        (item) => item.kind === "user-message" && item.event.id === "steer"
+      )?.kind
+    ).toBe("user-message");
+    expect(turnsAfterSteer[1]?.id).toBe("turn-after-steer-steer");
+  });
+
   it("collapses a compaction bracket into one seam that ends the turn", () => {
     const items: ConversationItem[] = [
       { kind: "message", event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Go") },

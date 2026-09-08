@@ -50,16 +50,10 @@ export function modelKey(model: Pick<ProviderModelSelection, "modelId">): string
   return model.modelId;
 }
 
-// Cursor serves a faster variant of each model as a `-fast` id suffix — every
-// fixed Cursor model has one except Gemini 3.8 Flash. Auto routing has none. Claude
-// and Codex fast mode is provider-wide (a settings flag / priority tier), not
-// tied to the model. OpenCode has no fast tier at all. Kept in sync with the
-// Rust cursor adapter's -fast mapping.
+// Eligibility includes the active chat transport. Cursor's legacy CLI suffix
+// does not give its ACP chats a speed control. Unknown models default to off.
 export function modelSupportsFastMode(model: Pick<ModelPickerSelection, "provider" | "modelId">): boolean {
-  if (model.provider === "opencode") return false;
-  if (model.provider !== "cursor") return true;
-  // Gemini 3.8 Flash and Auto routing have no `-fast` Cursor variant.
-  return !model.modelId.startsWith("gemini-3.8-flash") && !model.modelId.startsWith("auto-smart[");
+  return PROVIDER_MODELS[model.provider].find((option) => option.modelId === model.modelId)?.supportsFastMode === true;
 }
 
 const EFFORT_LABELS: Record<ReasoningEffort, string> = {

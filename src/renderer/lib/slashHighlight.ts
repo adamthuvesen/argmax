@@ -1,16 +1,3 @@
-/**
- * Detect a leading slash command at the very start of the composer input.
- *
- * Returns the command name (without the slash) when the input opens with a
- * `/<token>` shape — `token` being the unbroken run right after the slash,
- * any arguments after the first space ignored. Returns null otherwise (no
- * slash, a space before the token, or a bare `/`).
- *
- * The caller decides whether the name maps to a real skill; this only finds
- * the candidate so the composer can tint it. Extracted as a pure function so
- * the boundary cases are unit-tested without driving the DOM overlay.
- */
-
 export type SkillHighlightSegment = { text: string; skill: boolean };
 
 /**
@@ -45,20 +32,4 @@ export function splitSkillTokens(
   if (!found) return null;
   if (cursor < input.length) segments.push({ text: input.slice(cursor), skill: false });
   return segments;
-}
-
-/**
- * Split a sent message into a leading skill invocation and the remaining
- * text, for transcript rendering. Stricter than a bare leading-slash match: the
- * token must have skill-name shape (word characters and dashes, one optional
- * `:` scope separator) so absolute paths like `/Users/...` and stray slashes
- * never render as a skill chip. The transcript has no skills list to check
- * against — the shape test is the whole guard.
- */
-export function leadingSkillInvocation(
-  message: string
-): { name: string; rest: string } | null {
-  const match = /^\/([\w-]+(?::[\w-]+)?)(?=\s|$)/.exec(message);
-  if (!match?.[1]) return null;
-  return { name: match[1], rest: message.slice(match[0].length).trimStart() };
 }

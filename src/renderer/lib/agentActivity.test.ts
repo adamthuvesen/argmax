@@ -455,6 +455,96 @@ describe("buildAgentActivity", () => {
     expect(childB.finalOutput).toBe("Child B result");
   });
 
+  it("keeps lifecycle-reported models scoped to each persistent run", () => {
+    const events = [
+      event("initial-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-root",
+        agentRunId: "task-root", agentModelId: "claude-opus-5", agentReasoningEffort: "high"
+      }),
+      event("continued-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
+        providerInvocationId: "invocation-b", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-native", agentRootToolUseId: "task-root",
+        agentRunId: "send-2", agentModelId: "claude-sonnet-5", agentReasoningEffort: "medium"
+      })
+    ];
+
+    const initial = buildAgentActivity({
+      parentToolUseId: "task-root", agentRunId: "task-root", providerInvocationId: "invocation-a",
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-native" },
+      events, sessionRunning: false, provider: "claude"
+    });
+    const continued = buildAgentActivity({
+      parentToolUseId: "task-root", agentRunId: "send-2", providerInvocationId: "invocation-b",
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-native" },
+      events, sessionRunning: false, provider: "claude"
+    });
+
+    expect(initial.model).toEqual({ label: "Opus 5", effort: "High" });
+    expect(continued.model).toEqual({ label: "Sonnet 5", effort: "Medium" });
+  });
+
+  it("chooses the newest matching model regardless of event storage order", () => {
+    const older = event("older", "message.completed", "2026-05-12T15:00:01.000Z", "Starting", {
+      parent_tool_use_id: "task-root", agentRunId: "task-root",
+      agentModelId: "claude-opus-5", agentReasoningEffort: "high"
+    });
+    const newer = event("newer", "message.completed", "2026-05-12T15:00:02.000Z", "Continuing", {
+      parent_tool_use_id: "task-root", agentRunId: "task-root",
+      agentModelId: "claude-sonnet-5", agentReasoningEffort: "medium"
+    });
+    const modelFor = (events: TimelineEvent[]) => buildAgentActivity({
+      parentToolUseId: "task-root", agentRunId: "task-root", events,
+      sessionRunning: false, provider: "claude"
+    }).model;
+
+    expect(modelFor([newer, older])).toEqual({ label: "Sonnet 5", effort: "Medium" });
+    expect(modelFor([older, newer])).toEqual({ label: "Sonnet 5", effort: "Medium" });
+
+    const equalCursorOlder = { ...older, rowCursor: 0 };
+    const equalCursorNewer = { ...newer, rowCursor: 0 };
+    expect(modelFor([equalCursorNewer, equalCursorOlder])).toEqual({ label: "Sonnet 5", effort: "Medium" });
+    expect(modelFor([equalCursorOlder, equalCursorNewer])).toEqual({ label: "Sonnet 5", effort: "Medium" });
+
+    const sameTimeOlder = { ...older, createdAt: newer.createdAt, rowCursor: 10 };
+    const sameTimeNewer = { ...newer, rowCursor: 11 };
+    expect(modelFor([sameTimeNewer, sameTimeOlder])).toEqual({ label: "Sonnet 5", effort: "Medium" });
+    expect(modelFor([sameTimeOlder, sameTimeNewer])).toEqual({ label: "Sonnet 5", effort: "Medium" });
+  });
+
+  it("keeps tool-reported models scoped to native children sharing a raw root", () => {
+    const events = [
+      event("a-tool", "command.started", "2026-05-12T15:00:02.000Z", "Read", {
+        id: "a-read", name: "Read", parent_tool_use_id: "task-reused",
+        providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-a", agentRunId: "task-reused",
+        agentModelId: "claude-opus-5", agentReasoningEffort: "high",
+        input: { file_path: "a.ts" }
+      }),
+      event("b-tool", "command.started", "2026-05-12T15:01:02.000Z", "Read", {
+        id: "b-read", name: "Read", parent_tool_use_id: "task-reused",
+        providerInvocationId: "invocation-b", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-b", agentRunId: "task-reused",
+        agentModelId: "claude-sonnet-5", agentReasoningEffort: "medium",
+        input: { file_path: "b.ts" }
+      })
+    ];
+
+    const childA = buildAgentActivity({
+      parentToolUseId: "task-reused", agentRunId: "task-reused", providerInvocationId: "invocation-a",
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-a" },
+      events, sessionRunning: false, provider: "claude"
+    });
+    const childB = buildAgentActivity({
+      parentToolUseId: "task-reused", agentRunId: "task-reused", providerInvocationId: "invocation-b",
+      nativeIdentity: { providerParentConversationId: "parent-native", providerChildSessionId: "child-b" },
+      events, sessionRunning: false, provider: "claude"
+    });
+
+    expect(childA.model).toEqual({ label: "Opus 5", effort: "High" });
+    expect(childB.model).toEqual({ label: "Sonnet 5", effort: "Medium" });
+  });
+
   it("marks an unfinished native child interrupted when its parent failed", () => {
     const activity = buildAgentActivity({
       parentToolUseId: "task-root",

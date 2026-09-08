@@ -22,43 +22,49 @@ export interface AgentTabs extends AgentTabsState {
 }
 
 export function useAgentTabs(): AgentTabs {
-  const [tabIds, setTabIds] = useState<string[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [{ tabIds, activeTabId }, setTabs] = useState<Pick<AgentTabsState, "tabIds" | "activeTabId">>({
+    tabIds: [],
+    activeTabId: null
+  });
 
   const openTab = useCallback((tabId: string): void => {
-    setTabIds((current) => (current.includes(tabId) ? current : [...current, tabId]));
-    setActiveTabId(tabId);
+    setTabs((current) => ({
+      tabIds: current.tabIds.includes(tabId) ? current.tabIds : [...current.tabIds, tabId],
+      activeTabId: tabId
+    }));
   }, []);
 
   const selectTab = useCallback((tabId: string): void => {
-    setActiveTabId((current) => (current === tabId ? current : tabId));
+    setTabs((current) => current.activeTabId === tabId ? current : { ...current, activeTabId: tabId });
   }, []);
 
   // Closing the active tab activates the right neighbour, else the left — the
   // rule the file tabs beside it already follow.
-  const closeTab = useCallback(
-    (tabId: string): void => {
-      const index = tabIds.indexOf(tabId);
-      if (index === -1) return;
-      const remaining = tabIds.filter((openId) => openId !== tabId);
-      setTabIds(remaining);
-      if (activeTabId === tabId) {
-        setActiveTabId(remaining[index] ?? remaining[index - 1] ?? null);
-      }
-    },
-    [activeTabId, tabIds]
-  );
+  const closeTab = useCallback((tabId: string): void => {
+    setTabs((current) => {
+      const index = current.tabIds.indexOf(tabId);
+      if (index === -1) return current;
+      const remaining = current.tabIds.filter((openId) => openId !== tabId);
+      return {
+        tabIds: remaining,
+        activeTabId: current.activeTabId === tabId
+          ? remaining[index] ?? remaining[index - 1] ?? null
+          : current.activeTabId
+      };
+    });
+  }, []);
 
   const resetForSourceChange = useCallback((): void => {
-    setTabIds([]);
-    setActiveTabId(null);
+    setTabs({ tabIds: [], activeTabId: null });
   }, []);
 
   const replaceTab = useCallback((fromTabId: string, toTabId: string): void => {
     if (fromTabId === toTabId) return;
-    setTabIds((current) => current.map((id) => id === fromTabId ? toTabId : id)
-      .filter((id, index, all) => all.indexOf(id) === index));
-    setActiveTabId((current) => current === fromTabId ? toTabId : current);
+    setTabs((current) => ({
+      tabIds: current.tabIds.map((id) => id === fromTabId ? toTabId : id)
+        .filter((id, index, all) => all.indexOf(id) === index),
+      activeTabId: current.activeTabId === fromTabId ? toTabId : current.activeTabId
+    }));
   }, []);
 
   return { tabIds, activeTabId, openTab, selectTab, closeTab, replaceTab, resetForSourceChange };

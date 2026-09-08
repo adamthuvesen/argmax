@@ -223,6 +223,42 @@ describe("AgentActivity", () => {
     }
   });
 
+  it("shows a running agent load failure and clears it after a successful retry", async () => {
+    vi.useFakeTimers();
+    const onLoadAgentEvents = vi.fn()
+      .mockRejectedValueOnce(new Error("trace unavailable"))
+      .mockResolvedValue(undefined);
+
+    render(
+      <AgentActivity
+        events={[
+          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+            id: "task-1",
+            name: "Task",
+            input: { description: "Explore repo", prompt: "Map the repo." }
+          })
+        ]}
+        onLoadAgentEvents={onLoadAgentEvents}
+        parentSession={session}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Agent activity could not be loaded");
+
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+    });
+    expect(onLoadAgentEvents).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("article", { name: "Thinking" })).toBeInTheDocument();
+  });
+
   it("folds a run into collapsed group headers, the same shape as the chat", () => {
     render(
       <AgentActivity
@@ -258,7 +294,7 @@ describe("AgentActivity", () => {
     expect(within(pane).queryByText("Command")).toBeNull();
   });
 
-  it("expands every group and thought from the run's own chip", () => {
+  it.each(["collapsed", "inline"] as const)("folds tools independently of %s thoughts from the run's chip", (thinkingDisplay) => {
     render(
       <AgentActivity
         events={[
@@ -285,6 +321,7 @@ describe("AgentActivity", () => {
         parentSession={{ ...session, state: "complete" }}
         parentToolUseId="task-1"
         workspace={workspace}
+        thinkingDisplay={thinkingDisplay}
       />
     );
 
@@ -293,6 +330,12 @@ describe("AgentActivity", () => {
     expect(chip).toHaveAttribute("aria-expanded", "false");
     expect(within(pane).getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
     expect(within(pane).queryByText("clean")).toBeNull();
+    if (thinkingDisplay === "inline") {
+      expect(within(pane).getByText("Weighing options.")).toBeInTheDocument();
+      expect(within(pane).queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
+    } else {
+      expect(within(pane).queryByText("Weighing options.")).toBeNull();
+    }
 
     fireEvent.click(chip);
 
@@ -304,7 +347,11 @@ describe("AgentActivity", () => {
 
     expect(within(pane).getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
     expect(within(pane).queryByText("clean")).toBeNull();
-    expect(within(pane).queryByText("Weighing options.")).toBeNull();
+    if (thinkingDisplay === "inline") {
+      expect(within(pane).getByText("Weighing options.")).toBeInTheDocument();
+    } else {
+      expect(within(pane).queryByText("Weighing options.")).toBeNull();
+    }
   });
 
   it("keeps prose and nested agent launches between regular tool runs", () => {

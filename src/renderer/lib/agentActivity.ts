@@ -93,18 +93,44 @@ function effortText(raw: string): string {
 /** The model and effort the child's own rows were produced by, newest first. */
 function reportedRunModel(
   events: readonly TimelineEvent[],
-  parentToolUseId: string
+  parentToolUseId: string,
+  agentRunId: string | null,
+  providerInvocationId: string | null,
+  nativeIdentity: NativeAgentIdentity | null
 ): { modelId: string; effort: string | null } | null {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    if (!event) continue;
+  let newest: { modelId: string; effort: string | null; createdAt: string; rowCursor: number | null } | null = null;
+  for (const event of events) {
     const decoded = decodeTimelineEvent(event);
-    if (decoded.parentToolUseId !== parentToolUseId) continue;
+    const belongsToAgent = decoded.parentToolUseId === parentToolUseId ||
+      (decoded.kind === "agent" && decoded.agentRootToolUseId === parentToolUseId) ||
+      (decoded.kind === "tool" && decoded.toolUseId === parentToolUseId);
+    if (!belongsToAgent ||
+      (nativeIdentity && (
+        decoded.providerParentConversationId !== nativeIdentity.providerParentConversationId ||
+        decoded.providerChildSessionId !== nativeIdentity.providerChildSessionId
+      )) ||
+      (agentRunId && decoded.agentRunId !== agentRunId) ||
+      (providerInvocationId && decoded.providerInvocationId !== providerInvocationId)) continue;
     const modelId = decoded.agentModelId;
     if (!modelId) continue;
-    return { modelId, effort: decoded.agentReasoningEffort };
+    const candidate = {
+      modelId,
+      effort: decoded.agentReasoningEffort,
+      createdAt: event.createdAt,
+      rowCursor: typeof event.rowCursor === "number" ? event.rowCursor : null
+    };
+    if (newest === null) {
+      newest = candidate;
+      continue;
+    }
+    const cursorIsNewer = newest.rowCursor !== null && candidate.rowCursor !== null &&
+      candidate.rowCursor > newest.rowCursor;
+    const timeIsNewer = (newest.rowCursor === null || candidate.rowCursor === null ||
+      newest.rowCursor === candidate.rowCursor) &&
+      candidate.createdAt > newest.createdAt;
+    if (cursorIsNewer || timeIsNewer) newest = candidate;
   }
-  return null;
+  return newest ? { modelId: newest.modelId, effort: newest.effort } : null;
 }
 
 /**
@@ -121,9 +147,18 @@ function agentModel(
   events: readonly TimelineEvent[],
   parentToolUseId: string,
   parentTool: ToolCall | null,
+  agentRunId: string | null,
+  providerInvocationId: string | null,
+  nativeIdentity: NativeAgentIdentity | null,
   provider: ProviderId | undefined
 ): AgentModel | null {
-  const reported = reportedRunModel(events, parentToolUseId);
+  const reported = reportedRunModel(
+    events,
+    parentToolUseId,
+    agentRunId,
+    providerInvocationId,
+    nativeIdentity
+  );
   const requested = parentTool ? nonBlankText(parentTool.inputFull.model) : null;
   const reference = reported?.modelId ?? requested;
   if (!reference) return null;
@@ -269,7 +304,15 @@ export function buildAgentActivity(params: {
     title: activityTitle(parentTool, parentToolUseId),
     prompt,
     subagentType,
-    model: agentModel(events, parentToolUseId, parentTool, provider),
+    model: agentModel(
+      events,
+      parentToolUseId,
+      parentTool,
+      agentRunId,
+      providerInvocationId,
+      nativeIdentity,
+      provider
+    ),
     status,
     items,
     finalOutput,

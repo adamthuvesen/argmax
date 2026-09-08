@@ -244,6 +244,32 @@ describe("ModelSelector type to filter", () => {
     const reopened = screen.getByRole("listbox", { name: "Chat model" });
     expect(within(reopened).getAllByRole("option")).toHaveLength(4);
   });
+
+  it("does not duplicate recent catalog twins when filtering", () => {
+    window.localStorage.setItem(LAUNCH_MODEL_RECENCY_KEY, JSON.stringify(["cursor:composer-2.5"]));
+    const value: ModelPickerSelection = {
+      provider: "claude",
+      label: "Opus 5",
+      modelId: "claude-opus-5",
+      reasoningEffort: "medium"
+    };
+    render(<LaunchModelSelector ariaLabel="Launch model" value={value} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+    const list = screen.getByRole("listbox", { name: "Launch model" });
+
+    fireEvent.keyDown(list, { key: "c" });
+    fireEvent.keyDown(list, { key: "o" });
+    fireEvent.keyDown(list, { key: "m" });
+    fireEvent.keyDown(list, { key: "p" });
+    fireEvent.keyDown(list, { key: "o" });
+    fireEvent.keyDown(list, { key: "s" });
+    fireEvent.keyDown(list, { key: "e" });
+    fireEvent.keyDown(list, { key: "r" });
+
+    expect(within(list).getByText(/^2 of \d+$/)).toBeInTheDocument();
+    expect(within(list).getAllByRole("option")).toHaveLength(2);
+    expect(within(list).getAllByText("Composer 2.5")).toHaveLength(2);
+  });
 });
 
 describe("LaunchModelSelector — all providers", () => {

@@ -625,7 +625,7 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Chat model" }));
     const modelPopover = await screen.findByRole("listbox", { name: "Chat model" });
     // GPT-5.6 Sol is effort-capable; selecting it seeds the default Medium effort.
-    fireEvent.click(within(modelPopover).getByText("GPT-5.6 Sol"));
+    fireEvent.click(within(modelPopover).getByRole("button", { name: "GPT-5.6 Sol" }));
     fireEvent.change(await screen.findByLabelText("Chat prompt"), {
       target: { value: "use the stronger model" }
     });

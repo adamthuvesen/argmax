@@ -1,7 +1,6 @@
 import {
   Activity,
   ChartNoAxesColumn,
-  Check,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -34,6 +33,7 @@ import type { DashboardSnapshot, DetectedIde, IdeId, ProjectSummary } from "../.
 import { SCRATCH_PROJECT_ID } from "../../shared/types.js";
 import { APP_VERSION_LABEL } from "../../shared/appVersion.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { PickerLead } from "./PickerLead.js";
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import {
   groupWorkspacesByDate,
@@ -73,6 +73,7 @@ import { setSidebarPeek, useSidebarChrome } from "../state/sidebarChrome.js";
 import { beginWorkspaceDrag, endWorkspaceDrag } from "../state/workspaceDrag.js";
 import { computePriorityEntries, nextPriorityIdleAt, workingWorkspaceIds } from "../lib/priority.js";
 import { formatSessionIds } from "../lib/sessionIds.js";
+import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
@@ -474,6 +475,11 @@ export function Sidebar({
         (workspace) => workspace.kind !== "popup" && !hiddenMultitasks.has(workspace.id)
       ),
     [hiddenMultitasks, snapshot.workspaces]
+  );
+  const unreadWorkspaces = useUnreadWorkspaceIds(
+    sidebarWorkspaces,
+    selectedWorkspaceId,
+    workingWorkspaces
   );
 
   // Side chats live in their own bottom section and are conversational by
@@ -897,7 +903,7 @@ export function Sidebar({
             role="menu"
             aria-label="Sidebar view options"
           >
-            <li className="rail-sort-group-label" role="presentation">
+            <li className="project-picker-group-label" role="presentation">
               Group by
             </li>
             {VIEW_MODE_OPTIONS.map((option) => {
@@ -912,9 +918,7 @@ export function Sidebar({
                     title={option.description}
                     onClick={() => handleSelectViewMode(option.value)}
                   >
-                    <span className="rail-sort-check" aria-hidden="true">
-                      {isActive ? <Check size={14} /> : null}
-                    </span>
+                    <PickerLead selected={isActive} />
                     {option.label}
                   </button>
                 </li>
@@ -922,8 +926,8 @@ export function Sidebar({
             })}
             {viewMode === "projects" ? (
               <>
-                <li className="rail-sort-divider" role="separator" />
-                <li className="rail-sort-group-label" role="presentation">
+                <li className="project-picker-divider" role="separator" />
+                <li className="project-picker-group-label" role="presentation">
                   Sort projects
                 </li>
                 {SORT_MODE_OPTIONS.map((option) => {
@@ -938,9 +942,7 @@ export function Sidebar({
                         title={option.description}
                         onClick={() => handleSelectSortMode(option.value)}
                       >
-                        <span className="rail-sort-check" aria-hidden="true">
-                          {isActive ? <Check size={14} /> : null}
-                        </span>
+                        <PickerLead selected={isActive} />
                         {option.label}
                       </button>
                     </li>

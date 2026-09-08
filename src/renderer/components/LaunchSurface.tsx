@@ -71,6 +71,8 @@ import {
 } from "../lib/workspaceMode.js";
 import { ComposerPixelField } from "./ComposerPixelField.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
+import { PickerLead } from "./PickerLead.js";
+import { collapseHome } from "../lib/pathDisplay.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
 import { Mascot, type MascotMood } from "./Mascot.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
@@ -98,6 +100,13 @@ const PROMPT_MAX_HEIGHT_PX = 168;
 const DOZE_AFTER_MS = 90_000;
 const PET_STREAK_GAP_MS = 3_000;
 const PETS_FOR_SHADES = 10;
+
+/** The folder a repository sits in ("~/dev/menti"): the project row's trailing
+ *  column, so two checkouts of the same repository read apart. */
+function parentFolderLabel(repoPath: string): string {
+  const parent = collapseHome(repoPath).replace(/\/+$/, "").replace(/\/[^/]*$/, "");
+  return parent || "/";
+}
 
 function isOptionButtonTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("button.project-picker-item") !== null;
@@ -403,8 +412,7 @@ export function LaunchSurface({
     if (!window.argmax || !activeProject) return;
     try {
       const list = await window.argmax.projects.listBranches(activeProject.id);
-      const otherBranches = list.filter((branch) => branch !== activeProject.currentBranch);
-      setBranches(otherBranches);
+      setBranches(list);
       setBranchPickerOpen(true);
     } catch (error) {
       setBranchPickerOpen(false);
@@ -416,6 +424,7 @@ export function LaunchSurface({
     if (!window.argmax || !activeProject) return;
     setBranchPickerOpen(false);
     setCompactContextOpen(false);
+    if (branch === activeProject.currentBranch) return;
     try {
       const updated = await window.argmax.projects.switchBranch(activeProject.id, branch);
       onBranchSwitch(updated);
@@ -817,7 +826,7 @@ export function LaunchSurface({
             <div className="composer-highlight-backdrop" aria-hidden="true" ref={highlightBackdropRef}>
               {skillHighlight.map((segment, index) =>
                 segment.skill ? (
-                  <span key={index} className="composer-skill-token">
+                  <span key={index} className="skill-token">
                     {segment.text}
                   </span>
                 ) : (
@@ -957,8 +966,13 @@ export function LaunchSurface({
                       aria-pressed={p.id === project?.id}
                       onClick={() => pickProject(p)}
                     >
-                      <Folder size={13} aria-hidden="true" />
-                      {p.name}
+                      <PickerLead selected={p.id === project?.id}>
+                        <Folder size={13} />
+                      </PickerLead>
+                      <span className="picker-label">{p.name}</span>
+                      <span className="picker-meta" aria-hidden="true">
+                        {parentFolderLabel(p.repoPath)}
+                      </span>
                     </button>
                   </li>
                 ))}
@@ -978,7 +992,9 @@ export function LaunchSurface({
                       setCompactContextOpen(false);
                     }}
                   >
-                    <Plus size={13} aria-hidden="true" />
+                    <PickerLead>
+                      <Plus size={13} />
+                    </PickerLead>
                     Browse folder…
                   </button>
                 </li>
@@ -1034,15 +1050,17 @@ export function LaunchSurface({
                         aria-pressed={b === project.currentBranch}
                         onClick={() => void switchBranch(b)}
                       >
-                        <GitBranch size={13} aria-hidden="true" />
-                        {b}
+                        <PickerLead selected={b === project.currentBranch}>
+                          <GitBranch size={13} />
+                        </PickerLead>
+                        <span className="picker-label">{b}</span>
                       </button>
                     </li>
                   ))
                 ) : (
                   <li role="option" aria-selected={false} aria-disabled="true">
                     <button type="button" className="project-picker-item" disabled>
-                      {branchFilter.query ? "No branches match" : "No other branches"}
+                      {branchFilter.query ? "No branches match" : "No branches"}
                     </button>
                   </li>
                 )}

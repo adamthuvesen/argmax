@@ -520,35 +520,40 @@ button.composer-compact-context-row:hover,
   background: rgba(31, 28, 24, 0.92);
 }
 
-/* Transcript excerpts attached via the selection toolbar. Text chips, unlike
-   the square image thumbnails above: one line of the quoted excerpt with an
-   inline remove control. */
+/* Attached context sits quietly inside the composer, with enough of each
+   excerpt visible to recognize it before sending. */
 .composer-annotations {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1_5);
-  padding: var(--space-1) var(--space-1_5) 0;
+  padding: var(--space-1) var(--space-2) 0;
 }
 
 .composer-annotation-chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1_5);
-  max-width: 320px;
-  padding: 3px 6px 3px 8px;
-  border: 1px solid var(--line);
-  border-left: 2px solid var(--accent);
-  border-radius: var(--radius-sm);
-  background: var(--panel-soft);
+  gap: var(--space-2);
+  max-width: min(420px, 100%);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2_5);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklab, var(--text) 5%, var(--composer-surface));
   color: var(--text-soft);
   font-size: var(--text-xs);
+  line-height: 1.45;
   min-width: 0;
 }
 
+.composer-annotation-icon {
+  flex-shrink: 0;
+  color: var(--muted-strong);
+}
+
 .composer-annotation-chip-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   min-width: 0;
 }
 
@@ -557,20 +562,24 @@ button.composer-compact-context-row:hover,
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: none;
-  color: var(--muted);
+  color: var(--muted-strong);
   cursor: pointer;
   line-height: 0;
 }
 
 .composer-annotation-remove:hover {
   color: var(--text);
-  background: var(--panel-sunken);
+  background: color-mix(in oklab, var(--text) 8%, transparent);
+}
+
+.composer-annotation-remove:focus-visible {
+  box-shadow: var(--ring);
 }
 
 /* Makes a thumbnail (composer chip or sent-message figure) a clickable
@@ -894,8 +903,21 @@ button.composer-compact-context-row:hover,
   pointer-events: none;
 }
 
-.composer-skill-token {
-  color: var(--accent);
+.composer-highlight-backdrop::after {
+  /* Keep a trailing blank line, like the textarea, so both can scroll equally. */
+  content: "\200b";
+}
+
+/* One treatment in both composers and sent prompts. Keep glyph metrics intact
+   so the textarea caret and mirror remain aligned, including wrapped tokens. */
+.skill-token {
+  color: var(--skill-token-ink, var(--accent));
+  background: color-mix(in oklab, currentColor 14%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.chat-bubble.user .skill-token {
+  --skill-token-ink: var(--user-message-fg);
 }
 
 .session-input-field textarea.composer-input--highlighting,
@@ -906,7 +928,13 @@ button.composer-compact-context-row:hover,
   caret-color: var(--text);
 }
 
-.slash-menu {
+/* The two menus that open in the composer's slot — `/` commands and `@` files —
+   share one frame and one row rhythm, so switching between them changes only
+   what the rows say. Full width of the field, 28px rows, a 16px lead cell and
+   the label on one column, the same column every other picker in the app
+   puts its label on (see docs/styling.md). */
+.slash-menu,
+.file-popover {
   position: absolute;
   bottom: calc(100% + 6px);
   left: 0;
@@ -926,7 +954,7 @@ button.composer-compact-context-row:hover,
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-3);
   z-index: 30;
 }
 
@@ -941,41 +969,45 @@ button.composer-compact-context-row:hover,
   right: -12px;
 }
 
-/* Command-menu rows: one line each — icon, name, then the description trailing
-   to the right edge. Dense on purpose; this is a picker the user scans dozens
-   of times a day, not content. */
-.slash-menu-option {
+/* One line per row: lead cell, name, then the row's secondary text. Dense on
+   purpose; this is a picker the user scans dozens of times a day, not
+   content. */
+.slash-menu-option,
+.file-popover-item {
   display: flex;
   align-items: center;
-  gap: var(--space-2_5);
-  padding: var(--space-1_5) var(--space-3);
+  gap: var(--space-2);
+  min-height: 28px;
+  padding: 0 var(--space-3) 0 var(--space-2_5);
   border-radius: var(--radius-lg);
+  color: var(--text);
   cursor: pointer;
-  line-height: 1.5;
+  font-size: var(--text-xs-plus);
+  line-height: 1.3;
+  white-space: nowrap;
 }
 
 /* The quiet gray every other list in the app marks its chosen row with. The
    accent is reserved for meaning; which row the arrow keys are parked on is
    navigation, not a verdict. */
 .slash-menu-option.is-selected,
-.slash-menu-option[aria-selected="true"] {
+.slash-menu-option[aria-selected="true"],
+.file-popover-item.is-selected,
+.file-popover-item[aria-selected="true"] {
   background: var(--row-selected);
 }
 
-.slash-menu-icon {
-  flex: 0 0 auto;
-  color: var(--muted);
-}
-
-.slash-menu-option.is-selected .slash-menu-icon {
+.slash-menu-option.is-selected .picker-lead {
   color: var(--muted-strong);
 }
 
-.slash-menu-label {
-  flex: 0 0 auto;
-  font-size: var(--text-xs-plus);
+.slash-menu-label,
+.file-popover-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-weight: 500;
-  color: var(--text);
 }
 
 /* Right-aligned so short hints hug the panel edge like the reference menu,
@@ -986,7 +1018,6 @@ button.composer-compact-context-row:hover,
   text-align: right;
   color: var(--muted-strong);
   font-size: var(--text-xs);
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -998,71 +1029,55 @@ button.composer-compact-context-row:hover,
   font-size: var(--text-2xs);
 }
 
-/* Section heading between the commands and the skills below them. */
+/* Section heading between the commands and the skills below them; the same
+   voice as the group headers in the anchored pickers, and indented onto the
+   label column (10px inset + 16px lead + 8px gap). */
 .slash-menu-section {
-  padding: var(--space-2_5) var(--space-3) var(--space-1);
+  padding: var(--space-2_5) var(--space-3) var(--space-1) 34px;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* A file row is its name, then the folder it sits in, muted and right beside
+   the name so `mod.rs` and `mod.rs` read apart without the eye crossing the
+   row. The folder is what yields when the row runs out of room. */
+.file-popover-dir {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--muted);
   font-size: var(--text-xs);
 }
 
-.file-popover {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  right: 0;
-  max-height: 280px;
-  margin: 0;
-  /* Same 4px/14px/10px nesting as .slash-menu — the two open in the same slot
-     and must not disagree about their corners. */
-  padding: var(--space-1);
-  list-style: none;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-  scroll-padding-block: 4px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-2);
-  z-index: 30;
+/* Type-coloured glyphs, the same source as the review file tree and the
+   palette, so a `.rs` looks the same everywhere. Folders come in
+   @react-symbols' slate; retint it onto the accent the way the tree does. */
+.file-popover-item .picker-lead > svg {
+  display: block;
+  width: 14px;
+  height: 14px;
 }
 
-.file-popover-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 5px 12px;
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  line-height: 1.5;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.file-popover-item[data-kind="dir"] .picker-lead [fill="#64748b" i] {
+  fill: var(--accent);
 }
 
-.file-popover-item.is-selected,
-.file-popover-item[aria-selected="true"] {
-  background: var(--row-selected);
-}
-
-.file-popover-icon {
-  flex: 0 0 auto;
-  color: var(--text-soft, #6a6a6a);
-}
-
-.file-popover-path {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.file-popover-item[data-kind="dir"] .picker-lead [stroke="#64748b" i] {
+  stroke: var(--accent);
 }
 
 .file-popover-empty {
-  padding: var(--space-1_5) var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--text-soft, #6a6a6a);
-  font-style: italic;
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 var(--space-3) 0 34px;
+  font-size: var(--text-xs-plus);
+  color: var(--muted);
 }
 
 .session-input input::placeholder,

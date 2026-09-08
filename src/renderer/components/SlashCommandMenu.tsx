@@ -3,6 +3,7 @@ import { Fragment, useEffect, useRef, type JSX } from "react";
 import { SKILL_SOURCE_LABELS } from "../lib/composerCommands.js";
 import { scrollChildIntoNearest } from "../lib/scrollChildIntoNearest.js";
 import type { SlashAutocompleteState, SlashItem } from "../hooks/useSlashAutocomplete.js";
+import { PickerLead } from "./PickerLead.js";
 
 interface SlashRow {
   key: string;
@@ -109,7 +110,9 @@ export function SlashCommandMenu({ state }: { state: SlashAutocompleteState }): 
                 state.selectItem(index);
               }}
             >
-              <row.icon className="slash-menu-icon" size={14} aria-hidden="true" />
+              <PickerLead>
+                <row.icon size={14} />
+              </PickerLead>
               <span className="slash-menu-label">{row.label}</span>
               <span className="slash-menu-hint">{row.hint}</span>
               {row.badge ? <span className="slash-menu-badge">{row.badge}</span> : null}

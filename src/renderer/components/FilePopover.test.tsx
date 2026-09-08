@@ -10,7 +10,9 @@ import { FilePopover } from "./FilePopover.js";
 const ENTRIES: FileAutocompleteEntry[] = [
   { path: "AGENTS.md", kind: "file" },
   { path: "README.md", kind: "file" },
-  { path: "src", kind: "dir" }
+  { path: "src", kind: "dir" },
+  { path: "src/files/mod.rs", kind: "file" },
+  { path: "src/persistence/mod.rs", kind: "file" }
 ];
 
 function makeState(overrides: Partial<FileAutocompleteState> = {}): FileAutocompleteState {
@@ -32,6 +34,21 @@ describe("FilePopover", () => {
   it("marks the entry at selectionIndex as the selected option", () => {
     render(<FilePopover state={makeState({ selectionIndex: 1 })} inputRef={createRef()} />);
     expect(screen.getByRole("option", { selected: true })).toHaveTextContent("README.md");
+  });
+
+  it("names a nested row by its full path while showing the folder beside the name", () => {
+    render(<FilePopover state={makeState()} inputRef={createRef()} />);
+
+    const rows = screen.getAllByRole("option", { name: /mod\.rs$/ });
+
+    expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual([
+      "src/files/mod.rs",
+      "src/persistence/mod.rs"
+    ]);
+    expect(rows[0]).toHaveTextContent("mod.rs");
+    expect(rows[0].querySelector('[aria-hidden="true"].file-popover-dir')).toHaveTextContent(
+      "src/files"
+    );
   });
 
   it("highlights a row on hover by moving the shared selection index", () => {

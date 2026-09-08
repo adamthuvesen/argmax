@@ -49,24 +49,25 @@ function transformProseMath(text: string): string {
     return `\n\n$$\n${equation.trim()}\n$$\n\n`;
   });
 
-  // 5. Escape currency dollars (e.g. $50, $10.99, $1,000) so remark-math doesn't treat them as math delimiters.
-  // Matches a single $ preceded by start-of-string or non-backslash/non-dollar, followed immediately by a digit.
-  result = result.replace(
-    /(^|[^\\$])\$(\d)/g,
-    (_match, prefix: string, digit: string) => `${prefix}\\$${digit}`
-  );
-
-  // 6. Mask every math region — the ones above just created and any the author
+  // 5. Mask every math region — the ones above just created and any the author
   // already wrote — so the bare-symbol pass below only ever sees prose. Without
   // this, a Greek letter inside `$$ ... $$` gets its own `$...$` wrapper and
   // KaTeX is handed `$` characters in the middle of a math body.
   // A private-use sentinel: markdown never contains it, and unlike NUL it is
   // not a control character a regex lint would reject.
   const mathSpans: string[] = [];
-  result = result.replace(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g, (span) => {
+  // Numeric inline math must close against its content. A later currency or
+  // parenthesized formula opener cannot close it: "$50 ($x$)" stays separate.
+  result = result.replace(/(?<!\\)\$\$[\s\S]*?\$\$|(?<![\\$])\$(?:(?!\d)[^$\n]+?\$(?!\d)|\d[^$\n]*?(?<![\s\\([{])\$(?![\p{L}\p{N}\\]))/gu, (span) => {
     mathSpans.push(span);
     return `\uE000${mathSpans.length - 1}\uE000`;
   });
+
+  // 6. Escape currency only outside math, including numeric-leading equations.
+  result = result.replace(
+    /(^|[^\\$])\$(\d)/g,
+    (_match, prefix: string, digit: string) => `${prefix}\\$${digit}`
+  );
 
   // 7. Convert bare Greek letter commands in prose (\tau, \alpha) -> $\tau$, $\alpha$
   result = result.replace(

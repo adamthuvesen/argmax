@@ -2,6 +2,26 @@ import { describe, expect, it } from "vitest";
 import { normalizeMathDelimiters } from "./normalizeMathDelimiters.js";
 
 describe("normalizeMathDelimiters", () => {
+  it.each([
+    ["$2x + 1$", "$2x + 1$"],
+    ["\\(2x + 1\\)", "$2x + 1$"],
+    ["Costs $50 and $100, with $2x + 1$.", "Costs \\$50 and \\$100, with $2x + 1$."],
+    ["Already escaped \\$50, then $2x$.", "Already escaped \\$50, then $2x$."],
+    ["Price $50 and formula $x$.", "Price \\$50 and formula $x$."],
+    ["Price $50 ($x$ after adjustment).", "Price \\$50 ($x$ after adjustment)."],
+    ["Price $50 ($\\alpha$ after adjustment).", "Price \\$50 ($\\alpha$ after adjustment)."],
+    ["Price $50 ($ x = \\alpha $ after adjustment).", "Price \\$50 ($ x = \\alpha $ after adjustment)."],
+    ["Price $50 ($-x$ after adjustment).", "Price \\$50 ($-x$ after adjustment)."],
+    ["$2x$, then $y$", "$2x$, then $y$"],
+    ["$x$meters", "$x$meters"],
+    ["$5,$10", "\\$5,\\$10"],
+    ["$2 + 1$ and $3y$", "$2 + 1$ and $3y$"],
+    ["$ x = \\alpha $", "$ x = \\alpha $"],
+    ["$2$", "$2$"]
+  ])("preserves numeric math alongside currency: %s", (input, expected) => {
+    expect(normalizeMathDelimiters(input)).toBe(expected);
+  });
+
   it("converts LaTeX block math \\[ ... \\] to $$ ... $$", () => {
     const input = "\\[ \\text{margin} = P(\\text{best family}) - P(\\text{second-best family}) \\]";
     const output = normalizeMathDelimiters(input);

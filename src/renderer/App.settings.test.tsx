@@ -691,8 +691,7 @@ describe("App settings", () => {
     for (const [label, id] of [
       ["System Mono", "system-mono"],
       ["Menlo", "menlo"],
-      ["Monaco", "monaco"],
-      ["Lilex", "lilex"]
+      ["Monaco", "monaco"]
     ] as const) {
       fireEvent.click(screen.getByRole("button", { name: "Font family" }));
       fireEvent.click(screen.getByRole("button", { name: label }));

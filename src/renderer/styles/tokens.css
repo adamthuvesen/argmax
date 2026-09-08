@@ -21,7 +21,7 @@
      author: a pytest banner's run of `=` fuses into one solid bar, and a
      diff's `--` / `==` do the same, so output reads as struck through. Every
      code font offered here ligates, just through different features: Geist
-     Mono via `liga`, Fira Code / JetBrains Mono / Lilex via `calt`.
+     Mono via `liga`, Fira Code / JetBrains Mono via `calt`.
      `font-variant-ligatures: none` cannot do this job alone — the root sets
      `font-feature-settings: "calt", …` for the UI sans, and that property is
      step 5 of CSS font feature resolution against font-variant's step 3, so
@@ -782,11 +782,6 @@
     --duration-fast: 0ms;
     --duration-base: 0ms;
   }
-}
-
-:root[data-font="lilex"] {
-  --font-ui: "Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
-  --font-mono: "Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
 
 :root[data-font="system-mono"] {

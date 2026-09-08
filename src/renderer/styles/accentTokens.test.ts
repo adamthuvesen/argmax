@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
+import { DEFAULT_INK_STRENGTH } from "../lib/inkStrength.js";
 
 function readSource(path: string): string {
   return readFileSync(resolve(process.cwd(), path), "utf8");
@@ -14,8 +15,13 @@ function cssRuleBody(source: string, selector: string): string {
   return match?.groups?.body ?? "";
 }
 
+/**
+ * The first hex in a token's value. Ink tokens declare theirs inside a
+ * `color-mix()` that the ink-strength ladder drives, and that hex is still the
+ * shipped color — the default rung mixes 0%.
+ */
 function readHex(rule: string, token: string): string {
-  const match = new RegExp(`--${token}:\\s*(?<hex>#[0-9a-f]{6});`, "i").exec(rule);
+  const match = new RegExp(`--${token}:[^;]*?(?<hex>#[0-9a-f]{6})`, "i").exec(rule);
   expect(match?.groups?.hex).toBeDefined();
   return match?.groups?.hex ?? "";
 }
@@ -81,6 +87,27 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     expect(strong).toBeLessThanOrEqual(500);
     for (const heading of [".markdown h1", ".markdown h2", ".markdown h3"]) {
       expect(fontWeight(cssRuleBody(conversation, heading))).toBeGreaterThan(strong);
+    }
+  });
+
+  it("leaves the shipped ink alone at the default strength", () => {
+    const tokens = readSource("src/renderer/styles/tokens.css");
+
+    // Level 7 owns no rule: the :root defaults are its rung, and they mix 0%,
+    // so every ink token resolves to the hex declared beside it. A ladder
+    // retune that moved the default would be invisible without this.
+    expect(DEFAULT_INK_STRENGTH).toBe(7);
+    expect(tokens).not.toMatch(/\[data-ink-strength="7"\]/);
+    const inkDefaults = /:root\s*\{\s*--ink-toward:[^}]+\}/.exec(tokens)?.[0] ?? "";
+    expect(inkDefaults).toContain("--ink-pull: 0%");
+
+    // Every ink token has to ride the ladder, or a level would move some of
+    // the app's text and leave the rest behind.
+    const dark = cssRuleBody(tokens, ':root[data-theme="dark"]');
+    for (const token of ["text", "text-soft", "muted", "muted-strong", "prose-ink", "prose-ink-strong"]) {
+      expect(dark).toMatch(
+        new RegExp(`--${token}: color-mix\\(in oklab, #[0-9a-f]{6}, var\\(--ink-toward\\)`)
+      );
     }
   });
 

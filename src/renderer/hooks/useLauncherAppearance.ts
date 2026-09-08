@@ -13,6 +13,12 @@ import {
   type FontFamilyId
 } from "../lib/fonts.js";
 import {
+  applyInkStrengthToDocument,
+  INK_STRENGTH_STORAGE_KEY,
+  readStoredInkStrength,
+  type InkStrength
+} from "../lib/inkStrength.js";
+import {
   applyAccentToDocument,
   readStoredAccent,
   writeStoredAccent,
@@ -50,6 +56,8 @@ export function useLauncherAppearance(): {
   setFontSize: (fontSize: FontSize) => void;
   chatFontSize: FontSize;
   setChatFontSize: (fontSize: FontSize) => void;
+  inkStrength: InkStrength;
+  setInkStrength: (strength: InkStrength) => void;
   defaultIde: IdeId | null;
   setDefaultIde: (ide: IdeId | null) => void;
   detectedIdes: DetectedIde[];
@@ -62,6 +70,7 @@ export function useLauncherAppearance(): {
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
   const [fontSize, setFontSize] = useState<FontSize>(() => readStoredFontSize());
   const [chatFontSize, setChatFontSize] = useState<FontSize>(() => readStoredChatFontSize());
+  const [inkStrength, setInkStrength] = useState<InkStrength>(() => readStoredInkStrength());
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
   const ideListLoadedRef = useRef(false);
@@ -83,6 +92,12 @@ export function useLauncherAppearance(): {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(CHAT_FONT_SIZE_STORAGE_KEY, String(chatFontSize));
   }, [chatFontSize]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(INK_STRENGTH_STORAGE_KEY, String(inkStrength));
+    applyInkStrengthToDocument(inkStrength);
+  }, [inkStrength]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -155,6 +170,8 @@ export function useLauncherAppearance(): {
     setFontSize,
     chatFontSize,
     setChatFontSize,
+    inkStrength,
+    setInkStrength,
     defaultIde,
     setDefaultIde,
     detectedIdes

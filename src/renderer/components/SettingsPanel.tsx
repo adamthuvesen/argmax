@@ -7,6 +7,7 @@ import type {
   ProjectSummary
 } from "../../shared/types.js";
 import type { FontFamilyId, FontSize } from "../lib/fonts.js";
+import type { InkStrength } from "../lib/inkStrength.js";
 import type { ThemeMode } from "../lib/theme.js";
 import type { AccentId } from "../lib/accent.js";
 import type { UserBubbleTint } from "../lib/userBubbleTint.js";
@@ -64,6 +65,8 @@ export function SettingsPanel({
   onFontSizeChange,
   chatFontSize,
   onChatFontSizeChange,
+  inkStrength,
+  onInkStrengthChange,
   themeMode,
   onThemeModeChange,
   accentId,
@@ -121,6 +124,8 @@ export function SettingsPanel({
   onFontSizeChange: (id: FontSize) => void;
   chatFontSize: FontSize;
   onChatFontSizeChange: (id: FontSize) => void;
+  inkStrength: InkStrength;
+  onInkStrengthChange: (strength: InkStrength) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
@@ -307,6 +312,8 @@ export function SettingsPanel({
             onFontSizeChange={onFontSizeChange}
             chatFontSize={chatFontSize}
             onChatFontSizeChange={onChatFontSizeChange}
+            inkStrength={inkStrength}
+            onInkStrengthChange={onInkStrengthChange}
             themeMode={themeMode}
             onThemeModeChange={onThemeModeChange}
             accentId={accentId}

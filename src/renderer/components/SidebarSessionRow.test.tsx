@@ -922,13 +922,6 @@ describe("styles.css startup contract", () => {
     expect(fontFace, "expected VT323 @font-face with local URL").not.toBeNull();
   });
 
-  it("bundles Lilex Nerd Font via @font-face pointing at a local asset", () => {
-    const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
-    const css = readBundledCss(cssPath);
-    const fontFace = /font-family:\s*["']Lilex Nerd Font["'][\s\S]{0,300}?url\(["']?\.\/fonts\/Lilex\//i.exec(css);
-    expect(fontFace, "expected Lilex Nerd Font @font-face with local URL").not.toBeNull();
-  });
-
   it("opens the settings font picker below its trigger", () => {
     const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
     const css = readBundledCss(cssPath);

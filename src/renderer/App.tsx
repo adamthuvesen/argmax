@@ -258,6 +258,8 @@ export function App(): JSX.Element {
     setFontSize,
     chatFontSize,
     setChatFontSize,
+    inkStrength,
+    setInkStrength,
     defaultIde,
     setDefaultIde,
     detectedIdes
@@ -1617,6 +1619,8 @@ export function App(): JSX.Element {
           onFontSizeChange: setFontSize,
           chatFontSize,
           onChatFontSizeChange: setChatFontSize,
+          inkStrength,
+          onInkStrengthChange: setInkStrength,
           chatVerbosity,
           onChatVerbosityChange: setChatVerbosity
         },
@@ -1650,6 +1654,8 @@ export function App(): JSX.Element {
       setFontSize,
       chatFontSize,
       setChatFontSize,
+      inkStrength,
+      setInkStrength,
       chatVerbosity,
       setChatVerbosity
     ]
@@ -2024,6 +2030,8 @@ export function App(): JSX.Element {
                 onFontSizeChange={setFontSize}
                 chatFontSize={chatFontSize}
                 onChatFontSizeChange={setChatFontSize}
+                inkStrength={inkStrength}
+                onInkStrengthChange={setInkStrength}
                 themeMode={themeMode}
                 onThemeModeChange={handleThemeModeChange}
                 accentId={accentId}

@@ -72,15 +72,29 @@ describe("<SessionConversationUserMessage />", () => {
   });
 
   it("does not read a URL path as a skill invocation", () => {
-    const { container } = render(
+    render(
       <SessionConversationUserMessage
         event={{ id: "evt-2", message: "https://menti.com/plan and /eli5", createdAt: 0 } as never}
         attachments={[]}
       />
     );
 
-    expect(container.querySelectorAll(".user-skill-token")).toHaveLength(1);
-    expect(container.querySelector(".user-skill-token")?.textContent).toBe("/eli5");
+    expect(screen.getAllByTitle(/^Skill: /)).toHaveLength(1);
+    expect(screen.getByTitle("Skill: /eli5")).toHaveTextContent("/eli5");
+  });
+
+  it.each([
+    ["/snow\n\nHow many users?", ["/snow"]],
+    ["/hookify:help   then /code-review", ["/hookify:help", "/code-review"]],
+    ["/Commit", ["/Commit"]]
+  ] as const)("preserves the typed skill prompt: %j", (message, skills) => {
+    renderMessage(message);
+
+    expect(screen.getByRole("article").textContent).toBe(message);
+    expect(screen.getAllByTitle(/^Skill: /)).toHaveLength(skills.length);
+    for (const name of skills) {
+      expect(screen.getByTitle(`Skill: ${name}`)).toHaveTextContent(name);
+    }
   });
 
   it("leaves a message with no URL as plain text", () => {

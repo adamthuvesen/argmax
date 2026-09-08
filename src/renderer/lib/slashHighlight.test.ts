@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { leadingSkillInvocation, splitSkillTokens } from "./slashHighlight.js";
+import { splitSkillTokens } from "./slashHighlight.js";
 
 
 describe("splitSkillTokens", () => {
@@ -33,29 +33,5 @@ describe("splitSkillTokens", () => {
     expect(splitSkillTokens("check with /snow first", anyName)?.filter((s) => s.skill)).toEqual([
       { text: "/snow", skill: true }
     ]);
-  });
-});
-
-describe("leadingSkillInvocation", () => {
-  it("splits a skill invocation from its arguments", () => {
-    expect(leadingSkillInvocation("/snow How many users?")).toEqual({
-      name: "snow",
-      rest: "How many users?"
-    });
-    expect(leadingSkillInvocation("/commit")).toEqual({ name: "commit", rest: "" });
-    expect(leadingSkillInvocation("/hookify:help now")).toEqual({
-      name: "hookify:help",
-      rest: "now"
-    });
-  });
-
-  it("rejects absolute paths and tokens that are not skill-shaped", () => {
-    expect(leadingSkillInvocation("/Users/adam/dev notes")).toBeNull();
-    expect(leadingSkillInvocation("/code-review --fix")).toEqual({
-      name: "code-review",
-      rest: "--fix"
-    });
-    expect(leadingSkillInvocation("plain message")).toBeNull();
-    expect(leadingSkillInvocation("/")).toBeNull();
   });
 });

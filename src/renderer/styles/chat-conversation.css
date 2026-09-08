@@ -1627,38 +1627,6 @@
   color: var(--user-message-fg);
 }
 
-/* Leading `/skill` invocation rendered as a marked chip inside the user
-   bubble, so a skill run reads at a glance as "ran a skill", not prose. The
-   bubble itself is the accent slab, so the chip rides the bubble fg instead
-   of the accent it used to borrow. */
-.user-skill-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  vertical-align: baseline;
-  color: var(--user-message-fg);
-  font-weight: 600;
-  /* Label-sized, not prose-sized: the chip is a marker ("ran a skill"), so it
-     sits at the agent view's label size rather than inheriting bubble prose. */
-  font-size: var(--text-sm);
-}
-
-.user-skill-chip svg {
-  flex: 0 0 auto;
-  translate: 0 1px;
-}
-
-/* A `/skill` token further into the message keeps its slash and prose size —
-   it is a word in a sentence, not the header of one — and is marked with a
-   tinted slab instead. The mark rides the bubble fg for the same reason the
-   chip does: `--accent` is the bubble's own background. */
-.user-skill-token {
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--user-message-fg) 14%, transparent);
-  font-weight: 600;
-}
-
 /* A long paste (multi-paragraph message) would otherwise grow the bubble to the
    full height of its content and push the reply off-screen. Clip the body at a
    cap and hand the rest to the Show more toggle below — an inner scrollport

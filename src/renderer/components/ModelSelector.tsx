@@ -113,29 +113,26 @@ function optionRecencyKey<T>(option: ChipModelOption<T>): string {
   return option.recencyKey ?? option.key;
 }
 
-/** Recently used models first, then the catalog in its original order. */
+/** Recent picks duplicated under a "Recent" header, then the full catalog. */
 function orderOptionsByRecency<T>(options: Array<ChipModelOption<T>>): Array<ChipModelOption<T>> {
   const recency = readLaunchModelRecency();
   if (recency.length === 0) return options;
-  const optionKeys = new Set(options.map(optionRecencyKey));
-  const recentKeys = [...new Set(recency.filter((id) => optionKeys.has(id)))].slice(0, MAX_RECENT_MODELS);
-  const rank = new Map(recentKeys.map((id, index) => [id, index]));
-  const recent: Array<ChipModelOption<T>> = [];
-  const rest: Array<ChipModelOption<T>> = [];
-  for (const option of options) {
-    if (rank.has(optionRecencyKey(option))) recent.push(option);
-    else rest.push(option);
-  }
-  if (recent.length === 0) return options;
-  recent.sort(
-    (left, right) => (rank.get(optionRecencyKey(left)) ?? 0) - (rank.get(optionRecencyKey(right)) ?? 0)
-  );
+  const optionByKey = new Map(options.map((option) => [optionRecencyKey(option), option]));
+  const recentKeys = [...new Set(recency.filter((id) => optionByKey.has(id)))].slice(0, MAX_RECENT_MODELS);
+  if (recentKeys.length === 0) return options;
   // The recent prefix sits under one "Recent" header rather than each row's
   // provider, so mixed providers don't draw a header between every row.
-  return [
-    ...recent.map((option) => ({ ...option, group: RECENT_GROUP_LABEL, groupProvider: undefined })),
-    ...rest
-  ];
+  // Catalog rows keep their provider group — a recent model can appear twice.
+  const recent = recentKeys.map((id) => {
+    const option = optionByKey.get(id)!;
+    return {
+      ...option,
+      key: `${option.key}:recent`,
+      group: RECENT_GROUP_LABEL,
+      groupProvider: undefined
+    };
+  });
+  return [...recent, ...options];
 }
 
 export function ModelSelector({

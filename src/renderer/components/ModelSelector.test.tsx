@@ -71,7 +71,7 @@ describe("ModelSelector — one row per model", () => {
     expect(onChange).toHaveBeenCalledWith({ label: "Haiku 4.5", modelId: "claude-haiku-4-5" });
   });
 
-  it("sorts recently picked models to the top of the list", () => {
+  it("shows recently picked models at the top without removing them from the catalog", () => {
     const onChange = openClaudePicker(OPUS_MEDIUM);
     fireEvent.click(screen.getByText("Haiku 4.5"));
     expect(onChange).toHaveBeenCalled();
@@ -81,10 +81,10 @@ describe("ModelSelector — one row per model", () => {
       .getAllByRole("option")
       .map((option) => optionName(option));
     expect(labels[0]).toBe("Haiku 4.5");
-    expect(labels.slice(1)).toEqual(["Fable 5.1", "Opus 5", "Sonnet 5"]);
+    expect(labels.slice(1)).toEqual(["Fable 5.1", "Opus 5", "Sonnet 5", "Haiku 4.5"]);
   });
 
-  it("shows at most three recent models before the catalog order resumes", () => {
+  it("shows at most three recent models before the full catalog", () => {
     window.localStorage.setItem(
       LAUNCH_MODEL_RECENCY_KEY,
       JSON.stringify([
@@ -108,12 +108,12 @@ describe("ModelSelector — one row per model", () => {
     const labels = within(screen.getByRole("listbox", { name: "Launch model" }))
       .getAllByRole("option")
       .map((option) => optionName(option));
-    expect(labels.slice(0, 4)).toEqual([
-      "DeepSeek V4 Flash",
-      "DeepSeek V4 Pro",
-      "Grok 4.5",
-      "Fable 5.1"
-    ]);
+    expect(labels.slice(0, 3)).toEqual(["DeepSeek V4 Flash", "DeepSeek V4 Pro", "Grok 4.5"]);
+    expect(labels).toContain("DeepSeek V4 Flash");
+    expect(labels).toContain("Grok 4.5");
+    expect(labels.indexOf("DeepSeek V4 Flash")).toBeLessThan(labels.lastIndexOf("DeepSeek V4 Flash"));
+    expect(labels.indexOf("Grok 4.5")).toBeLessThan(labels.lastIndexOf("Grok 4.5"));
+    expect(labels.slice(3, 4)).toEqual(["Fable 5.1"]);
   });
 });
 

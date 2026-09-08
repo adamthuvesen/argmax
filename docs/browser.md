@@ -6,6 +6,8 @@ Argmax has one native browser and two places that show it.
 
 **Review panel.** In a chat, Browser is one of the review-panel modes, beside Changes, Files, Agents, and [Terminal](terminal.md). The session actions menu has an "Open browser" item. This is the sidebar next to a transcript, for watching a session browse.
 
+Each chat remembers the panel's visibility and selected mode across navigation and restarts. Returning to a chat with Browser open restores Browser and claims the native surface again.
+
 Links from chat open in the system browser by default; Settings → General → "Web links from chat" can route them to the in-app browser (⌘-click toggles the alternate target). Both the page and the review-panel tab are shown only where the desktop bridge provides `window.argmax.browser` — the mobile remote has none, so they are hidden there.
 
 ## One Surface, One Owner
@@ -22,7 +24,7 @@ Focus still routes new open requests: a chat link or the menu item opens Browser
 
 ## Z-Order and Overlays
 
-Native child webviews render on top of DOM elements. [BrowserPanel.tsx](../src/renderer/components/BrowserPanel.tsx) checks for open `[role="dialog"]` modals intersecting the surface bounds and sets `visible: false` while an overlay covers the panel area.
+Native child webviews render on top of DOM elements. [BrowserPanel.tsx](../src/renderer/components/BrowserPanel.tsx) hides the active webview while the collapsed sidebar peeks, so its navigation buttons receive clicks. It also checks for open `[role="dialog"]` modals intersecting the surface bounds and sets `visible: false` while an overlay covers the panel area. The webview returns when the sidebar and overlapping dialogs are dismissed, preserving the current tab.
 
 ## The Tab Registry
 
@@ -90,7 +92,7 @@ Both are async commands with a deadline. WebKit answers on the main queue and th
 - Enter in the address bar: go to the URL. Reloads when it's already the current page — WKWebView does not navigate to the URL it is already showing.
 - `⌘T`: New tab.
 - `⌘⇧T`: Reopen last closed tab.
-- `⌘R`: Reload (when focused in the browser chrome).
+- `⌘R`: Reload the tab when focused in the page or browser chrome. In development builds, app reload stays available in View → Reload and via `⌘⇧R`.
 - `⌃Tab` / `⌃⇧Tab`: Next / previous tab.
 - `⌘W`: Closes the active browser tab whenever the browser is mounted. The menu command tries the browser first, then the review panel's file tabs, then the focused pane — `requestCloseActiveBrowserTab()` reports whether a mounted browser consumed it.
 - Mouse thumb buttons: back (button 3) / forward (button 4), both over the browser chrome and inside a page.

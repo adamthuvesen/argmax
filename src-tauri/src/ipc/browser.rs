@@ -56,7 +56,7 @@ pub struct BrowserNewTabEvent {
 
 /// A browser shortcut pressed while the page (not the panel chrome) had
 /// focus. `command` is one of `close-tab`, `new-tab`, `focus-address`,
-/// `back`, `forward`.
+/// `reload`, `back`, `forward`.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserPageCommandEvent {
@@ -120,6 +120,7 @@ const BROWSER_INIT_SCRIPT: &str = r#"
       var command =
         key === "w" ? "close-tab" :
         key === "t" ? "new-tab" :
+        key === "r" ? "reload" :
         key === "l" ? "focus-address" : null;
       if (!command) return;
       event.preventDefault();
@@ -303,6 +304,7 @@ fn page_command(url: &Url) -> Option<&'static str> {
         "close-tab" => Some("close-tab"),
         "new-tab" => Some("new-tab"),
         "focus-address" => Some("focus-address"),
+        "reload" => Some("reload"),
         "back" => Some("back"),
         "forward" => Some("forward"),
         _ => None,
@@ -1010,6 +1012,8 @@ mod tests {
 
     #[test]
     fn page_command_whitelists_known_commands() {
+        let reload = Url::parse("argmax-newtab://command?c=reload").unwrap();
+        assert_eq!(page_command(&reload), Some("reload"));
         let close = Url::parse("argmax-newtab://command?c=close-tab").unwrap();
         assert_eq!(page_command(&close), Some("close-tab"));
         let back = Url::parse("argmax-newtab://command?c=back").unwrap();

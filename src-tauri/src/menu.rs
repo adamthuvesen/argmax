@@ -377,13 +377,9 @@ fn append_item<R: Runtime>(
                 submenu.append(&item)?;
             }
             NativeItem::DevReload => {
-                let item = MenuItem::with_id(
-                    app,
-                    "argmax:dev-reload",
-                    "Reload",
-                    true,
-                    Some("CmdOrCtrl+R"),
-                )?;
+                // Reserve Cmd+R for the browser, including its child webviews.
+                let item =
+                    MenuItem::with_id(app, "argmax:dev-reload", "Reload", true, None::<&str>)?;
                 submenu.append(&item)?;
             }
             NativeItem::DevForceReload => {

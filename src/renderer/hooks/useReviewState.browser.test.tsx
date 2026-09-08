@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getBrowserOwnerId,
   openInBrowserPanel,
+  rememberBrowserUrl,
   requestAgentBrowserOpen,
   resetBrowserSurfaceForTests,
   resetBrowserTabsForTests
@@ -42,6 +43,19 @@ describe("useReviewState — browser mode", () => {
     resetBrowserSurfaceForTests();
     resetBrowserTabsForTests();
     delete (window as unknown as { argmax?: unknown }).argmax;
+  });
+
+  it("restores Browser with the current tab URL instead of the start page", () => {
+    const first = renderPanel(true, "session-a");
+    act(() => first.result.current.openBrowser());
+    act(() => rememberBrowserUrl("https://example.com/current-page"));
+    first.unmount();
+
+    const restored = renderPanel(true, "session-a");
+    expect(restored.result.current.isPanelOpen).toBe(true);
+    expect(restored.result.current.mode).toBe("browser");
+    expect(restored.result.current.browserOwner).toBe(true);
+    expect(restored.result.current.browserRequest?.url).toBe("https://example.com/current-page");
   });
 
   it("shows a session's agent tab in that session's pane and nowhere else", () => {

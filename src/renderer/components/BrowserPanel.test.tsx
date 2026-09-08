@@ -2,6 +2,12 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, BrowserStateEvent } from "../../shared/types.js";
 import { BROWSER_HISTORY_KEY } from "../lib/browserHistory.js";
+import { SIDEBAR_COLLAPSED_KEY } from "../lib/uiPreferences.js";
+import {
+  resetSidebarChromeForTests,
+  setSidebarPeek,
+  toggleSidebarCollapsed
+} from "../state/sidebarChrome.js";
 import {
   applyBrowserTabs,
   getActiveBrowserTabId,
@@ -77,6 +83,8 @@ beforeEach(() => {
   newTabListener = null;
   pageCommandListener = null;
   resetBrowserTabsForTests();
+  window.localStorage.removeItem(SIDEBAR_COLLAPSED_KEY);
+  resetSidebarChromeForTests();
   for (const mock of Object.values(browserStub)) mock.mockClear();
   window.argmax = { browser: browserStub } as unknown as ArgmaxApi;
 });
@@ -85,6 +93,7 @@ afterEach(() => {
   cleanup();
   delete (window as { argmax?: ArgmaxApi }).argmax;
   window.localStorage.removeItem(BROWSER_HISTORY_KEY);
+  window.localStorage.removeItem(SIDEBAR_COLLAPSED_KEY);
 });
 
 describe("BrowserPanel", () => {
@@ -368,6 +377,36 @@ describe("BrowserPanel", () => {
     );
   });
 
+  it("yields the native webview while the collapsed sidebar peeks", async () => {
+    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const tabId = activeTabId();
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: true, tabId })
+    );
+
+    act(() => {
+      toggleSidebarCollapsed();
+      setSidebarPeek(true);
+    });
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: false, tabId })
+    );
+
+    fireEvent.resize(window);
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: false, tabId })
+    );
+
+    act(() => setSidebarPeek(false));
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: true, tabId })
+    );
+    expect(browserStub.open).toHaveBeenCalledTimes(1);
+  });
+
   it("opens a page-requested popup as a new tab", () => {
     render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
     const firstTab = activeTabId();
@@ -466,6 +505,9 @@ describe("BrowserPanel", () => {
     const secondTab = activeTabId();
     expect(secondTab).not.toBe(firstTab);
     expect(screen.getAllByRole("tab")).toHaveLength(2);
+
+    act(() => pageCommandListener?.({ tabId: secondTab, command: "reload" }));
+    expect(browserStub.reload).toHaveBeenCalledExactlyOnceWith(secondTab);
 
     act(() => pageCommandListener?.({ tabId: secondTab, command: "close-tab" }));
     expect(browserStub.close).toHaveBeenCalledWith(secondTab);

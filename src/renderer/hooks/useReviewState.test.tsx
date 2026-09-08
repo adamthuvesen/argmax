@@ -85,6 +85,35 @@ describe("useReviewState — IPC fan-out resistance", () => {
     expect(closed.result.current.isPanelOpen).toBe(false);
   });
 
+  it.each(["browser", "files", "agents", "terminal", "changes"] as const)(
+    "remembers panel mode %s per session after leaving and returning",
+    (mode) => {
+      const source = workspaceSource(makeWorkspace());
+      const first = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
+      act(() => {
+        first.result.current.openChangesPanel();
+        first.result.current.setMode(mode);
+      });
+      first.unmount();
+
+      const other = renderHook(() => useReviewState(source, null, { sessionId: "session-2" }));
+      act(() => other.result.current.openChangesPanel());
+      expect(other.result.current.mode).toBe("changes");
+      other.unmount();
+
+      const restored = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
+      expect(restored.result.current.isPanelOpen).toBe(true);
+      expect(restored.result.current.mode).toBe(mode);
+      if (mode === "browser") expect(restored.result.current.browserOwner).toBe(true);
+      act(() => restored.result.current.closePanel());
+      restored.unmount();
+
+      const closed = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
+      expect(closed.result.current.isPanelOpen).toBe(false);
+      expect(closed.result.current.mode).toBe(mode);
+    }
+  );
+
   beforeEach(() => {
     // The Local/Branch toggle persists to localStorage; clear it so each test
     // starts from the "local" default regardless of run order.
@@ -690,6 +719,95 @@ describe("useReviewState — IPC fan-out resistance", () => {
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
     expect(result.current.workspaceFiles.tabs).toHaveLength(0);
     expect(result.current.workspaceFiles.activeTabPath).toBeNull();
+  });
+
+  it.each(["poll", "dismiss"] as const)(
+    "ignores a stale stat response after the workspace changes (%s)",
+    async (trigger) => {
+      readWorkspaceFile.mockResolvedValue({
+        kind: "text",
+        content: "{}\n",
+        size: 3,
+        mtimeMs: 10
+      });
+      let resolveStat!: (value: { mtimeMs: number; size: number }) => void;
+      statWorkspaceFile.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveStat = resolve;
+        })
+      );
+
+      const { result, rerender } = renderHook(
+        ({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)),
+        { initialProps: { ws: makeWorkspace({ id: "workspace-1" }) } }
+      );
+      await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+      act(() => {
+        result.current.openInFilesView("package.json");
+      });
+      await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+
+      if (trigger === "poll") {
+        act(() => {
+          window.dispatchEvent(new Event("focus"));
+        });
+      } else {
+        act(() => {
+          result.current.workspaceFiles.dismissExternalChange();
+        });
+      }
+      await waitFor(() => expect(statWorkspaceFile).toHaveBeenCalled());
+
+      rerender({ ws: makeWorkspace({ id: "workspace-2" }) });
+      act(() => {
+        result.current.openInFilesView("package.json");
+      });
+      await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+
+      await act(async () => {
+        resolveStat({ mtimeMs: 99, size: 3 });
+        await Promise.resolve();
+      });
+
+      expect(result.current.workspaceFiles.externalChange).toBe(false);
+      expect(result.current.workspaceFiles.diskMtimeMs).toBe(10);
+    }
+  );
+
+  it("uses the dismissed on-disk mtime as the save baseline", async () => {
+    readWorkspaceFile.mockResolvedValue({
+      kind: "text",
+      content: "pkg\n",
+      size: 4,
+      mtimeMs: 10
+    });
+    statWorkspaceFile.mockResolvedValue({ mtimeMs: 20, size: 4 });
+
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+    act(() => {
+      result.current.openInFilesView("package.json");
+    });
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+
+    act(() => {
+      result.current.workspaceFiles.dismissExternalChange();
+    });
+    await waitFor(() => expect(result.current.workspaceFiles.diskMtimeMs).toBe(20));
+
+    act(() => {
+      result.current.workspaceFiles.editFile("edited\n");
+    });
+    await act(async () => {
+      await result.current.workspaceFiles.saveFile();
+    });
+
+    expect(writeWorkspaceFile).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" },
+      "package.json",
+      "edited\n",
+      20
+    );
   });
 
   it("edits and saves project files from the launcher review state", async () => {

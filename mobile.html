@@ -7,7 +7,8 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, interactive-widget=resizes-content"
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- Translucent mode can clip a status-bar-height strip off the bottom on iOS. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="theme-color" content="#111113" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <!-- Same unhashed fox as manifest.webmanifest (public/argmax-icon.png). -->

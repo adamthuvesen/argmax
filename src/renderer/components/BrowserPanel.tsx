@@ -16,6 +16,7 @@ import {
   suggestBrowserHistory,
   type BrowserHistoryEntry
 } from "../lib/browserHistory.js";
+import { useBrowserTabDrag } from "../hooks/useBrowserTabDrag.js";
 import {
   activateBrowserTab,
   createBrowserTab,
@@ -28,6 +29,7 @@ import {
   popRecentlyClosedBrowserTab,
   rememberBrowserUrl,
   resolveBrowserInput,
+  moveBrowserTab,
   removeBrowserTab,
   setBrowserTabLoading,
   subscribeBrowserTabs,
@@ -231,6 +233,8 @@ export function BrowserPanel({
     },
     [hideTabWebview, showTabWebview]
   );
+
+  const tabDrag = useBrowserTabDrag(switchToTab);
 
   const cycleTab = useCallback(
     (step: 1 | -1): void => {
@@ -633,19 +637,40 @@ export function BrowserPanel({
 
   return (
     <div className="browser-panel" role="group" aria-label="Browser" ref={panelRef}>
-      <div className="browser-tab-strip" role="tablist" aria-label="Browser tabs">
-        {tabs.map((tab) => (
+      <div
+        className="browser-tab-strip"
+        role="tablist"
+        aria-label="Browser tabs"
+        ref={tabDrag.stripRef}
+        data-dragging={tabDrag.carrying || undefined}
+      >
+        {tabs.map((tab, index) => (
           <div
             key={tab.id}
             className="browser-tab"
             role="tab"
             aria-selected={tab.id === activeTabId}
             title={tab.url}
+            data-drag={tabDrag.phaseOf(index)}
+            style={tabDrag.styleOf(index)}
+            onPointerDown={(event) => tabDrag.begin(event, tab.id)}
           >
             <button
               type="button"
               className="browser-tab-label"
-              onClick={() => switchToTab(tab.id)}
+              onClick={() => {
+                // The click a finished carry synthesizes is not a tab switch.
+                if (tabDrag.consumeClick()) return;
+                switchToTab(tab.id);
+              }}
+              onKeyDown={(event) => {
+                // ⌥←/→ moves the focused tab, the keyboard's way to reorder.
+                if (!event.altKey || event.metaKey || event.ctrlKey) return;
+                const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+                if (step === 0) return;
+                event.preventDefault();
+                moveBrowserTab(tab.id, index + step);
+              }}
             >
               {tab.loading ? (
                 <WorkingNest active size={14} />
@@ -671,6 +696,8 @@ export function BrowserPanel({
               type="button"
               className="browser-tab-close"
               aria-label={`Close tab ${tabLabel(tab)}`}
+              // The ✕ is a target of its own, not a handle to carry the tab by.
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={() => closeTab(tab.id)}
             >
               <X size={12} strokeWidth={1.75} />

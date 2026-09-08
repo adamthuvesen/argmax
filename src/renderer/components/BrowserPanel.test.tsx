@@ -66,6 +66,39 @@ function stubRect(element: HTMLElement, rect: { x: number; y: number; width: num
     });
 }
 
+/**
+ * jsdom ships no PointerEvent and drops the init fields it does not know, so a
+ * carry's coordinates travel on a MouseEvent of the same name.
+ */
+function pointer(target: EventTarget, type: string, clientX: number): void {
+  act(() => {
+    target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX, button: 0 }));
+  });
+}
+
+/** The user's own tab plus two more, named so an order is easy to read. */
+function threeTabs(userTabId: string): Parameters<typeof applyBrowserTabs>[0] {
+  return ["Alpha", "Beta", "Gamma"].map((title, index) => ({
+    tabId: index === 0 ? userTabId : `tab-${title.toLowerCase()}`,
+    ownerSessionId: null,
+    url: `https://${title.toLowerCase()}.example.com`,
+    title,
+    loading: false,
+    group: null
+  }));
+}
+
+/** Three tabs of equal width in a 300px strip, so a carry has slots to land in. */
+function layOutStrip(): HTMLElement[] {
+  const strip = screen.getByRole("tablist", { name: "Browser tabs" });
+  stubRect(strip, { x: 0, y: 0, width: 300, height: 28 });
+  const tabs = screen.getAllByRole("tab");
+  for (const [index, tab] of tabs.entries()) {
+    stubRect(tab, { x: index * 100, y: 0, width: 100, height: 28 });
+  }
+  return tabs;
+}
+
 /** A window-level overlay at a known box, torn down by `cleanup`'s document reset. */
 function appendDialog(rect: { x: number; y: number; width: number; height: number }): HTMLElement {
   const dialog = document.createElement("div");
@@ -344,6 +377,55 @@ describe("BrowserPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /Close tab github/i }));
     expect(browserStub.close).toHaveBeenCalledWith(firstTab);
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("carries a tab past its neighbour and lands it in that slot", () => {
+    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    act(() => applyBrowserTabs(threeTabs(activeTabId())));
+    const [alpha] = layOutStrip();
+    if (!alpha) throw new Error("no tabs");
+
+    pointer(alpha, "pointerdown", 50);
+    pointer(window, "pointermove", 160);
+
+    // Past Beta's middle: Alpha rides the pointer, Beta slides into its slot.
+    const carried = screen.getAllByRole("tab");
+    expect(carried[0]).toHaveAttribute("data-drag", "carry");
+    expect(carried[0]).toHaveStyle({ transform: "translateX(110px)" });
+    expect(carried[1]).toHaveStyle({ transform: "translateX(-100px)" });
+    expect(carried[2]).not.toHaveAttribute("style");
+    expect(getBrowserTabs().map((tab) => tab.title)).toEqual(["Alpha", "Beta", "Gamma"]);
+
+    pointer(window, "pointerup", 160);
+    expect(getBrowserTabs().map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
+    expect(screen.getAllByRole("tab")[0]).toHaveTextContent("Beta");
+    expect(screen.getAllByRole("tab")[1]).not.toHaveAttribute("data-drag");
+  });
+
+  it("treats a press that barely moves as a plain tab switch", () => {
+    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    act(() => applyBrowserTabs(threeTabs(activeTabId())));
+    const gamma = layOutStrip()[2];
+    if (!gamma) throw new Error("no third tab");
+
+    pointer(gamma, "pointerdown", 250);
+    pointer(window, "pointermove", 252);
+    pointer(window, "pointerup", 252);
+
+    expect(getBrowserTabs().map((tab) => tab.title)).toEqual(["Alpha", "Beta", "Gamma"]);
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Gamma");
+  });
+
+  it("moves the focused tab with the keyboard", () => {
+    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    act(() => applyBrowserTabs(threeTabs(activeTabId())));
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Alpha" }), { key: "ArrowRight", altKey: true });
+    expect(getBrowserTabs().map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
+
+    // The first tab has nowhere further left to go.
+    fireEvent.keyDown(screen.getByRole("button", { name: "Beta" }), { key: "ArrowLeft", altKey: true });
+    expect(getBrowserTabs().map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
   });
 
   it("wires toolbar actions to the bridge and close to the parent", () => {

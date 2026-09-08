@@ -284,6 +284,22 @@ export function activateBrowserTab(id: string): void {
   notifyTabListeners();
 }
 
+/** Moves a tab to another slot. Order is the user's alone — the registry's
+ *  pushes never touch it — so a carried tab keeps its new place across a
+ *  restart through the persisted list. */
+export function moveBrowserTab(id: string, toIndex: number): void {
+  const from = tabs.findIndex((tab) => tab.id === id);
+  const moved = tabs[from];
+  if (!moved) return;
+  const to = Math.max(0, Math.min(toIndex, tabs.length - 1));
+  if (to === from) return;
+  const next = [...tabs];
+  next.splice(from, 1);
+  next.splice(to, 0, moved);
+  tabs = next;
+  notifyTabListeners();
+}
+
 /** URLs of closed tabs, most recent last — the ⌘⇧T reopen stack. Session
  *  only; a reopened tab gets a fresh id and webview. */
 const recentlyClosedUrls: string[] = [];

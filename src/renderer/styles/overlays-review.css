@@ -982,6 +982,8 @@
   height: 28px;
   border-radius: var(--radius-lg);
   color: var(--muted);
+  /* A tab is a handle to carry, so a press on one never anchors a selection. */
+  user-select: none;
   transition:
     background var(--duration-fast) var(--ease),
     color var(--duration-fast) var(--ease);
@@ -1004,6 +1006,34 @@
    to say "active"; a touch of ink lifts the pill the way the Files strip does. */
 :root[data-theme="dark"] .browser-tab[aria-selected="true"] {
   background: color-mix(in oklab, var(--panel) 90%, var(--text));
+}
+
+/* Carrying a tab to another slot. Nothing reorders until the drop lands: the
+   carried tab rides a transform and the tabs it has passed slide one slot the
+   other way, so the strip never renumbers under the pointer. No lift under
+   the carried tab: the strip clips its own overflow on both axes, so a shadow
+   would be sliced off at the tab's edge — and the tab is already the active
+   pill, a press having selected it, so the motion is the affordance.
+   The transform transition hangs off the strip's [data-dragging] rather than
+   off .browser-tab, so the render that commits the new order takes the
+   transitions away in the same breath as the transforms — left in the
+   after-change style, each tab would animate from the slot it just left to
+   the layout it is already sitting in. */
+.browser-tab-strip[data-dragging],
+.browser-tab-strip[data-dragging] .browser-tab-label,
+.browser-tab-strip[data-dragging] .browser-tab-close {
+  cursor: grabbing;
+}
+
+.browser-tab-strip[data-dragging] .browser-tab {
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+/* The carried tab tracks the pointer exactly; easing it would leave it a
+   frame behind the cursor. It gets the transition back for the drop, which
+   rides the last stretch into the slot it earned. */
+.browser-tab-strip[data-dragging] .browser-tab[data-drag="carry"] {
+  transition: none;
 }
 
 /* 10px from the pill's edge to the favicon, and the ✕ (12px glyph in a 20px

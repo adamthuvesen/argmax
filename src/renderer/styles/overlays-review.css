@@ -955,19 +955,29 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  min-width: 0;
   padding: var(--space-2) var(--space-2) 0;
   background: var(--sidebar);
-  overflow: hidden;
+  /* Shrink tabs evenly first; scroll only once each hits --browser-tab-min. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.browser-tab-strip::-webkit-scrollbar {
+  display: none;
 }
 
 /* Tabs share the row evenly up to a cap and ellipsize past it, Chrome-style:
-   the strip never wraps or scrolls the panel sideways. */
+   width: 0 lets flex distribute the strip's width instead of each tab's
+   title length; min-width is the floor before the strip scrolls. */
 .browser-tab {
   container-type: inline-size;
   display: flex;
   align-items: center;
   flex: 1 1 0;
-  min-width: 0;
+  width: 0;
+  min-width: var(--browser-tab-min, 72px);
   max-width: 180px;
   height: 28px;
   border-radius: var(--radius-lg);

@@ -746,7 +746,7 @@ export function SessionComposer({
                 <button
                   type="button"
                   className="composer-queued-chip-action"
-                  aria-label={`${sessionIsRunning ? "Stop and send" : "Send"} queued follow-up: ${entry.content}`}
+                  aria-label={`Send queued follow-up: ${entry.content}`}
                   title={
                     sessionIsRunning
                       ? "Stop the current turn and send this follow-up"
@@ -756,7 +756,7 @@ export function SessionComposer({
                   onClick={() => void sendQueuedNow("interrupt")}
                 >
                   <Send size={13} aria-hidden="true" />
-                  <span>{sessionIsRunning ? "Stop & send" : "Send"}</span>
+                  <span>Send</span>
                 </button>
                 {onMultitask ? (
                   <button

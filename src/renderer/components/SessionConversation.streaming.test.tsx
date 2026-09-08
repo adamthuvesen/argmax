@@ -2155,7 +2155,7 @@ describe("SessionConversation — streaming & composer", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Stop and send queued follow-up: use the simpler approach"
+        name: "Send queued follow-up: use the simpler approach"
       })
     );
 
@@ -2294,7 +2294,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByLabelText("Queued follow-up: Keep the tool running")).toBeInTheDocument();
   });
 
-  it("labels the queued action Send once the session is idle", () => {
+  it("labels the queued send action Send regardless of session state", () => {
     renderConversation(baseSession({ state: "complete" }), [], {
       pendingMessages: [
         {
@@ -2310,11 +2310,6 @@ describe("SessionConversation — streaming & composer", () => {
     expect(
       screen.getByRole("button", { name: "Send queued follow-up: Run the final check" })
     ).toHaveTextContent("Send");
-    expect(
-      screen.queryByRole("button", {
-        name: "Stop and send queued follow-up: Run the final check"
-      })
-    ).not.toBeInTheDocument();
   });
 
   it("queued chips are keyboard-focusable and Backspace/Delete cancels them", () => {

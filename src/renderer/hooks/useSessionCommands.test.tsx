@@ -28,6 +28,43 @@ describe("useSessionCommands", () => {
     };
   });
 
+  it.each([
+    ["codex", "gpt-6-astra", true],
+    ["codex", "gpt-5.6-sol", true],
+    ["codex", "gpt-5.6-terra", true],
+    ["codex", "gpt-5.6-luna", true],
+    ["codex", "unknown", false],
+    ["claude", "claude-fable-5-1", false],
+    ["claude", "claude-opus-5", false],
+    ["claude", "claude-sonnet-5", false],
+    ["claude", "claude-haiku-4-5", false],
+    ["cursor", "gpt-5.6-sol-medium", false],
+    ["cursor", "composer-2.5", false],
+    ["grok", "grok-4.6", false],
+    ["opencode", "opencode/big-pickle", false]
+  ] as const)("gates the saved Fast preference for %s/%s", async (provider, modelId, supported) => {
+    const { result, rerender } = renderHook(
+      ({ fastMode }) => useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode }),
+      { initialProps: { fastMode: false } }
+    );
+    const model = { provider, label: modelId, modelId };
+
+    await act(async () => {
+      await result.current.sendSessionInput("session-1", "continue", model, "auto");
+    });
+    expect(sendInputMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ provider, modelId, fastMode: false })
+    );
+
+    rerender({ fastMode: true });
+    await act(async () => {
+      await result.current.sendSessionInput("session-1", "continue", model, "auto");
+    });
+    expect(sendInputMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ provider, modelId, fastMode: supported })
+    );
+  });
+
   it("calls onEarlyStop by default on terminateSession", async () => {
     const { result } = renderHook(() =>
       useSessionCommands({

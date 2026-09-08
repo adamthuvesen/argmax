@@ -612,6 +612,14 @@ export function SessionComposer({
       {pendingMessages.length > 0 ? (
         <div className="composer-queued-lane" role="list" aria-label="Queued follow-ups">
           {pendingMessages.map((entry) => {
+            const sessionIsRunning = session?.state === "running";
+            const canSteer =
+              sessionIsRunning &&
+              (session.provider === "codex" || session.provider === "claude") &&
+              (entry.modelId === undefined || entry.modelId === session.modelId) &&
+              (entry.reasoningEffort === undefined ||
+                entry.reasoningEffort === session.reasoningEffort) &&
+              entry.agentMode === (session.agentMode ?? "auto");
             const cancel = (): void => {
               if (!session || !onCancelQueuedMessage) return;
               void onCancelQueuedMessage(session.id, entry.id).catch((error: unknown) => {
@@ -721,13 +729,7 @@ export function SessionComposer({
                     </span>
                   ) : null}
                 </span>
-                {session.state === "running" &&
-                (session.provider === "codex" || session.provider === "claude") &&
-                (entry.modelId === null || entry.modelId === undefined || entry.modelId === session.modelId) &&
-                (entry.reasoningEffort === null ||
-                  entry.reasoningEffort === undefined ||
-                  entry.reasoningEffort === session.reasoningEffort) &&
-                entry.agentMode === (session.agentMode ?? "auto") ? (
+                {canSteer ? (
                   <button
                     type="button"
                     className="composer-queued-chip-action"
@@ -743,13 +745,17 @@ export function SessionComposer({
                 <button
                   type="button"
                   className="composer-queued-chip-action"
-                  aria-label={`Stop and send queued follow-up: ${entry.content}`}
-                  title="Stop the current turn and send this follow-up"
+                  aria-label={`${sessionIsRunning ? "Stop and send" : "Send"} queued follow-up: ${entry.content}`}
+                  title={
+                    sessionIsRunning
+                      ? "Stop the current turn and send this follow-up"
+                      : "Send this follow-up"
+                  }
                   disabled={sendingQueuedMessageId !== null}
                   onClick={() => void sendQueuedNow("interrupt")}
                 >
                   <Send size={13} aria-hidden="true" />
-                  <span>Stop &amp; send</span>
+                  <span>{sessionIsRunning ? "Stop & send" : "Send"}</span>
                 </button>
                 {onMultitask ? (
                   <button

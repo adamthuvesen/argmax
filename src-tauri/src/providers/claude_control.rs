@@ -460,6 +460,7 @@ impl Drop for ControlHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::database::Database;
     fn launch_input(
         permission_mode: PermissionMode,
         agent_mode: super::super::AgentMode,
@@ -513,5 +514,99 @@ mod tests {
             permission_response("request-43", false, json!({}))["response"]["response"]["behavior"],
             "deny"
         );
+    }
+
+    #[test]
+    fn user_messages_have_the_sdk_envelope_and_echo_text_is_recoverable() {
+        let message = user_message("provider-session", "steer-token");
+        assert_eq!(message["type"], "user");
+        assert_eq!(message["session_id"], "provider-session");
+        assert_eq!(message["message"]["role"], "user");
+        assert_eq!(replayed_user_prompt(&message), Some("steer-token"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn fake_stream_json_process_acknowledges_steering_without_ending_the_turn() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        use std::sync::Mutex;
+
+        let temp = tempfile::tempdir().unwrap();
+        let server = temp.path().join("fake-claude");
+        fs::write(
+            &server,
+            r#"#!/bin/sh
+user_count=0
+while IFS= read -r line; do
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"argmax-initialize","response":{}}}'
+      ;;
+    *'"type":"user"'*)
+      user_count=$((user_count + 1))
+      if [ "$user_count" -eq 1 ]; then
+        printf '%s\n' "$line"
+      else
+        printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"original task checkpoint"}'
+        printf '%s\n' "$line"
+        printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"original complete with steer-token"}]}}'
+        printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"original complete with steer-token"}'
+        exit 0
+      fi
+      ;;
+  esac
+done
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let database = Arc::new(Database::open_in_memory().unwrap());
+        let approvals = ApprovalService::new(database);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| {
+            captured.lock().unwrap().push(event);
+        });
+        let mut input = launch_input(PermissionMode::ProviderDefaults, super::super::AgentMode::Auto);
+        input.workspace_path = temp.path().to_path_buf();
+        input.prompt = "original task".into();
+
+        let handle = launch_turn(
+            server.to_str().unwrap(),
+            &input,
+            None,
+            approvals,
+            callback,
+        )
+        .await
+        .unwrap();
+        assert!(handle.supports_steering());
+        handle.steer("steer-token").await.unwrap();
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !handle.disposed() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("fake Claude turn completed");
+
+        let events = events.lock().unwrap();
+        assert!(events
+            .iter()
+            .any(|event| event.message.contains("original complete with steer-token")));
+        assert!(!events
+            .iter()
+            .any(|event| event.message.contains("\"type\":\"user\"")));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.r#type == ProviderRuntimeEventType::Exit)
+                .count(),
+            1
+        );
+        assert_eq!(events.last().and_then(|event| event.exit_code), Some(0));
     }
 }

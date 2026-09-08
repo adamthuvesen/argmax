@@ -11,6 +11,9 @@ import {
 import {
   applyBrowserTabs,
   getActiveBrowserTabId,
+  getBrowserRequest,
+  getBrowserTabs,
+  openInBrowserPanel,
   requestCloseActiveBrowserTab,
   resetBrowserTabsForTests,
   unmarkBrowserTabMaterialized
@@ -104,6 +107,30 @@ describe("BrowserPanel", () => {
     );
     expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue("https://github.com");
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("github.com");
+  });
+
+  it("opens a link request in a fresh webview and preserves the current tab", () => {
+    const { rerender } = render(<BrowserPanel url="https://github.com" requestSeq={1} onClose={() => undefined} />);
+    const previousTabId = activeTabId();
+    browserStub.open.mockClear();
+    browserStub.navigate.mockClear();
+
+    act(() => openInBrowserPanel("https://example.com", { newTab: true }));
+    const request = getBrowserRequest();
+    rerender(<BrowserPanel url="https://example.com" requestSeq={2} requestTabId={request?.tabId} onClose={() => undefined} />);
+
+    expect(getActiveBrowserTabId()).toBe(request?.tabId);
+    expect(getBrowserTabs()).toEqual([
+      expect.objectContaining({ id: previousTabId, url: "https://github.com" }),
+      expect.objectContaining({ id: request?.tabId, url: "https://example.com" })
+    ]);
+    expect(browserStub.open).toHaveBeenCalledWith(
+      expect.objectContaining({ url: "https://example.com", tabId: request?.tabId })
+    );
+    expect(browserStub.setBounds).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: previousTabId, visible: false })
+    );
+    expect(browserStub.navigate).not.toHaveBeenCalled();
   });
 
   it("shows an agent's tab instead of navigating the user's, and badges it", () => {

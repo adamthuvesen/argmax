@@ -33,9 +33,11 @@ export interface BrowserOpenRequest {
 let openRequest: BrowserOpenRequest | null = null;
 const requestListeners = new Set<() => void>();
 
-export function openInBrowserPanel(url: string): void {
+export function openInBrowserPanel(url: string, options?: { newTab?: boolean }): void {
+  const tab = options?.newTab ? createBrowserTab(url, false) : null;
   lastUrl = url;
   openRequest = { url, seq: (openRequest?.seq ?? 0) + 1 };
+  if (tab) openRequest.tabId = tab.id;
   for (const listener of requestListeners) listener();
 }
 

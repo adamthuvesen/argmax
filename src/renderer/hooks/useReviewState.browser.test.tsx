@@ -2,6 +2,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getBrowserOwnerId,
+  getBrowserRequest,
   openInBrowserPanel,
   rememberBrowserUrl,
   requestAgentBrowserOpen,
@@ -90,12 +91,14 @@ describe("useReviewState — browser mode", () => {
     const claiming = renderPanel(true);
     const idle = renderPanel(false);
 
-    act(() => openInBrowserPanel("https://argmax.dev"));
+    act(() => openInBrowserPanel("https://argmax.dev", { newTab: true }));
 
     expect(claiming.result.current.mode).toBe("browser");
     expect(claiming.result.current.isPanelOpen).toBe(true);
     expect(claiming.result.current.browserOwner).toBe(true);
     expect(claiming.result.current.browserRequest?.url).toBe("https://argmax.dev");
+    expect(claiming.result.current.browserRequest?.tabId).toBe(getBrowserRequest()?.tabId);
+    expect(claiming.result.current.browserRequest?.tabId).toBeDefined();
     expect(idle.result.current.mode).toBe("changes");
     expect(idle.result.current.browserOwner).toBe(false);
   });

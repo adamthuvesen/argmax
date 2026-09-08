@@ -30,7 +30,7 @@ export function WebLink({ href, children, ...rest }: WebLinkProps): JSX.Element 
         const flipped = event.metaKey || event.ctrlKey;
         if ((readStoredLinkTarget() === "argmax") !== flipped) {
           event.preventDefault();
-          openInBrowserPanel(href);
+          openInBrowserPanel(href, { newTab: true });
           return;
         }
         if (!window.argmax) return;

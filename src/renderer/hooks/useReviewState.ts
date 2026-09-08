@@ -352,7 +352,7 @@ export function useReviewState(
     if (!pendingBrowserRequest || pendingBrowserRequest.seq === handledBrowserSeq.current) return;
     handledBrowserSeq.current = pendingBrowserRequest.seq;
     if (!claimsBrowserRequests.current) return;
-    openBrowserAt(pendingBrowserRequest.url);
+    openBrowserAt(pendingBrowserRequest.url, pendingBrowserRequest.tabId);
   }, [openBrowserAt, pendingBrowserRequest]);
 
   // A tab this panel's session opened: show it here, so the user watches the

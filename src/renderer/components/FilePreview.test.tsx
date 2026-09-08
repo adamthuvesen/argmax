@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { readBundledCss } from "../styles/readBundledCss.js";
 import { FilePreview } from "./FilePreview.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
-import { getBrowserRequest, subscribeBrowserRequest } from "../lib/browserPanel.js";
+import { createBrowserTab, getBrowserRequest, getBrowserTabs, resetBrowserTabsForTests, subscribeBrowserRequest } from "../lib/browserPanel.js";
 import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
@@ -65,6 +65,8 @@ describe("FilePreview", () => {
       if (request) opened.push(request.url);
     });
     try {
+      resetBrowserTabsForTests();
+      const existingTab = createBrowserTab("https://example.com/already-open");
       const content = `[docs](${href})`;
       render(<FilePreview state={makeState({
         selectedPath: "README.md",
@@ -80,9 +82,20 @@ describe("FilePreview", () => {
       } else {
         expect(opened).toEqual([expectedUrl]);
         expect(openPath).not.toHaveBeenCalled();
+        const newTabId = getBrowserRequest()?.tabId;
+        expect(newTabId).toBeDefined();
+        expect(newTabId).not.toBe(existingTab.id);
+        expect(getBrowserTabs()).toEqual([
+          existingTab,
+          expect.objectContaining({ id: newTabId, url: expectedUrl })
+        ]);
+        fireEvent.click(link, modifiers);
+        expect(getBrowserTabs()).toHaveLength(3);
+        expect(getBrowserRequest()?.tabId).not.toBe(newTabId);
       }
     } finally {
       unsubscribe();
+      resetBrowserTabsForTests();
       if (originalApi) Object.defineProperty(window, "argmax", originalApi);
       else Reflect.deleteProperty(window, "argmax");
       if (originalPreference === null) localStorage.removeItem(LINK_TARGET_KEY);

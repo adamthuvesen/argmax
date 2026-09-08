@@ -20,6 +20,17 @@ The page is standalone. Opening it swaps the app sidebar for a back rail and use
 
 The scheduler ticks every 30 seconds. Due tasks launch sequentially via `session_control::launch_with_spec`.
 
+The scheduler and Run now share a per-routine launch claim. An overlapping
+request cannot launch the same task twice, while different tasks can still run
+independently. Each tick rechecks the schedule after claiming it so a completed
+manual run, an edit, or a deletion invalidates an older due-list entry. Claims
+release when the request finishes or is cancelled.
+
+Run settlement also checks that the task has not changed while provider launch
+or follow-up work was awaiting. A pause, reschedule, target change, or shared-chat
+reset made during that window is preserved. A newly launched shared-chat pointer
+is stored in the same conditional settlement.
+
 - **Missed runs:** If the app was closed during scheduled run times, backlog collapses into a single run.
 - **Failures:** Recurring tasks back off by 15 minutes on launch failure. One-shot tasks are disabled with `last_error` recorded.
 - **Permissions:** New scheduled chats use Settings → Agents → Tool permissions. Provider defaults honors native configuration, and native approval requests wait in the chat. Follow-ups retain the existing chat’s stored permission choice.

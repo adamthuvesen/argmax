@@ -9,7 +9,8 @@
 //! by [`crate::routines::schedule::retry_after`] so a broken routine can
 //! never retry on every future tick.
 
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::Utc;
@@ -25,11 +26,40 @@ use crate::providers::session_service::ProviderSessionService;
 use crate::providers::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
 use crate::session_control::{self, LaunchSpec};
 use crate::state::AppState;
+use crate::util::sync::LockOrRecover;
 use crate::workspaces::WorkspaceService;
 
 use super::schedule;
 
 const SCHEDULER_TICK: Duration = Duration::from_secs(30);
+
+/// Both scheduler ticks and Run now claim the routine before reading its
+/// current definition. The guard releases on cancellation as well as return.
+#[derive(Default)]
+pub struct RoutineRuns(Mutex<HashSet<String>>);
+
+impl RoutineRuns {
+    pub fn try_start(&self, id: &str) -> Option<RoutineRun<'_>> {
+        self.0
+            .lock_or_recover("routine runs")
+            .insert(id.to_string())
+            .then(|| RoutineRun {
+                runs: self,
+                id: id.to_string(),
+            })
+    }
+}
+
+pub struct RoutineRun<'a> {
+    runs: &'a RoutineRuns,
+    id: String,
+}
+
+impl Drop for RoutineRun<'_> {
+    fn drop(&mut self) {
+        self.runs.0.lock_or_recover("routine runs").remove(&self.id);
+    }
+}
 
 /// Spawns the tick loop. Services are pulled from `AppState` on every tick
 /// and skipped while boot has not installed them yet, mirroring the session
@@ -72,21 +102,43 @@ async fn tick(app: &tauri::AppHandle) -> ArgmaxResult<()> {
     let app_data = crate::util::data_dir::app_data_dir(app)
         .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
     let permission_mode = crate::default_agent::read_default_agent(&app_data).permission_mode;
+    let state = app.state::<AppState>();
     for fields in due {
+        let Some(_run) = state.routine_runs.try_start(&fields.id) else {
+            continue;
+        };
+        // A manual run or schedule edit can finish after the due list was read.
+        // Re-read under the claim so that stale entries cannot fire again.
+        let fields = {
+            let connection = database.connection();
+            let current = match routines::find_routine_by_id(&connection, &fields.id) {
+                Ok(current) => current,
+                Err(ArgmaxError::RecordNotFound { .. }) => continue,
+                Err(error) => return Err(error),
+            };
+            if !current.enabled
+                || current
+                    .next_run_at
+                    .as_deref()
+                    .is_none_or(|at| at > now_iso().as_str())
+            {
+                continue;
+            }
+            routines::routine_launch_fields(&current)
+        };
         fire_routine(&database, &workspaces, &providers, fields, permission_mode).await;
     }
     Ok(())
 }
 
 /// Launches one routine as a top-level session and records the outcome.
-/// Sequential by design — the scheduler tick is the concurrency guard, so
-/// several routines due in the same tick launch one after another instead
-/// of stampeding worktree creation.
+/// Callers hold a RoutineRun claim until this returns. Ticks also launch their
+/// due routines sequentially to bound concurrent worktree creation.
 pub(crate) async fn fire_routine(
     database: &Arc<Database>,
     workspaces: &Arc<WorkspaceService>,
     providers: &Arc<ProviderSessionService>,
-    fields: RoutineLaunchFields,
+    mut fields: RoutineLaunchFields,
     permission_mode: PermissionMode,
 ) {
     let now = Utc::now();
@@ -109,11 +161,12 @@ pub(crate) async fn fire_routine(
             tracing::warn!(routine_id = %fields.id, ?error, "routine schedule invalid; disabling");
             let _ = mark(
                 database,
-                &fields.id,
+                &fields,
                 &last_run,
                 None,
                 Some(error.to_string()).as_deref(),
                 false,
+                None,
             );
             return;
         }
@@ -122,11 +175,12 @@ pub(crate) async fn fire_routine(
     let Some(provider) = parse_provider(&fields.provider) else {
         let _ = mark(
             database,
-            &fields.id,
+            &fields,
             &last_run,
             None,
             Some("stored provider is not recognized"),
             false,
+            None,
         );
         return;
     };
@@ -141,26 +195,38 @@ pub(crate) async fn fire_routine(
                 FollowUpOutcome::Sent => {
                     let _ = mark(
                         database,
-                        &fields.id,
+                        &fields,
                         &last_run,
                         stays_scheduled.next_run_at(next.as_ref()).as_deref(),
                         None,
                         stays_scheduled.enabled(),
+                        None,
                     );
                     return;
                 }
                 FollowUpOutcome::Missing => {
                     let connection = database.connection();
-                    let _ = routines::set_routine_last_session(&connection, &fields.id, None);
+                    let current = match routines::find_routine_by_id(&connection, &fields.id) {
+                        Ok(current) if current.updated_at == fields.updated_at => current,
+                        _ => return,
+                    };
+                    if routines::set_routine_last_session(&connection, &current.id, None).is_err() {
+                        return;
+                    }
+                    let Ok(current) = routines::find_routine_by_id(&connection, &fields.id) else {
+                        return;
+                    };
+                    fields = routines::routine_launch_fields(&current);
                 }
                 FollowUpOutcome::Failed(message) => {
                     let _ = mark(
                         database,
-                        &fields.id,
+                        &fields,
                         &last_run,
                         stays_scheduled.next_run_at_or_retry(now).as_deref(),
                         Some(&message),
                         stays_scheduled.enabled(),
+                        None,
                     );
                     return;
                 }
@@ -201,23 +267,17 @@ pub(crate) async fn fire_routine(
                 workspace_id = %launched.workspace_id,
                 "scheduled task fired"
             );
-            if matches!(fields.run_target, RoutineRunTarget::SameSession) {
-                let connection = database.connection();
-                let _ = routines::set_routine_last_session(
-                    &connection,
-                    &fields.id,
-                    Some(&launched.session_id),
-                );
-            }
             // A one-shot is spent once it launches: disable the row so the
             // task list keeps showing what ran rather than silently deleting.
             let _ = mark(
                 database,
-                &fields.id,
+                &fields,
                 &last_run,
                 stays_scheduled.next_run_at(next.as_ref()).as_deref(),
                 None,
                 stays_scheduled.enabled(),
+                matches!(fields.run_target, RoutineRunTarget::SameSession)
+                    .then_some(launched.session_id.as_str()),
             );
         }
         Err(error) => {
@@ -226,11 +286,12 @@ pub(crate) async fn fire_routine(
             // and run-now can retry deliberately.
             let _ = mark(
                 database,
-                &fields.id,
+                &fields,
                 &last_run,
                 stays_scheduled.next_run_at_or_retry(now).as_deref(),
                 Some(&error.message),
                 stays_scheduled.enabled(),
+                None,
             );
         }
     }
@@ -302,20 +363,22 @@ fn invalid_input_message(error: crate::error::InvalidInputIssue) -> String {
 
 fn mark(
     database: &Arc<Database>,
-    id: &str,
+    fields: &RoutineLaunchFields,
     last_run_at: &str,
     next_run_at: Option<&str>,
     last_error: Option<&str>,
     enabled: bool,
-) -> ArgmaxResult<()> {
+    launched_session_id: Option<&str>,
+) -> ArgmaxResult<bool> {
     let connection = database.connection();
     routines::mark_routine_run(
         &connection,
-        id,
+        fields,
         last_run_at,
         next_run_at,
         last_error,
         enabled,
+        launched_session_id,
     )
 }
 
@@ -364,6 +427,26 @@ fn parse_provider(value: &str) -> Option<ProviderId> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn routine_runs_guard_released_on_task_abort() {
+        let runs = std::sync::Arc::new(RoutineRuns::default());
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let task_runs = std::sync::Arc::clone(&runs);
+        let handle = tokio::spawn(async move {
+            let Some(_guard) = task_runs.try_start("same") else {
+                return;
+            };
+            let _ = ready_tx.send(());
+            std::future::pending::<()>().await;
+        });
+        ready_rx.await.expect("background task should claim");
+        assert!(runs.try_start("same").is_none());
+        assert!(runs.try_start("other").is_some());
+        handle.abort();
+        assert!(handle.await.unwrap_err().is_cancelled());
+        assert!(runs.try_start("same").is_some());
+    }
 
     #[test]
     fn provider_wire_strings_round_trip() {

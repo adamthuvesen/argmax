@@ -83,6 +83,7 @@ pub struct AppState {
     /// second `synced_sessions` insert trips the provider/external unique
     /// index and aborts the sweep with the duplicate session already persisted.
     pub sync_sweep: Arc<std::sync::Mutex<()>>,
+    pub routine_runs: crate::routines::scheduler::RoutineRuns,
     /// Skill discovery, held here so its per-provider cache survives across
     /// calls: a fresh registry per `skills:list` re-walks every skill tree.
     pub skills: Arc<SkillRegistry>,
@@ -125,6 +126,7 @@ impl Default for AppState {
             remote_terminal_events: broadcast::channel(REMOTE_TERMINAL_EVENT_CAPACITY).0,
             sync_report: std::sync::Mutex::new(None),
             sync_sweep: Arc::new(std::sync::Mutex::new(())),
+            routine_runs: Default::default(),
             skills: Arc::new(SkillRegistry::from_env()),
             keep_awake: Arc::default(),
             browser_tabs: Arc::default(),

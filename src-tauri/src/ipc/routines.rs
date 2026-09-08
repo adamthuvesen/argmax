@@ -131,12 +131,21 @@ pub async fn routines_run_now(
     state: State<'_, AppState>,
     input: RoutinesRunNowInput,
 ) -> ArgmaxResult<Routine> {
+    let _run = state
+        .routine_runs
+        .try_start(input.id.as_str())
+        .ok_or_else(|| {
+            ArgmaxError::service(
+                "ROUTINE_ALREADY_RUNNING",
+                "This scheduled task is already launching.",
+            )
+        })?;
     let database = live_database(&state)?;
     let (workspaces, providers) = launch_services(&state)?;
     let fields = {
         let connection = database.connection();
         let existing = find_routine_by_id(&connection, input.id.as_str())?;
-        routine_launch_fields(&existing)
+        routines::routine_launch_fields(&existing)
     };
     let app_data = crate::util::data_dir::app_data_dir(&app)
         .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
@@ -179,23 +188,6 @@ fn schedule_next_run(
             schedule::next_occurrence(routine.cron_expr.as_deref(), None, now)?
                 .map(schedule::format_rfc3339),
         ),
-    }
-}
-
-fn routine_launch_fields(routine: &Routine) -> crate::persistence::routines::RoutineLaunchFields {
-    crate::persistence::routines::RoutineLaunchFields {
-        id: routine.id.clone(),
-        name: routine.name.clone(),
-        project_id: routine.project_id.clone(),
-        prompt: routine.prompt.clone(),
-        provider: routine.provider.clone(),
-        model_label: routine.model_label.clone(),
-        model_id: routine.model_id.clone(),
-        run_target: routine.run_target,
-        last_session_id: routine.last_session_id.clone(),
-        cron_expr: routine.cron_expr.clone(),
-        run_once_at: routine.run_once_at.clone(),
-        enabled: routine.enabled,
     }
 }
 

@@ -98,8 +98,8 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     // retune that moved the default would be invisible without this.
     expect(DEFAULT_INK_STRENGTH).toBe(7);
     expect(tokens).not.toMatch(/\[data-ink-strength="7"\]/);
-    const inkDefaults = /:root\s*\{\s*--ink-toward:[^}]+\}/.exec(tokens)?.[0] ?? "";
-    expect(inkDefaults).toContain("--ink-pull: 0%");
+    expect(tokens).toContain("--ink-toward: var(--bg);");
+    expect(tokens).toContain("--ink-pull: 0%;");
 
     // Every ink token has to ride the ladder, or a level would move some of
     // the app's text and leave the rest behind.

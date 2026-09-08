@@ -130,7 +130,7 @@ function isAnswerContinuation(previous: string, incoming: string): boolean {
   const last = prev.charAt(prev.length - 1);
   if (last === "\n" || ".!?…:".includes(last)) return false;
   const start = incoming.trimStart().charAt(0);
-  return start.length > 0 && start === start.toLowerCase();
+  return start !== start.toUpperCase() && start === start.toLowerCase();
 }
 
 function joinAnswerFragments(previous: string, incoming: string): string {
@@ -318,6 +318,8 @@ export function coalesceAssistantGroups(
     if (
       last &&
       !isLiveDeltaGroup(last) &&
+      !last.thinking &&
+      !last.error &&
       last.text === event.message &&
       canonical.kind === "message" &&
       canonical.role === "assistant" &&

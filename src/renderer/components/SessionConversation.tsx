@@ -25,6 +25,7 @@ import type {
   PendingMessage,
   ProjectSummary,
   ProviderId,
+  QueuedMessageDelivery,
   RawProviderOutput,
   SessionSummary,
   TimelineEvent,
@@ -75,7 +76,7 @@ import {
   isExitPlanModeToolName
 } from "../lib/turnInteractiveCards.js";
 import { liveThoughtOwnsProgress, turnAgentModeFromPrior } from "../lib/sessionTurnView.js";
-import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
+import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import {
   createAnnotation,
@@ -143,7 +144,7 @@ export function SessionConversation({
   checks,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
-  defaultThinkingExpanded,
+  thinkingDisplay,
   defaultTurnChangesExpanded,
   events,
   eventsBackfilled = true,
@@ -192,7 +193,7 @@ export function SessionConversation({
   checks?: CheckRun[];
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
-  defaultThinkingExpanded?: boolean;
+  thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
   events: TimelineEvent[];
   /** The pane's backfill of this session's timeline has settled. Until it has,
@@ -255,8 +256,17 @@ export function SessionConversation({
       chips above the composer; cleared from the parent as the queue drains. */
   pendingMessages?: PendingMessage[];
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
-  onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
+  onSendQueuedMessageNow?: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery
+  ) => Promise<void>;
+  onMultitask?: (
+    sessionId: string,
+    prompt: string,
+    provider: ProviderId,
+    pendingMessageId?: string
+  ) => Promise<void>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
@@ -1312,7 +1322,7 @@ export function SessionConversation({
                     setAgentMode={setAgentMode}
                     defaultToolCallsDisplay={defaultToolCallsDisplay}
                     defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
-                    defaultThinkingExpanded={defaultThinkingExpanded}
+                    thinkingDisplay={thinkingDisplay}
                     defaultTurnChangesExpanded={defaultTurnChangesExpanded}
                     restoringTranscript={restoringTranscript}
                     questionIsDocked={questionDocked && index === transcriptRenderItems.length - 1}

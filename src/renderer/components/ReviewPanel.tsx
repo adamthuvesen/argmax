@@ -23,6 +23,7 @@ import {
   type MouseEvent as ReactMouseEvent
 } from "react";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { PickerLead } from "./PickerLead.js";
 import {
   REVIEW_SCOPE_LABELS,
   type ReviewChangesScope,
@@ -60,7 +61,7 @@ import { FileIcon } from "@react-symbols/icons/utils";
 import { registerReviewFileTabCloseHandler } from "../lib/reviewFilePanel.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import { closeTerminalTab, getWorkspaceTerminalState, subscribeTerminalTabs } from "../lib/terminalTabs.js";
-import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
+import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 
 // The Terminal view pulls in @xterm/xterm + addons + xterm CSS — heavy, and
 // only needed once the reader actually asks for a shell. SessionPane warms
@@ -76,7 +77,7 @@ export interface AgentsPanelContext {
    *  the chat that launched it. */
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
-  defaultThinkingExpanded?: boolean;
+  thinkingDisplay?: ThinkingDisplay;
   parentSession: SessionSummary | null;
   workspace: WorkspaceSummary | null;
   onLoadAgentEvents?: (sessionId: string, parentToolUseId: string, identity?: NativeAgentIdentity) => Promise<void | { hasMore: boolean }>;
@@ -255,6 +256,7 @@ function ReviewScopePicker({ review }: { review: ReviewState }): JSX.Element {
                   close();
                 }}
               >
+                <PickerLead selected={scope === review.changesScope} />
                 {REVIEW_SCOPE_LABELS[scope]}
               </button>
             </li>
@@ -730,7 +732,7 @@ export function ReviewPanel({
             events={agents.events}
             defaultToolCallsDisplay={agents.defaultToolCallsDisplay}
             defaultToolCallGroupsExpanded={agents.defaultToolCallGroupsExpanded}
-            defaultThinkingExpanded={agents.defaultThinkingExpanded}
+            thinkingDisplay={agents.thinkingDisplay}
             isFocused={isFocused}
             parentSession={agents.parentSession}
             agentTabs={review.agentTabs}

@@ -11,6 +11,7 @@ import {
   type MouseEvent as ReactMouseEvent
 } from "react";
 import type { ModelPickerSelection } from "../lib/models.js";
+import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
 import type { DiffNoteInput } from "../lib/composerAnnotations.js";
 import type { MultitaskChild } from "../lib/multitask.js";
@@ -40,7 +41,7 @@ import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
-import { readBoundedNumberPreference, type ToolCallsDisplay } from "../lib/uiPreferences.js";
+import { readBoundedNumberPreference, type ThinkingDisplay, type ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { agentTabId } from "../lib/agentTabs.js";
 import { CommitDialog } from "./CommitDialog.js";
@@ -69,7 +70,7 @@ export function SessionPane({
   checks,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
-  defaultThinkingExpanded,
+  thinkingDisplay,
   defaultTurnChangesExpanded,
   events = [],
   fastModeEnabled = false,
@@ -113,7 +114,7 @@ export function SessionPane({
   checks?: CheckRun[];
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
-  defaultThinkingExpanded?: boolean;
+  thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
   events?: TimelineEvent[];
   fastModeEnabled?: boolean;
@@ -150,8 +151,17 @@ export function SessionPane({
     agentReferences?: AgentReference[]
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
-  onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
+  onSendQueuedMessageNow: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery
+  ) => Promise<void>;
+  onMultitask?: (
+    sessionId: string,
+    prompt: string,
+    provider: ProviderId,
+    pendingMessageId?: string
+  ) => Promise<void>;
   /** Multitasks dispatched from this pane's session. They have no sidebar row
    *  of their own — this pane's dock is where they are read and answered. */
   multitasks?: MultitaskChild[];
@@ -548,7 +558,7 @@ export function SessionPane({
           checks={checks}
           defaultToolCallsDisplay={defaultToolCallsDisplay}
           defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
-          defaultThinkingExpanded={defaultThinkingExpanded}
+          thinkingDisplay={thinkingDisplay}
           defaultTurnChangesExpanded={defaultTurnChangesExpanded}
           events={visibleEvents}
           eventsBackfilled={eventsBackfilled}
@@ -604,7 +614,7 @@ export function SessionPane({
               events: visibleEvents,
               defaultToolCallsDisplay,
               defaultToolCallGroupsExpanded,
-              defaultThinkingExpanded,
+              thinkingDisplay,
               parentSession: session,
               workspace,
               onLoadAgentEvents,

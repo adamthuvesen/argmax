@@ -1076,8 +1076,9 @@ describe("App", () => {
     expect(branchToggle).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("shows an empty branch picker state when there are no alternate branches", async () => {
+  it("keeps the current branch selected in the picker when it is the only branch", async () => {
     listBranches.mockResolvedValue(["main"]);
+    const switchBranch = vi.spyOn(window.argmax!.projects, "switchBranch");
     render(<App />);
 
     const branchToggle = await screen.findByRole("button", { name: "Switch branch" });
@@ -1085,11 +1086,11 @@ describe("App", () => {
 
     await waitFor(() => expect(listBranches).toHaveBeenCalledTimes(1));
     expect(branchToggle).toHaveAttribute("aria-expanded", "true");
-    // The list paints a commit after the IPC resolves, so wait for the list
-    // itself — the call landing is not yet the list being on screen.
-    expect(await screen.findByRole("listbox", { name: "Select branch" })).toHaveTextContent(
-      "No other branches"
-    );
+    const list = await screen.findByRole("listbox", { name: "Select branch" });
+    expect(within(list).getByRole("option", { name: "main", selected: true })).toBeInTheDocument();
+    fireEvent.click(within(list).getByRole("button", { name: "main", pressed: true }));
+    expect(branchToggle).toHaveAttribute("aria-expanded", "false");
+    expect(switchBranch).not.toHaveBeenCalled();
   });
 
   it("keeps project and branch pickers available from compact launcher details", async () => {
@@ -1133,7 +1134,7 @@ describe("App", () => {
 
     expect(within(list).getByRole("button", { name: "adam/fix-thing" })).toBeInTheDocument();
     expect(within(list).queryByRole("button", { name: "feature/tidy" })).not.toBeInTheDocument();
-    expect(within(list).getByText("1 of 2")).toBeInTheDocument();
+    expect(within(list).getByText("1 of 3")).toBeInTheDocument();
   });
 
   it("dismisses open pickers via the global dismiss layer", async () => {

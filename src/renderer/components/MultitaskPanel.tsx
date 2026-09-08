@@ -8,6 +8,7 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
+import type { QueuedMessageDelivery } from "../../shared/types.js";
 import { useReviewState } from "../hooks/useReviewState.js";
 import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
 import type { ModelPickerSelection } from "../lib/models.js";
@@ -55,7 +56,11 @@ export function MultitaskPanel({
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onOpenReview?: () => void;
   onOpenFullChat?: (sessionId: string) => void;
-  onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
+  onSendQueuedMessageNow: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery
+  ) => Promise<void>;
   onSendSessionInput: (
     sessionId: string,
     input: string,

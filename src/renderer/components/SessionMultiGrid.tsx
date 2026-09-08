@@ -11,6 +11,7 @@ import {
   type MouseEvent as ReactMouseEvent
 } from "react";
 import type { FontSize } from "../lib/fonts.js";
+import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
 import type {
@@ -32,7 +33,7 @@ import type { GridCell, GridCoord, GridState, SplitPosition } from "../lib/gridS
 import type { MultitaskChild } from "../lib/multitask.js";
 import { isSessionCell, MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
-import type { ToolCallsDisplay } from "../lib/uiPreferences.js";
+import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { SessionPane } from "./SessionPane.js";
 
@@ -72,7 +73,7 @@ interface SessionMultiGridProps {
   multitasksByParent?: Map<string, MultitaskChild[]>;
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
-  defaultThinkingExpanded?: boolean;
+  thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
   fastModeEnabled?: boolean;
   workspaceCardVisible?: boolean;
@@ -115,8 +116,17 @@ interface SessionMultiGridProps {
     agentReferences?: AgentReference[]
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
-  onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId) => Promise<void>;
+  onSendQueuedMessageNow: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery
+  ) => Promise<void>;
+  onMultitask?: (
+    sessionId: string,
+    prompt: string,
+    provider: ProviderId,
+    pendingMessageId?: string
+  ) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
@@ -141,7 +151,7 @@ export function SessionMultiGrid({
   multitasksByParent,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
-  defaultThinkingExpanded,
+  thinkingDisplay,
   defaultTurnChangesExpanded,
   fastModeEnabled,
   workspaceCardVisible = true,
@@ -390,7 +400,7 @@ export function SessionMultiGrid({
                         checks={checks}
                         defaultToolCallsDisplay={defaultToolCallsDisplay}
                         defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
-                        defaultThinkingExpanded={defaultThinkingExpanded}
+                        thinkingDisplay={thinkingDisplay}
                         defaultTurnChangesExpanded={defaultTurnChangesExpanded}
                         fastModeEnabled={fastModeEnabled}
                         workspaceCardVisible={workspaceCardVisible}

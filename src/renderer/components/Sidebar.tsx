@@ -1001,6 +1001,7 @@ export function Sidebar({
                 <SidebarSessionRow
                   workspace={workspace}
                   isWorking={workingWorkspaces.has(workspace.id)}
+                  hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
                   copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                   launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
                   isSelected={selectedWorkspaceId === workspace.id}
@@ -1156,6 +1157,7 @@ export function Sidebar({
                 <SidebarSessionRow
                   workspace={workspace}
                   isWorking={workingWorkspaces.has(workspace.id)}
+                  hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
                   copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                   subtitle={subtitleFor(workspace.projectId)}
                   importedProvider={importedProviderByWorkspace.get(workspace.id)}
@@ -1214,6 +1216,7 @@ export function Sidebar({
                 <SidebarSessionRow
                   workspace={entry.workspace}
                   isWorking={entry.working}
+                  hasUnreadResponse={unreadWorkspaces.has(entry.workspace.id)}
                   copyableIds={copyableIdsByWorkspace.get(entry.workspace.id)}
                   subtitle={subtitleFor(entry.workspace.projectId)}
                   importedProvider={importedProviderByWorkspace.get(entry.workspace.id)}
@@ -1296,6 +1299,7 @@ export function Sidebar({
                           <SidebarSessionRow
                             workspace={workspace}
                             isWorking={workingWorkspaces.has(workspace.id)}
+                            hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
                             copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                             subtitle={subtitleFor(workspace.projectId)}
                             importedProvider={importedProviderByWorkspace.get(workspace.id)}
@@ -1460,6 +1464,7 @@ export function Sidebar({
                       <SidebarSessionRow
                         workspace={workspace}
                         isWorking={workingWorkspaces.has(workspace.id)}
+                        hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
                         copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                         launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
                         isSelected={selectedWorkspaceId === workspace.id}

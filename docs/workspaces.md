@@ -62,6 +62,8 @@ Workspaces with active attention (`approval-needed`, `blocked`, `failed`, or `re
 
 Right-click → "Edit Icon" saves `workspaces.icon` and `workspaces.icon_color` via `workspaces:set-icon`. When a custom icon is active, status indicators move to a corner badge.
 
+A chat that produced a response while it was not the open row shows an unread mark: an accent-colored dot (`--accent`) in the leading-glyph cell, replacing the custom icon or status marker. Opening the chat clears it and puts the icon back. A turn in flight keeps the working nest instead; the unread dot waits until that turn ends. Stamps live in `localStorage.argmax.sidebar.viewedAt` so existing history does not light up on first sight.
+
 An attributed pull request replaces the default status marker with a GitHub PR glyph: green while open, violet once merged. Isolated workspaces resolve PRs by branch. Shared checkouts require session evidence and retain their recorded branch context after completion, so later checkout changes cannot assign another session's PR to an old chat. See [gh.md](gh.md) for attribution and legacy-cache behavior.
 
 ## Review

@@ -99,6 +99,10 @@ _Avoid_: Status, state, urgency
 **Priority**:
 The sidebar section holding workspaces that need attention, plus any the user pinned there manually. A dismissal is spent as soon as attention changes again.
 
+**Unread response**:
+A sidebar mark that a chat has produced a response the user has not opened yet. An accent-colored dot replaces the row's leading icon until the chat is viewed.
+_Avoid_: Badge, notification, unseen
+
 **Pending message**:
 A follow-up the user composed while the agent was mid-turn. Saved durably and normally sent after the current turn. Messages recovered after a restart wait for an explicit send, with uncertain delivery called out.
 _Avoid_: Queued message, draft

@@ -674,6 +674,63 @@ describe("SidebarSessionRow", () => {
     expect(row.querySelector('[data-icon-color="violet"] svg')).not.toBeNull();
   });
 
+  it("replaces the custom icon with an unread accent dot, then restores it", () => {
+    const props = {
+      isSelected: false,
+      isOpenInGrid: false,
+      canDragToGrid: true,
+      onOpenWorkspaceChat: vi.fn(),
+      onArchiveWorkspace: vi.fn(),
+      onOpenInIde: vi.fn(),
+      detectedIdes,
+      defaultIde: "vscode" as const
+    };
+    const { rerender } = render(
+      <SidebarSessionRow
+        {...props}
+        workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
+        hasUnreadResponse
+      />
+    );
+
+    const unread = screen.getByTitle(/Build the dashboard — complete — unread response/);
+    expect(unread.querySelector(".session-unread-marker")).not.toBeNull();
+    expect(unread.querySelector(".session-custom-icon")).toBeNull();
+
+    rerender(
+      <SidebarSessionRow
+        {...props}
+        workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
+        hasUnreadResponse={false}
+      />
+    );
+    const viewed = screen.getByTitle(/Build the dashboard — complete/);
+    expect(viewed.querySelector(".session-unread-marker")).toBeNull();
+    expect(viewed.querySelector('[data-icon-color="violet"] svg')).not.toBeNull();
+  });
+
+  it("keeps the working nest while a turn is in flight even if a response is unread", () => {
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, state: "running", icon: "Brain", iconColor: "violet" }}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        hasUnreadResponse
+        isWorking
+      />
+    );
+
+    const row = screen.getByTitle(/Build the dashboard — running/);
+    expect(row.querySelector('[data-working="true"]')).not.toBeNull();
+    expect(row.querySelector(".session-unread-marker")).toBeNull();
+  });
+
   it("shows no PR-specific marker for a closed PR", () => {
     render(
       <SidebarSessionRow
@@ -801,6 +858,8 @@ describe("SidebarSessionRow", () => {
     // The running marker wears the configurable accent, like the mascot...
     const colorRule = /\.status-marker\[data-working="true"\]\s*\{[^}]*color:\s*var\(--accent\)/i.exec(css);
     expect(colorRule, "expected accent color rule for the working marker").not.toBeNull();
+
+    expect(css).toMatch(/\.session-unread-marker::before\s*\{[^}]*background:\s*var\(--accent\)/i);
 
     // A sidebar row with a custom icon overrides every animated color stop.
     const iconColorRule = /\.session-row\[data-icon-color\]\s+\.session-link\[data-status\]\s+\.status-marker\[data-working="true"\]\s*\{([^}]*)\}/i.exec(css);

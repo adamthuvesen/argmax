@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo } from "react";
 
 /**
  * When the user last looked at each sidebar chat, keyed by workspace id.
@@ -13,10 +13,8 @@ export const SESSION_VIEWED_STORAGE_KEY = "argmax.sidebar.viewedAt";
 
 type ViewedMap = Record<string, string>;
 
-const listeners = new Set<() => void>();
 let loaded = false;
 let viewed: ViewedMap = {};
-let generation = 0;
 
 function readStoredViewed(): ViewedMap {
   if (typeof window === "undefined") return {};
@@ -51,7 +49,6 @@ function persist(next: ViewedMap): void {
   ensureLoaded();
   if (mapsEqual(viewed, next)) return;
   viewed = next;
-  generation += 1;
   if (typeof window !== "undefined") {
     try {
       window.localStorage.setItem(SESSION_VIEWED_STORAGE_KEY, JSON.stringify(viewed));
@@ -59,19 +56,6 @@ function persist(next: ViewedMap): void {
       // Quota or private-mode failures are non-fatal for a reading stamp.
     }
   }
-  for (const listener of listeners) listener();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-function generationSnapshot(): number {
-  ensureLoaded();
-  return generation;
 }
 
 export type WorkspaceActivity = {
@@ -121,7 +105,6 @@ export function useUnreadWorkspaceIds(
   selectedWorkspaceId: string | null,
   workingIds: ReadonlySet<string>
 ): Set<string> {
-  const gen = useSyncExternalStore(subscribe, generationSnapshot, generationSnapshot);
   useEffect(() => {
     syncWorkspaceViewed(workspaces, selectedWorkspaceId);
   }, [workspaces, selectedWorkspaceId]);
@@ -138,13 +121,11 @@ export function useUnreadWorkspaceIds(
       }
     }
     return unread;
-  }, [gen, selectedWorkspaceId, workingIds, workspaces]);
+  }, [selectedWorkspaceId, workingIds, workspaces]);
 }
 
 /** Re-reads storage so a test can seed or clear stamps before rendering. */
 export function resetSessionUnreadForTests(): void {
   loaded = false;
   viewed = {};
-  generation = 0;
-  for (const listener of listeners) listener();
 }

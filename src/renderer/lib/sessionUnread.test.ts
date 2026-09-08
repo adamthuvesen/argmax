@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -93,12 +94,14 @@ describe("session unread stamps", () => {
 
   it("the hook reports unread after activity moves, then drops it when selected", () => {
     const none = new Set<string>();
+    type Props = {
+      workspaces: { id: string; lastActivityAt: string }[];
+      selected: string | null;
+    };
+    const initial: Props = { workspaces: [{ id: "w1", lastActivityAt: earlier }], selected: null };
     const { result, rerender } = renderHook(
-      (props: {
-        workspaces: { id: string; lastActivityAt: string }[];
-        selected: string | null;
-      }) => useUnreadWorkspaceIds(props.workspaces, props.selected, none),
-      { initialProps: { workspaces: [{ id: "w1", lastActivityAt: earlier }], selected: null } }
+      (props: Props) => useUnreadWorkspaceIds(props.workspaces, props.selected, none),
+      { initialProps: initial }
     );
 
     expect(result.current.has("w1")).toBe(false);

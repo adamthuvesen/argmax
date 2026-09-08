@@ -286,6 +286,12 @@ A multitask dispatched from the composer writes `multitask.launched` into this c
 
 ## Subagent Activity Panes
 
+Silent gaps after narration use the chat's `ThinkingLabel`, including its verb
+and live seconds counter. Reasoning updates keep the same burst start time,
+so the counter advances between trace imports without restarting on each delta.
+Live answer text, running tools, and live Thought blocks carry their own progress.
+Each resumed assignment uses its own launch time and completed runs stay quiet.
+
 Subagent tool calls (Claude `Task`/`Agent`, Codex `spawn_agent`, OpenCode `task`, Cursor `taskToolCall`/ACP `task`) display a launch row in the parent conversation via [AgentLaunchList.tsx](../src/renderer/components/AgentLaunchList.tsx), rendered as a bulleted task list:
 
 ```

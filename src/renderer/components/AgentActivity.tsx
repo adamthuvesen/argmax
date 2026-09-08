@@ -4,6 +4,7 @@ import type { NativeAgentIdentity, SessionSummary, TimelineEvent, WorkspaceSumma
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import { buildAgentActivity, persistentAgentRuns, type AgentActivity as AgentActivityModel, type AgentModel } from "../lib/agentActivity.js";
+import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import { emblemForCodename } from "../lib/agentEmblems.js";
 import { fallbackCodename } from "../lib/agentNames.js";
 import { foldConversationItems } from "../lib/foldConversation.js";
@@ -311,10 +312,11 @@ function AgentActivityRun({
   // first, and the whole run then animated and typed itself out as if it had
   // just happened.
   const restoringTranscript = useRestoreWithoutMotion(historyHydrated ?? !initialAgentEventsLoadPending);
-  const { activityChildren, toolItems, assistantTimestamps } = useMemo((): {
+  const { activityChildren, toolItems, assistantTimestamps, silentSinceMs } = useMemo((): {
     activityChildren: TurnBodyChild[];
     toolItems: TurnToolItem[];
     assistantTimestamps: number[];
+    silentSinceMs: number | null;
   } => {
     const assistantEvents = activity.items.flatMap((item) =>
       item.kind === "message" ? [item.event] : []
@@ -334,6 +336,32 @@ function AgentActivityRun({
       (group) => !group.thinking && assistantGroupHasVisibleChat(group)
     );
     const thinkingLive = streaming && !hasAnswerText;
+    const latestGroup = assistantGroups.at(-1);
+    const latestToolAt = tools.reduce(
+      (latest, tool) => Math.max(latest, Date.parse(tool.completedAt ?? tool.createdAt)),
+      0
+    );
+    const latestAssistantEvent = assistantEvents.reduce<TimelineEvent | undefined>(
+      (latest, event) => !latest || event.createdAt >= latest.createdAt ? event : latest,
+      undefined
+    );
+    const latestMessage = latestAssistantEvent ? decodeTimelineEvent(latestAssistantEvent) : null;
+    // Groups keep `streaming` for the text reveal after message.completed.
+    // Only incoming answer deltas own the live progress cue.
+    const answerStreaming = latestMessage?.kind === "message" &&
+      latestMessage.content === "answer" && latestMessage.phase === "delta" &&
+      Date.parse(latestMessage.raw.createdAt) >= latestToolAt;
+    // A settled Thought is transcript history, not a live progress cue. Once
+    // narration has handed progress back, keep the same ticking label as chat
+    // through later reasoning bursts. Anchor at the burst's start so incoming
+    // reasoning deltas cannot reset its counter.
+    const silentSinceMs = streaming && !answerStreaming &&
+      !tools.some((tool) => tool.status === "running" && !tool.backgroundLaunch) &&
+      !(thinkingLive && assistantGroups.some((group) => group.thinking))
+      ? Math.max(latestToolAt, latestGroup ? Date.parse(
+          latestGroup.thinking ? latestGroup.createdAt : latestGroup.lastActivityAt
+        ) : 0)
+      : null;
     // Only the run's newest reasoning burst is live: tool boundaries flush a
     // fresh thinking group, so a run that never narrates holds one per call and
     // a turn-wide flag opened every one of them at once. See
@@ -422,6 +450,7 @@ function AgentActivityRun({
     return {
       activityChildren: bodySource.map(({ kind, id, node, hasErrors }) => ({ kind, id, node, hasErrors })),
       toolItems: folded,
+      silentSinceMs,
       assistantTimestamps: assistantEvents
         .map((event) => Date.parse(event.createdAt))
         .filter((ms) => Number.isFinite(ms))
@@ -577,7 +606,7 @@ function AgentActivityRun({
 
             {showAgentActivityThinking ? (
               <div className="agent-activity-empty" role="status">
-                <ThinkingLabel phaseKey={parentToolUseId} startedAtMs={launchedAtMs ?? undefined} />
+                <ThinkingLabel phaseKey={agentKey ?? parentToolUseId} startedAtMs={launchedAtMs ?? undefined} />
               </div>
             ) : null}
 
@@ -615,6 +644,14 @@ function AgentActivityRun({
               <div className="agent-activity-empty" role="status">
                 Waiting for agent activity.
               </div>
+            ) : null}
+
+            {hasRenderedActivity && silentSinceMs !== null ? (
+              <ThinkingLabel
+                key={`${agentKey}:${silentSinceMs}`}
+                phaseKey={agentKey ?? parentToolUseId}
+                startedAtMs={Math.max(silentSinceMs, launchedAtMs ?? 0) || undefined}
+              />
             ) : null}
 
             {finalOutput !== null ? (

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { AgentActivity } from "./AgentActivity.js";
+import { __liveTimerTickForTest } from "../lib/liveTimer.js";
 
 function event(
   id: string,
@@ -67,6 +68,133 @@ const workspace: WorkspaceSummary = {
 };
 
 describe("AgentActivity", () => {
+  it("ticks through a silent reasoning stretch after narration without waiting for trace updates", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:55.000Z"));
+    const events = [
+      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+        id: "task-1", name: "Task", input: { description: "Explore repo" }
+      }),
+      event("note", "message.completed", "2026-05-12T15:00:02.000Z", "I'll inspect the data.", {
+        parent_tool_use_id: "task-1"
+      }),
+      event("thought", "message.delta", "2026-05-12T15:00:10.000Z", "Checking the evidence.", {
+        parent_tool_use_id: "task-1", thinking: true
+      })
+    ];
+    const pane = (rows: TimelineEvent[]) => (
+      <AgentActivity events={rows} parentSession={session} parentToolUseId="task-1" workspace={workspace} />
+    );
+    const { rerender } = render(pane(events.slice(0, 2)));
+    expect(screen.getByRole("article", { name: "Thinking" })).toHaveTextContent("53s");
+    rerender(pane(events));
+    const thinking = screen.getByRole("article", { name: "Thinking" });
+    expect(thinking).toHaveTextContent("45s");
+    for (let second = 46; second <= 61; second += 1) {
+      act(() => {
+        vi.setSystemTime(new Date(Date.parse("2026-05-12T15:00:10.000Z") + second * 1000));
+        __liveTimerTickForTest();
+      });
+      expect(thinking).toHaveTextContent(second < 60 ? `${second}s` : `1m ${second - 60}s`);
+    }
+    const label = thinking.textContent;
+    rerender(pane([...events, event("thought-more", "message.delta", "2026-05-12T15:01:11.000Z", "Still checking.", {
+      parent_tool_use_id: "task-1", thinking: true
+    })]));
+    expect(screen.getByRole("article", { name: "Thinking" }).textContent).toBe(label);
+    const toolStarted = event("child-tool", "command.started", "2026-05-12T15:01:12.000Z", "Bash", {
+      id: "child-tool", name: "Bash", parent_tool_use_id: "task-1", input: { command: "git status" }
+    });
+    rerender(pane([...events, toolStarted]));
+    expect(screen.queryByRole("article", { name: "Thinking" })).toBeNull();
+    act(() => {
+      vi.setSystemTime(new Date("2026-05-12T15:01:20.000Z"));
+    });
+    rerender(pane([...events, toolStarted, event("child-tool-done", "command.completed", "2026-05-12T15:01:16.000Z", "Bash", {
+      tool_use_id: "child-tool", output: "clean"
+    })]));
+    expect(screen.getByRole("article", { name: "Thinking" })).toHaveTextContent("4s");
+    rerender(pane([...events, event("answer", "message.delta", "2026-05-12T15:01:12.000Z", "Here is the result.", {
+      parent_tool_use_id: "task-1"
+    })]));
+    expect(screen.queryByRole("article", { name: "Thinking" })).toBeNull();
+  });
+
+  it("keeps a resumed native agent's thinking interval with its new send_input run", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:01:45.000Z"));
+    const firstRun = [
+      event("spawn", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+        id: "task-1", name: "spawn_agent", providerInvocationId: "invoke-1",
+        input: { sender_thread_id: "parent", receiver_thread_ids: ["child-native"], prompt: "Inspect the repo." }
+      }),
+      event("first-start", "agent.started", "2026-05-12T15:00:01.100Z", "Agent started", {
+        providerInvocationId: "invoke-1", providerChildSessionId: "child-native",
+        providerParentConversationId: "parent", agentRootToolUseId: "task-1", agentRunId: "task-1"
+      }),
+      event("first-done", "agent.completed", "2026-05-12T15:00:03.000Z", "First result", {
+        providerInvocationId: "invoke-1", providerChildSessionId: "child-native",
+        providerParentConversationId: "parent", agentRootToolUseId: "task-1", agentRunId: "task-1", status: "completed"
+      })
+    ];
+    const resumedRun = [
+      ...firstRun,
+      event("resume", "command.completed", "2026-05-12T15:00:59.000Z", "resume_agent", {
+        id: "resume", name: "resume_agent", providerInvocationId: "invoke-2",
+        input: { sender_thread_id: "parent", receiver_thread_ids: ["child-native"] }
+      }),
+      event("send", "command.started", "2026-05-12T15:01:00.000Z", "send_input", {
+        id: "send-2", name: "send_input", providerInvocationId: "invoke-2",
+        input: { sender_thread_id: "parent", receiver_thread_ids: ["child-native"], prompt: "Continue the inspection." }
+      }),
+      event("second-start", "agent.started", "2026-05-12T15:01:00.100Z", "Agent started", {
+        providerInvocationId: "invoke-2", providerChildSessionId: "child-native",
+        providerParentConversationId: "parent", agentRootToolUseId: "task-1", agentRunId: "send-2"
+      })
+    ];
+    const pane = (rows: TimelineEvent[]) => (
+      <AgentActivity events={rows} parentSession={session} parentToolUseId="task-1" workspace={workspace} />
+    );
+    const { rerender } = render(pane(resumedRun));
+
+    // The original invocation is complete. The visible clock belongs to the
+    // resumed send_input invocation, not the initial spawn 104 seconds ago.
+    expect(screen.getAllByRole("article", { name: "Thinking" })).toHaveLength(1);
+    expect(screen.getByRole("article", { name: "Thinking" })).toHaveTextContent("45s");
+
+    const reasoning = [
+      ...resumedRun,
+      event("second-note", "message.completed", "2026-05-12T15:01:02.000Z", "I found the relevant files.", {
+        parent_tool_use_id: "task-1", providerInvocationId: "invoke-2", agentRunId: "send-2",
+        providerChildSessionId: "child-native"
+      }),
+      event("second-thought", "message.delta", "2026-05-12T15:01:10.000Z", "Checking the lifecycle path.", {
+        parent_tool_use_id: "task-1", providerInvocationId: "invoke-2", agentRunId: "send-2",
+        providerChildSessionId: "child-native", thinking: true
+      })
+    ];
+    rerender(pane(reasoning));
+    const thinking = screen.getByRole("article", { name: "Thinking" });
+    expect(thinking).toHaveTextContent("35s");
+    act(() => {
+      vi.setSystemTime(new Date("2026-05-12T15:01:46.000Z"));
+      __liveTimerTickForTest();
+    });
+    expect(thinking).toHaveTextContent("36s");
+    const label = thinking.textContent;
+    rerender(pane([...reasoning, event("second-thought-more", "message.delta", "2026-05-12T15:01:46.000Z", "Tracing the resumed run.", {
+      parent_tool_use_id: "task-1", providerInvocationId: "invoke-2", agentRunId: "send-2",
+      providerChildSessionId: "child-native", thinking: true
+    })]));
+    expect(screen.getByRole("article", { name: "Thinking" }).textContent).toBe(label);
+
+    rerender(pane([...reasoning, event("second-done", "agent.completed", "2026-05-12T15:01:47.000Z", "Second result", {
+      providerInvocationId: "invoke-2", providerChildSessionId: "child-native",
+      providerParentConversationId: "parent", agentRootToolUseId: "task-1", agentRunId: "send-2", status: "completed"
+    })]));
+    expect(screen.queryByRole("article", { name: "Thinking" })).toBeNull();
+  });
+
   it("renders each persistent native invocation as its own run in one dock pane", () => {
     render(
       <AgentActivity

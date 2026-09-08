@@ -22,6 +22,8 @@ export interface ProviderModelOption {
    * `withEffortSlider` prop on the ModelSelector.
    */
   supportsReasoningEffort?: boolean;
+  /** Fast mode verified for this model through Argmax's active chat transport. */
+  supportsFastMode?: boolean;
   /**
    * Context-window size in tokens. Used to show window occupancy when the
    * provider doesn't report it on the session — in practice that is every
@@ -180,6 +182,9 @@ export function effortForModel(
 // effort into the launched `--model` variant. Keep the picker's id stable;
 // effort rides in `reasoningEffort`.
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
+  // Claude documents Fast for Opus 4.6 only, outside this catalog.
+  // Do not enable it for other models: the CLI can switch models to honor it.
+  // https://code.claude.com/docs/en/fast-mode
   claude: [
     { label: "Fable 5.1", modelId: "claude-fable-5-1", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "Opus 5", modelId: "claude-opus-5", supportsReasoningEffort: true, contextWindow: 1_000_000 },
@@ -192,10 +197,10 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   // Codex itself reports as `model_context_window` in its rollout, and the one
   // the CLI measures occupancy against. Verified against codex-cli 0.149.0.
   codex: [
-    { label: "GPT-6 Astra", modelId: "gpt-6-astra", supportsReasoningEffort: true, contextWindow: 272_000 },
-    { label: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", supportsReasoningEffort: true, contextWindow: 258_400 },
-    { label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra", supportsReasoningEffort: true, contextWindow: 258_400 },
-    { label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna", supportsReasoningEffort: true, contextWindow: 258_400 }
+    { label: "GPT-6 Astra", modelId: "gpt-6-astra", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 272_000 },
+    { label: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 258_400 },
+    { label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 258_400 },
+    { label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 258_400 }
   ],
   cursor: [
     { label: "Auto Cost (Cursor)", modelId: "auto-smart[optimize_for=cost]" },

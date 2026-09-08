@@ -2,6 +2,8 @@
 //! scanner in `crate::usage::scanner` decides what to read; this module only
 //! remembers where it got to and what it found. See `docs/usage.md`.
 
+use std::collections::{BTreeSet, HashSet};
+
 use rusqlite::{Connection, OptionalExtension};
 
 use super::{sqlite_error, time::now_iso};
@@ -25,12 +27,16 @@ pub struct ScanFileRecord {
     /// Hex digest of the bytes just before `cursor_offset`, so a rewrite that
     /// keeps the file long enough is still told apart from an append.
     pub guard_hash: Option<String>,
+    /// Provider-specific state needed to parse the next tail exactly as if the
+    /// whole file had been parsed in one pass. Currently used by Codex.
+    pub parser_state: Option<String>,
 }
 
 pub fn find_scan_file(connection: &Connection, path: &str) -> ArgmaxResult<Option<ScanFileRecord>> {
     connection
         .prepare_cached(
-            "SELECT path, provider, session_id, size, mtime_ms, cursor_offset, guard_hash
+            "SELECT path, provider, session_id, size, mtime_ms, cursor_offset, guard_hash,
+                    parser_state
              FROM usage_scan_files WHERE path = ?",
         )
         .map_err(sqlite_error)?
@@ -43,6 +49,7 @@ pub fn find_scan_file(connection: &Connection, path: &str) -> ArgmaxResult<Optio
                 mtime_ms: row.get(4)?,
                 cursor_offset: row.get(5)?,
                 guard_hash: row.get(6)?,
+                parser_state: row.get(7)?,
             })
         })
         .optional()
@@ -54,8 +61,9 @@ pub fn upsert_scan_file(connection: &Connection, record: &ScanFileRecord) -> Arg
         .prepare_cached(
             r#"
             INSERT INTO usage_scan_files (
-              path, provider, session_id, size, mtime_ms, cursor_offset, guard_hash, scanned_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              path, provider, session_id, size, mtime_ms, cursor_offset, guard_hash, parser_state,
+              scanned_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(path) DO UPDATE SET
               provider = excluded.provider,
               session_id = excluded.session_id,
@@ -63,6 +71,7 @@ pub fn upsert_scan_file(connection: &Connection, record: &ScanFileRecord) -> Arg
               mtime_ms = excluded.mtime_ms,
               cursor_offset = excluded.cursor_offset,
               guard_hash = excluded.guard_hash,
+              parser_state = excluded.parser_state,
               scanned_at = excluded.scanned_at
             "#,
         )
@@ -75,6 +84,7 @@ pub fn upsert_scan_file(connection: &Connection, record: &ScanFileRecord) -> Arg
             record.mtime_ms,
             record.cursor_offset,
             record.guard_hash.as_deref(),
+            record.parser_state.as_deref(),
             now_iso().as_str(),
         ))
         .map_err(sqlite_error)?;
@@ -93,42 +103,261 @@ pub fn list_scan_file_paths(connection: &Connection, provider: &str) -> ArgmaxRe
     rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
 }
 
-/// Drop everything a file contributed: its ledger rows, its dedupe claims,
-/// and its cursor. Used before a full reparse and when the file is gone.
+/// Drop everything a file contributed and elect replacement winners from
+/// retained copies before removing its cursor.
 pub fn forget_file(connection: &Connection, path: &str) -> ArgmaxResult<()> {
-    connection
-        .execute("DELETE FROM usage_hourly WHERE source_path = ?", [path])
-        .map_err(sqlite_error)?;
-    connection
-        .execute(
-            "DELETE FROM usage_dedupe_keys WHERE source_path = ?",
-            [path],
-        )
-        .map_err(sqlite_error)?;
+    replace_source_contributions(connection, path, 0, Vec::new(), true)?;
     connection
         .execute("DELETE FROM usage_scan_files WHERE path = ?", [path])
         .map_err(sqlite_error)?;
     Ok(())
 }
 
-/// Claim a billed-call key for a file. Returns `false` when another file (or
-/// an earlier pass over this one) already counted it.
-pub fn claim_dedupe_key(
-    connection: &Connection,
-    key: &str,
-    source_path: &str,
-    hour_utc: i64,
-) -> ArgmaxResult<bool> {
-    let inserted = connection
-        .prepare_cached(
-            "INSERT OR IGNORE INTO usage_dedupe_keys (key, source_path, hour_utc) VALUES (?, ?, ?)",
-        )
-        .map_err(sqlite_error)?
-        .execute((key, source_path, hour_utc))
-        .map_err(sqlite_error)?;
-    Ok(inserted == 1)
+#[derive(Debug, Clone, PartialEq)]
+pub struct UsageContribution {
+    pub billed_call_key: Option<String>,
+    pub provider: String,
+    pub model_id: String,
+    pub session_id: String,
+    pub at_ms: i64,
+    pub hour_utc: i64,
+    pub tokens: UsageRecordTokens,
+    pub reported_cost_usd: Option<f64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct BucketIdentity {
+    provider: String,
+    model_id: String,
+    session_id: String,
+    source_path: String,
+    hour_utc: i64,
+}
+
+/// Merge a parsed batch into one source's normalized contributions. A full
+/// reparse first removes that source. Every affected billed call then elects
+/// the contribution with the largest settled token count, breaking ties by
+/// source path, and only affected hourly buckets are rebuilt.
+pub fn replace_source_contributions(
+    connection: &Connection,
+    source_path: &str,
+    batch_cursor: i64,
+    records: Vec<UsageContribution>,
+    full_reparse: bool,
+) -> ArgmaxResult<()> {
+    let mut affected_keys = if full_reparse {
+        contribution_keys_for_source(connection, source_path)?
+    } else {
+        BTreeSet::new()
+    };
+    let mut keyed = Vec::with_capacity(records.len());
+    for (index, record) in records.into_iter().enumerate() {
+        if record.tokens.is_empty() {
+            continue;
+        }
+        let key = record
+            .billed_call_key
+            .clone()
+            .unwrap_or_else(|| format!("unkeyed:{source_path}:{batch_cursor}:{index}"));
+        affected_keys.insert(key.clone());
+        keyed.push((key, record));
+    }
+
+    let mut affected_buckets = HashSet::new();
+    for key in &affected_keys {
+        if let Some(bucket) = winning_bucket(connection, key)? {
+            affected_buckets.insert(bucket);
+        }
+    }
+
+    if full_reparse {
+        connection
+            .execute(
+                "DELETE FROM usage_contributions WHERE source_path = ?",
+                [source_path],
+            )
+            .map_err(sqlite_error)?;
+    }
+
+    let mut insert = connection
+        .prepare_cached(
+            r#"
+            INSERT INTO usage_contributions (
+              source_path, billed_call_key, provider, model_id, session_id, at_ms, hour_utc,
+              input_uncached, cache_read, cache_write_5m, cache_write_1h, output, reasoning,
+              reported_cost_usd, processed_tokens
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_path, billed_call_key) DO UPDATE SET
+              provider = excluded.provider,
+              model_id = excluded.model_id,
+              session_id = excluded.session_id,
+              at_ms = excluded.at_ms,
+              hour_utc = excluded.hour_utc,
+              input_uncached = excluded.input_uncached,
+              cache_read = excluded.cache_read,
+              cache_write_5m = excluded.cache_write_5m,
+              cache_write_1h = excluded.cache_write_1h,
+              output = excluded.output,
+              reasoning = excluded.reasoning,
+              reported_cost_usd = excluded.reported_cost_usd,
+              processed_tokens = excluded.processed_tokens
+            WHERE excluded.processed_tokens > usage_contributions.processed_tokens
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    for (key, record) in keyed {
+        insert
+            .execute((
+                source_path,
+                key.as_str(),
+                record.provider.as_str(),
+                record.model_id.as_str(),
+                record.session_id.as_str(),
+                record.at_ms,
+                record.hour_utc,
+                record.tokens.input_uncached,
+                record.tokens.cache_read,
+                record.tokens.cache_write_5m,
+                record.tokens.cache_write_1h,
+                record.tokens.output,
+                record.tokens.reasoning,
+                record.reported_cost_usd,
+                record.tokens.processed(),
+            ))
+            .map_err(sqlite_error)?;
+    }
+    drop(insert);
+
+    for key in &affected_keys {
+        match winner_for_key(connection, key)? {
+            Some((winner_source, hour_utc)) => {
+                connection
+                    .prepare_cached(
+                        "INSERT INTO usage_dedupe_keys (key, source_path, hour_utc) VALUES (?, ?, ?)
+                         ON CONFLICT(key) DO UPDATE SET
+                           source_path = excluded.source_path,
+                           hour_utc = excluded.hour_utc",
+                    )
+                    .map_err(sqlite_error)?
+                    .execute((key.as_str(), winner_source.as_str(), hour_utc))
+                    .map_err(sqlite_error)?;
+            }
+            None => {
+                connection
+                    .execute("DELETE FROM usage_dedupe_keys WHERE key = ?", [key])
+                    .map_err(sqlite_error)?;
+            }
+        }
+        if let Some(bucket) = winning_bucket(connection, key)? {
+            affected_buckets.insert(bucket);
+        }
+    }
+
+    let mut ordered: Vec<_> = affected_buckets.into_iter().collect();
+    ordered.sort();
+    for bucket in &ordered {
+        rebuild_bucket(connection, bucket)?;
+    }
+    Ok(())
+}
+
+fn contribution_keys_for_source(
+    connection: &Connection,
+    source_path: &str,
+) -> ArgmaxResult<BTreeSet<String>> {
+    let mut statement = connection
+        .prepare_cached("SELECT billed_call_key FROM usage_contributions WHERE source_path = ?")
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([source_path], |row| row.get::<_, String>(0))
+        .map_err(sqlite_error)?;
+    rows.collect::<Result<BTreeSet<_>, _>>()
+        .map_err(sqlite_error)
+}
+
+fn winner_for_key(connection: &Connection, key: &str) -> ArgmaxResult<Option<(String, i64)>> {
+    connection
+        .prepare_cached(
+            "SELECT source_path, hour_utc
+             FROM usage_contributions
+             WHERE billed_call_key = ?
+             ORDER BY processed_tokens DESC, source_path ASC
+             LIMIT 1",
+        )
+        .map_err(sqlite_error)?
+        .query_row([key], |row| Ok((row.get(0)?, row.get(1)?)))
+        .optional()
+        .map_err(sqlite_error)
+}
+
+fn winning_bucket(connection: &Connection, key: &str) -> ArgmaxResult<Option<BucketIdentity>> {
+    connection
+        .prepare_cached(
+            "SELECT c.provider, c.model_id, c.session_id, c.source_path, c.hour_utc
+             FROM usage_dedupe_keys d
+             JOIN usage_contributions c
+               ON c.billed_call_key = d.key AND c.source_path = d.source_path
+             WHERE d.key = ?",
+        )
+        .map_err(sqlite_error)?
+        .query_row([key], |row| {
+            Ok(BucketIdentity {
+                provider: row.get(0)?,
+                model_id: row.get(1)?,
+                session_id: row.get(2)?,
+                source_path: row.get(3)?,
+                hour_utc: row.get(4)?,
+            })
+        })
+        .optional()
+        .map_err(sqlite_error)
+}
+
+fn rebuild_bucket(connection: &Connection, bucket: &BucketIdentity) -> ArgmaxResult<()> {
+    let key = (
+        bucket.provider.as_str(),
+        bucket.model_id.as_str(),
+        bucket.session_id.as_str(),
+        bucket.source_path.as_str(),
+        bucket.hour_utc,
+    );
+    connection
+        .execute(
+            "DELETE FROM usage_hourly
+             WHERE provider = ? AND model_id = ? AND session_id = ? AND source_path = ?
+               AND hour_utc = ?",
+            key,
+        )
+        .map_err(sqlite_error)?;
+    connection
+        .prepare_cached(
+            r#"
+            INSERT INTO usage_hourly (
+              provider, model_id, session_id, source_path, hour_utc,
+              input_uncached, cache_read, cache_write_5m, cache_write_1h, output, reasoning,
+              reported_cost_usd, reported_records, records
+            )
+            SELECT c.provider, c.model_id, c.session_id, c.source_path, c.hour_utc,
+                   SUM(c.input_uncached), SUM(c.cache_read), SUM(c.cache_write_5m),
+                   SUM(c.cache_write_1h), SUM(c.output), SUM(c.reasoning),
+                   SUM(c.reported_cost_usd),
+                   SUM(CASE WHEN c.reported_cost_usd IS NULL THEN 0 ELSE 1 END),
+                   COUNT(*)
+            FROM usage_contributions c
+            JOIN usage_dedupe_keys d
+              ON d.key = c.billed_call_key AND d.source_path = c.source_path
+            WHERE c.provider = ? AND c.model_id = ? AND c.session_id = ?
+              AND c.source_path = ? AND c.hour_utc = ?
+            HAVING COUNT(*) > 0
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .execute(key)
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct HourlyBucketDelta {
     pub provider: String,
@@ -147,6 +376,7 @@ pub struct HourlyBucketDelta {
 }
 
 /// Fold a delta into its bucket, creating the bucket on first sight.
+#[cfg(test)]
 pub fn add_hourly_bucket(connection: &Connection, delta: &HourlyBucketDelta) -> ArgmaxResult<()> {
     connection
         .prepare_cached(
@@ -267,16 +497,35 @@ pub fn earliest_hour(connection: &Connection, provider: Option<&str>) -> ArgmaxR
     .map_err(sqlite_error)
 }
 
-/// Drop ledger rows and dedupe claims older than `before_hour`. Cursors stay:
-/// a file that old is outside the walk window and will not be reopened.
+/// Drop ledger rows and contributions wholly older than `before_hour`.
+/// Cursors stay because files outside the walk window will not be reopened.
 pub fn prune_before(connection: &Connection, before_hour: i64) -> ArgmaxResult<()> {
     connection
         .execute("DELETE FROM usage_hourly WHERE hour_utc < ?", [before_hour])
         .map_err(sqlite_error)?;
+    // Keep old copies when their billed call also has a retained copy. Winner
+    // selection must happen before the time-window filter, otherwise deleting
+    // an old winner would promote a copied call into the visible window.
     connection
         .execute(
-            "DELETE FROM usage_dedupe_keys WHERE hour_utc < ?",
-            [before_hour],
+            "DELETE FROM usage_contributions AS old
+             WHERE old.hour_utc < ?
+               AND NOT EXISTS (
+                 SELECT 1 FROM usage_contributions AS retained
+                 WHERE retained.billed_call_key = old.billed_call_key
+                   AND retained.hour_utc >= ?
+               )",
+            [before_hour, before_hour],
+        )
+        .map_err(sqlite_error)?;
+    connection
+        .execute(
+            "DELETE FROM usage_dedupe_keys
+             WHERE NOT EXISTS (
+               SELECT 1 FROM usage_contributions c
+               WHERE c.billed_call_key = usage_dedupe_keys.key
+             )",
+            [],
         )
         .map_err(sqlite_error)?;
     Ok(())
@@ -289,6 +538,7 @@ pub fn clear_all(connection: &Connection) -> ArgmaxResult<()> {
         .execute_batch(
             "DELETE FROM usage_hourly;
              DELETE FROM usage_dedupe_keys;
+             DELETE FROM usage_contributions;
              DELETE FROM usage_scan_files;
              DELETE FROM usage_scan_meta;",
         )
@@ -343,6 +593,19 @@ mod tests {
         }
     }
 
+    fn contribution(key: &str, input: i64, output: i64) -> UsageContribution {
+        UsageContribution {
+            billed_call_key: Some(key.into()),
+            provider: "claude".into(),
+            model_id: "claude-opus-5".into(),
+            session_id: "s1".into(),
+            at_ms: 3_600_000,
+            hour_utc: 3_600,
+            tokens: tokens(input, output),
+            reported_cost_usd: None,
+        }
+    }
+
     #[test]
     fn buckets_accumulate_and_merge_across_files() {
         let database = Database::open_in_memory().expect("db");
@@ -366,13 +629,25 @@ mod tests {
     }
 
     #[test]
-    fn forgetting_a_file_removes_only_its_rows_and_claims() {
+    fn forgetting_the_winner_promotes_a_retained_copy() {
         let database = Database::open_in_memory().expect("db");
         let connection = database.connection();
-        add_hourly_bucket(&connection, &delta("a.jsonl", 3600, None)).unwrap();
-        add_hourly_bucket(&connection, &delta("b.jsonl", 3600, None)).unwrap();
-        assert!(claim_dedupe_key(&connection, "k1", "a.jsonl", 3600).unwrap());
-        assert!(!claim_dedupe_key(&connection, "k1", "b.jsonl", 3600).unwrap());
+        replace_source_contributions(
+            &connection,
+            "a.jsonl",
+            0,
+            vec![contribution("k1", 100, 10)],
+            false,
+        )
+        .unwrap();
+        replace_source_contributions(
+            &connection,
+            "b.jsonl",
+            0,
+            vec![contribution("k1", 100, 10)],
+            false,
+        )
+        .unwrap();
         upsert_scan_file(
             &connection,
             &ScanFileRecord {
@@ -383,6 +658,7 @@ mod tests {
                 mtime_ms: 1,
                 cursor_offset: 10,
                 guard_hash: None,
+                parser_state: None,
             },
         )
         .unwrap();
@@ -391,8 +667,127 @@ mod tests {
 
         let rows = list_hourly_between(&connection, 0, 7200).unwrap();
         assert_eq!(rows[0].tokens.input_uncached, 100);
+        assert_eq!(rows[0].records, 1);
         assert!(find_scan_file(&connection, "a.jsonl").unwrap().is_none());
-        assert!(claim_dedupe_key(&connection, "k1", "b.jsonl", 3600).unwrap());
+        let winner: String = connection
+            .query_row(
+                "SELECT source_path FROM usage_dedupe_keys WHERE key = 'k1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(winner, "b.jsonl");
+    }
+
+    #[test]
+    fn a_larger_settled_contribution_replaces_its_partial_record() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        replace_source_contributions(
+            &connection,
+            "a.jsonl",
+            0,
+            vec![contribution("k1", 100, 10)],
+            false,
+        )
+        .unwrap();
+        replace_source_contributions(
+            &connection,
+            "a.jsonl",
+            100,
+            vec![contribution("k1", 100, 222)],
+            false,
+        )
+        .unwrap();
+
+        let rows = list_hourly_between(&connection, 0, 7200).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].tokens.output, 222);
+        assert_eq!(rows[0].records, 1);
+    }
+
+    #[test]
+    fn rebuilt_buckets_preserve_reported_cost_counts_and_nulls() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        let mut reported = contribution("k1", 100, 10);
+        reported.reported_cost_usd = Some(0.25);
+        replace_source_contributions(
+            &connection,
+            "a.jsonl",
+            0,
+            vec![reported, contribution("k2", 100, 10)],
+            false,
+        )
+        .unwrap();
+
+        let rows = list_hourly_between(&connection, 0, 7200).unwrap();
+        assert_eq!(rows[0].records, 2);
+        assert_eq!(rows[0].reported_records, 1);
+        assert_eq!(rows[0].reported_cost_usd, Some(0.25));
+
+        replace_source_contributions(
+            &connection,
+            "b.jsonl",
+            0,
+            vec![contribution("k3", 100, 10)],
+            false,
+        )
+        .unwrap();
+        let b_cost: Option<f64> = connection
+            .query_row(
+                "SELECT reported_cost_usd FROM usage_hourly WHERE source_path = 'b.jsonl'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(b_cost, None);
+    }
+
+    #[test]
+    fn pruning_keeps_an_old_winner_when_a_newer_copy_is_retained() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        let mut old = contribution("copied", 100, 10);
+        old.at_ms = 0;
+        old.hour_utc = 0;
+        let mut copied_later = old.clone();
+        copied_later.at_ms = 7_200_000;
+        copied_later.hour_utc = 7_200;
+        let mut expired = old.clone();
+        expired.billed_call_key = Some("expired".into());
+        replace_source_contributions(&connection, "a.jsonl", 0, vec![old, expired], false).unwrap();
+        replace_source_contributions(&connection, "b.jsonl", 0, vec![copied_later], false).unwrap();
+
+        prune_before(&connection, 3_600).unwrap();
+
+        let winner: String = connection
+            .query_row(
+                "SELECT source_path FROM usage_dedupe_keys WHERE key = 'copied'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(winner, "a.jsonl");
+        let copied_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM usage_contributions WHERE billed_call_key = 'copied'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(copied_count, 2);
+        let expired_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM usage_contributions WHERE billed_call_key = 'expired'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(expired_count, 0);
+        assert!(list_hourly_between(&connection, 3_600, 10_800)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -407,6 +802,7 @@ mod tests {
             mtime_ms: 1,
             cursor_offset: 10,
             guard_hash: Some("abc".into()),
+            parser_state: Some("{}".into()),
         };
         upsert_scan_file(&connection, &record).unwrap();
         record.size = 20;

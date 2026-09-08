@@ -5,7 +5,6 @@
 //! parsed in full. See `docs/usage.md`.
 
 use std::{
-    collections::HashMap,
     fs,
     io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
@@ -20,17 +19,17 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ipc::validation::ProviderId;
 use crate::persistence::{
     time::now_iso,
-    usage_scan::{self, HourlyBucketDelta, ScanFileRecord},
+    usage_scan::{self, ScanFileRecord, UsageContribution},
     Database,
 };
 use crate::providers::pricing::normalize_model_id;
-use crate::usage::records::{TranscriptContext, UsageRecord, UsageRecordTokens};
+use crate::usage::records::{TranscriptContext, UsageRecord};
 use crate::usage::{claude, codex, grok, opencode};
 use crate::util::sync::LockOrRecover;
 
 /// Bump when a parser's output for the same bytes changes; the next sweep
 /// empties the ledger and reads everything again.
-pub const PARSER_VERSION: &str = "2";
+pub const PARSER_VERSION: &str = "3";
 /// How far back the ledger reaches. The widest window is 30 days; the rest is
 /// headroom for a longer window later without a rescan.
 pub const RETENTION_DAYS: i64 = 90;
@@ -160,7 +159,9 @@ impl UsageScanner {
         for provider in [ProviderId::Claude, ProviderId::Codex, ProviderId::Grok] {
             for path in usage_scan::list_scan_file_paths(&connection, provider_key(provider))? {
                 if !Path::new(&path).exists() {
-                    usage_scan::forget_file(&connection, &path)?;
+                    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+                    usage_scan::forget_file(&transaction, &path)?;
+                    transaction.commit().map_err(sqlite_error)?;
                 }
             }
         }
@@ -189,22 +190,15 @@ impl UsageScanner {
         // <projects>/<slug>/<session>/subagents/<agent>.jsonl.
         walk(
             &self.home.join(".claude").join("projects"),
-            4,
+            6,
             &mut |path, depth| {
                 if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
                     return None;
                 }
                 match depth {
                     2 => Some((ProviderId::Claude, None)),
-                    4 if path.parent().and_then(Path::file_name) == Some("subagents".as_ref()) => {
-                        let session = path
-                            .parent()
-                            .and_then(Path::parent)
-                            .and_then(Path::file_name)
-                            .and_then(|name| name.to_str())
-                            .map(str::to_owned);
-                        Some((ProviderId::Claude, session))
-                    }
+                    4..=6 => claude_parent_session(path)
+                        .map(|session| (ProviderId::Claude, Some(session))),
                     _ => None,
                 }
             },
@@ -251,13 +245,32 @@ impl UsageScanner {
             let connection = self.database.connection();
             usage_scan::find_scan_file(&connection, &path_key)?
         };
-        let (start_offset, full_reparse) = match &known {
+        let stored_codex_state = if file.provider == ProviderId::Codex {
+            known
+                .as_ref()
+                .and_then(|record| record.parser_state.as_deref())
+                .and_then(codex::RolloutState::from_json)
+        } else {
+            None
+        };
+        let (mut start_offset, mut full_reparse) = match &known {
             None => (0, false),
-            Some(record) if record.size == file.size && record.mtime_ms == file.mtime_ms => {
+            Some(record)
+                if record.size == file.size
+                    && record.mtime_ms == file.mtime_ms
+                    && record.cursor_offset >= file.size
+                    && (file.provider != ProviderId::Codex || stored_codex_state.is_some()) =>
+            {
                 return Ok(());
             }
+            // A live file may have left an unterminated tail behind. Once it
+            // settles, identical metadata must not keep that tail forever.
+            Some(record) if record.size == file.size && record.mtime_ms == file.mtime_ms => {
+                (record.cursor_offset, false)
+            }
             Some(record)
-                if file.size >= record.cursor_offset
+                if file.size > record.size
+                    && file.size >= record.cursor_offset
                     && guard_matches(
                         &file.path,
                         record.cursor_offset,
@@ -269,17 +282,36 @@ impl UsageScanner {
             Some(_) => (0, true),
         };
 
+        let mut codex_state = None;
+        if file.provider == ProviderId::Codex && start_offset > 0 && !full_reparse {
+            codex_state = stored_codex_state;
+            if codex_state.is_none() {
+                start_offset = 0;
+                full_reparse = true;
+            }
+        }
+
         let settled = now_ms - file.mtime_ms > SETTLED_AFTER_MS;
         let (text, consumed) = read_complete_lines(&file.path, start_offset as u64, settled)?;
         let context = TranscriptContext {
             source_path: &file.path,
             session_id_hint: file.session_id_hint.as_deref(),
         };
-        let records = match file.provider {
-            ProviderId::Claude => claude::parse_claude_transcript(&text, &context),
-            ProviderId::Codex => codex::parse_codex_rollout(&text, &context),
-            ProviderId::Grok => grok::parse_grok_updates(&text, &context),
-            ProviderId::Cursor | ProviderId::Opencode => Vec::new(),
+        let (records, parser_state) = match file.provider {
+            ProviderId::Claude => (claude::parse_claude_transcript(&text, &context), None),
+            ProviderId::Codex => {
+                let state = codex_state.unwrap_or_else(|| codex::RolloutState::new(&context));
+                let (records, state) = codex::parse_codex_rollout_with_state(&text, state);
+                let state = state.to_json().map_err(|error| {
+                    ArgmaxError::service(
+                        "USAGE_STATE_SERIALIZE_FAILED",
+                        format!("failed to serialize Codex usage state: {error}"),
+                    )
+                })?;
+                (records, Some(state))
+            }
+            ProviderId::Grok => (grok::parse_grok_updates(&text, &context), None),
+            ProviderId::Cursor | ProviderId::Opencode => (Vec::new(), None),
         };
         let new_cursor = start_offset + consumed as i64;
         let session_id = records
@@ -290,10 +322,7 @@ impl UsageScanner {
 
         let connection = self.database.connection();
         let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-        if full_reparse {
-            usage_scan::forget_file(&transaction, &path_key)?;
-        }
-        fold_records(&transaction, &path_key, records)?;
+        fold_records(&transaction, &path_key, start_offset, records, full_reparse)?;
         usage_scan::upsert_scan_file(
             &transaction,
             &ScanFileRecord {
@@ -304,6 +333,7 @@ impl UsageScanner {
                 mtime_ms: file.mtime_ms,
                 cursor_offset: new_cursor,
                 guard_hash,
+                parser_state,
             },
         )?;
         transaction.commit().map_err(sqlite_error)
@@ -330,7 +360,7 @@ impl UsageScanner {
         let path_key = db_path.to_string_lossy().into_owned();
         let connection = self.database.connection();
         let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-        fold_records(&transaction, &path_key, records)?;
+        fold_records(&transaction, &path_key, since_ms, records, false)?;
         usage_scan::set_meta(
             &transaction,
             META_OPENCODE_SCANNED_AT_MS,
@@ -351,69 +381,47 @@ pub fn spawn_sweep(scanner: &Arc<UsageScanner>) {
     });
 }
 
-/// Fold parsed records into hour buckets, claiming each billed call's key
-/// first so a repeat in another file counts once. Records without a key are
-/// counted as they come.
+/// Store a parsed batch as source-local contributions and rebuild only the
+/// global winners' affected hour buckets.
 fn fold_records(
     connection: &Connection,
     source_path: &str,
+    batch_cursor: i64,
     records: Vec<UsageRecord>,
+    full_reparse: bool,
 ) -> ArgmaxResult<()> {
-    let mut deltas: HashMap<(ProviderId, String, String, i64), HourlyBucketDelta> = HashMap::new();
-    for record in records {
-        if record.tokens.is_empty() {
-            continue;
-        }
-        let hour_utc = hour_start_secs(record.at_ms);
-        if let Some(key) = record.dedupe_key.as_deref() {
-            if !usage_scan::claim_dedupe_key(connection, key, source_path, hour_utc)? {
-                continue;
-            }
-        }
-        let model_id = normalize_model_id(&record.model_id);
-        let delta = deltas
-            .entry((
-                record.provider,
-                model_id.clone(),
-                record.session_id.clone(),
-                hour_utc,
-            ))
-            .or_insert_with(|| HourlyBucketDelta {
-                provider: provider_key(record.provider).to_owned(),
-                model_id,
-                session_id: record.session_id.clone(),
-                source_path: source_path.to_owned(),
-                hour_utc,
-                tokens: UsageRecordTokens::default(),
-                reported_cost_usd: None,
-                reported_records: 0,
-                records: 0,
-            });
-        delta.tokens.input_uncached += record.tokens.input_uncached;
-        delta.tokens.cache_read += record.tokens.cache_read;
-        delta.tokens.cache_write_5m += record.tokens.cache_write_5m;
-        delta.tokens.cache_write_1h += record.tokens.cache_write_1h;
-        delta.tokens.output += record.tokens.output;
-        delta.tokens.reasoning += record.tokens.reasoning;
-        delta.records += 1;
-        if let Some(cost) = record.reported_cost_usd {
-            delta.reported_cost_usd = Some(delta.reported_cost_usd.unwrap_or(0.0) + cost);
-            delta.reported_records += 1;
-        }
-    }
-    let mut ordered: Vec<HourlyBucketDelta> = deltas.into_values().collect();
-    ordered.sort_by(|a, b| {
-        (a.hour_utc, &a.provider, &a.model_id, &a.session_id).cmp(&(
-            b.hour_utc,
-            &b.provider,
-            &b.model_id,
-            &b.session_id,
-        ))
-    });
-    for delta in &ordered {
-        usage_scan::add_hourly_bucket(connection, delta)?;
-    }
-    Ok(())
+    let contributions = records
+        .into_iter()
+        .map(|record| UsageContribution {
+            billed_call_key: record.dedupe_key,
+            provider: provider_key(record.provider).to_owned(),
+            model_id: normalize_model_id(&record.model_id),
+            session_id: record.session_id,
+            at_ms: record.at_ms,
+            hour_utc: hour_start_secs(record.at_ms),
+            tokens: record.tokens,
+            reported_cost_usd: record.reported_cost_usd,
+        })
+        .collect();
+    usage_scan::replace_source_contributions(
+        connection,
+        source_path,
+        batch_cursor,
+        contributions,
+        full_reparse,
+    )
+}
+
+fn claude_parent_session(path: &Path) -> Option<String> {
+    let components: Vec<_> = path.components().collect();
+    let subagents = components
+        .iter()
+        .position(|component| component.as_os_str() == "subagents")?;
+    components
+        .get(subagents.checked_sub(1)?)?
+        .as_os_str()
+        .to_str()
+        .map(str::to_owned)
 }
 
 /// Depth-limited walk under `root`. `accept` sees each regular file and its
@@ -577,21 +585,33 @@ fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::usage_scan::HourlyBucketDelta;
+    use crate::usage::records::UsageRecordTokens;
     use chrono::{Duration, SecondsFormat, Utc};
     use std::io::Write;
 
     fn claude_line(message_id: &str, at: chrono::DateTime<Utc>, input: i64) -> String {
+        claude_line_with_output(message_id, at, input, 10)
+    }
+
+    fn claude_line_with_output(
+        message_id: &str,
+        at: chrono::DateTime<Utc>,
+        input: i64,
+        output: i64,
+    ) -> String {
         format!(
             concat!(
                 r#"{{"type":"assistant","uuid":"u-{id}","requestId":"req-{id}","sessionId":"sess1","#,
                 r#""timestamp":"{ts}","cwd":"/tmp/proj","message":{{"id":"{id}","model":"claude-opus-5","#,
                 r#""role":"assistant","content":[{{"type":"text","text":"hi"}}],"usage":{{"input_tokens":{input},"#,
-                r#""cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":10}}}}}}"#,
+                r#""cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":{output}}}}}}}"#,
                 "\n"
             ),
             id = message_id,
             ts = at.to_rfc3339_opts(SecondsFormat::Millis, true),
             input = input,
+            output = output,
         )
     }
 
@@ -755,6 +775,199 @@ mod tests {
             ledger(&scanner).iter().map(|row| row.records).sum::<i64>(),
             1
         );
+    }
+
+    #[test]
+    fn a_later_claude_block_replaces_partial_usage_across_sweeps() {
+        let home = tempfile::tempdir().unwrap();
+        let project = home.path().join(".claude").join("projects").join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let transcript = project.join("sess1.jsonl");
+        let at = Utc::now() - Duration::minutes(30);
+        fs::write(&transcript, claude_line_with_output("m1", at, 100, 10)).unwrap();
+        let settled = SystemTime::now() - std::time::Duration::from_secs(600);
+        set_mtime(&transcript, settled);
+
+        let scanner = scanner_in(home.path());
+        scanner.sweep().unwrap();
+        assert_eq!(ledger(&scanner)[0].tokens.output, 10);
+
+        let mut file = fs::File::options().append(true).open(&transcript).unwrap();
+        file.write_all(claude_line_with_output("m1", at, 100, 222).as_bytes())
+            .unwrap();
+        drop(file);
+        set_mtime(&transcript, settled + std::time::Duration::from_secs(1));
+        scanner.sweep().unwrap();
+
+        let rows = ledger(&scanner);
+        assert_eq!(rows.iter().map(|row| row.records).sum::<i64>(), 1);
+        assert_eq!(rows.iter().map(|row| row.tokens.output).sum::<i64>(), 222);
+    }
+
+    #[test]
+    fn codex_tail_keeps_model_and_duplicate_state_from_its_prefix() {
+        let home = tempfile::tempdir().unwrap();
+        let directory = home
+            .path()
+            .join(".codex")
+            .join("sessions")
+            .join("2026")
+            .join("06")
+            .join("15");
+        fs::create_dir_all(&directory).unwrap();
+        let transcript = directory
+            .join("rollout-2026-06-15T07-49-15-019ec9d3-b501-7370-8f2e-46d4d7a504c4.jsonl");
+        let fixture = include_str!("../../tests/fixtures/usage/codex-duplicate-token-count.jsonl");
+        let lines: Vec<_> = fixture.lines().collect();
+        fs::write(
+            &transcript,
+            format!("{}\n{}\n{}\n", lines[0], lines[1], lines[2]),
+        )
+        .unwrap();
+        let settled = SystemTime::now() - std::time::Duration::from_secs(600);
+        set_mtime(&transcript, settled);
+
+        let scanner = scanner_in(home.path());
+        scanner.sweep().unwrap();
+        let mut file = fs::File::options().append(true).open(&transcript).unwrap();
+        file.write_all(format!("{}\n{}\n", lines[3], lines[4]).as_bytes())
+            .unwrap();
+        drop(file);
+        set_mtime(&transcript, settled + std::time::Duration::from_secs(1));
+        scanner.sweep().unwrap();
+
+        let rows = ledger(&scanner);
+        assert_eq!(rows.iter().map(|row| row.records).sum::<i64>(), 2);
+        assert!(rows.iter().all(|row| row.model_id == "gpt-5.5"));
+    }
+
+    #[test]
+    fn deleting_the_winning_copy_promotes_the_retained_transcript() {
+        let home = tempfile::tempdir().unwrap();
+        let project = home.path().join(".claude").join("projects").join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let at = Utc::now() - Duration::minutes(30);
+        let line = claude_line("m1", at, 100);
+        let first = project.join("a.jsonl");
+        let retained = project.join("b.jsonl");
+        fs::write(&first, &line).unwrap();
+        fs::write(&retained, &line).unwrap();
+        let settled = SystemTime::now() - std::time::Duration::from_secs(600);
+        set_mtime(&first, settled);
+        set_mtime(&retained, settled);
+
+        let scanner = scanner_in(home.path());
+        scanner.sweep().unwrap();
+        fs::remove_file(&first).unwrap();
+        scanner.sweep().unwrap();
+
+        let rows = ledger(&scanner);
+        assert_eq!(rows.iter().map(|row| row.records).sum::<i64>(), 1);
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.tokens.input_uncached)
+                .sum::<i64>(),
+            100
+        );
+    }
+
+    #[test]
+    fn a_settled_tail_is_consumed_even_when_file_metadata_is_unchanged() {
+        let home = tempfile::tempdir().unwrap();
+        let project = home.path().join(".claude").join("projects").join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let transcript = project.join("sess1.jsonl");
+        let at = Utc::now() - Duration::minutes(30);
+        let complete = claude_line("m1", at, 100);
+        let mut tail = claude_line("m2", at, 100);
+        tail.pop();
+        fs::write(&transcript, format!("{complete}{tail}")).unwrap();
+        let metadata = fs::metadata(&transcript).unwrap();
+        let source = SourceFile {
+            path: transcript,
+            provider: ProviderId::Claude,
+            session_id_hint: None,
+            size: metadata.len() as i64,
+            mtime_ms: modified_ms(&metadata),
+        };
+        let scanner = scanner_in(home.path());
+        scanner.scan_file(&source, source.mtime_ms + 1).unwrap();
+        assert_eq!(
+            ledger(&scanner).iter().map(|row| row.records).sum::<i64>(),
+            1
+        );
+
+        scanner
+            .scan_file(&source, source.mtime_ms + SETTLED_AFTER_MS + 1)
+            .unwrap();
+        assert_eq!(
+            ledger(&scanner).iter().map(|row| row.records).sum::<i64>(),
+            2
+        );
+    }
+
+    #[test]
+    fn same_size_rewrite_with_the_same_guard_is_reparsed() {
+        let home = tempfile::tempdir().unwrap();
+        let project = home.path().join(".claude").join("projects").join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let transcript = project.join("sess1.jsonl");
+        let at = Utc::now() - Duration::minutes(30);
+        let first = claude_line("m1", at, 100);
+        let rewritten = claude_line("m9", at, 900);
+        assert_eq!(first.len(), rewritten.len());
+        assert_eq!(
+            &first[first.len() - 64..],
+            &rewritten[rewritten.len() - 64..]
+        );
+        fs::write(&transcript, first).unwrap();
+        let settled = SystemTime::now() - std::time::Duration::from_secs(600);
+        set_mtime(&transcript, settled);
+
+        let scanner = scanner_in(home.path());
+        scanner.sweep().unwrap();
+        fs::write(&transcript, rewritten).unwrap();
+        set_mtime(&transcript, settled + std::time::Duration::from_secs(1));
+        scanner.sweep().unwrap();
+
+        assert_eq!(
+            ledger(&scanner)
+                .iter()
+                .map(|row| row.tokens.input_uncached)
+                .sum::<i64>(),
+            900
+        );
+    }
+
+    #[test]
+    fn discovers_nested_claude_workflow_children() {
+        let home = tempfile::tempdir().unwrap();
+        let directory = home
+            .path()
+            .join(".claude")
+            .join("projects")
+            .join("proj")
+            .join("sess1")
+            .join("subagents")
+            .join("workflows")
+            .join("wf1");
+        fs::create_dir_all(&directory).unwrap();
+        let transcript = directory.join("child.jsonl");
+        fs::write(
+            &transcript,
+            claude_line("m1", Utc::now() - Duration::minutes(30), 100),
+        )
+        .unwrap();
+        set_mtime(
+            &transcript,
+            SystemTime::now() - std::time::Duration::from_secs(600),
+        );
+
+        let scanner = scanner_in(home.path());
+        scanner.sweep().unwrap();
+        let rows = ledger(&scanner);
+        assert_eq!(rows.iter().map(|row| row.records).sum::<i64>(), 1);
+        assert_eq!(rows[0].session_id, "sess1");
     }
 
     #[test]

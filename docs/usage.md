@@ -111,19 +111,32 @@ These are the rules that make the numbers right. Each has a fixture test.
 ## Scan
 
 [usage/scanner.rs](../src-tauri/src/usage/scanner.rs) sweeps the sources and
-folds records into `usage_hourly` (migration v27, see [data.md](data.md)):
-one row per provider, model, session, source file, and UTC hour. Dollars are
-computed at query time from the pricing table, so a price change re-prices
-history without a rescan.
+stores one normalized row per source and billed call in
+`usage_contributions` (migration v39, see [data.md](data.md)). A deterministic
+winner is chosen across copied transcripts, then folded into `usage_hourly`:
+one row per provider, model, session, winning source file, and UTC hour.
+Dollars are computed at query time from the pricing table, so a price change
+re-prices history without a rescan.
 
 - Files are found by mtime within the 90-day retention plus 36 hours of slack.
-- An unchanged `(size, mtime)` skips the file. A grown file whose 64 bytes
-  before the old cursor still hash the same is read from the cursor. Anything
-  else drops the file's rows and is parsed again.
+- An unchanged `(size, mtime)` skips a fully consumed file. A grown file whose
+  64 bytes before the old cursor still hash the same is read from the cursor.
+  A same-size write is always reparsed, even if its final bytes happen to
+  match. Anything else replaces that source's contributions.
 - A file touched in the last five minutes keeps its trailing partial line for
-  the next sweep, since the writer may be mid-line.
-- Billed-call keys are remembered in `usage_dedupe_keys` per source file, so a
-  reparse of one file does not lose the claims of another.
+  the next sweep, since the writer may be mid-line. It is consumed after the
+  five-minute settling time even when size and mtime have not changed.
+- Codex parser state (session, model, fork-copy burst, and last token
+  signature) is committed with its byte cursor. Missing or malformed state
+  causes a full reparse instead of guessing from a tail.
+- Repeated billed-call keys keep one contribution per source. The record with
+  the largest processed-token count wins globally, with source path as the
+  stable tie-breaker. A later settled Claude block can replace its partial
+  block, and deleting the winner promotes a retained copy.
+- Winner selection happens before the hour filter. Pruning keeps old copies
+  when the same billed call also has a contribution inside retention, so a
+  copied call cannot move into the visible window when its older winner ages
+  out.
 - `PARSER_VERSION` in the scanner is stored in `usage_scan_meta`; bumping it
   empties the ledger and rescans.
 - The first sweep is cold and runs in the background when the page is first

@@ -1,18 +1,23 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { useAutoGrowTextArea } from "./useAutoGrowTextArea.js";
 
 function ComposerTextarea({
   maxHeight = 140,
   minHeight,
-  value = ""
+  value = "",
+  selection
 }: {
   maxHeight?: number;
   minHeight: number;
   value?: string;
+  selection?: [number, number];
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  useLayoutEffect(() => {
+    if (selection) ref.current?.setSelectionRange(...selection);
+  }, [value, selection]);
   useAutoGrowTextArea(ref, value, maxHeight);
   return (
     <div>
@@ -28,12 +33,7 @@ function ComposerTextarea({
 }
 
 function setScrollHeight(height: number): void {
-  Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
-    configurable: true,
-    get() {
-      return height;
-    }
-  });
+  vi.spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get").mockReturnValue(height);
 }
 
 describe("useAutoGrowTextArea", () => {
@@ -57,6 +57,40 @@ describe("useAutoGrowTextArea", () => {
     render(<ComposerTextarea minHeight={56} value={"one\ntwo\nthree"} />);
 
     expect(screen.getByLabelText("Prompt")).toHaveStyle({ height: "88px", overflowY: "hidden" });
+  });
+
+  it("reveals the end of a capped draft after a newline, then allows scrolling back", () => {
+    setScrollHeight(200);
+    const { rerender } = render(<ComposerTextarea minHeight={56} value="draft" />);
+    const textarea = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Prompt" });
+    textarea.focus();
+
+    setScrollHeight(220);
+    rerender(<ComposerTextarea minHeight={56} value={"draft\n"} />);
+
+    expect(textarea).toHaveStyle({ height: "140px", overflowY: "auto" });
+    // jsdom does not clamp scrollTop. Real-browser checks verify the line box.
+    expect(textarea.scrollTop).toBe(220);
+
+    textarea.scrollTop = 12;
+    rerender(<ComposerTextarea minHeight={56} value={"draft\n"} />);
+    expect(textarea.scrollTop).toBe(12);
+  });
+
+  it.each([
+    { name: "an earlier caret", selection: [2, 2] as [number, number], focused: true },
+    { name: "a selection through the end", selection: [2, 6] as [number, number], focused: true },
+    { name: "an unfocused draft", selection: [6, 6] as [number, number], focused: false }
+  ])("preserves the scroll position for $name", ({ selection, focused }) => {
+    setScrollHeight(220);
+    const { rerender } = render(<ComposerTextarea minHeight={56} value="draft" />);
+    const textarea = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Prompt" });
+    if (focused) textarea.focus();
+    textarea.scrollTop = 12;
+
+    rerender(<ComposerTextarea minHeight={56} value={"draft\n"} selection={selection} />);
+
+    expect(textarea.scrollTop).toBe(12);
   });
 
   it("recalculates when the composer width changes", () => {

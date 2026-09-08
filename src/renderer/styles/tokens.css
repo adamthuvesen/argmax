@@ -632,9 +632,9 @@
 }
 
 :root[data-accent="orange"] {
-  --accent: #a85c43;
-  --accent-soft: #f8e9e1;
-  --accent-deep: #874a36;
+  --accent: #bd580f;
+  --accent-soft: #fff0e3;
+  --accent-deep: #9c450b;
 }
 
 :root[data-accent="blue"] {
@@ -686,10 +686,10 @@
 }
 
 :root[data-theme="dark"][data-accent="orange"] {
-  --accent: #d97757;
-  --accent-soft: rgba(217, 119, 87, 0.16);
-  --accent-deep: #ec9878;
-  --user-message-bg: #89442e;
+  --accent: #e88845;
+  --accent-soft: rgba(232, 136, 69, 0.16);
+  --accent-deep: #f2a56c;
+  --user-message-bg: #98470f;
   --user-message-fg: #ffffff;
 }
 

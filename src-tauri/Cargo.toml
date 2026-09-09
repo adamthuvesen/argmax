@@ -10,7 +10,8 @@ default-run = "argmax"
 [lib]
 name = "argmax_lib"
 path = "src/lib.rs"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Argmax ships for desktop; Tauri mobile targets require the other library types.
+crate-type = ["rlib"]
 
 # Neither binary carries unit tests; `test = false` keeps `cargo test` from
 # building (and linking) a test harness for each of them.

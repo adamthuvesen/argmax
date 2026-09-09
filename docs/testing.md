@@ -47,6 +47,30 @@ hook should not be failed by CI for a reason the hook could have caught.
 Never bypass the hook with `--no-verify`; if a lane is wrong for the change,
 fix the filter in `precheck.mjs`.
 
+### CI execution
+
+CI distributes the complete Vitest suite across eight shards. The first shard
+also runs the performance budgets. ESLint reuses cached results only when all
+TypeScript sources and configuration match. Its type-aware rules can report an
+error in an unchanged file when an imported type changes, so a per-file content
+cache alone is insufficient. Fresh checkout timestamps do not invalidate a
+matching cache.
+
+Two macOS Rust lanes run library tests and integration checks. The integration
+lane builds its test binary first, then runs tests, doctests, and Clippy in
+parallel, waiting for every command and propagating failures. Both lanes must
+succeed. Keep new integration tests in
+the existing binary so this list remains complete. CI enables incremental
+compilation for both tests and Clippy and
+omits debug symbols through environment overrides. Local Cargo profiles retain
+their existing debug information.
+
+Each Rust lane caches its dependencies, workspace artifacts, and incremental
+state. Keys include the lane, platform, Cargo manifest and lockfile, toolchain
+file, and workflow. Each successful main build refreshes the cache under its commit
+SHA. A PR with no compatible cache can seed a cache scoped to that PR, which
+allows measuring warm runs before merging the workflow change.
+
 ## TypeScript Tests
 
 - **Framework:** Vitest with Testing Library. Config in [vitest.config.ts](../vitest.config.ts) and setup in [src/test/setup.ts](../src/test/setup.ts).

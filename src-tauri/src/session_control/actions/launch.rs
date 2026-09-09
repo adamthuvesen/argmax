@@ -142,6 +142,8 @@ pub(crate) async fn launch_with_spec(
             cols,
             rows,
             attachments: None,
+            goal_condition: None,
+            goal_max_turns: None,
         })
         .await;
     let session = match launch_result {

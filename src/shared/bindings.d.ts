@@ -1386,7 +1386,7 @@ export type ProvidersDiscoverInput = {
  * CLI. Defaults to false so an absent `{}` payload reuses the cache.
  */
 refresh?: boolean }
-export type ProvidersLaunchInput = { workspaceId: WorkspaceId; provider: ProviderId; prompt: Prompt; modelLabel: NonEmptyString; modelId: NonEmptyString; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; permissionMode: PermissionMode | null; cols: TerminalCols; rows: TerminalRows; attachments: ComposerAttachmentInput[] | null }
+export type ProvidersLaunchInput = { workspaceId: WorkspaceId; provider: ProviderId; prompt: Prompt; modelLabel: NonEmptyString; modelId: NonEmptyString; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; permissionMode: PermissionMode | null; cols: TerminalCols; rows: TerminalRows; attachments: ComposerAttachmentInput[] | null; goalCondition: string | null; goalMaxTurns: number | null }
 export type ProvidersResizeInput = { sessionId: SessionId; cols: TerminalCols; rows: TerminalRows }
 export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
 /**

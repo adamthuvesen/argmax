@@ -10,6 +10,7 @@ import {
   Paperclip,
   Play,
   Plus,
+  Target,
   X
 } from "lucide-react";
 import {
@@ -39,6 +40,7 @@ import {
   imageAttachmentReference
 } from "../lib/composerAttachments.js";
 import { clearDraft, launcherDraftKey, readDraft } from "../lib/composerDrafts.js";
+import { parseGoalCommand } from "../lib/goalCommand.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
@@ -116,6 +118,7 @@ function isOptionButtonTarget(target: EventTarget | null): boolean {
 export function LaunchSurface({
   claimsBrowserRequests = false,
   fastModeEnabled = false,
+  goalEnabled = true,
   hasRunningSession = false,
   pixelFieldEnabled = false,
   model,
@@ -139,6 +142,7 @@ export function LaunchSurface({
    *  launcher cell sharing the grid with session panes. */
   claimsBrowserRequests?: boolean;
   fastModeEnabled?: boolean;
+  goalEnabled?: boolean;
   /** True while an agent is running in this launcher's project. The hero fox
    *  stays awake rather than dozing. */
   hasRunningSession?: boolean;
@@ -152,13 +156,15 @@ export function LaunchSurface({
     model: ModelPickerSelection,
     agentMode: AgentMode,
     workspaceMode: WorkspaceMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
+    goalCondition?: string
   ) => Promise<void>;
   onLaunchSideChat?: (
     prompt: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
+    goalCondition?: string
   ) => Promise<void>;
   onModelChange: (model: ModelPickerSelection) => void;
   onSelectProject: (id: string) => void;
@@ -583,6 +589,15 @@ export function LaunchSurface({
       });
     }
     const commands = modes.filter((mode) => mode.name !== launcherMode);
+    if (goalEnabled) {
+      commands.push({
+        name: "goal",
+        label: "Goal",
+        hint: "Keep working until a condition holds",
+        icon: Target,
+        run: () => setPrompt("/goal ")
+      });
+    }
     commands.push({
       name: "attach",
       label: "Attach file",
@@ -630,11 +645,13 @@ export function LaunchSurface({
     chatAvailable,
     chatMode,
     closeContextPickers,
+    goalEnabled,
     launcherMode,
     onSideChatModeChange,
     openBranchPicker,
     openFilePicker,
     setAgentMode,
+    setPrompt,
     toggleWorkspace,
     workspaceMode
   ]);
@@ -658,8 +675,8 @@ export function LaunchSurface({
   // Same accent tint for `/skill` tokens as the session composer: a mirror
   // div behind a transparent-text textarea (see chat-composer-chips.css).
   const skillHighlight = useMemo(
-    () => splitSkillTokens(prompt, (name) => slashAutocomplete.skillNames.has(name)),
-    [prompt, slashAutocomplete.skillNames]
+    () => splitSkillTokens(prompt, (name) => (goalEnabled && name === "goal") || slashAutocomplete.skillNames.has(name)),
+    [goalEnabled, prompt, slashAutocomplete.skillNames]
   );
   const highlightBackdropRef = useRef<HTMLDivElement | null>(null);
   const syncHighlightScroll = useCallback((event: ReactUIEvent<HTMLTextAreaElement>): void => {
@@ -696,8 +713,17 @@ export function LaunchSurface({
       return;
     }
 
+    const goalCommand = goalEnabled ? parseGoalCommand(trimmedPrompt) : null;
+    if (goalEnabled && (/^\/goal\s*$/i.test(trimmedPrompt) || goalCommand?.kind === "clear")) {
+      setStatus(goalCommand?.kind === "clear"
+        ? "There is no goal to clear in a new chat."
+        : "Write a completion condition after /goal.");
+      return;
+    }
+    const goalCondition = goalCommand?.kind === "set" ? goalCommand.condition : undefined;
+    const openingPrompt = goalCondition ?? trimmedPrompt;
     const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
-    const finalPrompt = refs.length > 0 ? appendReferencesToPrompt(trimmedPrompt, refs) : trimmedPrompt;
+    const finalPrompt = refs.length > 0 ? appendReferencesToPrompt(openingPrompt, refs) : openingPrompt;
 
     setIsSubmitting(true);
     setStatus(null);
@@ -709,9 +735,9 @@ export function LaunchSurface({
     try {
       const attachments = pendingAttachments.length > 0 ? pendingAttachments : undefined;
       if (chatMode && onLaunchSideChat) {
-        await onLaunchSideChat(finalPrompt, model, agentModeForLaunch(launcherMode), attachments);
+        await onLaunchSideChat(finalPrompt, model, agentModeForLaunch(launcherMode), attachments, goalCondition);
       } else {
-        await onLaunchTask(finalPrompt, model, agentMode, workspaceMode, attachments);
+        await onLaunchTask(finalPrompt, model, agentMode, workspaceMode, attachments, goalCondition);
       }
       setPrompt("");
       clearAttachments();

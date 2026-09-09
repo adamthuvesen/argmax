@@ -119,7 +119,7 @@ type WireSubtype<Wire, Narrowed extends Wire> = Narrowed;
 
 export type LaunchProviderSessionInput = OptionalNullable<
   Bindings.ProvidersLaunchInput,
-  "reasoningEffort" | "agentMode" | "permissionMode" | "attachments"
+  "reasoningEffort" | "agentMode" | "permissionMode" | "attachments" | "goalCondition" | "goalMaxTurns"
 >;
 export type ProviderSessionInput = OptionalNullable<
   Bindings.ProvidersSendInput,

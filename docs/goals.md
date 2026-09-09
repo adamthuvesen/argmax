@@ -17,20 +17,23 @@ configuration.
 /goal clear
 ```
 
-`/goal <condition>` sets the Goal and starts its first turn immediately — no
-separate prompt. `/goal clear` ends one early; `stop`, `off`, `reset`, `none`,
-and `cancel` are accepted aliases. One Goal per chat, enforced by a partial
-unique index on `goals(session_id) WHERE state = 'active'` rather than by
-service code. Setting a new one replaces the old.
+`/goal <condition>` works in both the new-chat composer and an existing chat.
+Select Goal from the `/` menu, write the condition, and submit. This sets the
+Goal and starts its first turn immediately. In a new chat, the Goal is attached
+before the first turn starts. `/goal clear` ends one early. `stop`, `off`,
+`reset`, `none`, and `cancel` are accepted aliases. Clearing requires an existing
+chat. One Goal per chat, enforced by a partial unique index on
+`goals(session_id) WHERE state = 'active'` rather than by service code. Setting a new one replaces the old.
 
 An agent can set a Goal for itself through the `argmax` MCP server's `goal_set`
 and `goal_clear` tools, so "keep going until the suite is green" in prose lands
 the same way the command does. See [agent-tools.md](agent-tools.md).
 
-While a Goal is active, a strip above the composer shows the condition, the
-turn budget, and the evaluator's most recent reason. A settled Goal stays there
-until dismissed — letting it vanish the moment it completed would hide the one
-moment worth seeing.
+A compact Goal bar sits above the composer, using the same surface as queued
+follow-ups. It shows the condition and a clear button, with no turn counter.
+Click the condition to expand its full text. Expanded text scrolls within a
+height cap of 150 px or 25% of the viewport, whichever is smaller. A settled
+Goal stays there until dismissed so its outcome remains visible.
 
 Settings → Agents → Conversation turns Goals off entirely and sets the turn
 budget (5–50, default 20).
@@ -89,6 +92,8 @@ count, turn budget, and the evaluator's last reason.
 
 Desktop and remote clients share `goal:set`, `goal:get`, `goal:list`, and
 `goal:clear`. The renderer consumes generated types through `window.argmax.goals`.
+New chats pass `goalCondition` and `goalMaxTurns` to `providers:launch`, which
+persists the Goal with the session before starting the first turn.
 
 Checkpoints, which the Goal strip sits beside, are documented in
 [workspaces.md](workspaces.md).

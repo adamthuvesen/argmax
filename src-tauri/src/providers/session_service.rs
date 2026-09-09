@@ -12,7 +12,7 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     path::PathBuf,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock, Weak},
     time::Duration,
 };
 
@@ -52,6 +52,7 @@ use crate::{
     error::{ArgmaxError, ArgmaxResult},
     gh::service::{pr_numbers_from_command_event, GhService},
     git::ops::checkout_write_lock,
+    goals::service::GoalService,
     ipc::inputs::{
         ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
         ProvidersResizeInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
@@ -251,6 +252,9 @@ pub struct ProviderSessionService {
     /// Installed after database startup. A provider turn must capture code
     /// state before the first possible write, while scratch chats skip it.
     checkpoints: OnceLock<Arc<CheckpointService>>,
+    /// Installed by `GoalService::new`. Kept weak because the Goal service
+    /// owns this provider service while its driver is alive.
+    goals: OnceLock<Weak<GoalService>>,
     /// Per-turn git marks, for providers that report a file write without
     /// saying what changed. See `measured_diffs`.
     measured_diffs: Arc<MeasuredDiffs>,
@@ -364,6 +368,7 @@ impl ProviderSessionService {
             approvals,
             session_control: OnceLock::new(),
             checkpoints: OnceLock::new(),
+            goals: OnceLock::new(),
             measured_diffs: Arc::new(MeasuredDiffs::default()),
             session_states: broadcast::channel(SESSION_STATE_BROADCAST_CAPACITY).0,
             #[cfg(test)]
@@ -380,6 +385,12 @@ impl ProviderSessionService {
     pub fn set_checkpoint_service(&self, checkpoints: Arc<CheckpointService>) {
         if self.checkpoints.set(checkpoints).is_err() {
             tracing::warn!("checkpoint service was already installed");
+        }
+    }
+
+    pub(crate) fn set_goal_service(&self, goals: Weak<GoalService>) {
+        if self.goals.set(goals).is_err() {
+            tracing::warn!("goal service was already installed");
         }
     }
 
@@ -577,6 +588,25 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersLaunchInput,
     ) -> ArgmaxResult<SessionSummary> {
+        let initial_goal = match input.goal_condition.as_deref() {
+            Some(condition) => {
+                let goals = self.goals.get().and_then(Weak::upgrade).ok_or_else(|| {
+                    ArgmaxError::service(
+                        "GOAL_SERVICE_NOT_READY",
+                        "Goal service is not initialized",
+                    )
+                })?;
+                let config = GoalService::validate_config(condition, input.goal_max_turns)?;
+                Some((goals, config))
+            }
+            None if input.goal_max_turns.is_some() => {
+                return Err(ArgmaxError::service(
+                    "GOAL_INVALID_CONDITION",
+                    "goalMaxTurns requires goalCondition.",
+                ));
+            }
+            None => None,
+        };
         let session_id = Uuid::new_v4().to_string();
         let agent_mode = input.agent_mode.unwrap_or(AgentMode::Auto);
         let permission_mode = input
@@ -592,9 +622,10 @@ impl ProviderSessionService {
         let checkout_lock = checkout_write_lock(std::path::Path::new(&checkout_path)).await?;
         let checkout_guard = checkout_lock.lock().await;
 
-        let (session, workspace_path) = {
-            let connection = self.database.connection();
-            let workspace = find_workspace_by_id(&connection, input.workspace_id.as_str())?;
+        let (session, workspace_path, goal, delta) = {
+            let mut connection = self.database.connection();
+            let transaction = connection.transaction().map_err(sqlite_error)?;
+            let workspace = find_workspace_by_id(&transaction, input.workspace_id.as_str())?;
             if matches!(
                 workspace.state.as_str(),
                 "archiving" | "archive-failed" | "archived"
@@ -605,7 +636,7 @@ impl ProviderSessionService {
                 ));
             }
             let mut session = persist_session(
-                &connection,
+                &transaction,
                 &PersistSessionInput {
                     id: session_id.clone(),
                     workspace_id: workspace.id.clone(),
@@ -626,16 +657,19 @@ impl ProviderSessionService {
             // it here is what lets the very next turn resume: without it the
             // follow-up launches fresh and loses the history.
             if matches!(provider, ProviderId::Claude | ProviderId::Grok) {
-                session =
-                    update_session_provider_conversation_id(&connection, &session_id, &session_id)?;
+                session = update_session_provider_conversation_id(
+                    &transaction,
+                    &session_id,
+                    &session_id,
+                )?;
             }
-            let workspace = update_workspace_state_for_session_state(
-                &connection,
+            let workspace = update_workspace_state_for_session_state_within_transaction(
+                &transaction,
                 &workspace.id,
                 SessionState::Running,
             )?;
             let user_message = persist_timeline_event(
-                &connection,
+                &transaction,
                 &PersistTimelineEventInput {
                     id: Uuid::new_v4().to_string(),
                     session_id: session_id.clone(),
@@ -646,7 +680,7 @@ impl ProviderSessionService {
                 },
             )?;
             let session_started = persist_timeline_event(
-                &connection,
+                &transaction,
                 &PersistTimelineEventInput {
                     id: Uuid::new_v4().to_string(),
                     session_id: session_id.clone(),
@@ -662,15 +696,27 @@ impl ProviderSessionService {
                     created_at: None,
                 },
             )?;
-            self.publish(DashboardDelta {
-                projects: list_projects(&connection)?,
+            let goal = initial_goal
+                .as_ref()
+                .map(|(goals, config)| {
+                    goals.insert_initial_goal(&transaction, &workspace.id, &session.id, config)
+                })
+                .transpose()?;
+            let delta = DashboardDelta {
+                projects: list_projects(&transaction)?,
                 workspaces: vec![workspace.clone()],
                 sessions: vec![session.clone()],
                 events: vec![user_message, session_started],
                 ..DashboardDelta::default()
-            });
-            (session, PathBuf::from(workspace.path))
+            };
+            transaction.commit().map_err(sqlite_error)?;
+            (session, PathBuf::from(workspace.path), goal, delta)
         };
+        self.publish(delta);
+
+        if let (Some((goals, _)), Some(goal)) = (initial_goal.as_ref(), goal.as_ref()) {
+            goals.start_initial_goal(goal);
+        }
 
         let provider_invocation_id = Uuid::new_v4().to_string();
         self.flush_queue
@@ -3711,16 +3757,29 @@ fn update_workspace_state_for_session_state(
     state: SessionState,
 ) -> ArgmaxResult<WorkspaceSummary> {
     let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-    let current = find_workspace_by_id(&transaction, workspace_id)?;
+    let workspace = update_workspace_state_for_session_state_within_transaction(
+        &transaction,
+        workspace_id,
+        state,
+    )?;
+    transaction.commit().map_err(sqlite_error)?;
+    Ok(workspace)
+}
+
+fn update_workspace_state_for_session_state_within_transaction(
+    connection: &rusqlite::Connection,
+    workspace_id: &str,
+    state: SessionState,
+) -> ArgmaxResult<WorkspaceSummary> {
+    let current = find_workspace_by_id(connection, workspace_id)?;
     let workspace = if matches!(
         current.state.as_str(),
         "archiving" | "archive-failed" | "archived"
     ) {
         current
     } else {
-        update_workspace_state(&transaction, workspace_id, state.as_str())?
+        update_workspace_state(connection, workspace_id, state.as_str())?
     };
-    transaction.commit().map_err(sqlite_error)?;
     Ok(workspace)
 }
 

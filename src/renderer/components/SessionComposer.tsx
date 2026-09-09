@@ -33,6 +33,7 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
+  type ReactNode,
   type SetStateAction,
   type UIEvent as ReactUIEvent
 } from "react";
@@ -150,7 +151,8 @@ export function SessionComposer({
   status,
   workspace,
   goalEnabled = true,
-  goalMaxTurns
+  goalMaxTurns,
+  goalStatus
 }: {
   agentMode: AgentMode;
   canSend: boolean;
@@ -215,6 +217,7 @@ export function SessionComposer({
   /** Settings → Agents → Conversation. Off removes `/goal` from the menu. */
   goalEnabled?: boolean;
   goalMaxTurns?: number;
+  goalStatus?: ReactNode;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
   const sessionIdRef = useRef(sessionId);
@@ -683,6 +686,7 @@ export function SessionComposer({
         tabIndex={-1}
         onChange={onAttachmentInputChange}
       />
+      {goalStatus}
       {pendingMessages.length > 0 ? (
         <div className="composer-queued-lane" role="list" aria-label="Queued follow-ups">
           {pendingMessages.map((entry) => {

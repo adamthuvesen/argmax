@@ -568,6 +568,8 @@ pub struct ProvidersLaunchInput {
     pub cols: TerminalCols,
     pub rows: TerminalRows,
     pub attachments: Option<Vec<ComposerAttachmentInput>>,
+    pub goal_condition: Option<String>,
+    pub goal_max_turns: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -1019,7 +1021,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn launch_provider_rejects_unknown_fields_and_accepts_multiline_prompt() {
+    fn launch_provider_rejects_unknown_fields_and_accepts_multiline_prompt_and_goal() {
         let unknown = serde_json::json!({
             "workspaceId": "w1",
             "provider": "codex",
@@ -1039,9 +1041,14 @@ mod tests {
             "modelLabel": "GPT-5.5",
             "modelId": "gpt-5.5",
             "cols": 80,
-            "rows": 24
+            "rows": 24,
+            "goalCondition": "the tests pass",
+            "goalMaxTurns": 12
         });
-        assert!(serde_json::from_value::<ProvidersLaunchInput>(multiline_prompt).is_ok());
+        let input = serde_json::from_value::<ProvidersLaunchInput>(multiline_prompt)
+            .expect("launch input with a goal");
+        assert_eq!(input.goal_condition.as_deref(), Some("the tests pass"));
+        assert_eq!(input.goal_max_turns, Some(12));
     }
 
     #[test]

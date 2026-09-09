@@ -19,12 +19,14 @@ use std::{path::PathBuf, process::Command, time::Duration};
 
 use argmax_lib::approvals::service::ApprovalService;
 use argmax_lib::error::ArgmaxResult;
+use argmax_lib::goals::service::GoalService;
 use argmax_lib::ipc::inputs::{
     ComposerAttachmentInput, ProvidersLaunchInput, ProvidersSendInput,
     ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput, SessionClearInput, TerminalCols,
     TerminalRows,
 };
 use argmax_lib::ipc::validation::{NonEmptyString, Prompt, ProviderId, SessionId, WorkspaceId};
+use argmax_lib::persistence::goals::find_active_goal_for_session;
 use argmax_lib::persistence::session_messages::{
     count_undelivered_messages, insert_session_message, take_undelivered_messages,
     NewSessionMessage, MESSAGE_KIND,
@@ -484,6 +486,8 @@ fn build_launch_input() -> ProvidersLaunchInput {
         cols: serde_json::from_value::<TerminalCols>(json!(120)).expect("cols valid"),
         rows: serde_json::from_value::<TerminalRows>(json!(32)).expect("rows valid"),
         attachments: None,
+        goal_condition: None,
+        goal_max_turns: None,
     }
 }
 
@@ -650,6 +654,49 @@ async fn launch_persists_session_and_seeds_timeline() {
     );
 
     assert_eq!(service.open_handle_count(), 1);
+}
+
+#[tokio::test]
+async fn launch_attaches_goal_before_sending_the_single_opening_turn() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    let _workspace = seed_project_and_workspace(&database);
+    let launcher = Arc::new(ManualExitLauncher::default());
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let goals = GoalService::new(database.clone(), Arc::clone(&service)).expect("goal service");
+    let session = service
+        .launch(ProvidersLaunchInput {
+            goal_condition: Some("all checks pass".to_string()),
+            goal_max_turns: Some(9),
+            ..build_launch_input()
+        })
+        .await
+        .expect("launch with goal");
+
+    wait_for_manual_launch_count(&launcher, 1).await;
+    let launches = launcher.launches();
+    assert_eq!(launches.len(), 1);
+    assert_eq!(launches[0].prompt, "hello world");
+
+    {
+        let connection = database.connection();
+        let goal = find_active_goal_for_session(&connection, &session.id)
+            .expect("read goal")
+            .expect("active goal");
+        assert_eq!(goal.condition, "all checks pass");
+        assert_eq!(goal.max_turns, 9);
+        assert_eq!(goal.turns, 0);
+
+        let tail = list_session_events_since(&connection, &session.id, None, None)
+            .expect("list launch events");
+        let user_messages: Vec<_> = tail
+            .events
+            .iter()
+            .filter(|event| event.r#type == "user.message")
+            .collect();
+        assert_eq!(user_messages.len(), 1);
+        assert_eq!(user_messages[0].message, "hello world");
+    }
+    goals.clear(&session.id).await.expect("stop goal driver");
 }
 
 #[tokio::test]

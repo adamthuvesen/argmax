@@ -39,11 +39,14 @@ beforeEach(() => {
 afterEach(() => { delete (window as { argmax?: ArgmaxApi }).argmax; });
 
 describe("GoalStatus", () => {
-  it("reports the condition, the turn budget, and the evaluator's reason", async () => {
+  it("expands only the condition without a turn counter or evaluator note", async () => {
     render(<GoalStatus session={session} />);
     expect(await screen.findByText("every test in test/auth passes")).toBeInTheDocument();
-    expect(screen.getByText("turn 3 of 20")).toBeInTheDocument();
-    expect(screen.getByText("Two auth tests still fail on timeout.")).toBeInTheDocument();
+    expect(screen.queryByText(/turn \d+ of/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Two auth tests still fail on timeout.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Goal every test/ }));
+    expect(screen.getByRole("button", { name: /Goal every test/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByText("Two auth tests still fail on timeout.")).not.toBeInTheDocument();
   });
 
   it("shows nothing when the session has no goal", async () => {
@@ -55,7 +58,7 @@ describe("GoalStatus", () => {
 
   it("clears an active goal and stops showing it", async () => {
     render(<GoalStatus session={session} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Clear" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Clear goal" }));
     await waitFor(() => expect(goals.clear).toHaveBeenCalledWith({ sessionId: session.id }));
     await waitFor(() => expect(screen.queryByText("every test in test/auth passes")).not.toBeInTheDocument());
   });
@@ -66,7 +69,7 @@ describe("GoalStatus", () => {
     expect(await screen.findByText("Goal met")).toBeInTheDocument();
     expect(screen.queryByText(/turn \d+ of/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss goal" }));
     await waitFor(() => expect(screen.queryByText("Goal met")).not.toBeInTheDocument());
     expect(goals.clear).not.toHaveBeenCalled();
   });
@@ -75,6 +78,7 @@ describe("GoalStatus", () => {
     goals.get.mockResolvedValue(goal({ state: "impossible", lastReason: "The referenced test file does not exist." }));
     render(<GoalStatus session={session} />);
     expect(await screen.findByText("Goal can't be met")).toBeInTheDocument();
-    expect(screen.getByText("The referenced test file does not exist.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Goal can.t be met every test/ }));
+    expect(screen.queryByText("The referenced test file does not exist.")).not.toBeInTheDocument();
   });
 });

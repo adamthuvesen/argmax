@@ -1,7 +1,6 @@
-import "../styles/session-panels.css";
 import "../styles/goals.css";
 import { useCallback, useEffect, useState, type JSX } from "react";
-import { Target } from "lucide-react";
+import { Target, X } from "lucide-react";
 import type { Goal, SessionSummary } from "../../shared/types.js";
 
 /** Sentence for the state the goal settled in. */
@@ -16,8 +15,7 @@ const OUTCOME_LABELS: Record<string, string> = {
  *
  * A goal is one condition plus a verdict, so there is nothing to configure
  * here and no form to open — `/goal <condition>` in the composer sets it. This
- * only reports: what the session is working toward, how far into its turn
- * budget it is, and what the evaluator last said.
+ * reports the condition the session is working toward.
  *
  * A settled goal stays on screen until dismissed. Letting the strip vanish the
  * moment a goal is met would make the ending the one part of the run nobody
@@ -26,6 +24,7 @@ const OUTCOME_LABELS: Record<string, string> = {
 export function GoalStatus({ session }: { session: SessionSummary }): JSX.Element | null {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,20 +72,31 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
   };
 
   return (
-    <section className="session-panel goal-status" data-state={goal.state} aria-label="Goal">
-      <div className="goal-status-head">
-        {active
-          ? <span className="session-panel-dot" aria-hidden="true" />
-          : <Target size={13} className="goal-status-mark" aria-hidden="true" />}
-        <span className="session-panel-title">{active ? "Goal" : OUTCOME_LABELS[goal.state] ?? "Goal"}</span>
-        {active && <span className="session-panel-note">turn {goal.turns} of {goal.maxTurns}</span>}
-        <button type="button" className="session-panel-button session-panel-button-quiet" disabled={pending} onClick={() => void clear()}>
-          {active ? "Clear" : "Dismiss"}
+    <section className="composer-queued-lane goal-status" data-state={goal.state} aria-label="Goal">
+      <div className="composer-queued-chip goal-status-row">
+        <button
+          type="button"
+          className="goal-status-summary"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+          title={expanded ? "Collapse goal details" : goal.condition}
+        >
+          <Target size={14} className="composer-queued-chip-icon" aria-hidden="true" />
+          <span className="goal-status-label">{active ? "Goal" : OUTCOME_LABELS[goal.state] ?? "Goal"}</span>
+          <span className="goal-status-condition">{goal.condition}</span>
+        </button>
+        <button
+          type="button"
+          className="composer-queued-chip-remove"
+          aria-label={active ? "Clear goal" : "Dismiss goal"}
+          title={active ? "Clear goal" : "Dismiss goal"}
+          disabled={pending}
+          onClick={() => void clear()}
+        >
+          <X size={14} aria-hidden="true" />
         </button>
       </div>
-      <p className="goal-status-condition">{goal.condition}</p>
-      {goal.lastReason && <p className="session-panel-hint">{goal.lastReason}</p>}
-      {error && <p className="session-panel-error" role="alert">{error}</p>}
+      {error && <p className="goal-status-error" role="alert">{error}</p>}
     </section>
   );
 }

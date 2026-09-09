@@ -85,6 +85,11 @@ pub struct GoalService {
     tasks: Mutex<HashMap<String, GoalDriverTask>>,
 }
 
+pub(crate) struct GoalConfig {
+    condition: String,
+    max_turns: u32,
+}
+
 struct GoalDriverTask {
     generation: Uuid,
     handle: JoinHandle<()>,
@@ -113,31 +118,74 @@ impl GoalService {
         providers: Arc<ProviderSessionService>,
     ) -> ArgmaxResult<Arc<Self>> {
         stop_orphaned_goals(&database.connection())?;
-        Ok(Arc::new(Self {
+        let service = Arc::new(Self {
             database,
-            providers,
+            providers: Arc::clone(&providers),
             tasks: Mutex::new(HashMap::new()),
-        }))
+        });
+        providers.set_goal_service(Arc::downgrade(&service));
+        Ok(service)
     }
 
-    /// Attaches a condition to a chat and starts working toward it right away.
-    /// Any goal already on that chat is stopped first — a chat pursues one
-    /// condition at a time, which the partial unique index also enforces.
-    pub async fn set(self: &Arc<Self>, input: GoalSetInput) -> ArgmaxResult<Goal> {
-        let condition = input.condition.trim().to_string();
+    pub(crate) fn validate_config(
+        condition: &str,
+        max_turns: Option<u32>,
+    ) -> ArgmaxResult<GoalConfig> {
+        let condition = condition.trim().to_string();
         if condition.is_empty() || condition.len() > MAX_CONDITION_BYTES {
             return Err(ArgmaxError::service(
                 "GOAL_INVALID_CONDITION",
                 "A goal needs a completion condition of at most 8 KiB.",
             ));
         }
-        let max_turns = input.max_turns.unwrap_or(DEFAULT_MAX_TURNS);
+        let max_turns = max_turns.unwrap_or(DEFAULT_MAX_TURNS);
         if max_turns == 0 || max_turns > MAX_TURNS_CEILING {
             return Err(ArgmaxError::service(
                 "GOAL_INVALID_MAX_TURNS",
                 format!("maxTurns must be between 1 and {MAX_TURNS_CEILING}."),
             ));
         }
+        Ok(GoalConfig {
+            condition,
+            max_turns,
+        })
+    }
+
+    pub(crate) fn insert_initial_goal(
+        &self,
+        connection: &rusqlite::Connection,
+        workspace_id: &str,
+        session_id: &str,
+        config: &GoalConfig,
+    ) -> ArgmaxResult<Goal> {
+        let timestamp = now_iso();
+        insert_goal(
+            connection,
+            &Goal {
+                id: Uuid::new_v4().to_string(),
+                workspace_id: workspace_id.to_string(),
+                session_id: session_id.to_string(),
+                condition: config.condition.clone(),
+                state: GoalState::Active,
+                turns: 0,
+                max_turns: config.max_turns,
+                last_reason: None,
+                created_at: timestamp.clone(),
+                updated_at: timestamp,
+            },
+        )
+    }
+
+    pub(crate) fn start_initial_goal(self: &Arc<Self>, goal: &Goal) {
+        self.providers.publish_goal_changed(&goal.id);
+        self.spawn_driver(goal.id.clone());
+    }
+
+    /// Attaches a condition to a chat and starts working toward it right away.
+    /// Any goal already on that chat is stopped first — a chat pursues one
+    /// condition at a time, which the partial unique index also enforces.
+    pub async fn set(self: &Arc<Self>, input: GoalSetInput) -> ArgmaxResult<Goal> {
+        let config = Self::validate_config(&input.condition, input.max_turns)?;
         let session = {
             let connection = self.database.read_connection();
             find_workspace_by_id(&connection, &input.workspace_id)?;
@@ -158,10 +206,10 @@ impl GoalService {
                 id: Uuid::new_v4().to_string(),
                 workspace_id: session.workspace_id.clone(),
                 session_id: session.id.clone(),
-                condition,
+                condition: config.condition,
                 state: GoalState::Active,
                 turns: 0,
-                max_turns,
+                max_turns: config.max_turns,
                 last_reason: None,
                 created_at: timestamp.clone(),
                 updated_at: timestamp,

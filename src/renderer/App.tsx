@@ -1236,7 +1236,8 @@ export function App(): JSX.Element {
       agentMode: AgentMode,
       projectIdOverride: string | undefined,
       workspaceMode: WorkspaceMode,
-      attachments?: ComposerAttachment[]
+      attachments?: ComposerAttachment[],
+      goalCondition?: string
     ): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to launch local agents.");
@@ -1292,7 +1293,8 @@ export function App(): JSX.Element {
           permissionMode: permissionModes[model.provider],
           cols: 120,
           rows: 32,
-          attachments: attachments?.length ? attachments : null
+          attachments: attachments?.length ? attachments : null,
+          ...(goalCondition ? { goalCondition, goalMaxTurns } : {})
         });
       } catch (error) {
         // No session ever started, so the just-created workspace (and its
@@ -1344,6 +1346,7 @@ export function App(): JSX.Element {
       permissionModes,
       fastModeEnabled,
       randomSessionIconEnabled,
+      goalMaxTurns,
       setSnapshot
     ]
   );
@@ -1359,6 +1362,7 @@ export function App(): JSX.Element {
         model?: ModelPickerSelection;
         agentMode?: AgentMode;
         attachments?: ComposerAttachment[];
+        goalCondition?: string;
       }
     ): Promise<void> => {
       if (!window.argmax) {
@@ -1390,7 +1394,8 @@ export function App(): JSX.Element {
           permissionMode: permissionModes[model.provider],
           cols: 120,
           rows: 32,
-          attachments: options?.attachments?.length ? options.attachments : null
+          attachments: options?.attachments?.length ? options.attachments : null,
+          ...(options?.goalCondition ? { goalCondition: options.goalCondition, goalMaxTurns } : {})
         });
       } catch (error) {
         // No session ever started; don't strand the scratch workspace in the
@@ -1440,6 +1445,7 @@ export function App(): JSX.Element {
       pendingSelectionRef,
       permissionModes,
       randomSessionIconEnabled,
+      goalMaxTurns,
       setSnapshot
     ]
   );
@@ -1781,9 +1787,10 @@ export function App(): JSX.Element {
         onAddProject={() => void addProject()}
         onBranchSwitch={handleProjectUpdated}
         onFastModeEnabledChange={setFastModeEnabled}
-        onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments) => launchTask(prompt, model, agentMode, project?.id, workspaceMode, attachments)}
-        onLaunchSideChat={(prompt, model, agentMode, attachments) =>
-          launchSideChat(prompt, { model, agentMode, attachments })}
+        goalEnabled={goalEnabled}
+        onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments, goalCondition) => launchTask(prompt, model, agentMode, project?.id, workspaceMode, attachments, goalCondition)}
+        onLaunchSideChat={(prompt, model, agentMode, attachments, goalCondition) =>
+          launchSideChat(prompt, { model, agentMode, attachments, goalCondition })}
         model={launchModel}
         onModelChange={handleLaunchModelChange}
         onSelectProject={
@@ -1806,6 +1813,7 @@ export function App(): JSX.Element {
     [
       addProject,
       fastModeEnabled,
+      goalEnabled,
       handleProjectUpdated,
       handleLaunchModelChange,
       launcherResetSignal,

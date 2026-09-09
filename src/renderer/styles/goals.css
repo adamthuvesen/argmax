@@ -1,60 +1,72 @@
-/* Goal status — the frame, buttons and hint text come from
-   session-panels.css. A goal has no configuration UI: `/goal <condition>`
-   in the composer sets it, so this strip only reports.
-
-   The left rule carries the state. An active goal takes the accent; a
-   settled one drops to a hairline so a finished run stops competing with
-   the live session above it. */
-
-.goal-status {
-  display: grid;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border-left: 2px solid var(--line-strong);
+/* Goals share the queued-message surface tucked behind the composer. */
+.goal-status-row {
+  align-items: flex-start;
 }
 
-.goal-status[data-state="active"] {
-  border-left-color: var(--accent);
-}
-
-.goal-status[data-state="achieved"] {
-  border-left-color: var(--sage);
-}
-
-.goal-status[data-state="impossible"] {
-  border-left-color: var(--rose);
-}
-
-.goal-status-head {
+.goal-status-summary {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--space-2);
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 28px;
+  padding: var(--space-1) 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.goal-status-mark {
+.goal-status-summary > svg {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.goal-status-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.goal-status-label {
   flex: 0 0 auto;
-  color: var(--muted);
-}
-
-/* The title pushes everything after it right, so the turn count and the
-   button travel together as one cluster. Letting each claim `margin-left:
-   auto` split the free space between them and stranded the count mid-row. */
-.goal-status-head > .session-panel-title {
-  margin-right: auto;
-}
-
-.goal-status-head > .session-panel-note {
-  margin-left: 0;
+  color: var(--muted-strong);
+  font-size: var(--text-xs);
 }
 
 .goal-status-condition {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.goal-status-summary[aria-expanded="true"] .goal-status-condition {
+  max-height: min(150px, 25dvh);
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}
+
+.goal-status-error {
   margin: 0;
+  padding: 0 var(--space-3) var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--rose);
   overflow-wrap: anywhere;
 }
 
-/* A met or abandoned goal is a record, not a live thing: mute the condition
-   so the eye goes to the outcome in the head. */
-.goal-status:not([data-state="active"]) .goal-status-condition {
-  color: var(--text-soft);
+.goal-status:has(+ .composer-queued-lane) {
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.goal-status + .composer-queued-lane {
+  border-top: 1px solid var(--line-soft);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
 }

@@ -1255,6 +1255,12 @@ export function SessionConversation({
     [liveQuestion, onTerminateSession, selectedModel, sendSessionInput, session, setStatus]
   );
 
+  const goalStatus = !floating && session && workspace && goalEnabled ? (
+    <Suspense fallback={null}>
+      <GoalStatus key={`goal:${session.id}`} session={session} />
+    </Suspense>
+  ) : null;
+
   return (
     <section className="conversation-surface" aria-label="Conversation">
       <div className="section-heading" data-window-drag={floating ? undefined : true}>
@@ -1470,9 +1476,6 @@ export function SessionConversation({
           checks={checks ?? []}
           onRunCheck={onRunCheck}
         />
-        {!floating && session && workspace && goalEnabled && <Suspense fallback={null}>
-          <GoalStatus key={`goal:${session.id}`} session={session} />
-        </Suspense>}
       </div>
       {composerMultitaskNotices.length > 0 ? (
         <section className="multitask-composer-lane" aria-label="Multitasks">
@@ -1502,6 +1505,7 @@ export function SessionConversation({
       ) : null}
       {questionDocked && liveQuestion ? (
         <div className="session-composer-stack">
+          {goalStatus}
           <QuestionDock
             key={liveQuestion.tool.id}
             questions={liveQuestion.tool.questions}
@@ -1544,6 +1548,7 @@ export function SessionConversation({
         workspace={workspace}
         goalEnabled={goalEnabled}
         goalMaxTurns={goalMaxTurns}
+        goalStatus={goalStatus}
       />
       )}
     </section>

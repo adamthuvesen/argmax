@@ -1,4 +1,7 @@
 import { Split, Square, X } from "lucide-react";
+
+import { AgentEmblem } from "./AgentEmblem.js";
+import { emblemForKey } from "../lib/agentEmblems.js";
 import type { JSX } from "react";
 import { useSettleHold } from "../hooks/useSettleHold.js";
 import { multitaskAnswerPreview, multitaskRowStatus, type MultitaskNotice } from "../lib/multitask.js";
@@ -23,7 +26,7 @@ function statusLabel(state: string | null, status: RowStatus): string {
  * the same dock, without becoming another chat in the sidebar.
  *
  * The one thing that separates it from a subagent row is the mark a settled
- * one carries: the same Split glyph its dock tab uses, so both surfaces name a
+ * one carries: the same emblem its dock tab uses, so both surfaces name a
  * multitask the same way.
  */
 export function MultitaskRow({
@@ -88,7 +91,13 @@ export function MultitaskRow({
             />
           ) : (
             <span className="agent-launch-mark multitask-row-mark" aria-hidden="true">
-              <Split size={13} />
+              {childSessionId ? (
+                <AgentEmblem {...emblemForKey(childSessionId)} size={13} status="done" />
+              ) : (
+                // Dispatched but not yet launched: there is no session id to
+                // hash, so the kind's glyph stands in until there is.
+                <Split size={13} />
+              )}
             </span>
           )}
           {childSessionId && onOpen ? (

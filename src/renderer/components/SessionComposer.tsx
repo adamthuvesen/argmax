@@ -74,6 +74,7 @@ import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileCont
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { ChangeCount } from "./ChangeCount.js";
+import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { ContextRing } from "./ContextRing.js";
 import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
@@ -990,6 +991,22 @@ export function SessionComposer({
             ) : null}
           </div>
         ) : null}
+        {isRemoteBridge() && !floating ? (
+          // On the phone an image is the usual way in — a screenshot of the
+          // thing you are asking about — so attaching is a primary action
+          // rather than one of the workspace's secondary ones. The "…" keeps
+          // that role everywhere else.
+          <button
+            type="button"
+            className="composer-footer-chip composer-attach-chip"
+            title="Attach file"
+            aria-label="Attach file"
+            disabled={!canSend || isSending}
+            onClick={openFilePicker}
+          >
+            <Paperclip size={15} aria-hidden="true" />
+          </button>
+        ) : null}
         {workspace && !floating ? (
           <div className="composer-compact-context" ref={workspaceDetails.setAnchor}>
             <button
@@ -1012,13 +1029,15 @@ export function SessionComposer({
                 ref={workspaceDetails.setPopover}
                 style={workspaceDetails.floatingStyles}
               >
-                {session ? (
+                {session && !isRemoteBridge() ? (
                   <div className="composer-compact-context-row composer-compact-context-row--context">
                     <span>Context</span>
                     <ContextRing session={session} />
                   </div>
                 ) : null}
-                {workspace.sharedWorkspace ? null : (
+                {/* `system:open-path` is desktop-only (REMOTE_UNSUPPORTED), so
+                    over the bridge this row could only ever fail. */}
+                {workspace.sharedWorkspace || isRemoteBridge() ? null : (
                   <button
                     type="button"
                     className="composer-compact-context-row"
@@ -1055,6 +1074,7 @@ export function SessionComposer({
                     <span className="composer-compact-context-branch">{workspace.branch}</span>
                   </div>
                 ) : null}
+                {isRemoteBridge() ? null : (
                 <button
                   type="button"
                   className="composer-compact-context-row composer-compact-context-row--attach"
@@ -1069,6 +1089,7 @@ export function SessionComposer({
                   <Plus size={12} aria-hidden="true" />
                   <span>Attach file</span>
                 </button>
+                )}
               </div>
             ) : null}
           </div>

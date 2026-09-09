@@ -169,6 +169,16 @@ export type EventSubscription = (() => void) & {
 export type SessionCostSummary = Bindings.SessionCostSummary;
 export type ChangedFileSummary = Bindings.ChangedFileSummary;
 export type WorkspaceDiff = Bindings.WorkspaceDiff;
+export type ReviewIndexFileInput = Bindings.ReviewIndexFileInput;
+export type ReviewIndexHunkInput = Bindings.ReviewIndexHunkInput;
+export type ReviewCommitStagedInput = Bindings.ReviewCommitStagedInput;
+export type Checkpoint = Bindings.Checkpoint;
+export type CheckpointsCreateInput = Bindings.CheckpointsCreateInput;
+export type CheckpointsListInput = Bindings.CheckpointsListInput;
+export type CheckpointsPreviewRewindInput = Bindings.CheckpointsPreviewRewindInput;
+export type CheckpointsRewindFilesInput = Bindings.CheckpointsRewindFilesInput;
+export type RewindPreview = Bindings.RewindPreview;
+export type RewindFilesResult = Bindings.RewindFilesResult;
 
 /**
  * Review diff baseline. `workingTree` (default) diffs the working tree against
@@ -258,6 +268,8 @@ export type WorkspaceSummary = Retype<
     kind: WorkspaceKind;
     /** State of the most-recent PR across this workspace's sessions. Null when none. */
     prState: GhPrState | null;
+    /** Check rollup for that PR as the poller last saw it. Null when there is no PR. */
+    prCheckState: GhCheckState | null;
   }
 >;
 
@@ -488,6 +500,13 @@ export interface ArgmaxApi {
     }>>;
   };
   review: {
+    stageFile: (input: ReviewIndexFileInput) => Promise<void>;
+    unstageFile: (input: ReviewIndexFileInput) => Promise<void>;
+    revertFile: (input: ReviewIndexFileInput) => Promise<void>;
+    revertHunk: (input: ReviewIndexHunkInput) => Promise<void>;
+    stageHunk: (input: ReviewIndexHunkInput) => Promise<void>;
+    unstageHunk: (input: ReviewIndexHunkInput) => Promise<void>;
+    commitStaged: (input: ReviewCommitStagedInput) => Promise<GitCommitResult>;
     listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
     /** `contextLines` is only honored for a single-file request; omit it for
      *  git's default context. See ReviewLoadDiffInput. */
@@ -516,6 +535,12 @@ export interface ArgmaxApi {
   };
   checks: {
     run: (input: RunCheckInput) => Promise<CheckRun>;
+  };
+  checkpoints: {
+    create: (input: CheckpointsCreateInput) => Promise<Checkpoint>;
+    list: (input: CheckpointsListInput) => Promise<Checkpoint[]>;
+    previewRewind: (input: CheckpointsPreviewRewindInput) => Promise<RewindPreview>;
+    rewindFiles: (input: CheckpointsRewindFilesInput) => Promise<RewindFilesResult>;
   };
   health: {
     ping: () => Promise<{ ok: true; timestamp: string }>;

@@ -1,6 +1,6 @@
 # Chat Surface and Interactive Cards
 
-The chat surface renders assistant bubbles, tools, and interactive cards: **PlanCard** (Claude Code plan mode) and the question surfaces for `AskUserQuestion` / Cursor's `askQuestionToolCall` — **QuestionDock** while the agent is waiting, **QuestionCard** for a question already in the scrollback.
+The chat surface renders assistant bubbles, tools, and interactive cards: **PlanCard** (Claude Code plan mode), the question surfaces for `AskUserQuestion` / Cursor's `askQuestionToolCall` — **QuestionDock** while the agent is waiting, **QuestionCard** for a question already in the scrollback — and **TodoCard**, the agent's own running plan.
 
 ## Components and Structure
 
@@ -16,6 +16,75 @@ launcher that remembers another repo. While composing, the sidebar uses the
 launcher's project too, so clicking a different repo opens it instead of treating
 it as already open and collapsing its chats.
 
+## The todo card
+
+Every provider can publish a plan, and each publishes it differently. The
+normalizer reduces all five dialects to one `todo.updated` event
+([todo.rs](../src-tauri/src/providers/normalizer/todo.rs)):
+
+```jsonc
+{ "mode": "snapshot" | "merge",
+  "items": [{ "id": string|null, "text": string|null, "status": Status }],
+  "toolUseId": string|null }
+```
+
+`Status` is `pending | active | done | cancelled | removed`, resolved in Rust so
+the renderer's fold is provider-blind. Two rules keep it honest: **no list in
+the payload means no event** — Cursor's ACP `updateTodos` arrives with the list
+stripped, and an empty snapshot would wipe a list the user is reading — and
+**every status arrives resolved**, so `TODO_STATUS_IN_PROGRESS`, `inProgress`
+and `in_progress` all become `active` in one place.
+
+| Provider | Source | Shape |
+| --- | --- | --- |
+| Codex | app-server `turn/plan/updated` | snapshot, with a real `inProgress` |
+| OpenCode | `todowrite` args | snapshot, no ids |
+| Grok | ACP: `TodosUpdated` inside a tool result; CLI: `todo_write` args | snapshot (ACP, keyed by id) or `merge:true` delta (CLI) |
+| Cursor | `updateTodosToolCall` / `todo_write` / `todowrite` | as shaped |
+| Claude | `TaskCreate` result + `TaskUpdate` args | merge, one task per call |
+
+Three of the five send deltas, so the card is a **fold over the persisted
+events** ([todoList.ts](../src/renderer/lib/todoList.ts)) rather than a read of
+the newest one. The fold lives in the renderer because the normalizer's memory
+is per provider *invocation* — a Rust-side list would reset on every follow-up
+turn, and Grok's textless merge deltas would fold into nothing. Folding
+persisted rows also replays for free across restart, resume, and session sync.
+
+Each turn that touched the plan gets its own card showing the plan as it stood
+when that turn ended, so scrolling back does not rewrite history.
+[TodoCard.tsx](../src/renderer/components/TodoCard.tsx) is expanded while its
+turn runs and collapsed to one line once it ends, until the reader says
+otherwise. The active row carries `WorkingNest`, the app's one running mark.
+
+Grok is the one provider whose two transports disagree: over ACP — which is
+what Argmax launches — the list arrives inside a *tool result* as a JSON string
+under `TodosUpdated`, keyed by id rather than ordered, so the order is recovered
+from the keys numerically. Its CLI path sends the `todo_write` array instead.
+Both are read.
+
+Known gaps, both provider-side:
+
+- **Cursor's ACP `updateTodos` carries no list.** Its `args` are
+  `{"_toolName":"updateTodos"}` on both `started` and `completed`. Cursor's tool
+  name depends on the model behind ACP — `composer-2.5` alone emitted
+  `updateTodos`, `todo_write` and `todowrite` across two days — so Cursor shows
+  a plan for some models and not others.
+- **Claude's task id exists only in prose.** `TaskCreate` returns
+  ``Task #${id} created successfully: ${subject}``, and `TaskUpdate` addresses
+  that id. When that literal changes the task still reaches the card, keyed by
+  its tool-use id, and a `tracing::warn!` names the text that did not parse.
+- **Claude currently publishes no plan at all.** CLI 2.1.263 advertises no
+  `Task*` tool in the headless tool list, and a session told in as many words to
+  call `TaskCreate` reaches for Bash instead. The emitter is tested against real
+  payloads captured while Claude did emit them (2026-07-06) and will start
+  working the day the CLI exposes the tools again; nothing else has to change.
+
+The rows that carried an update are hidden by the `surface: "todo"` stamp the
+normalizer writes, never by tool name. Names move — Claude renamed `TodoWrite`
+to `TaskCreate`/`TaskUpdate` this year — and a name-based rule would leave a
+stale card plus an unlabelled tool row with no test failing. The name list in
+`HIDDEN_TOOL_NAMES` only still covers sessions persisted before the stamp.
+
 ## Follow scroll
 
 [useConversationScroll.ts](../src/renderer/hooks/useConversationScroll.ts) owns
@@ -30,6 +99,14 @@ the viewport. Scroll events record the reading position. Layout reconciliation
 owns programmatic scroll writes. Reaching the bottom by scrolling downward,
 sending a new message, switching session, or clicking scroll-to-latest resumes
 following. A content resize alone cannot resume it.
+
+Upward input the scroller cannot act on takes the release back. A reader
+already at the physical bottom still produces it — the macOS overscroll bounce
+reports negative wheel deltas as it snaps back, a thumb drifts upward on a tap
+— and a release there would be permanent, because with nowhere left to move no
+scroll event can arrive to end it. The controller checks two frames later
+(a wheel scroll is composited and can land after its own frame) and resumes
+following if the viewport never moved.
 
 Returning to the bottom is recognized before layout reconciliation records
 the position, even if the native scroll event is still queued. If output
@@ -280,7 +357,7 @@ A multitask dispatched from the composer writes `multitask.launched` into this c
 - **It stays above the composer.** The row remains visible after the parent turn finishes and while the dispatch point scrolls away. Its content aligns with the input card, and a capped lane scrolls before repeated rows can crowd out the transcript.
 - **One row per multitask.** The finish row merges into the row the dispatch opened, keyed by child session id, while the rows keep launch order.
 - **A finished row carries one line of the answer** on the status line (`Completed · Corrected the 0.4 heading to 2026.`), markdown stripped and cut at 120 characters. The full answer stays in the dock tab.
-- **The mark names it.** A running multitask shares the subagents' working nest, because at that moment they are doing the same thing; a settled one carries the Split glyph its dock tab uses. The status words are the launch row's own (`Running` / `Completed` / `Failed`), plus `Stopped` — the one thing a person can do to a multitask that a subagent has no equivalent for.
+- **The mark names it.** A running multitask shares the subagents' working nest, because at that moment they are doing the same thing; a settled one carries the emblem its dock tab uses, hashed off its session id the way a subagent's is hashed off its codename. The status words are the launch row's own (`Running` / `Completed` / `Failed`), plus `Stopped` — the one thing a person can do to a multitask that a subagent has no equivalent for.
 - **Stop rides the row**, revealed on hover or focus. It stops that chat only: the early-stop launcher restore and archive are pane behaviour and a multitask has no pane.
 - **Clicking opens the dock, not another chat.** A multitask has no sidebar row; it opens as a tab in this pane's Agents view beside the subagents, carrying its own chat. See [multitask.md](multitask.md).
 
@@ -310,7 +387,7 @@ Subagent tool calls (Claude `Task`/`Agent`, Codex `spawn_agent`, OpenCode `task`
 
 Clicking the text opens the activity pane; the trailing chevron expands the raw tool detail inline. The button hugs its text so that chevron sits beside the task instead of against the far edge. That detail follows the *row* level, not the group level — it opens by default from Detailed up, so Balanced keeps the launch a two-line row. What the chevron reveals is the launch receipt, which for a backgrounded agent is a wall of internal instructions to the parent, and the delegated work itself lives one click away in the pane.
 
-- **The right dock, not a grid column:** Clicking the row opens the subagent in that session's review panel — a third mode beside Changes and Files ([AgentsView.tsx](../src/renderer/components/AgentsView.tsx)), so delegated work reads next to the work it came from. Each open subagent is a tab in the same strip Files mode uses; the transcript itself is [AgentActivity.tsx](../src/renderer/components/AgentActivity.tsx) and carries no chrome of its own. Every tab stays mounted, so a backgrounded subagent keeps polling. ⌘W closes the active tab, as it does for a file. A subagent's tab is marked with its emblem at 13px; a multitask's keeps the Split glyph, which is what says it is a chat of its own. The pane opens on a fixed masthead: the task the agent was given as the title, and one muted line with its codename, role, and reported model and effort (`Gauss · Reviewer · Opus 5 · Extra High`). The masthead keeps the agent's emblem at 18px in a tile tinted from the same hue. The tab and launch row carry the live working mark. The brief folds behind an "Instructions" chip in the same row style as the run's "Worked for" chip. A tab whose launch row leaves the timeline (a superseded Codex spawn) is dropped. A surface without that dock hands the rows no handler at all: on the phone the launch row keeps its mark, name and status and stops being a control, since a press had nowhere to land ([remote.md](remote.md)).
+- **The right dock, not a grid column:** Clicking the row opens the subagent in that session's review panel — a third mode beside Changes and Files ([AgentsView.tsx](../src/renderer/components/AgentsView.tsx)), so delegated work reads next to the work it came from. Each open subagent is a tab in the same strip Files mode uses; the transcript itself is [AgentActivity.tsx](../src/renderer/components/AgentActivity.tsx) and carries no chrome of its own. Every tab stays mounted, so a backgrounded subagent keeps polling. ⌘W closes the active tab, as it does for a file. A subagent's tab is marked with its emblem at 13px, and so is a multitask's — hashed off the session id rather than a codename, since a multitask has none. Split is left for the one case with no session id yet: a multitask dispatched but not yet launched. The pane opens on a fixed masthead: the task the agent was given as the title, and one muted line with its codename, role, and reported model and effort (`Gauss · Reviewer · Opus 5 · Extra High`). The masthead keeps the agent's emblem at 18px in a tile tinted from the same hue. The tab and launch row carry the live working mark. The brief folds behind an "Instructions" chip in the same row style as the run's "Worked for" chip. A tab whose launch row leaves the timeline (a superseded Codex spawn) is dropped. A surface without that dock hands the rows no handler at all: on the phone the launch row keeps its mark, name and status and stops being a control, since a press had nowhere to land ([remote.md](remote.md)).
 - **A subagent run is one turn, read at the chat's own verbosity.** The pane attaches child tools with `foldTurnToolItems`, interleaves individual calls with prose, then groups adjacent activity with the same `foldToolRunsToSummaries` pass as the transcript, and wraps them in the same [TurnBlock.tsx](../src/renderer/components/TurnBlock.tsx): the `Worked for Xs` chip is one control over every tool group and Thought block below it. Where it starts comes from the chat-verbosity setting, not from a separate one — a pane that opened wide while the chat beside it read as single lines was two settings for one reader. The run is always its pane's latest turn, so it never collapses on age the way an older chat turn does. At Minimal the pane keeps only its result panel until the chip is opened, and unlike a chat turn it hides *all* pre-tool narration: the run's answer is the result panel, so there is no last prose group standing in for one. Claude native `SendMessage` continuations appear as separate runs in the same stable dock tab. `task_started` and `task_notification` identify the run lifecycle, while the message delivered to the parent remains its own event.
 - **Native Claude, Codex, OpenCode, and Cursor identity is parent-scoped.** A dock reference resolves only when its parent native conversation id and child session id match the current conversation. Clearing, switching provider, or forking invalidates inherited resumability, even though the old timeline rows remain readable history. References use the current parent-mediated follow-up, so the child does not become an independent session. Codex assignments start with `spawn_agent` or `send_input`. OpenCode continuations call `task` with the existing `task_id`. Cursor continuations use the authoritative `agentId` from the completed ACP `task` result; Composer 2.5 is excluded from this path. Delivery and `pending_init` do not complete an assignment. Its terminal child state does.
 - **Independent sessions stay independent.** An ordinary session launched from the app keeps its own session and dock behavior. The persistent multi-run behavior applies to native Claude, Codex, OpenCode, and Cursor children. OpenCode exposes the child result in the parent tool row, without a separate child trace stream.

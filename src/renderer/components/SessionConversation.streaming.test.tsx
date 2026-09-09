@@ -269,9 +269,9 @@ describe("SessionConversation — streaming & composer", () => {
     renderConversation(baseSession(), [], {
       review: reviewStub({
         files: [
-          { path: "src/a.ts", status: "modified", additions: 3, deletions: 1 },
-          { path: "src/b.ts", status: "added", additions: 7, deletions: 0 }
-        ],
+          { path: "src/a.ts", status: "modified", additions: 3, deletions: 1 , staged: false },
+{ path: "src/b.ts", status: "added", additions: 7, deletions: 0 , staged: false },
+],
         toggleChangesPanel
       })
     });
@@ -292,7 +292,7 @@ describe("SessionConversation — streaming & composer", () => {
     const toggleChangesPanel = vi.fn();
     renderConversation(baseSession({ contextTokens: 10_000, contextWindow: 100_000 }), [], {
       review: reviewStub({
-        files: [{ path: "src/a.ts", status: "modified", additions: 5, deletions: 2 }],
+        files: [{ path: "src/a.ts", status: "modified", additions: 5, deletions: 2, staged: false }],
         toggleChangesPanel
       })
     });
@@ -324,7 +324,7 @@ describe("SessionConversation — streaming & composer", () => {
   it("marks the compact changed-file action pressed when Changes is open", () => {
     renderConversation(baseSession(), [], {
       review: reviewStub({
-        files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1 }],
+        files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false }],
         isPanelOpen: true,
         mode: "changes"
       })

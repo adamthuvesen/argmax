@@ -48,6 +48,7 @@ use super::{
 use crate::sessions::state::SessionState;
 use crate::{
     approvals::service::ApprovalService,
+    checkpoints::service::{CheckpointService, CreateCheckpointInput},
     error::{ArgmaxError, ArgmaxResult},
     gh::service::{pr_numbers_from_command_event, GhService},
     ipc::inputs::{
@@ -209,6 +210,9 @@ pub struct ProviderSessionService {
     lifecycle: Arc<WorkspaceLifecycle>,
     approvals: Option<Arc<ApprovalService>>,
     session_control: OnceLock<Arc<SessionLaunchRegistry>>,
+    /// Installed after database startup. A provider turn must capture code
+    /// state before the first possible write, while scratch chats skip it.
+    checkpoints: OnceLock<Arc<CheckpointService>>,
     /// Per-turn git marks, for providers that report a file write without
     /// saying what changed. See `measured_diffs`.
     measured_diffs: Arc<MeasuredDiffs>,
@@ -321,6 +325,7 @@ impl ProviderSessionService {
             lifecycle,
             approvals,
             session_control: OnceLock::new(),
+            checkpoints: OnceLock::new(),
             measured_diffs: Arc::new(MeasuredDiffs::default()),
             session_states: broadcast::channel(SESSION_STATE_BROADCAST_CAPACITY).0,
             #[cfg(test)]
@@ -334,6 +339,11 @@ impl ProviderSessionService {
         }
     }
 
+    pub fn set_checkpoint_service(&self, checkpoints: Arc<CheckpointService>) {
+        if self.checkpoints.set(checkpoints).is_err() {
+            tracing::warn!("checkpoint service was already installed");
+        }
+    }
     /// A queued follow-up and a scheduled disposal contradict each other: the
     /// follow-up expects the chat to still be here after this turn.
     pub fn ensure_after_turn_schedulable(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SCIENTIST_NAMES, assignAgentCodenames } from "./agentNames.js";
-import { emblemForCodename } from "./agentEmblems.js";
+import { EMBLEM_SHAPES, emblemForCodename, emblemForKey } from "./agentEmblems.js";
 import { SESSION_ICON_COLORS } from "./sessionIcons.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import type { MultitaskChild } from "./multitask.js";
@@ -87,10 +87,25 @@ describe("buildSubagentCluster", () => {
     expect(buildSubagentCluster(tools, new Map())?.entries[0]).toEqual(cluster?.entries[0]);
   });
 
-  it("leaves a multitask without an emblem, because Split is what names it", () => {
+  // A multitask used to fall back to the first letter of its task label, which
+  // put a bare "M" beside the subagents' marks.
+  it("gives a multitask a mark of its own, hashed off its session id", () => {
     const cluster = buildSubagentCluster([], new Map(), [multitask("running")]);
-    expect(cluster?.entries[0]?.emblem).toBeNull();
-    expect(SESSION_ICON_COLORS).toContain(cluster?.entries[0]?.iconColor);
+    const entry = cluster?.entries[0];
+    expect(entry?.emblem).toEqual(emblemForKey("child-running"));
+    expect(EMBLEM_SHAPES).toContain(entry?.emblem.shape);
+    // The ring wears the emblem's hue rather than a second hash of its own.
+    expect(entry?.iconColor).toBe(entry?.emblem.hue);
+    expect(SESSION_ICON_COLORS).toContain(entry?.iconColor);
+  });
+
+  it("keeps that mark when the chat is renamed", () => {
+    const runningChild = multitask("running");
+    const before = buildSubagentCluster([], new Map(), [runningChild]);
+    const renamed = buildSubagentCluster([], new Map(), [
+      { ...runningChild, workspace: { ...runningChild.workspace, taskLabel: "A new name" } as WorkspaceSummary }
+    ]);
+    expect(renamed?.entries[0]?.emblem).toEqual(before?.entries[0]?.emblem);
   });
 
   it("counts repeated native runs as one persistent agent", () => {

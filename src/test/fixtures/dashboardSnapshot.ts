@@ -46,7 +46,9 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     }
   ],
   sessions: [

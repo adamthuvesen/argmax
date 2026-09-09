@@ -724,12 +724,6 @@ fn extract_tool_input(item: &Map<String, Value>, action: Option<&Map<String, Val
         "command",
         "cmd",
         "pattern",
-        "question",
-        "questions",
-        "header",
-        "options",
-        "multiSelect",
-        "multi_select",
         "plan",
     ] {
         let value = item
@@ -786,18 +780,14 @@ mod tests {
         assert_eq!(result.events[0].payload["input"]["command"], "npm test");
     }
 
+    // `arguments` arrives as a JSON string, and `paths` is not one of the keys
+    // read off the item itself, so it can only reach `input` by parsing it.
     #[test]
-    fn codex_tool_arguments_populate_interactive_card_input() {
+    fn codex_tool_arguments_populate_input() {
         let mut context = NormalizerSessionContext::default();
         let arguments = json!({
-            "questions": [
-                {
-                    "question": "Which path?",
-                    "header": "Path",
-                    "multiSelect": false,
-                    "options": [{ "label": "Fast fix" }, { "label": "Deeper cleanup" }]
-                }
-            ]
+            "workspace": "/repo",
+            "paths": ["src/lib.rs", "src/main.rs"]
         })
         .to_string();
         let result = normalize_provider_event(
@@ -806,9 +796,9 @@ mod tests {
                 &json!({
                     "type": "item.started",
                     "item": {
-                        "id": "item_q",
+                        "id": "item_1",
                         "type": "tool_call",
-                        "name": "AskUserQuestion",
+                        "name": "shunt_read",
                         "arguments": arguments
                     }
                 })
@@ -817,11 +807,8 @@ mod tests {
             &mut context,
         );
         assert_eq!(result.events[0].r#type, "command.started");
-        assert_eq!(result.events[0].message, "AskUserQuestion");
-        assert_eq!(
-            result.events[0].payload["input"]["questions"][0]["question"],
-            "Which path?"
-        );
+        assert_eq!(result.events[0].message, "shunt_read");
+        assert_eq!(result.events[0].payload["input"]["paths"][0], "src/lib.rs");
     }
 
     #[test]

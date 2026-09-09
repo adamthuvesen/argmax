@@ -336,7 +336,8 @@ export function setupAppTestMocks(): void {
   loadDiff = vi.fn<ArgmaxApi["review"]["loadDiff"]>().mockResolvedValue({
     workspaceId: "workspace-1",
     filePath: null,
-    content: ""
+    content: "",
+    revision: "test-revision"
   });
   listWorkspaceFiles = vi.fn<ArgmaxApi["workspace"]["listFiles"]>().mockResolvedValue([]);
   readWorkspaceFile = vi.fn<ArgmaxApi["workspace"]["readFile"]>().mockResolvedValue({
@@ -559,9 +560,22 @@ export function setupAppTestMocks(): void {
       costSummary: sessionCostSummary,
       search: () => Promise.resolve([])
     },
+    checkpoints: {
+      list: () => Promise.resolve([]),
+      create: () => Promise.reject(new Error("Checkpoint not stubbed")),
+      previewRewind: () => Promise.reject(new Error("Checkpoint not stubbed")),
+      rewindFiles: () => Promise.reject(new Error("Checkpoint not stubbed")),
+    },
     review: {
       listChangedFiles,
-      loadDiff
+      loadDiff,
+      stageFile: () => Promise.resolve(),
+      unstageFile: () => Promise.resolve(),
+      revertFile: () => Promise.resolve(),
+      stageHunk: () => Promise.resolve(),
+      unstageHunk: () => Promise.resolve(),
+      revertHunk: () => Promise.resolve(),
+      commitStaged: () => Promise.resolve({ commitSha: "test", branch: "main", indexCleanupWarning: null, postCommitWarning: null })
     },
     workspace: {
       listFiles: (target) => target.kind === "project" ? listProjectFiles(target) : listWorkspaceFiles(target),

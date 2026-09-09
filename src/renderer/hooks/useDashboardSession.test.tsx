@@ -35,6 +35,8 @@ function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSumm
     iconColor: null,
     prCreatedAt: null,
     prMergedAt: null,
+    prCheckState: null,
+    prActivityAt: null,
     ...overrides
   };
 }

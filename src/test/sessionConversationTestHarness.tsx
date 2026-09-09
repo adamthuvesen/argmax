@@ -62,7 +62,9 @@ export const workspace: WorkspaceSummary = {
   icon: null,
   iconColor: null,
   prCreatedAt: null,
-  prMergedAt: null
+  prMergedAt: null,
+  prCheckState: null,
+  prActivityAt: null
 };
 
 export const project: ProjectSummary = {
@@ -131,6 +133,8 @@ type ConversationOptions = {
   onOpenDetails?: (seedPrompt: string) => Promise<void>;
   registerAnnotationSink?: ConversationProps["registerAnnotationSink"];
   review?: ReviewState;
+  /** Defaults to the shared `workspace` fixture. */
+  workspace?: ConversationProps["workspace"];
   /** Defaults to true (events already present). Pass false to reproduce a real
       reopen, where the pane mounts empty and the backfill lands later. */
   eventsBackfilled?: boolean;
@@ -169,7 +173,7 @@ function conversationElement(
       rawOutputs={[]}
       review={options.review ?? reviewStub()}
       session={session}
-      workspace={workspace}
+      workspace={options.workspace ?? workspace}
     />
   );
 }

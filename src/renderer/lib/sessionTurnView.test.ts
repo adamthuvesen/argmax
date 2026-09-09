@@ -400,3 +400,50 @@ describe("coalesceAssistantGroups", () => {
     ]);
   });
 });
+
+describe("reasoning bursts", () => {
+  const think = (id: string, text: string, at: string): TimelineEvent =>
+    assistantEvent(id, "message.delta", text, at, { thinking: true });
+
+  // Grok ends a burst on a full stop with no trailing space, then starts the
+  // next one when it comes back from working. Raw concatenation read
+  // "make a todo list firstThe files don't exist".
+  it("breaks where a finished sentence meets the next burst", () => {
+    const groups = coalesceAssistantGroups([
+      think("t1", "1. Make a todo list first.", "2026-05-12T15:00:01.000Z"),
+      think("t2", "The files don't exist.", "2026-05-12T15:00:02.000Z")
+    ]);
+
+    expect(groups[0].text).toBe("1. Make a todo list first.\n\nThe files don't exist.");
+  });
+
+  // A token stream carries its own spacing, so nothing may be inserted into it.
+  it("leaves an ordinary token stream byte for byte", () => {
+    const groups = coalesceAssistantGroups([
+      think("t1", "The", "2026-05-12T15:00:01.000Z"),
+      think("t2", " user", "2026-05-12T15:00:02.000Z"),
+      think("t3", " wants.", "2026-05-12T15:00:03.000Z"),
+      think("t4", " Then", "2026-05-12T15:00:04.000Z")
+    ]);
+
+    expect(groups[0].text).toBe("The user wants. Then");
+  });
+
+  it("leaves a newline to do its own separating", () => {
+    const groups = coalesceAssistantGroups([
+      think("t1", "Checked the docs.\n", "2026-05-12T15:00:01.000Z"),
+      think("t2", "Now the code.", "2026-05-12T15:00:02.000Z")
+    ]);
+
+    expect(groups[0].text).toBe("Checked the docs.\nNow the code.");
+  });
+
+  it("keeps a clause the provider split mid-sentence", () => {
+    const groups = coalesceAssistantGroups([
+      think("t1", "I need to check", "2026-05-12T15:00:01.000Z"),
+      think("t2", "the normalizer.", "2026-05-12T15:00:02.000Z")
+    ]);
+
+    expect(groups[0].text).toBe("I need to checkthe normalizer.");
+  });
+});

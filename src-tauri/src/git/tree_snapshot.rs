@@ -94,6 +94,57 @@ pub async fn snapshot_worktree(
     Ok(tree)
 }
 
+/// Snapshot the complete visible worktree without adding ignored files.
+///
+/// Checkpoints use this rather than [`snapshot_worktree`]: an ignored build
+/// artifact is deliberately outside a checkpoint and must never be removed by
+/// a later rewind. The returned tree is self-contained and can be pinned by a
+/// ref without touching the user's real index.
+pub async fn snapshot_visible_worktree(repo_path: &Path) -> ArgmaxResult<String> {
+    let scratch = tempdir().map_err(|error| {
+        ArgmaxError::service(
+            "GIT_TEMP_INDEX_FAILED",
+            format!("could not create temp git index: {error}"),
+        )
+    })?;
+    let index = scratch.path().join("index");
+    let options = || {
+        let mut options = GitExecOptions::default().with_env("GIT_INDEX_FILE", index.as_os_str());
+        options.timeout = SNAPSHOT_TIMEOUT;
+        options
+    };
+
+    if run_git_text_with_options(repo_path, ["read-tree", "HEAD"], options())
+        .await
+        .is_err()
+    {
+        run_git_text_with_options(repo_path, ["read-tree", "--empty"], options()).await?;
+    }
+    // `--all` captures tracked deletions and eligible untracked files.  Do not
+    // pass `--force`: ignored files belong to the caller, not the checkpoint.
+    run_git_text_with_options(repo_path, ["add", "--all"], options()).await?;
+    tree_from_index(repo_path, options()).await
+}
+
+/// Return the tree represented by the user's current index without changing
+/// it. `git write-tree` rejects unresolved index entries, which is precisely
+/// the state checkpointing must refuse.
+pub async fn index_tree(repo_path: &Path) -> ArgmaxResult<String> {
+    tree_from_index(repo_path, snapshot_options()).await
+}
+
+async fn tree_from_index(repo_path: &Path, options: GitExecOptions) -> ArgmaxResult<String> {
+    let tree = run_git_text_with_options(repo_path, ["write-tree"], options).await?;
+    let tree = tree.trim().to_string();
+    if tree.is_empty() {
+        return Err(ArgmaxError::service(
+            "GIT_SNAPSHOT_EMPTY_TREE",
+            "git write-tree returned no object id",
+        ));
+    }
+    Ok(tree)
+}
+
 /// Repo-relative paths that differ from `HEAD` right now: tracked changes plus
 /// untracked files. Renames are reported as their two sides (`--no-renames`)
 /// so a snapshot taken from this list drops the old path.

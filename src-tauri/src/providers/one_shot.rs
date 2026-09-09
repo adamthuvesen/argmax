@@ -27,6 +27,17 @@ use super::{
 /// Generous upper bound — a cold CLI start (auth refresh, model spin-up) can
 /// take several seconds. Past this we give up and the caller keeps its default.
 const CALL_TIMEOUT: Duration = Duration::from_secs(20);
+/// Constrains Grok title calls to a `{title}` object so `--output-format json`
+/// does not hand `sanitize_title` a tool-loop preamble. Follow-up suggestions
+/// omit this and read the `text` field instead.
+const TITLE_JSON_SCHEMA: &str =
+    r#"{"type":"object","properties":{"title":{"type":"string"}},"required":["title"]}"#;
+/// Grok's stock profile injects built-in tools *before* `--tools` is applied,
+/// and an empty `--tools` allowlist is treated as unset. The denylist is what
+/// actually removes `read_file` so a screenshot `@/path` in the launch prompt
+/// cannot turn a title call into a two-turn "I'll glance at…" preamble.
+const GROK_DISALLOWED_TOOLS: &str =
+    "read_file,run_terminal_cmd,grep,list_dir,search_replace,web_search,web_fetch";
 /// Display cap for the generated title. Matches `titleFromPrompt` (renderer) and
 /// stays well under the 200-byte `taskLabel` validation cap.
 const MAX_TITLE_CHARS: usize = 64;
@@ -39,7 +50,13 @@ const MAX_SUGGESTION_CHARS: usize = 80;
 /// cheap model. Returns `None` on any failure; callers must treat that as
 /// "keep the existing title".
 pub async fn generate_title(provider: ProviderId, model_id: &str, prompt: &str) -> Option<String> {
-    let answer = ask(provider, model_id, &title_meta_prompt(prompt)).await?;
+    let answer = ask(
+        provider,
+        model_id,
+        &title_meta_prompt(prompt),
+        Some(TITLE_JSON_SCHEMA),
+    )
+    .await?;
     sanitize_title(&answer)
 }
 
@@ -51,14 +68,25 @@ pub async fn suggest_follow_up(
     model_id: &str,
     last_message: &str,
 ) -> Option<String> {
-    let answer = ask(provider, model_id, &follow_up_meta_prompt(last_message)).await?;
+    let answer = ask(
+        provider,
+        model_id,
+        &follow_up_meta_prompt(last_message),
+        None,
+    )
+    .await?;
     sanitize_suggestion(&answer)
 }
 
 /// Runs `instruction` through the provider's CLI and returns the model's bare
 /// answer. Shared by every one-shot call in this module.
-async fn ask(provider: ProviderId, model_id: &str, instruction: &str) -> Option<String> {
-    let command = one_shot_command(provider, model_id, instruction);
+async fn ask(
+    provider: ProviderId,
+    model_id: &str,
+    instruction: &str,
+    json_schema: Option<&str>,
+) -> Option<String> {
+    let command = one_shot_command(provider, model_id, instruction, json_schema);
     let raw = run_capture(provider, command).await?;
     extract_answer(provider, &raw)
 }
@@ -98,7 +126,12 @@ struct OneShotCommand {
 /// Minimal, no-bypass invocation per provider. Deliberately separate from the
 /// streaming launch builders in `adapters.rs`, which spin up the full agent
 /// with permission bypass — a one-shot question needs neither.
-fn one_shot_command(provider: ProviderId, model_id: &str, instruction: &str) -> OneShotCommand {
+fn one_shot_command(
+    provider: ProviderId,
+    model_id: &str,
+    instruction: &str,
+    json_schema: Option<&str>,
+) -> OneShotCommand {
     match provider {
         // `--tools ""` disables built-in tools, and `--strict-mcp-config` with
         // an empty config skips MCP loading. Plain `--output-format text`
@@ -184,27 +217,39 @@ fn one_shot_command(provider: ProviderId, model_id: &str, instruction: &str) -> 
             ],
             stdin: None,
         },
-        // `--tools ""` drops the built-in tools and `--disable-web-search` the
-        // network ones; `--output-format plain` returns the answer verbatim.
-        // Grok has no `--no-session-persistence` equivalent, so the title call
-        // does leave a short session under ~/.grok/sessions.
-        ProviderId::Grok => OneShotCommand {
-            args: vec![
+        // `--tools ""` is not enough: Grok's stock profile injects `read_file`
+        // first and treats an empty allowlist as unset. `--disallowed-tools`
+        // wins, `--max-turns 1` stops a leftover tool loop, and `--output-format
+        // json` puts the answer in `text` (plus `structured_output` when a
+        // schema is passed). `--output-format plain` printed every assistant
+        // message, so `sanitize_title` kept the "I'll glance at the
+        // screenshots…" preamble from a screenshot launch. Grok has no
+        // `--no-session-persistence` equivalent, so the call still leaves a
+        // short session under ~/.grok/sessions.
+        ProviderId::Grok => {
+            let mut args = vec![
                 "-p".into(),
                 instruction.into(),
                 "--output-format".into(),
-                "plain".into(),
+                "json".into(),
                 "--tools".into(),
                 "".into(),
+                "--disallowed-tools".into(),
+                GROK_DISALLOWED_TOOLS.into(),
                 "--disable-web-search".into(),
                 "--no-subagents".into(),
+                "--max-turns".into(),
+                "1".into(),
                 "--reasoning-effort".into(),
                 "low".into(),
                 "--model".into(),
                 model_id.into(),
-            ],
-            stdin: None,
-        },
+            ];
+            if let Some(schema) = json_schema {
+                args.extend(["--json-schema".into(), schema.into()]);
+            }
+            OneShotCommand { args, stdin: None }
+        }
     }
 }
 
@@ -272,16 +317,61 @@ async fn run_capture(provider: ProviderId, command: OneShotCommand) -> Option<St
         }
     };
 
-    tokio::time::timeout(CALL_TIMEOUT, run).await.ok().flatten()
+    match tokio::time::timeout(CALL_TIMEOUT, run).await {
+        Ok(result) => result,
+        Err(_) => {
+            tracing::debug!(?provider, "one-shot helper CLI timed out");
+            None
+        }
+    }
 }
 
 fn extract_answer(provider: ProviderId, raw: &str) -> Option<String> {
     match provider {
         // `--output-format text` is already the bare answer.
-        ProviderId::Claude | ProviderId::Cursor | ProviderId::Grok => Some(raw.to_string()),
+        ProviderId::Claude | ProviderId::Cursor => Some(raw.to_string()),
+        ProviderId::Grok => extract_grok_text(raw),
         ProviderId::Codex => extract_codex_agent_message(raw),
         ProviderId::Opencode => extract_opencode_text(raw),
     }
+}
+
+/// Pulls the title or suggestion out of a Grok `--output-format json` object.
+/// Prefers `--json-schema` `structuredOutput.title` (the CLI's camelCase; the
+/// docs also mention snake_case) so a tool-loop preamble in `text` cannot
+/// become the sidebar label. When `text` is itself `{"title":"..."}`, unwrap it.
+fn extract_grok_text(raw: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(raw.trim()).ok()?;
+    if let Some(title) = grok_structured_title(&value) {
+        return Some(title);
+    }
+    let text = value
+        .get("text")
+        .and_then(|text| text.as_str())
+        .map(str::trim)
+        .filter(|text| !text.is_empty())?;
+    if let Ok(nested) = serde_json::from_str::<serde_json::Value>(text) {
+        if let Some(title) = grok_structured_title(&nested).or_else(|| grok_title_field(&nested)) {
+            return Some(title);
+        }
+    }
+    Some(text.to_string())
+}
+
+fn grok_structured_title(value: &serde_json::Value) -> Option<String> {
+    value
+        .get("structuredOutput")
+        .and_then(grok_title_field)
+        .or_else(|| value.get("structured_output").and_then(grok_title_field))
+}
+
+fn grok_title_field(value: &serde_json::Value) -> Option<String> {
+    value
+        .get("title")
+        .and_then(|title| title.as_str())
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map(str::to_string)
 }
 
 /// Pulls the final assistant message text out of a Codex `exec --json` stream.
@@ -415,7 +505,7 @@ mod tests {
 
     #[test]
     fn claude_command_disables_tools_and_persistence() {
-        let command = one_shot_command(ProviderId::Claude, "claude-sonnet-5", "META");
+        let command = one_shot_command(ProviderId::Claude, "claude-sonnet-5", "META", None);
         assert_eq!(
             command.args,
             vec![
@@ -443,7 +533,7 @@ mod tests {
 
     #[test]
     fn cursor_command_uses_read_only_mode_without_force() {
-        let command = one_shot_command(ProviderId::Cursor, "composer-2.5", "META");
+        let command = one_shot_command(ProviderId::Cursor, "composer-2.5", "META", None);
         assert!(command
             .args
             .windows(2)
@@ -460,7 +550,7 @@ mod tests {
 
     #[test]
     fn codex_command_streams_json_read_only_with_prompt_on_stdin() {
-        let command = one_shot_command(ProviderId::Codex, "gpt-5.5", "META");
+        let command = one_shot_command(ProviderId::Codex, "gpt-5.5", "META", None);
         assert!(command.args.iter().any(|a| a == "--json"));
         assert!(command
             .args
@@ -479,7 +569,7 @@ mod tests {
 
     #[test]
     fn opencode_command_uses_read_only_plan_agent() {
-        let command = one_shot_command(ProviderId::Opencode, "opencode/big-pickle", "META");
+        let command = one_shot_command(ProviderId::Opencode, "opencode/big-pickle", "META", None);
         assert!(command
             .args
             .windows(2)
@@ -492,6 +582,85 @@ mod tests {
         assert!(command.stdin.is_none());
         // Never hand the title call the auto-approve bypass.
         assert!(!command.args.iter().any(|a| a == "--auto"));
+    }
+
+    #[test]
+    fn grok_command_denies_file_tools_and_emits_json() {
+        let command = one_shot_command(ProviderId::Grok, "grok-4.6", "META", None);
+        assert!(command
+            .args
+            .windows(2)
+            .any(|args| args[0] == "--output-format" && args[1] == "json"));
+        assert!(command
+            .args
+            .windows(2)
+            .any(|args| args[0] == "--max-turns" && args[1] == "1"));
+        assert!(command.args.windows(2).any(|args| {
+            args[0] == "--disallowed-tools" && args[1].split(',').any(|tool| tool == "read_file")
+        }));
+        assert!(!command.args.iter().any(|a| a == "--json-schema"));
+        assert!(!command
+            .args
+            .iter()
+            .any(|a| a == "bypassPermissions" || a == "--always-approve"));
+        assert!(command.stdin.is_none());
+    }
+
+    #[test]
+    fn grok_title_command_passes_json_schema() {
+        let command = one_shot_command(
+            ProviderId::Grok,
+            "grok-4.6",
+            "META",
+            Some(TITLE_JSON_SCHEMA),
+        );
+        assert!(command
+            .args
+            .windows(2)
+            .any(|args| args[0] == "--json-schema" && args[1] == TITLE_JSON_SCHEMA));
+    }
+
+    #[test]
+    fn grok_extraction_prefers_structured_title_over_preamble() {
+        let raw = r#"{
+            "text": "I'll glance at the screenshots so the title matches what's actually showing up in Codex.\nDebug Argmax Codex Threads",
+            "structuredOutput": {"title": "Debug Argmax Codex Threads"}
+        }"#;
+        assert_eq!(
+            extract_grok_text(raw).as_deref(),
+            Some("Debug Argmax Codex Threads")
+        );
+        let snake = r#"{"text":"preamble","structured_output":{"title":"Snake Case Title"}}"#;
+        assert_eq!(
+            extract_grok_text(snake).as_deref(),
+            Some("Snake Case Title")
+        );
+    }
+
+    #[test]
+    fn grok_extraction_unwraps_title_json_in_text() {
+        let raw = r#"{
+            "text": "{\"title\": \"Debug Codex Overlay Artifacts\"}",
+            "structuredOutput": {"title": "Debug Codex Overlay Artifacts"}
+        }"#;
+        assert_eq!(
+            extract_grok_text(raw).as_deref(),
+            Some("Debug Codex Overlay Artifacts")
+        );
+        assert_eq!(
+            extract_grok_text(r#"{"text":"{\"title\": \"Fix Mobile Login Button\"}"}"#).as_deref(),
+            Some("Fix Mobile Login Button")
+        );
+    }
+
+    #[test]
+    fn grok_extraction_falls_back_to_text() {
+        assert_eq!(
+            extract_grok_text(r#"{"text":"Fix Mobile Login Button"}"#).as_deref(),
+            Some("Fix Mobile Login Button")
+        );
+        assert_eq!(extract_grok_text("I'll glance at the screenshots"), None);
+        assert_eq!(extract_grok_text(r#"{"thought":"thinking"}"#), None);
     }
 
     #[test]

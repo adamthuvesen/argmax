@@ -73,6 +73,8 @@ function workspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary 
     iconColor: null,
     prCreatedAt: null,
     prMergedAt: null,
+    prCheckState: null,
+    prActivityAt: null,
     ...overrides
   };
 }

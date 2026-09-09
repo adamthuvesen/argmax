@@ -168,6 +168,13 @@ html:has(.mobile-shell) body {
   background: var(--bg);
 }
 
+/* Same parking as the list: visibility, not display:none, so a conversation
+   scroller keeps its offset while New chat or review sits on top. */
+.mobile-screen-overlay[data-parked] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .mobile-list-scroll {
   flex: 1;
   min-height: 0;
@@ -472,6 +479,14 @@ html:has(.mobile-shell) body {
   padding-bottom: var(--mobile-bottom-inset);
 }
 
+/* The overlay already stops above the parent composer, which is the screen's
+   floor and already carries the home-indicator inset. Inheriting that padding
+   here adds a second safe-area gap inside the peek, and it collapses when the
+   keyboard opens so the nested composer jumps. */
+.mobile-agent-overlay .conversation-surface {
+  padding-bottom: 0;
+}
+
 /* The composer is the screen's floor, not a card floating on it, so the
    desktop's 16px standoff from the transcript halves. Its side gutter stays
    the transcript's own, which keeps the card's edges under the bubbles. */
@@ -532,6 +547,19 @@ html:has(.mobile-shell) body {
   overflow-y: auto;
   overscroll-behavior-y: contain;
   border-top: 1px solid var(--line-soft);
+}
+
+/* A turn's Copy / Fork actions reveal on hover under a mouse, and a phone has
+   no hover to give — the row sat at opacity 0 with nothing to trigger it. Here
+   they stand, thumb-sized, so forking a chat is reachable from the transcript
+   the way it is on the desktop. */
+.mobile-shell .turn-block-footer {
+  opacity: 1;
+}
+
+.mobile-shell .turn-block-footer-action {
+  width: 32px;
+  height: 32px;
 }
 
 /* Desktop affordances the phone loop does not need: header actions, the
@@ -701,7 +729,10 @@ html:has(.mobile-shell) body {
 
 .mobile-sheet {
   width: 100%;
-  max-height: 70dvh;
+  /* Cap to the backdrop, which is the visual viewport. `70dvh` is the layout
+     viewport, still full height while the keyboard is dismissing, so a sheet
+     opened from a focused composer would paint above the visible frame. */
+  max-height: min(70dvh, 100%);
   overflow-y: auto;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
@@ -709,7 +740,7 @@ html:has(.mobile-shell) body {
   border-top-left-radius: var(--radius-2xl);
   border-top-right-radius: var(--radius-2xl);
   border-top: 1px solid var(--line);
-  padding: var(--space-1_5) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  padding: var(--space-1_5) var(--space-4) calc(var(--space-4) + var(--mobile-bottom-inset, env(safe-area-inset-bottom, 0px)));
 }
 
 .mobile-sheet-grabber {
@@ -776,7 +807,9 @@ html:has(.mobile-shell) body {
 
 .mobile-sheet-option-detail {
   font-size: var(--text-sm);
-  color: var(--muted);
+  /* --chip-ink, not --muted: light mode's muted lands near 3.6:1, which small
+     text does not survive. Dark aliases the two, so this costs nothing there. */
+  color: var(--chip-ink);
 }
 
 .mobile-sheet-group .mobile-sheet-option:last-child {
@@ -996,6 +1029,9 @@ html:has(.mobile-shell) body {
   color: var(--text);
 }
 
+/* The chat composer's paperclip is a bare chip, so this one is too. A ring
+   here read as a second button competing with send, which sits beside it. The
+   32px box stays for the thumb; only the ring goes. */
 .mobile-new-attach {
   position: relative;
   display: inline-flex;
@@ -1003,12 +1039,14 @@ html:has(.mobile-shell) body {
   justify-content: center;
   width: 32px;
   height: 32px;
+  /* Pushes itself and send to the far edge, leaving model and effort together
+     on the left the way the chat composer groups them. */
+  margin-left: auto;
   flex: none;
   padding: 0;
-  border: 1px solid var(--line-soft);
-  border-radius: 50%;
+  border: 0;
   background: transparent;
-  color: var(--muted-strong);
+  color: var(--chip-ink);
 }
 
 .mobile-new-attach:active {
@@ -1038,7 +1076,10 @@ html:has(.mobile-shell) body {
 }
 
 .mobile-new-composer-toolbar .model-picker-anchor {
-  flex: 1 1 auto;
+  /* Not `flex: 1 1 auto`: stretching the anchor drove the effort chip to the
+     far right and split the agent's name from its effort, which the chat
+     composer keeps together. */
+  flex: 0 1 auto;
   min-width: 0;
 }
 
@@ -1064,19 +1105,8 @@ html:has(.mobile-shell) body {
   outline: none;
 }
 
-.mobile-new-send {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  border: none;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--bg);
-}
-
+/* Nothing of its own: `.session-send-button` carries the whole look and size,
+   so launching a chat and replying to one press the same key. */
 .mobile-new-send:disabled {
   opacity: 0.45;
 }
@@ -1310,12 +1340,26 @@ html:has(.mobile-shell) body {
   flex-direction: column;
   min-height: 0;
   height: 76%;
+  /* A multitask carries its own composer, and without this it would sit edge to
+     edge with the parent's directly below the panel — two identical cards with
+     no seam between the chat you are peeking at and the one you are in. */
+  padding-bottom: var(--space-2);
   border-top: 1px solid var(--line);
   border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
   background: var(--panel);
   box-shadow: 0 -18px 40px -24px rgb(0 0 0 / 0.75);
   pointer-events: auto;
   animation: mobile-agent-overlay-rise var(--duration-medium, 220ms) var(--ease) both;
+}
+
+.mobile-agent-overlay-panel[data-dragging] {
+  animation: none;
+  transition: none;
+}
+
+.mobile-agent-overlay-panel[data-closing] {
+  animation: mobile-agent-overlay-fall var(--duration-medium, 180ms) var(--ease) both;
+  pointer-events: none;
 }
 
 @keyframes mobile-agent-overlay-rise {
@@ -1325,8 +1369,16 @@ html:has(.mobile-shell) body {
   }
 }
 
+@keyframes mobile-agent-overlay-fall {
+  to {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .mobile-agent-overlay-panel {
+  .mobile-agent-overlay-panel,
+  .mobile-agent-overlay-panel[data-closing] {
     animation: none;
   }
 }
@@ -1337,6 +1389,7 @@ html:has(.mobile-shell) body {
   align-items: center;
   justify-content: center;
   padding: var(--space-2) var(--space-2) 0;
+  touch-action: none;
 }
 
 .mobile-agent-overlay-close {
@@ -1359,6 +1412,7 @@ html:has(.mobile-shell) body {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  touch-action: pan-y;
 }
 
 .mobile-agent-overlay-body .review-agents {
@@ -1387,7 +1441,40 @@ html:has(.mobile-shell) body {
 }
 
 /* One tab is the overlay's subject, not a choice — the strip only earns its
-   space once there is something to switch between. */
-.mobile-agent-overlay-body .file-tabs:not(:has(.file-tab + .file-tab)) {
+   space once there is something to switch between. Hiding the shell and not
+   just the tab list: the shell carries the padding and the hairline, which
+   without tabs read as an empty bar under the grabber. */
+.mobile-agent-overlay-body .file-tabs-shell:not(:has(.file-tab + .file-tab)) {
   display: none;
+}
+
+/* Appearance, as a screen rather than a drawer.
+   ---------------------------------------------
+   Three preference groups and a seven-swatch palette had been stacked under a
+   New chat action in the ⋯ sheet, where a sheet's job is to offer a short list
+   of actions and get out of the way. On its own screen the groups get room to
+   breathe and the sheet goes back to being a menu. */
+.mobile-settings-screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.mobile-settings-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-5) var(--mobile-bottom-inset);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* On the screen these labels head a section rather than divide a sheet, so
+   they sit further from what precedes them and closer to what they name. */
+.mobile-settings-body .mobile-sheet-group-label {
+  margin: var(--space-5) 0 var(--space-2);
+}
+
+.mobile-settings-body > :first-child {
+  margin-top: var(--space-2);
 }

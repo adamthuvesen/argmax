@@ -1,5 +1,6 @@
 pub mod after_turn;
 pub mod approvals;
+pub mod checkpoints;
 pub mod checks;
 pub mod dashboard;
 pub mod database;

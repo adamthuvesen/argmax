@@ -1219,6 +1219,97 @@ fn resume_fork_is_spent_by_a_new_provider_conversation_id() {
 }
 
 #[test]
+fn an_unanswered_question_outranks_a_finished_turn() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+
+    let persist = |id: &str, r#type: &str, payload: serde_json::Value| {
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: id.to_owned(),
+                session_id: "s1".to_owned(),
+                r#type: r#type.to_owned(),
+                message: String::new(),
+                payload,
+                created_at: None,
+            },
+        )
+        .expect("persist event");
+    };
+
+    let settle = |at: &str| {
+        update_session_state(
+            &connection,
+            "s1",
+            &SessionStateInput::transition(SessionState::Complete).finished_at(at.to_owned()),
+        )
+        .expect("update session state")
+    };
+
+    // A turn that just ended is review-ready like any other.
+    persist(
+        "e1",
+        "command.started",
+        serde_json::json!({ "name": "Bash" }),
+    );
+    assert_eq!(
+        settle("2026-05-24T10:00:00.000Z").attention.as_str(),
+        "review-ready"
+    );
+
+    // A payload that merely mentions the tool (an agent reading the file that
+    // defines it) is not an ask. The SQL prefilter catches it; the name check
+    // throws it out.
+    persist(
+        "e2",
+        "command.started",
+        serde_json::json!({ "name": "Read", "input": { "file_path": "turnInteractiveCards.ts" },
+                            "output": "isAskUserQuestionToolName" }),
+    );
+    assert_eq!(
+        settle("2026-05-24T10:01:00.000Z").attention.as_str(),
+        "review-ready"
+    );
+
+    // A question tool with nothing to choose between draws no card.
+    persist(
+        "e3",
+        "command.started",
+        serde_json::json!({ "name": "AskUserQuestion", "input": { "questions": [] } }),
+    );
+    assert_eq!(
+        settle("2026-05-24T10:02:00.000Z").attention.as_str(),
+        "review-ready"
+    );
+
+    // A real one does, and the session says so instead of claiming it is done.
+    persist(
+        "e4",
+        "command.started",
+        serde_json::json!({
+            "name": "AskUserQuestion",
+            "input": { "questions": [{ "question": "Which database?", "header": "DB" }] }
+        }),
+    );
+    assert_eq!(
+        settle("2026-05-24T10:03:00.000Z").attention.as_str(),
+        "question-asked"
+    );
+
+    // Answering it is what clears it: the ask is now older than what the user
+    // last said.
+    persist("e5", "user.message", serde_json::json!({}));
+    assert_eq!(
+        settle("2026-05-24T10:04:00.000Z").attention.as_str(),
+        "review-ready"
+    );
+}
+
+#[test]
 fn priority_dismissal_tracks_attention_changes() {
     let database = Database::open_in_memory().expect("open db");
     let connection = database.connection();

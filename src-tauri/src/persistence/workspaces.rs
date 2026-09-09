@@ -71,6 +71,15 @@ pub struct WorkspaceSummary {
     pub pr_created_at: Option<String>,
     /// GitHub's authoritative merge timestamp for the paired PR.
     pub pr_merged_at: Option<String>,
+    /// Rollup of the paired PR's checks as the poller last saw them:
+    /// 'pending' | 'success' | 'failure'. A red PR is something the person
+    /// owes the branch, so the Priority section reads this directly.
+    pub pr_check_state: Option<String>,
+    /// When the poller last saw this PR change — a new head commit, a check
+    /// rollup moving, a merge. It is the clock a dismissal of the PR row is
+    /// measured against, so that marking a PR done holds until the PR itself
+    /// does something new.
+    pub pr_activity_at: Option<String>,
     /// Curated Lucide icon name the user picked for this row's sidebar glyph.
     /// `None` keeps the row on its live status marker.
     pub icon: Option<String>,
@@ -158,6 +167,8 @@ fn attach_latest_pr(connection: &Connection, workspace: &mut WorkspaceSummary) -
         workspace.pr_number = Some(pr.pr_number);
         workspace.pr_created_at = pr.pr_created_at;
         workspace.pr_merged_at = pr.pr_merged_at;
+        workspace.pr_check_state = Some(pr.last_seen_check_state);
+        workspace.pr_activity_at = Some(pr.updated_at);
     }
     Ok(())
 }
@@ -440,5 +451,7 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         pr_number: None,
         pr_created_at: None,
         pr_merged_at: None,
+        pr_check_state: None,
+        pr_activity_at: None,
     })
 }

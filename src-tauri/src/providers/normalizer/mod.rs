@@ -1782,6 +1782,29 @@ mod tests {
             assert_eq!(todos[0]["items"][0]["text"], json!("Ship it"));
         }
 
+        /// Grok over ACP wraps its list in a tool result, not a tool call.
+        /// Captured from a live session through the scratch app.
+        #[test]
+        fn grok_acp_todos_updated_result_becomes_a_snapshot() {
+            let result = normalize(
+                ProviderId::Grok,
+                &json!({
+                    "type": "user",
+                    "message": { "role": "user", "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": "call-1",
+                        "content": "{\"TodosUpdated\":{\"state\":{\"todos\":{\"1\":{\"content\":\"append one to a.txt\",\"priority\":\"medium\",\"status\":\"completed\"},\"2\":{\"content\":\"append two to b.txt\",\"priority\":\"medium\",\"status\":\"in_progress\"}}},\"summary_for_prompt\":\"…\"}}"
+                    }]}
+                }),
+            );
+            let todos = todo_payloads(&result);
+            assert_eq!(todos.len(), 1, "events were {:?}", result.events);
+            assert_eq!(todos[0]["mode"], json!("snapshot"));
+            assert_eq!(todos[0]["items"][0]["status"], json!("done"));
+            assert_eq!(todos[0]["items"][1]["status"], json!("active"));
+            assert_eq!(todos[0]["items"][1]["text"], json!("append two to b.txt"));
+        }
+
         #[test]
         fn opencode_snapshot_rides_with_its_tool_row() {
             let result = normalize(

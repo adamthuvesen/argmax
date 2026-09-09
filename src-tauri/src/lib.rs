@@ -11,6 +11,7 @@ use tauri::{Emitter, Manager};
 pub mod approvals;
 pub mod attachments;
 pub mod browser;
+pub mod checkpoints;
 pub mod checks;
 pub mod default_agent;
 pub mod dock;
@@ -796,6 +797,11 @@ pub fn run() {
                                 tracing::warn!(?error, "failed to recover orphaned sessions");
                             }
                             timer.mark("sessions.recover");
+                            let checkpoints = checkpoints::service::CheckpointService::new(Arc::clone(&database));
+                            if let Err(error) = checkpoints.recover_interrupted_rewinds() {
+                                tracing::warn!(?error, "failed to recover interrupted rewinds");
+                            }
+                            providers.set_checkpoint_service(checkpoints);
                             if state.providers.set(Arc::clone(&providers)).is_err() {
                                 tracing::warn!("provider service state was already initialized");
                             }

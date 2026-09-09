@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import { useEffect, type JSX, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, type JSX, type ReactNode } from "react";
 
 /** Bottom sheet chrome shared by every phone picker: dimmed backdrop, rounded
  *  panel, grabber. Tapping the backdrop closes it, and so does Escape — a
@@ -21,7 +21,7 @@ export function BottomSheet({
   // screen behind it covers the options. iOS does not move focus when a button
   // is tapped, so the composer keeps it — and the keyboard — unless the sheet
   // takes it away.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const focused = document.activeElement;
     if (focused instanceof HTMLElement) focused.blur();
   }, []);

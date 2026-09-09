@@ -328,6 +328,94 @@ async reviewLoadDiff(input: ReviewLoadDiffInput) : Promise<Result<WorkspaceDiff,
     else return { status: "error", error: e  as any };
 }
 },
+async reviewStageFile(input: ReviewIndexFileInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("review_stage_file", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async reviewUnstageFile(input: ReviewIndexFileInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("review_unstage_file", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async reviewStageHunk(input: ReviewIndexHunkInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("review_stage_hunk", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async reviewUnstageHunk(input: ReviewIndexHunkInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("review_unstage_hunk", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async reviewCommitStaged(input: ReviewCommitStagedInput) : Promise<Result<GitCommitResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("review_commit_staged", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async reviewRevertFile(input: ReviewIndexFileInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("review_revert_file", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async reviewRevertHunk(input: ReviewIndexHunkInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("review_revert_hunk", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async checkpointsCreate(input: CheckpointsCreateInput) : Promise<Result<Checkpoint, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("checkpoints_create", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async checkpointsList(input: CheckpointsListInput) : Promise<Result<Checkpoint[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("checkpoints_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async checkpointsPreviewRewind(input: CheckpointsPreviewRewindInput) : Promise<Result<RewindPreview, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("checkpoints_preview_rewind", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async checkpointsRewindFiles(input: CheckpointsRewindFilesInput) : Promise<Result<RewindFilesResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("checkpoints_rewind_files", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async workspaceListFiles(input: WorkspaceListFilesInput) : Promise<Result<WorkspaceFileEntry[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspace_list_files", { input }) };
@@ -895,7 +983,7 @@ export type AttachmentMimeType = "image/png" | "image/jpeg" | "image/gif" | "ima
 export type AttachmentPath = string
 export type AttachmentSizeBytes = number
 export type AttachmentsSaveImageInput = { sessionId: SessionId; mimeType: AttachmentMimeType; dataBase64: Base64ImageData }
-export type AttentionState = "normal" | "blocked" | "failed" | "review-ready" | "approval-needed"
+export type AttentionState = "normal" | "blocked" | "failed" | "review-ready" | "question-asked" | "approval-needed"
 export type Base64ImageData = string
 export type BaseRef = string
 export type BranchName = string
@@ -1020,8 +1108,20 @@ group: string | null }
  * against a renderer list that is no longer the source of truth.
  */
 export type BrowserTabsEvent = { tabs: BrowserTabInfo[] }
-export type ChangedFileSummary = { path: string; status: string; additions: number; deletions: number; oldPath?: string | null }
+export type ChangedFileSummary = { path: string; status: string; additions: number; deletions: number;
+/**
+ * True when the index differs from HEAD for this path. A file can be
+ * both staged and unstaged, in which case unstage is still the safe first
+ * review action because it never overwrites the worktree.
+ */
+staged: boolean; oldPath?: string | null }
 export type CheckRun = { id: string; workspaceId: string; command: string; status: string; exitCode: number | null; summary: string | null; startedAt: string; completedAt: string | null }
+export type CheckoutFingerprint = { headSha: string; branch: string; worktreeTree: string; indexTree: string }
+export type Checkpoint = { id: string; workspaceId: string; sessionId: string | null; label: string; branch: string; headSha: string; worktreeTree: string; indexTree: string; untrackedPaths: string[]; turnBoundary: string | null; providerConversationId: string | null; recoveryOf: string | null; createdAt: string }
+export type CheckpointsCreateInput = { workspaceId: string; sessionId: string | null; label: string; turnBoundary: string | null; providerConversationId: string | null }
+export type CheckpointsListInput = { workspaceId: string; limit?: number }
+export type CheckpointsPreviewRewindInput = { workspaceId: string; checkpointId: string }
+export type CheckpointsRewindFilesInput = { workspaceId: string; checkpointId: string; expectedFingerprint: CheckoutFingerprint }
 export type ChecksRunInput = { workspaceId: WorkspaceId; command: CommandText }
 export type CommandText = string
 export type ComposerAttachmentInput = { filePath: AttachmentPath; mimeType: AttachmentMimeType; sizeBytes: AttachmentSizeBytes }
@@ -1267,6 +1367,7 @@ tailnetUrl: string | null; tailscaleRunning: boolean;
 pairingUrl: string; qrSvg: string; serveCommand: string }
 export type RemoteTestNotificationInput = Record<string, never>
 export type RepoPath = string
+export type ReviewCommitStagedInput = { workspaceId: string; message: string }
 /**
  * Which baseline the review diff is computed against.
  *
@@ -1278,6 +1379,13 @@ export type RepoPath = string
  * has actually landed as commits on this branch".
  */
 export type ReviewComparison = "workingTree" | "branch" | "committed"
+/**
+ * Mutating review inputs stay beside their commands until the generated IPC
+ * layer owns the public bridge shape. Their path and revision are checked by
+ * `git_review` while the checkout lock is held.
+ */
+export type ReviewIndexFileInput = { kind: WorkspaceTargetKind; id: string; filePath: string; revision: string }
+export type ReviewIndexHunkInput = { kind: WorkspaceTargetKind; id: string; filePath: string; revision: string; hunkIndex: number; contextLines: DiffContextLines | null }
 export type ReviewListChangedFilesInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; comparison?: ReviewComparison }
 export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath | null; comparison?: ReviewComparison;
 /**
@@ -1285,6 +1393,8 @@ export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTarg
  * git's default context so opening the review panel never pays for it.
  */
 contextLines?: DiffContextLines | null }
+export type RewindFilesResult = { checkpoint: Checkpoint; recoveryCheckpoint: Checkpoint; restoredPaths: string[] }
+export type RewindPreview = { checkpoint: Checkpoint; currentFingerprint: CheckoutFingerprint; changedPaths: string[]; deletedPaths: string[] }
 export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdAt: string; updatedAt: string }
 /**
  * Where one firing of a scheduled task lands. `NewSession` starts a fresh
@@ -1580,7 +1690,13 @@ export type WorkspaceArchiveResult = { workspace: WorkspaceSummary; recoveryPath
 export type WorkspaceContentSearchFile = { path: string; matches: WorkspaceContentSearchMatch[] }
 export type WorkspaceContentSearchMatch = { line: number; preview: string }
 export type WorkspaceContentSearchResult = { files: WorkspaceContentSearchFile[]; truncated: boolean }
-export type WorkspaceDiff = { workspaceId: string; filePath: string | null; content: string }
+export type WorkspaceDiff = { workspaceId: string; filePath: string | null; content: string;
+/**
+ * Stable server-generated identity for the exact, uncapped diff shown to
+ * the reviewer. Mutations must present this value so a stale screen
+ * cannot operate on a later edit in a shared checkout.
+ */
+revision: string }
 export type WorkspaceFileEntry = { path: string }
 export type WorkspaceFilePreview = { kind: "text"; content: string; size: number; mtimeMs: number } | { kind: "skipped"; reason: SkippedReason; size?: number | null }
 export type WorkspaceFileStat = { mtimeMs: number; size: number }
@@ -1631,6 +1747,19 @@ prCreatedAt: string | null;
  * GitHub's authoritative merge timestamp for the paired PR.
  */
 prMergedAt: string | null;
+/**
+ * Rollup of the paired PR's checks as the poller last saw them:
+ * 'pending' | 'success' | 'failure'. A red PR is something the person
+ * owes the branch, so the Priority section reads this directly.
+ */
+prCheckState: string | null;
+/**
+ * When the poller last saw this PR change — a new head commit, a check
+ * rollup moving, a merge. It is the clock a dismissal of the PR row is
+ * measured against, so that marking a PR done holds until the PR itself
+ * does something new.
+ */
+prActivityAt: string | null;
 /**
  * Curated Lucide icon name the user picked for this row's sidebar glyph.
  * `None` keeps the row on its live status marker.

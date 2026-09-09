@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
 import { baseSession, workspace } from "../../test/sessionConversationTestHarness.js";
-import { emblemForCodename } from "../lib/agentEmblems.js";
+import { emblemForCodename, emblemForKey } from "../lib/agentEmblems.js";
 import type { SubagentCluster } from "../lib/subagentSummary.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
 
@@ -313,6 +313,33 @@ describe("WorkspaceCard", () => {
 
     expect(screen.getByRole("region", { name: "Alongside" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
+  });
+
+  // The chip used to fall back to the first letter of the task label, so a
+  // multitask sat beside the drawn marks as a bare "M".
+  it("draws a multitask's chip as an emblem, never as a letter", () => {
+    const emblem = emblemForKey("child-session");
+    renderCard({
+      subagents: {
+        entries: [
+          {
+            toolUseId: "child-session",
+            codename: "Multitask",
+            title: "Fix the changelog date",
+            status: "running",
+            iconColor: emblem.hue,
+            emblem,
+            multitask: true
+          }
+        ],
+        running: 1,
+        hasMultitask: true
+      }
+    });
+
+    const chip = screen.getByRole("region", { name: "Alongside" }).querySelector(".workspace-card-agent");
+    expect(chip?.querySelector("svg")).not.toBeNull();
+    expect(chip?.textContent).toBe("");
   });
 
   it("keeps the subagents section out of a session that never spawned one", () => {

@@ -8,6 +8,8 @@ import {
   X
 } from "lucide-react";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -89,6 +91,8 @@ import { buildDetailsSeed, buildSideChatSeed } from "../lib/sideChat.js";
 import { SelectionToolbar, type ChatSelection } from "./SelectionToolbar.js";
 import { QuestionDock } from "./QuestionDock.js";
 import { SessionComposer, type ComposerStatus, type NewSessionSeed } from "./SessionComposer.js";
+import { importChunk } from "../lib/importChunk.js";
+const CheckpointControls = lazy(() => importChunk(async () => ({ default: (await import("./CheckpointControls.js")).CheckpointControls })));
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
@@ -1157,6 +1161,10 @@ export function SessionConversation({
   };
   const repositoryName =
     headingLabel ?? project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
+  // The repo alone doesn't say which chat you're in once several run against
+  // the same checkout, so the strip reads as a path: repo, then this session's
+  // title. Floating panels pass their own `headingLabel` and keep one label.
+  const sessionTitle = headingLabel ? null : workspace?.taskLabel.trim() || null;
 
   // Depend on session.id rather than the session object: the parent rebuilds
   // SessionSummary references on every dashboard delta, which would otherwise
@@ -1208,13 +1216,23 @@ export function SessionConversation({
   return (
     <section className="conversation-surface" aria-label="Conversation">
       <div className="section-heading" data-window-drag={floating ? undefined : true}>
-        <div className="session-title">
+        <div className="session-title" data-titled={sessionTitle ? "true" : undefined}>
           {workspace && workspace.kind !== "git" ? (
             <MessagesSquare size={13} aria-hidden="true" className="session-title-icon" />
           ) : (
             <GitBranch size={13} aria-hidden="true" className="session-title-icon" />
           )}
           <h2>{repositoryName}</h2>
+          {sessionTitle ? (
+            <>
+              <span className="session-title-separator" aria-hidden="true">
+                /
+              </span>
+              <span className="session-title-task" title={sessionTitle}>
+                {sessionTitle}
+              </span>
+            </>
+          ) : null}
         </div>
         <div className="conversation-header-actions">
           {floating && onAttachToChat ? (
@@ -1404,6 +1422,12 @@ export function SessionConversation({
           onRunCheck={onRunCheck}
         />
       </div>
+      {!floating && session && workspace && <Suspense fallback={null}>
+        <CheckpointControls key={session.id} session={session} workspace={workspace} onRestored={() => {
+          review.workspaceFiles.refreshList();
+          review.openChangesPanel();
+        }} />
+      </Suspense>}
       {composerMultitaskNotices.length > 0 ? (
         <section className="multitask-composer-lane" aria-label="Multitasks">
           {composerMultitaskNotices.map((notice) => {

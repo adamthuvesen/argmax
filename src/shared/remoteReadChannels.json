@@ -14,6 +14,8 @@
   "session:search",
   "review:list-changed-files",
   "review:load-diff",
+  "checkpoints:list",
+  "checkpoints:preview-rewind",
   "workspace:list-files",
   "workspace:read-file",
   "workspace:stat-file",

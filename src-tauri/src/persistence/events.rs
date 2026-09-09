@@ -1333,6 +1333,124 @@ pub fn latest_user_message_at(
         .map_err(sqlite_error)
 }
 
+/// Names whose tool call puts a question in front of the person and then waits
+/// for them. Kept in step with `isAskUserQuestionToolName` and
+/// `isExitPlanModeToolName` in `src/renderer/lib/turnInteractiveCards.ts`,
+/// which decide the same thing for the chat surface.
+const ASK_TOOL_NAMES: [&str; 3] = ["askuserquestion", "askquestiontoolcall", "sendusermessage"];
+const EXIT_PLAN_TOOL_NAME: &str = "exitplanmode";
+
+fn normalized_tool_name(name: &str) -> String {
+    name.chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .map(|character| character.to_ascii_lowercase())
+        .collect()
+}
+
+/// The tool's merged argument object. Providers put it under any of four keys
+/// and Cursor hands `input` over as a JSON string, so this mirrors
+/// `extractToolInput` rather than reading one field.
+fn merged_tool_input(payload: &Value) -> serde_json::Map<String, Value> {
+    let mut merged = serde_json::Map::new();
+    for key in ["parameters", "arguments", "args", "input"] {
+        let container = match payload.get(key) {
+            Some(Value::Object(object)) => object.clone(),
+            Some(Value::String(raw)) => match serde_json::from_str::<Value>(raw) {
+                Ok(Value::Object(object)) => object,
+                _ => continue,
+            },
+            _ => continue,
+        };
+        merged.extend(container);
+    }
+    merged
+}
+
+/// The tool's identity, mirroring the parts of `extractToolName` that can
+/// name an interactive ask: Cursor's ACP wraps the real tool as `other` and
+/// keeps its name in the input.
+fn ask_tool_identity(payload: &Value) -> Option<String> {
+    let payload_name = payload.get("name").and_then(Value::as_str);
+    if let Some(name) = payload_name {
+        if name.eq_ignore_ascii_case("other") {
+            if let Some(embedded) = merged_tool_input(payload)
+                .get("_toolName")
+                .and_then(Value::as_str)
+            {
+                if !embedded.is_empty() {
+                    return Some(normalized_tool_name(embedded));
+                }
+            }
+        }
+    }
+    payload_name.map(normalized_tool_name)
+}
+
+/// Whether this session is sitting on an ask the person has not answered: an
+/// `AskUserQuestion` or `ExitPlanMode` tool call newer than the last thing
+/// they said. The same rule `hasOutstandingCardAsk` applies in the renderer,
+/// evaluated here because the sidebar cannot see the transcript.
+///
+/// `answers_itself` auto-allows these tools, so the turn settles the instant
+/// the question is drawn and the session goes `complete` like any other. Left
+/// unasked, a pending question is indistinguishable from a finished job.
+///
+/// The SQL narrows on a substring of the tool name, which the payload could
+/// carry for other reasons (an agent reading this very file). Every candidate
+/// is re-checked against its `name` field before it counts.
+pub fn has_outstanding_card_ask(connection: &Connection, session_id: &str) -> ArgmaxResult<bool> {
+    let since = latest_user_message_at(connection, session_id)?.unwrap_or_default();
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT payload_json
+            FROM events
+            WHERE session_id = ?1
+              AND type = 'command.started'
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = ?1
+                  AND cleared.type = 'session.cleared'
+              ), 0)
+              AND created_at > ?2
+              AND (
+                payload_json LIKE '%skUserQuestion%'
+                OR payload_json LIKE '%skQuestionToolCall%'
+                OR payload_json LIKE '%endUserMessage%'
+                OR payload_json LIKE '%xitPlanMode%'
+              )
+            ORDER BY rowid DESC
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map((session_id, since.as_str()), |row| row.get::<_, String>(0))
+        .map_err(sqlite_error)?;
+    for row in rows {
+        let payload: Value = match serde_json::from_str(&row.map_err(sqlite_error)?) {
+            Ok(payload) => payload,
+            Err(_) => continue,
+        };
+        let Some(name) = ask_tool_identity(&payload) else {
+            continue;
+        };
+        if name == EXIT_PLAN_TOOL_NAME {
+            return Ok(true);
+        }
+        // A question tool with nothing to choose between draws no card, so it
+        // is not something the person can answer.
+        if ASK_TOOL_NAMES.contains(&name.as_str())
+            && merged_tool_input(&payload)
+                .get("questions")
+                .and_then(Value::as_array)
+                .is_some_and(|questions| !questions.is_empty())
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// How many times this chat has arrived somewhere by being moved. A move
 /// copies the transcript, so the seams of earlier moves ride along and the
 /// count is the whole chain rather than the last hop.

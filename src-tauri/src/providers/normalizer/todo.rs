@@ -280,6 +280,50 @@ fn codex_exec_todo_update(item: &Map<String, Value>) -> Option<TodoUpdate> {
     })
 }
 
+/// Grok's ACP transport does not publish a plan the way its CLI does. Instead
+/// of a `todo_write` call with a `todos` array, the list comes back inside a
+/// tool *result* whose content is a JSON string:
+///
+/// ```json
+/// {"TodosUpdated":{"state":{"todos":{"1":{"content":"…","status":"pending"}}}}}
+/// ```
+///
+/// `todos` is a map keyed by id, not an array, so the order has to be recovered
+/// from the keys — numerically where they are numbers, which they are, or the
+/// tenth step would sort between the first and the second.
+pub fn grok_todos_updated_result(result: &str) -> Option<TodoUpdate> {
+    if !result.contains("TodosUpdated") {
+        return None;
+    }
+    let parsed: Value = serde_json::from_str(result).ok()?;
+    let todos = parsed.pointer("/TodosUpdated/state/todos")?.as_object()?;
+    if todos.is_empty() {
+        return None;
+    }
+    let mut keyed: Vec<(&String, &Value)> = todos.iter().collect();
+    keyed.sort_by_key(|(key, _)| {
+        (
+            key.parse::<u64>().unwrap_or(u64::MAX),
+            key.parse::<u64>().is_err(),
+        )
+    });
+    let mut items = Vec::with_capacity(keyed.len());
+    for (id, raw) in keyed {
+        let entry = object_value(Some(raw))?;
+        items.push(TodoItem {
+            id: Some(id.clone()),
+            text: string_value(entry.get("content")).map(str::to_string),
+            status: string_value(entry.get("status"))
+                .and_then(TodoStatus::parse)
+                .unwrap_or(TodoStatus::Pending),
+        });
+    }
+    Some(TodoUpdate {
+        mode: TodoMode::Snapshot,
+        items,
+    })
+}
+
 /// `TaskUpdate` args: `{taskId, status}`, where status is one of
 /// pending / in_progress / completed / deleted.
 pub fn claude_task_update(input: &Map<String, Value>) -> Option<TodoUpdate> {
@@ -480,6 +524,37 @@ mod tests {
     fn claude_task_create_result_rejects_a_changed_format() {
         assert!(parse_task_create_result("Created task 5: something").is_none());
         assert!(parse_task_create_result("Task #abc created successfully: x").is_none());
+    }
+
+    // Captured from a live Grok ACP session through the scratch app: the list
+    // rides inside a tool result as a JSON string, keyed by id.
+    #[test]
+    fn grok_acp_todos_updated_result_is_a_snapshot_in_key_order() {
+        let raw = r#"{"TodosUpdated":{"state":{"todos":{
+            "10":{"content":"Tenth","priority":"medium","status":"pending"},
+            "2":{"content":"Second","priority":"medium","status":"in_progress"},
+            "1":{"content":"First","priority":"medium","status":"completed"}
+        }},"summary_for_prompt":"…"}}"#;
+        let update = grok_todos_updated_result(raw).expect("todos updated");
+        assert_eq!(update.mode, TodoMode::Snapshot);
+        assert_eq!(
+            update
+                .items
+                .iter()
+                .map(|i| i.id.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("1"), Some("2"), Some("10")],
+            "numeric ids sort numerically, so step 10 comes last"
+        );
+        assert_eq!(update.items[0].status, TodoStatus::Done);
+        assert_eq!(update.items[1].status, TodoStatus::Active);
+        assert_eq!(update.items[2].text.as_deref(), Some("Tenth"));
+    }
+
+    #[test]
+    fn a_tool_result_without_todos_is_not_a_plan() {
+        assert!(grok_todos_updated_result("file written").is_none());
+        assert!(grok_todos_updated_result(r#"{"TodosUpdated":{"state":{"todos":{}}}}"#).is_none());
     }
 
     #[test]

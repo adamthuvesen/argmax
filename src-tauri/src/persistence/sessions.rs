@@ -76,8 +76,34 @@ impl SessionStateInput {
         self.attention = compute_session_attention(SessionAttentionInput {
             state: self.state,
             has_pending_approval: true,
+            has_outstanding_question: false,
         });
         self
+    }
+
+    /// The agent asked and stopped. Outranks everything the state implies on
+    /// its own, but yields to a pending approval — that one has the provider
+    /// process parked behind it. Applied by [`update_session_state`], which is
+    /// the only caller with a connection to look the ask up with.
+    fn with_outstanding_question(mut self) -> Self {
+        self.attention = compute_session_attention(SessionAttentionInput {
+            state: self.state,
+            has_pending_approval: false,
+            has_outstanding_question: true,
+        });
+        self
+    }
+
+    /// Whether an unanswered ask could change this write's attention. False
+    /// for a live or brand-new session (nothing has settled to ask from) and
+    /// for one already showing an approval, which outranks the question — both
+    /// spare the transcript query on the hot path.
+    fn may_carry_question(&self) -> bool {
+        self.attention != AttentionState::ApprovalNeeded
+            && !matches!(
+                self.state,
+                SessionState::Created | SessionState::Running | SessionState::Cancelled
+            )
     }
 
     /// Stamp both `completed_at` and `last_activity_at` — the turn ended at
@@ -555,6 +581,18 @@ pub fn update_session_state(
     session_id: &str,
     input: &SessionStateInput,
 ) -> ArgmaxResult<SessionSummary> {
+    // Every turn-end path in the app lands here, which is why the question
+    // lookup hangs off the write rather than off any one provider's settle
+    // seam. `may_carry_question` keeps it off writes that cannot show one.
+    let owned;
+    let input = if input.may_carry_question()
+        && super::events::has_outstanding_card_ask(connection, session_id)?
+    {
+        owned = input.clone().with_outstanding_question();
+        &owned
+    } else {
+        input
+    };
     let timestamp = input.last_activity_at.clone().unwrap_or_else(now_iso);
     // `attention` on the right-hand side of the CASE reads the pre-update
     // column value, so `attention_changed_at` only advances when the attention

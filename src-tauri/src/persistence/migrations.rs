@@ -49,6 +49,18 @@ const ALL_TABLES: &[&str] = &[
 
 pub static EMPTY_EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {};
 
+pub static DURABLE_CHECKPOINT_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "checkpoints" => &[
+        "branch", "created_at", "git_ref", "head_sha", "id", "index_tree", "label",
+        "patch_path", "provider_conversation_id", "recovery_of", "session_id", "turn_boundary",
+        "untracked_paths_json", "workspace_id", "worktree_tree",
+    ] as &'static [&'static str],
+    "checkpoint_rewinds" => &[
+        "checkpoint_id", "completed_at", "failure", "id", "recovery_checkpoint_id",
+        "started_at", "status", "workspace_id",
+    ] as &'static [&'static str],
+};
+
 // Post-v4 `workspaces` shape: the v1 column set plus `task_label_auto`. Kept
 // separate from `EXPECTED_COLUMNS` (which still describes the v1 schema) so the
 // v1 migration's own column check keeps passing — each migration validates the
@@ -738,6 +750,14 @@ pub static MIGRATIONS: &[Migration] = &[
         up: SYNC_BYTE_AND_LINE_CURSOR,
         affected_tables: &["synced_sessions"],
         expected_columns: &SYNC_BYTE_AND_LINE_CURSOR_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 41,
+        name: "durable_checkpoints",
+        up: crate::persistence::checkpoints::MIGRATION_SQL,
+        affected_tables: &["checkpoints", "checkpoint_rewinds"],
+        expected_columns: &DURABLE_CHECKPOINT_COLUMNS,
         requires_foreign_keys_off: false,
     },
 ];
@@ -2070,6 +2090,10 @@ mod tests {
                 ),
                 (39, compute_migration_checksum(USAGE_SOURCE_CONTRIBUTIONS)),
                 (40, compute_migration_checksum(SYNC_BYTE_AND_LINE_CURSOR)),
+                (
+                    41,
+                    compute_migration_checksum(crate::persistence::checkpoints::MIGRATION_SQL)
+                ),
             ]
         );
 

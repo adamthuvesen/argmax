@@ -137,6 +137,27 @@ pub fn synthesize_message_completed_from_result(
     ))
 }
 
+/// Cursor names most tools with the wrapper key — `readToolCall`,
+/// `taskToolCall` — but falls back to a generic `other` wrapper that carries
+/// the real name inside its own args as `_toolName`. Taking the key at face
+/// value there loses the tool entirely: a subagent launch arrives as `other`,
+/// buckets as "Used a tool" instead of "Started an agent", and drops its mark
+/// and its link to the Agents pane.
+fn resolve_tool_name<'a>(
+    tool_kind: Option<&'a str>,
+    tool_body: Option<&'a Map<String, Value>>,
+) -> &'a str {
+    let kind = tool_kind.unwrap_or("tool_call");
+    if kind != "other" {
+        return kind;
+    }
+    tool_body
+        .and_then(|body| object_value(body.get("args")))
+        .and_then(|args| string_value(args.get("_toolName")))
+        .filter(|name| !name.is_empty())
+        .unwrap_or(kind)
+}
+
 pub fn normalize_tool_call(
     event: &ProviderOutputEvent,
     payload: &Map<String, Value>,
@@ -162,7 +183,7 @@ pub fn normalize_tool_call(
             }
         }
     }
-    let tool_name = tool_kind.unwrap_or("tool_call");
+    let tool_name = resolve_tool_name(tool_kind, tool_body);
     let args = tool_body
         .and_then(|body| object_value(body.get("args")))
         .cloned()
@@ -358,6 +379,44 @@ mod tests {
         normalize_provider_event, tests::output_event, NormalizerSessionContext,
     };
     use crate::providers::ProviderId;
+
+    // Captured from a live Cursor ACP session: a subagent launch arrives under
+    // the generic `other` wrapper with its real name inside the args.
+    #[test]
+    fn a_generic_other_wrapper_recovers_the_tool_it_is_hiding() {
+        let payload = json!({
+            "type": "tool_call",
+            "subtype": "started",
+            "call_id": "tool_1",
+            "tool_call": { "other": { "args": {
+                "_toolName": "task",
+                "description": "Sync docs with code changes"
+            }}}
+        });
+        let event = normalize_tool_call(
+            &output_event("{}"),
+            payload.as_object().expect("payload"),
+            Some("tool_call"),
+        )
+        .expect("tool event");
+        assert_eq!(event.message, "task");
+        assert_eq!(event.payload["name"], json!("task"));
+    }
+
+    #[test]
+    fn an_other_wrapper_with_no_inner_name_keeps_the_key() {
+        let payload = json!({
+            "type": "tool_call", "subtype": "started", "call_id": "tool_2",
+            "tool_call": { "other": { "args": {} } }
+        });
+        let event = normalize_tool_call(
+            &output_event("{}"),
+            payload.as_object().expect("payload"),
+            Some("tool_call"),
+        )
+        .expect("tool event");
+        assert_eq!(event.message, "other");
+    }
 
     #[test]
     fn cursor_cumulative_partials_emit_suffix_deltas() {

@@ -50,12 +50,23 @@ A cross-project move always leaves the provider conversation id empty. A `--path
 
 ## Sidebar Priority Section
 
-Workspaces with active attention (`approval-needed`, `blocked`, `failed`, or `review-ready`) and workspaces with a live turn share the Priority section beneath Pinned.
+Workspaces holding at least one live **reason**, and workspaces with a live turn, share the Priority section beneath Pinned. A reason is one claim on the reader with its own answer to "what makes this go away", which is what keeps the section from being a feed of everything that finished recently.
 
-- Calculated client-side in [src/renderer/lib/priority.ts](../src/renderer/lib/priority.ts). Entries remain while working and for 30 minutes after the last message (`PRIORITY_IDLE_MS`).
-- Order: working rows first (sorted by last message descending), followed by non-working rows (attention and manual adds) sorted by last message in descending order.
+| Reason | Raised by | Cleared by |
+| --- | --- | --- |
+| `approval-needed` | a pending approval | the decision |
+| `question-asked` | an unanswered `AskUserQuestion` / `ExitPlanMode` (see [chat-cards.md](chat-cards.md)) | answering it |
+| `blocked` | session `blocked` / `waiting` | 30 minutes of silence |
+| `failed` | session `failed` | 30 minutes of silence |
+| `ci-red` | the attributed PR's check rollup at `failure` ([gh.md](gh.md)) | checks going green, or the PR closing |
+| `review-ready` | a completed turn **whose reply is still unread** | opening the chat, or 30 minutes of silence |
+| `pr-open` | the attributed PR at `OPEN` | the PR merging or closing |
+
+- Calculated client-side in [src/renderer/lib/priority.ts](../src/renderer/lib/priority.ts). Only the reasons a clock can resolve carry `PRIORITY_IDLE_MS` (30 minutes from the last message); an approval, a question, a red check and an open PR are all still true half an hour later, so they wait for the event that ends them. A row leaves once *every* reason holding it has lapsed.
+- Reading is asymmetric: opening a chat resolves `review-ready` and nothing else. Unread state is this device's own (`localStorage`, see [sessionUnread.ts](../src/renderer/lib/sessionUnread.ts)), so the phone and the desktop disagree about what has been read.
+- Order: working rows first, then by the strength of the strongest reason (the table above is that order), then by last message descending. The row's accessible title names that strongest reason.
 - Pinned status takes precedence over Priority.
-- Right-click "Done" (`workspaces:set-priority-dismissed`) clears a priority item until new attention arrives. Manual adds (`workspaces:set-priority-added`) persist until cleared. A row that is only listed because its turn is running has no "Done" — it leaves when the turn ends — and the header's Clear skips it.
+- Right-click "Done" (`workspaces:set-priority-dismissed`) clears every reason that was already true, and nothing that happens afterwards: a PR going red after a dismissal brings the row back, because `ci-red` is newer than the dismissal. Each reason carries its own `since` for that comparison — a session reason uses `attention_changed_at`, a PR reason the poller's `pr_activity_at`. Manual adds (`workspaces:set-priority-added`) persist until cleared. A row that is only listed because its turn is running has no "Done" — it leaves when the turn ends — and the header's Clear skips it.
 - The "Priority section in sidebar" setting hides the whole section, running rows included; they fall back to their date bucket or project group.
 
 ## Custom Row Icons
@@ -86,6 +97,34 @@ Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The launcher uses one s
 | Last turn | `branch` (client-filtered) | File-writing tool calls in the most recent turn |
 
 Base ref resolution checks `workspace.base_ref`, then `origin/<default>`, then local `<default>`.
+
+### Review actions
+
+The Uncommitted comparison offers file and hunk staging, unstaging, and reverting.
+Every mutation carries the displayed revision. Rust reconstructs the patch and
+checks HEAD, index, and working-tree state under the canonical checkout lock.
+An obsolete revision fails with a refresh instruction. Actions are refused while
+an active session or Goal owns the same checkout. Untracked files can be staged
+as whole files. Their preview hunks and rename hunks are not actionable. Files with both staged
+and unstaged edits use whole-file index actions because their combined preview
+does not represent one index patch.
+
+Reverting restores unstaged changes and saves a recovery checkpoint first.
+Untracked file deletion remains a Files action. **Commit staged** commits the
+existing index, including partial staging. It requires a commit message.
+
+### Checkpoints and rewind
+
+The chat's **Checkpoints** panel saves a named checkpoint and previews a
+files-only rewind. Each checkpoint pins the index and visible working tree as
+Git trees, including non-ignored untracked files. A preview lists affected paths
+and binds the restore to the current HEAD, branch, index, and worktree.
+
+Rewind requires idle sessions on the same checkout and matching HEAD and branch.
+It saves a recovery checkpoint, journals the operation, and restores the index
+and files. Interrupted restores remain recoverable through that checkpoint.
+Unresolved merges and submodules are unsupported. Conversation history is
+separate and is not rewound by this action.
 
 ### Diff Notes
 

@@ -93,11 +93,11 @@ _Avoid_: Side task, background task, parallel turn, subagent
 Where a session is in its lifecycle: `created`, `running`, `waiting`, `blocked`, `complete`, `failed`, `cancelled`.
 
 **Attention**:
-Whether a session needs a human, derived from session state plus pending approvals: `normal`, `approval-needed`, `blocked`, `failed`, `review-ready`. Never set directly — it is computed. State says what the agent is doing; attention says whether you have to care. Both are enums in `src-tauri/src/sessions/` (`SessionState`, `AttentionState`), exported to the renderer through the generated bindings; a state write goes through `SessionStateInput::transition`, which derives the attention.
+Whether a session needs a human, derived from session state, pending approvals, and whether the agent left a question unanswered: `normal`, `approval-needed`, `question-asked`, `blocked`, `failed`, `review-ready`. Never set directly — it is computed. State says what the agent is doing; attention says whether you have to care. Both are enums in `src-tauri/src/sessions/` (`SessionState`, `AttentionState`), exported to the renderer through the generated bindings; a state write goes through `SessionStateInput::transition`, which derives the attention.
 _Avoid_: Status, state, urgency
 
 **Priority**:
-The sidebar section holding workspaces that need attention, plus any the user pinned there manually. A dismissal is spent as soon as attention changes again.
+The sidebar section holding workspaces that need attention, plus any the user pinned there manually. Membership is a set of **reasons** (see [docs/workspaces.md](docs/workspaces.md)), each with its own resolution: a session's attention is only one of them, and an open pull request or a red check is another. A dismissal is spent as soon as a reason newer than it appears.
 
 **Unread response**:
 A sidebar mark that a chat has produced a response the user has not opened yet. An accent-colored dot replaces the row's leading icon until the chat is viewed.

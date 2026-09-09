@@ -271,7 +271,11 @@
 
 .session-main-column {
   container-type: inline-size;
-  --session-inline-padding: clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width)) / 2), 2000px);
+  /* Width levels live on `.app-shell`. The phone never mounts that, and a
+     missing `--chat-content-width` makes this calc invalid so every padding
+     shorthand that reads the gutter collapses — landscape is wide enough to
+     miss the 760px compact override that hides the same hole in portrait. */
+  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width, 780px)) / 2), 2000px);
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -286,11 +290,11 @@
 
 .session-grid.review-open .session-main-column,
 .session-grid.log-open .session-main-column {
-  --session-inline-padding: clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width-docked)) / 2), 2000px);
+  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width-docked, 740px)) / 2), 2000px);
 }
 
 .session-grid.review-open.log-open .session-main-column {
-  --session-inline-padding: clamp(var(--session-inline-padding-min), calc((100% - var(--chat-content-width-tight)) / 2), 2000px);
+  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width-tight, 680px)) / 2), 2000px);
 }
 
 .conversation-surface {
@@ -376,6 +380,53 @@
   color: var(--text-soft);
 }
 
+/* Repo + session title read as one path. The repo is context, so it steps
+   back to --muted and keeps its natural width; the title carries the ink and
+   is the part that gives up characters when the pane narrows. */
+.session-title[data-titled="true"] > h2 {
+  /* Shrinks three times faster than the title: the repo gives up characters
+     first, and in a truly narrow pane it leaves entirely (below). */
+  flex: 0 3 auto;
+  min-width: 4ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+.session-title-separator {
+  flex: none;
+  /* Pull the slash in from the row's 7px gap so the two names read as one
+     path rather than as two separate labels. */
+  margin-inline: -2px;
+  font-size: var(--text-sm);
+  color: color-mix(in oklab, var(--muted) 50%, transparent);
+}
+
+/* A pane this narrow can't hold both names; the sidebar still says which
+   project the chat belongs to, so the title keeps the strip to itself. */
+@container (max-width: 360px) {
+  .session-title[data-titled="true"] > h2,
+  .session-title[data-titled="true"] > .session-title-separator {
+    display: none;
+  }
+}
+
+/* Same size and weight as the repo beside it — the two only ever differed in
+   tone, and the brighter ink plus a title's capitals against an all-lowercase
+   repo name read as a larger type. One tone for the whole path. */
+.session-title-task {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--muted);
+}
+
 /* Sidebar hidden: the repo-title row in any left-edge pane doubles as the
    macOS titlebar. Size the strip to the expanded sidebar's .window-controls
    band and clear the fixed sidebar toggle via --titlebar-leading-inset. */
@@ -438,7 +489,11 @@
    one in view and the body below scrolls under it. */
 .agent-activity,
 .agent-activity-history-viewport {
-  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width)) / 2), 2000px);
+  /* The width levels live on `.app-shell`, which the phone's shell never
+     mounts. Without the fallback the calc is invalid at computed-value time,
+     the gutter goes unset, and every `padding: <a> var(--gutter) <b>` below
+     collapses to zero on all four sides. */
+  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width, 780px)) / 2), 2000px);
 }
 
 .agent-activity {
@@ -1097,12 +1152,15 @@
 
 /* Single-item ordered list directly followed by bullets is the LLM's section-heading
    pattern (`1. Heading` then `- bullet`). Style the heading as a heading, and pull
-   the bullets up so they read as its children — not as a parallel sibling list. */
-.markdown ol:has(> li:only-child) {
+   the bullets up so they read as its children — not as a parallel sibling list.
+   The bullets are the whole tell, so every rule here is gated on them: a lone
+   `1.` with prose under it is a list the model never finished, and promoting
+   that to a heading sets a whole paragraph in 600 weight a step up the scale. */
+.markdown ol:has(> li:only-child):has(+ ul) {
   margin-bottom: 2px;
 }
 
-.markdown ol > li:only-child {
+.markdown ol:has(+ ul) > li:only-child {
   font-size: var(--text-base-plus);
   font-weight: 600;
   letter-spacing: -0.004em;
@@ -1111,7 +1169,7 @@
   line-height: 1.42;
 }
 
-.markdown ol > li:only-child::marker {
+.markdown ol:has(+ ul) > li:only-child::marker {
   color: var(--accent);
   font-weight: 600;
 }

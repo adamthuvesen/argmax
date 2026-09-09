@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
-import { Archive, FolderGit2, Laptop, Menu, MoreHorizontal, PenLine, Search, SquarePen } from "lucide-react";
+import { FolderGit2, Laptop, Menu, MoreHorizontal, PenLine, Search } from "lucide-react";
+import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
 import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
 import { LinesSkeleton } from "../components/LinesSkeleton.js";
 import { SessionPane } from "../components/SessionPane.js";
@@ -15,13 +16,14 @@ import { useDashboardSession } from "../hooks/useDashboardSession.js";
 import { SessionTimelineProvider } from "../hooks/useSessionTimeline.js";
 import { useSessionCommands } from "../hooks/useSessionCommands.js";
 import { isEarlySessionStop } from "../lib/earlyStop.js";
-import { isMultitaskSession, multitasksByParentSession } from "../lib/multitask.js";
+import { hiddenMultitaskWorkspaceIds, isMultitaskSession, multitasksByParentSession } from "../lib/multitask.js";
 import { importChunk } from "../lib/importChunk.js";
 import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
 import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
 import {
   computePriorityEntries,
   computeWorkspaceAttention,
+  workingWorkspaceIds,
   type PriorityAttention
 } from "../lib/priority.js";
 import {
@@ -77,6 +79,23 @@ interface SessionListRow {
   workspace: WorkspaceSummary;
   session: SessionSummary | null;
   attention: PriorityAttention | null;
+  /** Own turn, or a multitask this chat dispatched — same set the desktop row uses. */
+  working: boolean;
+}
+
+/**
+ * Same gate the turn footer applies (SessionConversationTurn.tsx), mirroring
+ * `fork_session` in orchestration.rs: only providers that can resume a copied
+ * conversation, and never mid-turn — a running or waiting session would fork a
+ * half-written transcript, so the backend refuses it.
+ */
+function isForkable(session: SessionSummary | null): session is SessionSummary {
+  return (
+    session !== null &&
+    FORK_CAPABLE_PROVIDERS.has(session.provider) &&
+    session.state !== "running" &&
+    session.state !== "waiting"
+  );
 }
 
 /** Compact age for list rows: "now", "5m", "2h", "3d". */
@@ -107,8 +126,7 @@ function MobileSessionRow({
   onOpen: (workspaceId: string) => void;
   onOpenActions: (row: SessionListRow) => void;
 }): JSX.Element {
-  const { workspace, session, attention } = row;
-  const running = workspace.state === "running";
+  const { workspace, session, attention, working } = row;
   // Same precedence as the desktop row's status marker: an input-starved
   // session outranks a running one, since the whole point of the row is that
   // the agent is stalled on you and approvals arrive mid-turn.
@@ -122,7 +140,7 @@ function MobileSessionRow({
         type="button"
         className="mobile-session-row"
         data-attention={attention ?? undefined}
-        data-running={running || undefined}
+        data-running={working || undefined}
         onClick={() => onOpen(workspace.id)}
       >
         <span className="mobile-session-text">
@@ -133,7 +151,7 @@ function MobileSessionRow({
                 data-attention={awaiting}
                 aria-label={AWAITING_LABEL[awaiting]}
               />
-            ) : running ? (
+            ) : working ? (
               // The nest moves and the unread dot does not, which is the whole
               // distinction: two accent dots, one pulsing, read as the same
               // thing at a glance on a phone.
@@ -437,7 +455,40 @@ export function MobileApp(): JSX.Element {
     [snapshot.projects]
   );
   const [listMenuOpen, setListMenuOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Same set the desktop sidebar uses: a turn in flight here, or a
+  // multitask this chat dispatched. The child's own workspace has no list
+  // row, so this is the only place that work can still read as live.
+  const hiddenMultitasks = useMemo(
+    () => hiddenMultitaskWorkspaceIds(snapshot.sessions),
+    [snapshot.sessions]
+  );
+  const workingWorkspaces = useMemo(
+    () => workingWorkspaceIds(snapshot.sessions),
+    [snapshot.sessions]
+  );
+
+  const sessionOpen = selectedWorkspaceId !== null && (selectedSession !== null || selectedSessionId !== null);
+  // Unread is this phone's own reading state: the stamp lives in its
+  // localStorage, so reading a chat on the Mac does not clear the dot here,
+  // and reading it here does not clear it there. Passing the open chat only
+  // while it is on screen lets a reply that lands after you back out count
+  // as unread again.
+  const workspaceActivity = useMemo(
+    () =>
+      snapshot.workspaces.map((workspace) => ({
+        id: workspace.id,
+        lastActivityAt: workspace.lastActivityAt ?? ""
+      })),
+    [snapshot.workspaces]
+  );
+  const unreadIds = useUnreadWorkspaceIds(
+    workspaceActivity,
+    sessionOpen ? selectedWorkspaceId : null,
+    workingWorkspaces
+  );
 
   // Three sections, same shape and precedence as the desktop sidebar: Pinned
   // on top, then Priority (working rows first, then the rest by last message),
@@ -446,15 +497,22 @@ export function MobileApp(): JSX.Element {
   // the shared minute clock below is close enough to notice.
   const { pinnedRows, priorityRows, activityRows } = useMemo(() => {
     const sessionsByWorkspace = new Map(snapshot.sessions.map((session) => [session.workspaceId, session]));
-    const attentionByWorkspace = computeWorkspaceAttention(snapshot.workspaces, snapshot.sessions, nowMs);
+    const attentionByWorkspace = computeWorkspaceAttention(
+      snapshot.workspaces,
+      snapshot.sessions,
+      nowMs,
+      unreadIds
+    );
     // A workspace with no session is a dead row: tapping it resolves no
     // session, so nothing opens. The desktop sidebar requires a session for
     // every section too, and the launcher's connection-lost path can strand
-    // exactly such a workspace.
+    // exactly such a workspace. A multitask is hidden for the same reason
+    // the desktop hides it: it belongs to the chat that dispatched it.
     const visible = snapshot.workspaces.filter(
       (workspace) =>
         workspace.state !== "archived" &&
         workspace.kind !== "popup" &&
+        !hiddenMultitasks.has(workspace.id) &&
         sessionsByWorkspace.has(workspace.id)
     );
     const rowsById = new Map<string, SessionListRow>(
@@ -463,7 +521,8 @@ export function MobileApp(): JSX.Element {
         {
           workspace,
           session: sessionsByWorkspace.get(workspace.id) ?? null,
-          attention: attentionByWorkspace.get(workspace.id)?.attention ?? null
+          attention: attentionByWorkspace.get(workspace.id)?.attention ?? null,
+          working: workingWorkspaces.has(workspace.id)
         }
       ])
     );
@@ -472,7 +531,8 @@ export function MobileApp(): JSX.Element {
     const priorityRows = computePriorityEntries(
       visible.filter((workspace) => workspace.kind === "git"),
       snapshot.sessions,
-      nowMs
+      nowMs,
+      unreadIds
     ).flatMap((entry) => rowsById.get(entry.workspace.id) ?? []);
     const promoted = new Set(priorityRows.map((row) => row.workspace.id));
     const activityOf = (row: SessionListRow): string =>
@@ -485,7 +545,7 @@ export function MobileApp(): JSX.Element {
       priorityRows,
       activityRows: rest.filter((row) => !row.workspace.pinned)
     };
-  }, [nowMs, snapshot.sessions, snapshot.workspaces]);
+  }, [hiddenMultitasks, nowMs, snapshot.sessions, snapshot.workspaces, unreadIds, workingWorkspaces]);
 
   const filteredRows = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
@@ -509,10 +569,15 @@ export function MobileApp(): JSX.Element {
   // The review screen's Files drill-down (tree → file) is a screen of its own
   // for a back gesture, so its open state lives here rather than inside it.
   const [reviewFilePreviewOpen, setReviewFilePreviewOpen] = useState(false);
+  const [reviewScopeSheetOpen, setReviewScopeSheetOpen] = useState(false);
+  // Dismisser from SessionPane while the delegated-work overlay is up. Stored
+  // as a function value (`() => dismiss`), never as the updater itself.
+  const [dismissAgentsOverlay, setDismissAgentsOverlay] = useState<(() => void) | null>(null);
 
   const closeReview = useCallback(() => {
     setReviewOpen(false);
     setReviewFilePreviewOpen(false);
+    setReviewScopeSheetOpen(false);
   }, []);
 
   const closeSession = useCallback(() => {
@@ -680,39 +745,11 @@ export function MobileApp(): JSX.Element {
     () => multitasksByParentSession(snapshot.sessions, snapshot.workspaces),
     [snapshot.sessions, snapshot.workspaces]
   );
-  const sessionOpen = selectedWorkspaceId !== null && (selectedSession !== null || selectedSessionId !== null);
-  // Unread is this phone's own reading state: the stamp lives in its
-  // localStorage, so reading a chat on the Mac does not clear the dot here,
-  // and reading it here does not clear it there. Passing the open chat only
-  // while it is on screen lets a reply that lands after you back out count
-  // as unread again.
-  const workspaceActivity = useMemo(
-    () =>
-      snapshot.workspaces.map((workspace) => ({
-        id: workspace.id,
-        lastActivityAt: workspace.lastActivityAt ?? ""
-      })),
-    [snapshot.workspaces]
-  );
-  const workingWorkspaceIds = useMemo(
-    () =>
-      new Set(
-        snapshot.workspaces
-          .filter((workspace) => workspace.state === "running")
-          .map((workspace) => workspace.id)
-      ),
-    [snapshot.workspaces]
-  );
-  const unreadIds = useUnreadWorkspaceIds(
-    workspaceActivity,
-    sessionOpen ? selectedWorkspaceId : null,
-    workingWorkspaceIds
-  );
   // Park the list under a session or the new-chat screen instead of unmounting
   // it: tearing the scroller down was sending every back-to-list gesture to
   // the top. It keeps its own type scale while the shell steps up for the
   // chat, so the parked scroller does not reflow and lose its offset.
-  const listParked = sessionOpen || newSessionOpen;
+  const listParked = sessionOpen || newSessionOpen || appearanceOpen;
   const listScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
   // Remember the offset only while the list is the front screen. Parking can
@@ -727,17 +764,26 @@ export function MobileApp(): JSX.Element {
   // a workspace that drops out of the snapshot must take its history entry
   // with it, or one back press changes nothing on screen.
   const reviewShown = sessionOpen && reviewOpen && selectedWorkspace !== null;
+  const sessionParked = newSessionOpen || reviewShown || appearanceOpen;
   // A sheet is a screen as far as a back gesture is concerned: without this,
   // back on the list screen leaves the app with the sheet still up, and back
   // on the New session screen tears the screen down under an open picker.
-  const sheetOpen = actionsRow !== null || listMenuOpen || newSessionSheet !== null;
+  const sheetOpen =
+    actionsRow !== null || listMenuOpen || newSessionSheet !== null || reviewScopeSheetOpen;
 
   const filePreviewShown = reviewShown && reviewFilePreviewOpen;
 
+  // Overlay counts only while the session is the front screen. Parked under
+  // review or New chat it is not what a back gesture would pop.
+  const agentOverlayShown =
+    sessionOpen && !sessionParked && dismissAgentsOverlay !== null;
+
   // Screen depth for the hardware back button: list → session/new → review →
-  // file preview, plus one for an open sheet.
+  // file preview, plus one for an open sheet or the agent overlay.
   const screenDepth =
-    (newSessionOpen
+    (appearanceOpen
+      ? 1
+      : newSessionOpen
       ? sessionOpen
         ? 2
         : 1
@@ -746,8 +792,10 @@ export function MobileApp(): JSX.Element {
           ? filePreviewShown
             ? 3
             : 2
-          : 1
-        : 0) + (sheetOpen ? 1 : 0);
+          : agentOverlayShown
+            ? 2
+            : 1
+          : 0) + (sheetOpen ? 1 : 0);
   const goBackOneScreen = useCallback((): void => {
     if (actionsRow !== null) {
       setActionsRow(null);
@@ -759,6 +807,14 @@ export function MobileApp(): JSX.Element {
     }
     if (newSessionSheet !== null) {
       setNewSessionSheet(null);
+      return;
+    }
+    if (reviewScopeSheetOpen) {
+      setReviewScopeSheetOpen(false);
+      return;
+    }
+    if (appearanceOpen) {
+      setAppearanceOpen(false);
       return;
     }
     if (newSessionOpen) {
@@ -773,16 +829,23 @@ export function MobileApp(): JSX.Element {
       closeReview();
       return;
     }
+    if (dismissAgentsOverlay) {
+      dismissAgentsOverlay();
+      return;
+    }
     closeSession();
   }, [
     actionsRow,
+    appearanceOpen,
     closeNewSession,
     closeReview,
     closeSession,
+    dismissAgentsOverlay,
     filePreviewShown,
     listMenuOpen,
     newSessionOpen,
     newSessionSheet,
+    reviewScopeSheetOpen,
     reviewShown
   ]);
   useMobileBackNavigation(screenDepth, goBackOneScreen);
@@ -934,34 +997,13 @@ export function MobileApp(): JSX.Element {
           </button>
         </div>
       </div>
-      {listParked ? (
-        <div className="mobile-screen-overlay">
-          {newSessionOpen ? (
-            <NewSessionScreen
-              projects={snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID)}
-              workspaces={snapshot.workspaces}
-              initialWorkspaceId={newSessionWorkspaceId}
-              initialSeed={newSessionSeed}
-              backLabel={sessionOpen ? "Back to chat" : "Back to chats"}
-              onClose={closeNewSession}
-              onLaunched={handleLaunched}
-              onError={(message) => showToast({ kind: "error", message })}
-              openSheet={newSessionSheet}
-              onOpenSheetChange={setNewSessionSheet}
-            />
-          ) : reviewShown && selectedWorkspace ? (
-            <Suspense
-              fallback={<LinesSkeleton rows={10} label="Loading changes" className="review-diff-skeleton" />}
-            >
-              <MobileReviewScreen
-                workspace={selectedWorkspace}
-                initialFilePath={reviewFilePath}
-                filePreviewOpen={reviewFilePreviewOpen}
-                onFilePreviewOpenChange={setReviewFilePreviewOpen}
-                onClose={closeReview}
-              />
-            </Suspense>
-          ) : sessionOpen ? (
+      {sessionOpen ? (
+        <div
+          className="mobile-screen-overlay"
+          data-parked={sessionParked || undefined}
+          aria-hidden={sessionParked || undefined}
+          inert={sessionParked || undefined}
+        >
             <div className="mobile-session-screen">
               <MobileScreenHeader
                 onBack={closeSession}
@@ -970,22 +1012,10 @@ export function MobileApp(): JSX.Element {
                 actions={
                   selectedWorkspace ? (
                     <>
-                      <button
-                        type="button"
-                        className="mobile-icon-button"
-                        onClick={() => startNewChatFromWorkspace(selectedWorkspace)}
-                        aria-label="New chat"
-                      >
-                        <SquarePen size={18} aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        className="mobile-icon-button"
-                        onClick={() => void archiveWorkspace(selectedWorkspace)}
-                        aria-label="Archive chat"
-                      >
-                        <Archive size={18} aria-hidden />
-                      </button>
+                      {/* Only changes live here. Starting a chat and archiving
+                          one are both a tap away in the list's row menu, and
+                          three icons crowded a bar whose left half is a title
+                          that needs the room. */}
                       {/* A side chat runs in an app-owned scratch directory with
                           one empty commit, so this button would open a permanently
                           empty diff and an empty tree. Tapping a file the agent
@@ -1047,10 +1077,62 @@ export function MobileApp(): JSX.Element {
                 multitasks={selectedSession ? (multitasksByParent.get(selectedSession.id) ?? []) : []}
                 agentsViewAvailable={false}
                 agentsPresentation="overlay"
+                onAgentsOverlayChange={(dismiss) => setDismissAgentsOverlay(() => dismiss)}
                 workspaceCardVisible={false}
               />
             </div>
-          ) : null}
+        </div>
+      ) : null}
+      {appearanceOpen ? (
+        <div className="mobile-screen-overlay">
+            <div className="mobile-settings-screen">
+              <MobileScreenHeader
+                onBack={() => setAppearanceOpen(false)}
+                backLabel="Back to chats"
+                title="Appearance"
+              />
+              <div className="mobile-settings-body">
+                <MobileAppearanceControls
+                  theme={theme}
+                  onThemeChange={pickTheme}
+                  accentId={accentId}
+                  onAccentChange={setAccentId}
+                  userBubbleTint={userBubbleTint}
+                  onUserBubbleTintChange={setUserBubbleTint}
+                />
+              </div>
+            </div>
+        </div>
+      ) : newSessionOpen ? (
+        <div className="mobile-screen-overlay">
+            <NewSessionScreen
+              projects={snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID)}
+              workspaces={snapshot.workspaces}
+              initialWorkspaceId={newSessionWorkspaceId}
+              initialSeed={newSessionSeed}
+              backLabel={sessionOpen ? "Back to chat" : "Back to chats"}
+              onClose={closeNewSession}
+              onLaunched={handleLaunched}
+              onError={(message) => showToast({ kind: "error", message })}
+              openSheet={newSessionSheet}
+              onOpenSheetChange={setNewSessionSheet}
+            />
+        </div>
+      ) : reviewShown && selectedWorkspace ? (
+        <div className="mobile-screen-overlay">
+            <Suspense
+              fallback={<LinesSkeleton rows={10} label="Loading changes" className="review-diff-skeleton" />}
+            >
+              <MobileReviewScreen
+                workspace={selectedWorkspace}
+                initialFilePath={reviewFilePath}
+                filePreviewOpen={reviewFilePreviewOpen}
+                onFilePreviewOpenChange={setReviewFilePreviewOpen}
+                scopeSheetOpen={reviewScopeSheetOpen}
+                onScopeSheetOpenChange={setReviewScopeSheetOpen}
+                onClose={closeReview}
+              />
+            </Suspense>
         </div>
       ) : null}
       {listMenuOpen ? (
@@ -1059,20 +1141,21 @@ export function MobileApp(): JSX.Element {
           <div className="mobile-sheet-group">
             <SheetOption
               label="New chat"
+              detail="Pick a project and start fresh"
               onSelect={() => {
                 setListMenuOpen(false);
                 startNewChat();
               }}
             />
+            <SheetOption
+              label="Appearance"
+              detail="Theme, accent, message bubbles"
+              onSelect={() => {
+                setListMenuOpen(false);
+                setAppearanceOpen(true);
+              }}
+            />
           </div>
-          <MobileAppearanceControls
-            theme={theme}
-            onThemeChange={pickTheme}
-            accentId={accentId}
-            onAccentChange={setAccentId}
-            userBubbleTint={userBubbleTint}
-            onUserBubbleTintChange={setUserBubbleTint}
-          />
         </BottomSheet>
       ) : null}
       {actionsRow ? (
@@ -1103,6 +1186,18 @@ export function MobileApp(): JSX.Element {
                 void renameWorkspace(workspace);
               }}
             />
+            {isForkable(actionsRow.session) ? (
+              <SheetOption
+                label="Fork chat"
+                detail="Copy it into a new chat and continue there"
+                onSelect={() => {
+                  const { session } = actionsRow;
+                  if (!session) return;
+                  setActionsRow(null);
+                  void forkSession(session.id);
+                }}
+              />
+            ) : null}
             <SheetOption
               label="Archive"
               danger

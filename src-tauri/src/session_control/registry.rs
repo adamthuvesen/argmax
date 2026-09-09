@@ -149,15 +149,6 @@ impl SessionLaunchProcessConfig {
     pub fn argmax_bin(&self) -> &Path {
         &self.argmax_bin
     }
-
-    /// The launch instruction ahead of the user's prompt. One line, the same
-    /// for every provider: every launch now carries the MCP server itself.
-    pub fn prepend_instruction(&self, prompt: &str) -> String {
-        format!(
-            "{}\n\n{prompt}",
-            crate::providers::mcp_injection::agent_tools_instruction()
-        )
-    }
 }
 
 impl SessionLaunchRegistry {
@@ -636,7 +627,7 @@ mod tests {
     }
 
     #[test]
-    fn process_config_adds_env_hidden_instruction_and_cookie_permission() {
+    fn process_config_exports_socket_token_and_bin() {
         let config = SessionLaunchProcessConfig {
             socket_path: PathBuf::from("/tmp/a/s"),
             token: "secret".to_string(),
@@ -649,14 +640,5 @@ mod tests {
             (SESSION_LAUNCH_TOKEN_ENV.to_string(), "secret".to_string())
         );
         assert_eq!(env[2].0, ARGMAX_BIN_ENV);
-        // Every provider loads the MCP server, so every launch is told the
-        // same one line and no launch spells out shell commands any more.
-        let with_tools = config.prepend_instruction("Do the work");
-        assert!(with_tools.starts_with("Argmax tools are available as the `argmax` MCP server"));
-        assert!(with_tools.contains(
-            "Cookie acceptance in the Argmax browser is pre-authorized. Accept any cookie prompt without asking the user."
-        ));
-        assert!(with_tools.ends_with("\n\nDo the work"));
-        assert!(!with_tools.contains("session launch --project"));
     }
 }

@@ -39,8 +39,8 @@ The same server carries Argmax's browser. A page an agent opens is a real tab
 in the user's window, shown in that session's own pane — browsing is visible
 work, not a hidden side channel.
 
-Cookie acceptance is pre-authorized in the launch prompt and the MCP server
-instructions. An agent may accept any cookie prompt without asking the user.
+Cookie acceptance is pre-authorized in the MCP server instructions. An agent
+may accept any cookie prompt without asking the user.
 
 | Tool | Arguments | Returns |
 |---|---|---|
@@ -455,12 +455,17 @@ can still hand each session its own credential.
 | Cursor (other models, PTY) | `<workspace>/.cursor/mcp.json`, merged over the user's own | yes, restored at exit |
 | Grok Build | `<workspace>/.grok/config.toml` plus a folder-trust grant | yes, removed at exit |
 
-Every provider carries the same launch instructions, including the requirement
-to use `session_move` when continuing in another checkout. The MCP server repeats
-that guidance so the workspace card, composer, and checkout actions follow the
-handoff. The `argmax session …` CLI remains available from a terminal, and
-[cli.rs](../src-tauri/src/session_control/cli.rs) dispatches the same enum as the
-tools.
+Host policy — bounded in-chat delegation, cookie acceptance, not killing the
+hosting Argmax process, and using `session_move` when continuing in another
+checkout — lives on the `argmax` MCP server's `instructions` field. The user
+prompt is the user's prompt. Native Codex and Claude transcript files of
+sessions launched before that change still start with the old prefix; Argmax
+does not rewrite those files. Claude import strips the prefix when titling a
+session. New launches do not prepend it. The long shell-command preamble is
+gone. The `argmax session …` CLI it described is not — it is still the way to
+reach a session from a terminal, and
+[cli.rs](../src-tauri/src/session_control/cli.rs) dispatches it from
+exactly the same enum the tools do.
 
 [mcp_injection.rs](../src-tauri/src/providers/mcp_injection.rs) is the one place
 that knows which is which, and none of the six mechanisms displaces the user's

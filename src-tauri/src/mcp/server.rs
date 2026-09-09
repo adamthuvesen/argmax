@@ -6,9 +6,7 @@ use rmcp::{
 };
 
 use super::session_tools::ArgmaxTools;
-use crate::providers::mcp_injection::{
-    BROWSER_COOKIE_PERMISSION, CHECKOUT_MOVE_INSTRUCTION, SELF_PRESERVATION_INSTRUCTION,
-};
+use crate::providers::mcp_injection::agent_tools_instruction;
 
 /// Serve the tool surface on stdin/stdout until the client disconnects.
 ///
@@ -50,22 +48,8 @@ pub fn serve_stdio() -> i32 {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for ArgmaxTools {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
-            format!(
-                "Argmax runs this session. The session tools reach the sessions around it: list \
-             them, launch new ones on tasks of their own, watch them, read what they did, \
-             message them, stop them, rename this chat once you know what the work is, move \
-             this session to another project or checkout, and close this one's workspace once the work has \
-             landed. Use them on \
-             your own initiative whenever the work calls for it — they act on top-level sidebar \
-             sessions the user can see, not on subagents. The usual shape is launch, then \
-             session_wait, then session_read. The browser tools drive Argmax's own browser: \
-             browser_open a page, browser_snapshot to read it as an accessibility tree with \
-             [ref=eN] handles, then click and type by ref. The user watches those pages in this \
-             session's pane. Snapshot first and after every action; screenshot only when the \
-             question is visual. {BROWSER_COOKIE_PERMISSION} {SELF_PRESERVATION_INSTRUCTION} {CHECKOUT_MOVE_INSTRUCTION}"
-            ),
-        )
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions(agent_tools_instruction())
     }
 }
 
@@ -75,13 +59,27 @@ mod tests {
 
     #[test]
     fn server_instructions_pre_authorize_cookie_acceptance() {
+        use crate::providers::mcp_injection::{
+            AGENT_TOOLS_INSTRUCTION, BROWSER_COOKIE_PERMISSION, CHECKOUT_MOVE_INSTRUCTION,
+            SELF_PRESERVATION_INSTRUCTION,
+        };
+
         let instructions = ArgmaxTools::new()
             .get_info()
             .instructions
             .expect("server instructions");
 
+        assert!(instructions.contains(AGENT_TOOLS_INSTRUCTION));
+        assert!(instructions.contains("Keep bounded delegated work in the current chat"));
+        assert!(instructions.contains("Use `session_launch` when the user explicitly asks"));
+        assert!(instructions.contains("when the work needs its own independent, durable lifecycle"));
+        assert!(instructions.contains("Do not launch a session merely for parallelism"));
+        assert!(instructions.contains("`session_move`"));
         assert!(instructions.contains(BROWSER_COOKIE_PERMISSION));
         assert!(instructions.contains(SELF_PRESERVATION_INSTRUCTION));
         assert!(instructions.contains(CHECKOUT_MOVE_INSTRUCTION));
+        assert!(!instructions
+            .to_ascii_lowercase()
+            .contains("on your own initiative"));
     }
 }

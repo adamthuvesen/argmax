@@ -55,12 +55,14 @@ use super::ProviderId;
 pub const SERVER_NAME: &str = "argmax";
 
 /// What a provider that actually loads the `argmax` server is told about its
-/// capabilities. The tool descriptions carry the operational details.
+/// capabilities. The tool descriptions carry the operational details. Folded
+/// into [`agent_tools_instruction`], which is the MCP `ServerInfo` blob — not
+/// a prompt prefix.
 pub const AGENT_TOOLS_INSTRUCTION: &str = "Argmax tools are available as the `argmax` MCP server, including Argmax's browser for web interaction. Keep bounded delegated work in the current chat and use your provider's native subagents for research, review, and implementation that you will integrate into this turn. The user-facing multitask flow is for work that should run alongside the chat. Use `session_launch` when the user explicitly asks for a separate session or when the work needs its own independent, durable lifecycle that remains visible and steerable after this turn, such as a separate repository investigation or a long-running build. Do not launch a session merely for parallelism, fresh context, model choice, or context relief.";
 
 /// Standing permission to accept a site's cookie prompt. It travels in the
-/// launch prompt and the MCP server instructions so every provider sees it
-/// without needing to ask the user.
+/// MCP server instructions so every provider sees it without needing to ask
+/// the user.
 pub const BROWSER_COOKIE_PERMISSION: &str = "Cookie acceptance in the Argmax browser is pre-authorized. Accept any cookie prompt without asking the user.";
 
 /// Standing instruction so agents do not terminate the Argmax instance hosting
@@ -70,7 +72,30 @@ pub const SELF_PRESERVATION_INSTRUCTION: &str = "Do not quit, kill, or replace t
 /// Continuing in another checkout must move the chat's tools and UI with it.
 pub const CHECKOUT_MOVE_INSTRUCTION: &str = "When continuing this chat's work in another checkout or worktree, call `session_move` with its absolute `path` and a continuation `prompt`, then end the turn so the handoff can run. This updates the workspace card, composer branch, diff, files, terminal, and Git actions together. A shell `cd`, command `workdir`, or `git -C` only changes where that command runs and leaves the chat attached to its original checkout. For a branch switch within the same checkout, use Git normally and Argmax will refresh the branch.";
 
+/// Host policy advertised on the `argmax` MCP server as `ServerInfo.instructions`.
+/// The only live copy: launches send the user prompt as the user prompt.
 pub fn agent_tools_instruction() -> String {
+    format!(
+        "{} Argmax runs this session. The session tools reach the sessions around it: list \
+         them, launch new ones on tasks of their own, watch them, read what they did, \
+         message them, stop them, rename this chat once you know what the work is, move \
+         this session to another project or checkout (`session_move`), and close this \
+         one's workspace once the work has landed. They act on top-level sidebar sessions \
+         the user can see, not on subagents. The usual shape is launch, then \
+         session_wait, then session_read. The browser tools drive Argmax's own browser: \
+         browser_open a page, browser_snapshot to read it as an accessibility tree with \
+         [ref=eN] handles, then click and type by ref. The user watches those pages in \
+         this session's pane. Snapshot first and after every action; screenshot only \
+         when the question is visual.",
+        historical_prompt_instruction()
+    )
+}
+
+/// What a launch used to glue in front of the user's prompt. No launch
+/// prepends this any more. It survives only so [`strip_instruction`] still
+/// recognises it at the head of a prompt recorded or imported before the
+/// policy moved onto the MCP server.
+fn historical_prompt_instruction() -> String {
     format!("{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION} {SELF_PRESERVATION_INSTRUCTION} {CHECKOUT_MOVE_INSTRUCTION}")
 }
 
@@ -81,10 +106,11 @@ pub fn agent_tools_instruction() -> String {
 /// or imported before those two paths were closed.
 pub const LEGACY_SHELL_COMMAND_INSTRUCTION: &str = r#"Argmax session controls are available to you. To create a separate top-level session, use "$ARGMAX_BIN" session launch --project <registered name or absolute repo path> --prompt '<task>'. Omit --project to use this session's project. To move this chat to another registered project, use "$ARGMAX_BIN" session move --project <registered name or absolute repo path>. Both commands use the shared checkout by default. Add --worktree for isolation. Moving archives the source workspace after this turn settles. Add --keep-source to keep it. To see what other sessions exist before targeting one, use "$ARGMAX_BIN" session list [--project <name-or-path> | --all]; it prints each session's id, project, task label, provider, and state as JSON, newest activity first. To send a message into an existing session — for example one you just launched, or one the user names — use "$ARGMAX_BIN" session message --session <id> --prompt '<message>'; it queues if that session is mid-turn. Use these on your own initiative when the task needs them. They create and address top-level sidebar sessions, not subagents: every one is visible to the user, spends real tokens, and outlives your turn. Launches are capped at two levels deep and ten per session."#;
 
-/// Strip whichever instruction Argmax prepended, so an imported transcript's
-/// first prompt reads as the user wrote it.
+/// Strip whichever instruction Argmax used to prepend, so an imported
+/// transcript's first prompt reads as the user wrote it. No launch prepends
+/// these any more (same pattern as [`LEGACY_SHELL_COMMAND_INSTRUCTION`]).
 pub fn strip_instruction(prompt: &str) -> &str {
-    if let Some(rest) = prompt.strip_prefix(&agent_tools_instruction()) {
+    if let Some(rest) = prompt.strip_prefix(&historical_prompt_instruction()) {
         return rest;
     }
 
@@ -642,7 +668,7 @@ mod tests {
 
     #[test]
     fn strips_current_and_previous_agent_tool_instructions() {
-        let current = format!("{}\n\nDo the work", agent_tools_instruction());
+        let current = format!("{}\n\nDo the work", historical_prompt_instruction());
         let previous =
             format!("{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION}\n\nDo the work");
         let before_checkout_move = format!(
@@ -652,17 +678,22 @@ mod tests {
         assert_eq!(strip_instruction(&current), "\n\nDo the work");
         assert_eq!(strip_instruction(&previous), "\n\nDo the work");
         assert_eq!(strip_instruction(&before_checkout_move), "\n\nDo the work");
+        assert_eq!(strip_instruction("Do the work"), "Do the work");
     }
 
     #[test]
     fn agent_tool_instruction_prefers_in_chat_delegation() {
         let instruction = agent_tools_instruction();
 
+        assert!(instruction.contains(AGENT_TOOLS_INSTRUCTION));
         assert!(instruction.contains("Keep bounded delegated work in the current chat"));
         assert!(instruction.contains("Use `session_launch` when the user explicitly asks"));
         assert!(instruction.contains("when the work needs its own independent, durable lifecycle"));
         assert!(instruction.contains("Do not launch a session merely for parallelism"));
         assert!(instruction.contains(CHECKOUT_MOVE_INSTRUCTION));
+        assert!(!instruction
+            .to_ascii_lowercase()
+            .contains("on your own initiative"));
     }
 
     #[test]

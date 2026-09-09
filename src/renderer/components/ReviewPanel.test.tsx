@@ -21,9 +21,9 @@ import { readBundledCss } from "../styles/readBundledCss.js";
 
 function reviewStub(): ReviewState {
   return baseReviewStub({
-    files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1 }],
+    files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false }],
     selectedFilePath: "src/a.ts",
-    diff: { workspaceId: "workspace-1", filePath: "src/a.ts", content: "@@ -1,1 +1,1 @@\n-old\n+new\n" },
+    diff: { workspaceId: "workspace-1", filePath: "src/a.ts", content: "@@ -1,1 +1,1 @@\n-old\n+new\n", revision: "test-revision" },
     diffState: "ready",
     isPanelOpen: true,
     terminalWorkspaceId: "workspace-1",
@@ -64,9 +64,9 @@ describe("ReviewPanel changes layout", () => {
   it("renders changed files as stacked full-width rows with the selected diff inline", () => {
     const review = reviewStub();
     review.files = [
-      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 },
-      { path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0 }
-    ];
+      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 , staged: false },
+{ path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0 , staged: false },
+];
     const { container } = render(<ReviewPanel review={review} />);
     const body = container.querySelector(".review-body");
     const leftCol = container.querySelector(".review-list-col");
@@ -97,9 +97,9 @@ describe("ReviewPanel changes layout", () => {
     const openFile = vi.fn();
     review.openFile = openFile;
     review.files = [
-      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 },
-      { path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0 }
-    ];
+      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 , staged: false },
+{ path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0 , staged: false },
+];
 
     render(<ReviewPanel review={review} />);
 

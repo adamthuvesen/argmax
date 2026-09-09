@@ -17,12 +17,12 @@ pub use cli::{try_run_session_control_cli, CliPrompt, SessionControlCliInput};
 #[cfg(unix)]
 pub use client::send_session_control;
 pub use protocol::{
-    ArchiveAction, InboxAction, InboxDelivery, InboxMessage, LaunchAction, LaunchedSession,
-    ListAction, MessageAction, MessageDelivery, MoveAction, ReadAction, ReadEntry,
-    ScheduledArchive, ScheduledMove, SessionControlAction, SessionControlError,
-    SessionControlRequest, SessionControlResponse, SessionControlResult, SessionList,
-    SessionListEntry, SessionRead, SessionStatus, SessionStopped, StatusAction, StopAction,
-    WaitAction, WaitOutcome, WaitedSession,
+    ArchiveAction, GoalOutcome, GoalSetAction, InboxAction, InboxDelivery, InboxMessage,
+    LaunchAction, LaunchedSession, ListAction, MessageAction, MessageDelivery, MoveAction,
+    ReadAction, ReadEntry, RenameAction, ScheduledArchive, ScheduledMove, SessionControlAction,
+    SessionControlError, SessionControlRequest, SessionControlResponse, SessionControlResult,
+    SessionList, SessionListEntry, SessionRead, SessionRenamed, SessionStatus, SessionStopped,
+    StatusAction, StopAction, WaitAction, WaitOutcome, WaitedSession,
 };
 pub use registry::{AfterTurn, SessionLaunchProcessConfig, SessionLaunchRegistry};
 pub use server::{SessionLaunchError, SessionLaunchServer};

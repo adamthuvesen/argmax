@@ -84,6 +84,7 @@ impl SessionState {
         compute_session_attention(SessionAttentionInput {
             state: self,
             has_pending_approval: false,
+            has_outstanding_question: false,
         })
     }
 }

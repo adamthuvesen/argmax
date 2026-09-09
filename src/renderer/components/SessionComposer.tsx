@@ -18,6 +18,7 @@ import {
   Quote,
   Send,
   Square,
+  Target,
   Trash2,
   X
 } from "lucide-react";
@@ -67,13 +68,19 @@ import {
   AGENT_MODE_LABELS,
   toggleAgentMode
 } from "../lib/agentMode.js";
-import { isClearCommand, type ComposerCommand } from "../lib/composerCommands.js";
+import {
+  dispatchedCommandNames,
+  isClearCommand,
+  type ComposerCommand
+} from "../lib/composerCommands.js";
 import { multitaskCommandPrompt } from "../lib/multitask.js";
+import { parseGoalCommand } from "../lib/goalCommand.js";
 import { clearDraft, writeDraftAttachments, writeDraftText } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { ChangeCount } from "./ChangeCount.js";
+import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { ContextRing } from "./ContextRing.js";
 import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
@@ -119,6 +126,7 @@ export function SessionComposer({
   inputRef,
   isQueueing,
   onFastModeEnabledChange,
+  onFocusChange,
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
   onMultitask,
@@ -140,7 +148,9 @@ export function SessionComposer({
   setStatus,
   shouldRefocusInput,
   status,
-  workspace
+  workspace,
+  goalEnabled = true,
+  goalMaxTurns
 }: {
   agentMode: AgentMode;
   canSend: boolean;
@@ -178,6 +188,7 @@ export function SessionComposer({
     agentMode: AgentMode,
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
+  onFocusChange?: (focused: boolean) => void;
   /** Offered by the provider-switch dialog as the recommended alternative:
       opens the launcher with the picked model and this composer's draft. */
   onStartNewSession?: (seed: NewSessionSeed) => void;
@@ -201,6 +212,9 @@ export function SessionComposer({
   shouldRefocusInput: MutableRefObject<boolean>;
   status: ComposerStatus | null;
   workspace: WorkspaceSummary | null;
+  /** Settings → Agents → Conversation. Off removes `/goal` from the menu. */
+  goalEnabled?: boolean;
+  goalMaxTurns?: number;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
   const sessionIdRef = useRef(sessionId);
@@ -323,6 +337,15 @@ export function SessionComposer({
         run: () => setInput("/multitask ")
       });
     }
+    if (session && goalEnabled) {
+      commands.push({
+        name: "goal",
+        label: "Goal",
+        hint: "Keep working until a condition holds",
+        icon: Target,
+        run: () => setInput("/goal ")
+      });
+    }
     commands.push({
       name: "attach",
       label: "Attach file",
@@ -355,6 +378,7 @@ export function SessionComposer({
     return commands;
   }, [
     changeSummary,
+    goalEnabled,
     nextMode,
     onClearSession,
     onMultitask,
@@ -384,14 +408,27 @@ export function SessionComposer({
 
   useAutoGrowTextArea(inputRef, input, PROMPT_MAX_HEIGHT_PX);
 
-  // Tint every `/command` token that maps to a real skill — leading or
-  // mid-message — in the accent colour. A textarea can't colour a substring,
-  // so a mirror div renders the same text behind a transparent-text textarea —
-  // mounted only while a valid skill is present, so normal typing never
-  // routes through the overlay.
+  const dispatchedNames = useMemo(
+    () =>
+      dispatchedCommandNames({
+        hasSession: session !== null,
+        canMultitask: onMultitask !== undefined,
+        goalEnabled
+      }),
+    [goalEnabled, onMultitask, session]
+  );
+  // Tint every `/command` token that maps to a real skill or one of those
+  // commands — leading or mid-message — in the accent colour. A textarea can't
+  // colour a substring, so a mirror div renders the same text behind a
+  // transparent-text textarea — mounted only while a valid token is present,
+  // so normal typing never routes through the overlay.
   const skillHighlight = useMemo(
-    () => splitSkillTokens(input, (name) => slashAutocomplete.skillNames.has(name)),
-    [input, slashAutocomplete.skillNames]
+    () =>
+      splitSkillTokens(
+        input,
+        (name) => slashAutocomplete.skillNames.has(name) || dispatchedNames.has(name)
+      ),
+    [dispatchedNames, input, slashAutocomplete.skillNames]
   );
   const highlightBackdropRef = useRef<HTMLDivElement | null>(null);
   const syncHighlightScroll = useCallback((event: ReactUIEvent<HTMLTextAreaElement>): void => {
@@ -430,23 +467,23 @@ export function SessionComposer({
     field.setSelectionRange(caret, caret);
   }, [input, inputRef]);
 
+  const hasMounted = useRef(false);
   useEffect(() => {
-    if (!shouldRefocusInput.current || isSending || !canSend) {
-      return;
-    }
-
+    const isMount = !hasMounted.current;
+    hasMounted.current = true;
+    if (isSending || !canSend) return;
+    const refocusRequested = shouldRefocusInput.current;
     shouldRefocusInput.current = false;
-    inputRef.current?.focus();
-  }, [canSend, inputRef, isSending, shouldRefocusInput]);
-
-  useEffect(() => {
-    if (reviewPanelOpen || isSending || !canSend) return;
     // Touch devices (the phone companion) get no programmatic focus: it pops
     // the on-screen keyboard over half the viewport the moment a session
-    // opens. Phones focus the composer only on an explicit tap.
-    if (isCoarsePointer) return;
-    inputRef.current?.focus();
-  }, [reviewPanelOpen, canSend, inputRef, isCoarsePointer, isSending]);
+    // opens. Refocusing after an explicit send is still allowed.
+    if (!refocusRequested && (reviewPanelOpen || isCoarsePointer)) return;
+    // Sending can finish after the reader has moved to another pane or
+    // control. Only initial mounting gets to claim focus from outside here.
+    const active = document.activeElement;
+    if (!isMount && active !== document.body && !inputFormRef.current?.contains(active)) return;
+    inputRef.current?.focus({ preventScroll: true });
+  }, [reviewPanelOpen, canSend, inputRef, isCoarsePointer, isSending, shouldRefocusInput]);
 
   const onSessionInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     slashAutocomplete.onKeyDown(event);
@@ -515,6 +552,38 @@ export function SessionComposer({
         setStatus({
           kind: "error",
           message: error instanceof Error ? error.message : "Could not clear the conversation."
+        });
+      } finally {
+        setSendingSessionId((current) => (current === session.id ? null : current));
+      }
+      return;
+    }
+
+    // `/goal <condition>` configures the session rather than sending a message.
+    // Setting one starts its own first turn, so this composer only clears the
+    // draft and gets out of the way.
+    const goalCommand = goalEnabled ? parseGoalCommand(trimmedInput) : null;
+    if (goalCommand && workspace) {
+      setSendingSessionId(session.id);
+      setStatus(null);
+      shouldRefocusInput.current = true;
+      try {
+        if (goalCommand.kind === "clear") {
+          await window.argmax!.goals.clear({ sessionId: session.id });
+        } else {
+          await window.argmax!.goals.set({
+            workspaceId: workspace.id,
+            sessionId: session.id,
+            condition: goalCommand.condition,
+            maxTurns: goalMaxTurns ?? null
+          });
+        }
+        setInput("");
+        clearDraft(session.id);
+      } catch (error) {
+        setStatus({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not set the goal."
         });
       } finally {
         setSendingSessionId((current) => (current === session.id ? null : current));
@@ -596,6 +665,10 @@ export function SessionComposer({
       data-type-scale="composer"
       ref={inputFormRef}
       onSubmit={(event) => void submitInput(event)}
+      onFocus={() => onFocusChange?.(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) onFocusChange?.(false);
+      }}
       onDragEnter={onComposerDragEnter}
       onDragOver={onComposerDragOver}
       onDragLeave={onComposerDragLeave}
@@ -990,6 +1063,22 @@ export function SessionComposer({
             ) : null}
           </div>
         ) : null}
+        {isRemoteBridge() && !floating ? (
+          // On the phone an image is the usual way in — a screenshot of the
+          // thing you are asking about — so attaching is a primary action
+          // rather than one of the workspace's secondary ones. The "…" keeps
+          // that role everywhere else.
+          <button
+            type="button"
+            className="composer-footer-chip composer-attach-chip"
+            title="Attach file"
+            aria-label="Attach file"
+            disabled={!canSend || isSending}
+            onClick={openFilePicker}
+          >
+            <Paperclip size={15} aria-hidden="true" />
+          </button>
+        ) : null}
         {workspace && !floating ? (
           <div className="composer-compact-context" ref={workspaceDetails.setAnchor}>
             <button
@@ -1012,13 +1101,15 @@ export function SessionComposer({
                 ref={workspaceDetails.setPopover}
                 style={workspaceDetails.floatingStyles}
               >
-                {session ? (
+                {session && !isRemoteBridge() ? (
                   <div className="composer-compact-context-row composer-compact-context-row--context">
                     <span>Context</span>
                     <ContextRing session={session} />
                   </div>
                 ) : null}
-                {workspace.sharedWorkspace ? null : (
+                {/* `system:open-path` is desktop-only (REMOTE_UNSUPPORTED), so
+                    over the bridge this row could only ever fail. */}
+                {workspace.sharedWorkspace || isRemoteBridge() ? null : (
                   <button
                     type="button"
                     className="composer-compact-context-row"
@@ -1055,6 +1146,7 @@ export function SessionComposer({
                     <span className="composer-compact-context-branch">{workspace.branch}</span>
                   </div>
                 ) : null}
+                {isRemoteBridge() ? null : (
                 <button
                   type="button"
                   className="composer-compact-context-row composer-compact-context-row--attach"
@@ -1069,6 +1161,7 @@ export function SessionComposer({
                   <Plus size={12} aria-hidden="true" />
                   <span>Attach file</span>
                 </button>
+                )}
               </div>
             ) : null}
           </div>

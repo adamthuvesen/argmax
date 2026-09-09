@@ -1,11 +1,46 @@
 use super::inputs::*;
 use super::live_database;
 use crate::{
+    checkpoints::service::CheckpointService,
     error::ArgmaxResult,
+    git::ops::{GitCommitInput, GitCommitResult, GitOpsService},
     review::git_review::{self, ChangedFileSummary, WorkspaceDiff},
     state::AppState,
+    workspaces::WorkspaceTargetKind,
 };
+use serde::Deserialize;
+use specta::Type;
 use tauri::State;
+
+/// Mutating review inputs stay beside their commands until the generated IPC
+/// layer owns the public bridge shape. Their path and revision are checked by
+/// `git_review` while the checkout lock is held.
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewIndexFileInput {
+    pub kind: WorkspaceTargetKind,
+    pub id: String,
+    pub file_path: String,
+    pub revision: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewIndexHunkInput {
+    pub kind: WorkspaceTargetKind,
+    pub id: String,
+    pub file_path: String,
+    pub revision: String,
+    pub hunk_index: u32,
+    pub context_lines: Option<super::validation::DiffContextLines>,
+}
+
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewCommitStagedInput {
+    pub workspace_id: String,
+    pub message: String,
+}
 
 #[tauri::command(rename = "review:list-changed-files")]
 #[specta::specta]
@@ -51,6 +86,178 @@ pub(crate) async fn review_load_diff_impl(
         input.file_path.as_ref().map(|path| path.as_str()),
         input.comparison,
         input.context_lines.map(|context| context.get()),
+    )
+    .await
+}
+
+#[tauri::command(rename = "review:stage-file")]
+#[specta::specta]
+pub async fn review_stage_file(
+    state: State<'_, AppState>,
+    input: ReviewIndexFileInput,
+) -> ArgmaxResult<()> {
+    review_update_file_index_impl(&state, input, true).await
+}
+
+#[tauri::command(rename = "review:unstage-file")]
+#[specta::specta]
+pub async fn review_unstage_file(
+    state: State<'_, AppState>,
+    input: ReviewIndexFileInput,
+) -> ArgmaxResult<()> {
+    review_update_file_index_impl(&state, input, false).await
+}
+
+pub(crate) async fn review_update_file_index_impl(
+    state: &AppState,
+    input: ReviewIndexFileInput,
+    stage: bool,
+) -> ArgmaxResult<()> {
+    let database = live_database(state)?;
+    git_review::update_file_index(
+        database.as_ref(),
+        input.kind,
+        &input.id,
+        &input.file_path,
+        &input.revision,
+        stage,
+    )
+    .await
+}
+
+#[tauri::command(rename = "review:stage-hunk")]
+#[specta::specta]
+pub async fn review_stage_hunk(
+    state: State<'_, AppState>,
+    input: ReviewIndexHunkInput,
+) -> ArgmaxResult<()> {
+    review_update_hunk_index_impl(&state, input, true).await
+}
+
+#[tauri::command(rename = "review:unstage-hunk")]
+#[specta::specta]
+pub async fn review_unstage_hunk(
+    state: State<'_, AppState>,
+    input: ReviewIndexHunkInput,
+) -> ArgmaxResult<()> {
+    review_update_hunk_index_impl(&state, input, false).await
+}
+
+pub(crate) async fn review_update_hunk_index_impl(
+    state: &AppState,
+    input: ReviewIndexHunkInput,
+    stage: bool,
+) -> ArgmaxResult<()> {
+    let database = live_database(state)?;
+    git_review::update_hunk_index(
+        database.as_ref(),
+        input.kind,
+        &input.id,
+        &input.file_path,
+        &input.revision,
+        input.hunk_index as usize,
+        input.context_lines.map(|value| value.get()),
+        stage,
+    )
+    .await
+}
+
+#[tauri::command(rename = "review:commit-staged")]
+#[specta::specta]
+pub async fn review_commit_staged(
+    state: State<'_, AppState>,
+    input: ReviewCommitStagedInput,
+) -> ArgmaxResult<GitCommitResult> {
+    review_commit_staged_impl(&state, input).await
+}
+
+pub(crate) async fn review_commit_staged_impl(
+    state: &AppState,
+    input: ReviewCommitStagedInput,
+) -> ArgmaxResult<GitCommitResult> {
+    let service = GitOpsService::new(live_database(state)?);
+    service
+        .commit_staged(GitCommitInput {
+            workspace_id: input.workspace_id,
+            message: input.message,
+            selected_files: Vec::new(),
+        })
+        .await
+}
+
+#[tauri::command(rename = "review:revert-file")]
+#[specta::specta]
+pub async fn review_revert_file(
+    state: State<'_, AppState>,
+    input: ReviewIndexFileInput,
+) -> ArgmaxResult<()> {
+    review_revert_file_impl(&state, input).await
+}
+
+pub(crate) async fn review_revert_file_impl(
+    state: &AppState,
+    input: ReviewIndexFileInput,
+) -> ArgmaxResult<()> {
+    if input.kind != WorkspaceTargetKind::Workspace {
+        return Err(crate::error::ArgmaxError::service(
+            "REVIEW_REVERT_PROJECT_UNSUPPORTED",
+            "Reverting from a project review is unavailable because it has no workspace checkpoint.",
+        ));
+    }
+    let database = live_database(state)?;
+    // Capture before acquiring the review lock. The subsequent revision check
+    // rejects a concurrent edit, so the checkpoint can never justify reverting
+    // data that was not on the screen the user acted on.
+    CheckpointService::new(database.clone())
+        .create_recovery_checkpoint(
+            input.id.clone(),
+            None,
+            format!("Before reverting {}", input.file_path),
+        )
+        .await?;
+    git_review::revert_unstaged_file(
+        database.as_ref(),
+        &input.id,
+        &input.file_path,
+        &input.revision,
+    )
+    .await
+}
+
+#[tauri::command(rename = "review:revert-hunk")]
+#[specta::specta]
+pub async fn review_revert_hunk(
+    state: State<'_, AppState>,
+    input: ReviewIndexHunkInput,
+) -> ArgmaxResult<()> {
+    review_revert_hunk_impl(&state, input).await
+}
+
+pub(crate) async fn review_revert_hunk_impl(
+    state: &AppState,
+    input: ReviewIndexHunkInput,
+) -> ArgmaxResult<()> {
+    if input.kind != WorkspaceTargetKind::Workspace {
+        return Err(crate::error::ArgmaxError::service(
+            "REVIEW_REVERT_PROJECT_UNSUPPORTED",
+            "Reverting from a project review is unavailable because it has no workspace checkpoint.",
+        ));
+    }
+    let database = live_database(state)?;
+    CheckpointService::new(database.clone())
+        .create_recovery_checkpoint(
+            input.id.clone(),
+            None,
+            format!("Before reverting a hunk in {}", input.file_path),
+        )
+        .await?;
+    git_review::revert_unstaged_hunk(
+        database.as_ref(),
+        &input.id,
+        &input.file_path,
+        &input.revision,
+        input.hunk_index as usize,
+        input.context_lines.map(|value| value.get()),
     )
     .await
 }

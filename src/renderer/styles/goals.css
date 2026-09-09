@@ -1,0 +1,60 @@
+/* Goal status — the frame, buttons and hint text come from
+   session-panels.css. A goal has no configuration UI: `/goal <condition>`
+   in the composer sets it, so this strip only reports.
+
+   The left rule carries the state. An active goal takes the accent; a
+   settled one drops to a hairline so a finished run stops competing with
+   the live session above it. */
+
+.goal-status {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--line-strong);
+}
+
+.goal-status[data-state="active"] {
+  border-left-color: var(--accent);
+}
+
+.goal-status[data-state="achieved"] {
+  border-left-color: var(--sage);
+}
+
+.goal-status[data-state="impossible"] {
+  border-left-color: var(--rose);
+}
+
+.goal-status-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.goal-status-mark {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+/* The title pushes everything after it right, so the turn count and the
+   button travel together as one cluster. Letting each claim `margin-left:
+   auto` split the free space between them and stranded the count mid-row. */
+.goal-status-head > .session-panel-title {
+  margin-right: auto;
+}
+
+.goal-status-head > .session-panel-note {
+  margin-left: 0;
+}
+
+.goal-status-condition {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A met or abandoned goal is a record, not a live thing: mute the condition
+   so the eye goes to the outcome in the head. */
+.goal-status:not([data-state="active"]) .goal-status-condition {
+  color: var(--text-soft);
+}

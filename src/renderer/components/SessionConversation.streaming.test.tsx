@@ -269,9 +269,9 @@ describe("SessionConversation — streaming & composer", () => {
     renderConversation(baseSession(), [], {
       review: reviewStub({
         files: [
-          { path: "src/a.ts", status: "modified", additions: 3, deletions: 1 },
-          { path: "src/b.ts", status: "added", additions: 7, deletions: 0 }
-        ],
+          { path: "src/a.ts", status: "modified", additions: 3, deletions: 1 , staged: false },
+{ path: "src/b.ts", status: "added", additions: 7, deletions: 0 , staged: false },
+],
         toggleChangesPanel
       })
     });
@@ -292,7 +292,7 @@ describe("SessionConversation — streaming & composer", () => {
     const toggleChangesPanel = vi.fn();
     renderConversation(baseSession({ contextTokens: 10_000, contextWindow: 100_000 }), [], {
       review: reviewStub({
-        files: [{ path: "src/a.ts", status: "modified", additions: 5, deletions: 2 }],
+        files: [{ path: "src/a.ts", status: "modified", additions: 5, deletions: 2, staged: false }],
         toggleChangesPanel
       })
     });
@@ -324,7 +324,7 @@ describe("SessionConversation — streaming & composer", () => {
   it("marks the compact changed-file action pressed when Changes is open", () => {
     renderConversation(baseSession(), [], {
       review: reviewStub({
-        files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1 }],
+        files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false }],
         isPanelOpen: true,
         mode: "changes"
       })
@@ -1428,6 +1428,36 @@ describe("SessionConversation — streaming & composer", () => {
 
     expect(screen.getByText("first prompt").closest("[data-turn-anchor]")).toBeNull();
     expect(screen.getByText("follow-up").closest("[data-turn-anchor]")).not.toBeNull();
+  });
+
+  it("keeps the turn's scroll anchor through steers and advances it for a new prompt", () => {
+    const session = baseSession({ provider: "claude", state: "running" });
+    let events = [
+      event("u1", "user.message", "Review the change", "2026-05-12T15:00:00.000Z"),
+      event("task", "command.started", "Agent", "2026-05-12T15:00:01.000Z", {
+        id: "reviewer", name: "Agent", input: { description: "Review changes" }
+      })
+    ];
+    const options = { defaultToolCallsDisplay: "collapsed" as const };
+    const view = renderConversation(session, events, options);
+    const agent = screen.getByRole("button", { name: startedAgentName("Review changes") });
+    const prompt = screen.getByText("Review the change");
+    expect(prompt.closest("[data-turn-anchor]")).not.toBeNull();
+
+    for (const [index, text] of ["Do not post yet", "Check the tests too"].entries()) {
+      events = [...events, event(`steer-${index}`, "user.message", text, `2026-05-12T15:00:0${index + 2}.000Z`, {
+        delivery: "steer"
+      })];
+      rerenderConversation(view.rerender, session, events, options);
+      expect(prompt.closest("[data-turn-anchor]")).not.toBeNull();
+      expect(screen.getByText(text).closest("[data-turn-anchor]")).toBeNull();
+      expect(agent).toBeInTheDocument();
+    }
+
+    events = [...events, event("u2", "user.message", "Now review another change", "2026-05-12T15:00:04.000Z")];
+    rerenderConversation(view.rerender, session, events, options);
+    expect(prompt.closest("[data-turn-anchor]")).toBeNull();
+    expect(screen.getByText("Now review another change").closest("[data-turn-anchor]")).not.toBeNull();
   });
 
   it("hides Thinking for Codex once a visible tool starts running", () => {

@@ -229,7 +229,17 @@ export const EMBLEM_BY_CODENAME: Readonly<Record<string, readonly [EmblemShape, 
 export function emblemForCodename(codename: string): Emblem {
   const assigned = EMBLEM_BY_CODENAME[codename];
   if (assigned) return { shape: assigned[0], hue: assigned[1] };
-  const hash = stableHash32(codename);
+  return emblemForKey(codename);
+}
+
+/**
+ * A mark for anything that has a stable id but no codename — a multitask,
+ * which is a whole chat running alongside rather than an agent with a name.
+ * Shape and hue come off different digits of the same hash, so two ids that
+ * collide on one still differ on the other.
+ */
+export function emblemForKey(key: string): Emblem {
+  const hash = stableHash32(key);
   return {
     shape: EMBLEM_SHAPES[hash % EMBLEM_SHAPES.length],
     hue: EMBLEM_HUES[Math.floor(hash / EMBLEM_SHAPES.length) % EMBLEM_HUES.length]

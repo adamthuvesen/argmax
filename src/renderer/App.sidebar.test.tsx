@@ -78,7 +78,9 @@ describe("App sidebar", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const forkedSession: DashboardSnapshot["sessions"][number] = {
       id: "session-forked",
@@ -191,7 +193,9 @@ describe("App sidebar", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const movedSession: DashboardSnapshot["sessions"][number] = {
       id: "session-moved",
@@ -280,7 +284,9 @@ describe("App sidebar", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -648,9 +654,9 @@ describe("App sidebar", () => {
 
   it("opens a changed file review panel with parsed diff lines", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/renderer/App.tsx", status: "M", additions: 2, deletions: 2 },
-      { path: "src/renderer/styles.css", status: "M", additions: 0, deletions: 15 }
-    ]);
+      { path: "src/renderer/App.tsx", status: "M", additions: 2, deletions: 2 , staged: false },
+{ path: "src/renderer/styles.css", status: "M", additions: 0, deletions: 15 , staged: false },
+]);
     loadDiff.mockResolvedValue({
       workspaceId: "workspace-1",
       filePath: "src/renderer/App.tsx",
@@ -667,6 +673,7 @@ describe("App sidebar", () => {
         "-const stale = true;",
         "+const fresh = true;"
       ].join("\n")
+      , revision: "test-revision"
     });
 
     render(<App />);
@@ -800,8 +807,8 @@ describe("App sidebar", () => {
 
   it("opens workspace files in the review panel with Cmd+G", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/renderer/App.tsx", status: "modified", additions: 2, deletions: 1 }
-    ]);
+      { path: "src/renderer/App.tsx", status: "modified", additions: 2, deletions: 1 , staged: false },
+]);
     listWorkspaceFiles.mockResolvedValue([
       { path: "src-tauri/src/index.ts" },
       { path: "src/renderer/App.tsx" }
@@ -1328,7 +1335,9 @@ describe("App sidebar", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const otherWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-other",
@@ -1351,7 +1360,9 @@ describe("App sidebar", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const waitingSession: DashboardSnapshot["sessions"][number] = {
       id: "session-wait",
@@ -1481,7 +1492,9 @@ describe("App sidebar", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const otherWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-other",
@@ -1504,7 +1517,9 @@ describe("App sidebar", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const workingSnapshot: DashboardSnapshot = {
       ...snapshot,

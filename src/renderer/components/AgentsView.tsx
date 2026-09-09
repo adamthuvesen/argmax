@@ -10,7 +10,7 @@ import type {
 } from "../../shared/types.js";
 import type { AgentTabsState } from "../hooks/useAgentTabs.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
-import { emblemForCodename, type Emblem } from "../lib/agentEmblems.js";
+import { emblemForCodename, emblemForKey, type Emblem } from "../lib/agentEmblems.js";
 import { agentTabId, multitaskTabId, readAgentTab } from "../lib/agentTabs.js";
 import { agentRootToolUseId, assignAgentCodenames, codenameForTool, fallbackCodename } from "../lib/agentNames.js";
 import type { ModelPickerSelection } from "../lib/models.js";
@@ -40,7 +40,8 @@ interface DockTab {
   status: AgentStatus;
   /** Tab label: a subagent's codename, a multitask's task label. */
   name: string;
-  /** A subagent's mark. Null for a multitask, which is named by Split. */
+  /** The tab's mark: a subagent's from its codename, a multitask's from its
+   *  session id. Null only for a tab whose child has left the timeline. */
   emblem: Emblem | null;
   multitask: MultitaskChild | null;
   rootToolUseId: string | null;
@@ -145,7 +146,7 @@ export function AgentsView({
           title: label,
           status: child ? multitaskRowStatus(child.session.state) : "missing",
           name: label,
-          emblem: null,
+          emblem: child ? emblemForKey(child.session.id) : null,
           multitask: child,
           rootToolUseId: null
         };

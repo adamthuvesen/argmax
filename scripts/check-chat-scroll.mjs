@@ -168,6 +168,29 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
         await nextFrame();
         return measure();
       },
+      // Upward input at the physical bottom that the scroller cannot act on:
+      // the macOS overscroll bounce's negative wheel deltas, a thumb's drift
+      // on a tap. Nothing scrolls, so no scroll event follows either.
+      inertUpwardInput: async (kind) => {
+        const scroller = api.scrollRef.current;
+        if (kind === "wheel") {
+          scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -40 }));
+        } else {
+          const touchEvent = (type, clientY) => {
+            const event = new Event(type, { bubbles: true });
+            Object.defineProperty(event, "touches", {
+              value: type === "touchend" ? [] : [{ clientY }]
+            });
+            scroller.dispatchEvent(event);
+          };
+          touchEvent("touchstart", 100);
+          touchEvent("touchmove", 106);
+          touchEvent("touchend", 106);
+        }
+        await nextFrame();
+        await nextFrame();
+        return measure();
+      },
       scrollUpThenGrow: async (pixels, growth) => {
         const scroller = api.scrollRef.current;
         scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -pixels }));
@@ -374,6 +397,23 @@ async function runChecks() {
       movement: movement(touchBefore, touchAfter),
       tolerance: 2
     });
+
+    for (const kind of ["wheel", "touch"]) {
+      await mount(surface);
+      await active.inertUpwardInput(kind);
+      const inertInput = active.measure();
+      await active.growBelow(120);
+      const inertAfterGrowth = active.measure();
+      results.push({
+        name: surface + ": inert upward " + kind + " input at the bottom keeps following",
+        surface,
+        before: inertInput,
+        after: inertAfterGrowth,
+        movement: Math.round(Math.max(inertInput.distanceFromBottom, inertAfterGrowth.distanceFromBottom) * 100) / 100,
+        extraOk: !inertInput.showFab && !inertAfterGrowth.showFab,
+        tolerance: 1
+      });
+    }
 
     await mount(surface);
     const raceProbe = active.measure();

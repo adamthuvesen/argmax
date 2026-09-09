@@ -93,11 +93,11 @@ _Avoid_: Side task, background task, parallel turn, subagent
 Where a session is in its lifecycle: `created`, `running`, `waiting`, `blocked`, `complete`, `failed`, `cancelled`.
 
 **Attention**:
-Whether a session needs a human, derived from session state plus pending approvals: `normal`, `approval-needed`, `blocked`, `failed`, `review-ready`. Never set directly — it is computed. State says what the agent is doing; attention says whether you have to care. Both are enums in `src-tauri/src/sessions/` (`SessionState`, `AttentionState`), exported to the renderer through the generated bindings; a state write goes through `SessionStateInput::transition`, which derives the attention.
+Whether a session needs a human, derived from session state, pending approvals, and whether the agent left a question unanswered: `normal`, `approval-needed`, `question-asked`, `blocked`, `failed`, `review-ready`. Never set directly — it is computed. State says what the agent is doing; attention says whether you have to care. Both are enums in `src-tauri/src/sessions/` (`SessionState`, `AttentionState`), exported to the renderer through the generated bindings; a state write goes through `SessionStateInput::transition`, which derives the attention.
 _Avoid_: Status, state, urgency
 
 **Priority**:
-The sidebar section holding workspaces that need attention, plus any the user pinned there manually. A dismissal is spent as soon as attention changes again.
+The sidebar section holding workspaces that need attention, plus any the user pinned there manually. Membership is a set of **reasons** (see [docs/workspaces.md](docs/workspaces.md)), each with its own resolution: a session's attention is only one of them, and an open pull request or a red check is another. A dismissal is spent as soon as a reason newer than it appears.
 
 **Unread response**:
 A sidebar mark that a chat has produced a response the user has not opened yet. An accent-colored dot replaces the row's leading icon until the chat is viewed.
@@ -162,6 +162,10 @@ _Avoid_: Diff mode, comparison
 **Diff note**:
 A note the user wrote on a line or range of a diff in the review panel. It attaches to the composer as an annotation and is serialized into the prompt as an `<argmax-diff-note>` block naming the file, line or range, side, and review comparison. Local to this machine, an agent addresses it by editing the worktree. GitHub's review comments are a different thing entirely, and calling this one a review comment is what sends an agent looking for a pull request.
 _Avoid_: Review comment, line comment, inline comment
+
+**Goal**:
+One free-text condition a chat keeps working toward. After each turn a separate cheap evaluator judges the transcript and returns met, not yet met, or impossible; "not yet met" starts another turn. Set with `/goal <condition>` or the `goal_set` agent tool. It is a condition and a verdict, not a configured workflow — there are no steps, no reviewer to pick, and no form.
+_Avoid_: Objective, acceptance criteria, task, mission
 
 **Checkpoint**:
 A saved marker of a workspace's tree at a moment — a git ref, a patch file, or both — so work can be recovered.

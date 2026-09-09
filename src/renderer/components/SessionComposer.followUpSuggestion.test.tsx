@@ -22,7 +22,8 @@ function stubSuggestion(
         key in own ? (own as Record<string | symbol, unknown>)[key] : anything
     });
   window.argmax = withFallback({
-    session: withFallback({ suggestFollowUp })
+    session: withFallback({ suggestFollowUp }),
+    dashboard: withFallback({ onDelta: () => () => {} })
   }) as typeof window.argmax;
 }
 

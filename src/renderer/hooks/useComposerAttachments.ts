@@ -24,6 +24,7 @@ import {
 import { readDraft, writeDraftAttachments } from "../lib/composerDrafts.js";
 import { shouldPreferHtmlFlavor } from "../lib/clipboardMarkdown.js";
 import type { ComposerAttachment } from "../../shared/types.js";
+import { setViewportMeasurementPaused } from "../mobile/useVisualViewportInsets.js";
 
 function createAttachmentPreviewUrl(blob: Blob): string | null {
   return typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
@@ -383,6 +384,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
 
   const onAttachmentInputChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>): void => {
+      setViewportMeasurementPaused(false);
       if (event.target.files && event.target.files.length > 0) {
         splitAndAttach(Array.from(event.target.files));
       }
@@ -393,7 +395,22 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
   );
 
   const openFilePicker = useCallback((): void => {
+    // iOS dismisses the keyboard as its picker opens, which grows the visual
+    // viewport. Holding the last measurement keeps the composer under the
+    // thumb until the picker closes (see useVisualViewportInsets).
+    setViewportMeasurementPaused(true);
     attachmentInputRef.current?.click();
+  }, []);
+
+  useEffect(() => {
+    const input = attachmentInputRef.current;
+    if (!input) return;
+    const release = (): void => setViewportMeasurementPaused(false);
+    input.addEventListener("cancel", release);
+    return () => {
+      input.removeEventListener("cancel", release);
+      release();
+    };
   }, []);
 
   const clearAttachments = useCallback((): void => {

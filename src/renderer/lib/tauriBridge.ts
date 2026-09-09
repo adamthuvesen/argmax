@@ -21,6 +21,9 @@ import type {
   AttachmentSaveImageResult,
   ChangedFileSummary,
   CheckRun,
+  Checkpoint,
+  RewindPreview,
+  RewindFilesResult,
   DashboardDelta,
   DashboardListSnapshot,
   DashboardSnapshot,
@@ -30,6 +33,7 @@ import type {
   DiscoveredProvider,
   GhPrRecord,
   GitCommitInput,
+  Goal,
   GitCommitResult,
   GitCreateBranchInput,
   GitCreateBranchResult,
@@ -336,7 +340,20 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         invokeCommand<SessionCostSummary>("session:cost-summary", input),
       search: (input) => invokeCommand<SessionSearchResult>("session:search", input)
     },
+    goals: {
+      set: (input) => invokeCommand<Goal>("goal:set", input),
+      get: (input) => invokeCommand<Goal | null>("goal:get", input),
+      list: (input) => invokeCommand<Goal[]>("goal:list", input),
+      clear: (input) => invokeCommand<Goal | null>("goal:clear", input),
+    },
     review: {
+      stageFile: (input) => invokeCommand<void>("review:stage-file", input),
+      unstageFile: (input) => invokeCommand<void>("review:unstage-file", input),
+      revertFile: (input) => invokeCommand<void>("review:revert-file", input),
+      revertHunk: (input) => invokeCommand<void>("review:revert-hunk", input),
+      stageHunk: (input) => invokeCommand<void>("review:stage-hunk", input),
+      unstageHunk: (input) => invokeCommand<void>("review:unstage-hunk", input),
+      commitStaged: (input) => invokeCommand<GitCommitResult>("review:commit-staged", input),
       listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) =>
         invokeCommand<ChangedFileSummary[]>("review:list-changed-files", { ...target, comparison }),
       loadDiff: (
@@ -370,6 +387,11 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     },
     checks: {
       run: (input: RunCheckInput) => invokeCommand<CheckRun>("checks:run", input)
+    },
+    checkpoints: {
+      list: (input) => invokeCommand<Checkpoint[]>("checkpoints:list", input),
+      previewRewind: (input) => invokeCommand<RewindPreview>("checkpoints:preview-rewind", input),
+      rewindFiles: (input) => invokeCommand<RewindFilesResult>("checkpoints:rewind-files", input)
     },
     health: {
       ping: () => invokeCommand<{ ok: true; timestamp: string }>("health:ping")

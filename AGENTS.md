@@ -66,6 +66,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Session sync (import from provider CLIs)** → [session-sync.md](docs/session-sync.md)
 - **Worktrees, archive, review** → [workspaces.md](docs/workspaces.md)
 - **Multitask (a chat dispatched from inside a chat)** → [multitask.md](docs/multitask.md)
+- **Goals (`/goal`, the after-each-turn evaluator)** → [goals.md](docs/goals.md)
 - **Approvals and checks** → [approvals-checks.md](docs/approvals-checks.md)
 - **Scheduled tasks / routines** → [scheduled-tasks.md](docs/scheduled-tasks.md)
 - **Usage page (tokens and cost across providers)** → [usage.md](docs/usage.md)

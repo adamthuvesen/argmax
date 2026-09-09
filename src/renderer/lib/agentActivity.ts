@@ -4,7 +4,7 @@ import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { agentRootToolUseId } from "./agentNames.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import { effortLabel } from "./models.js";
-import { buildSessionToolCalls } from "./sessionConversationModel.js";
+import { buildSessionToolCalls, latestSessionEndAt } from "./sessionConversationModel.js";
 import { getToolTypeBucket, type ToolCall } from "./toolCalls.js";
 
 export type AgentActivityItem =
@@ -276,9 +276,11 @@ export function buildAgentActivity(params: {
     });
   const latestLifecycle = lifecycle.at(-1);
   const latestAgentEvent = latestLifecycle ? decodeTimelineEvent(latestLifecycle) : null;
+  const sessionEnded = latestLifecycle !== undefined &&
+    latestSessionEndAt(events) >= latestLifecycle.createdAt;
   const status = latestAgentEvent?.kind === "agent"
     ? latestAgentEvent.phase === "started"
-      ? sessionInterrupted ? "error" : "running"
+      ? sessionInterrupted || sessionEnded ? "error" : "running"
       : latestAgentEvent.status === "completed" || latestAgentEvent.status === "success"
         ? "done"
         : "error"

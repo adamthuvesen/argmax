@@ -105,21 +105,27 @@ the name is unstable — that is what absorbs Cursor's drift.
 | Cursor | `updateTodosToolCall`, `todo_write`, `todowrite` | as shaped; `updateTodos` emits nothing |
 | Claude | `TaskCreate` result + `TaskUpdate` args | `merge` |
 
-**Codex needs a launch flag first.** `codex exec` does not expose `update_plan`
-unless launched with `-c tools.update_plan.enabled=true`. That, not the
-normalizer drop, is why nothing has been persisted since 2026-07-01 — a live
-probe on CLI 0.153.4 had the model reply *"The requested `update_plan` tool is
-not available in this session."* With the flag on it emits a clean full
-snapshot per update. Add it to `codex_common_args` beside
-`codex_reasoning_summary_args`, which is the same unconditional `-c` shape;
-`codex_common_args` feeds both the launch and resume paths.
+**Codex needs a launch flag first**, and on the transport Argmax actually
+uses. `codex exec` does not expose `update_plan` unless launched with
+`-c tools.update_plan.enabled=true` — a live probe on CLI 0.153.4 had the model
+reply *"The requested `update_plan` tool is not available in this session."*
 
-**Codex has no active state.** The exec JSON flattens to `{text, completed}`.
-Derive it in `codex.rs`, not the view, so the renderer stays provider-blind:
-Codex's system prompt requires exactly one `in_progress` item and forbids
-jumping pending → completed, so the first incomplete item is the active one.
-Comment the assumption — the prompt asks for in-order completion, it does not
-enforce it.
+But Argmax does not launch Codex through `exec`: `runtime.rs:289` routes every
+Codex turn to `codex_app_server::launch_turn`, and `codex app-server` takes the
+same `-c` flag. The exec argv keeps the flag too, so the two paths cannot drift.
+
+**On the app-server, Codex's active state is not derived.** The exec JSON
+flattens the plan to `{text, completed}`, but the app-server sends
+`turn/plan/updated` with `{plan: [{step, status}]}` where status is
+`pending | inProgress | completed` — the running step, named. The translation in
+`codex_app_server.rs` reshapes that into the `todo_list` item the normalizer
+reads, so both transports land on one emitter. The exec path still derives
+"first incomplete", with the assumption commented: Codex's prompt asks for
+in-order completion, it does not enforce it.
+
+`EventTranslation` carried no `item/updated` case at all, so a plan revision
+would have been dropped before reaching the normalizer even with the flag on.
+The flag alone was not enough — the live rung is what caught that.
 
 **Claude's id lives in prose.** `TaskCreate` returns
 `` `Task #${r.id} created successfully: ${r.subject}` `` — the literal template,

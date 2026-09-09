@@ -14,6 +14,11 @@ export type DebugSnapshot = Bindings.DebugSnapshot;
 export type BackendLogEntry = Bindings.LogEntry;
 export type PermissionMode = Bindings.PermissionMode;
 export type ProviderId = Bindings.ProviderId;
+export type Goal = Bindings.Goal;
+export type GoalState = Bindings.GoalState;
+export type GoalSetInput = Bindings.GoalSetInput;
+export type GoalSessionInput = Bindings.GoalSessionInput;
+export type GoalListInput = Bindings.GoalListInput;
 export type ReasoningEffort = Bindings.ReasoningEffort;
 export type UsageWindow = Bindings.UsageWindow;
 export type UsageResolution = Bindings.UsageResolution;
@@ -169,6 +174,15 @@ export type EventSubscription = (() => void) & {
 export type SessionCostSummary = Bindings.SessionCostSummary;
 export type ChangedFileSummary = Bindings.ChangedFileSummary;
 export type WorkspaceDiff = Bindings.WorkspaceDiff;
+export type ReviewIndexFileInput = Bindings.ReviewIndexFileInput;
+export type ReviewIndexHunkInput = Bindings.ReviewIndexHunkInput;
+export type ReviewCommitStagedInput = Bindings.ReviewCommitStagedInput;
+export type Checkpoint = Bindings.Checkpoint;
+export type CheckpointsListInput = Bindings.CheckpointsListInput;
+export type CheckpointsPreviewRewindInput = Bindings.CheckpointsPreviewRewindInput;
+export type CheckpointsRewindFilesInput = Bindings.CheckpointsRewindFilesInput;
+export type RewindPreview = Bindings.RewindPreview;
+export type RewindFilesResult = Bindings.RewindFilesResult;
 
 /**
  * Review diff baseline. `workingTree` (default) diffs the working tree against
@@ -258,6 +272,8 @@ export type WorkspaceSummary = Retype<
     kind: WorkspaceKind;
     /** State of the most-recent PR across this workspace's sessions. Null when none. */
     prState: GhPrState | null;
+    /** Check rollup for that PR as the poller last saw it. Null when there is no PR. */
+    prCheckState: GhCheckState | null;
   }
 >;
 
@@ -404,6 +420,7 @@ export type DashboardDelta = {
   removedSessionIds?: string[];
   removedWorkspaceIds?: string[];
   changedSessionIds?: string[];
+  goalChangedIds?: string[];
   dashboardChanged?: boolean;
   resyncRequired?: boolean;
 };
@@ -487,7 +504,20 @@ export interface ArgmaxApi {
       rank: number;
     }>>;
   };
+  goals: {
+    set: (input: GoalSetInput) => Promise<Goal>;
+    get: (input: GoalSessionInput) => Promise<Goal | null>;
+    list: (input: GoalListInput) => Promise<Goal[]>;
+    clear: (input: GoalSessionInput) => Promise<Goal | null>;
+  };
   review: {
+    stageFile: (input: ReviewIndexFileInput) => Promise<void>;
+    unstageFile: (input: ReviewIndexFileInput) => Promise<void>;
+    revertFile: (input: ReviewIndexFileInput) => Promise<void>;
+    revertHunk: (input: ReviewIndexHunkInput) => Promise<void>;
+    stageHunk: (input: ReviewIndexHunkInput) => Promise<void>;
+    unstageHunk: (input: ReviewIndexHunkInput) => Promise<void>;
+    commitStaged: (input: ReviewCommitStagedInput) => Promise<GitCommitResult>;
     listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
     /** `contextLines` is only honored for a single-file request; omit it for
      *  git's default context. See ReviewLoadDiffInput. */
@@ -517,6 +547,11 @@ export interface ArgmaxApi {
   checks: {
     run: (input: RunCheckInput) => Promise<CheckRun>;
   };
+  checkpoints: {
+    list: (input: CheckpointsListInput) => Promise<Checkpoint[]>;
+    previewRewind: (input: CheckpointsPreviewRewindInput) => Promise<RewindPreview>;
+    rewindFiles: (input: CheckpointsRewindFilesInput) => Promise<RewindFilesResult>;
+  };
   health: {
     ping: () => Promise<{ ok: true; timestamp: string }>;
   };
@@ -533,6 +568,7 @@ export interface ArgmaxApi {
     setDefaultAgent: (input: {
       provider: ProviderId;
       permissionMode?: PermissionMode | null;
+      permissionModes?: Partial<Record<ProviderId, PermissionMode>>;
       modelLabel: string;
       modelId: string;
       reasoningEffort?: ReasoningEffort | null;

@@ -1,10 +1,12 @@
 pub mod after_turn;
 pub mod approvals;
+pub mod checkpoints;
 pub mod checks;
 pub mod dashboard;
 pub mod database;
 pub mod events;
 pub mod gh;
+pub mod goals;
 pub mod learnings;
 pub mod migrations;
 pub mod pending_messages;

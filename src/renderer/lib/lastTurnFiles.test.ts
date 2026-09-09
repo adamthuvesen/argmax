@@ -11,7 +11,7 @@ function toolStart(id: string, name: string, input: Record<string, unknown>): Ti
 }
 
 function changed(path: string): ChangedFileSummary {
-  return { path, status: "M", additions: 1, deletions: 0 };
+  return { path, status: "M", additions: 1, deletions: 0, staged: false };
 }
 
 // Events arrive newest-first, so the newest `user.message` ends the scan.

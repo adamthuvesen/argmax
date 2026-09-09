@@ -77,6 +77,10 @@ pub struct DashboardDelta {
     /// subscribed consumers pull the revision feed for the named sessions.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub changed_session_ids: Vec<String>,
+    /// Goals are read through focused IPC, so a delta only needs to invalidate
+    /// the named durable rows rather than duplicate their full configurations.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub goal_changed_ids: Vec<String>,
     /// Durable dashboard metadata changed. Consumers reload a coherent
     /// snapshot instead of applying possibly stale individual payloads.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -455,6 +459,7 @@ impl DashboardDelta {
             && self.removed_session_ids.is_empty()
             && self.removed_workspace_ids.is_empty()
             && self.changed_session_ids.is_empty()
+            && self.goal_changed_ids.is_empty()
             && !self.dashboard_changed
             && !self.resync_required
     }
@@ -486,6 +491,9 @@ impl DashboardDelta {
         self.changed_session_ids.extend(other.changed_session_ids);
         self.changed_session_ids.sort_unstable();
         self.changed_session_ids.dedup();
+        self.goal_changed_ids.extend(other.goal_changed_ids);
+        self.goal_changed_ids.sort_unstable();
+        self.goal_changed_ids.dedup();
         self.dashboard_changed |= other.dashboard_changed;
         self.resync_required |= other.resync_required;
     }

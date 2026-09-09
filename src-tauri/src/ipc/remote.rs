@@ -2,6 +2,7 @@
 // push. Desktop-only channels (they need the AppHandle for the app data dir
 // and the server lifecycle), so all three sit in REMOTE_UNSUPPORTED_CHANNELS.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use qrcode::render::svg;
@@ -85,6 +86,7 @@ pub async fn remote_set_config(
         mobile_url: Some(mobile_page_url(
             probe_tailscale().await.as_ref(),
             input.port,
+            probe_serve_tls_port(input.port).await,
         )),
     };
     remote::save_config(&app_data_dir, &config)?;
@@ -131,19 +133,32 @@ fn require_app_data_dir(app: &AppHandle) -> ArgmaxResult<std::path::PathBuf> {
 /// The mobile page as the phone reaches it: over the tailnet when Tailscale is
 /// up, else loopback. One definition so the pairing QR, the Settings links, and
 /// the ntfy deep link can never point somewhere different from each other.
-fn mobile_page_url(tailscale: Option<&TailscaleProbe>, port: u16) -> String {
-    match tailscale {
-        Some(probe) => format!("http://{}:{}/mobile.html", probe.dns_name, port),
-        None => format!("http://127.0.0.1:{port}/mobile.html"),
+fn mobile_page_url(
+    tailscale: Option<&TailscaleProbe>,
+    port: u16,
+    serve_tls_port: Option<u16>,
+) -> String {
+    match (tailscale, serve_tls_port) {
+        // 443 needs no port in the URL, and leaving it off is what keeps the
+        // pairing link short enough to read off a QR code.
+        (Some(probe), Some(443)) => format!("https://{}/mobile.html", probe.dns_name),
+        (Some(probe), Some(tls)) => format!("https://{}:{}/mobile.html", probe.dns_name, tls),
+        (Some(probe), None) => format!("http://{}:{}/mobile.html", probe.dns_name, port),
+        (None, _) => format!("http://127.0.0.1:{port}/mobile.html"),
     }
 }
 
 async fn build_status(state: &AppState, config: RemoteConfig) -> ArgmaxResult<RemoteStatus> {
     let tailscale = probe_tailscale().await;
-    let local_url = mobile_page_url(None, config.port);
+    let tls_port = if tailscale.is_some() {
+        probe_serve_tls_port(config.port).await
+    } else {
+        None
+    };
+    let local_url = mobile_page_url(None, config.port, None);
     let tailnet_url = tailscale
         .as_ref()
-        .map(|probe| mobile_page_url(Some(probe), config.port));
+        .map(|probe| mobile_page_url(Some(probe), config.port, tls_port));
     let pairing_url = format!(
         "{}#token={}",
         tailnet_url.as_deref().unwrap_or(&local_url),
@@ -240,6 +255,84 @@ struct TailscaleSelfJson {
     dns_name: String,
 }
 
+#[derive(Deserialize)]
+struct ServeStatusJson {
+    #[serde(rename = "TCP", default)]
+    tcp: HashMap<String, ServeTcpJson>,
+    #[serde(rename = "Web", default)]
+    web: HashMap<String, ServeWebJson>,
+}
+
+#[derive(Deserialize)]
+struct ServeTcpJson {
+    #[serde(rename = "HTTPS", default)]
+    https: bool,
+}
+
+#[derive(Deserialize)]
+struct ServeWebJson {
+    #[serde(rename = "Handlers", default)]
+    handlers: HashMap<String, ServeHandlerJson>,
+}
+
+#[derive(Deserialize)]
+struct ServeHandlerJson {
+    #[serde(rename = "Proxy", default)]
+    proxy: Option<String>,
+}
+
+/// The port Tailscale Serve terminates TLS on for this bridge, if it does.
+///
+/// A tailnet can carry both spellings at once — `tailscale serve --http=8790`
+/// leaves a plain handler behind when the TLS one is added — so the question is
+/// not "is Serve on" but "is there an HTTPS handler pointing at our port". The
+/// phone wants that one: a service worker will not register outside a secure
+/// context, and `crypto.randomUUID` and the clipboard are missing there.
+fn serve_tls_port(status: &ServeStatusJson, bridge_port: u16) -> Option<u16> {
+    let target = format!("http://127.0.0.1:{bridge_port}");
+    let mut ports: Vec<u16> = status
+        .web
+        .iter()
+        .filter(|(_, web)| {
+            web.handlers
+                .values()
+                .any(|handler| handler.proxy.as_deref() == Some(target.as_str()))
+        })
+        .filter_map(|(host_port, _)| host_port.rsplit_once(':')?.1.parse::<u16>().ok())
+        .filter(|port| {
+            status
+                .tcp
+                .get(&port.to_string())
+                .is_some_and(|entry| entry.https)
+        })
+        .collect();
+    // Lowest wins so 443 — the one that needs no port in the URL — is preferred
+    // over any other TLS handler someone has also configured.
+    ports.sort_unstable();
+    ports.first().copied()
+}
+
+async fn probe_serve_tls_port(bridge_port: u16) -> Option<u16> {
+    for binary in TAILSCALE_BINARIES {
+        let output = tokio::time::timeout(
+            TAILSCALE_PROBE_TIMEOUT,
+            tokio::process::Command::new(binary)
+                .args(["serve", "status", "--json"])
+                .output(),
+        )
+        .await;
+        let Ok(Ok(output)) = output else { continue };
+        if !output.status.success() {
+            continue;
+        }
+        let Ok(status) = serde_json::from_slice::<ServeStatusJson>(&output.stdout) else {
+            continue;
+        };
+        return serve_tls_port(&status, bridge_port);
+    }
+    None
+}
+
 async fn probe_tailscale() -> Option<TailscaleProbe> {
     for binary in TAILSCALE_BINARIES {
         let output = tokio::time::timeout(
@@ -303,5 +396,73 @@ mod tests {
         let svg = render_qr_svg("http://example.test/mobile.html#token=abc").expect("svg");
         assert!(svg.starts_with("<?xml"));
         assert!(svg.contains("currentColor"));
+    }
+
+    /// The shape `tailscale serve status --json` prints once TLS is on. Both
+    /// spellings are present here on purpose: `--http=8790` leaves its plain
+    /// handler behind when the HTTPS one is added, which is the state a tailnet
+    /// is actually in after the switch.
+    const SERVE_STATUS_BOTH: &str = r#"{
+      "TCP": { "443": { "HTTPS": true }, "8790": { "HTTP": true } },
+      "Web": {
+        "mac.tail1234.ts.net:443": { "Handlers": { "/": { "Proxy": "http://127.0.0.1:8790" } } },
+        "mac.tail1234.ts.net:8790": { "Handlers": { "/": { "Proxy": "http://127.0.0.1:8790" } } }
+      }
+    }"#;
+
+    fn serve_status(json: &str) -> ServeStatusJson {
+        serde_json::from_str(json).expect("serve status")
+    }
+
+    #[test]
+    fn prefers_the_tls_handler_when_serve_carries_both() {
+        assert_eq!(
+            serve_tls_port(&serve_status(SERVE_STATUS_BOTH), 8790),
+            Some(443)
+        );
+    }
+
+    #[test]
+    fn ignores_a_tls_handler_pointed_at_someone_else() {
+        // Another service on the same tailnet must not turn our pairing link
+        // into an https one that reaches it instead of the bridge.
+        let status = serve_status(
+            r#"{
+              "TCP": { "443": { "HTTPS": true } },
+              "Web": { "mac.tail1234.ts.net:443": { "Handlers": { "/": { "Proxy": "http://127.0.0.1:3000" } } } }
+            }"#,
+        );
+        assert_eq!(serve_tls_port(&status, 8790), None);
+    }
+
+    #[test]
+    fn plain_http_serve_alone_is_not_tls() {
+        let status = serve_status(
+            r#"{
+              "TCP": { "8790": { "HTTP": true } },
+              "Web": { "mac.tail1234.ts.net:8790": { "Handlers": { "/": { "Proxy": "http://127.0.0.1:8790" } } } }
+            }"#,
+        );
+        assert_eq!(serve_tls_port(&status, 8790), None);
+    }
+
+    #[test]
+    fn the_pairing_url_drops_the_port_on_443_and_keeps_it_otherwise() {
+        let probe = TailscaleProbe {
+            dns_name: "mac.tail1234.ts.net".into(),
+            running: true,
+        };
+        assert_eq!(
+            mobile_page_url(Some(&probe), 8790, Some(443)),
+            "https://mac.tail1234.ts.net/mobile.html"
+        );
+        assert_eq!(
+            mobile_page_url(Some(&probe), 8790, Some(8443)),
+            "https://mac.tail1234.ts.net:8443/mobile.html"
+        );
+        assert_eq!(
+            mobile_page_url(Some(&probe), 8790, None),
+            "http://mac.tail1234.ts.net:8790/mobile.html"
+        );
     }
 }

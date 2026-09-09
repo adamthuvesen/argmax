@@ -33,20 +33,30 @@ import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopove
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
-import type { PriorityAttention } from "../lib/priority.js";
+import type { PriorityReasonKind } from "../lib/priority.js";
 import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
 import { stableHash32 } from "../lib/stableHash.js";
 import { SessionIconPicker } from "./SessionIconPicker.js";
 import { WorkingNest } from "./WorkingNest.js";
 
 // Human phrasing appended to the row title when the row sits in the sidebar's
-// Priority section, so screen readers (and tests) hear why it floated up.
-const PRIORITY_TITLE: Record<PriorityAttention, string> = {
+// Priority section, so screen readers (and tests) hear why it floated up. It
+// names the strongest reason the row holds, which is also what ranked it.
+const PRIORITY_TITLE: Record<PriorityReasonKind, string> = {
   "approval-needed": "needs approval",
+  "question-asked": "asked you a question",
   blocked: "waiting for input",
   failed: "failed",
-  "review-ready": "ready for review"
+  "ci-red": "checks failing",
+  "review-ready": "ready for review",
+  "pr-open": "pull request open"
 };
+
+// The reasons that read as "the agent stopped and is waiting on you". They
+// take the marker cell ahead of everything, including a turn in flight.
+function isAwaitingReply(reason: PriorityReasonKind | undefined): boolean {
+  return reason === "approval-needed" || reason === "blocked" || reason === "question-asked";
+}
 
 export interface WorkspaceClickModifiers {
   ctrlOrMeta: boolean;
@@ -81,7 +91,7 @@ type SidebarSessionRowProps = {
    *  reading as something the user started. */
   launchedByLabel?: string | null;
   /** Set when the row renders inside the Priority section: why it floated up. */
-  priorityAttention?: PriorityAttention;
+  priorityReason?: PriorityReasonKind;
   /** A turn in flight on this workspace, or in a multitask its chat dispatched.
    *  A multitask has no row of its own, so this row carries its motion too —
    *  work in the checkout does not stop being work because a sibling is doing
@@ -114,12 +124,12 @@ type SidebarSessionRowProps = {
 function StatusMarker({
   working,
   prState,
-  priorityAttention,
+  priorityReason,
   phaseKey
 }: {
   working: boolean;
   prState?: WorkspaceSummary["prState"];
-  priorityAttention?: PriorityAttention;
+  priorityReason?: PriorityReasonKind;
   phaseKey: string;
 }): JSX.Element {
   // In the Priority section an input-starved session outranks everything —
@@ -128,8 +138,8 @@ function StatusMarker({
   // alarm implied) wins even over the working ring, since approvals arrive
   // mid-turn. It keeps the default muted marker color on purpose — the
   // fallback check ring would read "done", but this isn't a warning either.
-  if (priorityAttention === "approval-needed" || priorityAttention === "blocked") {
-    return <CircleEllipsis size={16} aria-hidden className="status-marker" data-attention={priorityAttention} />;
+  if (isAwaitingReply(priorityReason)) {
+    return <CircleEllipsis size={16} aria-hidden className="status-marker" data-attention={priorityReason} />;
   }
   if (working) {
     // The shared working nest, sized to the 16px marker box. It is the same mark
@@ -156,14 +166,14 @@ function statusOverlayFor({
   working,
   state,
   prState,
-  priorityAttention
+  priorityReason
 }: {
   working: boolean;
   state: WorkspaceSummary["state"];
   prState?: WorkspaceSummary["prState"];
-  priorityAttention?: PriorityAttention;
+  priorityReason?: PriorityReasonKind;
 }): StatusOverlay | null {
-  if (priorityAttention === "approval-needed" || priorityAttention === "blocked") return "awaiting";
+  if (isAwaitingReply(priorityReason)) return "awaiting";
   if (working) return "working";
   if (prState === "MERGED") return "pr-merged";
   if (prState === "OPEN") return "pr-open";
@@ -221,7 +231,7 @@ function SidebarSessionRowInner({
   subtitle,
   importedProvider,
   launchedByLabel,
-  priorityAttention,
+  priorityReason,
   isWorking,
   hasUnreadResponse,
   onRemoveFromPriority,
@@ -306,7 +316,7 @@ function SidebarSessionRowInner({
       : workspace.prState === "OPEN" && workspace.prNumber != null
         ? ` — open pull request #${workspace.prNumber}`
         : "";
-  const priorityTitle = priorityAttention ? ` — ${PRIORITY_TITLE[priorityAttention]}` : "";
+  const priorityTitle = priorityReason ? ` — ${PRIORITY_TITLE[priorityReason]}` : "";
   // A turn in flight takes the marker cell; unread waits until it ends.
   const working = isWorking ?? workspace.state === "running";
   const unread = Boolean(hasUnreadResponse) && !working;
@@ -432,7 +442,7 @@ function SidebarSessionRowInner({
     working,
     state: workspace.state,
     prState: workspace.prState,
-    priorityAttention
+    priorityReason
   });
   const hasCustomIcon = workspace.icon ? resolveSessionIcon(workspace.icon) !== null : false;
   const leadingGlyph =
@@ -448,7 +458,7 @@ function SidebarSessionRowInner({
       <StatusMarker
         working={working}
         prState={workspace.prState}
-        priorityAttention={priorityAttention}
+        priorityReason={priorityReason}
         phaseKey={workspace.id}
       />
     ) : null;
@@ -739,7 +749,7 @@ export function sidebarSessionRowEqual(
   if (prev.subtitle !== next.subtitle) return false;
   if (prev.importedProvider !== next.importedProvider) return false;
   if (prev.launchedByLabel !== next.launchedByLabel) return false;
-  if (prev.priorityAttention !== next.priorityAttention) return false;
+  if (prev.priorityReason !== next.priorityReason) return false;
   if (prev.isWorking !== next.isWorking) return false;
   if (prev.hasUnreadResponse !== next.hasUnreadResponse) return false;
   if (prev.onRemoveFromPriority !== next.onRemoveFromPriority) return false;

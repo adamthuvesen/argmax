@@ -76,7 +76,8 @@ export function TurnBlock({
   headerTimestampIso,
   turnMarkdown,
   changes,
-  onFork
+  onFork,
+  revert
 }: {
   toolItems: TurnToolItem[];
   assistantTimestamps: number[];
@@ -112,6 +113,8 @@ export function TurnBlock({
   changes?: JSX.Element | null;
   // Fork the session this turn belongs to (provider-gated by the parent).
   onFork?: () => void;
+  /** "Revert to here", when this turn has a before-turn checkpoint. */
+  revert?: JSX.Element;
 }): JSX.Element {
   const toolRunning = useMemo(() => toolItems.some(isToolRunning), [toolItems]);
   // `running` controls the chip's "Working" label and live ticker —
@@ -283,8 +286,12 @@ export function TurnBlock({
         </div>
       ) : null}
       {!running ? changes ?? null : null}
-      {!running && (turnMarkdown || onFork) ? (
-        <TurnFooter {...(turnMarkdown ? { turnMarkdown } : {})} {...(onFork ? { onFork } : {})} />
+      {!running && (turnMarkdown || onFork || revert) ? (
+        <TurnFooter
+          {...(turnMarkdown ? { turnMarkdown } : {})}
+          {...(onFork ? { onFork } : {})}
+          {...(revert ? { revert } : {})}
+        />
       ) : null}
     </div>
   );
@@ -293,10 +300,13 @@ export function TurnBlock({
 /** Hover-revealed actions under a finished turn: copy the reply, fork the session. */
 function TurnFooter({
   turnMarkdown,
-  onFork
+  onFork,
+  revert
 }: {
   turnMarkdown?: string;
   onFork?: () => void;
+  /** "Revert to here", when this turn has a before-turn checkpoint. */
+  revert?: JSX.Element;
 }): JSX.Element {
   const [copyFlash, copy] = useCopyToClipboard();
   return (
@@ -337,6 +347,7 @@ function TurnFooter({
           <GitFork size={13} aria-hidden />
         </button>
       ) : null}
+      {revert ?? null}
     </div>
   );
 }

@@ -4,8 +4,8 @@ use phf::phf_map;
 use serde_json::{json, Map, Value};
 
 use super::todo::{
-    claude_task_create, claude_task_update, is_todo_tool, parse_task_create_result,
-    stamp_todo_surface, todo_event, todos_array_update, TodoUpdate,
+    claude_task_create, claude_task_update, grok_todos_updated_result, is_todo_tool,
+    parse_task_create_result, stamp_todo_surface, todo_event, todos_array_update, TodoUpdate,
 };
 use super::{
     array_value, classify_command_risk, number_value, object_value, string_value, timeline_event,
@@ -166,9 +166,14 @@ fn todo_update_from_tool_result(
     block: &Map<String, Value>,
     context: &mut NormalizerSessionContext,
 ) -> Option<TodoUpdate> {
+    let result = tool_result_text(block);
+    // Grok over ACP announces its plan in the result rather than the call, and
+    // the result is the only place the list appears at all.
+    if let Some(update) = result.as_deref().and_then(grok_todos_updated_result) {
+        return Some(update);
+    }
     let tool_use_id = string_value(block.get("tool_use_id"))?;
     let subject = context.claude_pending_task_creates.remove(tool_use_id)?;
-    let result = tool_result_text(block);
     match result.as_deref().and_then(parse_task_create_result) {
         Some((task_id, parsed_subject)) => Some(claude_task_create(
             &task_id,

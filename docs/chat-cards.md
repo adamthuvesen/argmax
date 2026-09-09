@@ -1,20 +1,94 @@
 # Chat Surface and Interactive Cards
 
-The chat surface renders assistant bubbles, tools, and interactive cards: **PlanCard** (Claude Code plan mode) and the question surfaces for `AskUserQuestion` / Cursor's `askQuestionToolCall` — **QuestionDock** while the agent is waiting, **QuestionCard** for a question already in the scrollback.
+The chat surface renders assistant bubbles, tools, and interactive cards: **PlanCard** (Claude Code plan mode), the question surfaces for `AskUserQuestion` / Cursor's `askQuestionToolCall` — **QuestionDock** while the agent is waiting, **QuestionCard** for a question already in the scrollback — and **TodoCard**, the agent's own running plan.
 
 ## Components and Structure
 
 - **Conversation Shell:** [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) derives timeline projections, thinking states, turn models, and scroll anchoring.
 - **Turns & Cards:** [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx) renders individual turns, card containers, and card submission handlers via [PlanCard.tsx](../src/renderer/components/PlanCard.tsx) and [QuestionCard.tsx](../src/renderer/components/QuestionCard.tsx). The *live* question is the exception: [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) hoists it into [QuestionDock.tsx](../src/renderer/components/QuestionDock.tsx) and passes `questionIsDocked` so the turn does not draw it twice.
 - **Timeline Logic:** [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts) decodes persisted rows into one typed event contract. [sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts) uses that contract for event filtering, raw transcript suppression checks, tool pairing, and last-significant-event selection.
-- **Composer:** [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx) handles prompt inputs, file attachments, model/mode chips, follow-up queues, send/stop, and `/clear`. The launcher composer in [LaunchSurface.tsx](../src/renderer/components/LaunchSurface.tsx) cycles Auto / Plan / Chat with Tab. Chat launches a scratch workspace with no repository attached, so the project picker hides and no longer offers a Chat row. The project chip is the source of truth while composing: Full-view new chat hides the grid without dropping it, and a dashboard delta must not retarget the picker back to that hidden session's repo. The last project the user picked is persisted ([launchProjectPreference.ts](../src/renderer/lib/launchProjectPreference.ts)) and survives leaving new chat to open a session: the next new chat shows that project, not the session they just viewed. Both the project picker and the model picker list recently chosen rows first. Stopping a just-launched chat within 10 seconds restores this composer with the prompt and target kept, and archives the workspace so the cancelled chat does not stay in the sidebar ([earlyStop.ts](../src/renderer/lib/earlyStop.ts)).
+- **Composer:** [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx) handles prompt inputs, file attachments, model/mode chips, follow-up queues, send/stop, and `/clear`. The launcher composer in [LaunchSurface.tsx](../src/renderer/components/LaunchSurface.tsx) cycles Auto / Plan / Chat with Tab; Auto is the resting mode and shows no chip, so the chip appears only on Plan or Chat (both composers behave this way, and the command palette lists all three). Chat launches a scratch workspace with no repository attached, so the project picker hides and no longer offers a Chat row. The project chip is the source of truth while composing: Full-view new chat hides the grid without dropping it, and a dashboard delta must not retarget the picker back to that hidden session's repo. The last project the user picked is persisted ([launchProjectPreference.ts](../src/renderer/lib/launchProjectPreference.ts)) and survives leaving new chat to open a session: the next new chat shows that project, not the session they just viewed. Both the project picker and the model picker list recently chosen rows first. Stopping a just-launched chat within 10 seconds restores this composer with the prompt and target kept, and archives the workspace so the cancelled chat does not stay in the sidebar ([earlyStop.ts](../src/renderer/lib/earlyStop.ts)).
 - **Actions Menu:** [SessionActionsMenu.tsx](../src/renderer/components/SessionActionsMenu.tsx) handles workspace actions, PR refreshes, git shortcuts, and panel toggles.
+
+Launcher errors render in a dismissible row below the controls and preserve serialized backend messages. A failed branch switch keeps the current branch and draft, and returns focus to the prompt.
 
 The launcher subscribes to project preference changes independently of dashboard
 selection. Picking the dashboard's already-selected repo must still repaint a
 launcher that remembers another repo. While composing, the sidebar uses the
 launcher's project too, so clicking a different repo opens it instead of treating
 it as already open and collapsing its chats.
+
+## The todo card
+
+Every provider can publish a plan, and each publishes it differently. The
+normalizer reduces all five dialects to one `todo.updated` event
+([todo.rs](../src-tauri/src/providers/normalizer/todo.rs)):
+
+```jsonc
+{ "mode": "snapshot" | "merge",
+  "items": [{ "id": string|null, "text": string|null, "status": Status }],
+  "toolUseId": string|null }
+```
+
+`Status` is `pending | active | done | cancelled | removed`, resolved in Rust so
+the renderer's fold is provider-blind. Two rules keep it honest: **no list in
+the payload means no event** — Cursor's ACP `updateTodos` arrives with the list
+stripped, and an empty snapshot would wipe a list the user is reading — and
+**every status arrives resolved**, so `TODO_STATUS_IN_PROGRESS`, `inProgress`
+and `in_progress` all become `active` in one place.
+
+| Provider | Source | Shape |
+| --- | --- | --- |
+| Codex | app-server `turn/plan/updated` | snapshot, with a real `inProgress` |
+| OpenCode | `todowrite` args | snapshot, no ids |
+| Grok | ACP: `TodosUpdated` inside a tool result; CLI: `todo_write` args | snapshot (ACP, keyed by id) or `merge:true` delta (CLI) |
+| Cursor | `updateTodosToolCall` / `todo_write` / `todowrite` | as shaped |
+| Claude | `TaskCreate` result + `TaskUpdate` args | merge, one task per call |
+
+Three of the five send deltas, so the card is a **fold over the persisted
+events** ([todoList.ts](../src/renderer/lib/todoList.ts)) rather than a read of
+the newest one. The fold lives in the renderer because the normalizer's memory
+is per provider *invocation* — a Rust-side list would reset on every follow-up
+turn, and Grok's textless merge deltas would fold into nothing. Folding
+persisted rows also replays for free across restart, resume, and session sync.
+
+Each turn that touched the plan gets its own card showing the plan as it stood
+when that turn ended, so scrolling back does not rewrite history.
+[TodoCard.tsx](../src/renderer/components/TodoCard.tsx) is expanded while its
+turn runs and collapsed to one line once it ends, until the reader says
+otherwise. The active row carries `WorkingNest`, the app's one running mark.
+
+Grok is the one provider whose two transports disagree: over ACP — which is
+what Argmax launches — the list arrives inside a *tool result* as a JSON string
+under `TodosUpdated`. `state.todos` is a map keyed by id. Numeric ids sort as
+numbers so step 10 does not land between 1 and 2. Slug ids (`group`, `babysit`)
+serialize alphabetically in that map, which is not the plan order, so the
+ordered sibling `todos` array is preferred when present, then
+`summary_for_prompt`, then numeric key order. Its CLI path sends the
+`todo_write` array instead. Both are read.
+
+Known gaps, both provider-side:
+
+- **Cursor's ACP `updateTodos` carries no list.** Its `args` are
+  `{"_toolName":"updateTodos"}` on both `started` and `completed`. Cursor's tool
+  name depends on the model behind ACP — `composer-2.5` alone emitted
+  `updateTodos`, `todo_write` and `todowrite` across two days — so Cursor shows
+  a plan for some models and not others.
+- **Claude's task id exists only in prose.** `TaskCreate` returns
+  ``Task #${id} created successfully: ${subject}``, and `TaskUpdate` addresses
+  that id. When that literal changes the task still reaches the card, keyed by
+  its tool-use id, and a `tracing::warn!` names the text that did not parse.
+- **Claude currently publishes no plan at all.** CLI 2.1.263 advertises no
+  `Task*` tool in the headless tool list, and a session told in as many words to
+  call `TaskCreate` reaches for Bash instead. The emitter is tested against real
+  payloads captured while Claude did emit them (2026-07-06) and will start
+  working the day the CLI exposes the tools again; nothing else has to change.
+
+The rows that carried an update are hidden by the `surface: "todo"` stamp the
+normalizer writes, never by tool name. Names move — Claude renamed `TodoWrite`
+to `TaskCreate`/`TaskUpdate` this year — and a name-based rule would leave a
+stale card plus an unlabelled tool row with no test failing. The name list in
+`HIDDEN_TOOL_NAMES` only still covers sessions persisted before the stamp.
 
 ## Follow scroll
 
@@ -28,8 +102,19 @@ The controller follows the physical bottom until the reader moves upward.
 An upward wheel or touch gesture releases following before the browser moves
 the viewport. Scroll events record the reading position. Layout reconciliation
 owns programmatic scroll writes. Reaching the bottom by scrolling downward,
-sending a new message, switching session, or clicking scroll-to-latest resumes
-following. A content resize alone cannot resume it.
+sending a new turn's prompt, switching session, or clicking scroll-to-latest
+resumes following. A steer keeps the existing turn's scroll anchor and leaves
+following or detached reading intact. It stays visible in the transcript without
+being pushed to the top of the viewport. A content resize alone cannot resume
+following.
+
+Upward input the scroller cannot act on takes the release back. A reader
+already at the physical bottom still produces it — the macOS overscroll bounce
+reports negative wheel deltas as it snaps back, a thumb drifts upward on a tap
+— and a release there would be permanent, because with nowhere left to move no
+scroll event can arrive to end it. The controller checks two frames later
+(a wheel scroll is composited and can land after its own frame) and resumes
+following if the viewport never moved.
 
 Returning to the bottom is recognized before layout reconciliation records
 the position, even if the native scroll event is still queued. If output
@@ -146,6 +231,12 @@ Component tests in [PlanCard.test.tsx](../src/renderer/components/PlanCard.test.
 | `Space` | Pick the focused option |
 | `Enter` | Submit once answered, otherwise pick the focused option |
 | `Escape` | Dock: close and bring the composer back. Card: no-op. |
+
+A live question that arrives while focus is inside the composer stays in the
+transcript as a QuestionCard. The composer remains mounted, preserving the draft
+and caret. That question stays inline after focus moves elsewhere, so clicking
+Send or a question option cannot replace the control mid-click. Questions that
+arrive while the composer is unfocused still use the dock.
 
 A QuestionCard in the scrollback collapses to a single-line summary with an
 expand chevron after submission.
@@ -280,7 +371,7 @@ A multitask dispatched from the composer writes `multitask.launched` into this c
 - **It stays above the composer.** The row remains visible after the parent turn finishes and while the dispatch point scrolls away. Its content aligns with the input card, and a capped lane scrolls before repeated rows can crowd out the transcript.
 - **One row per multitask.** The finish row merges into the row the dispatch opened, keyed by child session id, while the rows keep launch order.
 - **A finished row carries one line of the answer** on the status line (`Completed · Corrected the 0.4 heading to 2026.`), markdown stripped and cut at 120 characters. The full answer stays in the dock tab.
-- **The mark names it.** A running multitask shares the subagents' working nest, because at that moment they are doing the same thing; a settled one carries the Split glyph its dock tab uses. The status words are the launch row's own (`Running` / `Completed` / `Failed`), plus `Stopped` — the one thing a person can do to a multitask that a subagent has no equivalent for.
+- **The mark names it.** A running multitask shares the subagents' working nest, because at that moment they are doing the same thing; a settled one carries the emblem its dock tab uses, hashed off its session id the way a subagent's is hashed off its codename. The status words are the launch row's own (`Running` / `Completed` / `Failed`), plus `Stopped` — the one thing a person can do to a multitask that a subagent has no equivalent for.
 - **Stop rides the row**, revealed on hover or focus. It stops that chat only: the early-stop launcher restore and archive are pane behaviour and a multitask has no pane.
 - **Clicking opens the dock, not another chat.** A multitask has no sidebar row; it opens as a tab in this pane's Agents view beside the subagents, carrying its own chat. See [multitask.md](multitask.md).
 
@@ -301,6 +392,7 @@ Subagent tool calls (Claude `Task`/`Agent`, Codex `spawn_agent`, OpenCode `task`
 
 - **Line one** is the agent's own `description` (bright) followed by its codename (dim), which is also the label on its tab and activity pane. Codenames are surnames of physicists, mathematicians and computer scientists from `agentNames.ts`, hashed from the spawn id and kept unique within a session; the first spawn always draws from the ten headline names. `agentLaunchLabel` falls back to `Launched <codename>` when the provider gave no description. The `prompt` is never promoted into the title — truncating a multi-paragraph instruction turned every spawn into a path wall.
 - **Line two** is the state in words (`Completed` / `Running` / `Failed`), indented to the task rather than the bullet. This replaced the old circle-check and circle-cross glyphs: a finished agent says so, rather than encoding it in a mark.
+- **Parent exit ends unfinished native runs.** A persisted session completion, cancellation, or crash recovery after an agent start makes that unfinished run `Failed`, including after a successful provider exit. Resuming the chat does not revive it. Waiting for approval alone is not an exit, and an observed child completion keeps its own result.
 - **The mark** is the shared working nest (four dots, [WorkingNest.tsx](../src/renderer/components/WorkingNest.tsx)) while the agent runs, and the agent's **emblem** once it settles. Both occupy the same box so the text edge does not shift when an agent lands.
 - **The emblem is the codename's face.** `emblemForCodename` ([agentEmblems.ts](../src/renderer/lib/agentEmblems.ts)) gives each of the 100 names one of twelve radially symmetric shapes in one of the nine `--session-icon-*` hues, drawn by [AgentEmblem.tsx](../src/renderer/components/AgentEmblem.tsx). Binding it to the name rather than the spawn is what makes it worth learning: Gauss is the same mark in every session and every project, and a session's spawns are distinct for free because the codenames already are. The nest wears the same hue while the agent runs, so the landing ends in the colour the emblem is about to take. A failed agent keeps its shape, greys to `--muted`, and takes a small `--rose` corner dot — the hue says *who*, never *how it went*. The set and its rules live in [docs/design/agent-emblems](design/agent-emblems).
 - **The nest lands before the emblem takes over.** On the running → finished edge the four dots gather into one, pulse once in `--accent-deep`, and open back out to the settled 2x2. The swap waits `WORKING_NEST_SETTLE_MS` for it ([useSettleHold.ts](../src/renderer/hooks/useSettleHold.ts)) — without that hold the nest unmounts on the frame it would have started settling, which is why the settled state was unreachable in the shipped app until the hook existed. The hook catches the flip *during render*, not in an effect: an effect runs after the commit, so the bullet would already have painted once and taken the nest with it. An agent that errored skips the landing entirely, and so does a mark that mounts already finished — a landing means "this just happened".
@@ -310,7 +402,7 @@ Subagent tool calls (Claude `Task`/`Agent`, Codex `spawn_agent`, OpenCode `task`
 
 Clicking the text opens the activity pane; the trailing chevron expands the raw tool detail inline. The button hugs its text so that chevron sits beside the task instead of against the far edge. That detail follows the *row* level, not the group level — it opens by default from Detailed up, so Balanced keeps the launch a two-line row. What the chevron reveals is the launch receipt, which for a backgrounded agent is a wall of internal instructions to the parent, and the delegated work itself lives one click away in the pane.
 
-- **The right dock, not a grid column:** Clicking the row opens the subagent in that session's review panel — a third mode beside Changes and Files ([AgentsView.tsx](../src/renderer/components/AgentsView.tsx)), so delegated work reads next to the work it came from. Each open subagent is a tab in the same strip Files mode uses; the transcript itself is [AgentActivity.tsx](../src/renderer/components/AgentActivity.tsx) and carries no chrome of its own. Every tab stays mounted, so a backgrounded subagent keeps polling. ⌘W closes the active tab, as it does for a file. A subagent's tab is marked with its emblem at 13px; a multitask's keeps the Split glyph, which is what says it is a chat of its own. The pane opens on a fixed masthead: the task the agent was given as the title, and one muted line with its codename, role, and reported model and effort (`Gauss · Reviewer · Opus 5 · Extra High`). The masthead keeps the agent's emblem at 18px in a tile tinted from the same hue. The tab and launch row carry the live working mark. The brief folds behind an "Instructions" chip in the same row style as the run's "Worked for" chip. A tab whose launch row leaves the timeline (a superseded Codex spawn) is dropped. A surface without that dock hands the rows no handler at all: on the phone the launch row keeps its mark, name and status and stops being a control, since a press had nowhere to land ([remote.md](remote.md)).
+- **The right dock, not a grid column:** Clicking the row opens the subagent in that session's review panel — a third mode beside Changes and Files ([AgentsView.tsx](../src/renderer/components/AgentsView.tsx)), so delegated work reads next to the work it came from. Each open subagent is a tab in the same strip Files mode uses; the transcript itself is [AgentActivity.tsx](../src/renderer/components/AgentActivity.tsx) and carries no chrome of its own. Every tab stays mounted, so a backgrounded subagent keeps polling. ⌘W closes the active tab, as it does for a file. A subagent's tab is marked with its emblem at 13px, and so is a multitask's — hashed off the session id rather than a codename, since a multitask has none. Split is left for the one case with no session id yet: a multitask dispatched but not yet launched. The pane opens on a fixed masthead: the task the agent was given as the title, and one muted line with its codename, role, and reported model and effort (`Gauss · Reviewer · Opus 5 · Extra High`). The masthead keeps the agent's emblem at 18px in a tile tinted from the same hue. The tab and launch row carry the live working mark. The brief folds behind an "Instructions" chip in the same row style as the run's "Worked for" chip. A tab whose launch row leaves the timeline (a superseded Codex spawn) is dropped. A surface without that dock hands the rows no handler at all: on the phone the launch row keeps its mark, name and status and stops being a control, since a press had nowhere to land ([remote.md](remote.md)).
 - **A subagent run is one turn, read at the chat's own verbosity.** The pane attaches child tools with `foldTurnToolItems`, interleaves individual calls with prose, then groups adjacent activity with the same `foldToolRunsToSummaries` pass as the transcript, and wraps them in the same [TurnBlock.tsx](../src/renderer/components/TurnBlock.tsx): the `Worked for Xs` chip is one control over every tool group and Thought block below it. Where it starts comes from the chat-verbosity setting, not from a separate one — a pane that opened wide while the chat beside it read as single lines was two settings for one reader. The run is always its pane's latest turn, so it never collapses on age the way an older chat turn does. At Minimal the pane keeps only its result panel until the chip is opened, and unlike a chat turn it hides *all* pre-tool narration: the run's answer is the result panel, so there is no last prose group standing in for one. Claude native `SendMessage` continuations appear as separate runs in the same stable dock tab. `task_started` and `task_notification` identify the run lifecycle, while the message delivered to the parent remains its own event.
 - **Native Claude, Codex, OpenCode, and Cursor identity is parent-scoped.** A dock reference resolves only when its parent native conversation id and child session id match the current conversation. Clearing, switching provider, or forking invalidates inherited resumability, even though the old timeline rows remain readable history. References use the current parent-mediated follow-up, so the child does not become an independent session. Codex assignments start with `spawn_agent` or `send_input`. OpenCode continuations call `task` with the existing `task_id`. Cursor continuations use the authoritative `agentId` from the completed ACP `task` result; Composer 2.5 is excluded from this path. Delivery and `pending_init` do not complete an assignment. Its terminal child state does.
 - **Independent sessions stay independent.** An ordinary session launched from the app keeps its own session and dock behavior. The persistent multi-run behavior applies to native Claude, Codex, OpenCode, and Cursor children. OpenCode exposes the child result in the parent tool row, without a separate child trace stream.
@@ -343,6 +435,7 @@ The turn chip controls disclosure across the turn. Per-group and per-row choices
 - **Auto-follow scroll:** [useConversationScroll.ts](../src/renderer/hooks/useConversationScroll.ts) follows output until the reader scrolls upward. The content minimum height reserves space for the latest prompt and protects a detached reader from content collapse. See Follow scroll above.
 - **Images in answers:** [MarkdownImage.tsx](../src/renderer/components/MarkdownImage.tsx) renders web images, workspace images through `argmax-asset://`, and saved chat attachments through `argmax-attachment://`. Both protocols enforce their existing filesystem allowlists. A local path that neither handler accepts becomes a file chip after the image request fails, never a broken image box.
 - **Web links in answers:** HTTP schemes are recognized regardless of case. Protocol-relative URLs (`//example.com`) use HTTPS. Both follow the configured browser target through `WebLink`.
+- **Directory links in answers:** Local links that do not match a file chip, including worktree directories and extensionless files, open through the system. Relative paths resolve within the active checkout. Their clicks never navigate the app's main webview, and failed opens show an error toast.
 - **File links in answers:** Absolute paths inside the active workspace are reduced to workspace-relative paths before opening. [openableFile.ts](../src/renderer/lib/openableFile.ts) also recognizes the same repo-relative suffix when an answer names a file from another checkout. A real absolute path outside the workspace opens through the system instead of sending the Files panel a path it is not allowed to preview.
 - **Tail reserve & resize:** `.conversation-list` maintains constant bottom padding (`--space-8`). A `ResizeObserver` monitors the viewport and composer textarea to adjust scroll offsets dynamically as drafts expand. A width-driven reflow (the side review/log panel opening or closing) keeps a reader who was already at the bottom at the bottom instead of leaving the new bottom out of view; height-only growth below a detached reader still leaves them alone.
 - **Workspace card:** [WorkspaceCard.tsx](../src/renderer/components/WorkspaceCard.tsx) floats worktree status and a glanceable subagent roster in the right gutter when pane width allows. The branch name may run to two lines, folding after a slash or hyphen (`adam/` then `feat-approvals-and-chat`) before it ellipsizes; the hide × sits beside the base ref so the name keeps the full width. Clicking the branch name copies its full value, including text hidden by ellipsis, and reports success or failure in the button tooltip. Each chip in that overlapping stack is the agent's emblem on a ring tinted from the same hue — one colour per agent, not a chip colour and a mark colour — and a multitask keeps its initial on its hashed tint. When the review or log panel is open, the card remains visible whenever the conversation column is wide enough to hold it beside the transcript without overlap. The PR row is the number and nothing else: state is the icon, the same marks the sidebar uses — sage `GitPullRequest` open, purple `GitMerge` merged, muted `GitPullRequestClosed` closed, and the plain GitHub mark until the state has been polled. Spelling the state out cost more of a narrow row than it bought. The icon is `aria-hidden`, so the word still reaches a screen reader through the row's title (`Open pull request #1158 on GitHub (merged)`). Clicking the row creates a PR or opens the existing one with the same link-target preference as chat links.

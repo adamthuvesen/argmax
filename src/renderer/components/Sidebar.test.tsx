@@ -54,7 +54,9 @@ const snapshot: DashboardSnapshot = {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     }
   ],
   sessions: [],
@@ -432,7 +434,9 @@ describe("Sidebar — workspaces without sessions", () => {
           icon: null,
           iconColor: null,
           prCreatedAt: null,
-          prMergedAt: null
+          prMergedAt: null,
+          prCheckState: null,
+          prActivityAt: null
         }
       ],
       sessions: [
@@ -586,7 +590,9 @@ describe("Sidebar — date (sessions) view mode", () => {
     icon: null,
     iconColor: null,
     prCreatedAt: null,
-    prMergedAt: null
+    prMergedAt: null,
+    prCheckState: null,
+    prActivityAt: null
   });
 
   const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
@@ -1098,7 +1104,9 @@ describe("Sidebar — Priority section", () => {
     icon: null,
     iconColor: null,
     prCreatedAt: null,
-    prMergedAt: null
+    prMergedAt: null,
+    prCheckState: null,
+    prActivityAt: null
   });
 
   const prioritySnapshot: DashboardSnapshot = {
@@ -1474,6 +1482,8 @@ describe("Sidebar — working rows in Priority", () => {
     prNumber: null,
     prCreatedAt: null,
     prMergedAt: null,
+    prCheckState: null,
+    prActivityAt: null,
     icon: null,
     iconColor: null,
     ...overrides
@@ -1634,9 +1644,11 @@ describe("Sidebar — working rows in Priority", () => {
               lastActivityAt: t2
             },
             {
+              // Same reason as "Attn New", so this pair still tests recency
+              // rather than the rank that would otherwise separate them.
               ...workingSession("w-attn-old", "complete"),
               state: "waiting" as const,
-              attention: "approval-needed" as const,
+              attention: "blocked" as const,
               attentionChangedAt: t8,
               lastActivityAt: t8
             }
@@ -1653,6 +1665,51 @@ describe("Sidebar — working rows in Priority", () => {
     expect(rendersAfter(btnWorkNew, btnWorkOld)).toBe(true);
     expect(rendersAfter(btnWorkOld, btnAttnNew)).toBe(true);
     expect(rendersAfter(btnAttnNew, btnAttnOld)).toBe(true);
+  });
+
+  it("puts the stronger reason above the newer one", () => {
+    // Recency only decides between rows with the same claim on the reader. An
+    // approval parks the agent until someone answers it; a chat merely waiting
+    // for input does not, however fresh it is.
+    const recent = new Date(Date.now() - 60 * 1000).toISOString();
+    const older = new Date(Date.now() - 9 * 60 * 1000).toISOString();
+
+    render(
+      <Sidebar
+        {...baseProps}
+        showPriority
+        snapshot={{
+          ...snapshot,
+          workspaces: [
+            workingWorkspace("w-blocked", "Fresh Blocked", { lastActivityAt: recent }),
+            workingWorkspace("w-approval", "Stale Approval", { lastActivityAt: older })
+          ],
+          sessions: [
+            {
+              ...workingSession("w-blocked", "complete"),
+              state: "waiting" as const,
+              attention: "blocked" as const,
+              attentionChangedAt: recent,
+              lastActivityAt: recent
+            },
+            {
+              ...workingSession("w-approval", "complete"),
+              state: "waiting" as const,
+              attention: "approval-needed" as const,
+              attentionChangedAt: older,
+              lastActivityAt: older
+            }
+          ]
+        }}
+      />
+    );
+
+    expect(
+      rendersAfter(
+        screen.getByRole("button", { name: /Stale Approval/ }),
+        screen.getByRole("button", { name: /Fresh Blocked/ })
+      )
+    ).toBe(true);
   });
 });
 
@@ -1681,7 +1738,9 @@ describe("Sidebar — boot collapse defaults", () => {
     icon: null,
     iconColor: null,
     prCreatedAt: null,
-    prMergedAt: null
+    prMergedAt: null,
+    prCheckState: null,
+    prActivityAt: null
   });
 
   const bootSession = (workspaceId: string, attention: "normal" | "blocked") => ({
@@ -1817,7 +1876,9 @@ describe("Sidebar — Side Chats section", () => {
     icon: null,
     iconColor: null,
     prCreatedAt: null,
-    prMergedAt: null
+    prMergedAt: null,
+    prCheckState: null,
+    prActivityAt: null
   });
 
   const scratchProject = {

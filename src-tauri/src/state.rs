@@ -47,6 +47,7 @@ pub struct AppState {
     pub grok_acp: OnceLock<Arc<crate::providers::grok_acp::GrokAcpSessions>>,
     pub terminals: OnceLock<Arc<TerminalService>>,
     pub checks: OnceLock<Arc<CheckService>>,
+    pub goals: OnceLock<Arc<crate::goals::service::GoalService>>,
     pub workspaces: OnceLock<Arc<WorkspaceService>>,
     /// Attachment bytes are written by both the desktop renderer and the
     /// browser remote bridge. The store is initialized once the app data
@@ -114,6 +115,7 @@ impl Default for AppState {
             grok_acp: OnceLock::new(),
             terminals: OnceLock::new(),
             checks: OnceLock::new(),
+            goals: OnceLock::new(),
             workspaces: OnceLock::new(),
             attachments: OnceLock::new(),
             gh_poller: OnceLock::new(),

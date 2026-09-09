@@ -4,7 +4,7 @@
 
 [src-tauri/src/approvals](../src-tauri/src/approvals) handles command risk classification and approval state.
 
-Settings → Agents offers three permission choices. **Provider defaults** is the default for new installations and lets each CLI load its own user and project configuration. Existing saved choices and chat policies are preserved. **Full access** explicitly bypasses native gates where the provider supports it. **Ask for approval** selects the provider's interactive permission policy. Plan mode keeps the provider's planning restrictions.
+Settings → Agents offers three permission choices independently for each provider. An existing global choice seeds every provider until you change its setting. **Provider defaults** is the default for new installations and lets each CLI load its own user and project configuration. Existing chat policies are preserved. **Full access** explicitly bypasses native gates where the provider supports it. **Ask for approval** selects the provider's interactive permission policy. Plan mode keeps the provider's planning restrictions.
 
 | Provider | Native response transport | Native user configuration |
 | --- | --- | --- |
@@ -16,7 +16,23 @@ Settings → Agents offers three permission choices. **Provider defaults** is th
 
 The CLI also controls project configuration and supported environment overrides. Argmax does not copy or rewrite dotfiles. Model, reasoning, worktree, conversation and MCP integration still come from the chat launch. Restricted title and suggestion helpers retain their separate policy.
 
-A native request is persisted with its live invocation and request identifiers before the provider receives a response. The chat shows the action, working directory and provider, with **Approve** and **Reject**. A decision is delivered only to that waiting request. Codex permission-profile requests state their scope in the action and grant access only for the current turn, never the whole session. Duplicate decisions fail, and cancelled or disconnected requests cannot resume an old process. Rejection returns control to the provider so it can explain or choose another action. Settings changes apply to new chats, including scheduled runs, automatic PR-fix chats and More details popups. Mobile launches inherit the host setting. Saves are atomic and serialized, and Settings shows save failures with a retry action. Existing chats retain their stored choice. Cursor retains native pre-allowed rules even in Ask for approval, because its ACP CLI has no force-prompt override.
+Changing Settings does not update existing chats. A chat launched through
+`session_launch` inherits its parent's saved permission mode, so asking an
+existing chat to launch another chat does not pick up a changed setting.
+Start a chat from the launcher to use the current provider setting.
+
+For Codex, Full access sets `approvalPolicy: never` and disables sandbox
+restrictions, but native execution rules still apply. A local `prompt` rule,
+such as one for `git push`, can therefore fail with
+`approval required by policy, but AskForApproval is set to Never` before the
+command runs. This is not an automatic reviewer rejecting the action.
+Provider defaults leaves approval configuration to Codex. With
+`approval_policy = "on-request"` and `approvals_reviewer = "auto_review"`,
+eligible requests can reach automatic review. When diagnosing a mismatch,
+compare the chat's stored `permission_mode` with the Codex rollout's
+`turn_context.approval_policy`, rather than reading Settings alone.
+
+A native request is persisted with its live invocation and request identifiers before the provider receives a response. The chat shows the action, working directory and provider, with **Approve** and **Reject**. A decision is delivered only to that waiting request. Codex permission-profile requests state their scope in the action and grant access only for the current turn, never the whole session. Duplicate decisions fail, and cancelled or disconnected requests cannot resume an old process. Rejection returns control to the provider so it can explain or choose another action. Each provider’s setting applies to its new chats, including scheduled runs, automatic PR-fix chats and More details popups. Mobile launches inherit the host setting. Saves are atomic and serialized, and Settings shows save failures with a retry action. Existing chats retain their stored choice. Cursor retains native pre-allowed rules even in Ask for approval, because its ACP CLI has no force-prompt override.
 
 A tool call the chat draws as an **interactive card** is never gated. The card is already in front of the user with its own button, and pressing it terminates the turn and sends the answer as a new message, so the tool result is discarded either way — an Approve/Reject row beside it asks permission to show a question the user is looking at. `renders_as_interactive_card` in [providers/mod.rs](../src-tauri/src/providers/mod.rs) holds the names, in step with [turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts).
 

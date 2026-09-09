@@ -75,6 +75,32 @@ describe("<StreamingMarkdown />", () => {
     expect(current).toHaveBeenCalledWith("src/renderer/App.tsx", { line: null, preferIde: false });
   });
 
+  it.each([
+    ["/Users/adamthuvesen/dev/menti/dbt-transform-remove-pqa", "/Users/adamthuvesen/dev/menti/dbt-transform-remove-pqa", undefined],
+    ["docs/", "docs/", "/Users/me/repo"],
+    ["LICENSE", "LICENSE", "/Users/me/repo"],
+    ["/tmp/my%20worktree", "/tmp/my worktree", undefined]
+  ])("opens local link %s without navigating the app", (href, expectedPath, cwd) => {
+    const openPath = vi.fn().mockResolvedValue({ ok: true });
+    (window as unknown as { argmax: unknown }).argmax = { system: { openPath } };
+    const onOpenFile = vi.fn();
+    render(
+      <StreamingMarkdown
+        text={`Open [its own worktree](${href}).`}
+        streaming={false}
+        workspace={workspace}
+        onOpenFile={onOpenFile}
+      />
+    );
+    const link = screen.getByRole("link", { name: "its own worktree" });
+    expect(fireEvent.click(link)).toBe(false);
+    expect(openPath).toHaveBeenCalledWith({ path: expectedPath, cwd });
+    expect(fireEvent.click(link, { ctrlKey: true })).toBe(false);
+    expect(openPath).toHaveBeenCalledTimes(2);
+    expect(onOpenFile).not.toHaveBeenCalled();
+    delete (window as { argmax?: unknown }).argmax;
+  });
+
   it("renders workspace and managed attachment images through guarded protocols", () => {
     const { container } = render(
       <StreamingMarkdown

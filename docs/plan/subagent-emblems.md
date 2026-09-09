@@ -8,7 +8,7 @@
 
 **Binding constraints.** No inline `style={{}}` for static styling; geometry in SVG attributes, colour in CSS (`docs/styling.md`). Decorative colour never carries status: running / failed / done stay on the existing semantic tokens and the working nest. Renderer tests query by role and label. Three themes. Reduced motion honoured. Nothing changes in Rust or the schema: the emblem is derived in the renderer from data it already has.
 
-**Out of scope.** Emblems for multitasks (the Split glyph is what names a multitask, see `docs/multitask.md`), emblems in the sidebar session icon picker, user-chosen emblems, phone remote surfaces beyond what falls out of shared components.
+**Out of scope at the time.** Emblems for multitasks — since given one, hashed off the session id, see `docs/multitask.md`. Also out of scope: emblems in the sidebar session icon picker, user-chosen emblems, phone remote surfaces beyond what falls out of shared components.
 
 ## What the reference does, and what we keep
 

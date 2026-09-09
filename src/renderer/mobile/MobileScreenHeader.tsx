@@ -26,6 +26,10 @@ export function MobileScreenHeader({
         <ChevronLeft size={20} aria-hidden />
       </button>
       {typeof title === "string" ? (
+        // Deliberately not a heading: the new-chat screen already carries the
+        // launcher's h1, and a second one competing with it in the bar is
+        // worse for a screen reader than none. The back chevron names the
+        // destination, so the screen is not unlabelled.
         <span className="mobile-session-header-title">{title}</span>
       ) : (
         title

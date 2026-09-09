@@ -525,7 +525,11 @@
 }
 
 @media (max-height: 560px) {
-  .conversation-surface {
+  /* Android remote honors `interactive-widget=resizes-content`, so this
+     compact layout would fire for the keyboard rather than a short window
+     and reverse on dismiss. The phone shell sizes itself to the visual
+     viewport instead. */
+  html:not(:has(.mobile-shell)) .conversation-surface {
     grid-template-rows: auto minmax(0, 1fr) minmax(0, 68px) auto;
     padding-top: var(--space-3);
     padding-bottom: var(--space-2);
@@ -534,38 +538,38 @@
     --conversation-edge-fade: 0px;
   }
 
-  .section-heading {
+  html:not(:has(.mobile-shell)) .section-heading {
     margin-bottom: var(--space-1_5);
   }
 
-  .conversation-list {
+  html:not(:has(.mobile-shell)) .conversation-list {
     --conversation-list-gap: var(--space-4);
   }
 
-  .conversation-content {
+  html:not(:has(.mobile-shell)) .conversation-content {
     padding-top: 0;
     padding-bottom: var(--space-2);
   }
 
-  .session-meta-cards {
+  html:not(:has(.mobile-shell)) .session-meta-cards {
     margin-top: var(--space-1_5);
   }
 
-  .session-composer-stack {
+  html:not(:has(.mobile-shell)) .session-composer-stack {
     margin-top: var(--space-2);
   }
 
-  .session-input {
+  html:not(:has(.mobile-shell)) .session-input {
     padding: 8px 12px 7px;
     border-radius: var(--radius-2xl);
   }
 
-  .session-input textarea {
+  html:not(:has(.mobile-shell)) .session-input textarea {
     min-height: 40px;
     padding-block: var(--space-1_5);
   }
 
-  .session-input-toolbar {
+  html:not(:has(.mobile-shell)) .session-input-toolbar {
     min-height: 36px;
   }
 }

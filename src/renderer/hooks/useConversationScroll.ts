@@ -356,17 +356,39 @@ export function useConversationScroll({
     const content = contentRef.current;
     if (!enabled || !scroll) return;
 
+    // Release following for the gesture, then take it back if the gesture
+    // turned out to move nothing. A reader who is already at the physical
+    // bottom can produce upward input the scroller cannot act on — the
+    // macOS overscroll bounce reports negative wheel deltas as it snaps
+    // back, and a thumb's drift on a tap reports an upward touch — and a
+    // detach there is permanent: with nowhere left to move, no scroll event
+    // can ever arrive to end it, so the scroll-to-latest button stays on a
+    // conversation that is already at its end and new output stops being
+    // followed. Two frames, because a wheel scroll is composited and its
+    // scrollTop can land after the frame the event was dispatched in.
+    const releaseFollowing = (): void => {
+      const topBeforeGesture = scroll.scrollTop;
+      const bottomBeforeGesture = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+      detach();
+      reconcile();
+      if (topBeforeGesture < bottomBeforeGesture - BOTTOM_EPSILON_PX) return;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (modeRef.current !== "detached") return;
+        if (Math.abs(scroll.scrollTop - topBeforeGesture) > BOTTOM_EPSILON_PX) return;
+        startFollowing();
+        reconcile();
+      }));
+    };
+
     const onWheel = (event: WheelEvent): void => {
       if (event.deltaY >= 0 || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
       if (scrollableAncestor(scroll, event.target, -1)) return;
-      detach();
-      reconcile();
+      releaseFollowing();
     };
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!upwardKey(event) || isEditable(event.target)) return;
       if (scrollableAncestor(scroll, event.target, -1)) return;
-      detach();
-      reconcile();
+      releaseFollowing();
     };
     const onTouchStart = (event: TouchEvent): void => {
       if (event.touches.length !== 1) {
@@ -385,8 +407,7 @@ export function useConversationScroll({
       touchYRef.current = touch.clientY;
       if (deltaY <= BOTTOM_EPSILON_PX) return;
       if (scrollableAncestor(scroll, touchTargetRef.current, -1)) return;
-      detach();
-      reconcile();
+      releaseFollowing();
     };
     const clearTouch = (): void => {
       touchYRef.current = null;

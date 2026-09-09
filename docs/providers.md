@@ -15,9 +15,12 @@ Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build throug
 - [flush_queue.rs](../src-tauri/src/providers/flush_queue.rs): Batches event writes to SQLite and emits `dashboard:delta`. Complete JSONL lines flush immediately; non-newline trailing fragments are debounced for ~16 ms so interactive sessions surface output promptly.
 - [subagent_trace/](../src-tauri/src/providers/subagent_trace): Imports trace-backed child activity and reconciles authoritative child lineage when a provider omits a launch row.
 - [pricing.rs](../src-tauri/src/providers/pricing.rs): Token pricing models matching `src/shared/providerModels.ts`.
-- [one_shot.rs](../src-tauri/src/providers/one_shot.rs): One-shot helper calls to a provider CLI, all on the cheap `PROVIDER_TITLE_MODEL` (`providerModels.ts`) with tools and config loading off. Two callers: short session titles (`workspaces:autotitle`) and the composer's suggested follow-up (`session:suggest-follow-up`). Claude uses `claude-sonnet-5 --effort low`; OpenCode stays on the free `opencode/big-pickle` model; Grok uses `grok-4.6` (the cheaper of its two SKUs) with `--tools ""`.
+- [one_shot.rs](../src-tauri/src/providers/one_shot.rs): One-shot helper calls to a provider CLI, all on the cheap `PROVIDER_TITLE_MODEL` (`providerModels.ts`) with tools and config loading off. Two callers: short session titles (`workspaces:autotitle`) and the composer's suggested follow-up (`session:suggest-follow-up`). Claude uses `claude-sonnet-5 --effort low`; OpenCode stays on the free `opencode/big-pickle` model; Grok uses `grok-4.6` (the cheaper of its two SKUs) with `--disallowed-tools` (an empty `--tools` allowlist is ignored), `--max-turns 1`, `--output-format json`, and a `{title}` JSON schema on the title path so a screenshot launch cannot land the "I'll glance at…" tool-loop preamble as the sidebar label.
 
 Raw provider output is saved for debugging, but only normalized timeline events are displayed in chat. The persisted payload stays compatible with existing rows and provider fixtures. The renderer decodes it once through [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts), then routes behavior from the resulting typed event instead of reading semantic payload keys in each feature.
+
+Goals work on every provider: the evaluator is a one-shot call Argmax makes
+itself rather than a provider capability. See [goals.md](goals.md).
 
 ## Verification profiles
 
@@ -68,8 +71,18 @@ While a turn is running, ordinary input stays queued. A queued follow-up has
 Both use `providers:send-queued-message-now`, with optional `delivery: "steer"`
 selecting guidance for the existing turn. Omitting delivery preserves interruption.
 Codex uses app-server `turn/steer` with `expectedTurnId`. Claude writes a user
-envelope to its existing stream-json connection and waits for the
-`--replay-user-messages` echo. Neither operation starts a replacement process.
+envelope to its existing stream-json connection; the flushed write is the
+acknowledgement. Neither operation starts a replacement process.
+
+Claude's `--replay-user-messages` echo is *not* the acknowledgement. Claude
+replays a steered message only when it picks it up, and a turn inside a long
+tool call holds that for minutes, so waiting on the echo reported delivered
+guidance as delivery-unknown. The echo is still tracked: the reader withholds
+the turn's `result` until Claude has consumed every written follow-up, and the
+replayed copy is suppressed because Argmax already persisted that user message.
+A follow-up that never reached stdin — the turn closed first, or Claude had not
+taken up the turn's first message yet (`STEER_NOT_READY`) — is unsent, not
+uncertain.
 
 Steering inherits the running turn's settings. A queued change to model, reasoning
 effort, or agent mode must wait for another turn. Accepted guidance is persisted
@@ -100,6 +113,55 @@ account and a temporary project.
 - **Fast mode:** The model catalog explicitly marks eligible models. The picker offers Speed and shows the Fast indicator only for those entries, and launch and follow-up requests gate the saved preference by that eligibility. Currently Codex Astra, Sol, Terra, and Luna are eligible. Codex app-server receives `serviceTier: "priority"` per turn. Availability depends on the provider account. Cursor ACP controls its advertised speed, so Argmax offers no Speed control for Cursor. OpenCode and Grok have none either. Claude's settings flag remains wired, but the current Claude catalog has no verified eligible models: [Claude's documentation](https://code.claude.com/docs/en/fast-mode) restricts Fast to Opus 4.6 and says enabling it on other models switches models. Unknown models default to ineligible. [Codex's speed documentation](https://learn.chatgpt.com/docs/agent-configuration/speed) covers Astra and the GPT-5.6 family.
 - **Reasoning effort:** Claude uses `--append-system-prompt` for effort (including Max/Ultra). Codex app-server receives the effort per turn (Astra/Sol/Terra through ultra, Luna through max). Cursor ACP takes the advertised configuration described below. Legacy CLI builders retain Codex's `service_tier` and `model_reasoning_effort` overrides and Cursor's effort and `-fast` model suffixes for helper flows. Grok's CLI accepts only low/medium/high/xhigh, so Max and Ultra clamp to xhigh.
 - **Context window:** Claude's 1M models launch on the `[1m]` spelling of their id (`claude-opus-5[1m]`), since the CLI only resolves a bare id's window through a first-party lookup — behind a custom `ANTHROPIC_BASE_URL` it assumes 200k and auto-compacts there, a fifth of the way into the advertised window. The suffix rides on the launch flag alone; the CLI reports the bare id back, so usage and pricing are unchanged. The catalog's `contextWindow` decides which ids get it (`CLAUDE_LONG_CONTEXT_MODELS` in [adapters.rs](../src-tauri/src/providers/adapters.rs)).
+
+### The agent's todo list
+
+Every provider can publish a plan and each does it differently; the normalizer
+reduces all five to one `todo.updated` event. The shapes, the two Cursor gaps,
+and the `surface: "todo"` stamp that hides the rows are documented in
+[chat-cards.md](chat-cards.md). One provider-launch consequence lives here:
+**Codex's `update_plan` is off unless asked for.** Both the app-server args in
+[codex_app_server.rs](../src-tauri/src/providers/codex_app_server.rs) and the
+`exec` argv in [adapters.rs](../src-tauri/src/providers/adapters.rs) pass
+`-c tools.update_plan.enabled=true`; without it Codex is told the tool does not
+exist. The app-server reports the plan through `turn/plan/updated`, not through
+an item lifecycle, and that notification carries a real `inProgress` the `exec`
+projection throws away.
+
+### Questions the agent asks the user
+
+The question card is documented in [chat-cards.md](chat-cards.md). Two of the
+five providers reach it, and the two that do not are both blocked provider-side:
+
+**Codex asks through `request_user_input`, and Argmax does not enable it.** The
+tool is off unless the launch passes
+`-c tools.experimental_request_user_input.enabled=true`, so today the model is
+told it does not exist and writes the question as prose instead. Turning it on
+is not enough on its own: the question arrives as an app-server *server
+request*, `item/tool/requestUserInput`, not as a tool call, and
+`server_request_response` in
+[codex_app_server.rs](../src-tauri/src/providers/codex_app_server.rs)
+allow-lists only the three approval methods and answers anything else with
+`-32601`. Codex then follows its own instruction to continue with best
+judgment. Unlike Claude's card — which is answered by terminating the turn and
+sending a new message — Codex parks the turn on `waitingOnUserInput` and waits
+for the answer to be written back onto the open request, so the same turn
+resumes; a probe that held the response for 45 seconds got a turn that waited
+and then used the late answer. Wiring it up therefore needs a broker like
+`ApprovalService`, not the `sendAfterTerminate` path. Left unbuilt on purpose:
+the flag is marked experimental, as are the protocol types. An unrecognised
+`tools.*` key is ignored silently, so a future rename degrades back to prose
+rather than failing the turn; a *type* change on a known key does fail config
+parse outright.
+
+**Grok's `ask_user_question` is not exposed over ACP.** The binary carries the
+tool and documents it, and `features.ask_user_question` defaults to true, but
+over `grok agent stdio` — the only transport Argmax uses — Grok reports the tool
+is unavailable and answers in prose, under every permission mode and with
+`GROK_ASK_USER_QUESTION` set. Its `enter_plan_mode` / `exit_plan_mode` do arrive
+as ordinary ACP tool calls, so the gap is specific to the question tool. Asking
+Grok to recite its own tool list is not a check: it claims the tool and then
+cannot call it. OpenCode has no such tool at all.
 
 ### Session moves and the provider conversation
 

@@ -31,6 +31,8 @@ export function MobileReviewScreen({
   initialFilePath = null,
   filePreviewOpen,
   onFilePreviewOpenChange,
+  scopeSheetOpen,
+  onScopeSheetOpenChange,
   onClose
 }: {
   workspace: WorkspaceSummary;
@@ -41,6 +43,10 @@ export function MobileReviewScreen({
    *  gesture pops the preview instead of the whole review screen. */
   filePreviewOpen: boolean;
   onFilePreviewOpenChange: (open: boolean) => void;
+  /** Changes-scope picker. Owned by MobileApp so a back gesture dismisses
+   *  the sheet instead of the review screen. */
+  scopeSheetOpen: boolean;
+  onScopeSheetOpenChange: (open: boolean) => void;
   onClose: () => void;
 }): JSX.Element {
   const source = useMemo<ReviewSource>(() => ({ kind: "workspace", workspace }), [workspace]);
@@ -52,7 +58,6 @@ export function MobileReviewScreen({
   const review = useReviewState(source, null, { editable: false, initiallyOpen: true });
 
   const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
-  const [scopeSheetOpen, setScopeSheetOpen] = useState(false);
 
   const { openInFilesView } = review;
   useEffect(() => {
@@ -131,7 +136,7 @@ export function MobileReviewScreen({
             aria-label="Changes shown"
             aria-haspopup="dialog"
             aria-expanded={scopeSheetOpen}
-            onClick={() => setScopeSheetOpen(true)}
+            onClick={() => onScopeSheetOpenChange(true)}
           >
             {REVIEW_SCOPE_LABELS[review.changesScope]}
             <ChevronsUpDown size={13} aria-hidden="true" />
@@ -146,7 +151,7 @@ export function MobileReviewScreen({
       ) : null}
 
       {scopeSheetOpen ? (
-        <BottomSheet label="Changes shown" onClose={() => setScopeSheetOpen(false)}>
+        <BottomSheet label="Changes shown" onClose={() => onScopeSheetOpenChange(false)}>
           <div className="mobile-sheet-group">
             {review.availableScopes.map((scope) => (
               <SheetOption
@@ -155,7 +160,7 @@ export function MobileReviewScreen({
                 selected={scope === review.changesScope}
                 onSelect={() => {
                   review.setChangesScope(scope);
-                  setScopeSheetOpen(false);
+                  onScopeSheetOpenChange(false);
                 }}
               />
             ))}

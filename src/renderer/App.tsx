@@ -106,9 +106,9 @@ import { persistLaunchProjectId, useLaunchProjectId } from "./lib/launchProjectP
 import { factoryLaunchModel, modelPickerSelectionFromSession, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
-  PERMISSION_MODE_KEY,
-  readStoredPermissionMode,
-  type PermissionMode
+  PROVIDER_PERMISSION_MODES_KEY,
+  readStoredProviderPermissionModes,
+  type ProviderPermissionModes
 } from "./lib/permissionMode.js";
 import {
   NEW_SESSION_MODE_KEY,
@@ -127,9 +127,15 @@ import {
 } from "./lib/reviewPanelSide.js";
 import {
   BROWSER_PAGE_OPEN_KEY,
+  TURN_REVERT_ENABLED_KEY,
   COMPOSER_PIXEL_FIELD_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
+  GOAL_ENABLED_KEY,
+  GOAL_MAX_TURNS_DEFAULT,
+  GOAL_MAX_TURNS_KEY,
+  GOAL_MAX_TURNS_MAX,
+  GOAL_MAX_TURNS_MIN,
   KEEP_AWAKE_KEY,
   PR_MILESTONE_CELEBRATION_KEY,
   TURN_CHANGES_EXPANDED_KEY,
@@ -139,6 +145,7 @@ import {
   PrMilestoneCelebrationContext,
   resolveChatVerbosity,
   useBooleanUiPreference,
+  useBoundedNumberPreference,
   useChatVerbosityPreference
 } from "./lib/uiPreferences.js";
 import { randomSessionIcon } from "./lib/sessionIcons.js";
@@ -198,6 +205,13 @@ export function App(): JSX.Element {
     TURN_CHANGES_EXPANDED_KEY,
     true
   );
+  const [goalEnabled, setGoalEnabled] = useBooleanUiPreference(GOAL_ENABLED_KEY, true);
+  const [revertEnabled, setRevertEnabled] = useBooleanUiPreference(TURN_REVERT_ENABLED_KEY, true);
+  const [goalMaxTurns, setGoalMaxTurns] = useBoundedNumberPreference(GOAL_MAX_TURNS_KEY, {
+    min: GOAL_MAX_TURNS_MIN,
+    max: GOAL_MAX_TURNS_MAX,
+    fallback: GOAL_MAX_TURNS_DEFAULT
+  });
   const [pixelFieldEnabled, setPixelFieldEnabled] = useBooleanUiPreference(COMPOSER_PIXEL_FIELD_KEY, false);
   const [prMilestoneCelebrationEnabled, setPrMilestoneCelebrationEnabled] = useBooleanUiPreference(
     PR_MILESTONE_CELEBRATION_KEY,
@@ -282,7 +296,7 @@ export function App(): JSX.Element {
     },
     [setAccentId]
   );
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
+  const [permissionModes, setPermissionModes] = useState<ProviderPermissionModes>(readStoredProviderPermissionModes);
   const [defaultAgentSaveError, setDefaultAgentSaveError] = useState<string | null>(null);
   const [isSavingDefaultAgent, setIsSavingDefaultAgent] = useState(false);
   const [defaultAgentSaveAttempt, setDefaultAgentSaveAttempt] = useState(0);
@@ -302,7 +316,7 @@ export function App(): JSX.Element {
           modelLabel: launchModel.label,
           modelId: launchModel.modelId,
           reasoningEffort: launchModel.reasoningEffort ?? null,
-          permissionMode
+          permissionModes
         });
         if (!cancelled && toastSnapshot()?.message === DEFAULT_AGENT_SAVE_ERROR) dismissToast();
       } catch {
@@ -315,7 +329,7 @@ export function App(): JSX.Element {
       }
     });
     return () => { cancelled = true; };
-  }, [launchModel, permissionMode, defaultAgentSaveAttempt]);
+  }, [launchModel, permissionModes, defaultAgentSaveAttempt]);
   const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
   const [chatWidth, setChatWidth] = useState<ChatWidth>(() => readStoredChatWidth());
   const [reviewPanelSide, setReviewPanelSide] = useState<ReviewPanelSide>(() => readStoredReviewPanelSide());
@@ -642,7 +656,7 @@ export function App(): JSX.Element {
     onCloseSettings: hideStandalonePage
   });
 
-  usePersistedSetting(PERMISSION_MODE_KEY, permissionMode);
+  usePersistedSetting(PROVIDER_PERMISSION_MODES_KEY, JSON.stringify(permissionModes));
   usePersistedSetting(NEW_SESSION_MODE_KEY, newSessionMode);
   usePersistedSetting(CHAT_WIDTH_KEY, String(chatWidth));
   usePersistedSetting(REVIEW_PANEL_SIDE_KEY, reviewPanelSide);
@@ -1275,7 +1289,7 @@ export function App(): JSX.Element {
           reasoningEffort: model.reasoningEffort ?? null,
           fastMode: fastModeEnabled && modelSupportsFastMode(model),
           agentMode,
-          permissionMode,
+          permissionMode: permissionModes[model.provider],
           cols: 120,
           rows: 32,
           attachments: attachments?.length ? attachments : null
@@ -1327,7 +1341,7 @@ export function App(): JSX.Element {
       snapshot.projects,
       maxGridColumnsPerRow,
       pendingSelectionRef,
-      permissionMode,
+      permissionModes,
       fastModeEnabled,
       randomSessionIconEnabled,
       setSnapshot
@@ -1373,7 +1387,7 @@ export function App(): JSX.Element {
           reasoningEffort: model.reasoningEffort ?? null,
           fastMode: fastModeEnabled && modelSupportsFastMode(model),
           agentMode: options?.agentMode ?? "auto",
-          permissionMode,
+          permissionMode: permissionModes[model.provider],
           cols: 120,
           rows: 32,
           attachments: options?.attachments?.length ? options.attachments : null
@@ -1424,7 +1438,7 @@ export function App(): JSX.Element {
       launchModel,
       maxGridColumnsPerRow,
       pendingSelectionRef,
-      permissionMode,
+      permissionModes,
       randomSessionIconEnabled,
       setSnapshot
     ]
@@ -1523,7 +1537,7 @@ export function App(): JSX.Element {
           reasoningEffort: launchModel.reasoningEffort ?? null,
           fastMode: fastModeEnabled && modelSupportsFastMode(launchModel),
           agentMode: "auto",
-          permissionMode,
+          permissionMode: permissionModes[launchModel.provider],
           cols: 120,
           rows: 32,
           attachments: null
@@ -1553,7 +1567,7 @@ export function App(): JSX.Element {
       );
       setDetailsPopup(detailsPopupRef.current);
     },
-    [disposeDetailsSession, fastModeEnabled, launchModel, permissionMode, setSnapshot]
+    [disposeDetailsSession, fastModeEnabled, launchModel, permissionModes, setSnapshot]
   );
   useEffect(() => {
     if (loadState === "loading" || popupCreationsInFlight.current > 0 || !window.argmax) return;
@@ -2030,6 +2044,12 @@ export function App(): JSX.Element {
                 onFastModeEnabledChange={setFastModeEnabled}
                 turnChangesExpanded={turnChangesExpanded}
                 onTurnChangesExpandedChange={setTurnChangesExpanded}
+                goalEnabled={goalEnabled}
+                onGoalEnabledChange={setGoalEnabled}
+                goalMaxTurns={goalMaxTurns}
+                onGoalMaxTurnsChange={setGoalMaxTurns}
+                revertEnabled={revertEnabled}
+                onRevertEnabledChange={setRevertEnabled}
                 fontFamily={fontFamily}
                 onFontFamilyChange={setFontFamily}
                 fontSize={fontSize}
@@ -2055,8 +2075,8 @@ export function App(): JSX.Element {
                 defaultAgentSaveError={defaultAgentSaveError}
                 isSavingDefaultAgent={isSavingDefaultAgent}
                 onRetryDefaultAgentSave={() => setDefaultAgentSaveAttempt((attempt) => attempt + 1)}
-                permissionMode={permissionMode}
-                onPermissionModeChange={setPermissionMode}
+                permissionModes={permissionModes}
+                onPermissionModeChange={(provider, mode) => setPermissionModes((current) => ({ ...current, [provider]: mode }))}
                 newSessionMode={newSessionMode}
                 onNewSessionModeChange={setNewSessionMode}
                 randomSessionIconEnabled={randomSessionIconEnabled}
@@ -2097,6 +2117,9 @@ export function App(): JSX.Element {
               defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
               thinkingDisplay={thinkingDisplay}
               defaultTurnChangesExpanded={turnChangesExpanded}
+              goalEnabled={goalEnabled}
+              goalMaxTurns={goalMaxTurns}
+              revertEnabled={revertEnabled}
               fastModeEnabled={fastModeEnabled}
               workspaceCardVisible={workspaceCardVisible}
               onWorkspaceCardVisibleChange={setWorkspaceCardVisible}

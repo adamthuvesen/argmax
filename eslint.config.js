@@ -13,6 +13,8 @@ export default tseslint.config(
       // browser automation, not part of the renderer's TS program, so the
       // type-checked rules have no tsconfig to resolve them against.
       "src-tauri/src/browser/*.js",
+      // Service worker served as-is from public/. Plain JS, no tsconfig.
+      "public/sw.js",
       "src/shared/bindings.d.ts",
       ".claude/**",
       ".argmax/worktrees/**",

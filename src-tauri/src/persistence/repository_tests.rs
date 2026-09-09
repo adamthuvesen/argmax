@@ -1219,6 +1219,97 @@ fn resume_fork_is_spent_by_a_new_provider_conversation_id() {
 }
 
 #[test]
+fn an_unanswered_question_outranks_a_finished_turn() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+
+    let persist = |id: &str, r#type: &str, payload: serde_json::Value| {
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: id.to_owned(),
+                session_id: "s1".to_owned(),
+                r#type: r#type.to_owned(),
+                message: String::new(),
+                payload,
+                created_at: None,
+            },
+        )
+        .expect("persist event");
+    };
+
+    let settle = |at: &str| {
+        update_session_state(
+            &connection,
+            "s1",
+            &SessionStateInput::transition(SessionState::Complete).finished_at(at.to_owned()),
+        )
+        .expect("update session state")
+    };
+
+    // A turn that just ended is review-ready like any other.
+    persist(
+        "e1",
+        "command.started",
+        serde_json::json!({ "name": "Bash" }),
+    );
+    assert_eq!(
+        settle("2026-05-24T10:00:00.000Z").attention.as_str(),
+        "review-ready"
+    );
+
+    // A payload that merely mentions the tool (an agent reading the file that
+    // defines it) is not an ask. The SQL prefilter catches it; the name check
+    // throws it out.
+    persist(
+        "e2",
+        "command.started",
+        serde_json::json!({ "name": "Read", "input": { "file_path": "turnInteractiveCards.ts" },
+                            "output": "isAskUserQuestionToolName" }),
+    );
+    assert_eq!(
+        settle("2026-05-24T10:01:00.000Z").attention.as_str(),
+        "review-ready"
+    );
+
+    // A question tool with nothing to choose between draws no card.
+    persist(
+        "e3",
+        "command.started",
+        serde_json::json!({ "name": "AskUserQuestion", "input": { "questions": [] } }),
+    );
+    assert_eq!(
+        settle("2026-05-24T10:02:00.000Z").attention.as_str(),
+        "review-ready"
+    );
+
+    // A real one does, and the session says so instead of claiming it is done.
+    persist(
+        "e4",
+        "command.started",
+        serde_json::json!({
+            "name": "AskUserQuestion",
+            "input": { "questions": [{ "question": "Which database?", "header": "DB" }] }
+        }),
+    );
+    assert_eq!(
+        settle("2026-05-24T10:03:00.000Z").attention.as_str(),
+        "question-asked"
+    );
+
+    // Answering it is what clears it: the ask is now older than what the user
+    // last said.
+    persist("e5", "user.message", serde_json::json!({}));
+    assert_eq!(
+        settle("2026-05-24T10:04:00.000Z").attention.as_str(),
+        "review-ready"
+    );
+}
+
+#[test]
 fn priority_dismissal_tracks_attention_changes() {
     let database = Database::open_in_memory().expect("open db");
     let connection = database.connection();
@@ -1290,6 +1381,84 @@ fn manual_priority_add_and_dismissal_clear_each_other() {
     let removed = set_workspace_priority_added(&connection, "w1", false).expect("remove");
     assert!(removed.priority_added_at.is_none());
     assert!(removed.priority_dismissed_at.is_some());
+}
+
+/// The goal repository, including the invariant the schema owns rather than
+/// the service: at most one active goal per chat.
+#[test]
+fn goal_repository_round_trips_and_allows_one_active_goal_per_session() {
+    use super::goals::{
+        find_active_goal_for_session, find_goal, insert_goal, list_goals, settle_goal,
+        update_goal_progress,
+    };
+    use crate::goals::{Goal, GoalState};
+
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+
+    let goal = |id: &str| Goal {
+        id: id.to_owned(),
+        workspace_id: "w1".to_owned(),
+        session_id: "s1".to_owned(),
+        condition: "every test passes".to_owned(),
+        state: GoalState::Active,
+        turns: 0,
+        max_turns: 20,
+        last_reason: None,
+        created_at: "2026-09-08T10:00:00.000Z".to_owned(),
+        updated_at: "2026-09-08T10:00:00.000Z".to_owned(),
+    };
+
+    let stored = insert_goal(&connection, &goal("g1")).expect("insert goal");
+    assert_eq!(stored.condition, "every test passes");
+    assert_eq!(
+        find_active_goal_for_session(&connection, "s1")
+            .expect("find active")
+            .map(|found| found.id),
+        Some("g1".to_owned())
+    );
+
+    // A second active goal on the same chat is refused by the partial unique
+    // index, so no service code has to check for one.
+    insert_goal(&connection, &goal("g2")).expect_err("second active goal on one session");
+
+    let progressed = update_goal_progress(&connection, "g1", 3, Some("Two tests still fail."))
+        .expect("update progress")
+        .expect("goal still active");
+    assert_eq!(progressed.turns, 3);
+    assert_eq!(
+        progressed.last_reason.as_deref(),
+        Some("Two tests still fail.")
+    );
+
+    let settled = settle_goal(&connection, "g1", GoalState::Achieved, Some("All green."))
+        .expect("settle")
+        .expect("goal was active");
+    assert_eq!(settled.state, GoalState::Achieved);
+    assert_eq!(find_goal(&connection, "g1").expect("find").turns, 3);
+
+    // Settled, so the chat is free to take another goal, and reads for an
+    // active one come back empty.
+    assert!(find_active_goal_for_session(&connection, "s1")
+        .expect("find active")
+        .is_none());
+    insert_goal(&connection, &goal("g2")).expect("goal after the first settled");
+
+    // Settling twice must not resurrect or re-report a finished goal.
+    assert!(settle_goal(&connection, "g1", GoalState::Stopped, None)
+        .expect("settle again")
+        .is_none());
+    assert!(update_goal_progress(&connection, "g1", 9, None)
+        .expect("progress on a settled goal")
+        .is_none());
+
+    assert_eq!(list_goals(&connection, Some("w1")).expect("list").len(), 2);
+    assert!(list_goals(&connection, Some("other"))
+        .expect("list")
+        .is_empty());
 }
 
 fn project_input() -> PersistProjectInput {

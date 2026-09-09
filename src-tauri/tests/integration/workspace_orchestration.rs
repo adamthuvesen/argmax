@@ -1536,6 +1536,119 @@ async fn watcher_debounces_burst_into_single_refresh() {
 }
 
 #[tokio::test]
+async fn linked_worktree_head_change_refreshes_branch_and_publishes_delta() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    run_git(repo.path(), &["branch", "watch-next", "main"]);
+    let linked_parent = tempfile::tempdir().expect("linked worktree parent");
+    let linked_path = linked_parent.path().join("linked");
+    let linked_arg = linked_path.to_str().expect("linked worktree path");
+    run_git(
+        repo.path(),
+        &["worktree", "add", "-b", "watch-start", linked_arg, "main"],
+    );
+
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let workspace = {
+        let connection = database.connection();
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "w-linked-head-watch".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+                task_label: "linked head watch".to_owned(),
+                branch: "watch-start".to_owned(),
+                base_ref: "main".to_owned(),
+                path: linked_path.display().to_string(),
+                state: "created".to_string(),
+                shared_workspace: true,
+                kind: "git".to_string(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("persist workspace")
+    };
+    let (publisher, sink) = capture_publisher();
+    let service = WorkspaceService::with_publisher(database.clone(), publisher);
+    service.watch(&workspace.id).expect("install watcher");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Prove this test environment is delivering ordinary checkout events
+    // before relying on the absence of an external metadata event.
+    let control_path = linked_path.join("watch-control.txt");
+    std::fs::write(&control_path, "control").expect("write control file");
+    let mut checkout_events_work = false;
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let connection = database.connection();
+        checkout_events_work = find_workspace_by_id(&connection, &workspace.id)
+            .map(|stored| stored.dirty)
+            .unwrap_or(false);
+        if checkout_events_work {
+            break;
+        }
+    }
+    assert!(
+        checkout_events_work,
+        "checkout watch did not deliver control event"
+    );
+    std::fs::remove_file(control_path).expect("remove control file");
+    let mut clean_again = false;
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let connection = database.connection();
+        clean_again = find_workspace_by_id(&connection, &workspace.id)
+            .map(|stored| !stored.dirty)
+            .unwrap_or(false);
+        if clean_again {
+            break;
+        }
+    }
+    assert!(
+        clean_again,
+        "checkout watch did not settle after control event"
+    );
+    sink.lock().expect("sink").clear();
+
+    // Both branches point at the same tree. Updating the linked worktree's
+    // symbolic HEAD changes only its external git metadata directory.
+    run_git(
+        &linked_path,
+        &["symbolic-ref", "HEAD", "refs/heads/watch-next"],
+    );
+    assert_eq!(run_git_stdout(&linked_path, &["status", "--porcelain"]), "");
+
+    let mut updated = false;
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let connection = database.connection();
+        let stored = find_workspace_by_id(&connection, &workspace.id).expect("workspace");
+        let published = sink.lock().expect("sink").iter().any(|delta| {
+            delta
+                .workspaces
+                .iter()
+                .any(|summary| summary.id == workspace.id && summary.branch == "watch-next")
+        });
+        if stored.branch == "watch-next" && published {
+            updated = true;
+            break;
+        }
+    }
+
+    assert!(
+        updated,
+        "linked worktree HEAD change did not refresh the stored branch and dashboard delta"
+    );
+    service.close_watcher(&workspace.id);
+}
+
+#[tokio::test]
 async fn dropping_watched_service_releases_the_service_arc() {
     let repo = seed_git_repo(&[("a.txt", "1")]);
     ensure_main_branch(repo.path());

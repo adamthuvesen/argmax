@@ -2,7 +2,13 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi } from "../../shared/types.js";
 import { readDraft } from "../lib/composerDrafts.js";
+import { setViewportMeasurementPaused } from "../mobile/useVisualViewportInsets.js";
 import { useComposerAttachments } from "./useComposerAttachments.js";
+
+vi.mock("../mobile/useVisualViewportInsets.js", () => ({
+  setViewportMeasurementPaused: vi.fn(),
+  useVisualViewportInsets: vi.fn()
+}));
 
 function pngBlob(): Blob {
   return new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" });
@@ -30,6 +36,7 @@ function installObjectUrl(urls: string[]): { create: ReturnType<typeof vi.fn>; r
 afterEach(() => {
   window.localStorage.clear();
   delete (window as unknown as { argmax?: unknown }).argmax;
+  vi.mocked(setViewportMeasurementPaused).mockClear();
 });
 
 describe("useComposerAttachments — text paste stays native", () => {
@@ -542,5 +549,29 @@ describe("useComposerAttachments — transient previews", () => {
     } finally {
       objectUrl.restore();
     }
+  });
+});
+
+describe("useComposerAttachments — native picker viewport hold", () => {
+  it("pauses visual-viewport measurement while the picker is open", () => {
+    const { result } = renderHook(() =>
+      useComposerAttachments({
+        draftKey: "launch-a",
+        workspacePath: null,
+        setInput: () => undefined,
+        setStatus: () => undefined
+      })
+    );
+
+    act(() => result.current.openFilePicker());
+    expect(setViewportMeasurementPaused).toHaveBeenCalledWith(true);
+
+    const input = document.createElement("input");
+    act(() =>
+      result.current.onAttachmentInputChange({
+        target: input
+      } as never)
+    );
+    expect(setViewportMeasurementPaused).toHaveBeenCalledWith(false);
   });
 });

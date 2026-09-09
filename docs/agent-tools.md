@@ -21,10 +21,17 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `session_status` | `session` | `{sessionId, taskLabel, provider, modelId, state, turnAgeSeconds?, lastActivityAt, lastAssistantText?, unreadInbox, launchedBySessionId?, launchDepth}` |
 | `session_read` | `session`, `cursor?`, `maxChars?` | `{sessionId, entries: [{at, kind, text}], nextCursor, truncated}` |
 | `session_stop` | `session` | `{sessionId, state}` |
+| `session_rename` | `taskLabel` | `{sessionId, workspaceId, taskLabel, previousTaskLabel}` — renames this session's sidebar row only |
 | `inbox_read` | — | `{messages: [{fromSessionId?, fromLabel?, kind, body, createdAt}]}` |
 | `session_wait` | `sessions?`, `timeoutS?` | `{timedOut, sessions: [{sessionId, taskLabel, state}], messages: […]}` |
 | `session_move` | `project?` \| `path?`, `prompt`, `worktree?`, `keepSource?` | `{scheduled, sourceSessionId, projectId, projectName, path?}` |
 | `workspace_archive` | — | `{scheduled, sessionId, workspaceId}` |
+| `goal_set` | `condition`, `maxTurns?` | `{goalId, condition, maxTurns}` — sets this session's goal and starts its first turn |
+| `goal_clear` | — | `{cleared}` |
+
+A goal makes this session keep working until a separate evaluator judges the
+condition met. Set one when the user describes work with a verifiable end
+state rather than a single edit. See [goals.md](goals.md).
 
 ### Browser
 
@@ -423,7 +430,10 @@ passes through:
 - **Ten launches per session**, refused with `LAUNCH_LIMIT_REACHED`.
 
 A session cannot message itself (`MESSAGE_SELF`) or stop its own turn
-(`STOP_SELF`). Lineage lives on the session row as `launched_by_session_id` and
+(`STOP_SELF`). `session_rename` has no target argument — only the caller's own
+sidebar label may change, the same scope as `goal_set` and `workspace_archive`.
+To name a child at birth, pass `taskLabel` to `session_launch`. Lineage lives
+on the session row as `launched_by_session_id` and
 `launch_depth` ([data.md](data.md)), so both caps are counted from the database
 rather than from anything the agent controls.
 
@@ -445,11 +455,12 @@ can still hand each session its own credential.
 | Cursor (other models, PTY) | `<workspace>/.cursor/mcp.json`, merged over the user's own | yes, restored at exit |
 | Grok Build | `<workspace>/.grok/config.toml` plus a folder-trust grant | yes, removed at exit |
 
-Every provider now carries the same one-line instruction; the long
-shell-command preamble is gone. The `argmax session …` CLI it described is not
-— it is still the way to reach a session from a terminal, and
-[cli.rs](../src-tauri/src/session_control/cli.rs) dispatches it from
-exactly the same enum the tools do.
+Every provider carries the same launch instructions, including the requirement
+to use `session_move` when continuing in another checkout. The MCP server repeats
+that guidance so the workspace card, composer, and checkout actions follow the
+handoff. The `argmax session …` CLI remains available from a terminal, and
+[cli.rs](../src-tauri/src/session_control/cli.rs) dispatches the same enum as the
+tools.
 
 [mcp_injection.rs](../src-tauri/src/providers/mcp_injection.rs) is the one place
 that knows which is which, and none of the six mechanisms displaces the user's

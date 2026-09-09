@@ -42,6 +42,91 @@
   color: var(--text);
 }
 
+/* Revert confirm. It breaks the footer's flex row onto its own line and stays
+   visible while it is open — the footer's hover-reveal would otherwise pull a
+   live confirmation out from under the pointer. */
+.turn-block-footer:has(.turn-revert-confirm) {
+  opacity: 1;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.turn-revert-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  flex: 1 1 100%;
+  min-width: 0;
+  margin-top: var(--space-1);
+  padding: var(--space-1_5) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-sunken);
+  font-size: var(--text-xs);
+}
+
+.turn-revert-summary {
+  margin: 0;
+  min-width: 0;
+  color: var(--chip-ink);
+}
+
+.turn-revert-error {
+  margin: 0;
+  min-width: 0;
+  color: var(--rose);
+  overflow-wrap: anywhere;
+}
+
+.turn-revert-actions {
+  display: inline-flex;
+  gap: var(--space-1_5);
+  margin-left: auto;
+}
+
+.turn-revert-button {
+  height: 22px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.turn-revert-button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.turn-revert-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.turn-revert-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The committing side of a destructive pair. */
+.turn-revert-button-commit {
+  color: var(--rose);
+  border-color: color-mix(in oklab, var(--rose) 40%, transparent);
+}
+
+.turn-revert-button-commit:hover:not(:disabled) {
+  color: var(--rose);
+  border-color: var(--rose);
+}
+
 .turn-block-header {
   display: flex;
   align-items: center;

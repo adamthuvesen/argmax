@@ -13,6 +13,8 @@ import { MarkdownTable } from "./MarkdownTable.js";
 import { MarkdownImage } from "./MarkdownImage.js";
 import { StreamingCodeContext } from "./streamingCodeContext.js";
 import { WebLink } from "./WebLink.js";
+import { withToast } from "../lib/withToast.js";
+import { showToast } from "../state/toast.js";
 
 const MermaidDiagram = lazy(async () => ({
   default: (await import("./MermaidDiagram.js")).MermaidDiagram
@@ -340,7 +342,25 @@ const markdownComponents: Components = {
     const match = matchFileChip(normalizedHref);
     if (!match) {
       return (
-        <a href={href} {...rest}>
+        <a
+          href={href}
+          {...rest}
+          onClick={(event) => {
+            // Directory and extensionless links must never navigate the app webview.
+            event.preventDefault();
+            const api = window.argmax;
+            if (!api) return;
+            const path = normalizeFileChipPath(href, null);
+            void withToast(
+              () => api.system.openPath({
+                path,
+                cwd: path.startsWith("/") ? undefined : workspace?.path
+              }),
+              showToast,
+              "Could not open this path."
+            );
+          }}
+        >
           {children}
         </a>
       );

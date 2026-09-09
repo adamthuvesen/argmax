@@ -59,7 +59,9 @@ const workspace: WorkspaceSummary = {
   icon: null,
   iconColor: null,
   prCreatedAt: null,
-  prMergedAt: null
+  prMergedAt: null,
+  prCheckState: null,
+  prActivityAt: null
 };
 
 function launch(id: string, description: string): TimelineEvent {

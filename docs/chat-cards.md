@@ -60,9 +60,12 @@ otherwise. The active row carries `WorkingNest`, the app's one running mark.
 
 Grok is the one provider whose two transports disagree: over ACP — which is
 what Argmax launches — the list arrives inside a *tool result* as a JSON string
-under `TodosUpdated`, keyed by id rather than ordered, so the order is recovered
-from the keys numerically. Its CLI path sends the `todo_write` array instead.
-Both are read.
+under `TodosUpdated`. `state.todos` is a map keyed by id. Numeric ids sort as
+numbers so step 10 does not land between 1 and 2. Slug ids (`group`, `babysit`)
+serialize alphabetically in that map, which is not the plan order, so the
+ordered sibling `todos` array is preferred when present, then
+`summary_for_prompt`, then numeric key order. Its CLI path sends the
+`todo_write` array instead. Both are read.
 
 Known gaps, both provider-side:
 

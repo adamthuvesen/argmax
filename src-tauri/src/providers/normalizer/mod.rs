@@ -1805,6 +1805,27 @@ mod tests {
             assert_eq!(todos[0]["items"][1]["text"], json!("append two to b.txt"));
         }
 
+        /// Slug ids in `state.todos` sort alphabetically; the sibling array is
+        /// the plan the agent is actually walking.
+        #[test]
+        fn grok_acp_slug_id_snapshot_keeps_array_order() {
+            let result = normalize(
+                ProviderId::Grok,
+                &json!({
+                    "type": "user",
+                    "message": { "role": "user", "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": "call-1",
+                        "content": "{\"TodosUpdated\":{\"state\":{\"todos\":{\"babysit\":{\"content\":\"Babysit CI\",\"status\":\"pending\"},\"group\":{\"content\":\"Group commits\",\"status\":\"in_progress\"}}},\"todos\":[{\"content\":\"Group commits\",\"status\":\"in_progress\"},{\"content\":\"Babysit CI\",\"status\":\"pending\"}]}}"
+                    }]}
+                }),
+            );
+            let todos = todo_payloads(&result);
+            assert_eq!(todos[0]["items"][0]["id"], json!("group"));
+            assert_eq!(todos[0]["items"][0]["status"], json!("active"));
+            assert_eq!(todos[0]["items"][1]["id"], json!("babysit"));
+        }
+
         #[test]
         fn opencode_snapshot_rides_with_its_tool_row() {
             let result = normalize(

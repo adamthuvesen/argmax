@@ -285,43 +285,153 @@ fn codex_exec_todo_update(item: &Map<String, Value>) -> Option<TodoUpdate> {
 /// tool *result* whose content is a JSON string:
 ///
 /// ```json
-/// {"TodosUpdated":{"state":{"todos":{"1":{"content":"…","status":"pending"}}}}}
+/// {"TodosUpdated":{
+///   "state":{"todos":{"1":{"content":"…","status":"pending"}}},
+///   "todos":[{"content":"…","status":"pending"}]
+/// }}
 /// ```
 ///
-/// `todos` is a map keyed by id, not an array, so the order has to be recovered
-/// from the keys — numerically where they are numbers, which they are, or the
-/// tenth step would sort between the first and the second.
+/// `state.todos` is a map keyed by id. Numeric ids sort as numbers so step 10
+/// does not land between 1 and 2. Slug ids (`group`, `babysit`) serialize
+/// alphabetically in that map, which is not the plan order — Grok also sends
+/// an ordered `todos` array, and a `summary_for_prompt` that names the same
+/// ids in execution order. Prefer the array, then the summary, then numeric
+/// key order.
 pub fn grok_todos_updated_result(result: &str) -> Option<TodoUpdate> {
     if !result.contains("TodosUpdated") {
         return None;
     }
     let parsed: Value = serde_json::from_str(result).ok()?;
-    let todos = parsed.pointer("/TodosUpdated/state/todos")?.as_object()?;
+    let root = parsed.get("TodosUpdated")?;
+    let from_map = grok_items_from_map(root.pointer("/state/todos").and_then(Value::as_object))?;
+    let items = root
+        .get("todos")
+        .and_then(Value::as_array)
+        .and_then(|array| grok_order_from_array(array, from_map.clone()))
+        .or_else(|| {
+            root.get("summary_for_prompt")
+                .and_then(Value::as_str)
+                .and_then(|summary| grok_order_from_summary(summary, &from_map))
+        })
+        .unwrap_or_else(|| grok_order_from_keys(from_map));
+    Some(TodoUpdate {
+        mode: TodoMode::Snapshot,
+        items,
+    })
+}
+
+fn grok_item_from_entry(id: Option<String>, entry: &Map<String, Value>) -> TodoItem {
+    TodoItem {
+        id,
+        text: string_value(entry.get("content")).map(str::to_string),
+        status: string_value(entry.get("status"))
+            .and_then(TodoStatus::parse)
+            .unwrap_or(TodoStatus::Pending),
+    }
+}
+
+fn grok_items_from_map(todos: Option<&Map<String, Value>>) -> Option<Vec<TodoItem>> {
+    let todos = todos?;
     if todos.is_empty() {
         return None;
     }
-    let mut keyed: Vec<(&String, &Value)> = todos.iter().collect();
-    keyed.sort_by_key(|(key, _)| {
+    let mut items = Vec::with_capacity(todos.len());
+    for (id, raw) in todos {
+        let entry = object_value(Some(raw))?;
+        items.push(grok_item_from_entry(Some(id.clone()), entry));
+    }
+    Some(items)
+}
+
+/// Walk the ordered `todos` array and pick the matching map row so slug ids
+/// keep their identity while the card follows execution order.
+fn grok_order_from_array(array: &[Value], mut remaining: Vec<TodoItem>) -> Option<Vec<TodoItem>> {
+    if array.is_empty() {
+        return None;
+    }
+    let mut items = Vec::with_capacity(array.len().max(remaining.len()));
+    for raw in array {
+        let Some(entry) = object_value(Some(raw)) else {
+            continue;
+        };
+        let text = string_value(entry.get("content"));
+        let idx = text.and_then(|content| {
+            remaining
+                .iter()
+                .position(|item| item.text.as_deref() == Some(content))
+        });
+        if let Some(idx) = idx {
+            items.push(remaining.remove(idx));
+        } else {
+            items.push(grok_item_from_entry(
+                string_value(entry.get("id")).map(str::to_string),
+                entry,
+            ));
+        }
+    }
+    if items.is_empty() {
+        return None;
+    }
+    items.extend(remaining);
+    Some(items)
+}
+
+/// `- [in_progress] group: Group 60 unpushed commits…` — ids in plan order
+/// when the ordered array is missing.
+fn grok_order_from_summary(summary: &str, remaining: &[TodoItem]) -> Option<Vec<TodoItem>> {
+    let mut ids = Vec::new();
+    for line in summary.lines() {
+        let trimmed = line.trim().trim_start_matches('-').trim();
+        let Some(after_bracket) = trimmed.strip_prefix('[') else {
+            continue;
+        };
+        let Some((_, rest)) = after_bracket.split_once(']') else {
+            continue;
+        };
+        let Some((id, _)) = rest.trim().split_once(':') else {
+            continue;
+        };
+        let id = id.trim();
+        if !id.is_empty() {
+            ids.push(id.to_string());
+        }
+    }
+    if ids.is_empty() {
+        return None;
+    }
+    let mut used = std::collections::HashSet::new();
+    let mut items = Vec::with_capacity(remaining.len());
+    for id in &ids {
+        if let Some(item) = remaining
+            .iter()
+            .find(|item| item.id.as_deref() == Some(id.as_str()))
+        {
+            if used.insert(id.clone()) {
+                items.push(item.clone());
+            }
+        }
+    }
+    if items.is_empty() {
+        return None;
+    }
+    for item in remaining {
+        match item.id.as_deref() {
+            Some(id) if !used.insert(id.to_string()) => {}
+            _ => items.push(item.clone()),
+        }
+    }
+    Some(items)
+}
+
+fn grok_order_from_keys(mut items: Vec<TodoItem>) -> Vec<TodoItem> {
+    items.sort_by_key(|item| {
+        let key = item.id.as_deref().unwrap_or("");
         (
             key.parse::<u64>().unwrap_or(u64::MAX),
             key.parse::<u64>().is_err(),
         )
     });
-    let mut items = Vec::with_capacity(keyed.len());
-    for (id, raw) in keyed {
-        let entry = object_value(Some(raw))?;
-        items.push(TodoItem {
-            id: Some(id.clone()),
-            text: string_value(entry.get("content")).map(str::to_string),
-            status: string_value(entry.get("status"))
-                .and_then(TodoStatus::parse)
-                .unwrap_or(TodoStatus::Pending),
-        });
-    }
-    Some(TodoUpdate {
-        mode: TodoMode::Snapshot,
-        items,
-    })
+    items
 }
 
 /// `TaskUpdate` args: `{taskId, status}`, where status is one of
@@ -549,6 +659,60 @@ mod tests {
         assert_eq!(update.items[0].status, TodoStatus::Done);
         assert_eq!(update.items[1].status, TodoStatus::Active);
         assert_eq!(update.items[2].text.as_deref(), Some("Tenth"));
+    }
+
+    // Captured from session 10f4c0d1: Grok 4.6 keyed the map with slugs, so
+    // alphabetical map order put "babysit" first while the agent was on
+    // "group". The sibling `todos` array is the plan order.
+    #[test]
+    fn grok_acp_slug_ids_follow_the_ordered_todos_array() {
+        let raw = r#"{"TodosUpdated":{"state":{"todos":{
+            "babysit":{"content":"Babysit CI","priority":"medium","status":"pending"},
+            "branch":{"content":"Create branches","priority":"medium","status":"pending"},
+            "check":{"content":"Run checks","priority":"medium","status":"pending"},
+            "group":{"content":"Group commits","priority":"medium","status":"in_progress"},
+            "pr":{"content":"Open PRs","priority":"medium","status":"pending"}
+        }},"summary_for_prompt":"- [in_progress] group: Group commits\n- [pending] branch: Create branches\n- [pending] check: Run checks\n- [pending] pr: Open PRs\n- [pending] babysit: Babysit CI\n","todos":[
+            {"content":"Group commits","priority":"medium","status":"in_progress"},
+            {"content":"Create branches","priority":"medium","status":"pending"},
+            {"content":"Run checks","priority":"medium","status":"pending"},
+            {"content":"Open PRs","priority":"medium","status":"pending"},
+            {"content":"Babysit CI","priority":"medium","status":"pending"}
+        ]}}"#;
+        let update = grok_todos_updated_result(raw).expect("todos updated");
+        assert_eq!(
+            update
+                .items
+                .iter()
+                .map(|i| i.id.as_deref())
+                .collect::<Vec<_>>(),
+            vec![
+                Some("group"),
+                Some("branch"),
+                Some("check"),
+                Some("pr"),
+                Some("babysit")
+            ]
+        );
+        assert_eq!(update.items[0].status, TodoStatus::Active);
+        assert_eq!(update.items[0].text.as_deref(), Some("Group commits"));
+    }
+
+    #[test]
+    fn grok_acp_slug_ids_follow_summary_when_the_array_is_missing() {
+        let raw = r#"{"TodosUpdated":{"state":{"todos":{
+            "babysit":{"content":"Babysit CI","status":"pending"},
+            "group":{"content":"Group commits","status":"in_progress"}
+        }},"summary_for_prompt":"- [in_progress] group: Group commits\n- [pending] babysit: Babysit CI\n"}}"#;
+        let update = grok_todos_updated_result(raw).expect("todos updated");
+        assert_eq!(
+            update
+                .items
+                .iter()
+                .map(|i| i.id.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("group"), Some("babysit")]
+        );
     }
 
     #[test]

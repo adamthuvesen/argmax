@@ -641,12 +641,9 @@ fn normalize_json_payload(
                 ..NormalizedProviderResult::default()
             };
         }
-        if let Some(todo) = normalize_codex_todo_item(
-            event,
-            provider_type.as_deref(),
-            item,
-            item_type.as_deref(),
-        ) {
+        if let Some(todo) =
+            normalize_codex_todo_item(event, provider_type.as_deref(), item, item_type.as_deref())
+        {
             return NormalizedProviderResult {
                 events: vec![todo],
                 usages,
@@ -1720,7 +1717,10 @@ mod tests {
             assert_eq!(todos.len(), 1);
             assert_eq!(todos[0]["mode"], json!("merge"));
             assert_eq!(todos[0]["items"][0]["id"], json!("5"));
-            assert_eq!(todos[0]["items"][0]["text"], json!("Wire up the projection"));
+            assert_eq!(
+                todos[0]["items"][0]["text"],
+                json!("Wire up the projection")
+            );
             assert_eq!(todos[0]["items"][0]["status"], json!("pending"));
             assert!(context.claude_pending_task_creates.is_empty());
         }

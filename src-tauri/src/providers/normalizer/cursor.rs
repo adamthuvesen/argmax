@@ -1,11 +1,11 @@
 use phf::phf_map;
 use serde_json::{json, Map, Value};
 
+use super::todo::{is_todo_tool, stamp_todo_surface, todo_event, todos_array_update};
 use super::{
     number_value, object_value, string_value, timeline_event, NormalizedUsage,
     NormalizerSessionContext, ProviderOutputEvent, UsageCounts,
 };
-use super::todo::{is_todo_tool, stamp_todo_surface, todo_event, todos_array_update};
 use crate::{persistence::events::PersistTimelineEventInput, providers::pricing::cost_of};
 
 pub fn event_type(provider_type: &str) -> Option<&'static str> {
@@ -216,7 +216,11 @@ pub fn normalize_todo_call(
     }
     let args = object_value(body.get("args"))?;
     let update = todos_array_update(args)?;
-    Some(todo_event(event, &update, string_value(payload.get("call_id"))))
+    Some(todo_event(
+        event,
+        &update,
+        string_value(payload.get("call_id")),
+    ))
 }
 
 /// Cursor's one-shot task tool assigns the authoritative child identity only

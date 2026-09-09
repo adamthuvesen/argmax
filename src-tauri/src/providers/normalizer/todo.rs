@@ -193,10 +193,7 @@ pub fn todos_array_update(input: &Map<String, Value>) -> Option<TodoUpdate> {
         });
     }
     // Grok and Cursor flag a partial write; OpenCode always sends the lot.
-    let merging = input
-        .get("merge")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let merging = input.get("merge").and_then(Value::as_bool).unwrap_or(false);
     Some(TodoUpdate {
         mode: if merging {
             TodoMode::Merge
@@ -449,7 +446,10 @@ mod tests {
             statuses,
             vec![TodoStatus::Done, TodoStatus::Active, TodoStatus::Pending]
         );
-        assert_eq!(update.items[1].text.as_deref(), Some("Write the projection"));
+        assert_eq!(
+            update.items[1].text.as_deref(),
+            Some("Write the projection")
+        );
     }
 
     #[test]

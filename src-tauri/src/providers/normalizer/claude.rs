@@ -3,13 +3,14 @@ use std::collections::HashSet;
 use phf::phf_map;
 use serde_json::{json, Map, Value};
 
-use super::{
-    array_value, classify_command_risk, number_value, object_value, string_value, timeline_event,
-    NormalizedUsage, NormalizerSessionContext, PermissionGateInfo, ProviderOutputEvent, UsageCounts,
-};
 use super::todo::{
     claude_task_create, claude_task_update, is_todo_tool, parse_task_create_result,
     stamp_todo_surface, todo_event, todos_array_update, TodoUpdate,
+};
+use super::{
+    array_value, classify_command_risk, number_value, object_value, string_value, timeline_event,
+    NormalizedUsage, NormalizerSessionContext, PermissionGateInfo, ProviderOutputEvent,
+    UsageCounts,
 };
 use crate::{persistence::events::PersistTimelineEventInput, providers::pricing::cost_of};
 

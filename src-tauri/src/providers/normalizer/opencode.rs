@@ -9,11 +9,11 @@
 
 use serde_json::{json, Map, Value};
 
+use super::todo::{is_todo_tool, stamp_todo_surface, todo_event, todos_array_update};
 use super::{
     number_value, object_value, string_value, timeline_event, NormalizedUsage,
     NormalizerSessionContext, ProviderOutputEvent, UsageCounts,
 };
-use super::todo::{is_todo_tool, stamp_todo_surface, todo_event, todos_array_update};
 use crate::{persistence::events::PersistTimelineEventInput, providers::pricing::cost_of};
 
 /// The `sessionID` envelope field is OpenCode's resume id (`run -s <id>`).

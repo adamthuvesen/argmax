@@ -739,7 +739,10 @@ fn codex_reasoning_summary_args(_input: &ProviderLaunchInput) -> Vec<String> {
 // config says otherwise — without this the model is told the tool does not
 // exist and the chat never sees a plan. On everywhere else it is the default.
 fn codex_update_plan_args(_input: &ProviderLaunchInput) -> Vec<String> {
-    vec!["-c".to_string(), "tools.update_plan.enabled=true".to_string()]
+    vec![
+        "-c".to_string(),
+        "tools.update_plan.enabled=true".to_string(),
+    ]
 }
 
 pub(super) fn prompt_for_agent_mode(prompt: &str, agent_mode: AgentMode) -> String {

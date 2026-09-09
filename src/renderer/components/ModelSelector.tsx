@@ -157,6 +157,8 @@ export function ModelSelector({
     recencyKey: providerModelKey({ provider, modelId: model.modelId }),
     label: rowLabel(model.label, provider),
     fullLabel: model.label,
+    group: PROVIDER_GROUP_LABEL[provider],
+    groupProvider: provider,
     meta: contextWindowLabel(provider, model.modelId),
     supportsReasoningEffort: Boolean(model.supportsReasoningEffort),
     value: {

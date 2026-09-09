@@ -574,20 +574,18 @@ html:has(.mobile-shell) body {
   display: none !important;
 }
 
-/* Both composers use the same scale so their prompt text matches the
-   conversation's body text. The composer anchors to the chrome step rather
-   than the surrounding screen (see [data-type-scale="composer"] in
-   tokens.css), so on the phone it needs one step less than the desktop to
-   land on the conversation. The 16px is a floor, not taste: iOS zooms the
-   page when a focused field is smaller. */
-.mobile-shell .session-input textarea,
-.mobile-shell .mobile-new-prompt {
+/* Both composers are .session-input, so one rule sets the scale for both and
+   their prompt text matches the conversation's body text. The composer anchors
+   to the chrome step rather than the surrounding screen (see
+   [data-type-scale="composer"] in tokens.css), so on the phone it needs one
+   step less than the desktop to land on the conversation. The 16px is a floor,
+   not taste: iOS zooms the page when a focused field is smaller. */
+.mobile-shell .session-input textarea {
   font-size: max(16px, var(--text-md));
   line-height: 1.45;
 }
 
-.mobile-shell .session-input-toolbar .composer-context-chip,
-.mobile-shell .mobile-new-composer-toolbar .composer-context-chip {
+.mobile-shell .session-input-toolbar .composer-context-chip {
   font-size: var(--text-base-plus);
 }
 
@@ -934,185 +932,47 @@ html:has(.mobile-shell) body {
   --accent-swatch-color: #a64354;
 }
 
-.mobile-new-composer {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-1);
-  padding: var(--space-3) var(--space-3) var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-2xl);
-  background: var(--panel);
-}
+/* ---- New-chat composer ----
+   The card, the field, and the chip row are the session composer's: the form
+   carries .session-input and its toolbar .session-input-toolbar, so both
+   screens share one surface, one set of field metrics, one chip row, and the
+   tight model/effort seam. Only what differs between starting a chat and
+   replying to one lives here. */
 
-.mobile-new-composer:focus-within {
-  border-color: var(--accent);
-}
-
-/* The session composer's field metrics, so the two grow the same way: a 48px
-   floor and a 168px ceiling, with the card's own padding standing in for the
-   field's. The height between them is driven by useAutoGrowTextArea, not by
-   `rows`. The inherited font-size is >=16px, which is what keeps iOS Safari
-   from zooming the page on focus. */
-.mobile-new-prompt {
-  width: 100%;
-  min-width: 0;
-  min-height: 48px;
-  max-height: 168px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  font-family: var(--font-prose);
-  resize: none;
-  overflow-y: hidden;
-}
-
+/* The compact grid this inherits is laid out for the session toolbar's
+   model / details / mode / send. Starting a chat has no details popover and
+   no agent mode, so the row is model / attach / send. */
 .mobile-new-composer-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: 32px;
-  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "model attach send";
 }
 
-.mobile-new-attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1_5);
-  padding-bottom: var(--space-1);
+.mobile-new-composer-toolbar .composer-attach-chip {
+  grid-area: attach;
+  justify-self: end;
 }
 
-.mobile-new-attachment {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1_5);
-  min-height: 28px;
-  padding: 4px 4px 4px 9px;
-  border: 1px solid var(--line-soft);
-  border-radius: 999px;
-  background: var(--panel-sunken);
+/* The chip's hover brightening is what tells a mouse it landed; a thumb needs
+   the same answer from the press itself. */
+.mobile-new-attach:active {
   color: var(--muted-strong);
-  font-size: var(--text-xs-plus);
 }
 
-.mobile-new-attachment-preview {
-  flex: 0 0 32px;
-  width: 32px;
-  height: 32px;
-  overflow: hidden;
-  border-radius: 6px;
-}
-
-.mobile-new-attachment-preview img {
-  display: block;
+/* Only this screen can render a thumbnail before its preview URL resolves:
+   the session composer reads the attachment protocol directly, while over the
+   bridge the URL is fetched. The tile holds its place meanwhile. */
+.composer-attachment-pending {
+  display: grid;
+  place-items: center;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-}
-
-.mobile-new-attachment-remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
   color: var(--muted);
-}
-
-.mobile-new-attachment-remove:active {
-  background: var(--line-soft);
-  color: var(--text);
-}
-
-/* The chat composer's paperclip is a bare chip, so this one is too. A ring
-   here read as a second button competing with send, which sits beside it. The
-   32px box stays for the thumb; only the ring goes. */
-.mobile-new-attach {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  /* Pushes itself and send to the far edge, leaving model and effort together
-     on the left the way the chat composer groups them. */
-  margin-left: auto;
-  flex: none;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--chip-ink);
-}
-
-.mobile-new-attach:active {
-  background: var(--panel-sunken);
-}
-
-.mobile-new-attach-count {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
-  border-radius: 999px;
-  background: var(--accent-deep);
-  color: var(--panel);
-  font-size: var(--text-4xs);
-  font-weight: 700;
-  line-height: 15px;
-  text-align: center;
 }
 
 .mobile-new-status {
   padding-top: var(--space-1);
   color: var(--rose);
   font-size: var(--text-xs);
-}
-
-.mobile-new-composer-toolbar .model-picker-anchor {
-  /* Not `flex: 1 1 auto`: stretching the anchor drove the effort chip to the
-     far right and split the agent's name from its effort, which the chat
-     composer keeps together. */
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-.mobile-new-composer-toolbar .model-picker-anchor > .composer-context-chip {
-  width: 100%;
-  min-width: 0;
-  justify-content: flex-start;
-}
-
-.mobile-new-composer-toolbar .model-picker-label {
-  min-width: 0;
-  max-width: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-new-composer-toolbar .effort-slider-anchor {
-  flex: 0 0 auto;
-}
-
-.mobile-new-prompt:focus {
-  outline: none;
-}
-
-/* Nothing of its own: `.session-send-button` carries the whole look and size,
-   so launching a chat and replying to one press the same key. */
-.mobile-new-send:disabled {
-  opacity: 0.45;
-}
-
-.mobile-new-send:active:not(:disabled) {
-  filter: brightness(0.92);
 }
 
 /* ---- Shared chrome ---- */

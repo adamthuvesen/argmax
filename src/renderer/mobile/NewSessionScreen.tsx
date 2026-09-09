@@ -87,15 +87,18 @@ function PendingAttachments({
 }): JSX.Element | null {
   if (attachments.length === 0) return null;
   return (
-    <div className="mobile-new-attachments" aria-label="Attached images">
+    // The session composer's thumbnails: the image is the label, so there is
+    // nothing to read and nothing to translate. The preview URL comes from the
+    // screen rather than the attachment protocol, which the bridge can't reach.
+    <div className="composer-attachments" aria-label="Attached images">
       {attachments.map((attachment, index) => {
         const previewUrl = previewUrls[attachment.filePath];
         return (
-          <div className="mobile-new-attachment" key={attachment.filePath}>
+          <div className="composer-attachment-chip" key={attachment.filePath}>
             {previewUrl ? (
               <button
                 type="button"
-                className="mobile-new-attachment-preview attachment-open-button"
+                className="attachment-open-button"
                 aria-label={`View image ${index + 1}`}
                 title={`View image ${index + 1}`}
                 onClick={() => onView(previewUrl)}
@@ -103,17 +106,18 @@ function PendingAttachments({
                 <img src={previewUrl} alt={`Attached image ${index + 1}`} />
               </button>
             ) : (
-              <Paperclip size={14} aria-hidden="true" />
+              <span className="composer-attachment-pending" aria-hidden="true">
+                <Paperclip size={14} />
+              </span>
             )}
-            <span>Image {index + 1}</span>
             <button
               type="button"
-              className="mobile-new-attachment-remove"
+              className="composer-attachment-remove"
               aria-label="Remove attachment"
               title="Remove attachment"
               onClick={() => onRemove(attachment.filePath)}
             >
-              <X size={14} aria-hidden="true" />
+              <X size={12} aria-hidden="true" />
             </button>
           </div>
         );
@@ -387,10 +391,10 @@ export function NewSessionScreen({
           />
         </div>
 
-        {/* Same type scale as the session composer, so both prompts and both
-            chip rows land on the same sizes — see mobile.css. */}
+        {/* The session composer's own card and type scale, so starting a chat
+            and replying to one are one component — see mobile.css. */}
         <form
-          className="mobile-new-composer"
+          className="session-input"
           data-type-scale="composer"
           onSubmit={(event) => {
             event.preventDefault();
@@ -419,7 +423,6 @@ export function NewSessionScreen({
           />
           <textarea
             ref={promptRef}
-            className="mobile-new-prompt"
             aria-label="Task"
             /* Not LAUNCHER_TITLE: the hero above already asks that, and the
                same sentence twice on one screen reads as a rendering bug. */
@@ -432,37 +435,39 @@ export function NewSessionScreen({
             onChange={(event) => setPrompt(event.target.value)}
             onPaste={onComposerPaste}
           />
-          <div className="mobile-new-composer-toolbar">
-            <LaunchModelSelector
-              ariaLabel="Chat model"
-              open={openSheet === "model"}
-              onOpenChange={(open) => onOpenSheetChange(open ? "model" : null)}
-              effortOpen={openSheet === "model-effort"}
-              onEffortOpenChange={(open) => onOpenSheetChange(open ? "model-effort" : null)}
-              value={model}
-              withEffortSlider
-              onChange={(next) => {
-                setModel(next);
-                persistLaunchModel(next);
-              }}
-            />
+          <div className="session-input-toolbar mobile-new-composer-toolbar">
+            {/* The group is what holds model and effort together: "Opus 5 High"
+                is one phrase, and outside it the two chips drift apart by the
+                toolbar's own gap. */}
+            <div className="composer-chips-group composer-chips-model">
+              <LaunchModelSelector
+                ariaLabel="Chat model"
+                open={openSheet === "model"}
+                onOpenChange={(open) => onOpenSheetChange(open ? "model" : null)}
+                effortOpen={openSheet === "model-effort"}
+                onEffortOpenChange={(open) => onOpenSheetChange(open ? "model-effort" : null)}
+                value={model}
+                withEffortSlider
+                onChange={(next) => {
+                  setModel(next);
+                  persistLaunchModel(next);
+                }}
+              />
+            </div>
             <button
               type="button"
-              className="mobile-new-attach"
+              className="composer-footer-chip composer-attach-chip mobile-new-attach"
               aria-label="Attach file or screenshot"
               title="Attach file or screenshot"
               onClick={openFilePicker}
             >
-              <Paperclip size={17} aria-hidden="true" />
-              {pendingAttachments.length > 0 ? (
-                <span className="mobile-new-attach-count" aria-hidden="true">
-                  {pendingAttachments.length}
-                </span>
-              ) : null}
+              {/* No count badge: the thumbnails above the field are the count,
+                  and the session composer says it the same way. */}
+              <Paperclip size={15} aria-hidden="true" />
             </button>
             <button
               type="submit"
-              className="session-send-button mobile-new-send"
+              className="session-send-button"
               aria-label="Start chat"
               disabled={launching || prompt.trim().length === 0}
             >

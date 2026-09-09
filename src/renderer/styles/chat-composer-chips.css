@@ -328,10 +328,6 @@ button.composer-compact-context-row:hover,
     padding: var(--space-2) var(--space-2_5);
   }
 
-  .session-input textarea {
-    min-height: 56px;
-  }
-
   .session-input-toolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 30px auto auto;

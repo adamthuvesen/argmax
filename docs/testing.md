@@ -56,16 +56,16 @@ error in an unchanged file when an imported type changes, so a per-file content
 cache alone is insufficient. Fresh checkout timestamps do not invalidate a
 matching cache.
 
-The macOS Rust lane builds the test targets once, then runs the library tests,
-the `integration` binary, doctests, and Clippy concurrently. Every command must
-succeed. Keep new integration tests in the existing binary so this list remains
-complete. CI enables incremental compilation for both tests and Clippy and
+Three macOS Rust lanes run library tests, integration tests with doctests, and
+Clippy independently. Every lane must succeed. Keep new integration tests in
+the existing binary so this list remains complete. CI enables incremental
+compilation for both tests and Clippy and
 omits debug symbols through environment overrides. Local Cargo profiles retain
 their existing debug information.
 
-Rust uses one cache for dependencies, workspace artifacts, and incremental
-state. Keys include the platform, Cargo manifest and lockfile, toolchain file,
-and workflow. Each successful main build refreshes the cache under its commit
+Each Rust lane caches its dependencies, workspace artifacts, and incremental
+state. Keys include the lane, platform, Cargo manifest and lockfile, toolchain
+file, and workflow. Each successful main build refreshes the cache under its commit
 SHA. A PR with no compatible cache can seed a cache scoped to that PR, which
 allows measuring warm runs before merging the workflow change.
 

@@ -45,13 +45,17 @@ jobs:
           echo "deps=$(match '^(package-lock\.json|src-tauri/Cargo\.lock)$')" >> "$GITHUB_OUTPUT"
 
   rust:
-    name: rust test · clippy
+    name: rust ${{ matrix.check }}
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' }}
     # macOS is the only shipping target and its minutes bill at 10x, so this
     # lane runs only the Rust crate and nothing that Linux could do instead.
     runs-on: macos-latest
     timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [unit, integration, clippy]
     env:
       CARGO_INCREMENTAL: 1
       # Keep local debugging unchanged. CI needs test assertions, not DWARF.
@@ -65,6 +69,7 @@ jobs:
           toolchain: "1.95"
           components: clippy, rustfmt
 
+      # Each lane caches only the artifacts its own commands produce.
       # Preserve Cargo's workspace fingerprints and incremental state together.
       # A source change still rebuilds affected targets. The SHA lets main
       # refresh the immutable cache instead of retaining an old workspace build.
@@ -75,35 +80,30 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: rust-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/ci.yml') }}-${{ github.sha }}
+          key: rust-build-${{ runner.os }}-${{ runner.arch }}-${{ matrix.check }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/ci.yml') }}-${{ github.sha }}
           restore-keys: |
-            rust-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/ci.yml') }}-
+            rust-build-${{ runner.os }}-${{ runner.arch }}-${{ matrix.check }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/ci.yml') }}-
 
-      # One build, one link: the unit tests and the single `integration` test
-      # binary. The bindings freshness check is a test in that binary
-      # (`generated_ipc_files_are_current`), so no second `cargo run` is needed.
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - if: ${{ matrix.check == 'unit' }}
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
-      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-run
+      - if: ${{ matrix.check == 'unit' }}
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib
 
-      # Cargo normally executes these two harnesses serially. Build once above,
-      # then overlap their process/IO waits and Clippy. Keep doctests as well.
+      # This also builds the desktop binaries and checks generated bindings.
       # New integration modules belong in the existing integration binary.
-      - name: Rust tests and Clippy
+      - if: ${{ matrix.check == 'integration' }}
         run: |
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --lib &
-          unit=$!
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --test integration &
-          integration=$!
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --doc &
-          doctests=$!
-          cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings &
-          clippy=$!
-          result=0
-          for pid in "$unit" "$integration" "$doctests" "$clippy"; do
-            wait "$pid" || result=1
-          done
-          exit "$result"
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --test integration
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --doc
+
+      - if: ${{ matrix.check == 'clippy' }}
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+
+      - name: Rust cache footprint
+        run: |
+          du -sh src-tauri/target/debug/{deps,incremental,build} "$HOME/.cargo/registry"
+          du -sh src-tauri/target/debug/incremental/*
 
       # Main refreshes the shared build. A cold PR can seed its own scoped
       # cache so verification does not require merging an unmeasured change.

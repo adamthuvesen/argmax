@@ -8,7 +8,7 @@ Web links in rendered file previews use the same browser preference as chat link
 
 **Review panel.** In a chat, Browser is one of the review-panel modes, beside Changes, Files, Agents, and [Terminal](terminal.md). The session actions menu has an "Open browser" item. This is the sidebar next to a transcript, for watching a session browse.
 
-Each chat remembers the panel's visibility and selected mode across navigation and restarts. Returning to a chat with Browser open restores Browser and claims the native surface again.
+Each chat remembers the panel's visibility and view arrangement across navigation and restarts. Browser can occupy either half of a split review panel. Returning to a chat with Browser visible restores it and claims the native surface again. Focusing the other half leaves Browser visible and keeps its ownership.
 
 Links from chat open in the system browser by default; Settings → General → "Web links from chat" can route them to the in-app browser (⌘-click toggles the alternate target). Both the page and the review-panel tab are shown only where the desktop bridge provides `window.argmax.browser` — the mobile remote has none, so they are hidden there.
 
@@ -16,7 +16,7 @@ Links from chat open in the system browser by default; Settings → General → 
 
 There is a single native browser surface, so exactly one owner shows it at a time. The owner is whichever surface most recently *entered* Browser mode — a review panel or the Browser page — not the focused pane: clicking into another pane's chat leaves the page where it is, while that pane switching to Browser takes it over deliberately. A surface that has been demoted stays in Browser mode and shows a "The browser moved to another pane" placeholder whose "Show here" button claims the surface back.
 
-Focus still routes new open requests: a chat link or the menu item opens Browser mode in the focused pane, or in the launcher when it is the only surface on screen. The rail item always opens the Browser page. Ownership lives in [browserPanel.ts](../src/renderer/lib/browserPanel.ts) (`claimBrowserSurface` / `releaseBrowserSurface`). [useReviewState.ts](../src/renderer/hooks/useReviewState.ts) claims on entering Browser mode and releases on leaving it, closing the panel, or unmounting the pane; [BrowserPage.tsx](../src/renderer/components/BrowserPage.tsx) claims for the workspace page. Moving the browser between surfaces is therefore a plain unmount/mount: the unmount hides the webview, the mount re-glues it to the new surface.
+Focus still routes new open requests: a chat link or the menu item opens Browser in the focused cell, or in the launcher when it is the only surface on screen. If Browser is already visible in a split panel, the request uses that half. The rail item always opens the Browser page. Ownership lives in [browserPanel.ts](../src/renderer/lib/browserPanel.ts) (`claimBrowserSurface` / `releaseBrowserSurface`). [useReviewState.ts](../src/renderer/hooks/useReviewState.ts) claims while Browser is visible in either half and releases when it leaves the visible layout, the panel closes, or the cell unmounts. [BrowserPage.tsx](../src/renderer/components/BrowserPage.tsx) claims for the workspace page. Moving the browser between surfaces unmounts the old chrome and mounts the new one, which repositions the webview.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ Focus still routes new open requests: a chat link or the menu item opens Browser
 
 ## Z-Order and Overlays
 
-Native child webviews render on top of DOM elements. [BrowserPanel.tsx](../src/renderer/components/BrowserPanel.tsx) hides the active webview while the collapsed sidebar peeks, so its navigation buttons receive clicks. It also checks for open `[role="dialog"]` modals intersecting the surface bounds and sets `visible: false` while an overlay covers the panel area. The webview returns when the sidebar and overlapping dialogs are dismissed, preserving the current tab.
+Native child webviews render on top of DOM elements. [BrowserPanel.tsx](../src/renderer/components/BrowserPanel.tsx) hides the active webview while the collapsed sidebar peeks, so its navigation buttons receive clicks. It also checks for `[role="dialog"]` and `[data-browser-overlay="true"]` elements intersecting the surface bounds and sets `visible: false` while an overlay covers the panel area. Split menus and drop targets use the latter attribute. The webview returns when overlapping overlays are dismissed, preserving the current tab.
 
 ## The Tab Registry
 

@@ -1,0 +1,173 @@
+/* The agent's plan, as a checklist in the transcript's own grammar. No fill,
+   no border, no radius, no shadow: a plan in progress is a beat in the
+   conversation, not a document. Mockups: docs/design/todo-list. */
+
+.todo-card {
+  /* The lead cell is the tool row's chevron column and the gap is the tool
+     row's gap (`.tool-call-row-button` in chat-turns.css), so a plan item's
+     mark lands where every disclosure chevron lands and its label lands on the
+     verb column. The list reads as one more row in the transcript rather than
+     as a widget dropped into it. */
+  --todo-card-lead: 12px;
+  --todo-card-gap: var(--space-1_5);
+  width: 100%;
+  font-family: var(--font-ui);
+}
+
+/* The eyebrow: same register as a tool row headline. */
+.todo-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  width: 100%;
+  padding: 5px 4px 5px 0;
+  margin: 0;
+  text-align: left;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.todo-card-head-chevron {
+  flex: 0 0 auto;
+  align-self: center;
+  color: var(--muted);
+  opacity: 0.28;
+  transition: opacity var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.todo-card-head:hover .todo-card-head-chevron {
+  opacity: 0.55;
+}
+
+.todo-card[data-expanded="true"] .todo-card-head-chevron {
+  opacity: 0.55;
+  transform: rotate(90deg);
+}
+
+.todo-card-head-verb {
+  flex: 0 0 auto;
+  color: var(--muted-strong);
+  font-weight: 400;
+}
+
+/* Tabular so the digits stay put as the count climbs. */
+.todo-card-head-count {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The current step, carried by the headline only while the list is folded
+   away. It clips rather than wrapping: a second line would make the collapsed
+   card taller than the row it replaced. */
+.todo-card-head-now {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.todo-card-head:hover .todo-card-head-now {
+  color: var(--muted-strong);
+}
+
+.todo-card-list {
+  list-style: none;
+  margin: 1px 0 0;
+  padding: 0;
+}
+
+.todo-card[data-expanded="false"] .todo-card-list {
+  display: none;
+}
+
+.todo-card-item {
+  display: grid;
+  grid-template-columns: var(--todo-card-lead) minmax(0, 1fr);
+  column-gap: var(--todo-card-gap);
+  align-items: baseline;
+  padding: 4px 4px 4px 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+/* The lead cell is a first-line box, so a wrapping label keeps its mark beside
+   the first line rather than centred across two. */
+.todo-card-mark {
+  grid-column: 1;
+  display: grid;
+  place-items: center;
+  width: var(--todo-card-lead);
+  height: 1.45em;
+  color: var(--muted);
+}
+
+.todo-card-mark svg {
+  width: 12px;
+  height: 12px;
+}
+
+.todo-card-label {
+  grid-column: 2;
+  min-width: 0;
+}
+
+/* Three states, one ladder: done recedes, pending waits, active leads. */
+.todo-card-item[data-state="done"] .todo-card-mark {
+  color: var(--sage);
+}
+
+.todo-card-item[data-state="done"] .todo-card-label {
+  color: var(--muted);
+}
+
+.todo-card-item[data-state="pending"] .todo-card-mark {
+  color: var(--line-strong);
+}
+
+.todo-card-item[data-state="pending"] .todo-card-label {
+  color: var(--text-soft);
+}
+
+.todo-card-item[data-state="active"] .todo-card-label {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.todo-card-item[data-state="cancelled"] .todo-card-mark {
+  color: var(--line-strong);
+}
+
+.todo-card-item[data-state="cancelled"] .todo-card-label {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--line-strong);
+}
+
+.todo-card-item[data-state="cancelled"] .todo-card-mark svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* A row the agent has only ever named by id. `[data-state]` is carried so this
+   out-specifies the state ink above rather than merely tying it and winning on
+   source order. */
+.todo-card-item[data-state] .todo-card-label[data-unnamed="true"] {
+  color: var(--muted);
+}
+
+/* The pending mark: a hollow ring drawn in CSS, not a glyph, so it keeps its
+   weight at every step of the type scale. */
+.todo-card-ring {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  border: 1.25px solid currentColor;
+}

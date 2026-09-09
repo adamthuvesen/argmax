@@ -59,6 +59,10 @@ export type CanonicalToolEvent = CanonicalCommon & {
   name: string;
   providerName: string | null;
   invocationId: string | null;
+  /** The chat surface that owns this row — `"todo"` for the rows behind the
+   *  todo card. Stamped by the normalizer so the renderer never has to know
+   *  which of the providers' shifting tool names means "plan". */
+  surface: string | null;
   outcome: "succeeded" | "failed" | null;
   running: boolean;
   traceSyntheticLaunch: boolean;
@@ -287,6 +291,7 @@ function decodeTool(raw: TimelineEvent, payload: Record<string, unknown>): Canon
     name: extractToolName(payload),
     providerName: stringValue(payload.name),
     invocationId: extractProviderInvocationId(payload),
+    surface: stringValue(payload.surface),
     outcome: phase === "completed" ? (detectToolError(payload) ? "failed" : "succeeded") : null,
     running: phase !== "completed" || status === "running" || status === "started" || status === "in_progress",
     traceSyntheticLaunch: payload.traceSyntheticLaunch === true

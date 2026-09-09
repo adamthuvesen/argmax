@@ -14,6 +14,9 @@ export type ToolCall = {
   completedAt: string | null;
   /** False when the renderer settled an unmatched start without a tool result. */
   completionObserved?: boolean;
+  /** The chat surface that owns this row, stamped by the normalizer. A row
+   *  belonging to one is shown by that surface's card, never as a tool row. */
+  surface?: string | null;
   error: string | null;
   // The `toolUseId` of the agent (Task) tool that spawned this call, when this
   // is a sub-agent's tool call. Lets the group bubble nest children under their
@@ -225,11 +228,17 @@ const HIDDEN_TOOL_NAMES = new Set([
   // names the external action; showing both is protocol leakage.
   "getmcptoolstoolcall",
   "toolsearch",
-  // Internal task-list bookkeeping. It changes no project file and creates no
-  // agent; the resulting plan is already visible through useful work.
+  // Todo bookkeeping. Rows normalized since the todo surface shipped carry
+  // `surface: "todo"` and are hidden by that instead — these names only still
+  // catch sessions persisted before the stamp existed. Without them a Grok
+  // `todo_write` reappears in old transcripts, and it buckets as an edit, so a
+  // turn that touched no file reads "Edited a file".
   "taskcreate",
   "taskupdate",
   "todowrite",
+  "todo_write",
+  "updatetodostoolcall",
+  "updatetodos",
   // Grok's poll for a spawned child. Same job as Codex `wait`: it names no
   // user-facing work, and leaving it visible splits the parent's sentence
   // around "Get command or subagent output".

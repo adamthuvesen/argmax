@@ -72,6 +72,11 @@ export function syncWorkspaceViewed(
   selectedWorkspaceId: string | null
 ): void {
   ensureLoaded();
+  // An empty list is "the snapshot has not arrived yet", not "every chat is
+  // gone". Reconciling against it drops every stamp, and the phone renders
+  // once before its first load — which silently reset the read state on every
+  // app start. Stale ids cost nothing; the next real list prunes them.
+  if (workspaces.length === 0) return;
   const live = new Set(workspaces.map((workspace) => workspace.id));
   const next: ViewedMap = {};
   for (const [id, at] of Object.entries(viewed)) {

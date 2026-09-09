@@ -12,12 +12,15 @@ export interface AgentTabsState {
   activeTabId: string | null;
   selectTab: (tabId: string) => void;
   closeTab: (tabId: string) => void;
+  closeAllTabs: () => void;
   replaceTab?: (fromTabId: string, toTabId: string) => void;
 }
 
 export interface AgentTabs extends AgentTabsState {
   openTab: (tabId: string) => void;
   replaceTab: (fromTabId: string, toTabId: string) => void;
+  /** The same clear as `closeAllTabs`, under the name the sibling review
+   *  hooks share. */
   resetForSourceChange: () => void;
 }
 
@@ -54,7 +57,7 @@ export function useAgentTabs(): AgentTabs {
     });
   }, []);
 
-  const resetForSourceChange = useCallback((): void => {
+  const closeAllTabs = useCallback((): void => {
     setTabs({ tabIds: [], activeTabId: null });
   }, []);
 
@@ -67,5 +70,5 @@ export function useAgentTabs(): AgentTabs {
     }));
   }, []);
 
-  return { tabIds, activeTabId, openTab, selectTab, closeTab, replaceTab, resetForSourceChange };
+  return { tabIds, activeTabId, openTab, selectTab, closeTab, replaceTab, closeAllTabs, resetForSourceChange: closeAllTabs };
 }

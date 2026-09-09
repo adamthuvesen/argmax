@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-font-size="5" data-accent="green">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Argmax — agent todo list mockups</title>
+
+    <!-- The real thing: app tokens, the real transcript rules, the real working
+         nest, the real fonts. Surrounding tool rows and bubbles use the app's
+         own class names, so the context is honest. The candidates use their own
+         `.td-*` classes so the cascade cannot bleed either way. -->
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-700.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/working-nest.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/chat-turns.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/motion.css" />
+
+    <style>
+      html { background: var(--bg); }
+      body {
+        margin: 0;
+        background: var(--bg);
+        font-family: var(--font-ui);
+        font-weight: var(--weight-ui);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+      }
+      svg { display: block; }
+
+      /* ---- page chrome (dim, so it never competes with the samples) ---- */
+      .page-head {
+        position: sticky; top: 0; z-index: 60;
+        display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;
+        padding: 12px 28px;
+        background: color-mix(in oklab, var(--bg) 92%, transparent);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
+      }
+      .page-head h1 { font-size: var(--text-sm); font-weight: 500; margin: 0; color: var(--text-soft); }
+      .page-head label { font-size: var(--text-xs); color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+      .page-head select {
+        font: inherit; font-size: var(--text-xs);
+        background: var(--panel); color: var(--text);
+        border: 1px solid var(--line); border-radius: var(--radius-sm);
+        padding: 3px 6px;
+      }
+      section { padding: 34px 28px 6px; }
+      section > h2 {
+        font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em;
+        font-weight: 500; color: var(--muted); margin: 0 0 4px;
+      }
+      section > .lede { font-size: var(--text-xs); color: var(--muted); margin: 0 0 22px; max-width: 76ch; line-height: 1.6; }
+      .lede b { color: var(--text-soft); font-weight: 500; }
+      .tag {
+        font-family: var(--font-mono); font-size: var(--text-2xs);
+        color: var(--muted); letter-spacing: 0.02em;
+        display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 12px;
+      }
+      .tag .name { color: var(--text-soft); }
+      /* `?only=<key>` strips the page to one section, so a capture is a command
+         rather than a crop. The hiding itself is done in JS — CSS cannot match
+         a section against a value carried on an ancestor. */
+      body[data-only] .page-head,
+      body[data-only] section[hidden],
+      body[data-only] section > h2,
+      body[data-only] section > .lede { display: none; }
+      body[data-only] section { padding-top: 22px; }
+
+      /* The transcript slice every sample sits in. Same measure the chat uses. */
+      .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 34px; align-items: start; }
+      .row[data-cols="1"] { grid-template-columns: minmax(0, 620px); }
+      .stage {
+        --chat-content-width: 560px;
+        padding: 4px 0 10px;
+        background: var(--bg);
+      }
+      /* The app's rows enter with `msg-in`. This page is about the resting
+         state, and a captured screenshot has no frame budget to advance an
+         entrance — a background tab never fires rAF, so the row would sit at
+         the animation's first frame (opacity 0) forever. */
+      .stage .tool-call-row { animation: none; opacity: 1; }
+      /* Same reason, one layer down: the nest's dots animate transform and
+         opacity on the compositor, which never rasterizes in a background tab —
+         the mark lays out at full size and paints nothing. Pinned to the still
+         pose the app already ships for header marks, which is the only frame a
+         screenshot could show anyway. */
+      .stage .working-nest[data-active="true"][data-mark],
+      .stage .working-nest[data-active="true"][data-mark] .working-nest-part,
+      .working-nest-part { animation: none; opacity: 1; transform: scale(1); }
+      .stage-bubble {
+        max-width: var(--chat-content-width);
+        font-size: var(--text-base); line-height: 1.62;
+        color: var(--prose-ink); margin: 0 0 14px;
+      }
+      .stage-user {
+        display: inline-block; max-width: 80%;
+        padding: 9px 14px; margin: 0 0 18px;
+        border-radius: var(--radius-2xl);
+        background: var(--user-message-bg); color: var(--user-message-fg);
+        font-size: var(--text-base); line-height: 1.5;
+      }
+      .stage-tools { max-width: var(--chat-content-width); }
+      .stage-slot { max-width: var(--chat-content-width); margin: 12px 0; }
+
+      /* ==================================================================
+         Shared candidate base. Everything below is what each letter changes.
+         ================================================================== */
+      .td {
+        /* The lead cell is the tool row's chevron column and the gap is the
+           tool row's gap, so a plan item's mark lands where every disclosure
+           chevron lands and its label lands on the verb column. The list reads
+           as one more row in the transcript, not as a widget dropped into it. */
+        --td-lead: 12px;
+        --td-gap: var(--space-1_5);
+        width: 100%;
+        max-width: var(--chat-content-width, 780px);
+        font-family: var(--font-ui);
+      }
+      .td-list { list-style: none; margin: 0; padding: 0; }
+      .td-item {
+        display: grid;
+        grid-template-columns: var(--td-lead) minmax(0, 1fr);
+        column-gap: var(--td-gap);
+        align-items: baseline;
+        padding: 4px 4px 4px 0;
+        font-size: var(--text-sm);
+        line-height: 1.45;
+      }
+      /* The lead cell is baseline-aligned by a first-line box so a wrapping
+         label keeps its mark beside the first line, not centred on two. */
+      .td-mark {
+        grid-column: 1;
+        display: grid; place-items: center;
+        width: var(--td-lead); height: 1.45em;
+        color: var(--muted);
+      }
+      .td-mark svg { width: 12px; height: 12px; }
+      .td-label { grid-column: 2; min-width: 0; }
+
+      /* Three states, one ladder: done recedes, pending waits, active leads. */
+      .td-item[data-state="done"] .td-label { color: var(--muted); }
+      .td-item[data-state="done"] .td-mark { color: var(--sage); }
+      .td-item[data-state="pending"] .td-label { color: var(--text-soft); }
+      .td-item[data-state="pending"] .td-mark { color: var(--line-strong); }
+      .td-item[data-state="active"] .td-label { color: var(--text); font-weight: 500; }
+      .td-item[data-state="cancelled"] .td-label { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-strong); }
+      .td-item[data-state="cancelled"] .td-mark { color: var(--line-strong); }
+
+      /* The pending mark: a hollow ring drawn in CSS, not a glyph, so it keeps
+         its weight at every step of the type scale. */
+      .td-ring { width: 7px; height: 7px; border-radius: 999px; border: 1.25px solid currentColor; }
+      .td-dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
+
+      /* The eyebrow: same register as a tool row headline. */
+      .td-head {
+        display: flex; align-items: center; gap: var(--space-1_5);
+        padding: 5px 4px 5px 0;
+        font-size: var(--text-sm); line-height: 1.4; color: var(--muted);
+        background: none; border: 0; width: 100%; text-align: left;
+        font-family: inherit; cursor: pointer;
+      }
+      .td-head-verb { color: var(--muted-strong); font-weight: 400; flex: 0 0 auto; }
+      .td-head-count { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+      .td-head-now {
+        min-width: 0; flex: 0 1 auto;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        color: var(--muted);
+      }
+      .td-head:hover .td-head-now { color: var(--muted-strong); }
+      .td-head-chevron { flex: 0 0 auto; align-self: center; color: var(--muted); opacity: 0.28; transition: opacity var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease); }
+      .td-head:hover .td-head-chevron { opacity: 0.55; }
+      .td[data-expanded="true"] .td-head-chevron { opacity: 0.55; transform: rotate(90deg); }
+
+      /* ---------------- A · Checklist — no shell at all ---------------- */
+      .td-a .td-list { margin-top: 1px; }
+
+      /* ---------------- B · Spine — the rows are strung together --------
+         One continuous rule behind the whole column, not a segment per row:
+         per-row segments read as a dashed line wherever a mark punches through.
+         The done fraction is painted by a second rule stacked on top, so the
+         spine is also the progress meter. */
+      .td-b .td-list { position: relative; }
+      .td-b .td-list::before,
+      .td-b .td-list::after {
+        content: ""; position: absolute;
+        left: calc(var(--td-lead) / 2 - 0.5px); width: 1px;
+        top: 0.72em; bottom: 0.72em;
+        background: var(--line-strong);
+      }
+      .td-b .td-list::after {
+        bottom: auto; height: var(--td-progress, 0);
+        background: color-mix(in oklab, var(--sage) 70%, var(--line));
+      }
+      /* The mark punches a hole in the spine that is only as tall as the mark
+         itself — masking the whole 1.45em line box turns the spine into dashes. */
+      .td-b .td-mark { position: relative; z-index: 1; }
+      .td-b .td-mark::before {
+        content: ""; position: absolute; z-index: -1;
+        left: 0; right: 0; top: calc(50% - 7px); height: 14px;
+        background: var(--bg);
+      }
+
+      /* ---------------- C · Slab — PlanCard's grammar ------------------- */
+      .td-c {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-2xl);
+        box-shadow: var(--shadow-1);
+        overflow: hidden;
+      }
+      .td-c .td-head {
+        padding: 11px 18px;
+        border-bottom: 1px solid var(--line-soft);
+        background: color-mix(in oklab, var(--panel-soft) 40%, transparent);
+        cursor: default;
+      }
+      .td-c .td-head-verb { color: var(--text); font-weight: 500; }
+      .td-c .td-list { padding: 10px 18px 14px; }
+      .td-c .td-meter { flex: 0 0 84px; height: 2px; border-radius: 999px; background: var(--line); overflow: hidden; }
+      .td-c .td-meter i { display: block; height: 100%; background: var(--sage); border-radius: 999px; }
+      .td-c .td-mark { background: none; }
+
+      /* ---------------- D · Marquee — one line until you ask ------------ */
+      .td[data-expanded="false"] .td-list { display: none; }
+      .td-d .td-head-now { color: var(--muted-strong); }
+
+      /* ---------------- The pinned strip (alternate placement) ---------- */
+      .composer-mock {
+        max-width: var(--chat-content-width);
+        background: var(--composer-surface);
+        border-radius: var(--radius-2xl);
+        box-shadow: var(--shadow-1), inset 0 0 0 1px var(--composer-edge);
+        padding: 13px 16px 12px;
+      }
+      .composer-mock .ph { font-size: var(--text-base); color: var(--muted); }
+      .composer-mock .chips { display: flex; gap: 8px; margin-top: 14px; font-size: var(--text-xs); color: var(--chip-ink); }
+      .composer-mock .chips span { padding: 3px 8px; border-radius: var(--radius-md); background: color-mix(in oklab, var(--panel-soft) 60%, transparent); }
+      .td-pinned {
+        /* Inset from the composer on both sides, so the strip reads as a tray
+           the composer sits on top of rather than a second, wider bar. */
+        max-width: calc(var(--chat-content-width) - 20px);
+        display: flex; align-items: center; gap: var(--space-2);
+        margin: 0 10px -8px;
+        padding: 7px 12px 15px;
+        font-size: var(--text-xs); color: var(--muted);
+        background: var(--panel-sunken);
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      }
+      .td-pinned .now { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-strong); }
+      .td-pinned .count { margin-left: auto; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+
+      .note { font-size: var(--text-xs); color: var(--muted); line-height: 1.6; margin: 10px 0 0; max-width: 60ch; }
+      .note b { color: var(--text-soft); font-weight: 500; }
+    </style>
+  </head>
+
+  <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" /></symbol>
+        <symbol id="i-chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5" /></symbol>
+        <symbol id="i-list" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h6" /></symbol>
+      </defs>
+    </svg>
+
+    <div class="page-head">
+      <h1>Agent todo list — candidates</h1>
+      <label>theme <select id="theme"><option>dark</option><option>light</option></select></label>
+      <label>font size <select id="size"><option>3</option><option>4</option><option selected>5</option><option>6</option><option>8</option></select></label>
+      <label>accent <select id="accent"><option>green</option><option>purple</option><option>blue</option><option>orange</option><option>neutral</option><option>black</option><option>coral</option></select></label>
+      <label>list <select id="len"><option value="short">5 items</option><option value="long">12 items</option><option value="wrap">wrapping labels</option></select></label>
+    </div>
+
+    <section data-only="mid">
+      <h2>1 · Mid-run, in the transcript</h2>
+      <p class="lede">
+        The list arrives between tool rows while the turn is still working. The rows above and below are the
+        app's real <b>.tool-call-row-button</b> markup, so the candidates are judged against the register they
+        actually have to live in: no fill, no icon column, <b>--text-sm</b> on <b>--muted</b>, verb one token
+        brighter than target. The active row carries the app's one running mark (<b>WorkingNest</b>) rather
+        than a second spinner invented for this surface.
+      </p>
+      <div class="row" data-section="mid"></div>
+    </section>
+
+    <section data-only="done">
+      <h2>2 · Settled, after the turn ends</h2>
+      <p class="lede">
+        Every item done, nothing running. This is the state the list spends most of its life in — scrolled past,
+        read once. It has to get quiet without disappearing.
+      </p>
+      <div class="row" data-section="done"></div>
+    </section>
+
+    <section data-only="fresh">
+      <h2>3 · First write</h2>
+      <p class="lede">
+        The agent has just published the plan and started nothing. There is no progress to report and no
+        current step to name, so anything built around "3 of 6" or "now: …" has to hold up empty.
+      </p>
+      <div class="row" data-section="fresh"></div>
+    </section>
+
+    <section id="frame-section" data-only="frame">
+      <h2>4 · In a full turn</h2>
+      <p class="lede">
+        One candidate at the chat measure, with the prompt above it and real work below, so the question is
+        whether it reads as part of the conversation or as furniture dropped into it.
+        <b>?frame=a|b|c|d</b> renders this section alone.
+      </p>
+      <div class="row" data-cols="1" data-section="frame"></div>
+    </section>
+
+    <section data-only="pinned">
+      <h2>5 · The other placement: pinned above the composer</h2>
+      <p class="lede">
+        Not a fifth candidate — a different answer to the same problem. The list is state, not an event, so it
+        could live outside the scrollback entirely, the way <b>QuestionDock</b> takes the composer's slot. A
+        turn that keeps working never scrolls it away. The cost: it competes with the composer for the one
+        place the eye rests, and it has no history — scroll back a week and the plan is gone.
+      </p>
+      <div class="row" data-cols="1" data-section="pinned"></div>
+    </section>
+
+    <section data-only="life">
+      <h2>6 · Lifecycle</h2>
+      <p class="lede">
+        The same list at three moments, in the recommended behaviour: <b>expanded on first write</b> (you want
+        to read the plan), <b>expanded while working with finished items dimmed</b>, then
+        <b>collapsed to one line once the turn ends</b>. One card that updates in place — never one card per
+        <code>TaskUpdate</code>, or a six-step plan leaves fourteen cards in the scrollback.
+      </p>
+      <div class="row" data-cols="1" data-section="life"></div>
+    </section>
+
+    <section data-only="edge" style="padding-bottom: 60px">
+      <h2>7 · Edge states</h2>
+      <p class="lede">
+        A cancelled item (Cursor's <b>TODO_STATUS_CANCELLED</b>), an item Grok referenced by id before ever
+        sending its text, and a twelve-item list — the case where an always-expanded list becomes a wall.
+      </p>
+      <div class="row" data-section="edge"></div>
+    </section>
+
+    <script type="module">
+      /* ---------- content ---------- */
+      const SHORT = [
+        ["done", "Explore scheduled tasks implementation"],
+        ["done", "Design thread/worktree routing options"],
+        ["active", "Backend: migration + persistence + scheduler reuse"],
+        ["pending", "IPC + bindings + renderer UI"],
+        ["pending", "Verify with checks"]
+      ];
+      const WRAP = [
+        ["done", "Explore scheduled tasks implementation"],
+        ["active", "Sweep the repo for old paths and remove the orphaned imports, variables and dead config keys the rename left behind"],
+        ["pending", "Regenerate the derived artifacts — lockfile, tauri-specta bindings, channels.txt — and include them in the change"],
+        ["pending", "Verify with checks"]
+      ];
+      const LONG = [
+        ["done", "Read the provider normalizers"], ["done", "Map every todo payload shape"],
+        ["done", "Confirm Codex still emits todo_list"], ["done", "Restore the dropped Codex item"],
+        ["done", "Add the normalizer test"], ["active", "Write the renderer projection"],
+        ["pending", "Reduce Grok's merge deltas"], ["pending", "Parse Claude's Task #N result"],
+        ["pending", "Build the card"], ["pending", "Hide the raw todo rows"],
+        ["pending", "Update chat-cards.md"], ["pending", "Run precheck"]
+      ];
+      const EDGE = [
+        ["done", "Explore scheduled tasks implementation"],
+        ["cancelled", "Add a second migration for the routing table"],
+        ["active", "Backend: migration + persistence + scheduler reuse"],
+        ["pending", "Task 7"],
+        ["pending", "Verify with checks"]
+      ];
+      const lists = { short: SHORT, long: LONG, wrap: WRAP };
+      const settled = (l) => l.map(([s, t]) => [s === "cancelled" ? s : "done", t]);
+      const fresh = (l) => l.map(([s, t]) => [s === "cancelled" ? s : "pending", t]);
+
+      /* ---------- parts ---------- */
+      const nest = (active) =>
+        `<span class="working-nest" data-mark="nest" ${active ? 'data-active="true"' : ""} aria-hidden="true"
+           style="--working-nest-size:12px;--working-nest-phase:0">` +
+        [1, 2, 3, 4].map((d) => `<i class="working-nest-part" data-dot="${d}"></i>`).join("") +
+        `</span>`;
+
+      function mark(state) {
+        if (state === "done") return `<svg><use href="#i-check"/></svg>`;
+        if (state === "active") return nest(true);
+        if (state === "cancelled") return `<svg style="width:10px;height:10px" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5"/></svg>`;
+        return `<i class="td-ring"></i>`;
+      }
+
+      const items = (list) =>
+        `<ul class="td-list">${list
+          .map(([state, text]) => `<li class="td-item" data-state="${state}">
+             <span class="td-mark">${mark(state)}</span>
+             <span class="td-label">${text}</span>
+           </li>`)
+          .join("")}</ul>`;
+
+      const chev = `<svg class="td-head-chevron" width="12" height="12"><use href="#i-chev"/></svg>`;
+
+      function head(list, variant, expanded) {
+        const total = list.length;
+        const doneN = list.filter(([s]) => s === "done").length;
+        const now = list.find(([s]) => s === "active")?.[1] ?? null;
+        const all = doneN === total;
+
+        if (variant === "c") {
+          return `<div class="td-head">
+            <span class="td-head-verb">Plan</span>
+            <span class="td-head-count">${doneN} / ${total}</span>
+            <span class="td-meter"><i style="width:${Math.round((doneN / total) * 100)}%"></i></span>
+          </div>`;
+        }
+        // A, B, D share the transcript's headline grammar. Collapsed, the
+        // headline has to carry the one thing you would have expanded for.
+        const tail = expanded
+          ? ""
+          : now
+            ? `<span class="td-head-now">· ${now}</span>`
+            : `<span class="td-head-now">· ${all ? "all done" : "not started"}</span>`;
+        return `<button type="button" class="td-head">
+          ${chev}
+          <span class="td-head-verb">Plan</span>
+          <span class="td-head-count">${all ? `${total} of ${total}` : `${doneN} of ${total}`}</span>
+          ${tail}
+        </button>`;
+      }
+
+      function card(variant, list, { expanded = true } = {}) {
+        return `<div class="td td-${variant}" data-expanded="${expanded}">${head(list, variant, expanded)}${items(list)}</div>`;
+      }
+
+      /* ---------- transcript context ---------- */
+      const toolRow = (verb, target, opts = {}) => `
+        <div class="tool-call-row" data-tool-type="${opts.type ?? "read"}">
+          <div class="tool-call-row-main">
+            <button type="button" class="tool-call-row-button">
+              <svg class="tool-call-row-chevron" width="12" height="12"><use href="#i-chev"/></svg>
+              <span class="tool-call-row-verb">${verb}</span>
+              <span class="tool-call-row-target">${target}</span>
+            </button>
+          </div>
+        </div>`;
+
+      function stage(inner, { before = true, after = true, bubble = null, user = null } = {}) {
+        return `<div class="stage">
+          ${user ? `<div class="stage-user">${user}</div>` : ""}
+          ${bubble ? `<p class="stage-bubble">${bubble}</p>` : ""}
+          ${before ? `<div class="stage-tools">${toolRow("Read", "src-tauri/src/providers/normalizer/codex.rs")}${toolRow("Searched", "todo_list", { type: "search" })}</div>` : ""}
+          <div class="stage-slot">${inner}</div>
+          ${after ? `<div class="stage-tools">${toolRow("Ran", "cargo test normalizer", { type: "bash" })}${toolRow("Edited", "src/renderer/lib/todoList.ts", { type: "edit" })}</div>` : ""}
+        </div>`;
+      }
+
+      const VARIANTS = [
+        ["a", "A · Checklist", "no shell — the transcript's own grammar"],
+        ["b", "B · Spine", "the rows strung on one line; the spine is the meter"],
+        ["c", "C · Slab", "PlanCard's grammar — a document in the scrollback"],
+        ["d", "D · Marquee", "one line until you ask for the rest"]
+      ];
+
+      const sample = (id, name, note, body) =>
+        `<div class="sample" data-variant="${id}"><div class="tag"><span class="name">${name}</span><span>${note}</span></div>${body}</div>`;
+
+      /* ---------- render ---------- */
+      function render() {
+        const list = lists[document.getElementById("len").value];
+
+        const mid = document.querySelector('[data-section="mid"]');
+        mid.innerHTML = VARIANTS.map(([id, name, note]) =>
+          sample(id, name, note, stage(card(id, list, { expanded: id !== "d" })))
+        ).join("");
+
+        const done = document.querySelector('[data-section="done"]');
+        done.innerHTML = VARIANTS.map(([id, name]) =>
+          sample(id, name, "turn complete", stage(card(id, settled(list), { expanded: id !== "d" }), { before: false, after: false, bubble: "Both normalizer paths are covered and the projection reduces all five payload shapes. Checks pass." }))
+        ).join("");
+
+        const fr = document.querySelector('[data-section="fresh"]');
+        fr.innerHTML = VARIANTS.map(([id, name]) =>
+          sample(id, name, "nothing started", stage(card(id, fresh(list), { expanded: id !== "d" }), { before: false, after: true }))
+        ).join("");
+
+        const frameId = new URLSearchParams(location.search).get("frame") ?? "a";
+        const fv = VARIANTS.find(([id]) => id === frameId) ?? VARIANTS[0];
+        document.querySelector('[data-section="frame"]').innerHTML = sample(
+          fv[0], fv[1], fv[2],
+          stage(card(fv[0], list, { expanded: fv[0] !== "d" }), {
+            user: "Add the todo list surface — Claude and Codex both publish one.",
+            bubble: "Both providers publish a plan, but through different channels: Claude through <code>TaskCreate</code> / <code>TaskUpdate</code>, Codex through a <code>todo_list</code> item. I'll reduce both into one projection."
+          })
+        );
+
+        document.querySelector('[data-section="pinned"]').innerHTML = sample(
+          "pin", "Pinned strip", "outside the scrollback, above the composer",
+          `<div class="stage">
+             ${toolRow("Edited", "src/renderer/lib/todoList.ts", { type: "edit" })}
+             ${toolRow("Ran", "npm test -- todoList", { type: "bash" })}
+             <div style="height:22px"></div>
+             <div class="td-pinned">${nest(true)}<span>Plan</span><span class="now">Backend: migration + persistence + scheduler reuse</span><span class="count">3 of 5</span>${chev}</div>
+             <div class="composer-mock"><div class="ph">Reply to the agent…</div><div class="chips"><span>Opus 5</span><span>Argmax</span><span>main</span></div></div>
+           </div>`
+        );
+
+        document.querySelector('[data-section="life"]').innerHTML = ["fresh", "working", "settled"]
+          .map((moment) => {
+            const l = moment === "fresh" ? fresh(list) : moment === "settled" ? settled(list) : list;
+            const label = moment === "fresh" ? "1 · published" : moment === "working" ? "2 · working" : "3 · turn ended";
+            const note = moment === "settled" ? "collapses to one line" : "expanded";
+            return sample("a", label, note, `<div class="stage">${card("a", l, { expanded: moment !== "settled" })}</div>`);
+          })
+          .join("");
+
+        document.querySelector('[data-section="edge"]').innerHTML = [
+          sample("a", "A · cancelled + unnamed", "Cursor cancels; Grok names an id before its text", `<div class="stage">${card("a", EDGE)}</div>`),
+          sample("a", "A · twelve items", "the wall an always-expanded list becomes", `<div class="stage">${card("a", LONG)}</div>`)
+        ].join("");
+
+        measureSpines();
+      }
+
+      /* B's spine doubles as the meter, so the filled length is measured from
+         the last finished mark rather than assumed — rows wrap, so no fraction
+         of the list's height is the right answer. */
+      function measureSpines() {
+        for (const list of document.querySelectorAll(".td-b .td-list")) {
+          const done = [...list.querySelectorAll('.td-item[data-state="done"], .td-item[data-state="cancelled"]')];
+          const last = done.at(-1);
+          if (!last) { list.style.setProperty("--td-progress", "0"); continue; }
+          const markBox = last.querySelector(".td-mark").getBoundingClientRect();
+          const top = list.getBoundingClientRect().top + parseFloat(getComputedStyle(list, "::before").top || 0);
+          list.style.setProperty("--td-progress", `${Math.max(0, markBox.top + markBox.height / 2 - top)}px`);
+        }
+      }
+
+      const params = new URLSearchParams(location.search);
+      const root = document.documentElement;
+      const bind = (id, attr, fallback) => {
+        const el = document.getElementById(id);
+        el.value = params.get(id) ?? fallback;
+        const apply = () => root.setAttribute(attr, el.value);
+        apply();
+        el.addEventListener("change", apply);
+      };
+      bind("theme", "data-theme", "dark");
+      bind("size", "data-font-size", "5");
+      bind("accent", "data-accent", "green");
+      document.getElementById("len").value = params.get("len") ?? "short";
+      document.getElementById("len").addEventListener("change", render);
+
+      const only = params.get("only") ?? (params.has("frame") ? "frame" : null);
+      if (only) {
+        document.body.dataset.only = only;
+        for (const section of document.querySelectorAll("section")) {
+          section.hidden = section.dataset.only !== only;
+        }
+      }
+
+      // Clicking a headline toggles its own card, so the collapse behaviour is
+      // judged by using it rather than by reading about it.
+      document.addEventListener("click", (event) => {
+        const head = event.target.closest(".td-head");
+        if (!head) return;
+        const td = head.closest(".td");
+        td.dataset.expanded = td.dataset.expanded === "true" ? "false" : "true";
+        const list = lists[document.getElementById("len").value];
+        // The headline swaps its tail between "· now" and the rule.
+        const variant = [...td.classList].find((c) => c.startsWith("td-") && c.length === 4)?.slice(3);
+        if (variant && variant !== "c") {
+          head.outerHTML = require_head(td, list, variant);
+        }
+      });
+      function require_head(td, list, variant) {
+        return head(list, variant, td.dataset.expanded === "true");
+      }
+
+      render();
+    </script>
+  </body>
+</html>

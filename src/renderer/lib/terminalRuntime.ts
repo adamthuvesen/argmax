@@ -146,8 +146,8 @@ export function attachTerminalTab(
 
   // Watch <html data-theme="..."> so the terminal palette flips live when the
   // user toggles theme in Settings, and data-accent so the caret follows the
-  // chosen accent. data-font/data-font-size also feed xterm because it renders
-  // text outside normal CSS inheritance. The observer belongs to the runtime,
+  // chosen accent. Background intensity and font attributes also feed xterm
+  // because it renders outside CSS inheritance. The observer belongs to the runtime,
   // not the component, so a detached terminal picks up theme changes too.
   const appearanceObserver = new MutationObserver(() => {
     syncTerminalAppearance(term);
@@ -156,7 +156,7 @@ export function attachTerminalTab(
   });
   appearanceObserver.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["data-theme", "data-accent", "data-font", "data-font-size"]
+    attributeFilter: ["data-theme", "data-accent", "data-background-intensity", "data-font", "data-font-size"]
   });
   entry.cleanups.push(() => appearanceObserver.disconnect());
 

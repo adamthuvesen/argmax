@@ -822,6 +822,18 @@ describe("App sidebar", () => {
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
     );
+
+    fireEvent.keyDown(input, { key: "g", metaKey: true });
+    fireEvent.contextMenu(await screen.findByRole("tab", { name: "Changes" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Split below" }));
+    expect(screen.getByRole("tab", { name: "Changes", selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
+
+    // Changes has focus, but Cmd+G still closes the visible Files half.
+    fireEvent.keyDown(input, { key: "g", metaKey: true });
+    expect(screen.getByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Changes", selected: true })).toBeInTheDocument();
+    expect(screen.getAllByRole("tablist", { name: "Review panel mode" })).toHaveLength(1);
   });
 
   it("opens workspace files via the unified command palette on Cmd+P", async () => {
@@ -1063,7 +1075,7 @@ describe("App sidebar", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps launcher review chrome below the collapsed-sidebar titlebar controls", async () => {
+  it("keeps launcher review controls available with the sidebar collapsed", async () => {
     listProjectFiles.mockResolvedValue([
       { path: "src-tauri/src/main.ts" },
       { path: "README.md" }
@@ -1081,9 +1093,8 @@ describe("App sidebar", () => {
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
     expect(
-      document.querySelector(
-        '.app-shell[data-sidebar-collapsed="true"] .launcher-shell[data-review-open="true"] > .review-panel > .review-toolbar'
-      )
+      within(screen.getByRole("region", { name: "Review panel content" }))
+        .getByRole("tablist", { name: "Review panel mode" })
     ).toBeInTheDocument();
   });
 
@@ -1126,6 +1137,17 @@ describe("App sidebar", () => {
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
     );
+
+    fireEvent.keyDown(prompt, { key: "g", metaKey: true });
+    fireEvent.contextMenu(await screen.findByRole("tab", { name: "Changes" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Split below" }));
+    expect(screen.getByRole("tab", { name: "Changes", selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
+
+    fireEvent.keyDown(prompt, { key: "g", metaKey: true });
+    expect(screen.getByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Changes", selected: true })).toBeInTheDocument();
+    expect(screen.getAllByRole("tablist", { name: "Review panel mode" })).toHaveLength(1);
   });
 
   it("surfaces project files in the command palette after Cmd+B opens review", async () => {

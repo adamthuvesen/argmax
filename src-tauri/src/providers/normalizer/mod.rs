@@ -2,6 +2,7 @@ pub(crate) mod claude;
 mod codex;
 mod cursor;
 mod opencode;
+pub(crate) mod todo;
 
 pub use cursor::synthesize_message_completed_from_exit;
 
@@ -32,6 +33,7 @@ use self::{
         extract_usage as extract_codex_usage, normalize_error_item as normalize_codex_error_item,
         normalize_native_agent_lifecycle_events as normalize_codex_native_agent_lifecycle_events,
         normalize_reasoning_item as normalize_codex_reasoning_item,
+        normalize_todo_item as normalize_codex_todo_item,
         normalize_tool_item as normalize_codex_tool_item,
         update_turn_context_model as update_codex_turn_context_model,
     },
@@ -42,6 +44,7 @@ use self::{
         normalize_assistant_text as normalize_cursor_assistant_text,
         normalize_result_success as normalize_cursor_result_success,
         normalize_thinking_delta as normalize_cursor_thinking_delta,
+        normalize_todo_call as normalize_cursor_todo_call,
         normalize_tool_call as normalize_cursor_tool_call,
     },
     opencode::{
@@ -232,6 +235,11 @@ pub struct NormalizerSessionContext {
     /// UPDATE plus a re-read that ships a session row in the dashboard delta —
     /// pure churn after the first, since the id never changes mid-launch.
     pub opencode_conversation_id_emitted: bool,
+    /// `TaskCreate` tool-use id to the subject it was called with. Claude hands
+    /// the task id back only in the result prose, so the subject has to wait
+    /// here for the result line a few milliseconds later. Per invocation is
+    /// enough: a create and its result never straddle a relaunch.
+    pub claude_pending_task_creates: HashMap<String, String>,
 }
 
 impl NormalizerSessionContext {
@@ -633,6 +641,16 @@ fn normalize_json_payload(
                 ..NormalizedProviderResult::default()
             };
         }
+        if let Some(todo) =
+            normalize_codex_todo_item(event, provider_type.as_deref(), item, item_type.as_deref())
+        {
+            return NormalizedProviderResult {
+                events: vec![todo],
+                usages,
+                provider_conversation_id,
+                ..NormalizedProviderResult::default()
+            };
+        }
         if let Some(tool_event) = normalize_codex_tool_item(
             event,
             &payload,
@@ -684,6 +702,11 @@ fn normalize_json_payload(
             normalize_cursor_tool_call(event, &payload, provider_type.as_deref())
         {
             let mut events = vec![tool_event];
+            events.extend(normalize_cursor_todo_call(
+                event,
+                &payload,
+                provider_type.as_deref(),
+            ));
             events.extend(normalize_cursor_native_agent_lifecycle_events(
                 event,
                 &payload,
@@ -760,7 +783,7 @@ fn normalize_json_payload(
             };
         }
         if provider_type.as_deref() == Some("assistant") {
-            if let Some(content_events) = extract_claude_content_blocks(event, &payload) {
+            if let Some(content_events) = extract_claude_content_blocks(event, &payload, context) {
                 if content_events
                     .iter()
                     .any(|event| event.r#type == "message.completed")
@@ -776,10 +799,12 @@ fn normalize_json_payload(
             }
         }
         if provider_type.as_deref() == Some("user") {
-            if let Some(content_events) = extract_claude_content_blocks(event, &payload) {
+            if let Some(content_events) = extract_claude_content_blocks(event, &payload, context) {
+                // The todo rows a tool result can carry ride along with it —
+                // Claude's task id only exists in that result.
                 let tool_results: Vec<_> = content_events
                     .into_iter()
-                    .filter(|e| e.r#type == "command.completed")
+                    .filter(|e| matches!(e.r#type.as_str(), "command.completed" | "todo.updated"))
                     .collect();
                 if !tool_results.is_empty() {
                     return NormalizedProviderResult {
@@ -1576,6 +1601,259 @@ mod tests {
             &mut context,
         );
         assert_eq!(assistant.provider_conversation_id, None);
+    }
+
+    /// Every provider's real todo payload, captured from the local database,
+    /// reduced to the one shape the renderer folds.
+    mod todo_surface {
+        use super::*;
+
+        fn normalize(provider: ProviderId, line: &Value) -> NormalizedProviderResult {
+            let mut context = NormalizerSessionContext::default();
+            normalize_provider_event(provider, &output_event(&line.to_string()), &mut context)
+        }
+
+        fn todo_payloads(result: &NormalizedProviderResult) -> Vec<&Value> {
+            result
+                .events
+                .iter()
+                .filter(|e| e.r#type == "todo.updated")
+                .map(|e| &e.payload)
+                .collect()
+        }
+
+        #[test]
+        fn grok_snapshot_and_the_tool_row_that_carried_it() {
+            let result = normalize(
+                ProviderId::Grok,
+                &json!({
+                    "type": "assistant",
+                    "message": { "content": [{
+                        "type": "tool_use",
+                        "id": "call-1",
+                        "name": "todo_write",
+                        "input": { "merge": false, "todos": [
+                            { "id": "1", "content": "Prove the address bar path", "status": "completed" },
+                            { "id": "2", "content": "Handle Enter in the address bar", "status": "in_progress" }
+                        ]}
+                    }]}
+                }),
+            );
+            let todos = todo_payloads(&result);
+            assert_eq!(todos.len(), 1);
+            assert_eq!(todos[0]["mode"], json!("snapshot"));
+            assert_eq!(todos[0]["items"][1]["status"], json!("active"));
+            assert_eq!(todos[0]["toolUseId"], json!("call-1"));
+            // The row that carried it is marked so the renderer can hide it
+            // without matching the tool's name.
+            let started = result
+                .events
+                .iter()
+                .find(|e| e.r#type == "command.started")
+                .expect("command.started");
+            assert_eq!(started.payload["surface"], json!("todo"));
+        }
+
+        #[test]
+        fn grok_textless_merge_delta_survives_as_ids_and_statuses() {
+            let result = normalize(
+                ProviderId::Grok,
+                &json!({
+                    "type": "assistant",
+                    "message": { "content": [{
+                        "type": "tool_use",
+                        "id": "call-2",
+                        "name": "todo_write",
+                        "input": { "merge": true, "todos": [{ "id": "2", "status": "completed" }] }
+                    }]}
+                }),
+            );
+            let todos = todo_payloads(&result);
+            assert_eq!(todos[0]["mode"], json!("merge"));
+            assert_eq!(todos[0]["items"][0]["id"], json!("2"));
+            assert_eq!(todos[0]["items"][0]["text"], Value::Null);
+        }
+
+        /// The one brittle dependency: Claude's task id exists only in the
+        /// result prose, so the create and its result have to be paired.
+        #[test]
+        fn claude_pairs_task_create_with_the_id_in_its_result() {
+            let mut context = NormalizerSessionContext::default();
+            let create = normalize_provider_event(
+                ProviderId::Claude,
+                &output_event(
+                    &json!({
+                        "type": "assistant",
+                        "message": { "content": [{
+                            "type": "tool_use",
+                            "id": "toolu_1",
+                            "name": "TaskCreate",
+                            "input": { "subject": "Wire up the projection", "description": "…" }
+                        }]}
+                    })
+                    .to_string(),
+                ),
+                &mut context,
+            );
+            // Nothing yet — the id is still unknown.
+            assert!(todo_payloads(&create).is_empty());
+
+            let result = normalize_provider_event(
+                ProviderId::Claude,
+                &output_event(
+                    &json!({
+                        "type": "user",
+                        "message": { "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_1",
+                            "content": "Task #5 created successfully: Wire up the projection"
+                        }]}
+                    })
+                    .to_string(),
+                ),
+                &mut context,
+            );
+            let todos = todo_payloads(&result);
+            assert_eq!(todos.len(), 1);
+            assert_eq!(todos[0]["mode"], json!("merge"));
+            assert_eq!(todos[0]["items"][0]["id"], json!("5"));
+            assert_eq!(
+                todos[0]["items"][0]["text"],
+                json!("Wire up the projection")
+            );
+            assert_eq!(todos[0]["items"][0]["status"], json!("pending"));
+            assert!(context.claude_pending_task_creates.is_empty());
+        }
+
+        #[test]
+        fn claude_task_update_moves_a_task_by_id() {
+            let result = normalize(
+                ProviderId::Claude,
+                &json!({
+                    "type": "assistant",
+                    "message": { "content": [{
+                        "type": "tool_use",
+                        "id": "toolu_2",
+                        "name": "TaskUpdate",
+                        "input": { "taskId": "5", "status": "in_progress" }
+                    }]}
+                }),
+            );
+            let todos = todo_payloads(&result);
+            assert_eq!(todos[0]["items"][0]["id"], json!("5"));
+            assert_eq!(todos[0]["items"][0]["status"], json!("active"));
+        }
+
+        /// When the result template changes the task still reaches the card,
+        /// keyed by the tool-use id so the break is visible rather than silent.
+        #[test]
+        fn claude_unparsable_task_result_still_emits_keyed_by_tool_use_id() {
+            let mut context = NormalizerSessionContext::default();
+            normalize_provider_event(
+                ProviderId::Claude,
+                &output_event(
+                    &json!({
+                        "type": "assistant",
+                        "message": { "content": [{
+                            "type": "tool_use", "id": "toolu_3", "name": "TaskCreate",
+                            "input": { "subject": "Ship it" }
+                        }]}
+                    })
+                    .to_string(),
+                ),
+                &mut context,
+            );
+            let result = normalize_provider_event(
+                ProviderId::Claude,
+                &output_event(
+                    &json!({
+                        "type": "user",
+                        "message": { "content": [{
+                            "type": "tool_result", "tool_use_id": "toolu_3",
+                            "content": "Created task 5 (new format)"
+                        }]}
+                    })
+                    .to_string(),
+                ),
+                &mut context,
+            );
+            let todos = todo_payloads(&result);
+            assert_eq!(todos[0]["items"][0]["id"], json!("toolu_3"));
+            assert_eq!(todos[0]["items"][0]["text"], json!("Ship it"));
+        }
+
+        #[test]
+        fn opencode_snapshot_rides_with_its_tool_row() {
+            let result = normalize(
+                ProviderId::Opencode,
+                &json!({
+                    "type": "tool_use",
+                    "part": {
+                        "type": "tool",
+                        "tool": "todowrite",
+                        "callID": "call_1",
+                        "state": { "status": "completed", "input": { "todos": [
+                            { "content": "Reproduce", "status": "completed" },
+                            { "content": "Fix", "status": "in_progress" }
+                        ]}}
+                    }
+                }),
+            );
+            let todos = todo_payloads(&result);
+            assert_eq!(todos.len(), 1, "one update per call, not one per row");
+            assert_eq!(todos[0]["mode"], json!("snapshot"));
+            assert_eq!(todos[0]["items"][1]["status"], json!("active"));
+            assert!(result
+                .events
+                .iter()
+                .filter(|e| e.r#type.starts_with("command."))
+                .all(|e| e.payload["surface"] == json!("todo")));
+        }
+
+        #[test]
+        fn cursor_update_todos_tool_call_carries_the_list() {
+            let result = normalize(
+                ProviderId::Cursor,
+                &json!({
+                    "type": "tool_call",
+                    "subtype": "started",
+                    "call_id": "tool_1",
+                    "tool_call": { "updateTodosToolCall": { "args": {
+                        "merge": true,
+                        "todos": [
+                            { "content": "Verify the gate", "id": "5-verify", "status": "TODO_STATUS_COMPLETED" },
+                            { "content": "Summarize", "id": "6-summary", "status": "TODO_STATUS_IN_PROGRESS" }
+                        ]
+                    }}}
+                }),
+            );
+            let todos = todo_payloads(&result);
+            assert_eq!(todos[0]["mode"], json!("merge"));
+            assert_eq!(todos[0]["items"][1]["status"], json!("active"));
+        }
+
+        /// Cursor's ACP path strips the list before it reaches us. Emitting an
+        /// empty snapshot would wipe the list the user is reading, so the call
+        /// produces no update at all — the row is still hidden.
+        #[test]
+        fn cursor_stripped_update_todos_emits_no_update_but_hides_its_row() {
+            let result = normalize(
+                ProviderId::Cursor,
+                &json!({
+                    "type": "tool_call",
+                    "subtype": "started",
+                    "call_id": "tool_2",
+                    "tool_call": { "updateTodos": { "args": { "_toolName": "updateTodos" } } }
+                }),
+            );
+            assert!(todo_payloads(&result).is_empty());
+            let started = result
+                .events
+                .iter()
+                .find(|e| e.r#type == "command.started")
+                .expect("command.started");
+            assert_eq!(started.payload["surface"], json!("todo"));
+        }
     }
 
     pub(crate) fn output_event(message: &str) -> ProviderOutputEvent {

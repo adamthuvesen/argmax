@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_BACKGROUND_INTENSITY } from "../lib/backgroundIntensity.js";
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { DEFAULT_INK_STRENGTH } from "../lib/inkStrength.js";
 
@@ -109,6 +110,105 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
         new RegExp(`--${token}: color-mix\\(in oklab, #[0-9a-f]{6}, var\\(--ink-toward\\)`)
       );
     }
+  });
+
+  it("leaves shipped surfaces alone at the default background intensity", () => {
+    const styles = readSource("src/renderer/styles.css");
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    const ladder = readSource("src/renderer/styles/background-intensity.css");
+
+    expect(DEFAULT_BACKGROUND_INTENSITY).toBe(7);
+    expect(ladder).not.toMatch(/\[data-background-intensity="7"\]/);
+    expect(styles.indexOf('url("./styles/tokens.css")')).toBeLessThan(
+      styles.indexOf('url("./styles/background-intensity.css")')
+    );
+    expect(cssRuleBody(tokens, ":root")).toContain("--bg: #fdfdfd;");
+    expect(cssRuleBody(tokens, ':root[data-theme="dark"]')).toContain("--bg: #141414;");
+  });
+
+  it("scales every neutral surface and its boundaries on nondefault rungs", () => {
+    const ladder = readSource("src/renderer/styles/background-intensity.css");
+    const scalable = cssRuleBody(
+      ladder,
+      ':root:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"], [data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"])'
+    );
+    const surfaces = [
+      "bg",
+      "sidebar",
+      "panel",
+      "review-panel",
+      "review-sidebar",
+      "panel-soft",
+      "composer-surface",
+      "panel-sunken",
+      "code-surface",
+      "terminal-surface",
+      "tool-block-surface",
+      "line",
+      "line-soft",
+      "line-strong",
+      "scrollbar-thumb",
+      "scrollbar-thumb-hover",
+      "overlay-panel",
+      "overlay-panel-raised"
+    ];
+
+    for (const surface of surfaces) {
+      expect(scalable).toMatch(
+        new RegExp(`--${surface}: color-mix\\(in oklab, #[0-9a-f]{6}, var\\(--background-[a-z-]+-target\\) var\\(--background-pull\\)\\);`)
+      );
+    }
+
+    for (const level of [1, 2, 3, 4, 5, 6, 8, 9, 10]) {
+      expect(cssRuleBody(ladder, `:root[data-background-intensity="${level}"]`)).toMatch(
+        /--background-pull: \d+%;/
+      );
+    }
+
+    const darkLowPulls = [1, 2, 3, 4, 5, 6].map((level) => {
+      const rule = cssRuleBody(
+        ladder,
+        `:root[data-theme="dark"][data-background-intensity="${level}"]`
+      );
+      return Number(/--background-pull: (?<pull>\d+)%;/.exec(rule)?.groups?.pull);
+    });
+    // Level 1 now starts at the former level 4 mix, then closes the gap to
+    // the exact shipped palette at level 7 in progressively smaller steps.
+    expect(darkLowPulls).toEqual([50, 42, 33, 25, 17, 8]);
+    for (let index = 1; index < darkLowPulls.length; index += 1) {
+      expect(darkLowPulls[index]).toBeLessThan(darkLowPulls[index - 1]);
+    }
+  });
+
+  it("pins light and dark background endpoints without flattening nested surfaces", () => {
+    const ladder = readSource("src/renderer/styles/background-intensity.css");
+    const lightLow = cssRuleBody(
+      ladder,
+      ':root:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"])'
+    );
+    const lightHigh = cssRuleBody(
+      ladder,
+      ':root:is([data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"])'
+    );
+    const darkLow = cssRuleBody(
+      ladder,
+      ':root[data-theme="dark"]:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"])'
+    );
+    const darkHigh = cssRuleBody(
+      ladder,
+      ':root[data-theme="dark"]:is([data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"])'
+    );
+
+    expect(lightLow).toContain("--background-bg-target: #e3e3e3;");
+    expect(darkLow).toContain("--background-bg-target: #2c2c2c;");
+    expect(lightHigh).toContain("--background-bg-target: #ffffff;");
+    expect(lightHigh).toContain("--background-terminal-target: #ffffff;");
+    expect(darkHigh).toContain("--background-bg-target: #000000;");
+    expect(darkHigh).toContain("--background-terminal-target: #000000;");
+    expect(darkHigh).toContain("--background-panel-target: #060606;");
+    expect(darkHigh).toContain("--background-composer-target: #0c0c0c;");
+    expect(darkHigh).toContain("--background-panel-soft-target: #0d0d0d;");
+    expect(darkHigh).toContain("--background-sunken-target: #000000;");
   });
 
   it("keeps review scope menus below their trigger", () => {

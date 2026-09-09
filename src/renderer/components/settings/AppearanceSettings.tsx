@@ -30,6 +30,13 @@ import {
   toInkStrength,
   type InkStrength
 } from "../../lib/inkStrength.js";
+import {
+  BACKGROUND_INTENSITY_HINTS,
+  BACKGROUND_INTENSITY_MAX,
+  BACKGROUND_INTENSITY_MIN,
+  toBackgroundIntensity,
+  type BackgroundIntensity
+} from "../../lib/backgroundIntensity.js";
 import { toScaleLevel } from "../../lib/scaleLevel.js";
 import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
@@ -73,7 +80,9 @@ export function AppearanceSettings({
   chatFontSize,
   onChatFontSizeChange,
   inkStrength,
-  onInkStrengthChange
+  onInkStrengthChange,
+  backgroundIntensity,
+  onBackgroundIntensityChange
 }: {
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
@@ -83,6 +92,8 @@ export function AppearanceSettings({
   onChatFontSizeChange: (size: FontSize) => void;
   inkStrength: InkStrength;
   onInkStrengthChange: (strength: InkStrength) => void;
+  backgroundIntensity: BackgroundIntensity;
+  onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
@@ -119,6 +130,10 @@ export function AppearanceSettings({
     const strength = toInkStrength(raw);
     if (strength) onInkStrengthChange(strength);
   };
+  const pickBackgroundIntensity = (raw: number): void => {
+    const intensity = toBackgroundIntensity(raw);
+    if (intensity) onBackgroundIntensityChange(intensity);
+  };
   const fontStack = FONT_OPTIONS.find((option) => option.id === fontFamily)?.stack;
   // Straight from the store rather than through props: every running mark in
   // the app subscribes to it, and a second copy in App state would be a second
@@ -133,6 +148,20 @@ export function AppearanceSettings({
           label="Theme"
           description={THEME_OPTIONS.find((option) => option.id === themeMode)?.hint}
           control={<ThemePicker value={themeMode} onChange={onThemeModeChange} />}
+        />
+        <SettingRow
+          label="Background intensity"
+          description={`Page and surface colors. ${BACKGROUND_INTENSITY_HINTS[backgroundIntensity]}`}
+          control={
+            <Slider
+              ariaLabel="Background intensity"
+              min={BACKGROUND_INTENSITY_MIN}
+              max={BACKGROUND_INTENSITY_MAX}
+              value={backgroundIntensity}
+              valueLabel={String(backgroundIntensity)}
+              onChange={pickBackgroundIntensity}
+            />
+          }
         />
         <SettingRow
           label="Accent"

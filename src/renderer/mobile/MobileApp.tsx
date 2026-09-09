@@ -3,6 +3,7 @@ import { Archive, FolderGit2, Laptop, Menu, MoreHorizontal, PenLine, Search, Squ
 import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
 import { LinesSkeleton } from "../components/LinesSkeleton.js";
 import { SessionPane } from "../components/SessionPane.js";
+import { WorkingNest } from "../components/WorkingNest.js";
 import type { NewSessionSeed } from "../components/SessionComposer.js";
 import { BottomSheet, SheetOption } from "./BottomSheet.js";
 import { takeDeepLinkSessionId } from "./deepLink.js";
@@ -14,9 +15,10 @@ import { useDashboardSession } from "../hooks/useDashboardSession.js";
 import { SessionTimelineProvider } from "../hooks/useSessionTimeline.js";
 import { useSessionCommands } from "../hooks/useSessionCommands.js";
 import { isEarlySessionStop } from "../lib/earlyStop.js";
-import { isMultitaskSession } from "../lib/multitask.js";
+import { isMultitaskSession, multitasksByParentSession } from "../lib/multitask.js";
 import { importChunk } from "../lib/importChunk.js";
 import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
+import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
 import {
   computePriorityEntries,
   computeWorkspaceAttention,
@@ -93,12 +95,14 @@ function relativeAge(iso: string | null | undefined, nowMs: number): string | nu
 function MobileSessionRow({
   row,
   projectName,
+  unread,
   nowMs,
   onOpen,
   onOpenActions
 }: {
   row: SessionListRow;
   projectName: string | null;
+  unread: boolean;
   nowMs: number;
   onOpen: (workspaceId: string) => void;
   onOpenActions: (row: SessionListRow) => void;
@@ -130,7 +134,14 @@ function MobileSessionRow({
                 aria-label={AWAITING_LABEL[awaiting]}
               />
             ) : running ? (
-              <span className="mobile-session-marker" data-running aria-label="running" />
+              // The nest moves and the unread dot does not, which is the whole
+              // distinction: two accent dots, one pulsing, read as the same
+              // thing at a glance on a phone.
+              <span className="mobile-session-nest" aria-label="running">
+                <WorkingNest active size={11} />
+              </span>
+            ) : unread ? (
+              <span className="mobile-session-marker" data-unread aria-label="unread reply" />
             ) : null}
             <span className="mobile-session-title">{workspace.taskLabel}</span>
           </span>
@@ -160,6 +171,7 @@ function SessionSection({
   label,
   rows,
   projectNamesById,
+  unreadIds,
   nowMs,
   onOpen,
   onOpenActions
@@ -167,6 +179,7 @@ function SessionSection({
   label: string;
   rows: SessionListRow[];
   projectNamesById: Map<string, string>;
+  unreadIds: ReadonlySet<string>;
   nowMs: number;
   onOpen: (workspaceId: string) => void;
   onOpenActions: (row: SessionListRow) => void;
@@ -181,6 +194,7 @@ function SessionSection({
             key={row.workspace.id}
             row={row}
             projectName={projectNamesById.get(row.workspace.projectId) ?? null}
+            unread={unreadIds.has(row.workspace.id)}
             nowMs={nowMs}
             onOpen={onOpen}
             onOpenActions={onOpenActions}
@@ -660,11 +674,44 @@ export function MobileApp(): JSX.Element {
     [openWorkspaceChat, snapshot.sessions]
   );
 
+  // Chats this one dispatched. The phone has no dock to host them, so they
+  // open in the overlay beside the subagents rather than replacing the chat.
+  const multitasksByParent = useMemo(
+    () => multitasksByParentSession(snapshot.sessions, snapshot.workspaces),
+    [snapshot.sessions, snapshot.workspaces]
+  );
   const sessionOpen = selectedWorkspaceId !== null && (selectedSession !== null || selectedSessionId !== null);
+  // Unread is this phone's own reading state: the stamp lives in its
+  // localStorage, so reading a chat on the Mac does not clear the dot here,
+  // and reading it here does not clear it there. Passing the open chat only
+  // while it is on screen lets a reply that lands after you back out count
+  // as unread again.
+  const workspaceActivity = useMemo(
+    () =>
+      snapshot.workspaces.map((workspace) => ({
+        id: workspace.id,
+        lastActivityAt: workspace.lastActivityAt ?? ""
+      })),
+    [snapshot.workspaces]
+  );
+  const workingWorkspaceIds = useMemo(
+    () =>
+      new Set(
+        snapshot.workspaces
+          .filter((workspace) => workspace.state === "running")
+          .map((workspace) => workspace.id)
+      ),
+    [snapshot.workspaces]
+  );
+  const unreadIds = useUnreadWorkspaceIds(
+    workspaceActivity,
+    sessionOpen ? selectedWorkspaceId : null,
+    workingWorkspaceIds
+  );
   // Park the list under a session or the new-chat screen instead of unmounting
   // it: tearing the scroller down was sending every back-to-list gesture to
-  // the top. Its own type scale stays at 6 while the shell jumps to 8 for
-  // the chat, so the parked scroller does not reflow and lose its offset.
+  // the top. It keeps its own type scale while the shell steps up for the
+  // chat, so the parked scroller does not reflow and lose its offset.
   const listParked = sessionOpen || newSessionOpen;
   const listScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
@@ -758,12 +805,16 @@ export function MobileApp(): JSX.Element {
     <div
       ref={shellRef}
       className="mobile-shell"
-      data-font-size={sessionOpen || newSessionOpen ? "8" : "6"}
+      data-font-size={
+        // Reading a transcript wants a larger type than scanning a list of
+        // chats does, so the two screens run at their own scale.
+        sessionOpen || newSessionOpen ? "7" : "3"
+      }
       data-screen={newSessionOpen ? "new" : sessionOpen ? "session" : "list"}
     >
       <div
         className="mobile-list-screen"
-        data-font-size="6"
+        data-font-size="3"
         data-parked={listParked || undefined}
         aria-hidden={listParked}
         inert={listParked || undefined}
@@ -836,6 +887,7 @@ export function MobileApp(): JSX.Element {
                 label="Pinned"
                 rows={filteredRows.pinnedRows}
                 projectNamesById={projectNamesById}
+                unreadIds={unreadIds}
                 nowMs={nowMs}
                 onOpen={openWorkspaceChat}
                 onOpenActions={setActionsRow}
@@ -844,6 +896,7 @@ export function MobileApp(): JSX.Element {
                 label="Priority"
                 rows={filteredRows.priorityRows}
                 projectNamesById={projectNamesById}
+                unreadIds={unreadIds}
                 nowMs={nowMs}
                 onOpen={openWorkspaceChat}
                 onOpenActions={setActionsRow}
@@ -852,6 +905,7 @@ export function MobileApp(): JSX.Element {
                 label={filteredRows.pinnedRows.length > 0 || filteredRows.priorityRows.length > 0 ? "Chats" : "All chats"}
                 rows={filteredRows.activityRows}
                 projectNamesById={projectNamesById}
+                unreadIds={unreadIds}
                 nowMs={nowMs}
                 onOpen={openWorkspaceChat}
                 onOpenActions={setActionsRow}
@@ -990,7 +1044,9 @@ export function MobileApp(): JSX.Element {
                   setReviewFilePath(path);
                   setReviewOpen(true);
                 }}
+                multitasks={selectedSession ? (multitasksByParent.get(selectedSession.id) ?? []) : []}
                 agentsViewAvailable={false}
+                agentsPresentation="overlay"
                 workspaceCardVisible={false}
               />
             </div>

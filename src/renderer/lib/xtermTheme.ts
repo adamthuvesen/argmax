@@ -1,13 +1,14 @@
 /** xterm themes for the integrated terminal.
  *
  * xterm draws to canvas/WebGL outside the CSS context, so we can't reuse
- * `var(--bg)` etc. Each theme is a literal object the renderer picks based
- * on the current resolved theme. Keep both palettes hue-locked to the app
- * tokens (yellow-leaning warm grays, sage/amber/rose accents).
+ * CSS variables directly. Literal palettes preserve the default appearance.
+ * Custom background intensity and the caret accent are resolved from live
+ * CSS colors before being passed to xterm.
  */
 
 import { themeAppearance } from "./theme.js";
 import { readColorToken } from "./pixelField.js";
+import { DEFAULT_BACKGROUND_INTENSITY } from "./backgroundIntensity.js";
 
 export const LIGHT_XTERM_THEME = {
   background: "#fbfbfa",
@@ -115,5 +116,11 @@ function readCaretColor(fallback: string): string {
 export function readActiveXtermTheme(): XtermThemeObject {
   if (typeof document === "undefined") return LIGHT_XTERM_THEME;
   const base = getXtermTheme(themeAppearance(document.documentElement.getAttribute("data-theme")));
-  return { ...base, cursor: readCaretColor(base.cursor) };
+  const intensity = document.documentElement.getAttribute("data-background-intensity");
+  let background: string = base.background;
+  if (document.body && intensity && intensity !== String(DEFAULT_BACKGROUND_INTENSITY)) {
+    const { r, g, b } = readColorToken("--terminal-surface", document.body);
+    background = `rgb(${r}, ${g}, ${b})`;
+  }
+  return { ...base, background, cursorAccent: background, cursor: readCaretColor(base.cursor) };
 }

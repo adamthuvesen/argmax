@@ -15,9 +15,9 @@ import type { BrowserTabInfo } from "../../shared/types.js";
 /** Start page when the browser (or a fresh tab) is opened without a target. */
 export const DEFAULT_BROWSER_URL = "https://www.google.com";
 
-// Where the browser last was, surviving a close: the native webview is hidden
-// rather than destroyed, so reopening at the same URL matches what the
-// restored webview actually shows.
+// Where the browser last was, for a strip with no tabs in it: a closed-out
+// pane, or the first open of a run. While a tab exists the tab store is what
+// a reopen reads, since that is the copy the app keeps current.
 let lastUrl: string | null = null;
 
 export interface BrowserOpenRequest {
@@ -46,9 +46,13 @@ export function openBrowserPanel(): void {
   openInBrowserPanel(lastBrowsedUrl());
 }
 
-/** The URL a reopen should land on: what the active webview still shows. */
+/** The URL a reopen should land on: what the active tab is showing. Read from
+ *  the tab store, which the app's registry keeps current whether or not any
+ *  browser chrome is mounted — a URL remembered alongside it drifts, and a
+ *  reopen at a drifted URL navigates the live tab out from under the user. */
 export function lastBrowsedUrl(): string {
-  return lastUrl ?? DEFAULT_BROWSER_URL;
+  const active = tabs.find((tab) => tab.id === activeTabId);
+  return active?.url ?? lastUrl ?? DEFAULT_BROWSER_URL;
 }
 
 export function subscribeBrowserRequest(listener: () => void): () => void {
@@ -213,7 +217,6 @@ function restoreTabs(): void {
       ? Math.floor(snapshot.nextTabSeq)
       : 0;
   nextTabSeq = Math.max(1, persistedSeq, highestRestoredSeq + 1);
-  lastUrl = tabs.find((tab) => tab.id === activeTabId)?.url ?? lastUrl;
 }
 
 restoreTabs();
@@ -461,7 +464,6 @@ export function ensureBrowserTabSync(): void {
   tabSyncStarted = true;
   browser.onTabs((event) => applyBrowserTabs(event.tabs));
   browser.onAgentOpen((event) => {
-    lastUrl = event.url;
     requestAgentBrowserOpen(event.sessionId, event.tabId, event.url);
   });
   void browser

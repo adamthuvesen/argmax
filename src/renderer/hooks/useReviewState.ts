@@ -30,6 +30,20 @@ import {
   subscribeTerminalRequest
 } from "../lib/terminalTabs.js";
 import { reviewIpcDispatch } from "../lib/reviewIpc.js";
+import {
+  activateReviewMode,
+  closeReviewPane,
+  createReviewLayout,
+  isReviewPanelMode,
+  normalizeReviewLayout,
+  parseReviewLayout,
+  setReviewPaneMode,
+  setReviewSplitRatio,
+  splitReviewMode,
+  type ReviewLayout,
+  type ReviewPanelMode,
+  type ReviewSplitPosition
+} from "../lib/reviewLayout.js";
 import { usePersistedSetting } from "./usePersistedSetting.js";
 import { useFilePreview } from "./useFilePreview.js";
 import { multitaskTabId } from "../lib/agentTabs.js";
@@ -38,7 +52,7 @@ import { useReviewDiff } from "./useReviewDiff.js";
 import { useWorkspaceFileList } from "./useWorkspaceFileList.js";
 
 export type AsyncState = "idle" | "loading" | "ready" | "error";
-export type ReviewPanelMode = "changes" | "files" | "agents" | "browser" | "terminal";
+export type { ReviewLayout, ReviewPanelMode, ReviewSplitPosition } from "../lib/reviewLayout.js";
 
 /**
  * Which slice of the work the Changes view shows.
@@ -159,8 +173,14 @@ export interface ReviewState {
   diffState: AsyncState;
   diffError: string | null;
   isPanelOpen: boolean;
+  layout: ReviewLayout;
   mode: ReviewPanelMode;
   setMode: (mode: ReviewPanelMode) => void;
+  setPaneMode: (index: 0 | 1, mode: ReviewPanelMode) => void;
+  focusPane: (index: 0 | 1) => void;
+  splitMode: (mode: ReviewPanelMode, position: ReviewSplitPosition) => void;
+  closePane: (index: 0 | 1) => void;
+  setSplitRatio: (ratio: number) => void;
   /** Which slice of the work the Changes view shows. */
   changesScope: ReviewChangesScope;
   setChangesScope: (scope: ReviewChangesScope) => void;
@@ -252,10 +272,24 @@ export function useReviewState(
   );
 
   const terminalWorkspaceId = source?.kind === "workspace" ? source.workspace.id : null;
+  const availablePanelModes = useMemo<ReviewPanelMode[]>(() => {
+    const modes: ReviewPanelMode[] = ["changes", "files"];
+    if (options?.sessionId) modes.push("agents");
+    if (typeof window !== "undefined" && window.argmax?.browser) modes.push("browser");
+    if (terminalWorkspaceId) modes.push("terminal");
+    return modes;
+  }, [options?.sessionId, terminalWorkspaceId]);
   const panelOpenKey = options?.sessionId && options.initiallyOpen === undefined
     ? `argmax.reviewPanel.open.${options.sessionId}`
     : null;
-  const panelModeKey = panelOpenKey ? `argmax.reviewPanel.mode.${options?.sessionId}` : null;
+  const legacyPanelModeKey = panelOpenKey ? `argmax.reviewPanel.mode.${options?.sessionId}` : null;
+  const panelLayoutKey = options?.initiallyOpen === undefined
+    ? options?.sessionId
+      ? `argmax.reviewPanel.layout.${options.sessionId}`
+      : source?.kind === "project"
+        ? "argmax.reviewPanel.layout.launcher"
+        : null
+    : null;
   // Session panes remount on navigation. Restore both visibility and mode,
   // falling back to the workspace terminal state for sessions without a preference.
   const [isPanelOpen, setIsPanelOpen] = useState(() => {
@@ -277,27 +311,98 @@ export function useReviewState(
       // Quota or private-mode failures are non-fatal for appearance prefs.
     }
   }, [panelOpenKey, isPanelOpen]);
-  const [mode, setMode] = useState<ReviewPanelMode>(() => {
-    if (panelModeKey) {
+  const restoredLayoutPreference = useRef(false);
+  const [layout, setLayout] = useState<ReviewLayout>(() => {
+    if (panelLayoutKey) {
       try {
-        const stored = window.localStorage.getItem(panelModeKey);
-        if (stored === "changes" || stored === "files" || stored === "agents" || stored === "browser" || stored === "terminal") {
-          return stored;
+        const stored = parseReviewLayout(window.localStorage.getItem(panelLayoutKey));
+        if (stored) {
+          restoredLayoutPreference.current = true;
+          return normalizeReviewLayout(stored, availablePanelModes);
         }
       } catch {
         // Appearance preferences are optional when storage is unavailable.
       }
     }
-    return getWorkspaceTerminalState(terminalWorkspaceId).showing ? "terminal" : "changes";
+    if (legacyPanelModeKey) {
+      try {
+        const stored = window.localStorage.getItem(legacyPanelModeKey);
+        if (isReviewPanelMode(stored)) {
+          restoredLayoutPreference.current = true;
+          return normalizeReviewLayout(createReviewLayout(stored), availablePanelModes);
+        }
+      } catch {
+        // Appearance preferences are optional when storage is unavailable.
+      }
+    }
+    const initialMode = options?.initiallyOpen !== undefined
+      ? "changes"
+      : getWorkspaceTerminalState(terminalWorkspaceId).showing
+        ? "terminal"
+        : "changes";
+    return normalizeReviewLayout(createReviewLayout(initialMode), availablePanelModes);
   });
   useEffect(() => {
-    if (!panelModeKey) return;
+    if (!panelLayoutKey) return;
     try {
-      window.localStorage.setItem(panelModeKey, mode);
+      window.localStorage.setItem(panelLayoutKey, JSON.stringify(layout));
     } catch {
       // Quota or private-mode failures are non-fatal for appearance prefs.
     }
-  }, [panelModeKey, mode]);
+  }, [layout, panelLayoutKey]);
+
+  const normalizeLayout = useCallback(
+    (next: ReviewLayout): ReviewLayout => normalizeReviewLayout(next, availablePanelModes),
+    [availablePanelModes]
+  );
+  useEffect(() => {
+    setLayout((current) => {
+      const next = normalizeLayout(current);
+      return next.activeIndex === current.activeIndex &&
+        next.ratio === current.ratio &&
+        next.modes.length === current.modes.length &&
+        next.modes.every((item, index) => item === current.modes[index])
+        ? current
+        : next;
+    });
+  }, [normalizeLayout]);
+
+  const mode = layout.modes[layout.activeIndex] ?? layout.modes[0];
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const setMode = useCallback((nextMode: ReviewPanelMode): void => {
+    restoredLayoutPreference.current = true;
+    setLayout((current) => normalizeLayout(activateReviewMode(current, nextMode)));
+  }, [normalizeLayout]);
+  const setPaneMode = useCallback((index: 0 | 1, nextMode: ReviewPanelMode): void => {
+    restoredLayoutPreference.current = true;
+    setLayout((current) => normalizeLayout(setReviewPaneMode(current, index, nextMode)));
+  }, [normalizeLayout]);
+  const focusPane = useCallback((index: 0 | 1): void => {
+    restoredLayoutPreference.current = true;
+    setLayout((current) =>
+      index < current.modes.length && current.activeIndex !== index
+        ? { ...current, activeIndex: index }
+        : current
+    );
+  }, []);
+  const splitMode = useCallback((nextMode: ReviewPanelMode, position: ReviewSplitPosition): void => {
+    restoredLayoutPreference.current = true;
+    setLayout((current) => normalizeLayout(splitReviewMode(current, nextMode, position)));
+    setIsPanelOpen(true);
+  }, [normalizeLayout]);
+  const closePane = useCallback((index: 0 | 1): void => {
+    restoredLayoutPreference.current = true;
+    if (layoutRef.current.modes.length === 1) {
+      setIsPanelOpen(false);
+      return;
+    }
+    setLayout((current) => closeReviewPane(current, index));
+  }, []);
+  const setSplitRatio = useCallback((ratio: number): void => {
+    restoredLayoutPreference.current = true;
+    setLayout((current) => setReviewSplitRatio(current, ratio));
+  }, []);
   const [storedScope, setChangesScope] = useState<ReviewChangesScope>(readStoredScope);
   usePersistedSetting(SCOPE_KEY, storedScope);
   const previousSourceId = useRef<string | null>(sourceId);
@@ -307,7 +412,7 @@ export function useReviewState(
   // id identifies the panel to the surface-ownership store.
   const panelId = useId();
   const [browserRequest, setBrowserRequest] = useState<BrowserOpenRequest | null>(() =>
-    mode === "browser" ? { url: lastBrowsedUrl(), seq: 0 } : null
+    layout.modes.includes("browser") ? { url: lastBrowsedUrl(), seq: 0 } : null
   );
   const browserOwner = useSyncExternalStore(subscribeBrowserOwner, getBrowserOwnerId) === panelId;
 
@@ -321,19 +426,20 @@ export function useReviewState(
       setMode("browser");
       setIsPanelOpen(true);
     },
-    [panelId]
+    [panelId, setMode]
   );
 
   const openBrowser = useCallback((): void => openBrowserAt(lastBrowsedUrl()), [openBrowserAt]);
 
-  // Entering Browser mode by any path takes the surface; leaving it — another
-  // mode, a closed panel, an unmounted pane — hands it back, unless another
-  // panel has already claimed it in the meantime.
+  const showsBrowser = isPanelOpen && layout.modes.includes("browser");
+  // Entering Browser mode by any path takes the surface; leaving it, closing
+  // the panel, or unmounting the pane hands it back unless another panel has
+  // already claimed it in the meantime.
   useEffect(() => {
-    if (mode !== "browser" || !isPanelOpen) return undefined;
+    if (!showsBrowser) return undefined;
     claimBrowserSurface(panelId);
     return () => releaseBrowserSurface(panelId);
-  }, [isPanelOpen, mode, panelId]);
+  }, [panelId, showsBrowser]);
 
   // Open-in-browser requests (chat links, the actions menu). Every panel
   // tracks the sequence, so one that was unfocused when a request landed does
@@ -388,7 +494,7 @@ export function useReviewState(
   const openChangesMode = useCallback((): void => {
     setMode("changes");
     setIsPanelOpen(true);
-  }, []);
+  }, [setMode]);
 
   const reviewDiff = useReviewDiff({
     sourceId,
@@ -396,7 +502,7 @@ export function useReviewState(
     changedFilesKey,
     comparison,
     dispatch,
-    autoSelectFirstFile: isPanelOpen && mode === "changes",
+    autoSelectFirstFile: isPanelOpen && layout.modes.includes("changes"),
     onOpenChanges: openChangesMode
   });
 
@@ -405,7 +511,7 @@ export function useReviewState(
     sourceKind,
     changedFilesKey,
     dispatch,
-    mode,
+    mode: layout.modes.includes("files") ? "files" : mode,
     isPanelOpen
   });
 
@@ -420,7 +526,7 @@ export function useReviewState(
     sourceKind,
     dispatch,
     canEdit,
-    mode,
+    mode: layout.modes.includes("files") ? "files" : mode,
     isPanelOpen,
     rootPath: sourceRootPath
   });
@@ -451,10 +557,13 @@ export function useReviewState(
 
     // Browser mode has no source to lose, so it survives the project
     // selection going away; every other mode has nothing left to show.
-    if (!window.argmax || ((!sourceId || !sourceKind) && panelRef.current.mode !== "browser")) {
+    if (
+      !window.argmax ||
+      ((!sourceId || !sourceKind) && !panelRef.current.layout.modes.includes("browser"))
+    ) {
       setIsPanelOpen(false);
     }
-  }, [sourceId, sourceKind, resetDiff, resetFileList, resetFilePreview, resetAgentTabs]);
+  }, [sourceId, sourceKind, resetDiff, resetFileList, resetFilePreview, resetAgentTabs, setMode]);
 
   const openInFilesView = useCallback(
     (filePath: string): void => {
@@ -462,7 +571,7 @@ export function useReviewState(
       setIsPanelOpen(true);
       openWorkspaceFile(filePath);
     },
-    [openWorkspaceFile]
+    [openWorkspaceFile, setMode]
   );
 
   const openAgent = useCallback(
@@ -471,13 +580,13 @@ export function useReviewState(
       setIsPanelOpen(true);
       openAgentTab(parentToolUseId);
     },
-    [openAgentTab]
+    [openAgentTab, setMode]
   );
 
   const openAgents = useCallback((): void => {
     setMode("agents");
     setIsPanelOpen(true);
-  }, []);
+  }, [setMode]);
 
   const openMultitask = useCallback(
     (sessionId: string): void => {
@@ -485,13 +594,13 @@ export function useReviewState(
       setIsPanelOpen(true);
       openAgentTab(multitaskTabId(sessionId));
     },
-    [openAgentTab]
+    [openAgentTab, setMode]
   );
 
   const openPanelInFilesMode = useCallback((): void => {
     setMode("files");
     setIsPanelOpen(true);
-  }, []);
+  }, [setMode]);
 
   const closePanel = useCallback((): void => {
     setIsPanelOpen(false);
@@ -504,42 +613,57 @@ export function useReviewState(
       ? filterToLastTurn(diffState.files, lastTurnPaths)
       : diffState.files;
 
-  const panelRef = useRef({ isPanelOpen, filesCount: 0, files: visibleFiles, mode });
-  panelRef.current = { isPanelOpen, filesCount: visibleFiles.length, files: visibleFiles, mode };
+  const panelRef = useRef({ isPanelOpen, filesCount: 0, files: visibleFiles, mode, layout });
+  panelRef.current = { isPanelOpen, filesCount: visibleFiles.length, files: visibleFiles, mode, layout };
 
   const togglePanel = useCallback((): void => {
-    if (!panelRef.current.isPanelOpen && panelRef.current.filesCount === 0) {
+    if (
+      !panelRef.current.isPanelOpen &&
+      panelRef.current.filesCount === 0 &&
+      panelRef.current.layout.modes.length === 1 &&
+      !restoredLayoutPreference.current
+    ) {
       setMode("files");
     }
     setIsPanelOpen((open) => !open);
-  }, []);
+  }, [setMode]);
 
   const openChangesPanel = useCallback((): void => {
     setMode("changes");
     setIsPanelOpen(true);
-  }, []);
+  }, [setMode]);
 
   const toggleChangesPanel = useCallback((): void => {
-    if (panelRef.current.isPanelOpen && panelRef.current.mode === "changes") {
-      setIsPanelOpen(false);
+    const changesIndex = panelRef.current.layout.modes.indexOf("changes");
+    if (panelRef.current.isPanelOpen && changesIndex >= 0) {
+      if (panelRef.current.layout.modes.length === 2) {
+        closePane(changesIndex as 0 | 1);
+      } else {
+        setIsPanelOpen(false);
+      }
       return;
     }
     setMode("changes");
     setIsPanelOpen(true);
-  }, []);
+  }, [closePane, setMode]);
 
   const openTerminal = useCallback((): void => {
     setMode("terminal");
     setIsPanelOpen(true);
-  }, []);
+  }, [setMode]);
 
   const toggleTerminal = useCallback((): void => {
-    if (panelRef.current.isPanelOpen && panelRef.current.mode === "terminal") {
-      setIsPanelOpen(false);
+    const terminalIndex = panelRef.current.layout.modes.indexOf("terminal");
+    if (panelRef.current.isPanelOpen && terminalIndex >= 0) {
+      if (panelRef.current.layout.modes.length === 2) {
+        closePane(terminalIndex as 0 | 1);
+      } else {
+        setIsPanelOpen(false);
+      }
       return;
     }
     openTerminal();
-  }, [openTerminal]);
+  }, [closePane, openTerminal]);
 
   // ⌘J is pressed on the window, not on this panel, and the pane it is meant
   // for may be mounting in the same tick (⌘J from Settings opens the chat
@@ -550,13 +674,18 @@ export function useReviewState(
     if (!terminalRequest || terminalRequest.workspaceId !== terminalWorkspaceId) return;
     consumeTerminalRequest(terminalRequest.seq);
     if (terminalRequest.visible) openTerminal();
-    else if (panelRef.current.mode === "terminal") setIsPanelOpen(false);
-  }, [openTerminal, terminalRequest, terminalWorkspaceId]);
+    else {
+      const terminalIndex = panelRef.current.layout.modes.indexOf("terminal");
+      if (terminalIndex < 0) return;
+      if (panelRef.current.layout.modes.length === 2) closePane(terminalIndex as 0 | 1);
+      else setIsPanelOpen(false);
+    }
+  }, [closePane, openTerminal, terminalRequest, terminalWorkspaceId]);
 
   // Report what this panel shows back to the store, for the next panel that
   // mounts on this workspace. One direction only: nothing here reads it after
   // the initial state above.
-  const showsTerminal = isPanelOpen && mode === "terminal";
+  const showsTerminal = isPanelOpen && layout.modes.includes("terminal");
   useEffect(() => {
     if (!terminalWorkspaceId) return;
     setTerminalShowing(terminalWorkspaceId, showsTerminal);
@@ -603,8 +732,14 @@ export function useReviewState(
     diffState: diffState.diffState,
     diffError: diffState.diffError,
     isPanelOpen,
+    layout,
     mode,
     setMode,
+    setPaneMode,
+    focusPane,
+    splitMode,
+    closePane,
+    setSplitRatio,
     changesScope,
     setChangesScope,
     availableScopes,

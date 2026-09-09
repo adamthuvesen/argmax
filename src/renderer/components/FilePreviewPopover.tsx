@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type JSX } from "react";
 import type { FilePreviewData } from "../lib/filePreview.js";
+import { LoadingLine } from "./LoadingLine.js";
 
 interface FilePreviewPopoverProps {
   anchorRect: DOMRect;
@@ -68,7 +69,7 @@ export function FilePreviewPopover({
         ) : null}
       </div>
       {loading ? (
-        <div className="file-preview-popover-state">Loading…</div>
+        <LoadingLine className="file-preview-popover-state" label="Loading…" />
       ) : error ? (
         <div className="file-preview-popover-state file-preview-popover-state--error">{error}</div>
       ) : data ? (

@@ -57,6 +57,20 @@ describe("useStandaloneBrowserLinks", () => {
     expect(onOpenInAppBrowser).not.toHaveBeenCalled();
   });
 
+  it("does not replay a request raised before the standalone page opened", () => {
+    const onOpenInAppBrowser = vi.fn();
+    window.localStorage.setItem(LINK_TARGET_KEY, "argmax");
+    const { rerender } = renderHook(
+      ({ active }: { active: boolean }) => useStandaloneBrowserLinks({ active, onOpenInAppBrowser }),
+      { initialProps: { active: false } }
+    );
+
+    act(() => openInBrowserPanel("https://cursor.com/dashboard/spending"));
+    rerender({ active: true });
+
+    expect(onOpenInAppBrowser).not.toHaveBeenCalled();
+  });
+
   it("falls back to system open-path when the link target is the system browser", () => {
     const openPath = vi.fn().mockResolvedValue({ ok: true });
     (window as { argmax?: unknown }).argmax = { system: { openPath } };

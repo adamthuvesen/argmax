@@ -18,6 +18,99 @@
   background: var(--panel);
 }
 
+.review-panel-stack,
+.review-panel-pane {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.review-panel-stack {
+  position: relative;
+}
+
+.review-panel-pane {
+  position: relative;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.review-panel-stack[data-split="true"] .review-panel-pane[data-pane-position="top"] {
+  flex-grow: 0;
+  order: 0;
+}
+
+.review-panel-stack[data-split="true"] .review-panel-pane[data-pane-position="bottom"] {
+  order: 2;
+}
+
+.review-split-divider {
+  position: relative;
+  z-index: 4;
+  order: 1;
+  flex: 0 0 6px;
+  cursor: row-resize;
+  background: var(--line);
+}
+
+.review-split-divider::after {
+  position: absolute;
+  inset: -2px 0;
+  content: "";
+}
+
+.review-split-divider:hover,
+.review-split-divider:focus-visible {
+  background: var(--line-strong);
+  outline: none;
+}
+
+.review-split-drop-shield,
+.review-split-resize-shield {
+  position: absolute;
+  z-index: 40;
+  inset: 0;
+  pointer-events: none;
+}
+
+.review-split-drop-overlay {
+  position: absolute;
+  left: var(--space-2);
+  right: var(--space-2);
+  display: grid;
+  place-items: center;
+  height: calc(50% - var(--space-3));
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--panel) 88%, var(--accent-soft));
+  color: var(--text);
+}
+
+.review-split-drop-overlay[data-position="top"] {
+  top: var(--space-2);
+}
+
+.review-split-drop-overlay[data-position="bottom"] {
+  bottom: var(--space-2);
+}
+
+.review-split-drop-overlay span {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-1);
+  font-size: var(--text-xs-plus);
+  font-weight: 600;
+}
+
+.review-tab-context-menu {
+  position: fixed;
+  z-index: 90;
+  min-width: 136px;
+}
+
 /* Left-docked: the hairline moves to the edge that now faces the conversation. */
 .app-shell[data-review-panel-side="left"] .review-panel {
   border-left: 0;
@@ -33,7 +126,7 @@
   border-bottom: 1px solid var(--line);
 }
 
-.app-shell[data-sidebar-collapsed="true"] .launcher-shell[data-review-open="true"] > .review-panel > .review-toolbar {
+.app-shell[data-sidebar-collapsed="true"] .launcher-shell[data-review-open="true"] > .review-panel .review-panel-pane:first-child > .review-toolbar {
   padding-top: 52px;
   padding-bottom: 22px;
 }
@@ -234,69 +327,6 @@
   border-style: solid;
   border-color: rgba(184, 87, 99, 0.4);
   background: var(--panel);
-}
-
-/* Shimmering placeholder rows shown while a diff or file preview fetches, in
-   place of a bare "Loading…" line. Row widths vary so the block reads as text
-   rather than a solid bar; the shimmer is the only motion. */
-.lines-skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2_5);
-  padding: 16px 18px;
-}
-
-.lines-skeleton-row {
-  height: 11px;
-  width: 92%;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(
-    90deg,
-    var(--panel-sunken) 0%,
-    var(--line-soft) 50%,
-    var(--panel-sunken) 100%
-  );
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.4s var(--ease) infinite;
-  animation-play-state: var(--loop-play-state, running);
-}
-
-.lines-skeleton-row:nth-child(3n) {
-  width: 66%;
-}
-
-.lines-skeleton-row:nth-child(4n) {
-  width: 81%;
-}
-
-.lines-skeleton-row:nth-child(5n) {
-  width: 52%;
-}
-
-.lines-skeleton-row:nth-child(7n) {
-  width: 74%;
-}
-
-/* The diff/file skeletons fill the scroll pane; the file one uses mono-row
-   rhythm to echo code lines. */
-.review-diff-skeleton,
-.review-file-skeleton {
-  margin: 0;
-}
-
-@keyframes skeleton-shimmer {
-  from {
-    background-position: 200% 0;
-  }
-  to {
-    background-position: -200% 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lines-skeleton-row {
-    animation: none;
-  }
 }
 
 /* One compact row: the mode tabs alone name the panel; counts live in the
@@ -592,12 +622,12 @@
   font-size: var(--text-xs-plus);
 }
 
-.review-panel[data-wide="true"] .review-mode-tabs button {
+.review-panel-pane[data-wide="true"] .review-mode-tabs button {
   width: auto;
   padding: 0 9px;
 }
 
-.review-panel[data-wide="true"] .review-mode-tab-label {
+.review-panel-pane[data-wide="true"] .review-mode-tab-label {
   display: inline;
 }
 
@@ -712,7 +742,7 @@
   font-feature-settings: "tnum";
 }
 
-.review-panel[data-wide="true"] .review-mode-tab-count {
+.review-panel-pane[data-wide="true"] .review-mode-tab-count {
   display: inline-flex;
 }
 

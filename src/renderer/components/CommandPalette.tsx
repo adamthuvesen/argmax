@@ -760,19 +760,19 @@ export function CommandPalette({
             );
           })}
           {messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH ? (
-            <li className="command-palette-loading" role="status">
+            <li className="loading-line command-palette-loading" role="status">
               <WorkingNest active size={12} />
               Searching messages…
             </li>
           ) : null}
           {filesRunning ? (
-            <li className="command-palette-loading" role="status">
+            <li className="loading-line command-palette-loading" role="status">
               <WorkingNest active size={12} />
               Loading files…
             </li>
           ) : null}
           {contentsRunning ? (
-            <li className="command-palette-loading" role="status">
+            <li className="loading-line command-palette-loading" role="status">
               <WorkingNest active size={12} />
               Searching file contents…
             </li>

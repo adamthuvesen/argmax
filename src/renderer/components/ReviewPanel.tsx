@@ -15,13 +15,19 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useId,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
+  type DragEvent as ReactDragEvent,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent
 } from "react";
+import { createPortal } from "react-dom";
+import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { PickerLead } from "./PickerLead.js";
 import {
@@ -59,6 +65,11 @@ import { LinesSkeleton } from "./LinesSkeleton.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 import { FileIcon } from "@react-symbols/icons/utils";
 import { registerReviewFileTabCloseHandler } from "../lib/reviewFilePanel.js";
+import {
+  MAX_REVIEW_SPLIT_RATIO,
+  MIN_REVIEW_SPLIT_RATIO,
+  isReviewPanelMode
+} from "../lib/reviewLayout.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import { closeTerminalTab, getWorkspaceTerminalState, subscribeTerminalTabs } from "../lib/terminalTabs.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
@@ -99,6 +110,136 @@ export interface AgentsPanelContext {
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
   onTerminateSession?: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
+}
+
+const REVIEW_MODE_DRAG_MIME = "application/x-argmax-review-mode";
+const REVIEW_PANEL_RATIO_STEP = 0.05;
+
+interface ReviewModeTabsProps {
+  activeMode: ReviewPanelMode;
+  agentCount: number;
+  hasAgents: boolean;
+  hasBrowser: boolean;
+  hasTerminal: boolean;
+  onDragEnd: () => void;
+  onDragStart: (mode: ReviewPanelMode, event: ReactDragEvent<HTMLButtonElement>) => void;
+  onSelectMode: (mode: ReviewPanelMode) => void;
+  onSplitBelow: (mode: ReviewPanelMode) => void;
+  terminalCount: number;
+}
+
+function ReviewModeTabs({
+  activeMode,
+  agentCount,
+  hasAgents,
+  hasBrowser,
+  hasTerminal,
+  onDragEnd,
+  onDragStart,
+  onSelectMode,
+  onSplitBelow,
+  terminalCount
+}: ReviewModeTabsProps): JSX.Element {
+  const [menu, setMenu] = useState<{ mode: ReviewPanelMode; point: AnchorPoint } | null>(null);
+  const popover = useAnchoredPopover({ open: menu !== null, gutter: 0, capHeight: true });
+  const { anchorToPoint, floatingStyles, popoverRef, setPopover } = popover;
+  const closeMenu = useCallback(() => setMenu(null), []);
+  useDismissOnOutsideOrEscape(popoverRef, menu !== null, closeMenu);
+
+  useEffect(() => {
+    anchorToPoint(menu?.point ?? null);
+  }, [anchorToPoint, menu]);
+
+  useEffect(() => {
+    if (menu) popoverRef.current?.querySelector<HTMLButtonElement>("[role=menuitem]")?.focus();
+  }, [menu, popoverRef]);
+
+  const openMenu = (mode: ReviewPanelMode, x: number, y: number): void => {
+    setMenu({ mode, point: { x, y } });
+  };
+
+  const handleKeyDown = (mode: ReviewPanelMode, event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    if (!((event.shiftKey && event.key === "F10") || event.key === "ContextMenu")) return;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    openMenu(mode, rect.left, rect.bottom + 4);
+  };
+
+  const modes: Array<{
+    count?: number;
+    icon: JSX.Element;
+    label: string;
+    mode: ReviewPanelMode;
+  }> = [
+    { mode: "changes", label: "Changes", icon: <GitBranch size={14} aria-hidden="true" /> },
+    { mode: "files", label: "Files", icon: <Folder size={14} aria-hidden="true" /> },
+    ...(hasAgents
+      ? [{ mode: "agents" as const, label: "Agents", icon: <Bot size={16} aria-hidden="true" />, count: agentCount }]
+      : []),
+    ...(hasBrowser
+      ? [{ mode: "browser" as const, label: "Browser", icon: <Globe size={14} aria-hidden="true" /> }]
+      : []),
+    ...(hasTerminal
+      ? [{ mode: "terminal" as const, label: "Terminal", icon: <SquareTerminal size={14} aria-hidden="true" />, count: terminalCount }]
+      : [])
+  ];
+
+  return (
+    <>
+      <div className="review-mode-tabs" role="tablist" aria-label="Review panel mode">
+        {modes.map((item) => (
+          <button
+            role="tab"
+            type="button"
+            aria-label={item.label}
+            aria-selected={activeMode === item.mode}
+            title={item.mode === "terminal" ? "Terminal (⌘J)" : item.label}
+            draggable
+            key={item.mode}
+            onClick={() => onSelectMode(item.mode)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              openMenu(item.mode, event.clientX, event.clientY);
+            }}
+            onDragEnd={onDragEnd}
+            onDragStart={(event) => onDragStart(item.mode, event)}
+            onKeyDown={(event) => handleKeyDown(item.mode, event)}
+          >
+            {item.icon}
+            <span className="review-mode-tab-label">{item.label}</span>
+            {item.count && item.count > 1 ? <span className="review-mode-tab-count">{item.count}</span> : null}
+          </button>
+        ))}
+      </div>
+      {menu && typeof document !== "undefined"
+        ? createPortal(
+            <ul
+              ref={setPopover}
+              className="project-picker-popover review-tab-context-menu"
+              role="menu"
+              aria-label={`${modes.find((item) => item.mode === menu.mode)?.label ?? menu.mode} tab actions`}
+              data-browser-overlay="true"
+              style={floatingStyles}
+            >
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item"
+                  onClick={() => {
+                    onSplitBelow(menu.mode);
+                    closeMenu();
+                  }}
+                >
+                  Split below
+                </button>
+              </li>
+            </ul>,
+            document.body
+          )
+        : null}
+    </>
+  );
 }
 
 function fileBasename(path: string): string {
@@ -325,11 +466,16 @@ function countLines(text: string): number {
   return lines;
 }
 
-export function ReviewPanel({
+function ReviewPanelPane({
   agents,
   isFocused = true,
+  isSplit,
   onAddDiffNote,
-  onResizePanelMouseDown,
+  onTabDragEnd,
+  onTabDragStart,
+  ownsTerminalMount,
+  paneIndex,
+  paneSize,
   review
 }: {
   /** Present only on a pane with a session behind it. Without it the panel has
@@ -338,10 +484,15 @@ export function ReviewPanel({
   /** False for a panel in an unfocused pane: its document-level ⌘W must not
    *  close a tab in a panel the user isn't looking at. */
   isFocused?: boolean;
+  isSplit: boolean;
   /** When provided, diff lines grow a hover "+" for line comments; submitted
    *  comments become diff-note annotations on the pane's session. */
   onAddDiffNote?: (input: DiffNoteInput) => void;
-  onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
+  onTabDragEnd: () => void;
+  onTabDragStart: (mode: ReviewPanelMode, event: ReactDragEvent<HTMLButtonElement>) => void;
+  ownsTerminalMount: boolean;
+  paneIndex: 0 | 1;
+  paneSize?: string;
   review: ReviewState;
 }): JSX.Element {
   // The Browser tab needs the desktop bridge; the Agents tab only exists with
@@ -366,7 +517,7 @@ export function ReviewPanel({
   const terminalTabs = useSyncExternalStore(subscribeTerminalTabs, () =>
     getWorkspaceTerminalState(terminalWorkspaceId)
   );
-  const terminalMounted = terminalWorkspaceId !== null && (isTerminal || terminalTabs.tabs.length > 0);
+  const terminalMounted = ownsTerminalMount && terminalWorkspaceId !== null && (isTerminal || terminalTabs.tabs.length > 0);
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
@@ -424,10 +575,7 @@ export function ReviewPanel({
   }, [activeTerminalTabId, terminalWorkspaceId]);
 
   useEffect(() => {
-    if (!isFocused) {
-      registerReviewFileTabCloseHandler(null);
-      return undefined;
-    }
+    if (!isFocused) return undefined;
     if (isTerminal) {
       if (!activeTerminalTabId) {
         registerReviewFileTabCloseHandler(null);
@@ -585,98 +733,50 @@ export function ReviewPanel({
     }
   };
 
+  const panePosition = paneIndex === 0 ? "top" : "bottom";
+
   return (
-    <aside
-      className="review-panel"
+    <section
+      className="review-panel-pane"
       // The agent window's chat scale is about reading the transcript. The
       // review panel is sidebar-class chrome — files, changes, and the diff
       // code between them — so it holds the app-chrome scale, matching the
       // left sidebar and the workspace card. See tokens.css.
       data-type-scale="chrome"
       data-wide={panelWidth >= PANEL_WIDE_BREAKPOINT ? "true" : "false"}
-      aria-label="Review panel"
+      data-pane-index={paneIndex}
+      data-pane-position={panePosition}
+      aria-label={isSplit ? `${panePosition === "top" ? "Top" : "Bottom"} review pane` : "Review panel content"}
       ref={panelRef}
+      style={paneSize ? { flexBasis: paneSize } : undefined}
+      onFocusCapture={() => review.focusPane(paneIndex)}
+      onPointerDownCapture={() => review.focusPane(paneIndex)}
     >
-      {onResizePanelMouseDown ? (
-        <div className="panel-col-resize-handle" aria-hidden="true" onMouseDown={onResizePanelMouseDown} />
-      ) : null}
       <div className="review-toolbar">
         <div className="review-toolbar-titles">
-          <div className="review-mode-tabs" role="tablist" aria-label="Review panel mode">
-            <button
-              role="tab"
-              type="button"
-              aria-label="Changes"
-              aria-selected={isChanges}
-              title="Changes"
-              onClick={() => review.setMode("changes")}
-            >
-              <GitBranch size={14} aria-hidden="true" />
-              <span className="review-mode-tab-label">Changes</span>
-            </button>
-            <button
-              role="tab"
-              type="button"
-              aria-label="Files"
-              aria-selected={mode === "files"}
-              title="Files"
-              onClick={() => review.setMode("files")}
-            >
-              <Folder size={14} aria-hidden="true" />
-              <span className="review-mode-tab-label">Files</span>
-            </button>
-            {agents ? (
-              <button
-                role="tab"
-                type="button"
-                aria-label="Agents"
-                aria-selected={isAgents}
-                title="Agents"
-                onClick={() => review.setMode("agents")}
-              >
-                {/* Bot's glyph carries more inner padding than GitBranch/Folder, so it needs 16 to read the same size. */}
-                <Bot size={16} aria-hidden="true" />
-                <span className="review-mode-tab-label">Agents</span>
-                {review.agentTabs.tabIds.length > 1 ? (
-                  <span className="review-mode-tab-count">{review.agentTabs.tabIds.length}</span>
-                ) : null}
-              </button>
-            ) : null}
-            {hasBrowser ? (
-              <button
-                role="tab"
-                type="button"
-                aria-label="Browser"
-                aria-selected={isBrowser}
-                title="Browser"
-                onClick={review.openBrowser}
-              >
-                <Globe size={14} aria-hidden="true" />
-                <span className="review-mode-tab-label">Browser</span>
-              </button>
-            ) : null}
-            {terminalWorkspaceId ? (
-              <button
-                role="tab"
-                type="button"
-                aria-label="Terminal"
-                aria-selected={isTerminal}
-                title="Terminal (⌘J)"
-                onClick={review.openTerminal}
-              >
-                <SquareTerminal size={14} aria-hidden="true" />
-                <span className="review-mode-tab-label">Terminal</span>
-                {terminalTabs.tabs.length > 1 ? (
-                  <span className="review-mode-tab-count">{terminalTabs.tabs.length}</span>
-                ) : null}
-              </button>
-            ) : null}
-          </div>
+          <ReviewModeTabs
+            activeMode={mode}
+            agentCount={review.agentTabs.tabIds.length}
+            hasAgents={Boolean(agents)}
+            hasBrowser={hasBrowser}
+            hasTerminal={Boolean(terminalWorkspaceId)}
+            onDragEnd={onTabDragEnd}
+            onDragStart={onTabDragStart}
+            onSelectMode={review.setMode}
+            onSplitBelow={(splitMode) => review.splitMode(splitMode, "bottom")}
+            terminalCount={terminalTabs.tabs.length}
+          />
         </div>
         <div className="review-toolbar-actions">
           {isChanges ? <ReviewScopePicker review={review} /> : null}
-          <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
-            <PanelRightClose size={16} strokeWidth={1.75} />
+          <button
+            className="small-icon"
+            type="button"
+            title={isSplit ? `Close ${panePosition} pane` : "Close review"}
+            aria-label={isSplit ? `Close ${panePosition} pane` : "Close review"}
+            onClick={review.closePanel}
+          >
+            {isSplit ? <X size={15} /> : <PanelRightClose size={16} strokeWidth={1.75} />}
           </button>
         </div>
       </div>
@@ -700,6 +800,7 @@ export function ReviewPanel({
               url={review.browserRequest?.url ?? DEFAULT_BROWSER_URL}
               requestSeq={review.browserRequest?.seq}
               requestTabId={review.browserRequest?.tabId}
+              panePosition={panePosition}
               onClose={review.closePanel}
             />
           ) : (
@@ -882,6 +983,215 @@ export function ReviewPanel({
           </span>
         </footer>
       )}
+    </section>
+  );
+}
+
+export function ReviewPanel({
+  agents,
+  isFocused = true,
+  onAddDiffNote,
+  onResizePanelMouseDown,
+  review
+}: {
+  agents?: AgentsPanelContext;
+  isFocused?: boolean;
+  onAddDiffNote?: (input: DiffNoteInput) => void;
+  onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
+  review: ReviewState;
+}): JSX.Element {
+  const panelDragId = useId();
+  const stackRef = useRef<HTMLDivElement>(null);
+  const splitCleanupRef = useRef<(() => void) | null>(null);
+  const pendingTabFocusRef = useRef<{ index: 0 | 1; mode: ReviewPanelMode } | null>(null);
+  const [draggedMode, setDraggedMode] = useState<ReviewPanelMode | null>(null);
+  const [dropPosition, setDropPosition] = useState<"top" | "bottom" | null>(null);
+  const [isResizingSplit, setIsResizingSplit] = useState(false);
+  const isSplit = review.layout.modes.length === 2;
+  const terminalPaneIndex = review.layout.modes.indexOf("terminal");
+  const terminalMountIndex = (terminalPaneIndex >= 0 ? terminalPaneIndex : 0) as 0 | 1;
+
+  useLayoutEffect(() => {
+    const pending = pendingTabFocusRef.current;
+    if (!pending || review.layout.modes[pending.index] !== pending.mode) return;
+    pendingTabFocusRef.current = null;
+    const label = `${pending.mode[0].toUpperCase()}${pending.mode.slice(1)}`;
+    stackRef.current
+      ?.querySelector<HTMLButtonElement>(
+        `[data-pane-index="${pending.index}"] [role="tab"][aria-label="${label}"]`
+      )
+      ?.focus();
+  }, [review.layout.modes]);
+
+  useEffect(
+    () => () => {
+      splitCleanupRef.current?.();
+      splitCleanupRef.current = null;
+    },
+    []
+  );
+
+  const clearTabDrag = (): void => {
+    setDraggedMode(null);
+    setDropPosition(null);
+  };
+
+  const handleTabDragStart = (
+    mode: ReviewPanelMode,
+    event: ReactDragEvent<HTMLButtonElement>
+  ): void => {
+    setDraggedMode(mode);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(REVIEW_MODE_DRAG_MIME, JSON.stringify({ mode, panelId: panelDragId }));
+  };
+
+  const acceptsCurrentDrag = (event: ReactDragEvent<HTMLDivElement>): boolean =>
+    draggedMode !== null && Array.from(event.dataTransfer.types).includes(REVIEW_MODE_DRAG_MIME);
+
+  const updateDropPosition = (event: ReactDragEvent<HTMLDivElement>): void => {
+    if (!acceptsCurrentDrag(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const bounds = event.currentTarget.getBoundingClientRect();
+    setDropPosition(event.clientY < bounds.top + bounds.height / 2 ? "top" : "bottom");
+  };
+
+  const handleDrop = (event: ReactDragEvent<HTMLDivElement>): void => {
+    if (!acceptsCurrentDrag(event)) return;
+    const position = dropPosition;
+    let payload: { mode?: unknown; panelId?: unknown } | null = null;
+    try {
+      payload = JSON.parse(event.dataTransfer.getData(REVIEW_MODE_DRAG_MIME)) as {
+        mode?: unknown;
+        panelId?: unknown;
+      };
+    } catch {
+      payload = null;
+    }
+    if (!position || payload?.panelId !== panelDragId || !isReviewPanelMode(payload.mode)) {
+      clearTabDrag();
+      return;
+    }
+    event.preventDefault();
+    review.splitMode(payload.mode, position);
+    clearTabDrag();
+  };
+
+  const handleDividerPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    const stack = stackRef.current;
+    if (!stack) return;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    setIsResizingSplit(true);
+    const onMove = (moveEvent: PointerEvent): void => {
+      const bounds = stack.getBoundingClientRect();
+      if (bounds.height <= 0) return;
+      review.setSplitRatio((moveEvent.clientY - bounds.top) / bounds.height);
+    };
+    const cleanup = (): void => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", cleanup);
+      setIsResizingSplit(false);
+      splitCleanupRef.current = null;
+    };
+    const onUp = (): void => cleanup();
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", cleanup);
+    splitCleanupRef.current = cleanup;
+  };
+
+  const handleDividerKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    let ratio: number | null = null;
+    if (event.key === "ArrowUp") ratio = review.layout.ratio - REVIEW_PANEL_RATIO_STEP;
+    if (event.key === "ArrowDown") ratio = review.layout.ratio + REVIEW_PANEL_RATIO_STEP;
+    if (event.key === "Home") ratio = MIN_REVIEW_SPLIT_RATIO;
+    if (event.key === "End") ratio = MAX_REVIEW_SPLIT_RATIO;
+    if (ratio === null) return;
+    event.preventDefault();
+    review.setSplitRatio(ratio);
+  };
+
+  return (
+    <aside className="review-panel" data-type-scale="chrome" aria-label="Review panel">
+      {onResizePanelMouseDown ? (
+        <div className="panel-col-resize-handle" aria-hidden="true" onMouseDown={onResizePanelMouseDown} />
+      ) : null}
+      <div
+        className="review-panel-stack"
+        data-split={isSplit ? "true" : "false"}
+        role="group"
+        aria-label="Review panes"
+        ref={stackRef}
+        onDragEnter={updateDropPosition}
+        onDragLeave={(event) => {
+          if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+          setDropPosition(null);
+        }}
+        onDragOver={updateDropPosition}
+        onDrop={handleDrop}
+      >
+        {review.layout.modes.map((mode, rawIndex) => {
+          const paneIndex = rawIndex as 0 | 1;
+          const paneReview: ReviewState = {
+            ...review,
+            mode,
+            closePanel: () => review.closePane(paneIndex),
+            setMode: (nextMode) => {
+              pendingTabFocusRef.current = nextMode === mode ? null : { index: paneIndex, mode: nextMode };
+              review.setPaneMode(paneIndex, nextMode);
+              if (nextMode === "browser") review.openBrowser();
+            }
+          };
+          return (
+            <ReviewPanelPane
+              agents={agents}
+              isFocused={isFocused && review.layout.activeIndex === paneIndex}
+              isSplit={isSplit}
+              key={mode}
+              onAddDiffNote={onAddDiffNote}
+              onTabDragEnd={clearTabDrag}
+              onTabDragStart={handleTabDragStart}
+              ownsTerminalMount={paneIndex === terminalMountIndex}
+              paneIndex={paneIndex}
+              paneSize={isSplit && paneIndex === 0 ? `calc(${review.layout.ratio * 100}% - 3px)` : undefined}
+              review={paneReview}
+            />
+          );
+        })}
+        {isSplit ? (
+          <div
+            className="review-split-divider"
+            role="separator"
+            aria-label="Resize review panes"
+            aria-orientation="horizontal"
+            aria-valuemax={MAX_REVIEW_SPLIT_RATIO * 100}
+            aria-valuemin={MIN_REVIEW_SPLIT_RATIO * 100}
+            aria-valuenow={Math.round(review.layout.ratio * 100)}
+            onKeyDown={handleDividerKeyDown}
+            onPointerDown={handleDividerPointerDown}
+            tabIndex={0}
+          />
+        ) : null}
+        {draggedMode ? (
+          <div className="review-split-drop-shield" data-browser-overlay="true">
+            {dropPosition ? (
+              <div className="review-split-drop-overlay" data-position={dropPosition} role="status">
+                <span>{`Show ${draggedMode[0].toUpperCase()}${draggedMode.slice(1)} ${dropPosition === "top" ? "above" : "below"}`}</span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {isResizingSplit ? (
+          <div className="review-split-resize-shield" data-browser-overlay="true" aria-hidden="true" />
+        ) : null}
+      </div>
     </aside>
   );
 }

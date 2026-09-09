@@ -58,7 +58,15 @@ pub async fn launch_turn(
     }
     let mut command = Command::new(binary_path);
     command
-        .args(["app-server", "--stdio"])
+        // `update_plan` is Codex's todo list, and it is off unless the config
+        // asks for it. Without this the model is told the tool does not exist
+        // and the chat never sees a plan.
+        .args([
+            "app-server",
+            "--stdio",
+            "-c",
+            "tools.update_plan.enabled=true",
+        ])
         .current_dir(&input.workspace_path)
         .env_clear()
         .envs(build_provider_environment(environment_overrides))
@@ -755,6 +763,24 @@ impl EventTranslation {
                     "item.completed"
                 };
                 vec![json!({ "type": event_type, "item": exec_item(item) })]
+            }
+            // Codex revises its plan through its own notification rather than
+            // through an item lifecycle, and it names the running step — the
+            // `codex exec` projection, which flattens the status to a boolean,
+            // does not. Reshaped into the `todo_list` item the normalizer reads
+            // so both transports land on one emitter.
+            "turn/plan/updated" => {
+                let Some(plan) = params.get("plan").filter(|plan| plan.is_array()) else {
+                    return Vec::new();
+                };
+                vec![json!({
+                    "type": "item.updated",
+                    "item": {
+                        "id": params.get("turnId").and_then(Value::as_str).unwrap_or("plan"),
+                        "type": "todo_list",
+                        "plan": plan,
+                    }
+                })]
             }
             "item/agentMessage/delta" => params
                 .get("delta")

@@ -18,6 +18,7 @@ import {
 } from "../lib/sessionTurnView.js";
 import { foldToolRunsToSummaries } from "../lib/turnChildren.js";
 import { buildToolCallGroup, isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
+import type { TodoList } from "../lib/todoList.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { codenameForTool } from "../lib/agentNames.js";
 import { latestToolCreatedAt, visibleTurnToolItem } from "../lib/turnToolItems.js";
@@ -29,6 +30,7 @@ import { AgentLaunchList } from "./AgentLaunchList.js";
 import { ChatBubble } from "./ChatBubble.js";
 import { LogBlock } from "./LogBlock.js";
 import { PlanCard } from "./PlanCard.js";
+import { TodoCard } from "./TodoCard.js";
 import { QuestionCard } from "./QuestionCard.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
@@ -72,7 +74,8 @@ function SessionConversationTurnInner({
   thinkingDisplay,
   defaultTurnChangesExpanded,
   restoringTranscript = false,
-  questionIsDocked = false
+  questionIsDocked = false,
+  todo = null
 }: {
   item: TurnRenderItem;
   priorItem: RenderItem | null;
@@ -101,6 +104,9 @@ function SessionConversationTurnInner({
   restoringTranscript?: boolean;
   /** The live question owns the composer slot, so this turn must not draw it too. */
   questionIsDocked?: boolean;
+  /** The agent's plan as it stood when this turn ended, or null if it never
+   *  touched one. */
+  todo?: TodoList | null;
 }): JSX.Element {
   const sessionIsLive = session?.state === "running";
   const isStreamingTurn = isLatestTurn && sessionIsLive;
@@ -366,6 +372,15 @@ function SessionConversationTurnInner({
       node: questionCard,
       createdAt: askUserQuestionTool.createdAt,
       sortAt: askUserQuestionTool.createdAt
+    });
+  }
+  if (todo) {
+    assistantChildren.push({
+      kind: "assistant",
+      id: `todo-${item.id}`,
+      node: <TodoCard key={`todo-${item.id}`} list={todo} running={isStreamingTurn} />,
+      createdAt: todo.updatedAt,
+      sortAt: todo.updatedAt
     });
   }
   const visibleToolItems = useMemo(

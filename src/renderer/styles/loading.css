@@ -1,0 +1,265 @@
+/* ============================================================
+   Loading — the whole vocabulary for "this is not here yet".
+
+   Three shapes, and nothing else:
+
+   1. A pane skeleton (`SkeletonPane`) stands in for a panel
+      whose code or first payload has not arrived. Rows in the
+      rhythm of the rows that land.
+   2. A lines skeleton (`LinesSkeleton`) stands in for text or
+      code — a diff, a file preview. Ragged line lengths, so it
+      reads as prose rather than a bar.
+   3. A loading line (`LoadingLine`) is for everything smaller
+      than a pane: the working nest and one phrase, sitting
+      where the content will be. The command palette wears it
+      as a result row (`.command-palette-loading` adds the row
+      inset and nothing else), because a `<p>` is not a row in
+      a listbox.
+
+   A page with a strong shape of its own draws that shape
+   instead of the generic pane — see `.usage-skeleton` below.
+   What never appears is a bare "Loading…" string: a phrase with
+   no mark beside it reads as content, not as a wait.
+
+   Every shape is built from `.loading-block`: one filled box
+   with one sweep across it. That sweep is the app's only
+   loading motion, it runs on `transform` so it stays on the
+   compositor, and it opts into the hidden-document pause
+   (motion.css) like every other loop.
+   ============================================================ */
+
+.loading-block {
+  position: relative;
+  overflow: hidden;
+  background: var(--overlay-med);
+  border-radius: var(--radius-sm);
+}
+
+.loading-block::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, var(--overlay-strong) 50%, transparent 100%);
+  /* Spelled out from and to: an implicit `from` reads the computed transform,
+     which is exactly the kind of quiet no-op this file used to ship. */
+  animation: loading-sweep 1.5s var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
+}
+
+@keyframes loading-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-block::after {
+    animation: none;
+  }
+}
+
+/* ---------- 1. The pane skeleton ---------- */
+
+.skeleton-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 32px 40px;
+  max-width: 820px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.skeleton-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2_5);
+}
+
+.skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.skeleton-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1_5);
+  min-width: 0;
+}
+
+.skeleton-block-title {
+  height: 18px;
+  width: 30%;
+  border-radius: var(--radius-md);
+}
+
+.skeleton-block-subtitle {
+  height: 12px;
+  width: 50%;
+  border-radius: var(--radius-md);
+}
+
+.skeleton-row-avatar {
+  width: 36px;
+  height: 36px;
+}
+
+.skeleton-row-line {
+  height: 12px;
+  width: 70%;
+  border-radius: var(--radius-md);
+}
+
+.skeleton-row-line-short {
+  width: 35%;
+}
+
+/* ---------- 2. The lines skeleton ---------- */
+
+.lines-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2_5);
+  padding: 16px 18px;
+}
+
+.lines-skeleton-row {
+  height: 11px;
+  width: 92%;
+}
+
+.lines-skeleton-row:nth-child(3n) {
+  width: 66%;
+}
+
+.lines-skeleton-row:nth-child(4n) {
+  width: 81%;
+}
+
+.lines-skeleton-row:nth-child(5n) {
+  width: 52%;
+}
+
+.lines-skeleton-row:nth-child(7n) {
+  width: 74%;
+}
+
+/* The diff and file skeletons fill the scroll pane they replace. */
+.review-diff-skeleton,
+.review-file-skeleton {
+  margin: 0;
+}
+
+/* ---------- 3. The loading line ---------- */
+
+/* The working nest is the app's "running right now" mark, so a wait that is
+   too small for a skeleton wears the same mark as a running turn. Aligned to
+   the first line of the phrase rather than centred, so a wrapped sentence does
+   not drag the mark down the block. */
+.loading-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2_5);
+  margin: 0;
+  min-width: 0;
+  color: var(--muted-strong);
+  font-size: var(--text-sm);
+}
+
+.loading-line > .working-nest {
+  flex: none;
+  /* Baseline alignment puts a box with no text in it on the wrong line; nudge
+     it back onto the phrase's. */
+  transform: translateY(1px);
+}
+
+/* ---------- The usage page's own shape ---------- */
+
+/* The Usage page holds this until both of its reads land, so the skeleton is
+   on screen long enough to be looked at. Same order, same rhythm, and the same
+   section chrome as the page it stands in for: total, provider tiles, chart,
+   token flow, table. */
+.usage-skeleton {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.usage-skeleton-fold {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.usage-skeleton-total {
+  height: 38px;
+  width: 180px;
+  border-radius: var(--radius-md);
+}
+
+.usage-skeleton-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.usage-skeleton-tile {
+  height: 74px;
+  border-radius: var(--radius-md);
+}
+
+/* The chart is the one block big enough that a plain rectangle reads as a hole
+   in the page. Clipped to a rising silhouette instead, so the shape says "a
+   chart lands here" the way the tiles and rows say what they are. */
+.usage-skeleton-chart {
+  height: 240px;
+  border-radius: 0;
+  clip-path: polygon(
+    0 66%, 7% 52%, 15% 60%, 23% 38%, 31% 46%, 39% 26%, 47% 37%,
+    55% 20%, 63% 32%, 71% 14%, 79% 28%, 87% 18%, 94% 30%, 100% 22%,
+    100% 100%, 0 100%
+  );
+}
+
+.usage-skeleton-flow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.usage-skeleton-flow-part {
+  height: 58px;
+  border-radius: var(--radius-md);
+}
+
+.usage-skeleton-table {
+  display: grid;
+  gap: var(--space-2_5);
+  min-width: 0;
+}
+
+.usage-skeleton-table-row {
+  height: 16px;
+  width: 100%;
+}
+
+.usage-skeleton-table-row:first-child {
+  width: 40%;
+}

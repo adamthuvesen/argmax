@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import type { UsageLimitWindow, UsageProviderRemaining, UsageRemaining } from "../../../shared/types.js";
 import { WebLink } from "../WebLink.js";
+import { LoadingLine } from "../LoadingLine.js";
 import { formatResetIn } from "./usageFormat.js";
 import { providerLabel } from "./usagePresentation.js";
 
@@ -155,9 +156,7 @@ export function UsageRemainingCard({
           ))}
         </ul>
       ) : error ? null : (
-        <p className="usage-remaining-detail" role="status">
-          Reading remaining usage from each provider login.
-        </p>
+        <LoadingLine label="Reading remaining usage from each provider login." />
       )}
     </section>
   );

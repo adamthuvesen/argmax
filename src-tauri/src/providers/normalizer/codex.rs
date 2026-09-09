@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use phf::phf_map;
 use serde_json::{Map, Value};
 
+use super::todo::{codex_todo_update, todo_event};
 use super::{
     array_value, classify_command_risk, number_value, object_value, string_value, timeline_event,
     CodexCumulativeUsage, NormalizedUsage, NormalizerSessionContext, PermissionGateInfo,
@@ -346,11 +347,36 @@ pub fn normalize_reasoning_item(
     ))
 }
 
+/// Codex publishes its plan as a `todo_list` item, opened with `item.started`
+/// and revised in place with `item.updated`. That is not a tool call — it never
+/// touches a file and produces no result — so it becomes a `todo.updated`
+/// event and no command row.
+///
+/// The tool is off by default in `codex exec`; the adapter turns it on with
+/// `-c tools.update_plan.enabled=true`.
+pub fn normalize_todo_item(
+    event: &ProviderOutputEvent,
+    provider_type: Option<&str>,
+    item: Option<&Map<String, Value>>,
+    item_type: Option<&str>,
+) -> Option<PersistTimelineEventInput> {
+    if item_type != Some("todo_list")
+        || !matches!(provider_type, Some("item.started" | "item.updated"))
+    {
+        return None;
+    }
+    let item = item?;
+    let update = codex_todo_update(item)?;
+    Some(todo_event(event, &update, string_value(item.get("id"))))
+}
+
 fn is_tool_like_item(
     item: &Map<String, Value>,
     action: Option<&Map<String, Value>>,
     item_type: &str,
 ) -> bool {
+    // `todo_list` is handled by `normalize_todo_item`, which turns it into a
+    // `todo.updated` event rather than a tool row.
     if matches!(item_type, "reasoning" | "todo_list" | "error") {
         return false;
     }
@@ -1095,7 +1121,39 @@ mod tests {
     }
 
     #[test]
-    fn codex_todo_list_item_does_not_become_command_event() {
+    fn codex_todo_list_item_becomes_a_todo_event_not_a_command() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.updated",
+                    "item": {
+                        "id": "item_1",
+                        "type": "todo_list",
+                        "items": [
+                            { "text": "Read the normalizers", "completed": true },
+                            { "text": "Write the projection", "completed": false }
+                        ]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        let types: Vec<_> = result.events.iter().map(|e| e.r#type.as_str()).collect();
+        assert_eq!(types, vec!["todo.updated"]);
+        let payload = &result.events[0].payload;
+        assert_eq!(payload["mode"], json!("snapshot"));
+        assert_eq!(payload["toolUseId"], json!("item_1"));
+        assert_eq!(payload["items"][0]["status"], json!("done"));
+        // The exec projection has no in-progress flag, so the first unfinished
+        // item is the one Codex is working on.
+        assert_eq!(payload["items"][1]["status"], json!("active"));
+    }
+
+    #[test]
+    fn codex_todo_list_without_items_produces_nothing() {
         let mut context = NormalizerSessionContext::default();
         let result = normalize_provider_event(
             ProviderId::Codex,

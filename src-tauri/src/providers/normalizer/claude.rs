@@ -3,9 +3,14 @@ use std::collections::HashSet;
 use phf::phf_map;
 use serde_json::{json, Map, Value};
 
+use super::todo::{
+    claude_task_create, claude_task_update, is_todo_tool, parse_task_create_result,
+    stamp_todo_surface, todo_event, todos_array_update, TodoUpdate,
+};
 use super::{
     array_value, classify_command_risk, number_value, object_value, string_value, timeline_event,
-    NormalizedUsage, PermissionGateInfo, ProviderOutputEvent, UsageCounts,
+    NormalizedUsage, NormalizerSessionContext, PermissionGateInfo, ProviderOutputEvent,
+    UsageCounts,
 };
 use crate::{persistence::events::PersistTimelineEventInput, providers::pricing::cost_of};
 
@@ -117,9 +122,96 @@ pub fn native_agent_lifecycle_event(
     ))
 }
 
+/// Claude and Grok share this envelope, and publish plans differently: Grok
+/// sends a whole `todos` array through `todo_write`, while Claude sends one
+/// task per call through `TaskCreate` / `TaskUpdate`.
+///
+/// A `TaskCreate` produces no update here. Its subject is known but its id is
+/// not — that arrives in the result prose — so the subject waits in the context
+/// until `todo_update_from_tool_result` can pair the two.
+fn todo_update_from_tool_use(
+    tool_name: &str,
+    block: &Map<String, Value>,
+    context: &mut NormalizerSessionContext,
+) -> Option<TodoUpdate> {
+    let input = object_value(block.get("input"))?;
+    if tool_name.eq_ignore_ascii_case("TaskCreate") {
+        let (Some(id), Some(subject)) = (
+            string_value(block.get("id")),
+            string_value(input.get("subject")),
+        ) else {
+            return None;
+        };
+        context
+            .claude_pending_task_creates
+            .insert(id.to_string(), subject.to_string());
+        return None;
+    }
+    if tool_name.eq_ignore_ascii_case("TaskUpdate") {
+        return claude_task_update(input);
+    }
+    todos_array_update(input)
+}
+
+/// Pair a `TaskCreate` with the id in its result: `Task #5 created
+/// successfully: <subject>`.
+///
+/// When that literal changes the task still reaches the card, keyed by the
+/// tool-use id instead of the task id, and a warning names the text that did
+/// not parse. The following `TaskUpdate` then arrives against an id the fold
+/// cannot match and its row stops advancing — visible in the transcript within
+/// one turn, which is the point. Silently dropping the item would hide the
+/// break the way Codex's missing launch flag stayed hidden for two months.
+fn todo_update_from_tool_result(
+    block: &Map<String, Value>,
+    context: &mut NormalizerSessionContext,
+) -> Option<TodoUpdate> {
+    let tool_use_id = string_value(block.get("tool_use_id"))?;
+    let subject = context.claude_pending_task_creates.remove(tool_use_id)?;
+    let result = tool_result_text(block);
+    match result.as_deref().and_then(parse_task_create_result) {
+        Some((task_id, parsed_subject)) => Some(claude_task_create(
+            &task_id,
+            if parsed_subject.is_empty() {
+                &subject
+            } else {
+                &parsed_subject
+            },
+        )),
+        None => {
+            tracing::warn!(
+                target: "argmax::normalizer",
+                tool_use_id,
+                result = result.as_deref().unwrap_or("<no text>"),
+                "TaskCreate result did not match `Task #<id> created successfully:`; \
+                 keying the task by tool-use id, so later TaskUpdates will not match it"
+            );
+            Some(claude_task_create(tool_use_id, &subject))
+        }
+    }
+}
+
+/// A tool result's `content` is either a string or a list of text blocks.
+fn tool_result_text(block: &Map<String, Value>) -> Option<String> {
+    match block.get("content") {
+        Some(Value::String(text)) => Some(text.clone()),
+        Some(Value::Array(parts)) => {
+            let joined: String = parts
+                .iter()
+                .filter_map(|part| object_value(Some(part)))
+                .filter_map(|part| string_value(part.get("text")))
+                .collect::<Vec<_>>()
+                .join("");
+            (!joined.is_empty()).then_some(joined)
+        }
+        _ => None,
+    }
+}
+
 pub fn extract_content_blocks(
     event: &ProviderOutputEvent,
     payload: &Map<String, Value>,
+    context: &mut NormalizerSessionContext,
 ) -> Option<Vec<PersistTimelineEventInput>> {
     let content = object_value(payload.get("message"))
         .and_then(|message| array_value(message.get("content")))
@@ -229,26 +321,47 @@ pub fn extract_content_blocks(
                         continue;
                     }
                 }
+                let tool_name = string_value(block.get("name")).unwrap_or("tool_use");
                 let mut tool_block = block.clone();
                 stamp_child(&mut tool_block);
+                let todo = is_todo_tool(tool_name)
+                    .then(|| {
+                        stamp_todo_surface(&mut tool_block);
+                        todo_update_from_tool_use(tool_name, block, context)
+                    })
+                    .flatten();
                 events.push(timeline_event(
                     event,
                     "command.started",
-                    string_value(block.get("name")).unwrap_or("tool_use"),
+                    tool_name,
                     Value::Object(tool_block),
                 ));
+                if let Some(update) = todo {
+                    events.push(todo_event(event, &update, string_value(block.get("id"))));
+                }
             }
             Some("tool_result") | Some("web_search_tool_result") => {
                 flush_thinking(&mut pending_thinking, &mut events);
                 flush_text(&mut pending_text, &mut events);
                 let mut result_block = block.clone();
                 stamp_child(&mut result_block);
+                let todo = todo_update_from_tool_result(block, context);
+                if todo.is_some() {
+                    stamp_todo_surface(&mut result_block);
+                }
                 events.push(timeline_event(
                     event,
                     "command.completed",
                     "tool_result",
                     Value::Object(result_block),
                 ));
+                if let Some(update) = todo {
+                    events.push(todo_event(
+                        event,
+                        &update,
+                        string_value(block.get("tool_use_id")),
+                    ));
+                }
             }
             Some("thinking") => {
                 let text = string_value(block.get("thinking"))

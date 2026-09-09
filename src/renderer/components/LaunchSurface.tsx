@@ -270,7 +270,8 @@ export function LaunchSurface({
   const reviewOpenInFilesView = reviewState.openInFilesView;
   const reviewClosePanel = reviewState.closePanel;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
-  const reviewMode = reviewState.mode;
+  const reviewModes = reviewState.layout.modes;
+  const reviewClosePane = reviewState.closePane;
   const lastResetSignal = useRef(resetSignal);
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
 
@@ -310,8 +311,8 @@ export function LaunchSurface({
       }
       if (key === "g") {
         event.preventDefault();
-        if (reviewIsPanelOpen && reviewMode === "files") {
-          reviewClosePanel();
+        if (reviewIsPanelOpen && reviewModes.includes("files")) {
+          reviewClosePane(reviewModes[0] === "files" ? 0 : 1);
         } else {
           reviewOpenPanelInFilesMode();
         }
@@ -319,7 +320,7 @@ export function LaunchSurface({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [activeProject, reviewClosePanel, reviewIsPanelOpen, reviewMode, reviewOpenPanelInFilesMode, toggleReviewPanel]);
+  }, [activeProject, reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenPanelInFilesMode, toggleReviewPanel]);
 
   useEffect(() => {
     if (resetSignal === lastResetSignal.current) return;
@@ -723,7 +724,7 @@ export function LaunchSurface({
     // owns its own discovery call so the cold-launch path doesn't pay for it
     // when the user already has a project registered.
     return (
-      <Suspense fallback={<SkeletonPane />}>
+      <Suspense fallback={<SkeletonPane label="Loading launcher" />}>
         <WelcomePane onAddProject={onAddProject} />
       </Suspense>
     );
@@ -732,7 +733,7 @@ export function LaunchSurface({
   // Browser mode reads nothing from the project, so it opens even before one
   // is picked; Changes and Files have no source without it.
   const isReviewOpen =
-    reviewState.isPanelOpen && (activeProject !== null || reviewState.mode === "browser");
+    reviewState.isPanelOpen && (activeProject !== null || reviewState.layout.modes.includes("browser"));
   const contextSummary = project
     ? `Project and branch: ${project.name}, ${project.currentBranch}`
     : "";

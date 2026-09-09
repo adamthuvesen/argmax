@@ -12,6 +12,7 @@
  */
 import { errorMessage } from "../../shared/error.js";
 import { themeAppearance } from "./theme.js";
+import { readColorToken } from "./pixelField.js";
 
 export const MERMAID_STREAM_DEBOUNCE_MS = 180;
 
@@ -62,7 +63,14 @@ export function cssColorToHex(color: string): string | null {
 }
 
 function tokenHex(style: CSSStyleDeclaration, name: string): string | null {
-  return cssColorToHex(style.getPropertyValue(name));
+  const value = style.getPropertyValue(name);
+  const literal = cssColorToHex(value);
+  if (literal || !value.trim()) return literal;
+  // Only background intensity introduces these surface mixes. Preserve the
+  // existing Mermaid defaults for ink and accent tokens it cannot parse.
+  if (!["--tool-block-surface", "--panel", "--panel-soft", "--panel-sunken", "--line-strong", "--line"].includes(name)) return null;
+  const { r, g, b } = readColorToken(name, document.documentElement);
+  return rgbToHex(r, g, b);
 }
 
 function readProbeTypography(): { fontFamily: string; fontSize: string } {

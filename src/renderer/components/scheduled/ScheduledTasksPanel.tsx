@@ -27,6 +27,7 @@ import {
   type ScheduleControls,
   type ScheduleKind
 } from "../../lib/schedule.js";
+import { LoadingLine } from "../LoadingLine.js";
 import { SettingsListPicker } from "../settings/settingsPrimitives.js";
 import { uuidV4 } from "../../lib/uuid.js";
 
@@ -379,7 +380,7 @@ export function ScheduledTasksPanel({
               {loadError}
             </p>
           ) : routines === null ? (
-            <p className="sched-loading">Loading…</p>
+            <LoadingLine className="sched-loading" label="Loading scheduled tasks…" />
           ) : repositories.length === 0 ? (
             <EmptyState
               headline="No repositories yet"

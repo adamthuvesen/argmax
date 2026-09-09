@@ -4,13 +4,13 @@ import type { DiagnosticsReport, ProjectSummary } from "../../../shared/types.js
 import { APP_VERSION_LABEL } from "../../../shared/appVersion.js";
 import { formatBytes } from "../../lib/formatBytes.js";
 import { saveLogsFile } from "../../lib/logDownload.js";
+import { LoadingLine } from "../LoadingLine.js";
 import { ProjectKnowledgePanel } from "../ProjectKnowledgePanel.js";
 import {
   COLD_START_BUDGET_MS,
   ColdStartSummary,
   RendererPaintRow,
   SettingGroup,
-  SettingNote,
   SettingRow,
   SettingValueRow
 } from "./settingsPrimitives.js";
@@ -73,7 +73,7 @@ export function AdvancedSettings({
             }
           />
         ) : (
-          <SettingNote>Loading runtime details…</SettingNote>
+          <LoadingLine label="Loading runtime details…" />
         )}
 
         <SettingRow

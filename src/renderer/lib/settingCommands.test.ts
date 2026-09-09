@@ -17,6 +17,8 @@ function inputWith(overrides: Partial<SettingCommandsInput> = {}): SettingComman
     onChatVerbosityChange: vi.fn(),
     inkStrength: 7,
     onInkStrengthChange: vi.fn(),
+    backgroundIntensity: 7,
+    onBackgroundIntensityChange: vi.fn(),
     ...overrides
   };
 }
@@ -33,6 +35,7 @@ describe("buildSettingCommands", () => {
     byId.get("setting:font-size:9")!.run();
     byId.get("setting:chat-font-size:2")!.run();
     byId.get("setting:ink-strength:3")!.run();
+    byId.get("setting:background-intensity:4")!.run();
 
     expect(input.onThemeModeChange).toHaveBeenCalledWith("light");
     expect(input.onAccentChange).toHaveBeenCalledWith("blue");
@@ -40,6 +43,7 @@ describe("buildSettingCommands", () => {
     expect(input.onFontSizeChange).toHaveBeenCalledWith(9);
     expect(input.onChatFontSizeChange).toHaveBeenCalledWith(2);
     expect(input.onInkStrengthChange).toHaveBeenCalledWith(3);
+    expect(input.onBackgroundIntensityChange).toHaveBeenCalledWith(4);
     expect(commands.every((command) => command.group === "Settings")).toBe(true);
     expect(byId.has("setting:chat-verbosity:5")).toBe(false);
     expect(byId.get("setting:chat-verbosity:4")?.subtitle).toContain("Verbosity 4 of 4");
@@ -54,7 +58,8 @@ describe("buildSettingCommands", () => {
       "setting:chat-verbosity:1",
       "setting:font-size:6",
       "setting:chat-font-size:6",
-      "setting:ink-strength:7"
+      "setting:ink-strength:7",
+      "setting:background-intensity:7"
     ]);
   });
 
@@ -101,5 +106,7 @@ describe("buildSettingCommands", () => {
     expect(top("chat font larger")).toBe("Chat font size: larger");
     expect(top("ink strength 2")).toBe("Ink strength 2");
     expect(top("ink softer")).toBe("Ink strength: softer");
+    expect(top("background intensity 2")).toBe("Background intensity 2");
+    expect(top("background softer")).toBe("Background intensity: softer");
   });
 });

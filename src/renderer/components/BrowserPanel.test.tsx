@@ -100,9 +100,13 @@ function layOutStrip(): HTMLElement[] {
 }
 
 /** A window-level overlay at a known box, torn down by `cleanup`'s document reset. */
-function appendDialog(rect: { x: number; y: number; width: number; height: number }): HTMLElement {
+function appendDialog(
+  rect: { x: number; y: number; width: number; height: number },
+  attribute = "role",
+  value = "dialog"
+): HTMLElement {
   const dialog = document.createElement("div");
-  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute(attribute, value);
   stubRect(dialog, rect);
   document.body.append(dialog);
   return dialog;
@@ -459,7 +463,8 @@ describe("BrowserPanel", () => {
     expect(browserStub.navigate).toHaveBeenCalledWith("https://github.com", activeTabId());
   });
 
-  it("hides the webview only for overlays that reach the surface", async () => {
+  it.each([["role", "dialog"], ["data-browser-overlay", "true"]])(
+    "hides the webview only for overlapping %s=%s overlays", async (attribute, value) => {
     // The surface sits in the right-hand column; a session-pane dialog (provider
     // switch, composer popover) opens to its left and must leave the page alive.
     stubRect(document.body, { x: 0, y: 0, width: 1200, height: 800 });
@@ -468,7 +473,7 @@ describe("BrowserPanel", () => {
     if (!(surface instanceof HTMLElement)) throw new Error("no browser surface");
     stubRect(surface, { x: 800, y: 60, width: 400, height: 740 });
 
-    const paneDialog = appendDialog({ x: 100, y: 200, width: 400, height: 200 });
+    const paneDialog = appendDialog({ x: 100, y: 200, width: 400, height: 200 }, attribute, value);
     await act(async () => {
       await Promise.resolve();
     });
@@ -477,13 +482,39 @@ describe("BrowserPanel", () => {
     );
 
     paneDialog.remove();
-    appendDialog({ x: 300, y: 100, width: 700, height: 600 });
+    const overlapping = appendDialog({ x: 300, y: 100, width: 700, height: 600 }, attribute, value);
     await act(async () => {
       await Promise.resolve();
     });
     expect(browserStub.setBounds).toHaveBeenCalledWith(
       expect.objectContaining({ visible: false, tabId: activeTabId() })
     );
+    overlapping.remove();
+    await act(async () => { await Promise.resolve(); });
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: true, tabId: activeTabId() })
+    );
+  });
+
+  it("repositions the native webview when a review pane moves without resizing", async () => {
+    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(800, 60, 400, 350));
+    try {
+      const { rerender } = render(
+        <BrowserPanel url="https://github.com" onClose={() => undefined} panePosition="top" />
+      );
+      await act(async () => { await Promise.resolve(); });
+      browserStub.setBounds.mockClear();
+      bounds.mockReturnValue(new DOMRect(800, 420, 400, 350));
+      rerender(<BrowserPanel url="https://github.com" onClose={() => undefined} panePosition="bottom" />);
+      expect(browserStub.setBounds).toHaveBeenCalledWith(expect.objectContaining({
+        tabId: activeTabId(),
+        visible: true,
+        bounds: { x: 800, y: 420, width: 400, height: 350 }
+      }));
+    } finally {
+      bounds.mockRestore();
+    }
   });
 
   it("yields the native webview while the collapsed sidebar peeks", async () => {

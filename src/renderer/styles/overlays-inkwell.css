@@ -321,15 +321,12 @@
 }
 
 .command-palette-empty,
+/* The loading line (loading.css) as a result row: it carries the mark, the gap,
+   the ink and the size, and the palette adds only the row's own inset. */
 .command-palette-loading {
   list-style: none;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2_5);
   margin: 2px 8px;
   padding: 10px 14px;
-  color: var(--muted);
-  font-size: var(--text-sm);
   background: transparent;
 }
 

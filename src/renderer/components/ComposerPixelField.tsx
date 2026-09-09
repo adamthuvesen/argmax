@@ -198,7 +198,7 @@ export function ComposerPixelField({ text }: { text: string }): JSX.Element {
     });
     resizeObserver.observe(host);
 
-    // Refresh colors when the theme or accent attribute flips on <html>.
+    // Refresh the canvas when its accent or background palette changes.
     const themeObserver = new MutationObserver(() => {
       accent = readColorToken("--accent", host);
       crest = readColorToken("--accent-deep", host);
@@ -208,7 +208,7 @@ export function ComposerPixelField({ text }: { text: string }): JSX.Element {
     });
     themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme", "data-accent"]
+      attributeFilter: ["data-theme", "data-accent", "data-background-intensity"]
     });
 
     const onVisibility = (): void => {

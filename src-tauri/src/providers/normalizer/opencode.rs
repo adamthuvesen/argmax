@@ -9,6 +9,7 @@
 
 use serde_json::{json, Map, Value};
 
+use super::todo::{is_todo_tool, stamp_todo_surface, todo_event, todos_array_update};
 use super::{
     number_value, object_value, string_value, timeline_event, NormalizedUsage,
     NormalizerSessionContext, ProviderOutputEvent, UsageCounts,
@@ -209,6 +210,16 @@ fn normalize_tool_use(
     }
     flattened.insert("raw".to_string(), Value::Object(part.clone()));
 
+    // OpenCode's `todowrite` sends the whole list every time, so the update
+    // rides alongside the row that carries it and the row itself is hidden.
+    let todo = is_todo_tool(tool_name)
+        .then(|| object_value(flattened.get("input")).and_then(todos_array_update))
+        .flatten()
+        .map(|update| todo_event(event, &update, string_value(part.get("callID"))));
+    if is_todo_tool(tool_name) {
+        stamp_todo_surface(&mut flattened);
+    }
+
     let started = timeline_event(
         event,
         "command.started",
@@ -230,7 +241,10 @@ fn normalize_tool_use(
         Value::Object(completed_payload),
     );
 
-    vec![started, completed]
+    match todo {
+        Some(todo) => vec![started, completed, todo],
+        None => vec![started, completed],
+    }
 }
 
 /// `reason: "stop"` is the turn's final step — surface it as the turn-ending

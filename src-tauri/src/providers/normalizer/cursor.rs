@@ -1,6 +1,7 @@
 use phf::phf_map;
 use serde_json::{json, Map, Value};
 
+use super::todo::{is_todo_tool, stamp_todo_surface, todo_event, todos_array_update};
 use super::{
     number_value, object_value, string_value, timeline_event, NormalizedUsage,
     NormalizerSessionContext, ProviderOutputEvent, UsageCounts,
@@ -176,6 +177,9 @@ pub fn normalize_tool_call(
         flattened.insert("call_id".to_string(), Value::String(call_id.to_string()));
     }
     flattened.insert("raw".to_string(), Value::Object(payload.clone()));
+    if is_todo_tool(tool_name) {
+        stamp_todo_surface(&mut flattened);
+    }
 
     Some(timeline_event(
         event,
@@ -186,6 +190,36 @@ pub fn normalize_tool_call(
         },
         tool_name,
         Value::Object(flattened),
+    ))
+}
+
+/// Cursor's todo list arrives under four different tool names depending on the
+/// model behind ACP, so the shape decides rather than the name. One of the
+/// four, `updateTodos`, is stripped to `args: {"_toolName":"updateTodos"}`
+/// before it reaches us — that carries no list, so it produces no update and
+/// leaves whatever the card is already showing alone.
+pub fn normalize_todo_call(
+    event: &ProviderOutputEvent,
+    payload: &Map<String, Value>,
+    provider_type: Option<&str>,
+) -> Option<PersistTimelineEventInput> {
+    if provider_type != Some("tool_call") || string_value(payload.get("subtype")) != Some("started")
+    {
+        return None;
+    }
+    let wrapper = object_value(payload.get("tool_call"))?;
+    let (tool_name, body) = wrapper
+        .iter()
+        .find_map(|(key, value)| object_value(Some(value)).map(|body| (key.as_str(), body)))?;
+    if !is_todo_tool(tool_name) {
+        return None;
+    }
+    let args = object_value(body.get("args"))?;
+    let update = todos_array_update(args)?;
+    Some(todo_event(
+        event,
+        &update,
+        string_value(payload.get("call_id")),
     ))
 }
 

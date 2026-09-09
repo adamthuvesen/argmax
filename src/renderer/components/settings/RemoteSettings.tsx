@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type JSX } from "react";
 import { errorMessage } from "../../../shared/error.js";
 import type { RemoteStatus } from "../../../shared/types.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
+import { LoadingLine } from "../LoadingLine.js";
 import { SettingGroup, SettingNote, SettingRow, Toggle } from "./settingsPrimitives.js";
 
 /**
@@ -98,9 +99,11 @@ export function RemoteSettings(): JSX.Element {
   return (
     <SettingGroup id="settings-remote" label="Remote access">
       {status === null ? (
-        <SettingNote role={loadError ? "alert" : "status"}>
-          {loadError ?? "Loading remote status…"}
-        </SettingNote>
+        loadError ? (
+          <SettingNote role="alert">{loadError}</SettingNote>
+        ) : (
+          <LoadingLine label="Loading remote status…" />
+        )
       ) : (
         <>
           <SettingRow

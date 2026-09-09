@@ -14,6 +14,15 @@ list-price spend above. Enterprise, Teams, API-key, and unsigned-in rows show
 a label instead of remaining bars. Fetch happens once when the page opens;
 Refresh on that card retries remaining only.
 
+The page arrives in one piece: the ledger and the remaining read are separate
+fetches, and the skeleton covers both until the slower one lands, so no part
+of the page paints alone and reflows a beat later. The wait is capped at
+`REMAINING_HOLD_MS` (2 s) in [UsagePanel.tsx](../src/renderer/components/usage/UsagePanel.tsx) —
+the remaining read talks to provider accounts behind a 10-second timeout, and
+a slow or signed-out login must not hold the local numbers back. After that
+first paint the remaining card stays up: a window switch skeletons the ledger
+alone, since remaining does not follow the window.
+
 The header carries the page's three controls: a provider picker, a range
 picker, and the Cost/Tokens switch. Choosing a provider narrows the total,
 chart, token flow, and breakdown to it; so does pressing that provider's tile

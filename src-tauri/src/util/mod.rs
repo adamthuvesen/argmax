@@ -15,9 +15,3 @@ pub mod stream_reader;
 pub mod sync;
 pub mod tracing_init;
 pub mod workspace_paths;
-
-// Temporary measurement probe proving a source-changing cache restore rebuilds.
-#[test]
-fn ci_source_rebuild_probe() {
-    assert_eq!(std::hint::black_box(21) * 2, 42);
-}

@@ -739,7 +739,9 @@ describe("MobileApp", () => {
       expect(input).not.toBeNull();
       fireEvent.change(input as HTMLInputElement, { target: { files: [screenshot] } });
 
-      expect(await screen.findByLabelText("Attached images")).toHaveTextContent("Image 1");
+      // The thumbnail is the whole chip — the image is its own label, so the
+      // only text to assert on is the button that opens it.
+      expect(await screen.findByLabelText("Attached images")).toBeInTheDocument();
       fireEvent.click(await screen.findByRole("button", { name: "View image 1" }));
       expect(screen.getByRole("dialog", { name: "Attached image" })).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));

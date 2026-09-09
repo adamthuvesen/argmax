@@ -55,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [unit, integration, clippy]
+        check: [unit, integration]
     env:
       CARGO_INCREMENTAL: 1
       # Keep local debugging unchanged. CI needs test assertions, not DWARF.
@@ -94,11 +94,18 @@ jobs:
       # New integration modules belong in the existing integration binary.
       - if: ${{ matrix.check == 'integration' }}
         run: |
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --test integration
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --doc
-
-      - if: ${{ matrix.check == 'clippy' }}
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --test integration --no-run
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --test integration &
+          integration_pid=$!
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --doc &
+          doc_pid=$!
+          cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings &
+          clippy_pid=$!
+          status=0
+          for pid in "$integration_pid" "$doc_pid" "$clippy_pid"; do
+            wait "$pid" || status=1
+          done
+          exit "$status"
 
       - name: Rust cache footprint
         run: |

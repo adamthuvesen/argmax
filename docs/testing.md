@@ -56,8 +56,10 @@ error in an unchanged file when an imported type changes, so a per-file content
 cache alone is insufficient. Fresh checkout timestamps do not invalidate a
 matching cache.
 
-Three macOS Rust lanes run library tests, integration tests with doctests, and
-Clippy independently. Every lane must succeed. Keep new integration tests in
+Two macOS Rust lanes run library tests and integration checks. The integration
+lane builds its test binary first, then runs tests, doctests, and Clippy in
+parallel, waiting for every command and propagating failures. Both lanes must
+succeed. Keep new integration tests in
 the existing binary so this list remains complete. CI enables incremental
 compilation for both tests and Clippy and
 omits debug symbols through environment overrides. Local Cargo profiles retain

@@ -213,6 +213,43 @@ fn tool_result_text(block: &Map<String, Value>) -> Option<String> {
     }
 }
 
+/// Grok stopped sending the whole `assistant` envelope under
+/// `--include-partial-messages`: a turn is `stream_event` lines only, and a
+/// tool call exists solely as a `content_block_start` whose `content_block`
+/// already carries the finished `name` and `input`. Without this the session
+/// persists tool *results* and no `command.started`, so the chat shows no tool
+/// rows at all and a spawned sub-agent never gets its Agent card. Claude still
+/// closes a turn with the full envelope, so this stays off its path and cannot
+/// double-emit. Verified against grok 1.0.24.
+pub fn streamed_tool_use_block(
+    event: &ProviderOutputEvent,
+    payload: &Map<String, Value>,
+    context: &mut NormalizerSessionContext,
+) -> Option<Vec<PersistTimelineEventInput>> {
+    let block = object_value(payload.get("content_block"))?;
+    if string_value(block.get("type")) != Some("tool_use") {
+        return None;
+    }
+    // A finished `input` on the opening block is what separates this shape from
+    // the incremental one, where the block opens with `{}` and the arguments
+    // arrive as `input_json_delta` fragments before a closing envelope. Emitting
+    // there would persist an argument-less tool row and then duplicate it.
+    if object_value(block.get("input")).is_none_or(Map::is_empty) {
+        return None;
+    }
+    // Reuse the envelope flattener rather than restating the tool_use rules
+    // (todo lifting, SendUserMessage, child stamping) a second time.
+    let mut envelope = Map::new();
+    envelope.insert(
+        "content".to_string(),
+        Value::Array(vec![Value::Object(block.clone())]),
+    );
+    if let Some(parent) = payload.get("parent_tool_use_id") {
+        envelope.insert("parent_tool_use_id".to_string(), parent.clone());
+    }
+    extract_content_blocks(event, &envelope, context)
+}
+
 pub fn extract_content_blocks(
     event: &ProviderOutputEvent,
     payload: &Map<String, Value>,

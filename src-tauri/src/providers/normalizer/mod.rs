@@ -25,6 +25,7 @@ use self::{
         is_hidden_synthetic_body as is_claude_hidden_synthetic_body,
         is_thinking_delta_payload as is_claude_thinking_delta_payload,
         native_agent_lifecycle_event as claude_native_agent_lifecycle_event,
+        streamed_tool_use_block as claude_streamed_tool_use_block,
         synthesize_message_completed_from_result as synthesize_claude_message_completed_from_result,
         transcript_user_row as claude_transcript_user_row, TranscriptUserRow,
     },
@@ -752,6 +753,16 @@ fn normalize_json_payload(
                 TranscriptUserRow::ToolResult => {}
             }
         }
+        if provider == ProviderId::Grok && provider_type.as_deref() == Some("content_block_start") {
+            if let Some(tool_events) = claude_streamed_tool_use_block(event, &payload, context) {
+                return NormalizedProviderResult {
+                    events: tool_events,
+                    usages,
+                    provider_conversation_id,
+                    ..NormalizedProviderResult::default()
+                };
+            }
+        }
         if provider == ProviderId::Claude {
             if let Some(agent_event) = claude_native_agent_lifecycle_event(
                 event,
@@ -1254,6 +1265,33 @@ mod tests {
     // Grok reuses Claude Code's wire format, so it must reuse Claude's
     // normalizer path; if Grok ever forks that format these lines stop mapping
     // and this test is what says so.
+    // grok 1.0.24 under `--include-partial-messages` sends no `assistant`
+    // envelope at all: the turn is `stream_event` lines, and a tool call exists
+    // only as a `content_block_start` whose block already carries the finished
+    // input. Before this, such a turn persisted tool results with no
+    // `command.started`, so the chat drew no tool rows and a spawned sub-agent
+    // never got its Agent card.
+    #[test]
+    fn grok_streamed_tool_use_without_an_assistant_envelope_starts_the_command() {
+        let mut context = NormalizerSessionContext::for_provider(ProviderId::Grok, "grok-4.6");
+        let result = normalize_provider_event(
+            ProviderId::Grok,
+            &output_event(
+                "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call-48867c97-82\",\"name\":\"spawn_subagent\",\"input\":{\"type\":\"reviewer\",\"description\":\"Review host-policy prompt change\"}}},\"session_id\":\"s\"}\n",
+            ),
+            &mut context,
+        );
+
+        let started = result
+            .events
+            .iter()
+            .find(|event| event.r#type == "command.started")
+            .expect("command.started for the streamed tool_use");
+        assert_eq!(started.message, "spawn_subagent");
+        assert_eq!(started.payload["id"], json!("call-48867c97-82"));
+        assert_eq!(started.payload["input"]["type"], json!("reviewer"));
+    }
+
     #[test]
     fn grok_stream_json_normalizes_through_the_claude_path() {
         let mut context = NormalizerSessionContext::for_provider(ProviderId::Grok, "grok-4.6");
